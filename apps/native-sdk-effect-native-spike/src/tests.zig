@@ -77,6 +77,7 @@ test "web pane stays anchored to the full-height Effect Native surface" {
     main.update(&model, .reload_effect_surface);
     _ = main.panes(&model, &output);
     try testing.expectEqual(@as(u64, 1), output[0].reload_token);
+    try testing.expect(model.awaiting_projection);
 }
 
 test "the Native SDK catalog retains the proposed Effect Native lowerings" {

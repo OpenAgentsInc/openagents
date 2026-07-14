@@ -8,7 +8,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "types": ["vite/client", "vite-plus-matchers"]
+    "types": ["node", "vite/client", "vite-plus-matchers"]
   },
-  "include": ["frontend/src/**/*.ts", "vite.config.ts"]
+  "include": ["frontend/src/**/*.ts", "scripts/**/*.ts", "vite.config.ts"]
 }

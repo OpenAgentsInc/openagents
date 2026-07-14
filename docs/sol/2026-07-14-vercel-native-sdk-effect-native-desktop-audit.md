@@ -148,12 +148,13 @@ Native SDK 0.5.1 source:
 
 ```text
 pnpm run typecheck             -> exit 0
-vp test --run frontend/src     -> 1 file, 6 tests passed
-vp build                       -> exit 0; 199 modules transformed
+vp test --run frontend/src     -> 1 file, 7 tests passed
+vp build                       -> exit 0; 200 modules transformed
 zig build test                 -> exit 0; 6 native tests passed
 zig build                      -> exit 0
 native validate app.zon        -> manifest.valid
 native check . --strict        -> web layer included; manifest valid
+pnpm run smoke                 -> production-asset headed host gate passed
 ```
 
 The native tests prove that a native click does not directly mutate selection,
@@ -162,30 +163,49 @@ projections fail closed, the WebView stays anchored, expected Native SDK
 component descriptors remain present, and the product shell lays out. The
 Effect Native tests prove composer submit and blank/new-chat semantics,
 Transcript/TextField/IconButton catalog emission, strict bridge intent decoding,
-bounded projection size, the three-session ceiling, and the explicit component
-adoption matrix.
+bounded projection size, the three-session ceiling, explicit component
+adoption matrix, and bounded reload/restart state encoding.
 
-A headed `-Dautomation=true` smoke with the Vite Plus frontend produced:
+A first manual `native dev -Dautomation=true` smoke proved the development
+composition. The parity increment then added
+[`scripts/run-host-smoke.ts`](../../apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts)
+to `pnpm verify`. The new gate builds with automation, launches the actual
+binary on the bundled `zero://app` asset source, binds snapshots to the exact
+child PID and protocol 6, resolves each short-lived widget id from current
+semantic role/name, and produces this seven-step private record:
 
 ```text
-automation protocol            6
-dispatch errors                0
-native canvas                  nonblank, Metal, 1200x800 @2x
-retained widgets / semantics   17 / 17
-child WebView                  968x800, anchored at (232,0)
-first native frame             57.1 ms (150 ms budget passed)
-frontend URL                   http://127.0.0.1:5173/
-initial Effect projection      revision 1, 2 messages
-native row click round trip    revision 2, 0 messages, selected row changed
-automation assertion           4 patterns matched after 100 ms
+1  initial production Effect projection
+2  native session click -> higher-revision Effect-confirmed selection
+3  native workspace round trip -> higher-revision Effect projections
+4  deterministic retained-canvas screenshot
+5  Effect WebView reload -> state restored
+6  native process restart -> state restored
+7  New chat after restart -> no selected fixture session
 ```
 
-The composited window showed the Native SDK controls and the live Effect
-Native catalog together. In development the app consumes
-`NATIVE_SDK_FRONTEND_URL`, which `native dev` manages; a packaged build is the
-proof surface for `zero://app` assets. Native catalog lowering, system-WebView
-composited screenshot capture, packaging/signing, accessibility acceptance,
-and Electron host parity remain unproven.
+The passing run had zero dispatch errors, a nonblank 1200×800 Metal surface,
+17 retained widgets / 17 semantics, a 19.4 ms first native frame inside the
+150 ms SDK budget, a named 968×800 child WebView, an accessibility projection,
+and a 3.7 MiB deterministic native-canvas PNG. Its private
+`openagents.native-sdk.host-gate.v1` JSON plus snapshots, accessibility text,
+PNG, and bounded native log live under
+`var/native-sdk-effect-native-spike/host-smoke/`; those are ignored runtime
+artifacts, not committed Assurance Receipts.
+
+The run found and fixed a real production-path defect: the hybrid wrapper had
+not installed `native_sdk.frontend.productionSource`, so a direct built binary
+could paint the native shell but could not resolve `zero://app` and was only
+functional when `native dev` injected a Vite URL. The wrapper now supplies the
+production asset source and environment-aware development source, and rejects
+bridge projections from every WebView label except `effect-native-surface`.
+
+The composited live window shows the Native SDK controls and the live Effect
+Native catalog together. The deterministic PNG still covers only the retained
+GPU surface; Native SDK 0.5.1 does not include system-WebView pixels or DOM
+semantics in that artifact. Native catalog lowering, full-window composited
+capture, packaging/signing, accessibility acceptance, provider execution, and
+Electron host parity remain unproven.
 
 This receipt changes two conclusions from hypothetical to observed: Option A,
 the hybrid WebView shell works, and Effect can remain authoritative while a
@@ -193,6 +213,108 @@ Native SDK component mirrors and initiates a real session-selection intent. It
 also turns targeted child-WebView event delivery from a theoretical concern
 into a measured integration gap. The receipt does not satisfy NS-1 or NS-2
 below and does not change the shipping-host decision.
+
+## MVP AssuranceSpec integration audit
+
+The current authoritative MVP command is:
+
+```text
+pnpm --dir packages/assurance-spec run assure:mvp
+```
+
+It cannot truthfully be pointed at this Native app. The current admitted chain
+is an Electron RC9 chain, not a host-neutral workroom contract:
+
+| Layer | Current binding | Why a Native relabel would be false |
+| --- | --- | --- |
+| 36 candidate/falsifier units | every unit runs `apps/openagents-desktop/src/mvp-assurance-criteria.test.ts` | that file searches Electron tests and RC9 Markdown anchors |
+| environment | `ENV-OA-DESKTOP-MVP-VITE-PLUS-1`, framework `Effect Native / Electron` | it admits Vite Plus/JUnit and the historical Electron release receipt, not Zig/Native SDK/automation |
+| full host gate | `pnpm --dir apps/openagents-desktop run verify` | the runner requires literal `[openagents-desktop smoke] OK` |
+| full-gate receipt | `electron_smoke: "passed"` plus Electron source digests | it has no target/driver identity that could bind the Native binary |
+| companion evidence | signed/notarized installed RC9 candidate and completion audit | an Electron RC cannot prove Native install/update/rollback/uninstall |
+| QA Swarm | target `openagents.desktop.current` at `apps/openagents-desktop` | the coordinator rejects any other target today |
+
+The criterion tests themselves say their string anchors complement rather than
+replace the complete Desktop suite and installed journey. Reusing them while
+changing only the final command would produce a green label with no Native
+criterion evidence. This audit therefore rejects that shortcut.
+
+### Two pre-existing integrity failures to close first
+
+The read-only audit also found two problems in the current Electron assurance
+chain that are independent of Native SDK:
+
+1. `assurance/openagents-desktop-mvp.session.json` pins an older AssuranceSpec
+   digest. Running the owned runner reports `assurance_spec_changed` and a
+   blocking failure against the current admitted bytes.
+2. The admitted environment requires Node 24.13.1, while this run used Node
+   25.8.2. `vite-plus-test-adapter.ts` checks declared capabilities but not the
+   executing `process.version`, so it can currently mint an environment-current
+   receipt under the wrong runtime.
+
+Neither problem should be copied into a Native adapter. Exact Node, Zig,
+Native SDK, platform, architecture, binary, frontend, and adapter versions must
+be observed and digest-bound before a Native receipt can be current.
+
+### Honest Native target boundary
+
+The new headed gate is a useful **host-smoke substrate**, not a passing MVP
+AssuranceSpec. It confirms production asset loading, live native controls,
+bounded native→Effect actions, monotonic Effect projections, native canvas
+evidence, reload, restart, and teardown. It does not confirm ordinary logged-in
+Codex custody, ProductSpec/work packets, real child agents, granted repository
+and Git operations, durable provider-turn recovery, update staging, privacy
+diagnostics, or signed/notarized lifecycle. None of `CW-AC-01…18` is fully
+confirmed end-to-end by the fixture.
+
+A real Native lane needs a separately reviewed and admitted chain, for example:
+
+```text
+target              openagents.desktop.native-sdk.spike
+environment         ENV-OA-DESKTOP-NATIVE-SDK-MACOS-1
+adapter             openagents.native_sdk_assurance.v1
+manifest namespace  assurance/openagents-desktop-native-sdk-mvp.*
+run namespace       var/assurance/openagents-desktop-native-sdk-mvp/
+```
+
+The historical Electron artifacts must remain byte-stable. A target descriptor
+should bind the target ref, repository path, criterion catalog, environment,
+adapter, exact verify argv, host-gate schema, source digests, output namespace,
+and companion evidence. The same 18 logical criteria and candidate/falsifier
+shape may be preserved, but every Native unit requires a Native-owned
+integration or release anchor; missing proof remains `INCONCLUSIVE`.
+
+The Native full-gate adapter should consume a typed host-gate file rather than
+parse log prose. At minimum it must bind exact PID/liveness, automation protocol,
+binary and frontend digests, command/adapter digests, pre/post snapshot digests,
+artifact digests, typecheck/tests/build observations, native smoke observation,
+and clean teardown. Timeout, crash, permission refusal, missing composited
+evidence, or stale output is `INCONCLUSIVE`, never green.
+
+### Native automation blockers for parallel assurance
+
+Four upstream behaviors matter before admission:
+
+- desktop runners hard-code `.zig-cache/native-sdk-automation` and the CLI has
+  no `--dir`; the spike serializes and refuses a live publisher, but six QA
+  lanes need isolated run-relative directories;
+- `bridge-response.txt` is global while the Effect pane polls every 120 ms;
+  `native automate bridge` can observe a background projection response rather
+  than its own request unless the SDK correlates exact request ids;
+- Native snapshots and deterministic screenshots omit child-WebView DOM and
+  pixels, so a browser/DOM adapter and macOS window-scoped capture must
+  accompany canvas evidence;
+- widget ids are runtime-ephemeral; authored scenarios must select by a unique
+  current `(view, role, accessibleName, occurrence)` and resolve the id just
+  before each action, as the new smoke does.
+
+The next honest sequence is: fix current owned-runner/runtime fidelity; add a
+target descriptor and namespaced Native environment/adapter; normalize this
+host gate into a typed adapter receipt; add browser and macOS-composited
+evidence; create Native criterion catalogs that start red/`INCONCLUSIVE`; port
+real Effect/host services criterion by criterion; then obtain fresh review,
+admission, signed lifecycle evidence, and only then run all 36 Native-bound
+units plus the full Native gate.
 
 ## How to harness Native SDK's opinionated components
 
@@ -370,7 +492,11 @@ OpenAgents sources inspected:
 - [bounded hybrid spike](../../apps/native-sdk-effect-native-spike/README.md)
 - [Native SDK host and native component proof](../../apps/native-sdk-effect-native-spike/src/main.zig)
 - [Effect Native program proof](../../apps/native-sdk-effect-native-spike/frontend/src/program.ts)
+- [bounded reload/restart state storage](../../apps/native-sdk-effect-native-spike/frontend/src/state-storage.ts)
 - [component-adoption matrix](../../apps/native-sdk-effect-native-spike/frontend/src/native-sdk-component-adoption.ts)
+- [headed production host gate](../../apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts)
+- [current admitted MVP assurance runner](../../packages/assurance-spec/scripts/run-mvp-assurance.ts)
+- [current MVP criterion anchors](../../apps/openagents-desktop/src/mvp-assurance-criteria.test.ts)
 
 The upstream Native SDK repository had 270 commits from 2026-05-08 through the
 audited 2026-07-13 release, 268 authored by one contributor and one each by two

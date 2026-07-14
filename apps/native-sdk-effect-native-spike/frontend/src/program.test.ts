@@ -6,11 +6,21 @@ import { it } from "./effect-test.ts";
 import { bridgePayloadLimit, decodeNativeIntent, projectNativeState } from "./native-bridge.ts";
 import { adoptionCounts, nativeSdkComponentAdoption } from "./native-sdk-component-adoption.ts";
 import { fixtureSessions, initialSpikeState, makeSpikeRuntime, spikeView } from "./program.ts";
+import { persistSpikeState, restoreSpikeState, spikeStorageKey, spikeStorageNamespace, type SpikeStorage } from "./state-storage.ts";
+
+const memoryStorage = (): SpikeStorage & { readonly values: Map<string, string> } => {
+  const values = new Map<string, string>();
+  return {
+    values,
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => { values.set(key, value); },
+  };
+};
 
 describe("Native SDK Effect Native parity spike", () => {
   it.effect("runs the MVP composer through a real typed Effect intent loop", () =>
     Effect.gen(function* () {
-      const runtime = yield* makeSpikeRuntime;
+      const runtime = yield* makeSpikeRuntime();
       yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeInputChanged", StaticPayload("Ship the parity slice")), null));
       yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeMessageSubmitted"), null));
       const state = yield* SubscriptionRef.get(runtime.state);
@@ -26,7 +36,7 @@ describe("Native SDK Effect Native parity spike", () => {
 
   it.effect("keeps blank submit a no-op and new chat deterministic", () =>
     Effect.gen(function* () {
-      const runtime = yield* makeSpikeRuntime;
+      const runtime = yield* makeSpikeRuntime();
       yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeMessageSubmitted", StaticPayload("   ")), null));
       let state = yield* SubscriptionRef.get(runtime.state);
       expect(state.messages).toHaveLength(2);
@@ -72,5 +82,26 @@ describe("Native SDK Effect Native parity spike", () => {
     expect(adoptionCounts.direct).toBeGreaterThanOrEqual(8);
     expect(nativeSdkComponentAdoption.find((entry) => entry.effectNative === "CodeEditor")?.lane).toBe("unsupported");
     expect(nativeSdkComponentAdoption.find((entry) => entry.effectNative === "Host(webview)")?.lane).toBe("host-only");
+  });
+
+  test("restores bounded Effect state across reload and restart generations", () => {
+    const storage = memoryStorage();
+    const state = {
+      ...initialSpikeState(),
+      selectedSessionRef: fixtureSessions[1].ref,
+      messages: [],
+      pending: true,
+      revision: 7,
+    };
+    expect(persistSpikeState(storage, "run-1", state)).toBe(true);
+    expect(restoreSpikeState(storage, "run-1")).toEqual({
+      ...state,
+      pending: false,
+      revision: 8,
+    });
+    storage.values.set(spikeStorageKey("run-2"), "not-json");
+    expect(restoreSpikeState(storage, "run-2")).toEqual(initialSpikeState());
+    expect(spikeStorageNamespace("zero://app/index.html#assurance-run=proof.42")).toBe("proof.42");
+    expect(spikeStorageNamespace("zero://app/index.html?assurance-run=../../unsafe")).toBe("default");
   });
 });

@@ -1,10 +1,11 @@
 import { IntentRef, resolveIntentRef, StaticPayload, type IntentReporter } from "@effect-native/core";
-import { Effect, Exit, Scope, SubscriptionRef } from "@effect-native/core/effect";
+import { Effect, Exit, Scope, Stream, SubscriptionRef } from "@effect-native/core/effect";
 import { makeDomRenderer } from "@effect-native/render-dom";
 import { khalaTheme } from "@effect-native/tokens";
 
 import { startNativeBridgeSync } from "./native-bridge.ts";
 import { makeSpikeRuntime } from "./program.ts";
+import { persistSpikeState, restoreSpikeState, spikeStorageNamespace } from "./state-storage.ts";
 import "./style.css";
 
 const boot = (): void => {
@@ -19,7 +20,14 @@ const boot = (): void => {
   }, { once: true });
 
   const mount = Effect.gen(function* () {
-    const runtime = yield* makeSpikeRuntime;
+    const storageNamespace = spikeStorageNamespace(window.location.href);
+    const runtime = yield* makeSpikeRuntime(restoreSpikeState(window.localStorage, storageNamespace));
+    yield* SubscriptionRef.changes(runtime.state).pipe(
+      Stream.runForEach((state) => Effect.sync(() => {
+        persistSpikeState(window.localStorage, storageNamespace, state);
+      })),
+      Effect.forkScoped,
+    );
     const report: IntentReporter = (ref, runtimeValue) =>
       Effect.gen(function* () {
         yield* runtime.registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null));

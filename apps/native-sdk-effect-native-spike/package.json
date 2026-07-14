@@ -9,10 +9,12 @@
     "dev:frontend": "vp dev --host 127.0.0.1",
     "build:frontend": "vp build",
     "build:native": "zig build",
+    "build:native:automation": "zig build -Dautomation=true",
     "test:native": "zig build test",
     "test": "vp test --run frontend/src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify": "pnpm run typecheck && pnpm run test && pnpm run build:frontend && pnpm run test:native && pnpm run build:native"
+    "smoke": "pnpm run build:native:automation && node --import tsx scripts/run-host-smoke.ts",
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run build:frontend && pnpm run test:native && pnpm run build:native && pnpm run smoke"
   },
   "dependencies": {
     "@effect-native/core": "workspace:*",
@@ -21,6 +23,7 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "0.2.4"

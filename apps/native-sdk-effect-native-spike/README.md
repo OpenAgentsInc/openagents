@@ -12,6 +12,9 @@ and then adapted into a product-shaped hybrid architecture proof:
   state. The source selection in the native mirror changes only after Effect
   returns a versioned projection; the retained control may show its bounded
   optimistic press echo while the rail says it is synchronizing.
+- The bounded fixture projection persists through WebView reload and native
+  process restart in Web storage. Each document boot advances the Effect
+  revision and fails any in-flight fixture turn closed to stopped.
 - One exact-origin custom command carries a maximum 8 KiB projection and
   sequence/acknowledged native intent. The 120 ms pull is deliberately visible:
   Native SDK 0.5.1 can target bridge responses to child WebViews but its window
@@ -33,8 +36,27 @@ From this directory:
 pnpm verify
 ```
 
-That runs TypeScript checking, Effect Native intent/contract tests, the Vite
-frontend build, Native SDK Zig tests, and the native binary build.
+That runs TypeScript checking, seven Effect Native intent/contract tests, the
+Vite frontend build, six Native SDK Zig tests, the native binary build, and a
+headed production-asset host gate. The host gate:
+
+- refuses to share Native SDK's hard-coded automation directory with a live
+  publisher;
+- binds every observation to the exact spawned process id and protocol 6;
+- resolves fresh widget ids from roles and accessible names before acting;
+- drives session and workspace intents through the native canvas and waits for
+  higher-revision Effect projections;
+- captures the retained-canvas PNG and accessibility/snapshot evidence;
+- reloads the Effect WebView, restarts the native process, and proves the
+  Effect-owned fixture state is restored before creating a new chat;
+- leaves private evidence under
+  `var/native-sdk-effect-native-spike/host-smoke/` and prints
+  `[native-sdk-effect-native-spike smoke] OK` only after all seven steps.
+
+The wrapper now installs Native SDK's production asset source explicitly, so
+the built binary loads `zero://app/index.html`; the proof no longer depends on
+a Vite development server. Only the named `effect-native-surface` child may
+publish Effect projections or consume native intents.
 
 To run the full window with a Native SDK CLI on `PATH`:
 
@@ -56,20 +78,18 @@ cd ../../../openagents/apps/native-sdk-effect-native-spike
 `build.zig.zon` exact-pins the audited Native SDK commit rather than relying on
 the local reference checkout's path.
 
-The focused headed smoke is:
+The repeatable headed smoke is:
 
 ```sh
-native automate wait
-native automate snapshot
-native automate widget-click native-shell <renderer-boundary-widget-id>
-native automate assert 'name="Renderer boundary".*selected' \
-  'name="0 messages · revision 2"' 'dispatch_errors=0'
-native automate screenshot native-shell 1
+pnpm run build:frontend
+pnpm run smoke
 ```
 
-The deterministic Native SDK screenshot covers the retained GPU surface; on
-the system WebView host the composited Effect pane is inspected in the live
-window and is not included in that CPU-rendered PNG.
+The script drives the file protocol directly and therefore does not need a
+machine-global Native SDK CLI. The deterministic Native SDK screenshot covers
+the retained GPU surface; on the system WebView host the composited Effect
+pane is not included in that CPU-rendered PNG. Browser-level or macOS
+window-level evidence is still required for the Effect DOM pixels and controls.
 
 ## Adoption rule
 

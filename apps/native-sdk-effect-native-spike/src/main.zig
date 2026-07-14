@@ -18,6 +18,7 @@ pub const webview_label = "effect-native-surface";
 pub const pane_anchor = "effect-native-pane";
 pub const effect_native_url = "zero://app/index.html";
 pub const bridge_command = "openagents.spike.projection.v1";
+pub const reload_command = "openagents.spike.reload-effect";
 pub const bridge_payload_limit: usize = 8 * 1024;
 
 const window_width: f32 = 1200;
@@ -149,7 +150,10 @@ pub fn update(model: *Model, msg: Msg) void {
             @memcpy(model.status_storage[0..model.status_len], projection.status[0..model.status_len]);
             model.awaiting_projection = false;
         },
-        .reload_effect_surface => model.reload_token += 1,
+        .reload_effect_surface => {
+            model.reload_token += 1;
+            model.awaiting_projection = true;
+        },
         .frame_presented => model.gpu_frames_seen = true,
     }
 }
@@ -328,22 +332,33 @@ const bridge_policies = [_]native_sdk.BridgeCommandPolicy{.{ .name = bridge_comm
 const HybridHost = struct {
     ui: *SpikeApp,
     inner: native_sdk.App,
+    env_map: *std.process.Environ.Map,
     runtime: ?*native_sdk.Runtime = null,
     handlers: [1]native_sdk.BridgeHandler = undefined,
 
-    fn init(ui: *SpikeApp) @This() {
-        return .{ .ui = ui, .inner = ui.app() };
+    fn init(ui: *SpikeApp, env_map: *std.process.Environ.Map) @This() {
+        return .{ .ui = ui, .inner = ui.app(), .env_map = env_map };
     }
 
     fn app(self: *@This()) native_sdk.App {
         return .{
             .context = self,
             .name = "native-sdk-effect-native-spike",
+            .source = native_sdk.frontend.productionSource(.{ .dist = "frontend/dist", .entry = "index.html" }),
+            .source_fn = source,
             .scene_fn = scene,
             .start_fn = start,
             .event_fn = event,
             .stop_fn = stop,
         };
+    }
+
+    fn source(context: *anyopaque) anyerror!native_sdk.WebViewSource {
+        const self: *@This() = @ptrCast(@alignCast(context));
+        return native_sdk.frontend.sourceFromEnv(self.env_map, .{
+            .dist = "frontend/dist",
+            .entry = "index.html",
+        });
     }
 
     fn bridge(self: *@This()) native_sdk.BridgeDispatcher {
@@ -364,6 +379,13 @@ const HybridHost = struct {
 
     fn event(context: *anyopaque, runtime: *native_sdk.Runtime, value: native_sdk.Event) anyerror!void {
         const self: *@This() = @ptrCast(@alignCast(context));
+        switch (value) {
+            .command => |command| if (std.mem.eql(u8, command.name, reload_command)) {
+                try self.ui.dispatch(runtime, if (command.window_id == 0) 1 else command.window_id, .reload_effect_surface);
+                return;
+            },
+            else => {},
+        }
         try self.inner.event(runtime, value);
     }
 
@@ -375,6 +397,10 @@ const HybridHost = struct {
 
     fn acceptProjection(context: *anyopaque, invocation: native_sdk.bridge.Invocation, output: []u8) anyerror![]const u8 {
         const self: *@This() = @ptrCast(@alignCast(context));
+        // The app-level asset source can instantiate a primary WebView while
+        // the product surface is the named child pane. Only that pane may
+        // project Effect state or consume native intents.
+        if (!std.mem.eql(u8, invocation.source.webview_label, webview_label)) return error.InvalidProjectionSource;
         const runtime = self.runtime orelse return error.RuntimeUnavailable;
         const projection = try parseProjection(invocation.request.payload);
         const acknowledged = unsignedField(u64, invocation.request.payload, "acknowledgedNativeSequence") orelse return error.InvalidProjection;
@@ -400,7 +426,7 @@ pub fn main(init: std.process.Init) !void {
     defer std.heap.page_allocator.destroy(app_state);
     app_state.* = SpikeApp.init(std.heap.page_allocator, model, options());
     defer app_state.deinit();
-    var host = HybridHost.init(app_state);
+    var host = HybridHost.init(app_state, init.environ_map);
 
     try runner.runWithOptions(host.app(), .{
         .app_name = "native-sdk-effect-native-spike",

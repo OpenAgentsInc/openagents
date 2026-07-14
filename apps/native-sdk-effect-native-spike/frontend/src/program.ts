@@ -186,8 +186,8 @@ export const spikeView = (state: SpikeState): View =>
 
 const nextRevision = (state: SpikeState): number => state.revision + 1;
 
-export const makeSpikeRuntime = Effect.gen(function* () {
-  const state = yield* SubscriptionRef.make(initialSpikeState());
+export const makeSpikeRuntime = (restoredState: SpikeState = initialSpikeState()) => Effect.gen(function* () {
+  const state = yield* SubscriptionRef.make(restoredState);
   const registry = yield* makeIntentRegistry(spikeIntents, {
     SpikeInputChanged: (value: string) => SubscriptionRef.update(state, (current) => ({ ...current, input: value.slice(0, 4_000) })),
     SpikeMessageSubmitted: (value: string | null) => SubscriptionRef.update(state, (current) => {
