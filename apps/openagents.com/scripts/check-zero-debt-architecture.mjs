@@ -449,7 +449,24 @@ const budgetChecks = [
     // and sarah-fleet-run-routes.ts (-13). This records the actual count
     // (same recovery shape as the notes above/below). Mints no spend/
     // settlement/payout/public-claim authority.
-    budget: 752,
+    // +7 (752 -> 759) on 2026-07-14: five lanes landed Response-typed route
+    // surfaces without bumping this ratchet, leaving check:deploy red on
+    // main — audio-grant-routes.ts (+2, 0b91925886 feat(audio) host-only
+    // gateway grants, 2026-07-12), index.ts (+1) and pylon-api-routes.ts
+    // (+2) from the managed FleetRun dispatch lane (8244bd64e9 /
+    // a94fa4c470 / c856329aca, 2026-07-12/13), observatory-routes.ts (+1,
+    // 6b0af64271 feat(observatory) criterion-first MVP trace, 2026-07-13),
+    // and thread-file-routes.ts (+1, 1da7bbc2af Effect beta.94
+    // unification, 2026-07-14). This records the actual count per the
+    // fix-forward precedent above. Mints no spend/settlement/payout/
+    // public-claim authority. Ratchet back down as those routes move onto
+    // the typed HTTP-result adapters.
+    // +1 (759 -> 760) on 2026-07-14: the VP-1 money-ingress freeze
+    // (af672ef49b, payments(VP-1) #8795) landed
+    // money-surface-retirement.ts with one Response-typed helper
+    // (moneySurfaceRetiredResponse) without bumping this ratchet. It
+    // RETIRES money surfaces (410s) rather than minting any authority.
+    budget: 760,
     description:
       'Worker Response-returning surfaces are counted semantically across literal and aliased annotations.',
     details: countByFileWith(
@@ -464,7 +481,26 @@ const budgetChecks = [
     // Exact origin/main baseline at c711b51537. An inferred return type can
     // evade an annotation counter, so materialization and named response helper
     // calls outside the HTTP adapter directory are ratcheted independently.
-    budget: 3123,
+    // +20 (3123 -> 3143) on 2026-07-14: the same route lanes recorded on the
+    // semantic ratchet above landed inferred Response materialization
+    // without bumping this ratchet, leaving check:deploy red on main —
+    // khala-sync-runtime-interaction-routes.ts (+14, d2d9ee8907
+    // fix(worker), 2026-07-11), index.ts (+8) and pylon-api-routes.ts (+6)
+    // from the managed FleetRun dispatch lane (8244bd64e9 / a94fa4c470 /
+    // c856329aca), observatory-routes.ts (+6) and observer-routes.ts (+2)
+    // from the observatory MVP trace lane (6b0af64271),
+    // provider-account-pylon-routes.ts (+2, 143776464b fix(pylon) local
+    // custody grants, 2026-07-13), audio-grant-routes.ts (+1, 0b91925886),
+    // and thread-file-routes.ts (+1, 1da7bbc2af) — net of surfaces retired
+    // elsewhere since the 2026-07-10 recording. Records the actual count
+    // per the fix-forward precedent; mints no spend/settlement/payout/
+    // public-claim authority. Ratchet back down as route mappers are
+    // extracted.
+    // +1 (3143 -> 3144) on 2026-07-14: the VP-1 money-ingress freeze
+    // (af672ef49b, payments(VP-1) #8795) added the
+    // money-surface-retirement.ts 410 responder. It retires money
+    // surfaces rather than minting authority.
+    budget: 3144,
     description:
       'Worker modules may not grow inferred Response materialization outside the HTTP adapter boundary.',
     details: countByFileWith(
@@ -731,7 +767,20 @@ const budgetChecks = [
     // That lane never bumped this ratchet, leaving check:deploy red on main;
     // this records the actual count (same recovery shape as the Mutalisk
     // note above). Mints no spend/settlement/payout/public-claim authority.
-    budget: 135,
+    // +3 (135 -> 138) on 2026-07-14: the same lanes recorded on the
+    // semantic ratchet — audio-grant-routes.ts (+2, 0b91925886),
+    // index.ts (+1, managed FleetRun dispatch 8244bd64e9),
+    // observatory-routes.ts (+1, 6b0af64271), and thread-file-routes.ts
+    // (+1, 1da7bbc2af), net of one retired literal surface — landed
+    // Response-typed declarations without bumping this ratchet, leaving
+    // check:deploy red on main. Records the actual count per the
+    // fix-forward precedent above; mints no spend/settlement/payout/
+    // public-claim authority. Ratchet back down when route mappers are
+    // extracted.
+    // +1 (138 -> 139) on 2026-07-14: the VP-1 money-ingress freeze
+    // (af672ef49b) money-surface-retirement.ts 410 responder, as on the
+    // semantic ratchet above.
+    budget: 139,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
