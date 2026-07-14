@@ -1,48 +1,76 @@
-import { IntentRef, resolveIntentRef } from "@effect-native/core";
+import { IntentRef, resolveIntentRef, StaticPayload } from "@effect-native/core";
 import { Effect, Exit, SubscriptionRef } from "@effect-native/core/effect";
 import { describe, expect, test } from "vite-plus/test";
 
 import { it } from "./effect-test.ts";
+import { bridgePayloadLimit, decodeNativeIntent, projectNativeState } from "./native-bridge.ts";
 import { adoptionCounts, nativeSdkComponentAdoption } from "./native-sdk-component-adoption.ts";
-import { makeSpikeRuntime, spikeView } from "./program.ts";
+import { fixtureSessions, initialSpikeState, makeSpikeRuntime, spikeView } from "./program.ts";
 
-describe("Native SDK Effect Native spike", () => {
-  it.effect("runs a real typed Effect Native intent loop", () =>
+describe("Native SDK Effect Native parity spike", () => {
+  it.effect("runs the MVP composer through a real typed Effect intent loop", () =>
     Effect.gen(function* () {
       const runtime = yield* makeSpikeRuntime;
-      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("IncrementEffectCount"), null));
-      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("IncrementEffectCount"), null));
+      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeInputChanged", StaticPayload("Ship the parity slice")), null));
+      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeMessageSubmitted"), null));
       const state = yield* SubscriptionRef.get(runtime.state);
       const events = yield* runtime.registry.events;
 
-      expect(state.effectCount).toBe(2);
-      expect(state.lastAction).toContain("decoded and handled");
+      expect(state.messages.at(-1)?.text).toBe("Ship the parity slice");
+      expect(state.pending).toBe(true);
+      expect(state.input).toBe("");
       expect(events).toHaveLength(2);
       expect(events.every((event) => Exit.isSuccess(event.result))).toBe(true);
     }),
   );
 
-  test("emits the closed Effect Native catalog rather than Native SDK props", () => {
-    const view = spikeView({ effectCount: 4, lastAction: "test" });
+  it.effect("keeps blank submit a no-op and new chat deterministic", () =>
+    Effect.gen(function* () {
+      const runtime = yield* makeSpikeRuntime;
+      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeMessageSubmitted", StaticPayload("   ")), null));
+      let state = yield* SubscriptionRef.get(runtime.state);
+      expect(state.messages).toHaveLength(2);
+      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeNewChatRequested"), null));
+      state = yield* SubscriptionRef.get(runtime.state);
+      expect(state.selectedSessionRef).toBeNull();
+      expect(state.messages).toEqual([]);
+      expect(state.workspace).toBe("chat");
+    }),
+  );
+
+  test("projects the real MVP transcript and composer catalog", () => {
+    const view = spikeView(initialSpikeState());
     const encoded = JSON.stringify(view);
 
     expect(encoded.startsWith('{"_tag":"Stack"')).toBe(true);
-    expect(encoded).toContain('"_tag":"Button"');
-    expect(encoded).toContain('"_tag":"Badge"');
+    expect(encoded).toContain('"_tag":"Transcript"');
+    expect(encoded).toContain('"_tag":"TextField"');
+    expect(encoded).toContain('"_tag":"IconButton"');
+    expect(encoded).toContain("Codex");
+    expect(encoded).not.toContain("Candidate Native SDK lowerings");
     expect(encoded).not.toContain("gpu_backend");
-    expect(encoded).not.toContain("style_tokens");
   });
 
-  test("keeps the adoption matrix explicit and unique", () => {
-    const effectTags = nativeSdkComponentAdoption.map((entry) => entry.effectNative);
+  test("decodes only the bounded versioned native intent protocol", () => {
+    expect(decodeNativeIntent({ protocol: 1, sequence: 4, intent: { _tag: "SessionSelected", sessionRef: fixtureSessions[1].ref } }).sequence).toBe(4);
+    expect(() => decodeNativeIntent({ protocol: 2, sequence: 4, intent: { _tag: "NewChatRequested" } })).toThrow();
+    expect(() => decodeNativeIntent({ protocol: 1, sequence: 4, intent: { _tag: "ArbitraryCommand" } })).toThrow();
+  });
 
+  test("keeps the native mirror projection small and non-authoritative", () => {
+    const state = initialSpikeState();
+    const projection = projectNativeState(state);
+    expect(projection.selectedSessionRef).toBe(state.selectedSessionRef);
+    expect(projection.messageCount).toBe(2);
+    expect(new TextEncoder().encode(JSON.stringify(projection)).length).toBeLessThan(bridgePayloadLimit);
+    expect(fixtureSessions.length).toBeLessThanOrEqual(3);
+  });
+
+  test("keeps the component-adoption audit explicit and unique", () => {
+    const effectTags = nativeSdkComponentAdoption.map((entry) => entry.effectNative);
     expect(new Set(effectTags).size).toBe(effectTags.length);
     expect(adoptionCounts.direct).toBeGreaterThanOrEqual(8);
-    expect(
-      nativeSdkComponentAdoption.find((entry) => entry.effectNative === "CodeEditor")?.lane,
-    ).toBe("unsupported");
-    expect(
-      nativeSdkComponentAdoption.find((entry) => entry.effectNative === "Host(webview)")?.lane,
-    ).toBe("host-only");
+    expect(nativeSdkComponentAdoption.find((entry) => entry.effectNative === "CodeEditor")?.lane).toBe("unsupported");
+    expect(nativeSdkComponentAdoption.find((entry) => entry.effectNative === "Host(webview)")?.lane).toBe("host-only");
   });
 });

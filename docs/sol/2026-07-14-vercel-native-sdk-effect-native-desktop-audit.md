@@ -1,7 +1,7 @@
 # Vercel Native SDK, Effect Native, and OpenAgents Desktop audit
 
 - Date: 2026-07-14
-- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; bounded spike based on OpenAgents `4b5340f73aeceac2dbe0ab901d9f7ad96ada0c66`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `412640adbe2979926c64c7aaf29721677638d4ec` (`effect-native/v39`)
+- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; parity pass based on OpenAgents `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `412640adbe2979926c64c7aaf29721677638d4ec` (`effect-native/v39`)
 - Class: architecture and dependency audit
 - Status: recommendation with bounded hybrid implementation receipt; no
   migration or release authority
@@ -13,7 +13,8 @@
   completed hybrid spike as evidence that the two runtimes compose; treat
   Native SDK's component catalog as renderer implementation material, not a
   second Effect Native authoring API; require the next proof to be a real
-  native lowering rather than another WebView shell
+  native lowering rather than another WebView shell; require targeted child-
+  WebView event delivery before treating hybrid native controls as production
 
 ## Executive decision
 
@@ -74,27 +75,65 @@ It was created with the pinned Native SDK CLI, not hand-scaffolded:
 native init apps/native-sdk-effect-native-spike --template zig-core --full
 ```
 
-The generated starter was then converted into a deliberately bounded hybrid:
+The generated starter was then converted into a deliberately bounded,
+product-shaped hybrid:
 
 ```mermaid
 flowchart LR
   NS["Native SDK macOS window"] --> Canvas["Retained Metal canvas"]
-  Canvas --> Chrome["Native toolbar, rail, cards, badges, switch, status"]
+  Canvas --> Chrome["Native 232px session rail"]
   Canvas --> Anchor["Semantic WebView pane anchor"]
   Anchor --> WV["WKWebView child surface"]
   WV --> EN["Effect Native ViewProgram + typed intents"]
   EN --> DOM["@effect-native/render-dom"]
+  Chrome --> Pull["sequence + acknowledged intent"]
+  Pull --> EN
+  EN --> Projection["versioned Effect projection"]
+  Projection --> Chrome
 ```
 
 Native SDK owns the window, Metal-backed retained canvas, opinionated native
-components, layout, accessibility snapshot, child-WebView bounds, and reload
-token. Inside the WebView, real Effect v4 owns a `SubscriptionRef`, typed
-`defineIntent` definitions, an `IntentRegistry`, a `ViewProgram`, and the
-shared Effect Native catalog rendered by `@effect-native/render-dom`. The two
-counters intentionally remain separate: one demonstrates Native SDK's typed
-Zig `Model`/`Msg`/`update`; the other demonstrates the actual Effect Native
-intent loop. There is no false claim that Native SDK's TypeScript subset ran
-Effect.
+list/focus components, layout, accessibility snapshot, child-WebView bounds,
+and deterministic automation. Inside the WebView, real Effect v4 owns a
+`SubscriptionRef`, typed `defineIntent` definitions, an `IntentRegistry`, a
+`ViewProgram`, and the
+shared Effect Native catalog rendered by `@effect-native/render-dom`.
+
+The current screen deliberately mirrors the real Desktop MVP shape rather than
+a counter demo:
+
+- hidden-inset 1200×800 window and full-height 232px native session rail;
+- New chat, Chat, Workspace, three recent fixture sessions, and Settings in
+  retained Native SDK controls;
+- Effect Native `Transcript`, multiline `TextField`, fixed Codex label, and
+  icon-only send/stop control using the shared Khala theme;
+- deterministic privacy-safe messages and no provider call;
+- typed blank-submit no-op, nonblank append/clear/pending behavior, new-chat
+  reset, workspace selection, and session selection.
+
+Effect remains the product authority. A native click only records a bounded
+intent and shows a synchronization state. The native model's selected row,
+workspace, message count, pending state, and status change only after the
+Effect program returns a higher-revision projection. Native SDK may paint its
+built-in optimistic press echo during the gesture, but the next source tree is
+the Effect-confirmed truth. Its model therefore contains a renderer mirror and
+transport bookkeeping, not a second transcript or workroom state machine.
+
+The bridge uses one exact-origin command, protocol version 1, monotonic native
+sequence and Effect revision numbers, a three-session fixture ceiling, and an
+application-enforced 8 KiB JSON limit. Unknown workspaces, sessions, versions,
+oversized messages, stale projections, and out-of-range acknowledgements fail
+closed. `js_window_api` stays disabled.
+
+One upstream boundary became observable during this pass: Native SDK 0.5.1's
+macOS bridge response path can target a child WebView by label, but
+`emitWindowEvent` evaluates JavaScript only in the primary window WebView. The
+Effect renderer is a declared child WebView, so native-to-Effect events do not
+arrive there. The spike consequently uses a 120 ms Effect-initiated
+projection/pull with acknowledged native sequence. That is acceptable for a
+research fixture and not an endorsed production transport. A native renderer
+or production hybrid needs targeted child-WebView events, a primary-WebView
+topology, or the proposed sidecar renderer protocol.
 
 The app exact-pins the audited Native SDK commit and archive hash in
 `build.zig.zon`; it does not depend on the machine-specific
@@ -109,43 +148,51 @@ Native SDK 0.5.1 source:
 
 ```text
 pnpm run typecheck             -> exit 0
-vp test --run frontend/src     -> 1 file, 3 tests passed
+vp test --run frontend/src     -> 1 file, 6 tests passed
 vp build                       -> exit 0; 199 modules transformed
-zig build test                 -> exit 0; 4 native tests passed
+zig build test                 -> exit 0; 6 native tests passed
 zig build                      -> exit 0
 native validate app.zon        -> manifest.valid
 native check . --strict        -> web layer included; manifest valid
 ```
 
-The native tests prove typed native control dispatch, stable widget identity,
-the WebView anchor and reload token, the expected Native SDK component
-descriptors, and retained-canvas layout. The Effect Native tests prove decoded
-intent dispatch and state updates, catalog emission, and the rule that Native
-SDK-specific fields such as `gpu_backend` and `style_tokens` never enter the
-Effect Native view tree.
+The native tests prove that a native click does not directly mutate selection,
+valid higher-revision projections update the mirror, stale/malformed/oversized
+projections fail closed, the WebView stays anchored, expected Native SDK
+component descriptors remain present, and the product shell lays out. The
+Effect Native tests prove composer submit and blank/new-chat semantics,
+Transcript/TextField/IconButton catalog emission, strict bridge intent decoding,
+bounded projection size, the three-session ceiling, and the explicit component
+adoption matrix.
 
 A headed `-Dautomation=true` smoke with the Vite Plus frontend produced:
 
 ```text
 automation protocol            6
 dispatch errors                0
-native canvas                  nonblank, Metal, 1120x720 @2x
-retained widgets / semantics   30 / 30
-child WebView                  816x660, anchored at (304,60)
-first native frame             64.5 ms (150 ms budget passed)
+native canvas                  nonblank, Metal, 1200x800 @2x
+retained widgets / semantics   17 / 17
+child WebView                  968x800, anchored at (232,0)
+first native frame             57.1 ms (150 ms budget passed)
 frontend URL                   http://127.0.0.1:5173/
+initial Effect projection      revision 1, 2 messages
+native row click round trip    revision 2, 0 messages, selected row changed
+automation assertion           4 patterns matched after 100 ms
 ```
 
 The composited window showed the Native SDK controls and the live Effect
 Native catalog together. In development the app consumes
 `NATIVE_SDK_FRONTEND_URL`, which `native dev` manages; a packaged build is the
-proof surface for `zero://app` assets. The renderer bridge, native catalog
-lowering, packaging/signing, accessibility acceptance, and Electron host
-parity remain unproven.
+proof surface for `zero://app` assets. Native catalog lowering, system-WebView
+composited screenshot capture, packaging/signing, accessibility acceptance,
+and Electron host parity remain unproven.
 
-This receipt changes one conclusion from hypothetical to observed: Option A,
-the hybrid WebView shell, works. It does not satisfy NS-1 or NS-2 below and
-does not change the shipping-host decision.
+This receipt changes two conclusions from hypothetical to observed: Option A,
+the hybrid WebView shell works, and Effect can remain authoritative while a
+Native SDK component mirrors and initiates a real session-selection intent. It
+also turns targeted child-WebView event delivery from a theoretical concern
+into a measured integration gap. The receipt does not satisfy NS-1 or NS-2
+below and does not change the shipping-host decision.
 
 ## How to harness Native SDK's opinionated components
 
@@ -169,6 +216,13 @@ The spike makes this mapping executable in
 [`native-sdk-component-adoption.ts`](../../apps/native-sdk-effect-native-spike/frontend/src/native-sdk-component-adoption.ts):
 9 direct candidates, 6 composites, 2 host-only candidates, and one explicitly
 unsupported specialist. It is a research matrix, not a parity claim.
+
+The parity pass also exercises one useful subset in context: Native SDK's
+retained `list_item`, selected/focus state, dark Geist theme, blue accent,
+hidden-inset chrome, semantic snapshot, stable widget identity, and automation
+form the session rail around the unchanged Effect Native transcript/composer.
+This is the right reuse direction—opinionated native behavior behind a narrow
+renderer/host boundary—not a reason to expose Native SDK props to product code.
 
 The key architectural opinion is: **adopt Native SDK's component
 implementations and behavioral rigor behind Effect Native; do not adopt its
@@ -441,10 +495,14 @@ Native SDK has a good security direction:
   permission, and allowed origin;
 - navigation is origin-allowlisted;
 - external links are denied unless action and URL patterns are explicit;
-- child WebViews receive a bridge only when created with `bridge: true`;
+- programmatic child WebViews receive a bridge only when created with
+  `bridge: true`; declared shell WebViews are bridge-enabled by the current
+  shell layout path;
 - dialog, clipboard, credential, and OS commands always require explicit
   builtin bridge policy;
-- bridge payloads are capped at 16 KiB;
+- the public bridge guide describes 16 KiB request / 12 KiB result ceilings,
+  but the audited v0.5.1 source currently sets request, response, and result
+  maxima to 1 MiB in `src/bridge/root.zig`;
 - native-only builds can exclude WebView libraries entirely.
 
 This is compatible with OpenAgents' tokenless-renderer discipline. It does not
@@ -454,7 +512,10 @@ IPC channels, sender validation, CSP, navigation denial, and host-owned
 credentials. A Native SDK adoption would need equivalent OpenAgents-specific
 oracles over the new renderer protocol and every native extension. Moving away
 from Chromium removes one attack surface but introduces a new sidecar/native
-ABI and protocol surface.
+ABI and protocol surface. OpenAgents must therefore enforce its own lower
+protocol ceiling rather than inheriting the upstream default. The parity spike
+uses 8 KiB, exact `zero://app` / loopback-dev origins, protocol version 1, and
+monotonic revision/sequence checks.
 
 Credential storage is implemented through Keychain on macOS, Credential
 Manager on Windows, and Secret Service/libsecret where available on Linux.
@@ -657,7 +718,9 @@ Costs:
 Verdict after implementation: technically proven on macOS and still
 strategically weak as a migration destination. Keep the completed app as a
 shell-portability and component-composition fixture, not as evidence that
-Effect Native has a native renderer.
+Effect Native has a native renderer. The native rail round trip also requires
+a pull/ack workaround because window events do not target the declared child
+WebView at v0.5.1; resolve that transport gap before expanding this option.
 
 ### Option B: run Effect in Node and Native SDK as an out-of-process renderer
 
@@ -924,6 +987,11 @@ Option A precursor and does not clear any native-renderer phase. If owner
 direction and a claimed issue authorize the next spike, use these phases and
 stop gates.
 
+The parity pass borrows the NS-3 fixture shape—session rail, transcript, and
+composer—but does not clear NS-3: the transcript is DOM-rendered in a child
+WebView, is not a native catalog lowering, has no long-running streaming soak,
+and uses the research pull/ack transport described above.
+
 ### NS-0: pin and contract
 
 - exact-pin Native SDK and Zig, never float a tag range;
@@ -1057,9 +1125,10 @@ adapter and use the current boundary oracles as the shipping contract.
 Record Native SDK as a serious candidate for a future native/canvas renderer,
 not as a new application framework for OpenAgents. Preserve the completed
 hybrid spike as proof that Native SDK native components and the real Effect
-Native program can compose. Do not spend the next experiment repeating that
-WebView result. If capacity and owner priority permit after the release lane is
-protected, authorize one disposable
+Native program can compose and that Effect can remain authoritative across a
+small native session interaction. Do not spend the next experiment repeating
+that WebView result or expanding the polling workaround. If capacity and owner
+priority permit after the release lane is protected, authorize one disposable
 `@effect-native/render-native-sdk` **native-lowering** spike. Run Effect in
 Node, use Native SDK for renderer/platform work, generate a versioned bounded
 bridge, and stop after a small catalog and one product-shaped read-only screen

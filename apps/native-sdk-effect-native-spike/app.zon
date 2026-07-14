@@ -7,19 +7,27 @@
     .icons = .{"assets/icon.png"},
     .platforms = .{"macos"},
     .permissions = .{"view"},
-    .capabilities = .{ "native_views", "gpu_surfaces", "webview" },
+    .capabilities = .{ "native_views", "gpu_surfaces", "webview", "js_bridge" },
+    .bridge = .{
+        .commands = .{
+            .{ .name = "openagents.spike.projection.v1", .origins = .{ "zero://app", "http://127.0.0.1:5173" } },
+        },
+    },
     .shell = .{
         .windows = .{
             .{
                 .label = "main",
-                .title = "Native SDK × Effect Native",
-                .width = 1120,
-                .height = 720,
+                .title = "OpenAgents Native parity spike",
+                .width = 1200,
+                .height = 800,
+                .min_width = 760,
+                .min_height = 520,
+                .titlebar = "hidden_inset",
                 .restore_state = false,
                 .restore_policy = "center_on_primary",
                 .views = .{
                     .{ .label = "native-shell", .kind = "gpu_surface", .fill = true, .role = "Native SDK shell", .accessibility_label = "Native SDK component shell", .gpu_backend = "metal", .gpu_pixel_format = "bgra8_unorm", .gpu_present_mode = "timer", .gpu_alpha_mode = "opaque", .gpu_color_space = "srgb", .gpu_vsync = true },
-                    .{ .label = "effect-native-surface", .kind = "webview", .parent = "native-shell", .url = "zero://app/index.html", .x = 304, .y = 60, .width = 816, .height = 660, .layer = 20 },
+                    .{ .label = "effect-native-surface", .kind = "webview", .parent = "native-shell", .url = "zero://app/index.html", .x = 232, .y = 0, .width = 968, .height = 800, .layer = 20 },
                 },
             },
         },

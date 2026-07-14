@@ -12,57 +12,74 @@ fn buildTree(arena: std.mem.Allocator, model: *const main.Model) !main.AppUi.Tre
 
 fn findByText(widget: canvas.Widget, kind: canvas.WidgetKind, text: []const u8) ?canvas.Widget {
     if (widget.kind == kind and std.mem.eql(u8, widget.text, text)) return widget;
-    for (widget.children) |child| {
-        if (findByText(child, kind, text)) |found| return found;
-    }
+    for (widget.children) |child| if (findByText(child, kind, text)) |found| return found;
     return null;
 }
 
 fn expectByText(widget: canvas.Widget, kind: canvas.WidgetKind, text: []const u8) !canvas.Widget {
-    return findByText(widget, kind, text) orelse {
-        std.debug.print("no {t} with text \"{s}\" in the Native SDK view\n", .{ kind, text });
-        return error.WidgetNotFound;
-    };
+    return findByText(widget, kind, text) orelse error.WidgetNotFound;
 }
 
-test "native opinionated controls dispatch through the typed update loop" {
+test "native selection waits for an Effect projection" {
     var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
 
     var model = main.initialModel();
-    var tree = try buildTree(arena_state.allocator(), &model);
+    const tree = try buildTree(arena_state.allocator(), &model);
+    const renderer = try expectByText(tree.root, .list_item, "Renderer boundary");
+    main.update(&model, tree.msgForPointer(renderer.id, .up).?);
 
-    const increment = try expectByText(tree.root, .button, "Increment native");
-    main.update(&model, tree.msgForPointer(increment.id, .up).?);
-    try testing.expectEqual(@as(i64, 1), model.native_count);
-
-    tree = try buildTree(arena_state.allocator(), &model);
-    try testing.expectEqual(increment.id, (try expectByText(tree.root, .button, "Increment native")).id);
-
-    const toggle = try expectByText(tree.root, .switch_control, "Show adoption details");
-    main.update(&model, tree.msgForPointer(toggle.id, .up).?);
-    try testing.expect(!model.details_visible);
+    try testing.expectEqual(main.Session.parity, model.session);
+    try testing.expectEqual(main.OutboundIntent.session_renderer, model.outbound_intent);
+    try testing.expectEqual(@as(u64, 1), model.outbound_sequence);
+    try testing.expect(model.awaiting_projection);
 }
 
-test "web pane stays anchored to the Effect Native surface" {
+test "bounded projection updates the native mirror and rejects stale state" {
+    const payload =
+        \\{"protocol":1,"revision":7,"workspace":"chat","selectedSessionRef":"session.renderer","messageCount":3,"pending":true,"status":"Codex is working"}
+    ;
+    const projection = try main.parseProjection(payload);
+    var model = main.initialModel();
+    main.update(&model, .{ .sync_projection = projection });
+
+    try testing.expectEqual(@as(u64, 7), model.projection_revision);
+    try testing.expectEqual(main.Session.renderer, model.session);
+    try testing.expectEqual(@as(u32, 3), model.message_count);
+    try testing.expect(model.pending);
+    try testing.expectEqualStrings("Codex is working", model.status());
+
+    const stale = main.Projection{ .revision = 6, .workspace = .settings, .session = .audit, .message_count = 0, .pending = false, .status = "stale" };
+    main.update(&model, .{ .sync_projection = stale });
+    try testing.expectEqual(main.Workspace.chat, model.workspace);
+    try testing.expectEqual(@as(u64, 7), model.projection_revision);
+}
+
+test "projection protocol fails closed" {
+    try testing.expectError(error.InvalidProtocol, main.parseProjection(
+        \\{"protocol":2,"revision":1,"workspace":"chat","selectedSessionRef":null,"messageCount":0,"pending":false,"status":"bad"}
+    ));
+    try testing.expectError(error.InvalidProjection, main.parseProjection(
+        \\{"protocol":1,"revision":1,"workspace":"fleet","selectedSessionRef":null,"messageCount":0,"pending":false,"status":"bad"}
+    ));
+    var oversized: [main.bridge_payload_limit + 1]u8 = undefined;
+    @memset(&oversized, 'x');
+    try testing.expectError(error.PayloadTooLarge, main.parseProjection(&oversized));
+}
+
+test "web pane stays anchored to the full-height Effect Native surface" {
     var model = main.initialModel();
     var output: [1]main.SpikeApp.WebViewPane = undefined;
-
     try testing.expectEqual(@as(usize, 1), main.panes(&model, &output));
     try testing.expectEqualStrings(main.webview_label, output[0].label);
     try testing.expectEqualStrings(main.pane_anchor, output[0].anchor.?);
     try testing.expectEqualStrings(main.effect_native_url, output[0].url);
-
     main.update(&model, .reload_effect_surface);
     _ = main.panes(&model, &output);
     try testing.expectEqual(@as(u64, 1), output[0].reload_token);
-
-    model.frontend_url = "http://127.0.0.1:5173/";
-    _ = main.panes(&model, &output);
-    try testing.expectEqualStrings("http://127.0.0.1:5173/", output[0].url);
 }
 
-test "the Native SDK component catalog exposes the adoption targets" {
+test "the Native SDK catalog retains the proposed Effect Native lowerings" {
     try testing.expect(canvas.builtinComponentCount() >= 32);
     try testing.expectEqualStrings("Button", canvas.builtinComponentName(.button));
     try testing.expectEqualStrings("Card", canvas.builtinComponentName(.card));
@@ -72,20 +89,15 @@ test "the Native SDK component catalog exposes the adoption targets" {
     try testing.expect(!canvas.builtinComponentDescriptor(.badge).composite);
 }
 
-test "the hybrid shell lays out through the retained canvas engine" {
+test "product-shaped shell lays out through the retained canvas engine" {
     var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
-
     var model = main.initialModel();
     const tree = try buildTree(arena_state.allocator(), &model);
     var nodes: [256]canvas.WidgetLayoutNode = undefined;
-    const layout = try canvas.layoutWidgetTree(
-        tree.root,
-        native_sdk.geometry.RectF.init(0, 0, 1120, 720),
-        &nodes,
-    );
-
+    const layout = try canvas.layoutWidgetTree(tree.root, native_sdk.geometry.RectF.init(0, 0, 1200, 800), &nodes);
     try testing.expect(layout.nodes.len > 12);
-    _ = try expectByText(tree.root, .badge, "NATIVE");
-    _ = try expectByText(tree.root, .button, "Reload Effect pane");
+    _ = try expectByText(tree.root, .button, "New chat");
+    _ = try expectByText(tree.root, .list_item, "Chat");
+    _ = try expectByText(tree.root, .list_item, "Settings");
 }

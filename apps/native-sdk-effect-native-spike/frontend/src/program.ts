@@ -1,156 +1,239 @@
 import {
   Badge,
-  Button,
   Card,
+  ComponentValueBinding,
   defineIntent,
-  Divider,
+  IconButton,
   IntentRef,
   makeIntentRegistry,
   makeViewProgramFromState,
+  Spacer,
   Stack,
   Text,
+  TextField,
+  Transcript,
+  type TranscriptMessage,
   type View,
 } from "@effect-native/core";
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect";
 
-import { adoptionCounts, nativeSdkComponentAdoption } from "./native-sdk-component-adoption.ts";
+export const fixtureSessions = [
+  { ref: "session.parity", title: "Native parity pass" },
+  { ref: "session.renderer", title: "Renderer boundary" },
+  { ref: "session.audit", title: "SDK adoption audit" },
+] as const;
 
-export interface SpikeState {
-  readonly effectCount: number;
-  readonly lastAction: string;
+export type Workspace = "chat" | "home" | "settings";
+
+export interface SpikeMessage {
+  readonly key: string;
+  readonly role: "user" | "assistant" | "system";
+  readonly text: string;
+  readonly timestamp: string;
 }
 
-export const IncrementEffectCount = defineIntent("IncrementEffectCount", Schema.Null);
-export const ResetEffectCount = defineIntent("ResetEffectCount", Schema.Null);
-export const spikeIntents = [IncrementEffectCount, ResetEffectCount] as const;
+export interface SpikeState {
+  readonly workspace: Workspace;
+  readonly selectedSessionRef: string | null;
+  readonly input: string;
+  readonly messages: ReadonlyArray<SpikeMessage>;
+  readonly pending: boolean;
+  readonly revision: number;
+}
+
+export const SpikeInputChanged = defineIntent("SpikeInputChanged", Schema.String);
+export const SpikeMessageSubmitted = defineIntent("SpikeMessageSubmitted", Schema.NullOr(Schema.String));
+export const SpikeTurnStopped = defineIntent("SpikeTurnStopped", Schema.Null);
+export const SpikeNewChatRequested = defineIntent("SpikeNewChatRequested", Schema.Null);
+export const SpikeWorkspaceSelected = defineIntent("SpikeWorkspaceSelected", Schema.Literals(["chat", "home", "settings"]));
+export const SpikeSessionSelected = defineIntent("SpikeSessionSelected", Schema.String);
+export const spikeIntents = [
+  SpikeInputChanged,
+  SpikeMessageSubmitted,
+  SpikeTurnStopped,
+  SpikeNewChatRequested,
+  SpikeWorkspaceSelected,
+  SpikeSessionSelected,
+] as const;
+
+const initialMessages: ReadonlyArray<SpikeMessage> = [
+  {
+    key: "fixture-user",
+    role: "user",
+    text: "Bring the Native SDK spike one step closer to the real desktop app.",
+    timestamp: "10:42 AM",
+  },
+  {
+    key: "fixture-assistant",
+    role: "assistant",
+    text: "I’ll prove the session rail, transcript, composer, and a bounded Effect-authoritative bridge.",
+    timestamp: "10:42 AM",
+  },
+];
 
 export const initialSpikeState = (): SpikeState => ({
-  effectCount: 0,
-  lastAction: "Effect runtime mounted",
+  workspace: "chat",
+  selectedSessionRef: fixtureSessions[0].ref,
+  input: "",
+  messages: initialMessages,
+  pending: false,
+  revision: 1,
 });
 
-const mappingRows = nativeSdkComponentAdoption.slice(0, 9).map((entry) =>
-  Stack({ key: `mapping-${entry.effectNative}`, direction: "row", gap: "2", align: "center" }, [
-    Badge({
-      key: `mapping-lane-${entry.effectNative}`,
-      label: entry.lane,
-      tone: entry.lane === "direct" ? "success" : "info",
-      variant: "soft",
-      size: "sm",
-    }),
-    Text({
-      key: `mapping-name-${entry.effectNative}`,
-      content: `${entry.effectNative} → ${entry.nativeSdk}`,
-      variant: "caption",
-      color: "textPrimary",
-      style: { flex: 1 },
+const transcriptMessage = (message: SpikeMessage): TranscriptMessage => ({
+  key: message.key,
+  role: message.role,
+  ...(message.role === "assistant" ? {} : { senderLabel: message.role === "user" ? "YOU" : "SYSTEM" }),
+  timestamp: message.timestamp,
+  body: [Text({
+    key: `${message.key}-body`,
+    content: message.text,
+    variant: "body",
+    color: message.role === "system" ? "textMuted" : "textPrimary",
+  })],
+});
+
+const composer = (state: SpikeState): View => Card({
+  key: "spike-composer",
+  padding: "2",
+  radius: "xl",
+  style: {
+    width: "full",
+    maxWidth: "2xl",
+    alignSelf: "center",
+    borderColor: "border",
+    borderWidth: 1,
+    marginBottom: "4",
+    surface: "glass",
+  },
+}, [
+  TextField({
+    key: "spike-input",
+    value: state.input,
+    multiline: true,
+    placeholder: state.pending ? "Turn running…" : "Message",
+    clearOnSubmit: true,
+    onChange: IntentRef("SpikeInputChanged", ComponentValueBinding()),
+    onSubmit: IntentRef("SpikeMessageSubmitted", ComponentValueBinding()),
+    style: { width: "full", minHeight: "2xs" },
+    a11y: { label: "Message" },
+  }),
+  Stack({ key: "spike-composer-bar", direction: "row", gap: "1", align: "center", style: { width: "full" } }, [
+    Text({ key: "spike-engine", content: "Codex", variant: "label", color: "textMuted" }),
+    Spacer({ key: "spike-composer-fill", flex: true }),
+    IconButton({
+      key: state.pending ? "spike-stop" : "spike-send",
+      icon: state.pending ? "Stop" : "ArrowUp",
+      accessibilityLabel: state.pending ? "Stop turn" : "Send message",
+      onPress: state.pending
+        ? IntentRef("SpikeTurnStopped")
+        : IntentRef("SpikeMessageSubmitted"),
+      style: state.input.trim() === "" || state.pending
+        ? { backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" }
+        : { backgroundColor: "accent", color: "textInverse", borderRadius: "full" },
     }),
   ]),
-);
+]);
 
-export const spikeView = (state: SpikeState): View =>
-  Stack({ key: "effect-native-spike", direction: "column", gap: "6", padding: "6" }, [
-    Stack({ key: "heading", direction: "column", gap: "1" }, [
-      Badge({
-        key: "renderer-badge",
-        label: "REAL EFFECT NATIVE VIEWPROGRAM",
-        tone: "success",
-        variant: "soft",
-        size: "sm",
-      }),
+const chatView = (state: SpikeState): View => Stack({
+  key: "spike-chat",
+  direction: "column",
+  gap: "3",
+  padding: "4",
+  style: { width: "full", minHeight: 0, flex: 1 },
+}, [
+  Stack({ key: "spike-chat-header", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+    Stack({ key: "spike-chat-heading", direction: "column", gap: "0.5" }, [
       Text({
-        key: "title",
-        content: "Effect Native renderer surface",
-        variant: "heading",
-        color: "textPrimary",
-        weight: "bold",
-      }),
-      Text({
-        key: "subtitle",
-        content:
-          "This pane is the shared typed catalog running through @effect-native/render-dom inside a Native SDK child WebView.",
-        variant: "body",
-        color: "textMuted",
-      }),
-    ]),
-    Card({ key: "effect-loop", padding: "6", radius: "lg" }, [
-      Stack({ key: "effect-loop-content", direction: "column", gap: "4" }, [
-        Text({
-          key: "effect-count-label",
-          content: "Typed intent loop",
-          variant: "label",
-          color: "textMuted",
-          weight: "semibold",
-        }),
-        Text({
-          key: "effect-count",
-          content: String(state.effectCount),
-          variant: "heading",
-          color: "textPrimary",
-          weight: "bold",
-        }),
-        Text({
-          key: "effect-last-action",
-          content: state.lastAction,
-          variant: "caption",
-          color: "textMuted",
-        }),
-        Stack({ key: "effect-actions", direction: "row", gap: "2" }, [
-          Button({
-            key: "effect-increment",
-            label: "Increment in Effect",
-            tone: "accent",
-            variant: "solid",
-            size: "md",
-            onPress: IntentRef("IncrementEffectCount"),
-          }),
-          Button({
-            key: "effect-reset",
-            label: "Reset",
-            tone: "secondary",
-            variant: "outline",
-            size: "md",
-            onPress: IntentRef("ResetEffectCount"),
-          }),
-        ]),
-      ]),
-    ]),
-    Divider({ key: "adoption-divider" }),
-    Stack({ key: "adoption", direction: "column", gap: "2" }, [
-      Text({
-        key: "adoption-title",
-        content: "Candidate Native SDK lowerings",
-        variant: "label",
+        key: "spike-chat-title",
+        content: fixtureSessions.find((session) => session.ref === state.selectedSessionRef)?.title ?? "New chat",
+        variant: "title",
         color: "textPrimary",
         weight: "semibold",
       }),
-      Text({
-        key: "adoption-summary",
-        content: `${adoptionCounts.direct} direct · ${adoptionCounts.composite} composite · ${adoptionCounts["host-only"]} host-only`,
-        variant: "caption",
-        color: "textMuted",
-      }),
-      ...mappingRows,
+      Text({ key: "spike-chat-status", content: state.pending ? "Codex is working" : "Local fixture · no provider call", variant: "caption", color: "textMuted" }),
     ]),
-  ]);
+    Spacer({ key: "spike-chat-header-fill", flex: true }),
+    Badge({ key: "spike-proof-badge", label: "HYBRID FIXTURE", tone: "info", variant: "soft", size: "sm" }),
+  ]),
+  Transcript({
+    key: "spike-transcript",
+    pinToEnd: true,
+    messages: state.messages.map(transcriptMessage),
+    style: { width: "full", maxWidth: "2xl", alignSelf: "center", flex: 1, minHeight: 0, paddingLeft: "4", paddingRight: "4", gap: "3" },
+  }),
+  composer(state),
+]);
+
+const secondaryView = (state: SpikeState): View => Stack({
+  key: `spike-${state.workspace}`,
+  direction: "column",
+  gap: "2",
+  padding: "6",
+  style: { width: "full", minHeight: 0, flex: 1 },
+}, [
+  Text({ key: "spike-secondary-title", content: state.workspace === "home" ? "Workspace" : "Settings", variant: "heading", color: "textPrimary", weight: "bold" }),
+  Text({
+    key: "spike-secondary-copy",
+    content: "This parity pass only implements the real app’s bounded MVP chat surface. Other workspaces remain explicit fixtures.",
+    variant: "body",
+    color: "textMuted",
+  }),
+]);
+
+export const spikeView = (state: SpikeState): View =>
+  state.workspace === "chat" ? chatView(state) : secondaryView(state);
+
+const nextRevision = (state: SpikeState): number => state.revision + 1;
 
 export const makeSpikeRuntime = Effect.gen(function* () {
   const state = yield* SubscriptionRef.make(initialSpikeState());
   const registry = yield* makeIntentRegistry(spikeIntents, {
-    IncrementEffectCount: () =>
-      SubscriptionRef.update(state, (current) => ({
-        effectCount: current.effectCount + 1,
-        lastAction: "IncrementEffectCount decoded and handled",
-      })),
-    ResetEffectCount: () =>
-      SubscriptionRef.set(state, {
-        effectCount: 0,
-        lastAction: "ResetEffectCount decoded and handled",
-      }),
+    SpikeInputChanged: (value: string) => SubscriptionRef.update(state, (current) => ({ ...current, input: value.slice(0, 4_000) })),
+    SpikeMessageSubmitted: (value: string | null) => SubscriptionRef.update(state, (current) => {
+      const text = (value ?? "").trim() || current.input.trim();
+      if (text === "") return current;
+      return {
+        ...current,
+        input: "",
+        pending: true,
+        revision: nextRevision(current),
+        messages: [...current.messages, {
+          key: `fixture-user-${current.revision + 1}`,
+          role: "user" as const,
+          text: text.slice(0, 4_000),
+          timestamp: "now",
+        }],
+      };
+    }),
+    SpikeTurnStopped: () => SubscriptionRef.update(state, (current) => current.pending
+      ? { ...current, pending: false, revision: nextRevision(current) }
+      : current),
+    SpikeNewChatRequested: () => SubscriptionRef.update(state, (current): SpikeState => ({
+      ...current,
+      workspace: "chat" as const,
+      selectedSessionRef: null,
+      input: "",
+      messages: [],
+      pending: false,
+      revision: nextRevision(current),
+    })),
+    SpikeWorkspaceSelected: (workspace: Workspace) => SubscriptionRef.update(state, (current): SpikeState => ({
+      ...current,
+      workspace,
+      revision: nextRevision(current),
+    })),
+    SpikeSessionSelected: (sessionRef: string) => SubscriptionRef.update(state, (current): SpikeState => {
+      if (!fixtureSessions.some((session) => session.ref === sessionRef)) return current;
+      return {
+        ...current,
+        workspace: "chat" as const,
+        selectedSessionRef: sessionRef,
+        messages: sessionRef === fixtureSessions[0].ref ? initialMessages : [],
+        pending: false,
+        revision: nextRevision(current),
+      };
+    }),
   });
-  return {
-    state,
-    registry,
-    program: makeViewProgramFromState(state, spikeView),
-  };
+  return { state, registry, program: makeViewProgramFromState(state, spikeView) };
 });

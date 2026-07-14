@@ -1,9 +1,8 @@
-//! Native SDK host for the bounded Effect Native renderer-adoption spike.
+//! Product-shaped Native SDK host for the bounded Effect Native parity spike.
 //!
-//! The left rail and top bar are Native SDK retained-canvas components. The
-//! right pane is a child system WebView loading the real Effect Native DOM
-//! renderer from `frontend/dist`. This is intentionally a hybrid proof: Effect
-//! does not run inside Native SDK's restricted TypeScript core compiler.
+//! Effect owns workspace/session/message state. The Native SDK rail is only a
+//! retained-canvas mirror: clicks emit versioned intents and source selection
+//! changes only after a bounded projection returns from the Effect WebView.
 
 const std = @import("std");
 const runner = @import("runner");
@@ -18,19 +17,22 @@ pub const canvas_label = "native-shell";
 pub const webview_label = "effect-native-surface";
 pub const pane_anchor = "effect-native-pane";
 pub const effect_native_url = "zero://app/index.html";
+pub const bridge_command = "openagents.spike.projection.v1";
+pub const bridge_payload_limit: usize = 8 * 1024;
 
-const window_width: f32 = 1120;
-const window_height: f32 = 720;
-const rail_width: f32 = 304;
-const toolbar_height: f32 = 60;
+const window_width: f32 = 1200;
+const window_height: f32 = 800;
+const window_min_width: f32 = 760;
+const window_min_height: f32 = 520;
+const rail_width: f32 = 232;
 
 pub const shell_views = [_]native_sdk.ShellView{
     .{
         .label = canvas_label,
         .kind = .gpu_surface,
         .fill = true,
-        .role = "Native SDK shell",
-        .accessibility_label = "Native SDK component shell",
+        .role = "OpenAgents native session rail",
+        .accessibility_label = "OpenAgents native session rail",
         .gpu_backend = .metal,
         .gpu_pixel_format = .bgra8_unorm,
         .gpu_present_mode = .timer,
@@ -44,46 +46,110 @@ pub const shell_views = [_]native_sdk.ShellView{
         .parent = canvas_label,
         .url = effect_native_url,
         .x = rail_width,
-        .y = toolbar_height,
+        .y = 0,
         .width = window_width - rail_width,
-        .height = window_height - toolbar_height,
+        .height = window_height,
         .layer = 20,
     },
 };
 
 pub const shell_windows = [_]native_sdk.ShellWindow{.{
     .label = "main",
-    .title = "Native SDK × Effect Native",
+    .title = "OpenAgents Native parity spike",
     .width = window_width,
     .height = window_height,
+    .min_width = window_min_width,
+    .min_height = window_min_height,
     .restore_state = false,
+    .titlebar = .hidden_inset,
     .views = &shell_views,
 }};
 
 pub const shell_scene: native_sdk.ShellConfig = .{ .windows = &shell_windows };
 
+pub const Workspace = enum { chat, home, settings };
+pub const Session = enum { none, parity, renderer, audit };
+pub const OutboundIntent = enum {
+    none,
+    new_chat,
+    workspace_chat,
+    workspace_home,
+    workspace_settings,
+    session_parity,
+    session_renderer,
+    session_audit,
+};
+
+pub const Projection = struct {
+    revision: u64,
+    workspace: Workspace,
+    session: Session,
+    message_count: u32,
+    pending: bool,
+    status: []const u8,
+};
+
 pub const Model = struct {
     frontend_url: []const u8 = effect_native_url,
-    native_count: i64 = 0,
+    workspace: Workspace = .chat,
+    session: Session = .parity,
+    projection_revision: u64 = 0,
+    message_count: u32 = 0,
+    pending: bool = false,
+    status_storage: [96]u8 = undefined,
+    status_len: usize = 0,
+    outbound_intent: OutboundIntent = .none,
+    outbound_sequence: u64 = 0,
+    awaiting_projection: bool = true,
     reload_token: u64 = 0,
-    details_visible: bool = true,
     gpu_frames_seen: bool = false,
+
+    pub fn status(self: *const Model) []const u8 {
+        if (self.status_len == 0) return "Waiting for Effect projection";
+        return self.status_storage[0..self.status_len];
+    }
 };
 
 pub const Msg = union(enum) {
-    increment_native,
-    reset_native,
+    request_new_chat,
+    request_workspace_chat,
+    request_workspace_home,
+    request_workspace_settings,
+    request_session_parity,
+    request_session_renderer,
+    request_session_audit,
+    sync_projection: Projection,
     reload_effect_surface,
-    toggle_details,
     frame_presented,
 };
 
+fn recordIntent(model: *Model, intent: OutboundIntent) void {
+    model.outbound_intent = intent;
+    model.outbound_sequence += 1;
+    model.awaiting_projection = true;
+}
+
 pub fn update(model: *Model, msg: Msg) void {
     switch (msg) {
-        .increment_native => model.native_count += 1,
-        .reset_native => model.native_count = 0,
+        .request_new_chat => recordIntent(model, .new_chat),
+        .request_workspace_chat => recordIntent(model, .workspace_chat),
+        .request_workspace_home => recordIntent(model, .workspace_home),
+        .request_workspace_settings => recordIntent(model, .workspace_settings),
+        .request_session_parity => recordIntent(model, .session_parity),
+        .request_session_renderer => recordIntent(model, .session_renderer),
+        .request_session_audit => recordIntent(model, .session_audit),
+        .sync_projection => |projection| {
+            if (projection.revision <= model.projection_revision) return;
+            model.projection_revision = projection.revision;
+            model.workspace = projection.workspace;
+            model.session = projection.session;
+            model.message_count = projection.message_count;
+            model.pending = projection.pending;
+            model.status_len = @min(projection.status.len, model.status_storage.len);
+            @memcpy(model.status_storage[0..model.status_len], projection.status[0..model.status_len]);
+            model.awaiting_projection = false;
+        },
         .reload_effect_surface => model.reload_token += 1,
-        .toggle_details => model.details_visible = !model.details_visible,
         .frame_presented => model.gpu_frames_seen = true,
     }
 }
@@ -91,8 +157,13 @@ pub fn update(model: *Model, msg: Msg) void {
 pub const AppUi = canvas.Ui(Msg);
 pub const SpikeApp = native_sdk.UiApp(Model, Msg);
 
-fn componentLeaf(ui: *AppUi, kind: canvas.WidgetKind, element_options: AppUi.ElementOptions, label: []const u8) AppUi.Node {
-    var node = ui.el(kind, element_options, .{});
+fn listItem(ui: *AppUi, label: []const u8, selected: bool, msg: Msg) AppUi.Node {
+    var node = ui.el(.list_item, .{
+        .padding = 9,
+        .selected = selected,
+        .on_press = msg,
+        .semantics = .{ .role = .listitem, .label = label, .focusable = true },
+    }, .{});
     node.widget.text = label;
     return node;
 }
@@ -101,82 +172,42 @@ fn nativeRail(ui: *AppUi, model: *const Model) AppUi.Node {
     return ui.column(.{
         .width = rail_width,
         .grow = 0,
-        .padding = 16,
-        .gap = 14,
+        .padding = 12,
+        .gap = 8,
         .style_tokens = .{ .background = .surface },
-        .semantics = .{ .label = "Native SDK component rail" },
+        .semantics = .{ .label = "OpenAgents session rail" },
     }, .{
-        ui.row(.{ .gap = 8, .cross = .center }, .{
-            componentLeaf(ui, .badge, .{ .variant = .primary, .size = .sm }, "NATIVE"),
-            ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "retained canvas"),
+        ui.row(.{ .height = 38, .gap = 8, .cross = .center, .window_drag = true }, .{
+            ui.spacer(28),
+            ui.text(.{ .size = .default }, "OpenAgents"),
         }),
-        ui.el(.card, .{ .padding = 14 }, ui.column(.{ .gap = 10 }, .{
-            ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "Typed native update loop"),
-            ui.text(.{ .size = .lg }, ui.fmt("{d}", .{model.native_count})),
-            ui.row(.{ .gap = 8 }, .{
-                ui.button(.{ .variant = .primary, .on_press = .increment_native }, "Increment native"),
-                ui.button(.{ .variant = .secondary, .on_press = .reset_native }, "Reset"),
-            }),
-        })),
-        ui.el(.card, .{ .padding = 14 }, ui.column(.{ .gap = 8 }, .{
-            ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "Opinionated component kernel"),
-            componentLeaf(ui, .badge, .{ .variant = .secondary, .size = .sm }, ui.fmt("{d} built-ins", .{canvas.builtinComponentCount()})),
-            componentLeaf(ui, .switch_control, .{
-                .checked = model.details_visible,
-                .value = if (model.details_visible) 1 else 0,
-                .on_toggle = .toggle_details,
-                .semantics = .{ .label = "Show component adoption details" },
-            }, "Show adoption details"),
-            if (model.details_visible)
-                ui.column(.{ .gap = 5 }, .{
-                    ui.text(.{ .size = .sm }, "Direct: Stack, Text, Button, Card"),
-                    ui.text(.{ .size = .sm }, "Composite: List, Table, Split, Select"),
-                    ui.text(.{ .size = .sm }, "Host-only: WebView, Chart"),
-                })
-            else
-                ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "Details hidden"),
-        })),
+        ui.button(.{ .variant = .primary, .on_press = .request_new_chat, .semantics = .{ .label = "New chat" } }, "New chat"),
+        listItem(ui, "Chat", model.workspace == .chat, .request_workspace_chat),
+        listItem(ui, "Workspace", model.workspace == .home, .request_workspace_home),
+        ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "RECENT"),
+        listItem(ui, "Native parity pass", model.session == .parity, .request_session_parity),
+        listItem(ui, "Renderer boundary", model.session == .renderer, .request_session_renderer),
+        listItem(ui, "SDK adoption audit", model.session == .audit, .request_session_audit),
         ui.spacer(1),
-        ui.statusBar(.{}, if (model.gpu_frames_seen) "native canvas + Effect pane live" else "waiting for first native frame"),
+        if (model.awaiting_projection)
+            ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "Synchronizing Effect state…")
+        else
+            ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, ui.fmt("{d} messages · revision {d}", .{ model.message_count, model.projection_revision })),
+        listItem(ui, "Settings", model.workspace == .settings, .request_workspace_settings),
+        ui.statusBar(.{}, model.status()),
     });
 }
 
 pub fn view(ui: *AppUi, model: *const Model) AppUi.Node {
-    return ui.column(.{ .gap = 0, .style_tokens = .{ .background = .background } }, .{
-        ui.row(.{
-            .height = toolbar_height,
-            .padding = 12,
-            .gap = 10,
-            .cross = .center,
-            .window_drag = true,
-        }, .{
-            ui.text(.{ .size = .lg }, "Native SDK × Effect Native"),
-            componentLeaf(ui, .badge, .{ .variant = .secondary, .size = .sm }, "HYBRID SPIKE"),
-            ui.spacer(1),
-            ui.button(.{
-                .variant = .secondary,
-                .on_press = .reload_effect_surface,
-                .semantics = .{ .label = "Reload Effect Native renderer surface" },
-            }, "Reload Effect pane"),
-        }),
-        ui.row(.{ .grow = 1, .gap = 0 }, .{
-            nativeRail(ui, model),
-            ui.panel(.{
-                .grow = 1,
-                .semantics = .{ .label = pane_anchor },
-            }, .{}),
-        }),
+    return ui.row(.{ .gap = 0, .style_tokens = .{ .background = .background } }, .{
+        nativeRail(ui, model),
+        ui.panel(.{ .grow = 1, .semantics = .{ .label = pane_anchor } }, .{}),
     });
 }
 
 pub fn panes(model: *const Model, out: []SpikeApp.WebViewPane) usize {
     if (out.len == 0) return 0;
-    out[0] = .{
-        .label = webview_label,
-        .anchor = pane_anchor,
-        .url = model.frontend_url,
-        .reload_token = model.reload_token,
-    };
+    out[0] = .{ .label = webview_label, .anchor = pane_anchor, .url = model.frontend_url, .reload_token = model.reload_token };
     return 1;
 }
 
@@ -195,6 +226,10 @@ pub fn options() SpikeApp.Options {
         .view = view,
         .web_panes = panes,
         .on_frame = onFrame,
+        .tokens = canvas.DesignTokens.themeWithOverrides(
+            .{ .pack = .geist, .color_scheme = .dark },
+            canvas.accentOverrides(canvas.Color.rgb8(58, 123, 255)),
+        ),
     };
 }
 
@@ -202,23 +237,179 @@ pub fn initialModel() Model {
     return .{};
 }
 
+fn parseWorkspace(value: []const u8) ?Workspace {
+    if (std.mem.eql(u8, value, "chat")) return .chat;
+    if (std.mem.eql(u8, value, "home")) return .home;
+    if (std.mem.eql(u8, value, "settings")) return .settings;
+    return null;
+}
+
+fn fieldValue(payload: []const u8, field: []const u8) ?[]const u8 {
+    var pattern_buffer: [96]u8 = undefined;
+    const pattern = std.fmt.bufPrint(&pattern_buffer, "\"{s}\"", .{field}) catch return null;
+    const start = std.mem.indexOf(u8, payload, pattern) orelse return null;
+    var index = start + pattern.len;
+    while (index < payload.len and std.ascii.isWhitespace(payload[index])) : (index += 1) {}
+    if (index >= payload.len or payload[index] != ':') return null;
+    index += 1;
+    while (index < payload.len and std.ascii.isWhitespace(payload[index])) : (index += 1) {}
+    if (index >= payload.len) return null;
+    const value_start = index;
+    if (payload[index] == '"') {
+        index += 1;
+        while (index < payload.len and payload[index] != '"') : (index += 1) {
+            if (payload[index] == '\\') return null;
+        }
+        if (index >= payload.len) return null;
+        return payload[value_start .. index + 1];
+    }
+    while (index < payload.len and payload[index] != ',' and payload[index] != '}') : (index += 1) {}
+    return std.mem.trim(u8, payload[value_start..index], " \t\r\n");
+}
+
+fn stringField(payload: []const u8, field: []const u8) ?[]const u8 {
+    const raw = fieldValue(payload, field) orelse return null;
+    if (raw.len < 2 or raw[0] != '"' or raw[raw.len - 1] != '"') return null;
+    return raw[1 .. raw.len - 1];
+}
+
+fn unsignedField(comptime T: type, payload: []const u8, field: []const u8) ?T {
+    return std.fmt.parseUnsigned(T, fieldValue(payload, field) orelse return null, 10) catch null;
+}
+
+fn boolField(payload: []const u8, field: []const u8) ?bool {
+    const raw = fieldValue(payload, field) orelse return null;
+    if (std.mem.eql(u8, raw, "true")) return true;
+    if (std.mem.eql(u8, raw, "false")) return false;
+    return null;
+}
+
+fn parseSession(payload: []const u8) ?Session {
+    const raw = fieldValue(payload, "selectedSessionRef") orelse return null;
+    if (std.mem.eql(u8, raw, "null")) return .none;
+    const value = stringField(payload, "selectedSessionRef") orelse return null;
+    if (std.mem.eql(u8, value, "session.parity")) return .parity;
+    if (std.mem.eql(u8, value, "session.renderer")) return .renderer;
+    if (std.mem.eql(u8, value, "session.audit")) return .audit;
+    return null;
+}
+
+pub fn parseProjection(payload: []const u8) !Projection {
+    if (payload.len > bridge_payload_limit) return error.PayloadTooLarge;
+    if (unsignedField(u8, payload, "protocol") != 1) return error.InvalidProtocol;
+    const revision = unsignedField(u64, payload, "revision") orelse return error.InvalidProjection;
+    const message_count = unsignedField(u32, payload, "messageCount") orelse return error.InvalidProjection;
+    if (message_count > 10_000) return error.InvalidProjection;
+    const pending = boolField(payload, "pending") orelse return error.InvalidProjection;
+    const workspace = parseWorkspace(stringField(payload, "workspace") orelse return error.InvalidProjection) orelse return error.InvalidProjection;
+    const session = parseSession(payload) orelse return error.InvalidProjection;
+    const status = stringField(payload, "status") orelse return error.InvalidProjection;
+    if (status.len > 96) return error.InvalidProjection;
+    return .{ .revision = revision, .workspace = workspace, .session = session, .message_count = message_count, .pending = pending, .status = status };
+}
+
+fn intentDetail(model: *const Model, output: []u8) ![]const u8 {
+    const sequence = model.outbound_sequence;
+    return switch (model.outbound_intent) {
+        .none => error.NoIntent,
+        .new_chat => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"NewChatRequested\"}}}}", .{sequence}),
+        .workspace_chat => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"chat\"}}}}", .{sequence}),
+        .workspace_home => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"home\"}}}}", .{sequence}),
+        .workspace_settings => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"settings\"}}}}", .{sequence}),
+        .session_parity => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.parity\"}}}}", .{sequence}),
+        .session_renderer => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.renderer\"}}}}", .{sequence}),
+        .session_audit => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.audit\"}}}}", .{sequence}),
+    };
+}
+
+const bridge_origins = [_][]const u8{ "zero://app", "http://127.0.0.1:5173" };
+const bridge_policies = [_]native_sdk.BridgeCommandPolicy{.{ .name = bridge_command, .origins = &bridge_origins }};
+
+const HybridHost = struct {
+    ui: *SpikeApp,
+    inner: native_sdk.App,
+    runtime: ?*native_sdk.Runtime = null,
+    handlers: [1]native_sdk.BridgeHandler = undefined,
+
+    fn init(ui: *SpikeApp) @This() {
+        return .{ .ui = ui, .inner = ui.app() };
+    }
+
+    fn app(self: *@This()) native_sdk.App {
+        return .{
+            .context = self,
+            .name = "native-sdk-effect-native-spike",
+            .scene_fn = scene,
+            .start_fn = start,
+            .event_fn = event,
+            .stop_fn = stop,
+        };
+    }
+
+    fn bridge(self: *@This()) native_sdk.BridgeDispatcher {
+        self.handlers = .{.{ .name = bridge_command, .context = self, .invoke_fn = acceptProjection }};
+        return .{ .policy = .{ .enabled = true, .commands = &bridge_policies }, .registry = .{ .handlers = &self.handlers } };
+    }
+
+    fn scene(context: *anyopaque) anyerror!native_sdk.ShellConfig {
+        const self: *@This() = @ptrCast(@alignCast(context));
+        return (try self.inner.scene()).?;
+    }
+
+    fn start(context: *anyopaque, runtime: *native_sdk.Runtime) anyerror!void {
+        const self: *@This() = @ptrCast(@alignCast(context));
+        self.runtime = runtime;
+        try self.inner.start(runtime);
+    }
+
+    fn event(context: *anyopaque, runtime: *native_sdk.Runtime, value: native_sdk.Event) anyerror!void {
+        const self: *@This() = @ptrCast(@alignCast(context));
+        try self.inner.event(runtime, value);
+    }
+
+    fn stop(context: *anyopaque, runtime: *native_sdk.Runtime) anyerror!void {
+        const self: *@This() = @ptrCast(@alignCast(context));
+        try self.inner.stop(runtime);
+        self.runtime = null;
+    }
+
+    fn acceptProjection(context: *anyopaque, invocation: native_sdk.bridge.Invocation, output: []u8) anyerror![]const u8 {
+        const self: *@This() = @ptrCast(@alignCast(context));
+        const runtime = self.runtime orelse return error.RuntimeUnavailable;
+        const projection = try parseProjection(invocation.request.payload);
+        const acknowledged = unsignedField(u64, invocation.request.payload, "acknowledgedNativeSequence") orelse return error.InvalidProjection;
+        if (acknowledged > self.ui.model.outbound_sequence) return error.InvalidProjection;
+        if (projection.revision > self.ui.model.projection_revision) {
+            try self.ui.dispatch(runtime, invocation.source.window_id, .{ .sync_projection = projection });
+        }
+        if (self.ui.model.outbound_sequence > acknowledged) {
+            var detail_buffer: [512]u8 = undefined;
+            const detail = try intentDetail(&self.ui.model, &detail_buffer);
+            return std.fmt.bufPrint(output, "{{\"accepted\":true,\"revision\":{d},\"intent\":{s}}}", .{ self.ui.model.projection_revision, detail });
+        }
+        return std.fmt.bufPrint(output, "{{\"accepted\":true,\"revision\":{d},\"intent\":null}}", .{self.ui.model.projection_revision});
+    }
+};
+
 pub fn main(init: std.process.Init) !void {
     var model = initialModel();
-    if (init.environ_map.get("NATIVE_SDK_FRONTEND_URL")) |url| {
-        if (url.len > 0) model.frontend_url = url;
-    }
+    if (init.environ_map.get("NATIVE_SDK_FRONTEND_URL")) |url| if (url.len > 0) {
+        model.frontend_url = url;
+    };
     const app_state = try std.heap.page_allocator.create(SpikeApp);
     defer std.heap.page_allocator.destroy(app_state);
     app_state.* = SpikeApp.init(std.heap.page_allocator, model, options());
     defer app_state.deinit();
+    var host = HybridHost.init(app_state);
 
-    try runner.runWithOptions(app_state.app(), .{
+    try runner.runWithOptions(host.app(), .{
         .app_name = "native-sdk-effect-native-spike",
-        .window_title = "Native SDK × Effect Native",
+        .window_title = "OpenAgents Native parity spike",
         .bundle_id = "com.openagents.native-sdk-effect-native-spike",
         .icon_path = "assets/icon.png",
         .default_frame = geometry.RectF.init(0, 0, window_width, window_height),
         .restore_state = false,
+        .bridge = host.bridge(),
         .js_window_api = false,
         .security = .{
             .navigation = .{ .allowed_origins = &.{ "zero://app", "http://127.0.0.1:5173" } },
