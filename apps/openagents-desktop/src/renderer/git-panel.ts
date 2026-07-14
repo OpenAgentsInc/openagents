@@ -23,6 +23,7 @@ import {
   Badge,
   Button,
   DiffView,
+  EmptyMessage,
   Icon,
   IntentRef,
   Spacer,
@@ -546,7 +547,7 @@ const changesSection = (git: GitPanelState): ReadonlyArray<View> => {
     rows.push(...unstaged.map((entry) => changeRow(entry, false)))
   }
   if (rows.length === 0) {
-    rows.push(Text({ key: "git-no-changes", content: "No local changes", variant: "body", color: "textMuted" }))
+    rows.push(EmptyMessage({ key: "git-no-changes", icon: { name: "GitCommit", tone: "secondary" }, title: "No local changes" }))
   }
   return [Stack({ key: "git-changes", direction: "column", gap: "1", style: { width: "full", minWidth: 0 } }, rows)]
 }
