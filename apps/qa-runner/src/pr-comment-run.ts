@@ -18,6 +18,7 @@
 //     --out ./runs/pr-eval --comment-out ./pr-comment.md \
 //     [--pro-base-url https://openagents.com] [--repo OpenAgentsInc/openagents]
 
+import { execFile } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -205,12 +206,20 @@ async function main(): Promise<void> {
 
   // gh-attach is OPTIONAL: in CI without browser cookies it will fail and we
   // fall back to the relative video ref (honest, no broken embed).
-  const ghAttach = makeProcessRunner(async (cmd, cmdArgs) => {
-    const proc = Bun.spawn([cmd, ...cmdArgs], { stdout: "pipe", stderr: "pipe" });
-    const stdout = await new Response(proc.stdout).text();
-    const exitCode = await proc.exited;
-    return { exitCode, stdout };
-  });
+  const ghAttach = makeProcessRunner((cmd, cmdArgs) =>
+    Effect.runPromise(
+      Effect.tryPromise(() =>
+        new Promise<{ exitCode: number; stdout: string }>(resolve => {
+          execFile(cmd, cmdArgs, { encoding: "utf8" }, (error, stdout) => {
+            resolve({
+              exitCode: typeof error?.code === "number" ? error.code : error === null ? 0 : 1,
+              stdout,
+            });
+          });
+        }),
+      ),
+    ),
+  );
 
   const variantVideoPaths = outcome.result.variants
     .map(v => {
