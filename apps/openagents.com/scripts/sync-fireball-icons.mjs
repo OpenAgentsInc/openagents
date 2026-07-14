@@ -8,15 +8,15 @@ const defaultSource = resolve(repoRoot, '..', 'fireball', 'src', 'icon.ts')
 const sourcePath = resolve(
   process.env.OMEGA_FIREBALL_ICON_SOURCE ?? defaultSource,
 )
-const targetPath = resolve(
-  repoRoot,
-  '..',
-  '..',
-  'packages',
-  'ui',
-  'src',
-  'icon.ts',
-)
+// Lane C (openagents#8813): apps/web vendors its own copy of the generated
+// catalog instead of importing `@openagentsinc/ui/icon` (packages/ui still
+// needs its own copy for `workroom.ts` and other shared-kit call sites, so
+// this stays a dual-write rather than a single shared file). Both copies are
+// generated from the same Fireball source and must stay byte-identical.
+const targetPaths = [
+  resolve(repoRoot, '..', '..', 'packages', 'ui', 'src', 'icon.ts'),
+  resolve(repoRoot, 'apps', 'web', 'src', 'icon.ts'),
+]
 const source = readFileSync(sourcePath, 'utf8')
 const iconPattern =
   /\{\n\s*name: ('(?:\\.|[^'])*'),\n\s*svg: ('(?:\\.|[^'])*'),\n\s*\}/g
@@ -127,11 +127,13 @@ const lines = [
   '',
 ]
 
-mkdirSync(dirname(targetPath), { recursive: true })
-writeFileSync(
-  targetPath,
-  await format(`${lines.join('\n')}\n`, {
-    ...(await resolveConfig(targetPath)),
-    filepath: targetPath,
-  }),
-)
+for (const targetPath of targetPaths) {
+  mkdirSync(dirname(targetPath), { recursive: true })
+  writeFileSync(
+    targetPath,
+    await format(`${lines.join('\n')}\n`, {
+      ...(await resolveConfig(targetPath)),
+      filepath: targetPath,
+    }),
+  )
+}
