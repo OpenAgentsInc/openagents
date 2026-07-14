@@ -48,13 +48,6 @@ import {
   CustomerOneCohortProjection,
   CustomerOrderResponse,
   CustomerOrdersResponse,
-  CustomerSiteBuilderEventsResponse,
-  CustomerSiteBuilderFileListResponse,
-  CustomerSiteBuilderFileReadResponse,
-  CustomerSiteBuilderFileTreeResponse,
-  CustomerSiteBuilderSessionResponse,
-  CustomerSiteFeedbackResponse,
-  CustomerSiteRevisionsResponse,
   GenerateImageResponse,
   ImageGenerationAspectRatio,
   ImageGenerationImageSize,
@@ -64,7 +57,6 @@ import {
   ProAgentDashboardResponse,
   ProviderAccountPoolManualResetResponse,
   ProviderAccountPoolResponse,
-  SubmitCustomerSiteFeedbackResponse,
   TeamChatMessagesResponse,
   TeamChatPostResponse,
   ThreadFileDetailResponse,
@@ -525,173 +517,6 @@ export const SucceededLoadCustomerFulfillmentArtifacts = m(
 )
 export const FailedLoadCustomerFulfillmentArtifacts = m(
   'FailedLoadCustomerFulfillmentArtifacts',
-  {
-    error: S.String,
-  },
-)
-export const RequestedLoadCustomerSiteRevisions = m(
-  'RequestedLoadCustomerSiteRevisions',
-  {
-    orderId: S.String,
-  },
-)
-export const SucceededLoadCustomerSiteRevisions = m(
-  'SucceededLoadCustomerSiteRevisions',
-  {
-    response: CustomerSiteRevisionsResponse,
-  },
-)
-export const FailedLoadCustomerSiteRevisions = m(
-  'FailedLoadCustomerSiteRevisions',
-  {
-    error: S.String,
-  },
-)
-export const RequestedLoadCustomerSiteFeedback = m(
-  'RequestedLoadCustomerSiteFeedback',
-  {
-    orderId: S.String,
-  },
-)
-export const SucceededLoadCustomerSiteFeedback = m(
-  'SucceededLoadCustomerSiteFeedback',
-  {
-    response: CustomerSiteFeedbackResponse,
-  },
-)
-export const FailedLoadCustomerSiteFeedback = m(
-  'FailedLoadCustomerSiteFeedback',
-  {
-    error: S.String,
-  },
-)
-export const UpdatedCustomerSiteFeedbackDraft = m(
-  'UpdatedCustomerSiteFeedbackDraft',
-  {
-    value: S.String,
-  },
-)
-export const UpdatedCustomerSiteBuilderPromptDraft = m(
-  'UpdatedCustomerSiteBuilderPromptDraft',
-  {
-    value: S.String,
-  },
-)
-const HistoricalSiteElementContext = S.Record(S.String, S.Unknown)
-export const SelectedCustomerSiteElementContext = m(
-  'SelectedCustomerSiteElementContext',
-  { context: HistoricalSiteElementContext },
-)
-export const SubmittedCustomerSiteFeedback = m(
-  'SubmittedCustomerSiteFeedback',
-  {
-    orderId: S.String,
-  },
-)
-export const SucceededSubmitCustomerSiteFeedback = m(
-  'SucceededSubmitCustomerSiteFeedback',
-  {
-    response: SubmitCustomerSiteFeedbackResponse,
-  },
-)
-export const FailedSubmitCustomerSiteFeedback = m(
-  'FailedSubmitCustomerSiteFeedback',
-  {
-    error: S.String,
-  },
-)
-export const RequestedOpenCustomerSiteBuilderSession = m(
-  'RequestedOpenCustomerSiteBuilderSession',
-  {
-    orderId: S.String,
-    promptSummary: S.String,
-    siteId: S.String,
-  },
-)
-export const SucceededOpenCustomerSiteBuilderSession = m(
-  'SucceededOpenCustomerSiteBuilderSession',
-  {
-    response: CustomerSiteBuilderSessionResponse,
-  },
-)
-export const FailedOpenCustomerSiteBuilderSession = m(
-  'FailedOpenCustomerSiteBuilderSession',
-  {
-    error: S.String,
-  },
-)
-export const RequestedLoadCustomerSiteBuilderSession = m(
-  'RequestedLoadCustomerSiteBuilderSession',
-  {
-    sessionId: S.String,
-  },
-)
-export const SucceededLoadCustomerSiteBuilderSession = m(
-  'SucceededLoadCustomerSiteBuilderSession',
-  {
-    response: CustomerSiteBuilderSessionResponse,
-  },
-)
-export const FailedLoadCustomerSiteBuilderSession = m(
-  'FailedLoadCustomerSiteBuilderSession',
-  {
-    error: S.String,
-  },
-)
-export const RequestedLoadCustomerSiteBuilderFiles = m(
-  'RequestedLoadCustomerSiteBuilderFiles',
-  {
-    sessionId: S.String,
-  },
-)
-export const SucceededLoadCustomerSiteBuilderFiles = m(
-  'SucceededLoadCustomerSiteBuilderFiles',
-  {
-    filesResponse: CustomerSiteBuilderFileListResponse,
-    treeResponse: CustomerSiteBuilderFileTreeResponse,
-  },
-)
-export const FailedLoadCustomerSiteBuilderFiles = m(
-  'FailedLoadCustomerSiteBuilderFiles',
-  {
-    error: S.String,
-  },
-)
-export const SelectedCustomerSiteBuilderFile = m(
-  'SelectedCustomerSiteBuilderFile',
-  {
-    path: S.String,
-    sessionId: S.String,
-  },
-)
-export const SucceededLoadCustomerSiteBuilderFile = m(
-  'SucceededLoadCustomerSiteBuilderFile',
-  {
-    response: CustomerSiteBuilderFileReadResponse,
-  },
-)
-export const FailedLoadCustomerSiteBuilderFile = m(
-  'FailedLoadCustomerSiteBuilderFile',
-  {
-    error: S.String,
-    path: S.String,
-  },
-)
-export const RequestedLoadCustomerSiteBuilderEvents = m(
-  'RequestedLoadCustomerSiteBuilderEvents',
-  {
-    cursor: S.optionalKey(S.Number),
-    sessionId: S.String,
-  },
-)
-export const SucceededLoadCustomerSiteBuilderEvents = m(
-  'SucceededLoadCustomerSiteBuilderEvents',
-  {
-    response: CustomerSiteBuilderEventsResponse,
-  },
-)
-export const FailedLoadCustomerSiteBuilderEvents = m(
-  'FailedLoadCustomerSiteBuilderEvents',
   {
     error: S.String,
   },
@@ -1400,33 +1225,6 @@ export const Message = S.Union([
   RequestedLoadCustomerFulfillmentArtifacts,
   SucceededLoadCustomerFulfillmentArtifacts,
   FailedLoadCustomerFulfillmentArtifacts,
-  RequestedLoadCustomerSiteRevisions,
-  SucceededLoadCustomerSiteRevisions,
-  FailedLoadCustomerSiteRevisions,
-  RequestedLoadCustomerSiteFeedback,
-  SucceededLoadCustomerSiteFeedback,
-  FailedLoadCustomerSiteFeedback,
-  UpdatedCustomerSiteFeedbackDraft,
-  UpdatedCustomerSiteBuilderPromptDraft,
-  SelectedCustomerSiteElementContext,
-  SubmittedCustomerSiteFeedback,
-  SucceededSubmitCustomerSiteFeedback,
-  FailedSubmitCustomerSiteFeedback,
-  RequestedOpenCustomerSiteBuilderSession,
-  SucceededOpenCustomerSiteBuilderSession,
-  FailedOpenCustomerSiteBuilderSession,
-  RequestedLoadCustomerSiteBuilderSession,
-  SucceededLoadCustomerSiteBuilderSession,
-  FailedLoadCustomerSiteBuilderSession,
-  RequestedLoadCustomerSiteBuilderFiles,
-  SucceededLoadCustomerSiteBuilderFiles,
-  FailedLoadCustomerSiteBuilderFiles,
-  SelectedCustomerSiteBuilderFile,
-  SucceededLoadCustomerSiteBuilderFile,
-  FailedLoadCustomerSiteBuilderFile,
-  RequestedLoadCustomerSiteBuilderEvents,
-  SucceededLoadCustomerSiteBuilderEvents,
-  FailedLoadCustomerSiteBuilderEvents,
   RequestedLoadAdminOverview,
   SucceededLoadAdminOverview,
   FailedLoadAdminOverview,
