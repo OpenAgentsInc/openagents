@@ -799,7 +799,6 @@
       "name": "@openagentsinc/autopilot-control-protocol",
       "version": "0.1.0",
       "dependencies": {
-        "@openagentsinc/design-tokens": "workspace:*",
         "effect": "catalog:",
       },
       "devDependencies": {
