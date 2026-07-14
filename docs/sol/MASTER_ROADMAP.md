@@ -3,14 +3,14 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-14
-- Revision: 111
+- Revision: 112
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: empty; the AssuranceSpec distribution program is complete,
-  no product-expansion lane is authorized, and the owner-selected runtime/
-  toolchain conversion has no live implementation issue yet
+- Current queue: active bounded Node/pnpm/Vite Plus cutover under #8777; the
+  AssuranceSpec distribution program remains complete and no product-expansion
+  lane is authorized
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
-- Dispatch: no product-expansion lane; new outcomes require a bounded owner
-  decision and live issue under [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
+- Dispatch: cutover work only through the live issues below and
+  [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md); no product-expansion lane
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
 - Documentation cleanup: SOL-DOC-01 through SOL-DOC-11 are closed; the
@@ -277,7 +277,7 @@ there is no remaining AssuranceSpec program queue.
     ported, after outstanding value is reconciled and historical receipts stay
     read-only and truthful. The non-dispatch contract is the
     [`full-conversion plan`](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md);
-    implementation requires bounded live issues and claims.
+    epic #8777 and its bounded leaves require explicit claims.
 
 ## Product and authority model
 
@@ -596,7 +596,19 @@ self-referential queue churn. Refresh live `roadmap:sol` issues and claims
 before operational selection; this table owns the complete product queue, not
 the currently unclaimed worker lease.
 
-There are no open product issues in the current projection.
+| Issue | Current bounded role |
+| --- | --- |
+| [#8772](https://github.com/OpenAgentsInc/openagents/issues/8772) | VP-4a canonical root verbs; folded TC-1 leaf |
+| [#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) | VP-3/4 invariant lint; folded TC-2 leaf |
+| [#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) | VP-4b staged hook/gate gradient; folded TC-3 leaf |
+| [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777) | Sole full-cutover epic |
+| [#8794](https://github.com/OpenAgentsInc/openagents/issues/8794) | VP-0 freeze, inventory, baselines, and pins |
+| [#8795](https://github.com/OpenAgentsInc/openagents/issues/8795) | VP-1 payment withdrawal, reconciliation, and deletion |
+| [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796) | VP-2 Node-native retained runtime and CLIs |
+| [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | VP-3 Effect TSGo and Vite Plus parity |
+| [#8798](https://github.com/OpenAgentsInc/openagents/issues/8798) | VP-4 atomic pnpm/Vite Plus cutover |
+| [#8799](https://github.com/OpenAgentsInc/openagents/issues/8799) | VP-5 stabilization and Node production images |
+| [#8800](https://github.com/OpenAgentsInc/openagents/issues/8800) | VP-6 Bun excision and closure |
 
 The superseded broad program/client, CUT-27, AUDIO-8, and PORT-03 through PORT-08
 issues are closed `not planned` with comments; their bodies were not rewritten.
@@ -625,13 +637,13 @@ At this snapshot:
    `0.1.1` are public on npm in dependency order; #8767 and #8770 are closed.
 6. RC9 remains unpublished. Conditional public-language, telemetry, release,
    concurrency, registry, and product-successor gates remain unchanged.
-7. The Node/pnpm/Vite Plus destination is authorized as infrastructure policy,
-   but no conversion implementation is dispatchable until bounded live issues
-   and claims exist; it does not reopen a product-expansion queue.
+7. Full cutover is active under epic #8777. Claim VP-0 #8794 first; after its
+   freeze/ledger, VP-1 #8795 and VP-2 #8796 may proceed on disjoint claims.
+   Then execute VP-3 #8797, atomic VP-4 #8798 (including #8772–#8774), VP-5
+   #8799, and VP-6 #8800 in order.
 
-There is no active product queue or successor product queue to claim. The
-AssuranceSpec distribution lane has no remaining owner action and does not
-create a product-expansion work packet.
+This is an infrastructure-retirement queue, not a successor product queue.
+The completed AssuranceSpec lane has no remaining owner action.
 Supported security, privacy, data-loss, accessibility, production-outage, or
 compatibility defects may use new bounded repair issues; product expansion
 waits for owner direction.

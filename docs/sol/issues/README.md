@@ -19,7 +19,8 @@ These files correspond to open issues in the schema-versioned
 [`product-issue snapshot`](../live-roadmap-issues.json). Their bodies may
 contain historical status; refresh the live issue/comments before dispatch.
 
-There is no live product issue and no checked-in live issue-body source.
+No current cutover issue has a checked-in issue-body source; the owning plan
+below represents the live set.
 
 ## Live issues represented by receipts
 
@@ -28,7 +29,10 @@ dispatch authority.
 
 ## Live issues represented by an owning plan
 
-No live issue is represented by an owning plan.
+The [`Node, pnpm, and Vite Plus full-conversion plan`](../2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md)
+owns epic #8777; phases #8794, #8795, #8796, #8797, #8798, #8799, and #8800;
+and folded implementation leaves #8772, #8773, and #8774. The completed TC-4
+and TC-5 pilots are closed evidence and therefore are not in the live projection.
 
 ## Closed proof and implementation sources
 

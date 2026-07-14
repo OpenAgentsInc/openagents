@@ -2,9 +2,10 @@
 
 - Class: contract
 - Date: 2026-07-14
-- Status: owner-authorized destination; implementation not started
-- Dispatch: no; implementation requires bounded live issues claimed under
-  [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
+- Status: owner-authorized live issue program; implementation not yet claimed
+- Dispatch: only through epic
+  [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777), its bounded
+  leaves below, and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Owner: Sol runtime and toolchain conversion
 - Source snapshot: OpenAgents `180e073e281b95b5ce3b7409f1d62c6865be2a70`;
   T3 Code `c1ec1915fc16f3dc1ec5d47d9a97f6210a574526`; Vite Plus
@@ -13,6 +14,30 @@
   [`Bun vs Vite Plus analysis`](../fable/2026-07-13-bun-vs-vite-plus-analysis.md),
   [`T3 Code teardown`](../teardowns/2026-07-13-t3-code-teardown.md), and
   [`TC-5 aiur pilot`](../research/2026-07-14-vite-plus-pilot.md)
+
+## Live issue program
+
+[#8777](https://github.com/OpenAgentsInc/openagents/issues/8777) is the only
+cutover epic. The phase issues own dependency gates; the retained TC issues
+are subordinate implementation leaves, not a second program.
+
+| Role | Live issue | Disposition |
+| --- | --- | --- |
+| Epic | [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777) | Full Node/pnpm/Vite Plus cutover; T3 topology; payments removed |
+| VP-0 | [#8794](https://github.com/OpenAgentsInc/openagents/issues/8794) | Freeze, inventory, baselines, pins, and claim ledger |
+| VP-1 | [#8795](https://github.com/OpenAgentsInc/openagents/issues/8795) | Reconcile, decommission, and delete non-MVP money paths |
+| VP-2 | [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796) | Node-native retained runtime and public CLIs |
+| VP-3 | [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | Effect TSGo and Vite Plus test/typecheck parity |
+| VP-4 | [#8798](https://github.com/OpenAgentsInc/openagents/issues/8798) | Atomic pnpm/Vite Plus workspace-authority replacement |
+| VP-5 | [#8799](https://github.com/OpenAgentsInc/openagents/issues/8799) | Host/release stabilization and Node production images |
+| VP-6 | [#8800](https://github.com/OpenAgentsInc/openagents/issues/8800) | Bun excision, final matrix, and closure |
+| VP-4a / TC-1 | [#8772](https://github.com/OpenAgentsInc/openagents/issues/8772) | Retained and folded: canonical root verbs |
+| VP-3/4 / TC-2 | [#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) | Retained and folded: invariant-enforcing Oxlint rules |
+| VP-4b / TC-3 | [#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) | Retained and folded: formatter-only staged hook and gate gradient |
+
+TC-4 [#8775](https://github.com/OpenAgentsInc/openagents/issues/8775) and
+TC-5 [#8776](https://github.com/OpenAgentsInc/openagents/issues/8776) remain
+closed evidence. They are not reopened or counted as unperformed phases.
 
 ## Decision
 
@@ -279,7 +304,7 @@ Serial ownership is required for `package.json`, lockfiles,
 `pnpm-workspace.yaml`, root `vite.config.ts`, root TypeScript configs, hooks,
 Docker bases, `AGENTS.md`, and invariant ledgers.
 
-### VP-0 — freeze, inventory, and choose exact versions
+### VP-0 — freeze, inventory, and choose exact versions ([#8794](https://github.com/OpenAgentsInc/openagents/issues/8794))
 
 - Freeze new Bun APIs, Bun-only packages, payment work, and new direct
   Vite/Vitest/Oxc/tsdown configuration.
@@ -296,7 +321,7 @@ Docker bases, `AGENTS.md`, and invariant ledgers.
 Exit: reproducible inventory, pins, gates, issue DAG, and no new perimeter
 growth. No runtime claim changes.
 
-### VP-1 — remove the non-MVP payment graph
+### VP-1 — remove the non-MVP payment graph ([#8795](https://github.com/OpenAgentsInc/openagents/issues/8795))
 
 - Execute the inflow stop, reconciliation, read-only freeze, service shutdown,
   secret revocation, promise withdrawal, route tombstone, and code deletion
@@ -310,7 +335,7 @@ no payment-only service in the workspace/deploy graph, pending balances either
 closed or explicitly blocked under a read-only owner, and historical receipts
 still truthful.
 
-### VP-2 — make retained production code Node-ready
+### VP-2 — make retained production code Node-ready ([#8796](https://github.com/OpenAgentsInc/openagents/issues/8796))
 
 - Put filesystem, process, subprocess/PTY, HTTP/WebSocket, SQLite, hashing,
   executable packaging, and runtime detection behind owned Effect services or
@@ -326,7 +351,7 @@ still truthful.
 Exit: retained production entrypoints have Node implementations and parity
 tests; any remaining Bun adapter has a named deletion phase.
 
-### VP-3 — establish Effect TSGo and Vitest parity
+### VP-3 — establish Effect TSGo and Vitest parity ([#8797](https://github.com/OpenAgentsInc/openagents/issues/8797))
 
 - Move applicable typechecks to TSGo with bounded concurrency, retaining named
   host exceptions.
@@ -342,7 +367,7 @@ tests; any remaining Bun adapter has a named deletion phase.
 Exit: the future Vite Plus test and typecheck lanes pass against the retained
 Node code without weakening assertions or excluding failing suites.
 
-### VP-4 — atomic pnpm/Vite Plus workspace cutover
+### VP-4 — atomic pnpm/Vite Plus workspace cutover ([#8798](https://github.com/OpenAgentsInc/openagents/issues/8798))
 
 Land one coordinated integration change, like T3's #2899:
 
@@ -365,7 +390,7 @@ already-landed Node adapters remain useful.
 Exit: fresh clone/bootstrap and every normal root gate use Node/pnpm/`vp`; the
 displaced toolchain is absent rather than duplicated.
 
-### VP-5 — stabilization and production image cutover
+### VP-5 — stabilization and production image cutover ([#8799](https://github.com/OpenAgentsInc/openagents/issues/8799))
 
 - Expect short follow-ups for native installs, Electron packaging, Expo/Metro,
   Cloudflare plugins, release manifests, publishing overrides, Windows paths,
@@ -383,7 +408,7 @@ displaced toolchain is absent rather than duplicated.
 Exit: retained deployed services execute Node artifacts with service-specific
 rollback proof; owned runners and releases use the same root verbs.
 
-### VP-6 — excise Bun and close
+### VP-6 — excise Bun and close ([#8800](https://github.com/OpenAgentsInc/openagents/issues/8800))
 
 - Delete temporary Bun adapters, `@types/bun`, Bun platform/storage packages,
   Bun shebangs, Docker bases, scripts, install docs, command examples, and

@@ -54,8 +54,8 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   — frozen identity and Sync contract for the R1/R2 boundary.
 - [`2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md)
   — owner-selected Node/pnpm/Vite Plus destination, T3-style migration order,
-  proof gates, and non-MVP payment decommission/deletion contract. It does not
-  dispatch implementation without bounded live issues and claims.
+  proof gates, non-MVP payment decommission/deletion contract, and the bounded
+  live issue program. Dispatch still requires a valid issue claim.
 
 ## Evidence and historical baselines
 

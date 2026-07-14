@@ -1,11 +1,160 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-14T01:42:30.585Z",
+  "generatedAt": "2026-07-14T07:03:40.447Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
     "area:docs"
   ],
   "maxAgeHours": 168,
-  "issues": []
+  "issues": [
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "area:ci",
+        "area:build",
+        "roadmap:sol"
+      ],
+      "number": 8772,
+      "state": "OPEN",
+      "title": "build(VP-4a/TC-1): one canonical root verb set for humans, automation, and agents",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8772"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "area:testing",
+        "area:build",
+        "roadmap:sol"
+      ],
+      "number": 8773,
+      "state": "OPEN",
+      "title": "build(VP-3/4/TC-2): oxlint-plugin-openagents compiles workspace laws into the Vite Plus gate",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8773"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "area:build",
+        "roadmap:sol"
+      ],
+      "number": 8774,
+      "state": "OPEN",
+      "title": "build(VP-4b/TC-3): formatter-only staged hook and canonical push/agent gate",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8774"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "area:program",
+        "area:build",
+        "roadmap:sol"
+      ],
+      "number": 8777,
+      "state": "OPEN",
+      "title": "epic(toolchain): full Node + pnpm + Vite Plus cutover — T3 topology, payments removed",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8777"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "area:runtime",
+        "area:build",
+        "type:proof",
+        "roadmap:sol"
+      ],
+      "number": 8794,
+      "state": "OPEN",
+      "title": "toolchain(VP-0): freeze Bun/payment growth, inventory the cutover, and pin the destination stack",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8794"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "area:openagents.com",
+        "area:security",
+        "area:payments",
+        "roadmap:sol"
+      ],
+      "number": 8795,
+      "state": "OPEN",
+      "title": "payments(VP-1): withdraw, reconcile, decommission, and delete the non-MVP money graph",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8795"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "area:runtime",
+        "area:services",
+        "area:pylon",
+        "roadmap:sol"
+      ],
+      "number": 8796,
+      "state": "OPEN",
+      "title": "runtime(VP-2): make retained services and public CLIs Node-native behind owned platform seams",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8796"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "area:testing",
+        "area:packages",
+        "area:build",
+        "type:proof",
+        "roadmap:sol"
+      ],
+      "number": 8797,
+      "state": "OPEN",
+      "title": "testing(VP-3): prove Effect TSGo and Vite Plus test parity, then remove bun:test authority",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8797"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "area:packages",
+        "area:ci",
+        "area:build",
+        "roadmap:sol"
+      ],
+      "number": 8798,
+      "state": "OPEN",
+      "title": "build(VP-4): atomically replace Bun workspace authority with pnpm 11 and exact-pinned Vite Plus",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8798"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "area:infra",
+        "area:release",
+        "area:services",
+        "type:proof",
+        "roadmap:sol"
+      ],
+      "number": 8799,
+      "state": "OPEN",
+      "title": "release(VP-5): stabilize pnpm/Vite Plus and cut retained production images to Node",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8799"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "area:testing",
+        "area:release",
+        "area:build",
+        "type:proof",
+        "roadmap:sol"
+      ],
+      "number": 8800,
+      "state": "OPEN",
+      "title": "toolchain(VP-6): excise Bun completely and close the Node/pnpm/Vite Plus cutover",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8800"
+    }
+  ]
 }
