@@ -93,6 +93,16 @@ while Cloud Build was still building; Cloud Run confirmed that no
 `oa-mdk-treasury` service was recreated. No wallet send or fund movement was
 attempted.
 
+The secret-free monolith cutover is production revision
+`openagents-monolith-00122-pnr`, serving 100% traffic. Every prior monolith
+revision (`00001` through `00121`) was deleted after the cutover; the retained
+revision has no MDK, Spark, Stripe, RevenueCat, Treasury, or tips-buffer env
+reference. Public smoke confirms the holding document and asset remain `200`,
+`/sarah` remains `404`, the settled feed remains `200`, historical missing
+receipt lookups remain ordinary `404` reads rather than retirement responses,
+and billing, Sites, `/treasury`, Stripe callback, Forum MDK callback, and Site
+MDK callback requests all return the exact typed `410` contract.
+
 The matching source cutover deletes the MDK sidecar, Treasury, and tips-buffer
 service trees; removes their Cloud Run secret mounts, Worker bindings,
 Durable Object implementations, runtime configuration, and dependencies; and
