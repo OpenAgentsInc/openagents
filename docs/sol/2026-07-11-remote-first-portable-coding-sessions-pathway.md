@@ -535,6 +535,33 @@ new target-scoped grants. Secret bytes never ride inside a checkpoint. Static
 operator token fallbacks remain development/break-glass paths and cannot satisfy
 the R7 product acceptance.
 
+**Auth metadata (ENV-2, #8780 — typed contract landed).** The auth-bearing
+capability-token language ENV-1 deferred now has a typed home in
+`packages/environment-auth`, and the portable-session capability broker
+carries its first opt-in proof-of-possession seam:
+
+- capability scopes are drawn from the existing OpenAgents MCP
+  authority-class vocabulary (`@openagentsinc/mcp-contract`), never an ad hoc
+  or borrowed scope-string set;
+- access tokens are minted through an RFC 8693-shaped exchange from an
+  environment-bootstrap subject token, and the scope evaluator is
+  narrowing-only — an exchange can never widen the subject grant, and a
+  request for any scope outside it rejects the whole exchange;
+- issued tokens are DPoP-bound (RFC 9449): the client proves possession of
+  an ES256 key per request via `htm`/`htu`/`iat`/`jti` claims, the RFC 7638
+  JWK thumbprint binds token and grant to that key, freshness is a bounded
+  clock window, and a `(thumbprint, jti)` replay cache makes each proof
+  single-use;
+- a broker lease may be issued with a `clientKeyThumbprint`; redeeming a
+  key-bound lease then fails closed without a valid possession proof, before
+  any vault or target-adapter access, and reissue can never launder a bound
+  lease into an unbound one. Unbound leases keep the existing path — the
+  handshake is strictly opt-in per lease.
+
+Fleet-wide socket rollout, Khala Sync server-side grant migration, and
+revocation UI remain follow-ups; bearer-shaped development fallbacks remain
+break-glass only, exactly as above.
+
 ### 6. Authorized environment/session directory
 
 Khala Sync needs owner-scoped projections for enrolled ExecutionEnvironments,
@@ -545,6 +572,15 @@ KnownEnvironment entries remain device-local convenience and never substitute
 for it. Where the directory projects reachability, it projects
 AdvertisedEndpoint hints with their reachability class — hints, never proof
 that a route works from the asking device.
+
+Endpoint hints carry auth metadata, not credentials (ENV-2, #8780): the
+typed statement of which scoped, DPoP-bound capability grant a client must
+present to speak to that environment — the grant's scopes (OpenAgents MCP
+authority classes) and its owner-scoped `ExecutionEnvironmentRef` binding,
+per `packages/environment-auth`'s `EnvironmentCapabilityGrant`. Grant records
+are refs plus key thumbprint only (`tokenMaterial: "excluded"`); raw tokens
+and client private keys never enter the directory, Sync, or a client's
+KnownEnvironment entries, and possession is proven per request, never stored.
 
 Mobile and Desktop can then answer:
 

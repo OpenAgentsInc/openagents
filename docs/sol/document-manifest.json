@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "88300cc62bab97884f8a0d9bbf3f7ab5157725720b5a1cb342022aa0babedc57",
+  "sourceTreeSha256": "2171cf047deae4365c7966c533310e5c625f333ab6aea8b1d7af99ce15082bb2",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -548,7 +548,7 @@
       "owner": "Sol portable sessions",
       "disposition": "retain-decision",
       "dispatch": false,
-      "sha256": "db91ff1ea691b21e0c1e331642345ad4b0c7f01548b24e6a54e0d9def68cee36",
+      "sha256": "c5d8539b342ecaaf45c9974c56a65c7cf77a1b92a2a945dfad0c882a73b6db3c",
       "status": "owner-directed product path; ordered implementation ledger active",
       "snapshot": "2026-07-11",
       "reviewedAt": "2026-07-12",
@@ -590,7 +590,9 @@
         8750,
         8751,
         8752,
-        8753
+        8753,
+        8778,
+        8780
       ]
     },
     {

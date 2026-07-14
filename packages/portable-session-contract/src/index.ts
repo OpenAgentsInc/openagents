@@ -72,8 +72,10 @@ export type PortableDataPosture = typeof PortableDataPosture.Type
  * Describes one ExecutionEnvironment (ENV-1): what the environment is and
  * what it may safely do — never how a client currently reaches it.
  * AccessEndpoint/AdvertisedEndpoint reachability facts stay at the connection
- * layer and out of this durable identity (auth-bearing endpoint metadata is
- * deferred to ENV-2).
+ * layer and out of this durable identity. The auth-bearing endpoint metadata
+ * ENV-1 deferred is typed in `@openagentsinc/environment-auth` (ENV-2,
+ * openagents #8780): scoped, DPoP-bound capability grants keyed to this
+ * ExecutionEnvironment identity.
  */
 export const PortableTargetDescriptorSchema = S.Struct({
   targetRef: ExecutionEnvironmentRef,

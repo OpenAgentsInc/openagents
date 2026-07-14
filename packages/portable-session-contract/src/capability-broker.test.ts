@@ -10,6 +10,8 @@ import {
   type CapabilityBrokerConfig,
   type CapabilityBrokerPrivateDurableState,
   type CapabilityBrokerStateStore,
+  type CapabilityProofVerifier,
+  type CapabilityRedemptionProof,
   type CapabilitySecretVault,
   type IssueCapabilityInput,
   type SecretMaterial,
@@ -42,6 +44,7 @@ function fixture(
     managedWipeFailure?: boolean
     clock?: FixtureClock
     stateStore?: CapabilityBrokerStateStore
+    proofVerifier?: CapabilityProofVerifier
   } = {},
 ) {
   const clock = options.clock ?? new FixtureClock()
@@ -101,6 +104,7 @@ function fixture(
     adapters: [localAdapter, managedAdapter],
     evidenceSink: { append: async item => { evidence.push(item) } },
     ...(options.stateStore ? { stateStore: options.stateStore } : {}),
+    ...(options.proofVerifier ? { proofVerifier: options.proofVerifier } : {}),
   }
   const broker = new PortableCapabilityBroker(brokerConfig)
   return { broker, brokerConfig, clock, evidence, installed, revoked, wiped }
@@ -363,5 +367,227 @@ describe("portable target-scoped capability broker", () => {
     await expectReason(broker.issue(issueInput({ operationRef: "operation.issue.long", expiresAt: at(30) })), "invalid_scope")
     expect(broker.snapshot().leases).toHaveLength(1)
     expect(broker.snapshot().leases[0]?.lease.state).toBe("issued")
+  })
+})
+
+// ENV-2 (openagents #8780): opt-in DPoP-bound redemption through the
+// `proofVerifier` seam. These are broker-contract tests with a scripted
+// verifier; the real RFC 9449 verifier and its adversarial crypto suite live
+// in @openagentsinc/environment-auth, which also runs an end-to-end
+// integration against this broker.
+const BOUND_THUMBPRINT = `tp_${"A".repeat(40)}`
+const FOREIGN_THUMBPRINT = `tp_${"B".repeat(40)}`
+
+const redemptionProof = (
+  overrides: Partial<CapabilityRedemptionProof> = {},
+): CapabilityRedemptionProof => ({
+  scheme: "dpop",
+  proof: "header.payload.signature",
+  htm: "POST",
+  htu: "http://127.0.0.1:4310/broker/redeem",
+  ...overrides,
+})
+
+function scriptedVerifier(
+  behavior:
+    | { kind: "echo-expected" }
+    | { kind: "foreign-key"; thumbprint: string }
+    | { kind: "reject"; reason: string }
+    | { kind: "throw" },
+) {
+  const calls: Array<{ proof: string; htm: string; htu: string; expectedThumbprint: string }> = []
+  const verifier: CapabilityProofVerifier = {
+    verify: async (input) => {
+      calls.push(input)
+      switch (behavior.kind) {
+        case "echo-expected":
+          return { ok: true, thumbprint: input.expectedThumbprint }
+        case "foreign-key":
+          return { ok: true, thumbprint: behavior.thumbprint }
+        case "reject":
+          return { ok: false, reason: behavior.reason }
+        case "throw":
+          throw new Error("verifier dependency failed")
+      }
+    },
+  }
+  return { calls, verifier }
+}
+
+describe("opt-in DPoP-bound capability redemption (ENV-2 #8780)", () => {
+  test("an unbound lease redeems unchanged and never consults the verifier", async () => {
+    const { calls, verifier } = scriptedVerifier({ kind: "echo-expected" })
+    const { broker, installed } = fixture({ proofVerifier: verifier })
+    await run(broker.issue(issueInput()))
+    await run(broker.redeem({ operationRef: "operation.redeem.unbound", leaseRef: "lease.local.provider" }))
+    expect(installed.has("lease.local.provider")).toBe(true)
+    expect(calls).toHaveLength(0)
+  })
+
+  test("a key-bound lease redeems only with a verified proof for the bound key", async () => {
+    const { calls, verifier } = scriptedVerifier({ kind: "echo-expected" })
+    const { broker, installed } = fixture({ proofVerifier: verifier })
+    await run(broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    const outcome = await run(broker.redeem({
+      operationRef: "operation.redeem.bound",
+      leaseRef: "lease.local.provider",
+      redemptionProof: redemptionProof(),
+    }))
+    expect(outcome.status).toBe("completed")
+    expect(installed.has("lease.local.provider")).toBe(true)
+    expect(calls).toEqual([{
+      proof: "header.payload.signature",
+      htm: "POST",
+      htu: "http://127.0.0.1:4310/broker/redeem",
+      expectedThumbprint: BOUND_THUMBPRINT,
+    }])
+  })
+
+  test("a key-bound lease without a proof fails closed before vault or target access", async () => {
+    const { verifier } = scriptedVerifier({ kind: "echo-expected" })
+    const { broker, installed } = fixture({ proofVerifier: verifier })
+    await run(broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    await expectReason(
+      broker.redeem({ operationRef: "operation.redeem.no-proof", leaseRef: "lease.local.provider" }),
+      "proof_required",
+    )
+    expect(installed.has("lease.local.provider")).toBe(false)
+    expect(broker.snapshot().leases[0]?.lease.state).toBe("issued")
+    expect(broker.snapshot().outcomes.at(-1)?.status).toBe("rejected")
+  })
+
+  test("a key-bound lease fails closed when the broker has no verifier configured", async () => {
+    const { broker, installed } = fixture()
+    await run(broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    await expectReason(
+      broker.redeem({
+        operationRef: "operation.redeem.no-verifier",
+        leaseRef: "lease.local.provider",
+        redemptionProof: redemptionProof(),
+      }),
+      "proof_required",
+    )
+    expect(installed.has("lease.local.provider")).toBe(false)
+  })
+
+  test("a proof proving a foreign key is rejected even when the verifier reports ok", async () => {
+    const { verifier } = scriptedVerifier({ kind: "foreign-key", thumbprint: FOREIGN_THUMBPRINT })
+    const { broker, installed } = fixture({ proofVerifier: verifier })
+    await run(broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    await expectReason(
+      broker.redeem({
+        operationRef: "operation.redeem.foreign-key",
+        leaseRef: "lease.local.provider",
+        redemptionProof: redemptionProof(),
+      }),
+      "proof_invalid",
+    )
+    expect(installed.has("lease.local.provider")).toBe(false)
+  })
+
+  test("verifier rejection and verifier outage both fail closed as proof_invalid", async () => {
+    const rejected = fixture({ proofVerifier: scriptedVerifier({ kind: "reject", reason: "jti_replayed" }).verifier })
+    await run(rejected.broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    await expectReason(
+      rejected.broker.redeem({
+        operationRef: "operation.redeem.replayed",
+        leaseRef: "lease.local.provider",
+        redemptionProof: redemptionProof(),
+      }),
+      "proof_invalid",
+    )
+    expect(rejected.installed.has("lease.local.provider")).toBe(false)
+
+    const throwing = fixture({ proofVerifier: scriptedVerifier({ kind: "throw" }).verifier })
+    await run(throwing.broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    await expectReason(
+      throwing.broker.redeem({
+        operationRef: "operation.redeem.verifier-outage",
+        leaseRef: "lease.local.provider",
+        redemptionProof: redemptionProof(),
+      }),
+      "proof_invalid",
+    )
+    expect(throwing.installed.has("lease.local.provider")).toBe(false)
+  })
+
+  test("a malformed client key thumbprint is rejected at issue time", async () => {
+    const { broker } = fixture()
+    await expectReason(
+      broker.issue(issueInput({ clientKeyThumbprint: "not-a-thumbprint" })),
+      "invalid_scope",
+    )
+    expect(broker.snapshot().leases).toHaveLength(0)
+  })
+
+  test("reissue can never launder a key-bound lease into an unbound one", async () => {
+    const { verifier } = scriptedVerifier({ kind: "echo-expected" })
+    const { broker, revoked } = fixture({ proofVerifier: verifier })
+    await run(broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    await expectReason(
+      broker.reissue({
+        operationRef: "operation.reissue.drop-binding",
+        leaseRef: "lease.local.provider",
+        newLeaseRef: "lease.managed.unbound",
+        destinationSourceGrantRef: "grant.destination.provider",
+        destinationAttachmentRef: "attachment.port02.managed",
+        destinationAttachmentGeneration: 2,
+        destinationTargetRef: "target.agent-computer",
+        expiresAt: at(12),
+      }),
+      "invalid_scope",
+    )
+    // The malformed move must not have revoked the source grant.
+    expect(revoked.size).toBe(0)
+    expect(broker.snapshot().leases[0]?.lease.state).toBe("issued")
+  })
+
+  test("reissue carries an explicit destination binding that gates the destination redeem", async () => {
+    const { verifier } = scriptedVerifier({ kind: "echo-expected" })
+    const { broker, installed } = fixture({ proofVerifier: verifier })
+    await run(broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    const moved = await run(broker.reissue({
+      operationRef: "operation.reissue.rebind",
+      leaseRef: "lease.local.provider",
+      newLeaseRef: "lease.managed.rebound",
+      destinationSourceGrantRef: "grant.destination.provider",
+      destinationAttachmentRef: "attachment.port02.managed",
+      destinationAttachmentGeneration: 2,
+      destinationTargetRef: "target.agent-computer",
+      expiresAt: at(12),
+      destinationClientKeyThumbprint: FOREIGN_THUMBPRINT,
+    }))
+    expect(moved.resultingLeaseRef).toBe("lease.managed.rebound")
+    await expectReason(
+      broker.redeem({ operationRef: "operation.redeem.rebound.no-proof", leaseRef: "lease.managed.rebound" }),
+      "proof_required",
+    )
+    const outcome = await run(broker.redeem({
+      operationRef: "operation.redeem.rebound",
+      leaseRef: "lease.managed.rebound",
+      redemptionProof: redemptionProof(),
+    }))
+    expect(outcome.status).toBe("completed")
+    expect(installed.get("lease.managed.rebound")?.target).toBe("target.agent-computer")
+    expect(broker.snapshot().leases.find(item => item.lease.leaseRef === "lease.managed.rebound")?.clientKeyThumbprint)
+      .toBe(FOREIGN_THUMBPRINT)
+  })
+
+  test("key bindings survive durable restore into a fresh broker instance", async () => {
+    const stateStore = new MemoryBrokerStateStore()
+    const { verifier } = scriptedVerifier({ kind: "echo-expected" })
+    const first = fixture({ stateStore, proofVerifier: verifier })
+    await run(first.broker.issue(issueInput({ clientKeyThumbprint: BOUND_THUMBPRINT })))
+    const restored = await PortableCapabilityBroker.restore(first.brokerConfig)
+    await expectReason(
+      restored.redeem({ operationRef: "operation.redeem.restored.no-proof", leaseRef: "lease.local.provider" }),
+      "proof_required",
+    )
+    const outcome = await run(restored.redeem({
+      operationRef: "operation.redeem.restored",
+      leaseRef: "lease.local.provider",
+      redemptionProof: redemptionProof(),
+    }))
+    expect(outcome.status).toBe("completed")
   })
 })

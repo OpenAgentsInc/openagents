@@ -32,6 +32,8 @@ export type CapabilityBrokerReason =
   | "expired"
   | "invalid_scope"
   | "lease_not_active"
+  | "proof_invalid"
+  | "proof_required"
   | "source_revoked"
   | "target_denied"
   | "target_mismatch"
@@ -72,6 +74,13 @@ export type CapabilityLeaseRecord = {
   readonly lease: PortableCapabilityLease
   readonly sourceGrantRef: string
   readonly permissions: ReadonlyArray<string>
+  /**
+   * ENV-2 (openagents #8780): optional RFC 7638 thumbprint of the client key
+   * that must prove possession (RFC 9449 DPoP) to redeem this lease. Public
+   * key-hash material only — never a secret. Absent = the lease keeps the
+   * pre-ENV-2 redemption path unchanged.
+   */
+  readonly clientKeyThumbprint?: string
   readonly issuedAt: string
   readonly redeemedAt?: string
   readonly renewedAt?: string
@@ -88,6 +97,7 @@ export type CapabilityBrokerSnapshot = {
   readonly leases: ReadonlyArray<{
     readonly lease: PortableCapabilityLease
     readonly permissions: ReadonlyArray<string>
+    readonly clientKeyThumbprint?: string
     readonly issuedAt: string
     readonly redeemedAt?: string
     readonly renewedAt?: string
@@ -149,6 +159,39 @@ export type CapabilityBrokerClock = {
   readonly now: () => Date
 }
 
+/**
+ * ENV-2 (openagents #8780) opt-in proof-of-possession for lease redemption.
+ * `htm`/`htu` MUST be populated by the transport host from the request it
+ * actually received (method + target URI), never from client-supplied
+ * values — otherwise the proof binds nothing.
+ */
+export type CapabilityRedemptionProof = {
+  readonly scheme: "dpop"
+  /** Compact JWS DPoP proof presented by the redeeming client. */
+  readonly proof: string
+  readonly htm: string
+  readonly htu: string
+}
+
+/**
+ * Verifier seam for key-bound redemption. The reference implementation is
+ * `@openagentsinc/environment-auth`'s `makeDpopCapabilityProofVerifier`
+ * (RFC 9449 semantics: signature, thumbprint binding, htm/htu, bounded
+ * clock skew, single-use jti). The broker treats it as opaque: any thrown
+ * error or `ok: false` fails the redemption closed.
+ */
+export type CapabilityProofVerifier = {
+  readonly verify: (input: {
+    readonly proof: string
+    readonly htm: string
+    readonly htu: string
+    readonly expectedThumbprint: string
+  }) => Promise<
+    | { readonly ok: true; readonly thumbprint: string }
+    | { readonly ok: false; readonly reason: string }
+  >
+}
+
 export type CapabilityBrokerConfig = {
   readonly vault: CapabilitySecretVault
   readonly targets: ReadonlyArray<CapabilityTargetBinding>
@@ -167,6 +210,12 @@ export type CapabilityBrokerConfig = {
    * exact active move claim bound by the concrete store.
    */
   readonly atomicStateStore?: CapabilityBrokerAtomicStateStore
+  /**
+   * ENV-2 (openagents #8780) opt-in proof-of-possession seam. Only consulted
+   * for leases issued with a `clientKeyThumbprint`; such leases fail closed
+   * when this verifier is absent, and unbound leases never touch it.
+   */
+  readonly proofVerifier?: CapabilityProofVerifier
 }
 
 export type CapabilityBrokerPrivateDurableState = {
@@ -218,11 +267,23 @@ export type IssueCapabilityInput = {
   readonly toolRef?: string
   readonly permissions: ReadonlyArray<string>
   readonly expiresAt: string
+  /**
+   * ENV-2 (openagents #8780): opt into DPoP-bound redemption by binding the
+   * lease to the RFC 7638 thumbprint of the redeeming client's key. Once
+   * bound, redemption requires a valid possession proof and the binding can
+   * never be silently dropped (see reissue).
+   */
+  readonly clientKeyThumbprint?: string
 }
 
 export type LeaseOperationInput = {
   readonly operationRef: string
   readonly leaseRef: string
+}
+
+export type RedeemCapabilityInput = LeaseOperationInput & {
+  /** Required iff the lease was issued with a `clientKeyThumbprint`. */
+  readonly redemptionProof?: CapabilityRedemptionProof
 }
 
 export type RenewCapabilityInput = LeaseOperationInput & {
@@ -236,6 +297,13 @@ export type ReissueCapabilityInput = LeaseOperationInput & {
   readonly destinationAttachmentGeneration: number
   readonly destinationTargetRef: string
   readonly expiresAt: string
+  /**
+   * ENV-2 (openagents #8780): key binding for the destination lease. When the
+   * source lease is key-bound this is REQUIRED — a bound lease can never be
+   * laundered into an unbound one through reissue. When the source lease is
+   * unbound this may add a binding (narrowing is always allowed).
+   */
+  readonly destinationClientKeyThumbprint?: string
 }
 
 export class CapabilityBrokerError extends Error {
@@ -270,6 +338,11 @@ function canonical(value: unknown): string {
 
 function safeRef(value: string): boolean {
   return /^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,255}$/.test(value)
+}
+
+// Base64url SHA-256 (RFC 7638 JWK thumbprint) — exactly 43 base64url chars.
+function safeThumbprint(value: string): boolean {
+  return /^[a-zA-Z0-9_-]{43}$/.test(value)
 }
 
 function cloneLease(lease: PortableCapabilityLease): PortableCapabilityLease {
@@ -357,6 +430,9 @@ export class PortableCapabilityBroker {
         lease,
         sourceGrantRef: input.sourceGrantRef,
         permissions: [...new Set(input.permissions)].sort(),
+        ...(input.clientKeyThumbprint === undefined
+          ? {}
+          : { clientKeyThumbprint: input.clientKeyThumbprint }),
         issuedAt: now,
         renewalCount: 0,
       })
@@ -364,9 +440,13 @@ export class PortableCapabilityBroker {
     })
   }
 
-  redeem(input: LeaseOperationInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+  redeem(input: RedeemCapabilityInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
     return this.execute("redeem", input.operationRef, input.leaseRef, input, async () => {
       const record = await this.requireActive(input, true)
+      // Proof-of-possession gate (ENV-2 #8780) runs before any target or
+      // vault access, so a key-bound lease fails closed without ever letting
+      // secret material near an unproven client.
+      await this.requireRedemptionProof(record, input)
       const target = this.requireTarget(record, input.operationRef)
       const adapter = this.requireAdapter(target, input.operationRef)
       try {
@@ -434,6 +514,23 @@ export class PortableCapabilityBroker {
   reissue(input: ReissueCapabilityInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
     return this.execute("reissue", input.operationRef, input.leaseRef, input, async () => {
       const source = this.requireRecord(input.leaseRef, input.operationRef)
+      // ENV-2 (#8780): a key-bound lease can never be laundered into an
+      // unbound one, and a malformed destination binding must not revoke the
+      // source — both checks run before any revocation side effect.
+      if (source.clientKeyThumbprint !== undefined && input.destinationClientKeyThumbprint === undefined) {
+        throw new CapabilityBrokerError(
+          "invalid_scope",
+          input.operationRef,
+          "key-bound lease cannot be reissued without a destination key binding",
+        )
+      }
+      if (input.destinationClientKeyThumbprint !== undefined && !safeThumbprint(input.destinationClientKeyThumbprint)) {
+        throw new CapabilityBrokerError(
+          "invalid_scope",
+          input.operationRef,
+          "destination client key thumbprint is malformed",
+        )
+      }
       await this.revokeInternal({ operationRef: `${input.operationRef}.revoke`, leaseRef: input.leaseRef }, "reissue")
       await this.wipeInternal({ operationRef: `${input.operationRef}.wipe`, leaseRef: input.leaseRef }, "reissue")
       const issueInput: IssueCapabilityInput = {
@@ -474,6 +571,9 @@ export class PortableCapabilityBroker {
         },
         sourceGrantRef: input.destinationSourceGrantRef,
         permissions: source.permissions,
+        ...(input.destinationClientKeyThumbprint === undefined
+          ? {}
+          : { clientKeyThumbprint: input.destinationClientKeyThumbprint }),
         issuedAt: this.clock.now().toISOString(),
         renewalCount: 0,
       })
@@ -550,7 +650,7 @@ export class PortableCapabilityBroker {
             schema: PORTABLE_CAPABILITY_BROKER_VERSION,
             operationRef,
             operation,
-            status: brokerError.reason === "invalid_scope" || brokerError.reason === "lease_not_active" || brokerError.reason === "target_mismatch" || brokerError.reason === "conflicting_replay" ? "rejected" : "failed",
+            status: brokerError.reason === "invalid_scope" || brokerError.reason === "lease_not_active" || brokerError.reason === "target_mismatch" || brokerError.reason === "conflicting_replay" || brokerError.reason === "proof_required" || brokerError.reason === "proof_invalid" ? "rejected" : "failed",
             leaseRef,
             reason: brokerError.reason,
             evidenceRefs: [],
@@ -667,6 +767,9 @@ export class PortableCapabilityBroker {
     if (input.permissions.length === 0 || input.permissions.some(permission => !safeRef(permission))) {
       throw new CapabilityBrokerError("invalid_scope", input.operationRef, "least-privilege permissions are required")
     }
+    if (input.clientKeyThumbprint !== undefined && !safeThumbprint(input.clientKeyThumbprint)) {
+      throw new CapabilityBrokerError("invalid_scope", input.operationRef, "client key thumbprint is malformed")
+    }
     if (["provider", "scm_read", "scm_write"].includes(input.capability) && !input.accountRef) {
       throw new CapabilityBrokerError("invalid_scope", input.operationRef, "provider and SCM leases require an account ref")
     }
@@ -719,6 +822,59 @@ export class PortableCapabilityBroker {
       throw new CapabilityBrokerError("expired", input.operationRef, "lease expired")
     }
     return record
+  }
+
+  /**
+   * ENV-2 (#8780) opt-in fail-closed possession gate. Leases without a key
+   * binding return immediately (existing behavior, proof ignored). Key-bound
+   * leases require a configured verifier, a DPoP-scheme proof, and a verified
+   * thumbprint equal to the bound one — anything else fails closed before the
+   * vault or target adapter is touched.
+   */
+  private async requireRedemptionProof(
+    record: CapabilityLeaseRecord,
+    input: RedeemCapabilityInput,
+  ): Promise<void> {
+    const boundThumbprint = record.clientKeyThumbprint
+    if (boundThumbprint === undefined) return
+    const verifier = this.config.proofVerifier
+    if (!verifier) {
+      throw new CapabilityBrokerError(
+        "proof_required",
+        input.operationRef,
+        "lease is key-bound but this broker has no proof verifier configured",
+      )
+    }
+    const redemptionProof = input.redemptionProof
+    if (!redemptionProof || redemptionProof.scheme !== "dpop") {
+      throw new CapabilityBrokerError(
+        "proof_required",
+        input.operationRef,
+        "key-bound lease redemption requires a DPoP possession proof",
+      )
+    }
+    let verification: Awaited<ReturnType<CapabilityProofVerifier["verify"]>>
+    try {
+      verification = await verifier.verify({
+        proof: redemptionProof.proof,
+        htm: redemptionProof.htm,
+        htu: redemptionProof.htu,
+        expectedThumbprint: boundThumbprint,
+      })
+    } catch {
+      throw new CapabilityBrokerError(
+        "proof_invalid",
+        input.operationRef,
+        "possession proof verification failed closed",
+      )
+    }
+    if (!verification.ok || verification.thumbprint !== boundThumbprint) {
+      throw new CapabilityBrokerError(
+        "proof_invalid",
+        input.operationRef,
+        "possession proof does not prove the bound client key",
+      )
+    }
   }
 
   private requireTarget(record: CapabilityLeaseRecord, operationRef: string): CapabilityTargetBinding {
