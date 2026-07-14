@@ -15,6 +15,12 @@
       "disposition": "retain-contract",
       "dispatch": false
     },
+    "docs/sol/2026-07-14-node-pnpm-vite-plus-vp0-baseline.md": {
+      "class": "receipt",
+      "owner": "Sol runtime and toolchain conversion",
+      "disposition": "retain-evidence",
+      "dispatch": false
+    },
     "docs/sol/2026-07-13-fc4-hybrid-client-acceptance-receipt.md": {
       "class": "receipt",
       "owner": "Sol Fleet cutover",

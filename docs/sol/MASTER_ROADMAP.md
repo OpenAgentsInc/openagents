@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-14
-- Revision: 112
+- Revision: 113
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: active bounded Node/pnpm/Vite Plus cutover under #8777; the
   AssuranceSpec distribution program remains complete and no product-expansion
@@ -638,7 +638,8 @@ At this snapshot:
 6. RC9 remains unpublished. Conditional public-language, telemetry, release,
    concurrency, registry, and product-successor gates remain unchanged.
 7. Full cutover is active under epic #8777. Claim VP-0 #8794 first; after its
-   freeze/ledger, VP-1 #8795 and VP-2 #8796 may proceed on disjoint claims.
+   [freeze/ledger receipt](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md),
+   VP-1 #8795 and VP-2 #8796 may proceed on disjoint claims.
    Then execute VP-3 #8797, atomic VP-4 #8798 (including #8772–#8774), VP-5
    #8799, and VP-6 #8800 in order.
 

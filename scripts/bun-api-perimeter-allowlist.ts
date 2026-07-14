@@ -118,6 +118,7 @@ export const bunApiGrandfathered = [
   { path: "apps/pylon/src/dev-loop.ts", categories: ["bun-global"] },
   { path: "apps/pylon/src/fleet-run-live-smoke.ts", categories: ["bun-global"] },
   { path: "apps/pylon/src/forge-verification-runner.ts", categories: ["bun-global"] },
+  { path: "apps/pylon/src/harness-mcp-server.ts", categories: ["bun-global"] },
   { path: "apps/pylon/src/index.ts", categories: ["bun-global", "bun-import"] },
   { path: "apps/pylon/src/khala-mcp.ts", categories: ["bun-global"] },
   { path: "apps/pylon/src/labor-market.ts", categories: ["bun-global"] },

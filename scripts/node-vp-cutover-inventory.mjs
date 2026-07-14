@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import { basename, dirname, relative, resolve, sep } from "node:path"
+import { basename, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 import { spawnSync } from "node:child_process"
 
@@ -38,15 +38,26 @@ const CONTENT_RULES = [
   {
     id: "money-authority",
     pattern:
-      /\b(?:payments?|wallets?|treasury|billing|credits?|payouts?|settlements?|invoices?|lightning)\b/gi,
+      /\b(?:payments?|wallets?|treasury|billing|payouts?|invoices?|lightning)\b/gi,
   },
   {
     id: "money-spark-authority",
     pattern: /\b(?:SparkWallet|sparkWallet|spark-bun-storage|@buildonspark)\b/g,
   },
+  {
+    id: "money-rail-dependency",
+    pattern: /(?:@moneydevkit\/|@breeztech\/breez-sdk-spark|\bstripe\b|\brevenuecat\b)/gi,
+  },
+  {
+    id: "money-secret-binding",
+    pattern: /\b(?:MDK|SPARK|STRIPE|REVENUECAT|L402)_[A-Z0-9_]+\b/g,
+  },
+  {
+    id: "money-positive-mode",
+    pattern:
+      /\bpaymentMode\s*[:=]\s*["'](?:paid|metered|buyer_funded)["']|\bpayoutClaimAllowed\s*[:=]\s*true\b|\bsettlementState\s*[:=]\s*["'](?:pending|recorded|settled)["']/gi,
+  },
 ]
-
-const TEXT_SIZE_LIMIT = 4 * 1024 * 1024
 
 const normalizePath = (path) => path.split(sep).join("/")
 
@@ -59,13 +70,15 @@ const isHistoricalPath = (path) =>
   path.startsWith("docs/transcripts/") ||
   path.startsWith("docs/fable/") ||
   path.startsWith("docs/research/") ||
-  path.includes("/fixtures/") ||
-  path.includes("/__fixtures__/") ||
+  path.includes("/receipts/") ||
+  /(?:^|\/)[^/]*receipt[^/]*\.md$/i.test(path) ||
   /(?:^|\/)archive(?:s|d)?\//.test(path)
 
 const isTestPath = (path) =>
   /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path) ||
   path.includes("/__tests__/") ||
+  path.includes("/fixtures/") ||
+  path.includes("/__fixtures__/") ||
   path.startsWith("tests/") ||
   path.includes("/tests/")
 
@@ -85,13 +98,19 @@ const isReleaseOrImagePath = (path) =>
   /(?:^|\/)(?:cloudrun|container|image)(?:\/|\.|-)/i.test(path)
 
 const isPaymentNamedPath = (path) =>
-  /(?:^|\/)(?:payment|payments|wallet|wallets|treasury|billing|credit|credits|payout|payouts|settlement|settlements|invoice|invoices|lightning|mdk-tips-buffer|mdk-treasury|nip90|labor-market)(?:\/|\.|-)/i.test(
+  /(?:^|[\/_.-])(?:payment|payments|wallet|wallets|treasury|billing|credit|credits|payout|payouts|settlement|settlements|invoice|invoices|lightning|mdk-tips-buffer|mdk-treasury|nip90|labor-market)(?:[\/_.-]|$)/i.test(
     path,
   ) || path.includes("spark-bun-storage")
 
-const isMigrationPath = (path) =>
-  /(?:^|\/)(?:migrations?|schema)(?:\/|\.|-)/i.test(path) ||
+const isAppliedMigrationPath = (path) =>
+  path.startsWith("migrations/") || path.includes("/migrations/")
+
+const isMoneyEvidencePath = (path) =>
+  isAppliedMigrationPath(path) ||
   /(?:^|\/)backfill-(?:billing|treasury|token-ledger)\./i.test(path)
+
+const isNonEconomicMoneyFalsePositive = (path) =>
+  /(?:^|\/)(?:ercot|energy|power-grid|grid-operations)(?:\/|\.|-)/i.test(path)
 
 const isDeprecatedClientPath = (path) =>
   path.startsWith("clients/khala-code-desktop/") ||
@@ -107,6 +126,35 @@ const isAuthoritativeDocPath = (path) =>
   path === "docs/DEPLOYMENT.md" ||
   /(?:^|\/)(?:AGENTS|INVARIANTS|README)\.md$/.test(path)
 
+const isActiveCodeOrConfigPath = (path) =>
+  /^(?:apps|packages|clients|crates|scripts|fixtures|specs)\//.test(path) ||
+  path === "package.json" ||
+  path.endsWith(".json") ||
+  path.endsWith(".toml") ||
+  path.endsWith(".yaml") ||
+  path.endsWith(".yml") ||
+  /(?:^|\/)(?:Dockerfile|Containerfile)/.test(path)
+
+const shouldApplyContentRule = (rule, path, line) => {
+  if (!rule.startsWith("money-")) return true
+  if (rule === "money-authority") {
+    if (path.startsWith("docs/promises/") || isPaymentNamedPath(path)) return true
+    if (!isActiveCodeOrConfigPath(path)) return false
+    return /\b(?:import|export|from|require|route|router|endpoint|binding|service|repository|store|handler|schema|table|queue|cron)\b/i.test(line)
+  }
+  if (rule === "money-rail-dependency") {
+    if (basename(path) === "package.json" || basename(path).endsWith(".lock")) return true
+    return isActiveCodeOrConfigPath(path) && /\b(?:import|from|require|dependency|package|binding|service)\b/i.test(line)
+  }
+  if (rule === "money-secret-binding") {
+    return isActiveCodeOrConfigPath(path) && !path.endsWith(".md")
+  }
+  if (rule === "money-positive-mode" || rule === "money-negative-contract") {
+    return isActiveCodeOrConfigPath(path) && !path.endsWith(".md")
+  }
+  return isActiveCodeOrConfigPath(path) || path.startsWith("docs/promises/")
+}
+
 export const classifyFinding = ({ category, path }) => {
   if (category === "historical-transcript-archive") {
     return { phase: "historical", disposition: "retain-read-only" }
@@ -120,8 +168,22 @@ export const classifyFinding = ({ category, path }) => {
     return { phase: "VP-1", disposition: "retain-negative-contract" }
   }
 
-  if (category === "money-authority" || category === "money-spark-authority") {
-    if (isMigrationPath(path)) {
+  if (category === "migration-history") {
+    return { phase: "VP-1", disposition: "retain-immutable-migration" }
+  }
+
+  if (
+    category === "money-authority" ||
+    category === "money-spark-authority" ||
+    category === "money-rail-dependency" ||
+    category === "money-secret-binding" ||
+    category === "money-positive-mode" ||
+    category === "money-path-surface"
+  ) {
+    if (isNonEconomicMoneyFalsePositive(path)) {
+      return { phase: "false-positive", disposition: "non-economic-vocabulary" }
+    }
+    if (isMoneyEvidencePath(path)) {
       return { phase: "VP-1", disposition: "retain-read-only-evidence" }
     }
     if (isAuthoritativeDocPath(path)) {
@@ -131,10 +193,16 @@ export const classifyFinding = ({ category, path }) => {
   }
 
   if (category === "runtime-image") {
+    if (isPaymentNamedPath(path)) {
+      return { phase: "VP-1", disposition: "decommission-delete" }
+    }
     return { phase: "VP-5", disposition: "convert-runtime-image" }
   }
 
   if (category === "release-surface") {
+    if (isPaymentNamedPath(path)) {
+      return { phase: "VP-1", disposition: "decommission-delete" }
+    }
     return { phase: "VP-5", disposition: "stabilize-release-path" }
   }
 
@@ -142,7 +210,7 @@ export const classifyFinding = ({ category, path }) => {
     return { phase: "VP-4", disposition: "replace-hook-authority" }
   }
 
-  if (category === "bun-manifest") {
+  if (category === "bun-manifest" || category === "bun-package-authority") {
     return { phase: "VP-4", disposition: "replace-workspace-authority" }
   }
 
@@ -193,7 +261,7 @@ const git = (root, args) => {
 }
 
 const trackedPaths = (root) =>
-  git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
+  git(root, ["ls-files", "-z", "--cached"])
     .split("\0")
     .filter(Boolean)
     .map(normalizePath)
@@ -239,7 +307,7 @@ const serializeGroups = (groups) =>
 export const collectInventory = (root = process.cwd()) => {
   const absoluteRoot = resolve(root)
   const groups = new Map()
-  const skipped = { binary: 0, oversized: 0, selfGenerated: 0 }
+  const skipped = { binary: 0, selfGenerated: 0, transcriptFiles: 0 }
 
   addFinding(groups, {
     path: "docs/transcripts/",
@@ -248,8 +316,12 @@ export const collectInventory = (root = process.cwd()) => {
   })
 
   for (const path of trackedPaths(absoluteRoot)) {
-    if (SELF_EXCLUDED_PATHS.has(path) || path.startsWith("docs/transcripts/")) {
+    if (SELF_EXCLUDED_PATHS.has(path)) {
       skipped.selfGenerated += 1
+      continue
+    }
+    if (path.startsWith("docs/transcripts/")) {
+      skipped.transcriptFiles += 1
       continue
     }
 
@@ -258,6 +330,21 @@ export const collectInventory = (root = process.cwd()) => {
         path,
         category: "bun-manifest",
         signature: signatureFor(`bun-manifest:${path}`),
+      })
+    }
+    if (isAppliedMigrationPath(path)) {
+      const migrationBytes = readFileSync(resolve(absoluteRoot, path))
+      addFinding(groups, {
+        path,
+        category: "migration-history",
+        signature: signatureFor(migrationBytes),
+      })
+    }
+    if (isPaymentNamedPath(path)) {
+      addFinding(groups, {
+        path,
+        category: "money-path-surface",
+        signature: signatureFor(`money-path:${path}`),
       })
     }
     if (/^(?:.*\/)?\.githooks\//.test(path) || path.startsWith(".githooks/")) {
@@ -285,13 +372,42 @@ export const collectInventory = (root = process.cwd()) => {
     const absolutePath = resolve(absoluteRoot, path)
     if (!existsSync(absolutePath)) continue
     const bytes = readFileSync(absolutePath)
-    if (bytes.byteLength > TEXT_SIZE_LIMIT) {
-      skipped.oversized += 1
-      continue
-    }
     if (isLikelyBinary(bytes)) {
       skipped.binary += 1
       continue
+    }
+
+    if (basename(path) === "package.json") {
+      try {
+        const manifest = JSON.parse(bytes.toString("utf8"))
+        const dependencyBlocks = [
+          manifest.dependencies,
+          manifest.devDependencies,
+          manifest.optionalDependencies,
+          manifest.peerDependencies,
+        ].filter(Boolean)
+        const bunAuthorities = []
+        if (typeof manifest.packageManager === "string" && manifest.packageManager.startsWith("bun@")) {
+          bunAuthorities.push(`packageManager:${manifest.packageManager}`)
+        }
+        if (manifest.engines && Object.hasOwn(manifest.engines, "bun")) {
+          bunAuthorities.push(`engines.bun:${manifest.engines.bun}`)
+        }
+        for (const dependencies of dependencyBlocks) {
+          for (const name of ["bun-types", "@types/bun"]) {
+            if (Object.hasOwn(dependencies, name)) bunAuthorities.push(`dependency:${name}`)
+          }
+        }
+        for (const authority of bunAuthorities) {
+          addFinding(groups, {
+            path,
+            category: "bun-package-authority",
+            signature: signatureFor(authority),
+          })
+        }
+      } catch (error) {
+        throw new Error(`invalid package manifest ${path}: ${error instanceof Error ? error.message : String(error)}`)
+      }
     }
 
     const lines = bytes.toString("utf8").split(/\r?\n/)
@@ -299,6 +415,7 @@ export const collectInventory = (root = process.cwd()) => {
       const normalized = normalizeLine(line)
       if (!normalized) continue
       for (const rule of CONTENT_RULES) {
+        if (!shouldApplyContentRule(rule.id, path, line)) continue
         rule.pattern.lastIndex = 0
         const matches = [...line.matchAll(rule.pattern)]
         for (let index = 0; index < matches.length; index += 1) {
@@ -325,7 +442,7 @@ export const collectInventory = (root = process.cwd()) => {
     schema: INVENTORY_SCHEMA,
     scannerVersion: SCANNER_VERSION,
     coverage: {
-      trackedText: "all Git-tracked and non-ignored text files up to 4 MiB",
+      trackedText: "all Git-tracked text files; binary files are counted and skipped",
       transcriptArchive: "collapsed to one historical read-only entry",
       exclusions: [...SELF_EXCLUDED_PATHS].sort(),
       skipped,
@@ -372,6 +489,21 @@ export const compareWithBaseline = (inventory, baseline) => {
           `GROWTH ${entry.path} [${entry.category}] signature ${signature.slice(0, 12)} ${previousCount} -> ${count}`,
         )
       }
+    }
+  }
+
+  const currentByKey = new Map(
+    inventory.entries.map((entry) => [findingKey(entry), entry]),
+  )
+  for (const previous of baseline.entries ?? []) {
+    if (previous.category !== "migration-history") continue
+    const current = currentByKey.get(findingKey(previous))
+    if (!current) {
+      errors.push(`MIGRATION_REMOVED ${previous.path}`)
+      continue
+    }
+    if (JSON.stringify(current.signatures) !== JSON.stringify(previous.signatures)) {
+      errors.push(`MIGRATION_CHANGED ${previous.path}`)
     }
   }
   return errors

@@ -306,6 +306,12 @@ Docker bases, `AGENTS.md`, and invariant ledgers.
 
 ### VP-0 — freeze, inventory, and choose exact versions ([#8794](https://github.com/OpenAgentsInc/openagents/issues/8794))
 
+Implementation evidence: the
+[`VP-0 baseline receipt`](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md)
+records the deterministic 37,673-match inventory, exact destination pins,
+clean-source measurements, red parity prerequisites, claim ledger, and
+temporary no-growth gate. It changes no runtime authority.
+
 - Freeze new Bun APIs, Bun-only packages, payment work, and new direct
   Vite/Vitest/Oxc/tsdown configuration.
 - Refresh the Bun perimeter by category: runtime, test, script, package

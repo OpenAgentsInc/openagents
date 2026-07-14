@@ -12,6 +12,7 @@ export interface CheckTarget {
 export const rootTestTargets: readonly CheckTarget[] = [
   { name: "workspace-check", command: ["bun", "test", "scripts/check-workspace.test.ts"] },
   { name: "lint-baseline", command: ["bun", "test", "scripts/lint-baseline.test.ts"] },
+  { name: "node-vp-inventory", command: ["node", "--test", "scripts/node-vp-cutover-inventory.test.mjs"] },
   { name: "sol-docs", command: ["bun", "test", "scripts/check-sol-docs.test.ts"] },
   { name: "qa-pre-push-smoke", command: ["bun", "test", "scripts/qa-pre-push-smoke.test.ts"] },
   { name: "qa-async-gce-trigger", command: ["bun", "test", "scripts/qa-async-gce-trigger.test.ts"] },
@@ -37,6 +38,7 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   },
   { name: "sol-docs", command: ["bun", "run", "check:sol-docs"] },
   { name: "sol-doc-tests", command: ["bun", "run", "test:sol-docs"] },
+  { name: "node-vp-freeze", command: ["node", "scripts/node-vp-cutover-inventory.mjs", "--check"] },
 ]
 
 export const completionTargets: readonly CheckTarget[] = [

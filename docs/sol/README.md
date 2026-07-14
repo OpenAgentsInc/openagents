@@ -56,6 +56,10 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   — owner-selected Node/pnpm/Vite Plus destination, T3-style migration order,
   proof gates, non-MVP payment decommission/deletion contract, and the bounded
   live issue program. Dispatch still requires a valid issue claim.
+- [`2026-07-14-node-pnpm-vite-plus-vp0-baseline.md`](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md)
+  — reproducible classified cutover inventory, selected destination pins,
+  clean-source performance/failure baseline, and VP-1 through VP-6 claim
+  ledger. It is evidence, not a current dispatch queue.
 
 ## Evidence and historical baselines
 

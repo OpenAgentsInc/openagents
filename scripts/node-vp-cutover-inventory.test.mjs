@@ -36,6 +36,18 @@ test("classifies every cutover family into the owning phase", () => {
   assert.equal(classifyFinding({ category: "direct-tool", path: "package.json" }).phase, "VP-4")
   assert.equal(classifyFinding({ category: "runtime-image", path: "apps/api/Dockerfile" }).phase, "VP-5")
   assert.equal(
+    classifyFinding({ category: "runtime-image", path: "apps/openagents.com/services/mdk-treasury/Dockerfile" }).phase,
+    "VP-1",
+  )
+  assert.equal(
+    classifyFinding({ category: "bun-api", path: "apps/api/fixtures/server.ts" }).phase,
+    "VP-3",
+  )
+  assert.equal(
+    classifyFinding({ category: "bun-command", path: "docs/sol/receipts/2026-07-14-toolchain-receipt.md" }).phase,
+    "historical",
+  )
+  assert.equal(
     classifyFinding({ category: "bun-api", path: "clients/khala-code-desktop/src/bun/index.ts" }).phase,
     "VP-6",
   )
@@ -61,7 +73,10 @@ test("inventory is complete, deterministic, and classified", () => {
     write("apps/api/src/payment.ts", 'export const wallet = "wallet"\n')
     write("apps/api/migrations/0001_payment.sql", "CREATE TABLE payment_receipts(id TEXT);\n")
     write("apps/api/Dockerfile", "FROM oven/bun:1\n")
-    write("package.json", '{"scripts":{"test":"vitest"},"packageManager":"bun@1.3.11"}\n')
+    write(
+      "package.json",
+      '{"scripts":{"test":"vitest"},"packageManager":"bun@1.3.11","engines":{"bun":">=1.3"},"devDependencies":{"bun-types":"1.3.11"}}\n',
+    )
     write("bun.lock", "lockfileVersion = 1\n")
     spawnSync("git", ["add", "."], { cwd: root })
 
@@ -76,6 +91,11 @@ test("inventory is complete, deterministic, and classified", () => {
     assert.ok(first.entries.some((entry) => entry.phase === "VP-3"))
     assert.ok(first.entries.some((entry) => entry.phase === "VP-4"))
     assert.ok(first.entries.some((entry) => entry.phase === "VP-5"))
+    assert.equal(
+      first.entries.find((entry) => entry.category === "bun-package-authority")?.matches,
+      3,
+    )
+    assert.ok(first.entries.some((entry) => entry.category === "migration-history"))
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -85,6 +105,7 @@ test("freeze accepts burn-down and rejects new or duplicated authority", () => {
   const { root, write } = fixtureRepo()
   try {
     write("apps/api/src/server.ts", 'export const serve = Bun.serve({})\n')
+    write("apps/api/migrations/0001_payment.sql", "CREATE TABLE payment_receipts(id TEXT);\n")
     spawnSync("git", ["add", "."], { cwd: root })
     const baseline = createBaseline(collectInventory(root), "fixture-base")
     assert.deepEqual(compareWithBaseline(collectInventory(root), baseline), [])
@@ -100,6 +121,23 @@ test("freeze accepts burn-down and rejects new or duplicated authority", () => {
     spawnSync("git", ["add", "."], { cwd: root })
     const moved = compareWithBaseline(collectInventory(root), baseline)
     assert.ok(moved.some((error) => error.includes("apps/other/src/new.ts")))
+
+    write("apps/api/migrations/0001_payment.sql", "ALTER TABLE payment_receipts ADD amount INTEGER;\n")
+    const migrationChanged = compareWithBaseline(collectInventory(root), baseline)
+    assert.ok(migrationChanged.some((error) => error.startsWith("MIGRATION_CHANGED ")))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("untracked files do not alter a source-commit inventory", () => {
+  const { root, write } = fixtureRepo()
+  try {
+    write("apps/api/src/server.ts", "export const value = 1\n")
+    spawnSync("git", ["add", "."], { cwd: root })
+    const baseline = collectInventory(root)
+    write("apps/api/src/untracked.ts", 'export const surprise = Bun.file("x")\n')
+    assert.deepEqual(collectInventory(root), baseline)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
