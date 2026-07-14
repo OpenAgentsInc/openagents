@@ -10,7 +10,7 @@
     "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true,
     "types": [
-      "bun-types"
+      "node", "vite-plus-matchers"
     ]
   },
   "include": [

@@ -22,7 +22,7 @@ OWNER_USER_IDS="github:14167547"
 cd "$APP_DIR"
 
 echo "==> Building client + Cloud Run server bundle"
-bun run build:cloudrun
+pnpm run build:cloudrun
 
 if ! gcloud secrets describe "$SECRET_NAME" >/dev/null 2>&1; then
   echo "==> Creating Secret Manager secret $SECRET_NAME"

@@ -129,8 +129,8 @@ export type WorkspacePreparedWorktreeCacheRecord = {
 export const WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA =
   "openagents.pylon.prebuilt_baseline_cache.v1"
 export const DEFAULT_PREBUILT_BASELINE_REFRESH_CADENCE_SECONDS = 15 * 60
-export const WORKSPACE_PREBUILT_BASELINE_BUN_INSTALL_SETUP_REF =
-  "setup.pylon.prebuilt_baseline.bun_install_frozen_lockfile.v1"
+export const WORKSPACE_PREBUILT_BASELINE_PNPM_INSTALL_SETUP_REF =
+  "setup.pylon.prebuilt_baseline.pnpm_install_frozen_lockfile.v1"
 
 export type WorkspacePrebuiltBaselineSetupResult = {
   state: "completed" | "skipped"
@@ -1726,18 +1726,16 @@ export const defaultPrebuiltBaselineSetupRunner: WorkspacePrebuiltBaselineSetupR
     setupRef: "setup.pylon.prebuilt_baseline.no_supported_lockfile.v1",
   }
   if (!existsSync(join(workingDirectory, "package.json"))) return skipped
-  if (!existsSync(join(workingDirectory, "bun.lock")) && !existsSync(join(workingDirectory, "bun.lockb"))) {
-    return skipped
-  }
+  if (!existsSync(join(workingDirectory, "pnpm-lock.yaml"))) return skipped
   await runCheckedCommand(
-    ["bun", "install", "--frozen-lockfile"],
+    ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
     workingDirectory,
     "reason.workspace_prebuilt_baseline.setup_failed",
   )
   return {
     state: "completed",
-    setupRef: WORKSPACE_PREBUILT_BASELINE_BUN_INSTALL_SETUP_REF,
-    commandRef: "command.pylon.prebuilt_baseline.bun_install_frozen_lockfile",
+    setupRef: WORKSPACE_PREBUILT_BASELINE_PNPM_INSTALL_SETUP_REF,
+    commandRef: "command.pylon.prebuilt_baseline.pnpm_install_frozen_lockfile",
   }
 }
 

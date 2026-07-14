@@ -2,12 +2,8 @@
   "name": "@effect-native/render-rn",
   "version": "0.0.0-openagents.8568",
   "private": true,
-  "type": "module",
   "license": "MIT",
-  "effectNativeVendor": {
-    "repo": "OpenAgentsInc/effect-native",
-    "commit": "9d811394fb5c3ee7b56c974d6df85d06a1463006"
-  },
+  "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -30,5 +26,9 @@
     "react-native": {
       "optional": true
     }
+  },
+  "effectNativeVendor": {
+    "repo": "OpenAgentsInc/effect-native",
+    "commit": "9d811394fb5c3ee7b56c974d6df85d06a1463006"
   }
 }

@@ -7,23 +7,23 @@ cd "$repo_root"
 rm -f openagentsinc-pylon-*.tgz
 
 echo "== unit and runtime tests =="
-bun run test
+pnpm run test
 
 echo "== bootstrap/status/inventory/operator smokes =="
-PYLON_HOME="${TMPDIR:-/tmp}/pylon-release-gate-bootstrap" bun src/index.ts bootstrap --json >/tmp/pylon-release-bootstrap.json
-PYLON_HOME="${TMPDIR:-/tmp}/pylon-release-gate-status" bun src/index.ts status --json >/tmp/pylon-release-status.json
-bun src/index.ts inventory --json >/tmp/pylon-release-inventory.json
-PYLON_HOME="${TMPDIR:-/tmp}/pylon-release-gate-operator" bun src/index.ts operator snapshot --json >/tmp/pylon-release-operator.json
+PYLON_HOME="${TMPDIR:-/tmp}/pylon-release-gate-bootstrap" node --import tsx src/index.ts bootstrap --json >/tmp/pylon-release-bootstrap.json
+PYLON_HOME="${TMPDIR:-/tmp}/pylon-release-gate-status" node --import tsx src/index.ts status --json >/tmp/pylon-release-status.json
+node --import tsx src/index.ts inventory --json >/tmp/pylon-release-inventory.json
+PYLON_HOME="${TMPDIR:-/tmp}/pylon-release-gate-operator" node --import tsx src/index.ts operator snapshot --json >/tmp/pylon-release-operator.json
 
 echo "== headless node startup smoke =="
-bun run smoke:default-start
+pnpm run smoke:default-start
 
 echo "== package dry-run =="
-bun pm pack --dry-run >/tmp/pylon-release-pack.log
+pnpm pack --dry-run >/tmp/pylon-release-pack.log
 rm -f openagentsinc-pylon-*.tgz
 
 echo "== local package install smoke =="
-bun run smoke:install:local
+pnpm run smoke:install:local
 rm -f openagentsinc-pylon-*.tgz
 
 echo "release gate passed"

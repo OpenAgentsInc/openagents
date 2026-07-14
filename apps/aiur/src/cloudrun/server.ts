@@ -146,7 +146,7 @@ export const readShellHtml = async (clientDir: string): Promise<string> => {
 
   throw new Error(
     `Aiur Cloud Run server: no SPA shell found under ${clientDir}. ` +
-      'Run `bun run build:cloudrun` first.',
+      'Run `pnpm run build:cloudrun` first.',
   )
 }
 

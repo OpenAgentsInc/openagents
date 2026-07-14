@@ -74,7 +74,7 @@ red_alert() { # http detail
     echo "http:   $http"
     echo "detail: $detail"
     echo "action: investigate NOW. Likely classes (AAR 2026-06-25):"
-    echo "  - code shipped ahead of schema -> run: cd apps/openagents.com && bun run check:pending-migrations"
+    echo "  - code shipped ahead of schema -> run: pnpm --dir apps/openagents.com run check:pending-migrations"
     echo "    (if pending: cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote)"
     echo "  - a backing inference lane is 5xx -> check GET $BASE/models and lane health"
     echo "  - check recent deploys; the ONLY sanctioned deploy is deploy:safe"
@@ -154,7 +154,7 @@ case "$state" in
   down)
     if [ "$prev_health" != "down" ]; then
       red_alert "$http" "$detail"
-      echo "$(ts) RED-ALERT: Khala completions DOWN (http=$http, $detail). See ~/work/.khala-heartbeat/RED-ALERT.log + AAR docs/incidents/2026-06-25-khala-500-completions-outage-aar.md. Run \`cd apps/openagents.com && bun run check:pending-migrations\`." >> "$NEEDS_OWNER"
+      echo "$(ts) RED-ALERT: Khala completions DOWN (http=$http, $detail). See ~/work/.khala-heartbeat/RED-ALERT.log + AAR docs/incidents/2026-06-25-khala-500-completions-outage-aar.md. Run the pending-migrations check from the OpenAgents app." >> "$NEEDS_OWNER"
     fi
     echo "down" > "$STATE"; exit 1 ;;
   degraded)

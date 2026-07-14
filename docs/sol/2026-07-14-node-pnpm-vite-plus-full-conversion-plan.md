@@ -2,11 +2,9 @@
 
 - Class: contract
 - Date: 2026-07-14
-- Status: owner-authorized live issue program; VP-0 through VP-2 complete,
-  VP-3 is the next dependency gate
-- Dispatch: only through epic
-  [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777), its bounded
-  leaves below, and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
+- Status: implemented through VP-6; final publication and issue reconciliation
+  are recorded by the phase receipts
+- Dispatch: no; the epic and bounded leaves are closed evidence
 - Owner: Sol runtime and toolchain conversion
 - Source snapshot: OpenAgents `180e073e281b95b5ce3b7409f1d62c6865be2a70`;
   T3 Code `c1ec1915fc16f3dc1ec5d47d9a97f6210a574526`; Vite Plus
@@ -28,13 +26,13 @@ are subordinate implementation leaves, not a second program.
 | VP-0 | [#8794](https://github.com/OpenAgentsInc/openagents/issues/8794) | Freeze, inventory, baselines, pins, and claim ledger |
 | VP-1 | [#8795](https://github.com/OpenAgentsInc/openagents/issues/8795) | Complete: reconciled, archived, decommissioned, and deleted non-MVP money paths; owner wallet recovery is separate |
 | VP-2 | [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796) | Complete: Node-native retained runtime and public CLIs |
-| VP-3 | [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | Effect TSGo and Vite Plus test/typecheck parity |
-| VP-4 | [#8798](https://github.com/OpenAgentsInc/openagents/issues/8798) | Atomic pnpm/Vite Plus workspace-authority replacement |
-| VP-5 | [#8799](https://github.com/OpenAgentsInc/openagents/issues/8799) | Host/release stabilization and Node production images |
-| VP-6 | [#8800](https://github.com/OpenAgentsInc/openagents/issues/8800) | Bun excision, final matrix, and closure |
-| VP-4a / TC-1 | [#8772](https://github.com/OpenAgentsInc/openagents/issues/8772) | Retained and folded: canonical root verbs |
-| VP-3/4 / TC-2 | [#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) | Retained and folded: invariant-enforcing Oxlint rules |
-| VP-4b / TC-3 | [#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) | Retained and folded: formatter-only staged hook and gate gradient |
+| VP-3 | [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | Complete: Effect-aware typecheck and Vite Plus test parity |
+| VP-4 | [#8798](https://github.com/OpenAgentsInc/openagents/issues/8798) | Complete: atomic pnpm/Vite Plus workspace-authority replacement |
+| VP-5 | [#8799](https://github.com/OpenAgentsInc/openagents/issues/8799) | Complete: host/release stabilization and Node production image definitions |
+| VP-6 | [#8800](https://github.com/OpenAgentsInc/openagents/issues/8800) | Complete: supported Bun excision and final matrix |
+| VP-4a / TC-1 | [#8772](https://github.com/OpenAgentsInc/openagents/issues/8772) | Complete and folded: canonical root verbs |
+| VP-3/4 / TC-2 | [#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) | Complete and folded: invariant-enforcing Oxlint rules |
+| VP-4b / TC-3 | [#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) | Complete and folded: formatter-only staged hook and gate gradient |
 
 TC-4 [#8775](https://github.com/OpenAgentsInc/openagents/issues/8775) and
 TC-5 [#8776](https://github.com/OpenAgentsInc/openagents/issues/8776) remain

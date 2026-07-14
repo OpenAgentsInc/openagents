@@ -2,37 +2,36 @@
   "name": "@openagentsinc/khala-tools",
   "version": "0.1.0",
   "private": false,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "files": [
     "src",
     "README.md"
   ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test",
+    "test": "vp test --run",
     "typecheck:tsgo": "tsgo -p tsconfig.json --noEmit",
     "typecheck:tsgo:patch": "effect-tsgo patch"
   },
   "dependencies": {
-    "@openagentsinc/runtime-platform": "workspace:*",
     "@huggingface/transformers": "3.7.5",
     "@nationaldesignstudio/rampart": "0.1.2",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/pipeline-signals": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:",
     "onnxruntime-node": "1.21.0"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
-    "typescript": "catalog:",
     "@effect/tsgo": "0.13.2",
-    "@typescript/native-preview": "7.0.0-dev.20260604.1"
+    "@typescript/native-preview": "7.0.0-dev.20260604.1",
+    "typescript": "catalog:"
   }
 }

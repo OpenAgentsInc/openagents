@@ -14,12 +14,6 @@ export default defineConfig({
         find: '~',
         replacement: path.resolve(__dirname, './src'),
       },
-      {
-        // Server-chain modules may import the Bun builtin, which Vite cannot
-        // resolve in the vitest environment. See src/test/bun-builtin-stub.ts.
-        find: /^bun$/,
-        replacement: path.resolve(__dirname, './src/test/bun-builtin-stub.ts'),
-      },
     ],
   },
   test: {

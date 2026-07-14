@@ -75,14 +75,14 @@ describe('deploy:safe package command', () => {
 
   test('keeps migration-first zero-pending build upload ordering', () => {
     const expectedOrder = [
-      'cd ../.. && bun run check:deploy-from-main',
-      '&& bun run check:deploy &&',
+      'cd ../.. && pnpm run check:deploy-from-main',
+      '&& pnpm run check:deploy &&',
       '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot-staging --env staging --remote',
-      '&& cd ../.. && bun run build:web',
+      '&& cd ../.. && pnpm run build:web',
       '&& cd workers/api && wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
-      '&& cd ../.. && bun run predeploy:parallel-dispatch-smoke',
+      '&& cd ../.. && pnpm run predeploy:parallel-dispatch-smoke',
       '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote',
-      '&& cd ../.. && bun run check:pending-migrations',
+      '&& cd ../.. && pnpm run check:pending-migrations',
       '&& cd workers/api && wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
     ]
 
@@ -103,7 +103,7 @@ describe('deploy:safe package command', () => {
     const stagingUpload = deploySafe.indexOf(
       'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
     )
-    const smoke = deploySafe.indexOf('bun run predeploy:parallel-dispatch-smoke')
+    const smoke = deploySafe.indexOf('pnpm run predeploy:parallel-dispatch-smoke')
     const productionMigration = deploySafe.indexOf(
       'wrangler d1 migrations apply openagents-autopilot --remote',
     )
@@ -122,7 +122,7 @@ describe('deploy:safe package command', () => {
       'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
     )
     const seamSmoke = deploySafe.indexOf(
-      'bun run predeploy:khala-sync-live-seam-smoke',
+      'pnpm run predeploy:khala-sync-live-seam-smoke',
     )
     const productionMigration = deploySafe.indexOf(
       'wrangler d1 migrations apply openagents-autopilot --remote',

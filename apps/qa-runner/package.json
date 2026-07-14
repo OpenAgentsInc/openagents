@@ -2,33 +2,43 @@
   "name": "@openagentsinc/qa-runner",
   "version": "0.1.0",
   "private": false,
-  "type": "module",
   "description": "OSS, local-first, runtime-agnostic autonomous-QA runner. Drive any web target with a bring-your-own OpenAI-compatible model (no login), record a playable video + Playwright trace + screenshots, and distill the session into a committed e2e test. Khala / OpenAgents Cloud / receipts are optional add-ons, not dependencies of the core local run.",
   "keywords": [
-    "qa",
-    "e2e",
-    "testing",
-    "playwright",
-    "computer-use",
     "agent",
-    "openai-compatible",
     "bring-your-own-model",
+    "computer-use",
+    "e2e",
     "local-first",
-    "oss"
+    "openai-compatible",
+    "oss",
+    "playwright",
+    "qa",
+    "testing"
   ],
-  "license": "MIT",
   "homepage": "https://github.com/OpenAgentsInc/openagents/tree/main/apps/qa-runner",
+  "bugs": {
+    "url": "https://github.com/OpenAgentsInc/openagents/issues"
+  },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/OpenAgentsInc/openagents.git",
     "directory": "apps/qa-runner"
   },
-  "bugs": {
-    "url": "https://github.com/OpenAgentsInc/openagents/issues"
-  },
   "bin": {
     "qa": "./dist/qa.js"
   },
+  "files": [
+    "dist",
+    "generated",
+    "src",
+    "scripts/build.ts",
+    "README.md",
+    "LICENSE",
+    "docs/oss-quickstart.md",
+    "docs/target-adapter-onboarding.md"
+  ],
+  "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./qa": "./dist/qa.js",
@@ -57,52 +67,41 @@
     "./atif-emit": "./src/atif-emit.ts",
     "./publish-trace": "./src/publish-trace.ts",
     "./trace-fixture": "./src/trace-fixture.ts",
-
     "./codex-to-atif": "./src/codex-to-atif.ts"
   },
-  "files": [
-    "dist",
-    "generated",
-    "src",
-    "scripts/build.ts",
-    "README.md",
-    "LICENSE",
-    "docs/oss-quickstart.md",
-    "docs/target-adapter-onboarding.md"
-  ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "bun run scripts/build.ts",
-    "prepack": "bun run scripts/build.ts",
-    "qa": "bun run src/byo.ts",
+    "build": "node --import tsx scripts/build.ts",
+    "prepack": "node --import tsx scripts/build.ts",
+    "qa": "node --import tsx src/byo.ts",
     "qa:dist": "node dist/qa.js",
-    "serve": "bun run src/daemon.ts",
-    "api": "bun run src/daemon.ts --api",
-    "run-once": "bun run src/run-once.ts",
-    "run-targets": "bun run src/run-targets.ts",
-    "terminal-once": "bun run src/terminal-once.ts",
-    "khala-sync-once": "bun run src/khala-sync-once.ts",
-    "demo:byo": "bun run src/byo.ts run --fake-model --url https://example.test --out ./runs/byo-fake",
-    "demo:login": "bun run src/demo-login.ts",
-    "demo:khala": "bun run src/demo-khala.ts",
-    "compose": "bun run src/compose/cli.ts",
-    "evals": "bun run src/evals-run.ts",
-    "pr-comment": "bun run src/pr-comment-run.ts",
-    "trace:fixture": "bun run src/trace-fixture.ts",
-    "test": "bun test src/assurance-swarm.test.ts src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-sync-transport-backend.test.ts src/mobile-nightly.test.ts src/container-backend.test.ts src/native-desktop-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/discovery-regression-lifecycle.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts src/target-adapter.test.ts src/qs7-rhys-sales-motion.test.ts src/cf-browser-backend.test.ts src/cf-browser-video.test.ts src/cf-sandbox-backend.test.ts src/atif.test.ts src/atif-html.test.ts src/codex-to-atif.test.ts src/redaction.test.ts src/claude-code-to-atif.test.ts src/publish-trace.test.ts src/trace-fixture.test.ts src/publish-trace-e2e.verify.test.ts",
+    "serve": "node --import tsx src/daemon.ts",
+    "api": "node --import tsx src/daemon.ts --api",
+    "run-once": "node --import tsx src/run-once.ts",
+    "run-targets": "node --import tsx src/run-targets.ts",
+    "terminal-once": "node --import tsx src/terminal-once.ts",
+    "khala-sync-once": "node --import tsx src/khala-sync-once.ts",
+    "demo:byo": "node --import tsx src/byo.ts run --fake-model --url https://example.test --out ./runs/byo-fake",
+    "demo:login": "node --import tsx src/demo-login.ts",
+    "demo:khala": "node --import tsx src/demo-khala.ts",
+    "compose": "node --import tsx src/compose/cli.ts",
+    "evals": "node --import tsx src/evals-run.ts",
+    "pr-comment": "node --import tsx src/pr-comment-run.ts",
+    "trace:fixture": "node --import tsx src/trace-fixture.ts",
+    "test": "vp test --run src/assurance-swarm.test.ts src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-sync-transport-backend.test.ts src/mobile-nightly.test.ts src/container-backend.test.ts src/native-desktop-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/discovery-regression-lifecycle.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts src/target-adapter.test.ts src/qs7-rhys-sales-motion.test.ts src/cf-browser-backend.test.ts src/cf-browser-video.test.ts src/cf-sandbox-backend.test.ts src/atif.test.ts src/atif-html.test.ts src/codex-to-atif.test.ts src/redaction.test.ts src/claude-code-to-atif.test.ts src/publish-trace.test.ts src/trace-fixture.test.ts src/publish-trace-e2e.verify.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "playwright:install": "playwright install --with-deps chromium",
-    "atif:emit": "bun run src/atif-emit.ts",
-    "codex:to-atif": "bun run src/codex-to-atif.ts"
+    "atif:emit": "node --import tsx src/atif-emit.ts",
+    "codex:to-atif": "node --import tsx src/codex-to-atif.ts"
   },
   "dependencies": {
-    "@openagentsinc/runtime-platform": "workspace:*",
-    "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/assurance-spec": "workspace:*",
+    "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/khala-qa-harness": "workspace:*",
     "@openagentsinc/qa-swarm-contract": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:",
     "playwright": "^1.61.0"
   },
@@ -110,7 +109,6 @@
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/probe-runtime": "workspace:*",
-    "bun-types": "^1.3.14",
     "typescript": "catalog:"
   }
 }

@@ -12,7 +12,7 @@ TTS_VOICE="${OPENAGENTS_AUDIO_TTS_VOICE:-en-US-Chirp3-HD-Sulafat}"
 SERVICE_ACCOUNT="${OPENAGENTS_AUDIO_SERVICE_ACCOUNT:-oa-audio-retention@${PROJECT}.iam.gserviceaccount.com}"
 SQL_INSTANCE="${OPENAGENTS_AUDIO_CLOUD_SQL_INSTANCE:-${PROJECT}:${REGION}:khala-sync-pg}"
 cd "$APP_DIR"
-bun run build:cloudrun
+pnpm run build:cloudrun
 if ! gcloud secrets describe "$SECRET" --project "$PROJECT" >/dev/null 2>&1; then
   openssl rand -hex 32 | tr -d '\n' | gcloud secrets create "$SECRET" --project "$PROJECT" --replication-policy=automatic --data-file=-
 fi

@@ -11,7 +11,7 @@
       "@/*": ["./src/*"],
       "~/*": ["./src/*"]
     },
-    "types": ["bun-types", "vite/client"]
+    "types": ["node", "vite-plus-matchers", "vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
 }

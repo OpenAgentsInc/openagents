@@ -110,7 +110,7 @@ describe("Forge UI Worker", () => {
     expect(html).toContain("queue.forge.su7.nextActualPromotion")
     expect(html).toContain("promotion.forge.su7.su4-blueprint-gated")
     expect(html).toContain("mirror.github.openagents.main.su7")
-    expect(html).toContain("bun run --cwd apps/openagents.com check:deploy")
+    expect(html).toContain("pnpm --dir apps/openagents.com run check:deploy")
     expect(html).toContain("GitHub stays downstream visibility only")
   })
 

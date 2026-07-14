@@ -2,6 +2,10 @@
   "name": "@openagentsinc/arbiter-effect",
   "version": "0.1.0",
   "private": false,
+  "files": [
+    "src",
+    "README.md"
+  ],
   "type": "module",
   "sideEffects": [
     "./src/foldkit-window-shim.ts"
@@ -12,15 +16,11 @@
     "./foldkit": "./src/foldkit.ts",
     "./qa-swarm": "./src/qa-swarm.ts"
   },
-  "files": [
-    "src",
-    "README.md"
-  ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "bun test",
+    "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -28,7 +28,6 @@
     "foldkit": "^0.102.1"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

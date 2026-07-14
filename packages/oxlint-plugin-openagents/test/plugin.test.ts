@@ -1,29 +1,25 @@
 import { spawnSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { afterEach, describe, expect, test } from "vite-plus/test"
 
 const fixtureRoots: string[] = []
-const pluginPath = resolve(import.meta.dirname, "../src/index.ts")
+const fixtureBase = resolve(import.meta.dirname, "../test-tmp")
 
 afterEach(() => {
   for (const root of fixtureRoots.splice(0)) rmSync(root, { force: true, recursive: true })
+  rmSync(fixtureBase, { force: true, recursive: true })
 })
 
 const runRule = (rule: string, filename: string, source: string) => {
-  const root = mkdtempSync(join(tmpdir(), "openagents-oxlint-"))
+  mkdirSync(fixtureBase, { recursive: true })
+  const root = mkdtempSync(join(fixtureBase, "fixture-"))
   fixtureRoots.push(root)
   const sourcePath = join(root, filename)
-  const configPath = join(root, ".oxlintrc.json")
   mkdirSync(dirname(sourcePath), { recursive: true })
   writeFileSync(sourcePath, source)
-  writeFileSync(configPath, JSON.stringify({
-    jsPlugins: [{ name: "openagents", specifier: pluginPath }],
-    rules: { [`openagents/${rule}`]: "error" },
-  }))
-  return spawnSync("vp", ["lint", "--config", configPath, sourcePath], {
-    cwd: resolve(import.meta.dirname, "../../.."),
+  return spawnSync("vp", ["lint", "--deny-warnings", sourcePath], {
+    cwd: root,
     encoding: "utf8",
   })
 }

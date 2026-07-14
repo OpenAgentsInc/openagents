@@ -2,10 +2,6 @@
   "name": "@openagentsinc/product-spec",
   "version": "0.1.0",
   "private": false,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "bin": {
     "product-spec": "./src/cli.ts"
   },
@@ -13,11 +9,15 @@
     "src",
     "README.md"
   ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "bun test",
+    "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -25,7 +25,6 @@
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

@@ -72,7 +72,7 @@ const result = await Runtime.build({
   // browser). Everything else — effect + the probe-runtime computer-use
   // surface — is inlined so no workspace/catalog resolution is needed.
   external: ["playwright"],
-  // @ts-expect-error — Bun's plugin type is structural; our minimal shape is fine.
+  // @ts-expect-error — the runtime adapter accepts this minimal structural plugin.
   plugins: [aliasProbeRuntimeToComputerUse],
 });
 
@@ -82,13 +82,11 @@ if (!result.success) {
   process.exit(1);
 }
 
-// Normalize the shebang. `src/byo.ts` starts with `#!/usr/bin/env bun` and bun
-// build emits its own `// @bun` marker; for a STANDALONE install we want a
-// single, portable node shebang so `node dist/qa.js` and the `bin` symlink both
-// work without bun present. Strip any leading shebang/marker lines, then prepend
-// exactly one node shebang.
+// Normalize the shebang for a standalone install. Strip any leading shebang,
+// then prepend exactly one portable Node shebang for both direct execution and
+// the package-manager-created `bin` symlink.
 const built = await Runtime.file(outFile).text();
-const withoutLeadingMarkers = built.replace(/^(#![^\n]*\n|\/\/ @bun\n)+/, "");
+const withoutLeadingMarkers = built.replace(/^#![^\n]*\n/, "");
 await Runtime.write(outFile, `#!/usr/bin/env node\n${withoutLeadingMarkers}`);
 
 chmodSync(outFile, 0o755);

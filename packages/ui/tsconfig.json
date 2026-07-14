@@ -5,7 +5,7 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     "noEmit": true,
-    "types": ["bun-types"]
+    "types": ["node", "vite-plus-matchers"]
   },
   "include": ["src/**/*", "test/**/*"]
 }

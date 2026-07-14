@@ -141,7 +141,7 @@ And a **committed e2e test** at `generated/<slug>.e2e.test.ts` (override with
 run in CI:
 
 ```sh
-TARGET_URL=http://localhost:3000 bun test ./generated/<slug>.e2e.test.ts
+TARGET_URL=http://localhost:3000 pnpm exec vitest run ./generated/<slug>.e2e.test.ts
 ```
 
 ---
@@ -150,10 +150,10 @@ TARGET_URL=http://localhost:3000 bun test ./generated/<slug>.e2e.test.ts
 
 ```yaml
 # .github/workflows/qa.yml (sketch)
-- run: bun install
-- run: bun run --cwd apps/qa-runner playwright:install
+- run: pnpm install --frozen-lockfile
+- run: pnpm --dir apps/qa-runner run playwright:install
 - run: |
-    bun run --cwd apps/qa-runner qa run \
+    pnpm --dir apps/qa-runner run qa -- run \
       --url "$DEV_URL" \
       --goal "verify the sign-in flow renders and stays on /login" \
       --out ./runs/ci
@@ -180,7 +180,7 @@ and pulls in further workspace packages, so it is **not** independently publishe
 
 We fix that by **bundling**, not by waiting on an extraction:
 
-- `bun run build` (`scripts/build.ts`) runs `Bun.build` on the BYO CLI
+- `pnpm run build` (`scripts/build.ts`) runs the Node runtime build adapter on the BYO CLI
   (`src/byo.ts`). It aliases `@openagentsinc/probe-runtime` to that package's
   `computer-use` entry (the only surface the BYO path reaches) and **inlines**
   it together with `effect` into a single self-contained `dist/qa.js`. Only

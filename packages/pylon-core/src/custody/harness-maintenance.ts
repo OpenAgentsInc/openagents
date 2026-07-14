@@ -221,7 +221,7 @@ export function harnessUpdateCommandForChannel(
     case "npm-global":
       return { executable: "npm", args: ["install", "-g", `${definition.npmPackageName}@latest`] }
     case "bun-global":
-      return { executable: "bun", args: ["install", "-g", `${definition.npmPackageName}@latest`] }
+      return { executable: "pnpm", args: ["add", "-g", `${definition.npmPackageName}@latest`] }
     case "pnpm-global":
       return { executable: "pnpm", args: ["add", "-g", `${definition.npmPackageName}@latest`] }
     case "homebrew":

@@ -2,22 +2,21 @@
   "name": "@openagentsinc/oa-queue-worker",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "CFG-7 (#8522): Cloud Run pump for the oa-infra Postgres JobQueue — leases jobs (FOR UPDATE SKIP LOCKED) and delivers them to the app's internal queue delivery route.",
+  "type": "module",
   "scripts": {
-    "test": "bun test src",
+    "test": "vp test --run src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build": "bun build src/main.ts --target=bun --outdir dist --entry-naming server.js",
-    "serve": "bun run src/main.ts",
+    "build": "vp pack src/main.ts --format esm --platform node --out-dir dist",
+    "serve": "node --import tsx src/main.ts",
     "deploy": "bash scripts/deploy-cloudrun.sh"
   },
   "dependencies": {
-    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/oa-infra": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

@@ -22,7 +22,7 @@ export const verifyDistribution = (repositoryRoot: string): Readonly<Record<stri
   const distribution = buildPublicTarballs(repositoryRoot, tarballs)
   const product = distribution.packages.find((entry) => entry.name === "@openagentsinc/product-spec")!
   const assurance = distribution.packages.find((entry) => entry.name === "@openagentsinc/assurance-spec")!
-  const effectSource = realpathSync(resolve(repositoryRoot, "node_modules/.bun/node_modules/effect"))
+  const effectSource = realpathSync(resolve(repositoryRoot, "node_modules/effect"))
   const effectPack = JSON.parse(run("npm", ["pack", "--json", "--pack-destination", tarballs], effectSource)) as Array<{ filename: string }>
   const effectFilename = effectPack[0]?.filename
   if (effectFilename === undefined) throw new Error("effect_pack_missing_filename")
@@ -41,7 +41,11 @@ export const verifyDistribution = (repositoryRoot: string): Readonly<Record<stri
     },
   }, null, 2)}\n`)
   cpSync(resolve(repositoryRoot, "packages/assurance-spec/starter-kit"), consumer, { recursive: true })
-  run("npm", ["install", "--ignore-scripts", "--offline"], consumer)
+  // The pinned Node runtime's bundled npm currently carries an `ini` release
+  // whose advisory engine range starts at Node 24.15. The package payload is
+  // compatible with 24.13; keep this offline consumer proof scoped to the
+  // tarballs rather than npm's own transitive engine metadata.
+  run("npm", ["install", "--engine-strict=false", "--ignore-scripts", "--offline"], consumer)
   const tsxLoader = resolve(repositoryRoot, "node_modules/tsx/dist/loader.mjs")
   const cli = resolve(consumer, "node_modules/@openagentsinc/assurance-spec/src/cli.ts")
   const ownedRunner = JSON.parse(run("node", [

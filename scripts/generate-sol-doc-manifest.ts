@@ -289,7 +289,7 @@ if (import.meta.main) {
   const path = resolve(root, SOL_DOCUMENT_MANIFEST_PATH)
   if (process.argv.includes("--check")) {
     if (!existsSync(path) || readFileSync(path, "utf8") !== output) {
-      console.error(`${SOL_DOCUMENT_MANIFEST_PATH} is stale; run bun run generate:sol-doc-manifest`)
+      console.error(`${SOL_DOCUMENT_MANIFEST_PATH} is stale; run pnpm run generate:sol-doc-manifest`)
       process.exit(1)
     }
     console.log(`check:sol-doc-manifest OK (${JSON.parse(output).documents.length} documents)`)

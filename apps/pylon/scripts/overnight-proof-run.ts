@@ -110,9 +110,9 @@ const COMPOSER_TASKS: Array<{
       `In the directory ${dir} (relative to the repository root), create stats.ts ` +
       `exporting mean(values: number[]): number and median(values: number[]): number, ` +
       `plus stats.test.ts covering both functions with vite-plus/test, including an ` +
-      `empty-input case. Run \`bun test ${dir}\` and make every test pass. ` +
+      `empty-input case. Run \`pnpm exec vp test --run ${dir}\` and make every test pass. ` +
       `Only create or modify files inside ${dir}.`,
-    verification: (dir) => ["bun", "test", dir],
+    verification: (dir) => ["pnpm", "exec", "vp", "test", "--run", dir],
   },
   {
     taskRef: "task.m10.timer_doc",
@@ -121,9 +121,9 @@ const COMPOSER_TASKS: Array<{
       `documenting a small command-line countdown timer tool with exactly three ` +
       `level-2 sections titled "Purpose", "Usage", and "Limits", plus notes.test.ts ` +
       `that reads notes.md with vite-plus/test and asserts all three section headings are ` +
-      `present. Run \`bun test ${dir}\` and make every test pass. ` +
+      `present. Run \`pnpm exec vp test --run ${dir}\` and make every test pass. ` +
       `Only create or modify files inside ${dir}.`,
-    verification: (dir) => ["bun", "test", dir],
+    verification: (dir) => ["pnpm", "exec", "vp", "test", "--run", dir],
   },
   {
     taskRef: "task.m10.slug_util",
@@ -132,8 +132,8 @@ const COMPOSER_TASKS: Array<{
       `exporting slugify(input: string): string that lowercases, trims, collapses ` +
       `whitespace to single hyphens, and strips characters outside [a-z0-9-], plus ` +
       `slug.test.ts covering at least four cases with vite-plus/test. Run ` +
-      `\`bun test ${dir}\` and make every test pass. Only create or modify files inside ${dir}.`,
-    verification: (dir) => ["bun", "test", dir],
+      `\`pnpm exec vp test --run ${dir}\` and make every test pass. Only create or modify files inside ${dir}.`,
+    verification: (dir) => ["pnpm", "exec", "vp", "test", "--run", dir],
   },
 ]
 

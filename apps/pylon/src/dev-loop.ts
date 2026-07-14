@@ -383,7 +383,7 @@ function inferCheckCommands(summary: PylonDevChangeSummary): PylonDevCommandSpec
   return [
     {
       cwd: packageRoot(),
-      argv: ["bun", "test", ...tests],
+      argv: ["pnpm", "exec", "vp", "test", "--run", ...tests],
       reasonRef: "check.pylon.focused_tests",
     },
   ]

@@ -126,7 +126,7 @@ WORKFLOW
 2. Implement the smallest genuine piece for ONE blocker. Create a short markdown note at docs/launch/codex-fleet/${id}.md describing what you built, which blocker it advances, and what remains — UNLESS a more natural home exists, in which case use that and still leave a one-line pointer.
 3. Validate — ALL THREE must be clean before you commit:
    (a) \`cd apps/openagents.com/workers/api && bunx tsc -p tsconfig.json --noEmit\` MUST report 0 errors (check:deploy does NOT cover workers/api typecheck — you must run this yourself; fix every TS error your change introduced, no \`any\`/\`@ts-ignore\`).
-   (b) \`cd apps/openagents.com && bun run check:deploy\` MUST pass; fix it if your change broke it (note any unrelated pre-existing failure precisely).
+   (b) \`pnpm --dir apps/openagents.com run check:deploy\` MUST pass; fix it if your change broke it (note any unrelated pre-existing failure precisely).
    (c) \`git diff --check\` MUST be clean — remove any trailing whitespace you added.
 4. Commit your work with \`git add -A && git commit -m "codex-fleet(${id}): <concise summary>"\`. Do NOT push.
 5. End with a 3-5 line summary: which blocker you advanced, what you built (file paths), whether check:deploy passed, and what genuinely remains.

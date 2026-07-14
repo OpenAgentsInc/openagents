@@ -836,26 +836,6 @@ const storedOrder = (overrides: StoredOrder = {}): StoredOrder => ({
   ...overrides,
 })
 
-const storedReferralAttribution = (
-  overrides: Partial<StoredReferralAttribution> = {},
-): StoredReferralAttribution => ({
-  archived_at: null,
-  capture_path: 'human',
-  claimed_user_id: null,
-  created_at: '2026-06-04T12:00:00.000Z',
-  expires_at: '2026-07-04T12:00:00.000Z',
-  first_verified_at: null,
-  id: 'referral_attribution_otec',
-  policy_state: 'pending',
-  public_invite_ref: null,
-  public_source_ref: 'site_ref_otec_ben',
-  referral_invite_id: null,
-  referral_source_id: 'site_referral_source_otec',
-  target: 'order',
-  updated_at: '2026-06-04T12:00:00.000Z',
-  ...overrides,
-})
-
 const customerOrderDb = (store: CustomerOrderDbStore): D1Database => ({
   batch: async <T = unknown>(statements: Array<D1PreparedStatement>) => {
     const snapshot = {

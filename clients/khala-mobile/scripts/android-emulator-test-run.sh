@@ -88,7 +88,7 @@ until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "
 done
 
 if [[ "${KHALA_ANDROID_SKIP_BUILD:-0}" != "1" ]]; then
-  ( cd "$HERE" && bun run prebuild:android && bun run build:android:local )
+  ( cd "$HERE" && pnpm run prebuild:android && pnpm run build:android:local )
 fi
 
 if [[ ! -f "$APK" ]]; then
@@ -100,7 +100,7 @@ fi
 adb install -r "$APK"
 
 if [[ "${KHALA_ANDROID_SKIP_METRO:-0}" != "1" ]]; then
-  ( cd "$HERE" && bunx expo start --dev-client --host lan --port "${KHALA_ANDROID_METRO_PORT:-8081}" >"${ARTIFACT_DIR}/metro.log" 2>&1 & )
+  ( cd "$HERE" && pnpm exec expo start --dev-client --host lan --port "${KHALA_ANDROID_METRO_PORT:-8081}" >"${ARTIFACT_DIR}/metro.log" 2>&1 & )
   sleep 8
 fi
 

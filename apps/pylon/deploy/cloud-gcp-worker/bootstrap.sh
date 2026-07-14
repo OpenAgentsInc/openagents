@@ -8,7 +8,7 @@ set -euo pipefail
 # tears down today (cloud#95/#96/#97). Today that lane's default image
 # (ubuntu-2404-lts-amd64) is provisioner-only: it boots and answers SSH, but
 # has no coding-agent-runnable runtime installed. This script is the minimal
-# fix: install Bun, fetch the pinned public Pylon runtime, and run it in
+# fix: install pinned Node/pnpm, fetch the public Pylon runtime, and run it in
 # `org_cloud` executor mode so one real Khala Code turn can execute inside the
 # VM before the control plane tears it down.
 #
@@ -66,14 +66,18 @@ require_metadata() {
   printf '%s' "$value"
 }
 
-install_bun() {
-  if command -v bun >/dev/null 2>&1; then
-    log "bun already installed: $(bun --version)"
+install_node() {
+  if command -v node >/dev/null 2>&1 && [[ "$(node --version)" == "v24.13.1" ]]; then
+    log "Node already installed: $(node --version)"
     return
   fi
-  log "installing bun"
-  curl -fsSL https://bun.sh/install | bash
-  export PATH="${HOME}/.bun/bin:${PATH}"
+  log "installing Node 24.13.1"
+  local archive="/tmp/node-v24.13.1-linux-x64.tar.xz"
+  curl -fsSL -o "$archive" https://nodejs.org/dist/v24.13.1/node-v24.13.1-linux-x64.tar.xz
+  echo "30215f90ea3cd04dfbc06e762c021393fa173a1d392974298bbc871a8e461089  $archive" | sha256sum -c - >/dev/null
+  tar -xJf "$archive" -C /usr/local --strip-components=1
+  corepack enable
+  corepack prepare pnpm@11.10.0 --activate
 }
 
 sync_repo() {
@@ -95,8 +99,8 @@ sync_repo() {
 }
 
 install_deps() {
-  log "bun install (workspace root)"
-  (cd "$CHECKOUT_DIR" && bun install)
+  log "pnpm install (workspace root)"
+  (cd "$CHECKOUT_DIR" && pnpm install --frozen-lockfile)
 }
 
 run_supervisor() {
@@ -114,13 +118,13 @@ run_supervisor() {
   OPENAGENTS_ADMIN_API_TOKEN="$admin_token" \
   OPENAGENTS_AGENT_TOKEN="$agent_token" \
   OPENAGENTS_BASE_URL="$base_url" \
-    exec bun apps/pylon/src/orchestration/runtime-intent-supervisor.ts \
+    exec node --import tsx apps/pylon/src/orchestration/runtime-intent-supervisor.ts \
       --pylon-home "$PYLON_HOME" \
       --base-url "$base_url"
 }
 
 main() {
-  install_bun
+  install_node
   sync_repo
   install_deps
   run_supervisor

@@ -46,7 +46,7 @@ DB_SECRET="khala-live-hub-database-url-${ENVIRONMENT}"
 cd "$APP_DIR"
 
 echo "==> Building Cloud Run server bundle"
-bun run build:cloudrun
+pnpm run build:cloudrun
 
 if ! gcloud secrets describe "$TOKEN_SECRET" >/dev/null 2>&1; then
   echo "==> Creating Secret Manager secret $TOKEN_SECRET (random value)"

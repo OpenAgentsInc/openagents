@@ -4,22 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun src/main.ts",
-    "test": "bun test src test",
+    "start": "node --import tsx src/main.ts",
+    "test": "vp test --run src test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:cloudrun": "bun build src/main.ts --target=bun --outdir dist --entry-naming server.js",
+    "build:cloudrun": "vp pack src/main.ts --format esm --platform node --out-dir dist",
     "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh",
-    "smoke:live": "bun scripts/live-retention-smoke.ts",
-    "smoke:tts:live": "bun scripts/live-tts-smoke.ts",
-    "smoke:barge:live": "bun scripts/live-barge-smoke.ts"
+    "smoke:live": "node --import tsx scripts/live-retention-smoke.ts",
+    "smoke:tts:live": "node --import tsx scripts/live-tts-smoke.ts",
+    "smoke:barge:live": "node --import tsx scripts/live-barge-smoke.ts"
   },
   "dependencies": {
-    "@openagentsinc/postgres-runtime": "workspace:*",
-    "@openagentsinc/runtime-platform": "workspace:*",
     "@google-cloud/speech": "^7.2.1",
     "@google-cloud/text-to-speech": "^6.4.1",
     "@openagentsinc/audio-contract": "workspace:*",
+    "@openagentsinc/postgres-runtime": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:"
   },
-  "devDependencies": { "bun-types": "^1.0.0", "typescript": "catalog:" }
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
 }

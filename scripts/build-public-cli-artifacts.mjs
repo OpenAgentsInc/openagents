@@ -1,13 +1,11 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process"
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
+import { build as vpPack } from "vite-plus/pack"
 
 import { publicCliArtifacts, sourceEntriesFor } from "./public-cli-artifact-catalog.mjs"
 
 const repositoryRoot = resolve(import.meta.dirname, "..")
-const tsdown = join(repositoryRoot, "node_modules", ".bin", "tsdown")
-const config = join(repositoryRoot, "scripts", "tsdown.public-cli.config.ts")
 const filterAt = process.argv.indexOf("--filter")
 const filter = filterAt === -1 ? undefined : process.argv[filterAt + 1]
 const stageAt = process.argv.indexOf("--stage-dir")
@@ -24,19 +22,25 @@ for (const record of selected) {
   const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"))
   if (manifest.name !== record.name) throw new Error(`${record.root}: catalog name drift`)
   const entries = sourceEntriesFor(record, manifest)
-  const built = spawnSync(tsdown, ["--config", config], {
+  await vpPack({
     cwd: packageRoot,
-    env: {
-      ...process.env,
-      OPENAGENTS_PUBLIC_CLI_ENTRIES: JSON.stringify(entries),
-      OPENAGENTS_PUBLIC_CLI_ROOT: packageRoot,
-      OPENAGENTS_PUBLIC_CLI_EAGER_DTS: record.eagerDts ? "1" : "0",
-      OPENAGENTS_PUBLIC_CLI_EXTERNAL_INTERNAL_DTS: record.externalInternalDts ? "1" : "0",
+    root: packageRoot,
+    entry: entries,
+    outDir: "dist",
+    clean: true,
+    dts: record.eagerDts ? { eager: true } : true,
+    format: "esm",
+    platform: "node",
+    target: "node24",
+    sourcemap: true,
+    deps: {
+      alwaysBundle: [/^@openagentsinc\//],
+      onlyBundle: false,
+      dts: record.externalInternalDts
+        ? { neverBundle: [/^@openagentsinc\//] }
+        : { alwaysBundle: [/^@openagentsinc\//] },
     },
-    encoding: "utf8",
-    stdio: "inherit",
   })
-  if (built.status !== 0) process.exit(built.status ?? 1)
   for (const target of Object.values(record.bin)) {
     if (!target.startsWith("dist/")) continue
     const path = join(packageRoot, target)

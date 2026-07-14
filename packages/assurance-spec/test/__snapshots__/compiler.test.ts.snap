@@ -4,13 +4,13 @@ exports[`AS-L2 deterministic compiler > identical admitted inputs produce byte-i
 "{
   "adapter_lock_digest": "sha256:f5a9b2f161e91f88ce9c40cfcb321f497b81eed7273db0248d31ff1fc22338b7",
   "admission": {
-    "digest": "sha256:4b077bd605a189c2864800628956e23b9ede309a6cb4b537d8141ca727b3a21a",
+    "digest": "sha256:52d227544f9480f36df3cc5c3f3bf60f11c90a70a31a754b9bfd08a9c062daa2",
     "ref": "admission.mvp.full.1",
     "review_set_digest": "sha256:b59614f04ee2d4415e715ca3c14ba4e28900934a550ba835405431c8669be54a"
   },
   "assurance_manifest_format_version": "0.1",
   "assurance_spec": {
-    "document_digest": "sha256:aff8aaeaade0e278295c5fa0d7538d3abdb1ab996640fdcd0cc5d9c2e1844e76",
+    "document_digest": "sha256:43d5576cf68314b193a12a369d1eac3bf8de828b8da9e60adbe1a0b395bddd2a",
     "id": "assurance.openagents.desktop.codex.workroom.mvp",
     "revision": 1
   },
@@ -20,8 +20,8 @@ exports[`AS-L2 deterministic compiler > identical admitted inputs produce byte-i
   },
   "do_not_edit": true,
   "environment": {
-    "digest": "sha256:66716ac0535ce6cfa9dab788b94ed59cae4b603e25618bb4e2d208be8c4ef370",
-    "profile_id": "ENV-OA-LOCAL-BUN-1",
+    "digest": "sha256:69d90d8fa7632614fb448953d5417fd7f1d74a2f57b9dcd8586136c8742aa193",
+    "profile_id": "ENV-OA-LOCAL-NODE-1",
     "revision": 1
   },
   "evidence_requirements": [
@@ -42,7 +42,7 @@ exports[`AS-L2 deterministic compiler > identical admitted inputs produce byte-i
       "artifact_slots": [
         "candidate.junit.xml"
       ],
-      "environment_ref": "ENV-OA-LOCAL-BUN-1",
+      "environment_ref": "ENV-OA-LOCAL-NODE-1",
       "expected_observation": "CONFIRMED",
       "obligation_id": "AO-CW-AC-04-01",
       "role": "candidate",
@@ -60,7 +60,7 @@ exports[`AS-L2 deterministic compiler > identical admitted inputs produce byte-i
       "artifact_slots": [
         "falsifier.junit.xml"
       ],
-      "environment_ref": "ENV-OA-LOCAL-BUN-1",
+      "environment_ref": "ENV-OA-LOCAL-NODE-1",
       "expected_observation": "REFUTED",
       "obligation_id": "AO-CW-AC-04-01",
       "role": "falsifier",

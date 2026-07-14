@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext", "DOM"],
-    "types": ["bun-types"]
+    "types": ["node", "vite-plus-matchers"]
   },
   "include": ["src/**/*.ts"]
 }

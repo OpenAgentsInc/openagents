@@ -104,7 +104,7 @@ SUP_PER_ACCOUNT="${SUP_PER_ACCOUNT:-2}"
 SUP_MAX_SLOTS="${SUP_MAX_SLOTS:-8}"
 SUP_REPO="${SUP_REPO:-OpenAgentsInc/openagents}"
 # Lightweight, sanctioned-shape verification run inside each throwaway workspace.
-SUP_VERIFY="${SUP_VERIFY:-bun run --cwd apps/openagents.com/workers/api test -- src/labor-earnings-routes.test.ts}"
+SUP_VERIFY="${SUP_VERIFY:-pnpm --dir apps/pylon run test}"
 # Optional comma/space separated allowlist for multi-host fleet offload. When
 # set, a host only schedules the copied Codex profile refs assigned to it.
 SUP_ACCOUNT_REFS="${SUP_ACCOUNT_REFS:-}"

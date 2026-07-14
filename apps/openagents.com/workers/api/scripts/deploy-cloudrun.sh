@@ -8,8 +8,8 @@ set -euo pipefail
 #   scripts/deploy-cloudrun.sh production   # openagents-monolith
 #
 # Build happens here on the deploy machine (aiur/oa-updates pattern):
-#   1. bun run build:web (repo apps/web SPA assets)
-#   2. bun build src/cloudrun/server.ts + preload.ts → dist-cloudrun/
+#   1. pnpm run build:web (repo apps/web SPA assets)
+#   2. vp pack src/cloudrun/server.ts + preload.ts → dist-cloudrun/
 #   3. render the non-secret env YAML from wrangler.jsonc vars
 #   4. gcloud run deploy --source . (Dockerfile in this directory)
 #
@@ -53,28 +53,35 @@ APP_DIR="$(cd "$API_DIR/../.." && pwd)"   # apps/openagents.com
 
 cd "$APP_DIR"
 echo "==> Building web assets (apps/web/dist)"
-bun run build:web >/dev/null
+pnpm run build:web >/dev/null
 
 cd "$API_DIR"
-echo "==> Bundling server + preload (bun build --target=bun)"
+echo "==> Bundling Node server + preload (Vite Plus pack)"
 rm -rf dist-cloudrun
-bun build src/cloudrun/server.ts --target bun --outdir dist-cloudrun \
-  --external cloudflare:workers --external '@cloudflare/playwright' >/dev/null
-bun build src/cloudrun/preload.ts --target bun --outdir dist-cloudrun >/dev/null
+vp pack src/cloudrun/server.ts --out-dir dist-cloudrun --format esm \
+  --platform node --target node24 \
+  --deps.never-bundle cloudflare:workers \
+  --deps.never-bundle '@cloudflare/playwright' >/dev/null
+vp pack src/cloudrun/preload.ts --out-dir dist-cloudrun --format esm \
+  --platform node --target node24 >/dev/null
 cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
 # Sarah removed at owner direction 2026-07-10 (epic #8610): the former
 # sarah-ui / sarah-agent / sarah-clips bundle steps are gone with apps/sarah.
 # #8652 PORTAL-1: /portal Effect Native bundle (authored in apps/start).
 mkdir -p dist-cloudrun/portal-ui
-(cd "$APP_DIR" && bun build apps/start/src/portal-entry.ts --target browser --minify \
-  --outfile "$API_DIR/dist-cloudrun/portal-ui/app.js") >/dev/null
+(cd "$APP_DIR" && vp pack apps/start/src/portal-entry.ts --platform browser \
+  --format iife --target es2022 --minify \
+  --out-dir "$API_DIR/dist-cloudrun/portal-ui") >/dev/null
+mv dist-cloudrun/portal-ui/portal-entry.iife.js dist-cloudrun/portal-ui/app.js
 # #8634/#8635 scope 5: /forum* Effect Native bundle (authored in apps/start).
 mkdir -p dist-cloudrun/forum-ui
-(cd "$APP_DIR" && bun build apps/start/src/forum-entry.ts --target browser --minify \
-  --outfile "$API_DIR/dist-cloudrun/forum-ui/app.js") >/dev/null
+(cd "$APP_DIR" && vp pack apps/start/src/forum-entry.ts --platform browser \
+  --format iife --target es2022 --minify \
+  --out-dir "$API_DIR/dist-cloudrun/forum-ui") >/dev/null
+mv dist-cloudrun/forum-ui/forum-entry.iife.js dist-cloudrun/forum-ui/app.js
 
 echo "==> Rendering env vars from wrangler.jsonc ($TARGET)"
-bun scripts/cloudrun/render-env-yaml.ts "$TARGET"
+node --import tsx scripts/cloudrun/render-env-yaml.ts "$TARGET"
 
 SET_SECRETS=(
   "KHALA_SYNC_DATABASE_URL=openagents-monolith-database-url-${ENV_SUFFIX}:latest"
@@ -240,11 +247,11 @@ echo "==> /sarah -> 404 confirmed"
 # (screenshot receipt). Curl checks alone shipped a broken owner-visible state
 # once; never again. Logged-in states (empty-with-identity / engagement) are
 # the pre-owner-handoff gate — see docs/DEPLOYMENT.md and
-# scripts/portal-browser-smoke.ts. Requires `bunx playwright install chromium`
+# scripts/portal-browser-smoke.ts. Requires `pnpm exec playwright install chromium`
 # once per machine; skip with PORTAL_SKIP_BROWSER_SMOKE=1.
 if [[ "${PORTAL_SKIP_BROWSER_SMOKE:-}" != "1" ]]; then
   echo "==> Smoke: portal real-browser (logged-out login gate)"
-  bun "$API_DIR/scripts/portal-browser-smoke.ts" \
+  pnpm exec tsx "$API_DIR/scripts/portal-browser-smoke.ts" \
     --base-url "$SERVICE_URL" \
     --state logged-out \
     --out-dir "${PORTAL_SMOKE_OUT_DIR:-/tmp/portal-smoke-${TARGET}}"

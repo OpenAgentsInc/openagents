@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    "types": ["bun-types"],
+    "types": ["node", "vite-plus-matchers"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,

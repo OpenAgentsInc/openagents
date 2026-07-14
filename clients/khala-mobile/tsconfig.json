@@ -8,7 +8,7 @@
     "noUncheckedIndexedAccess": true,
     "strict": true,
     "types": [
-      "bun-types",
+      "node", "vite-plus-matchers",
       "nativewind/types"
     ]
   },

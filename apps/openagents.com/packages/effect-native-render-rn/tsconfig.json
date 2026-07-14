@@ -7,7 +7,7 @@
     "declaration": true,
     "declarationMap": true,
     "noUnusedLocals": false,
-    "types": ["bun-types"]
+    "types": ["node", "vite-plus-matchers"]
   },
   "references": [
     { "path": "../effect-native-core" },

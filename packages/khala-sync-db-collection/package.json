@@ -2,17 +2,17 @@
   "name": "@openagentsinc/khala-sync-db-collection",
   "version": "0.1.0",
   "private": true,
+  "files": [
+    "src",
+    "README.md"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": [
-    "src",
-    "README.md"
-  ],
   "scripts": {
-    "test": "bun test",
+    "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -23,7 +23,6 @@
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

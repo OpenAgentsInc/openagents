@@ -7,10 +7,9 @@ WORKDIR /app
 # image while advancing only the update-service code and the independent
 # OpenAgents Desktop feed seed. This is the safe path when no fresh Expo
 # export has been staged in `dist/`.
-COPY package.json ./
-COPY src ./src
+COPY dist-server ./dist-server
 COPY openagents-desktop-dist ./openagents-desktop-dist
 
 EXPOSE 8080
 
-CMD ["bun", "run", "src/serve.ts"]
+CMD ["node", "dist-server/server.mjs"]

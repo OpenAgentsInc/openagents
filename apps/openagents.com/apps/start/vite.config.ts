@@ -35,24 +35,16 @@ export default defineConfig({
     ssr: {
       resolve: {
         noExternal: [...routerSsrPackages],
-        // Server-chain modules may import the Bun builtin (`import { SQL }
-        // from 'bun'`). The deployed server runs on Bun, so the builtin must
-        // stay external to the SSR bundle.
-        external: ['bun'],
       },
     },
   },
   ssr: {
-    external: ['bun'],
     noExternal: [...routerSsrPackages],
   },
   build: {
     minify: 'esbuild',
     reportCompressedSize: false,
     rollupOptions: {
-      // Keep the Bun builtin external everywhere; only the Bun-run server
-      // entry ever imports it at runtime.
-      external: ['bun'],
       output: {
         manualChunks: (id) => {
           if (

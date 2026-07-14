@@ -175,9 +175,9 @@ export const validateKhalaSyncCrossDeviceEvidence = (input: unknown): JsonRecord
 }
 
 if (import.meta.main) {
-  const path = Bun.argv[2]
+  const path = process.argv[2]
   if (path === undefined) {
-    console.error("usage: bun scripts/validate-khala-sync-cross-device-evidence.ts <bundle.json>")
+    console.error("usage: node --import tsx scripts/validate-khala-sync-cross-device-evidence.ts <bundle.json>")
     process.exit(2)
   }
   try {

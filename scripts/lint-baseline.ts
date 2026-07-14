@@ -38,13 +38,22 @@ export const lintBudgetViolations = (
 }
 
 const run = async (): Promise<void> => {
-  const child = Bun.spawn(["bunx", "eslint", ".", "-f", "json"], {
+  const child = spawn("pnpm", ["exec", "eslint", ".", "-f", "json"], {
     cwd: "apps/openagents.com",
-    stdout: "pipe",
-    stderr: "inherit",
+    stdio: ["ignore", "pipe", "inherit"],
   })
-  const output = await new Response(child.stdout).text()
-  await child.exited
+  let output = ""
+  child.stdout.setEncoding("utf8")
+  child.stdout.on("data", (chunk: string) => {
+    output += chunk
+  })
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject)
+    child.once("close", resolve)
+  })
+  if (exitCode !== 0 && output.length === 0) {
+    throw new Error(`eslint exited with status ${exitCode ?? "unknown"}`)
+  }
   const results = JSON.parse(output) as readonly LintResult[]
   const counts = summarizeLintResults(results)
   const violations = lintBudgetViolations(counts)
@@ -64,3 +73,4 @@ if (import.meta.main) {
     process.exitCode = 1
   }
 }
+import { spawn } from "node:child_process"

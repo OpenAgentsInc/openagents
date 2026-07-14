@@ -2,10 +2,10 @@
 
 A collective intelligence you chat with from your terminal. Free to use,
 streams answers live, no signup or API key required. Built with Effect; runs on
-plain Node or Bun.
+the pinned Node runtime.
 
 ```sh
-# Install and run (Node or Bun; npm works for everyone)
+# Install and run (Node; npm works for everyone)
 npm install -g @openagentsinc/khala
 khala
 khala --prompt "Say hello in one short sentence."
@@ -15,7 +15,7 @@ khala key add openrouter sk-or-v1-...
 khala key list
 khala key remove
 
-bunx @openagentsinc/khala --prompt "Say hello in one short sentence."
+npx @openagentsinc/khala --prompt "Say hello in one short sentence."
 khala feedback "The input ate my transcript."
 khala changelog
 khala tokens
@@ -27,19 +27,19 @@ khala fleet connect           # connect your own Codex account (paste-free devic
 khala fleet connect --account codex-2   # add another distinct account for more throughput
 khala fleet link              # link this local Pylon to your signed-in Khala account
 khala fleet status            # list your connected Codex fleet + readiness
-khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
+khala fleet run --repo owner/repo --issues 123,124 --verify "pnpm test" --dry-run
 khala fleet status --live     # poll the operator fleet dashboard
 khala auth codex
 khala codex "read README.md"
 khala spawn --count 5 --objective "audit this workspace" --strategy local
-khala spawn --strategy pylon --workflow codex_agent_task --count 5 --objective "implement public issue #123" --repo OpenAgentsInc/openagents --commit <sha> --verify "bun test"
+khala spawn --strategy pylon --workflow codex_agent_task --count 5 --objective "implement public issue #123" --repo OpenAgentsInc/openagents --commit <sha> --verify "pnpm test"
 khala workers
 khala join <runRef>
 khala cancel <runRef|workerRef>
 khala --artanis --prompt "status"
-bun run khala
-bun run khala -- --prompt "Say hello in one short sentence."
-printf 'Say OK only.' | bun run khala -- --headless --json
+pnpm run khala
+pnpm run khala -- --prompt "Say hello in one short sentence."
+printf 'Say OK only.' | pnpm run khala -- --headless --json
 ```
 
 The published npm package is `@openagentsinc/khala`; it exposes the `khala`
@@ -160,7 +160,7 @@ no long-string pasting:
   added throughput.
 - `khala fleet status` (alias `khala fleet list`) prints a table of connected
   accounts with readiness and email.
-- `khala fleet run --repo owner/repo --issues 123,124 --verify "bun test"`
+- `khala fleet run --repo owner/repo --issues 123,124 --verify "pnpm test"`
   starts the turnkey Pylon/Codex supervisor against your public repo backlog.
   It auto-resolves your local Pylon ref, computes slots as ready accounts times
   `--per-account` capped by `--max-parallel`, advertises that capacity, and
@@ -192,7 +192,7 @@ local Pylon and the dispatch gate can see the fleet.
 - `khala fleet link` associates this local Pylon with your signed-in Khala owner
   account.
 - `khala fleet status` lists your connected Codex fleet and readiness.
-- `khala fleet run --repo owner/repo --issues 123,124 --verify "bun test"`
+- `khala fleet run --repo owner/repo --issues 123,124 --verify "pnpm test"`
   starts or plans the backlog supervisor for your connected fleet.
 - `khala fleet status --live` opens the live operator fleet dashboard.
 - `khala auth codex` connects a Codex account for local workspace delegation.

@@ -9,7 +9,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "preview": "bun run src/preview.ts"
+    "preview": "node --import tsx src/preview.ts"
   },
   "dependencies": {
     "effect": "4.0.0-beta.94"

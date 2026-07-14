@@ -49,7 +49,7 @@ scope→shard lookup. Do not raise max-instances without building that.
 ## Deploy
 
 ```sh
-bun run deploy:cloudrun            # staging (khala-live-hub-staging)
+pnpm run deploy:cloudrun           # staging (khala-live-hub-staging)
 bash scripts/deploy-cloudrun.sh prod
 ```
 
@@ -60,6 +60,6 @@ See `scripts/deploy-cloudrun.sh` for secrets (`khala-live-hub-token`,
 ## Test
 
 ```sh
-bun test           # ported KhalaSyncHubDO unit suite + real Bun.serve WS E2E
-bun run typecheck
+pnpm test          # ported KhalaSyncHubDO unit suite + real Node WebSocket E2E
+pnpm run typecheck
 ```

@@ -26,12 +26,12 @@ const proposalBytes = readFileSync(resolve(root, "packages/assurance-spec/confor
 
 const profilePayload = {
   environment_format_version: "0.1" as const,
-  profile_id: "ENV-OA-LOCAL-BUN-1",
+  profile_id: "ENV-OA-LOCAL-NODE-1",
   revision: 1,
   owner: "first_party" as const,
   target_class: "local" as const,
   mutability: "isolated_write" as const,
-  platform: { os: "macos", architecture: "arm64", runtime: "Node 25", framework: "Effect" },
+  platform: { os: "macos", architecture: "arm64", runtime: "Node 24.13.1", framework: "Effect" },
   capabilities: ["vite_plus_test", "junit", "isolated_run_artifacts"],
   authentication_strategy: "none" as const,
   isolation: { fresh_identity: true, reset_between_runs: true, restart_supported: true },
@@ -269,7 +269,7 @@ const receipt = (role: "candidate" | "falsifier"): AssuranceReceipt => ({
   admission_digest: sha256Digest("admission"),
   obligation_id: "AO-CW-AC-04-01",
   criterion_refs: ["CW-AC-04"],
-  environment_ref: "ENV-OA-LOCAL-BUN-1",
+  environment_ref: "ENV-OA-LOCAL-NODE-1",
   adapter_ref: "openagents.vite_plus_test.v1",
   execution_unit_ref: `unit.${role}`,
   producer_ref: "runner.local.1",

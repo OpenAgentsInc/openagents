@@ -20,7 +20,7 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$APP_DIR"
 echo "==> Building TanStack Start app"
-bun run build
+pnpm run build
 
 echo "==> Deploying $SERVICE to Cloud Run ($REGION)"
 gcloud run deploy "$SERVICE" \

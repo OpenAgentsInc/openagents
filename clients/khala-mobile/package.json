@@ -15,15 +15,15 @@
     "export:ota:android": "expo export --platform android --output-dir ../../apps/oa-updates/dist",
     "publish:ota": "bash ../../apps/oa-updates/scripts/publish-ota.sh",
     "assets:generate": "bash scripts/generate-assets.sh",
-    "generate": "bun run scripts/generate.ts",
+    "generate": "node --import tsx scripts/generate.ts",
     "architecture:check": "depcruise index.tsx src tests --config .dependency-cruiser.cjs",
     "storybook": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start",
     "storybook:ios": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --ios",
     "storybook:android": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --android",
     "storybook-generate": "sb-rn-get-stories",
-    "qa:mobile:gate": "bun run scripts/qa-mobile-gate.ts",
+    "qa:mobile:gate": "node --import tsx scripts/qa-mobile-gate.ts",
     "qa:android:emulator": "bash scripts/android-emulator-test-run.sh",
-    "test": "bun test",
+    "test": "vp test --run --root ../.. --project @openagentsinc/khala-mobile",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -79,10 +79,10 @@
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
-    "@openagentsinc/sqlite-runtime": "workspace:*",
     "@babel/core": "7.29.7",
     "@babel/plugin-transform-react-jsx": "7.29.7",
     "@expo/config-plugins": "57.0.2",
+    "@openagentsinc/sqlite-runtime": "workspace:*",
     "@react-native/babel-preset": "0.86.0",
     "@storybook/addon-ondevice-actions": "^10.4.7",
     "@storybook/addon-ondevice-backgrounds": "^10.4.7",

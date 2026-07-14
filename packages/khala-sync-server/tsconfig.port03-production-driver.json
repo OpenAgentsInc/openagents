@@ -5,7 +5,7 @@
     "noImplicitOverride": false,
     "noUnusedLocals": false,
     "plugins": [],
-    "types": ["bun-types"]
+    "types": ["node", "vite-plus-matchers"]
   },
   "include": [
     "scripts/port03-production-driver.ts",

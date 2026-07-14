@@ -1,2 +1,0 @@
-[test]
-preload = ["./tests/support/rn-bun-compat.ts"]

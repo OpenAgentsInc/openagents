@@ -100,7 +100,7 @@ SUP_PER_ACCOUNT="${SUP_PER_ACCOUNT:-2}"
 SUP_MAX_SLOTS="${SUP_MAX_SLOTS:-6}"
 SUP_REPO="${SUP_REPO:-OpenAgentsInc/openagents}"
 # Lightweight, sanctioned-shape verification run inside each throwaway workspace.
-SUP_VERIFY="${SUP_VERIFY:-bun run --cwd apps/openagents.com/workers/api test -- src/labor-earnings-routes.test.ts}"
+SUP_VERIFY="${SUP_VERIFY:-pnpm --dir apps/pylon run test}"
 # Presence heartbeat cadence (s) — keeps presence fresh + capacity advertised.
 SUP_HEARTBEAT_SECS="${SUP_HEARTBEAT_SECS:-45}"
 # Backoff bounds for refused/rate-limited dispatch.

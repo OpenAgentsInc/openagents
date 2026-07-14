@@ -1092,6 +1092,7 @@ import {
   makeQaSwarmProjectionRoutes,
 } from './qa-swarm-projection-routes'
 import { handleReactLandingPage } from './react-landing-routes'
+import type { ExactRoute } from './http/router'
 import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
@@ -10258,7 +10259,7 @@ const sarahFleetRunRoutes = makeSarahFleetRunRoutes<Env>({
 const RetiredCapabilityRoutePattern =
   /(?:^|[\/-])(?:adjutant|balances?|billing|checkout|credits?|markets?|marketplace|payments?|payouts?|settled|settlements?|sites?|tips?|treasury|wallets?|work-requests)(?:[\/-]|$)|paid-privacy|l402/i
 
-const exactRouteRegistry = makeExactRouteRegistry<Env>([
+const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/',
     handler: (request, env, ctx) =>
@@ -13223,7 +13224,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
 
-].filter(route => !RetiredCapabilityRoutePattern.test(route.path)))
+]
+
+const exactRouteRegistry = makeExactRouteRegistry(
+  allExactRoutes.filter(
+    route => !RetiredCapabilityRoutePattern.test(route.path),
+  ),
+)
 
 export const exactRoutePathManifest = exactRouteRegistry.paths
 

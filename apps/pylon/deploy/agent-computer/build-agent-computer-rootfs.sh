@@ -7,13 +7,13 @@
 # full pinned runtime baked in:
 #   - Ubuntu 22.04 (jammy) debootstrap base: git, python3, ca-certificates,
 #     openssh-client
-#   - bun ${BUN_VERSION} at /usr/local/bin/bun
+#   - Node ${NODE_VERSION} at /usr/local/bin/node
 #   - the PINNED codex binary (npm @openai/codex linux-x64 vendor musl build)
 #     at /usr/local/bin/codex (+ its vendored rg at /usr/local/bin/rg) — the
 #     CX-3 in-VM `codex exec --json` lane depends on this
 #   - the vsock guest agent (guest-agent.py, agent-guest.service enabled,
 #     AF_VSOCK :1024)
-#   - the compiled turn-runner at /opt/agent/turn-runner (bun-linux-x64 build
+#   - the Vite Plus packed turn-runner at /opt/agent/turn-runner
 #     of apps/pylon/deploy/agent-computer/turn-runner.ts)
 #   - the fixed PORT-03 retained-session controller at
 #     /opt/agent/portable-session-control (no arbitrary command surface)
@@ -35,7 +35,8 @@
 set -euo pipefail
 
 # --- pins ------------------------------------------------------------------
-BUN_VERSION="1.3.14"
+NODE_VERSION="24.13.1"
+NODE_TARBALL_SHA256="30215f90ea3cd04dfbc06e762c021393fa173a1d392974298bbc871a8e461089"
 CODEX_VERSION="0.144.0"
 # npm tarball @openai/codex-0.144.0-linux-x64.tgz
 CODEX_TARBALL_SHA256="391a3793d21feff08da2d9132f01107dd56fa5a48a158e23d15c6d56e34f7cb2"
@@ -51,13 +52,13 @@ usage() {
 Usage: sudo build-agent-computer-rootfs.sh [options]
   --output PATH        output ext4 image (default ./agent-computer-rootfs-<date>.ext4)
   --size-mib N         image size in MiB (default 4096)
-  --turn-runner PATH   prebuilt bun-linux-x64 turn-runner binary (required
+  --turn-runner PATH   prebuilt Node/Vite Plus turn-runner executable (required
                        unless --repo-root lets this script compile it)
   --portable-session-control PATH
-                       prebuilt bun-linux-x64 portable session controller
+                       prebuilt Node/Vite Plus portable session controller
                        (required unless --repo-root lets this script compile it)
   --repo-root PATH     openagents checkout to compile the turn-runner from
-                       (requires a host bun; used when --turn-runner absent)
+                       (requires host Vite Plus; used when --turn-runner absent)
   --workroomd PATH     oa-workroomd release binary (from
                        build-workroomd-for-image.sh); required unless
                        --skip-workroomd
@@ -99,11 +100,11 @@ done
 
 if [ -z "$TURN_RUNNER" ]; then
   [ -n "$REPO_ROOT" ] || fail "--turn-runner or --repo-root is required"
-  command -v bun >/dev/null 2>&1 || fail "--repo-root compile path needs a host bun"
+  command -v vp >/dev/null 2>&1 || fail "--repo-root pack path needs Vite Plus"
 fi
 if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
   [ -n "$REPO_ROOT" ] || fail "--portable-session-control or --repo-root is required"
-  command -v bun >/dev/null 2>&1 || fail "--repo-root compile path needs a host bun"
+  command -v vp >/dev/null 2>&1 || fail "--repo-root pack path needs Vite Plus"
 fi
 if [ "$SKIP_WORKROOMD" = "0" ]; then
   [ -n "$WORKROOMD" ] || fail "--workroomd is required (or pass --skip-workroomd for a smoke image)"
@@ -147,14 +148,16 @@ done
 rm -f "$MNT/etc/resolv.conf"
 printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > "$MNT/etc/resolv.conf"
 
-# --- 3. bun (pinned) ---------------------------------------------------------
-echo "==> installing bun $BUN_VERSION"
-curl -fsSL -o "$WORK/bun.zip" \
-  "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip"
-unzip -q "$WORK/bun.zip" -d "$WORK"
-install -m 0755 "$WORK/bun-linux-x64/bun" "$MNT/usr/local/bin/bun"
-chroot "$MNT" /usr/local/bin/bun --version | grep -qx "$BUN_VERSION" \
-  || fail "baked bun does not report $BUN_VERSION"
+# --- 3. Node (pinned and digest-verified) -----------------------------------
+echo "==> installing Node $NODE_VERSION"
+curl -fsSL -o "$WORK/node.tar.xz" \
+  "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"
+echo "$NODE_TARBALL_SHA256  $WORK/node.tar.xz" | sha256sum -c - >/dev/null \
+  || fail "Node tarball digest mismatch"
+tar -xJf "$WORK/node.tar.xz" -C "$WORK"
+cp -a "$WORK/node-v${NODE_VERSION}-linux-x64/." "$MNT/usr/local/"
+chroot "$MNT" /usr/local/bin/node --version | grep -qx "v$NODE_VERSION" \
+  || fail "baked Node does not report $NODE_VERSION"
 
 # --- 4. codex (pinned, digest-verified) — the CX-3 lane ----------------------
 echo "==> installing codex $CODEX_VERSION (npm linux-x64 vendor musl build)"
@@ -188,8 +191,10 @@ ln -sf /etc/systemd/system/agent-guest.service \
 if [ -z "$TURN_RUNNER" ]; then
   echo "==> compiling turn-runner from $REPO_ROOT"
   TURN_RUNNER="$WORK/turn-runner"
-  (cd "$REPO_ROOT" && bun build --compile --target=bun-linux-x64 \
-    apps/pylon/deploy/agent-computer/turn-runner.ts --outfile "$TURN_RUNNER")
+  (cd "$REPO_ROOT" && vp pack \
+    apps/pylon/deploy/agent-computer/turn-runner.ts \
+    --out-dir "$WORK/turn-runner-build" --platform node --target node24 --exe)
+  TURN_RUNNER="$WORK/turn-runner-build/turn-runner.mjs"
 fi
 [ -f "$TURN_RUNNER" ] || fail "turn-runner binary not found: $TURN_RUNNER"
 install -m 0755 "$TURN_RUNNER" "$MNT/opt/agent/turn-runner"
@@ -198,9 +203,11 @@ install -m 0755 "$TURN_RUNNER" "$MNT/opt/agent/turn-runner"
 if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
   echo "==> compiling portable-session-control from $REPO_ROOT"
   PORTABLE_SESSION_CONTROL="$WORK/portable-session-control"
-  (cd "$REPO_ROOT" && bun build --compile --target=bun-linux-x64 \
+  (cd "$REPO_ROOT" && vp pack \
     apps/pylon/deploy/agent-computer/portable-session-control.ts \
-    --outfile "$PORTABLE_SESSION_CONTROL")
+    --out-dir "$WORK/portable-session-control-build" \
+    --platform node --target node24 --exe)
+  PORTABLE_SESSION_CONTROL="$WORK/portable-session-control-build/portable-session-control.mjs"
 fi
 [ -f "$PORTABLE_SESSION_CONTROL" ] \
   || fail "portable-session-control binary not found: $PORTABLE_SESSION_CONTROL"
@@ -229,7 +236,7 @@ cat > "$RECEIPT" <<EOF
   "bakedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "suite": "$SUITE",
   "sizeMib": $SIZE_MIB,
-  "bunVersion": "$BUN_VERSION",
+  "nodeVersion": "$NODE_VERSION",
   "codexVersion": "$CODEX_VERSION",
   "codexBinarySha256": "$CODEX_BINARY_SHA256",
   "turnRunnerSha256": "$TURN_RUNNER_SHA256",

@@ -12,7 +12,7 @@
 #   ./launch.sh stop                                  # stop the supervisor
 #
 # Run this from a CLEAN worktree at current origin/main (deps installed via
-# `bun install --frozen-lockfile`). See the Khala -> Pylon -> Claude runbook.
+# `pnpm install --frozen-lockfile`). See the Khala -> Pylon -> Claude runbook.
 #
 set -uo pipefail
 

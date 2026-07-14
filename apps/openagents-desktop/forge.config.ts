@@ -130,7 +130,10 @@ const config: ForgeConfig = {
   },
   hooks: {
     generateAssets: async () => {
-      execFileSync("bun", ["scripts/build.ts"], { cwd: process.cwd(), stdio: "inherit" })
+      execFileSync("node", ["--import", "tsx", "scripts/build.ts"], {
+        cwd: process.cwd(),
+        stdio: "inherit",
+      })
       execFileSync("cargo", ["build", "--release", "-p", "oa-desktop-audio"], { cwd: path.resolve(process.cwd(), "../.."), stdio: "inherit" })
       const architecture = process.arch
       const destinationDirectory = path.join(process.cwd(), "dist", "native", architecture)

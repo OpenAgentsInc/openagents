@@ -26,15 +26,15 @@ const runScan = async (
 }
 
 describe("bun-api perimeter scan", () => {
-  test("passes on the repo with the grandfathered allowlist", async () => {
+  test("passes on the repo with a zero Bun perimeter", async () => {
     const { exitCode, stdout } = await runScan([])
 
     expect(exitCode).toBe(0)
     expect(stdout).toContain("Bun-API perimeter scan")
     expect(stdout).toContain("mode: enforce")
     expect(stdout).toContain("new violations: 0")
-    // The named seam must be visible as perimeter, not grandfathered noise.
-    expect(stdout).toMatch(/perimeter \(named seam\) findings: [1-9]/)
+    expect(stdout).toContain("perimeter (named seam) findings: 0")
+    expect(stdout).toContain("grandfathered files: 0 of 0 allowlisted")
   }, 60_000)
 
   test("fails on a fixture violation outside the allowlist", async () => {

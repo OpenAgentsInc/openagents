@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.11-alpine
+FROM node:24.13.1-alpine
 WORKDIR /app
-COPY src/cloudrun.ts ./cloudrun.ts
-CMD ["bun", "cloudrun.ts"]
+COPY dist/cloudrun.mjs ./dist/cloudrun.mjs
+CMD ["node", "dist/cloudrun.mjs"]

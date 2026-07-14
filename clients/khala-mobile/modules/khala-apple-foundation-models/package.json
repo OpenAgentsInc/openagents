@@ -1,10 +1,13 @@
 {
   "name": "khala-apple-foundation-models",
   "version": "0.1.0",
+  "private": true,
   "description": "Khala Expo module for Apple Foundation Models bridge readiness.",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "private": true,
+  "dependencies": {
+    "expo-modules-core": "57.0.2"
+  },
   "expo-module": {
     "ios": {
       "modules": [
@@ -16,8 +19,5 @@
         "com.openagents.khalaapplefm.KhalaAppleFoundationModelsModule"
       ]
     }
-  },
-  "dependencies": {
-    "expo-modules-core": "57.0.2"
   }
 }

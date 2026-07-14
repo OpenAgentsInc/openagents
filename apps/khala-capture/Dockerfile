@@ -1,17 +1,17 @@
 # khala-capture on Cloud Run (#8554).
 #
-# The build happens on the deploy machine (`bun run build:cloudrun`):
-# dist/server.js is a self-contained `bun build --target=bun` bundle
+# The build happens on the deploy machine (`pnpm run build:cloudrun`):
+# dist/server.mjs is a self-contained Vite Plus bundle
 # (src/server.ts + the bundled @openagentsinc/khala-sync-server capture daemon
-# and its `postgres` driver; only bun/node builtins stay external), so this
+# and its `postgres` driver; only Node builtins stay external), so this
 # image needs no node_modules and no workspace context.
 
-FROM oven/bun:1
+FROM node:24.13.1-bookworm-slim
 
 WORKDIR /app
 
-COPY dist/server.js ./dist/server.js
+COPY dist/server.mjs ./dist/server.mjs
 
 EXPOSE 8080
 
-CMD ["bun", "run", "dist/server.js"]
+CMD ["node", "dist/server.mjs"]

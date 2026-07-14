@@ -2,6 +2,11 @@
   "name": "@openagentsinc/oa-infra",
   "version": "0.1.0",
   "private": true,
+  "files": [
+    "src",
+    "scripts",
+    "migrations"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -35,26 +40,20 @@
     "./conformance/durable-stream": "./src/conformance/durable-stream.ts",
     "./conformance/mutex": "./src/conformance/mutex.ts"
   },
-  "files": [
-    "src",
-    "scripts",
-    "migrations"
-  ],
   "scripts": {
-    "migrate": "bun scripts/migrate.ts",
-    "test": "bun test src",
+    "migrate": "node --import tsx scripts/migrate.ts",
+    "test": "vp test --run src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.16.0",
     "@openagentsinc/postgres-runtime": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
-    "@google-cloud/storage": "^7.16.0",
-    "effect": "catalog:",
-    "aws4fetch": "^1.0.20"
+    "aws4fetch": "^1.0.20",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@openagentsinc/khala-sync-server": "workspace:*",
-    "bun-types": "^1.0.0",
     "postgres": "3.4.9",
     "typescript": "catalog:"
   }

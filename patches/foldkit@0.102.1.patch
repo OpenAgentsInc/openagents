@@ -2,7 +2,7 @@ diff --git a/package.json b/package.json
 index 1f24eed..0000000 100644
 --- a/package.json
 +++ b/package.json
-@@ -204,8 +204,8 @@
+@@ -204,7 +204,7 @@
      "dist"
    ],
    "peerDependencies": {

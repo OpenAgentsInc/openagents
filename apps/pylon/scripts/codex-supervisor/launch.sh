@@ -14,7 +14,7 @@
 #   OPENAGENTS_AGENT_TOKEN=... ./launch.sh wedge-watch  # restart IF wedged (#6646)
 #
 # Run this from a CLEAN worktree at current origin/main (deps installed via
-# `bun install --frozen-lockfile`). See the Khala -> Pylon -> Codex runbook.
+# `pnpm install --frozen-lockfile`). See the Khala -> Pylon -> Codex runbook.
 #
 # Wedge auto-restart (#6646): the supervisor's #1 token-burn failure mode is a
 # WEDGE — alive + heartbeating but no longer dispatching (an external call hung

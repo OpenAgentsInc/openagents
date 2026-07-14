@@ -1728,7 +1728,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
     })
   })
 
-  test("prepares locked Bun checkout dependencies before running Codex", async () => {
+  test("prepares locked pnpm checkout dependencies before running Codex", async () => {
     await withState(async (state) => {
       let checkoutRoot = ""
       const checkoutRunner = async (workspace: string) => {
@@ -1738,14 +1738,13 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
           join(workspace, "package.json"),
           `${JSON.stringify({ private: true, type: "module" })}\n`,
         )
-        await writeFile(join(workspace, "bun.lock"), "")
+        await writeFile(join(workspace, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n")
         await mkdir(join(workspace, "apps/openagents.com/workers/api"), { recursive: true })
         await writeFile(
           join(workspace, "apps/openagents.com/package.json"),
           `${JSON.stringify(
             {
               private: true,
-              devDependencies: { vitest: "^4.1.8" },
               workspaces: ["workers/*"],
             },
             null,
@@ -1757,7 +1756,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
           `${JSON.stringify(
             {
               private: true,
-              scripts: { test: "bun test sum.test.ts" },
+              scripts: { test: "node --test sum.test.ts" },
               dependencies: { "@openagentsinc/atif": "workspace:*" },
             },
             null,
@@ -1771,16 +1770,20 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { sum } from "./sum"',
-            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            'import assert from "node:assert/strict"',
+            'import { test } from "node:test"',
+            'import { sum } from "./sum.ts"',
+            'test("adds", () => { assert.equal(sum(2, 3), 5) })',
             "",
           ].join("\n"),
         )
         await writeFile(
           join(workspace, "apps/openagents.com/workers/api/sum.test.ts"),
           [
-            'import { sum } from "../../../../sum"',
-            'describe("nested sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            'import assert from "node:assert/strict"',
+            'import { test } from "node:test"',
+            'import { sum } from "../../../../sum.ts"',
+            'test("nested sum", () => { assert.equal(sum(2, 3), 5) })',
             "",
           ].join("\n"),
         )
@@ -1790,8 +1793,8 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         workspace: {
           ...checkoutAssignment.workspace,
           verificationCommand: {
-            args: ["bun", "--cwd", "apps/openagents.com/workers/api", "test"],
-            commandRef: "command.public.autopilot_coder.nested_bun_test",
+            args: ["pnpm", "--dir", "apps/openagents.com/workers/api", "run", "test"],
+            commandRef: "command.public.autopilot_coder.nested_vp_test",
           },
         },
       }
@@ -1801,7 +1804,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       const dependencyInstaller = async (input: { args: string[]; cwd: string }) => {
         installerCalled = true
         dependencyCommands.push(`${relative(checkoutRoot, input.cwd) || "."}: ${input.args.join(" ")}`)
-        if (input.args[0] === "bun") {
+        if (input.args[0] === "pnpm") {
           await writeFile(join(input.cwd, "dependency-ready.txt"), "ready\n")
         }
         return { exitCode: 0, stderrBytes: 0, stdoutBytes: 12, timedOut: false }
@@ -1831,8 +1834,8 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       expect(record?.status).toBe("accepted")
       expect(installerCalled).toBe(true)
       expect(dependencyCommands).toEqual([
-        ".: bun install --no-save --ignore-scripts",
-        "apps/openagents.com: bun install --no-save --ignore-scripts",
+        ".: pnpm install --frozen-lockfile --ignore-scripts",
+        "apps/openagents.com: pnpm install --frozen-lockfile --ignore-scripts",
         ".: git restore --source=HEAD --staged --worktree .",
       ])
       expect(runnerSawPreparedWorkspace).toBe(true)
@@ -1848,7 +1851,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
           join(workspace, "package.json"),
           `${JSON.stringify({ private: true, type: "module" })}\n`,
         )
-        await writeFile(join(workspace, "bun.lock"), "")
+        await writeFile(join(workspace, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n")
       }
       let runnerCalled = false
       const record = await executeCodexAgentAssignment(
@@ -1908,7 +1911,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
 
 describe("shared node_modules cache across codex worktrees", () => {
   // Each git worktree gets a fresh checkout but never shares node_modules, so the
-  // fleet used to run one full `bun install` per assignment and thrash concurrency.
+  // fleet used to run one full `pnpm install` per assignment and thrash concurrency.
   // The cache lets the first task install once and later matching tasks symlink.
   const LOCK_A = "lockfile-contents-A\n"
   const LOCK_B = "lockfile-contents-B-different\n"
@@ -1916,7 +1919,7 @@ describe("shared node_modules cache across codex worktrees", () => {
   async function makeWorktree(root: string, lockContents: string): Promise<string> {
     const dir = await mkdtemp(join(root, "worktree-"))
     await writeFile(join(dir, "package.json"), `${JSON.stringify({ private: true, type: "module" })}\n`)
-    await writeFile(join(dir, "bun.lock"), lockContents)
+    await writeFile(join(dir, "pnpm-lock.yaml"), lockContents)
     return dir
   }
 
@@ -1926,17 +1929,17 @@ describe("shared node_modules cache across codex worktrees", () => {
     const commands: string[] = []
     const installer = async (input: { args: string[]; cwd: string }) => {
       commands.push(input.args.join(" "))
-      if (input.args[0] === "bun" && input.args[1] === "install") {
+      if (input.args[0] === "pnpm" && input.args[1] === "install") {
         await mkdir(join(input.cwd, "node_modules"), { recursive: true })
         await writeFile(join(input.cwd, "node_modules", ".installed"), "ok\n")
       }
       return { exitCode: 0, stderrBytes: 0, stdoutBytes: 8, timedOut: false }
     }
-    const installCount = () => commands.filter((c) => c.startsWith("bun install")).length
+    const installCount = () => commands.filter((c) => c.startsWith("pnpm install")).length
     return { commands, installCount, installer }
   }
 
-  test("(a) a matching shared cache skips bun install and symlinks node_modules in", async () => {
+  test("(a) a matching shared cache skips pnpm install and symlinks node_modules in", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-nm-cache-a-"))
     try {
       const sharedCacheRoot = join(root, "shared")
@@ -1945,7 +1948,7 @@ describe("shared node_modules cache across codex worktrees", () => {
       const prepA = await prepareWorkspaceDependencies({
         installer: first.installer,
         sharedCacheRoot,
-        verificationArgs: ["bun", "test", "sum.test.ts"],
+        verificationArgs: ["pnpm", "exec", "vp", "test", "--run", "sum.test.ts"],
         workspace: wtA,
       })
       expect(prepA.ok).toBe(true)
@@ -1960,7 +1963,7 @@ describe("shared node_modules cache across codex worktrees", () => {
       const prepB = await prepareWorkspaceDependencies({
         installer: second.installer,
         sharedCacheRoot,
-        verificationArgs: ["bun", "test", "sum.test.ts"],
+        verificationArgs: ["pnpm", "exec", "vp", "test", "--run", "sum.test.ts"],
         workspace: wtB,
       })
       expect(prepB.ok).toBe(true)
@@ -1984,18 +1987,18 @@ describe("shared node_modules cache across codex worktrees", () => {
       await prepareWorkspaceDependencies({
         installer: first.installer,
         sharedCacheRoot,
-        verificationArgs: ["bun", "test", "sum.test.ts"],
+        verificationArgs: ["pnpm", "exec", "vp", "test", "--run", "sum.test.ts"],
         workspace: wtA,
       })
       expect(first.installCount()).toBe(1)
 
-      // Different bun.lock -> different hash -> the LOCK_A cache must not be reused.
+      // Different pnpm-lock.yaml -> different hash -> the LOCK_A cache must not be reused.
       const second = countingInstaller()
       const wtB = await makeWorktree(root, LOCK_B)
       await prepareWorkspaceDependencies({
         installer: second.installer,
         sharedCacheRoot,
-        verificationArgs: ["bun", "test", "sum.test.ts"],
+        verificationArgs: ["pnpm", "exec", "vp", "test", "--run", "sum.test.ts"],
         workspace: wtB,
       })
       expect(second.installCount()).toBe(1)
@@ -2017,7 +2020,7 @@ describe("shared node_modules cache across codex worktrees", () => {
           prepareWorkspaceDependencies({
             installer: installers[index].installer,
             sharedCacheRoot,
-            verificationArgs: ["bun", "test", "sum.test.ts"],
+            verificationArgs: ["pnpm", "exec", "vp", "test", "--run", "sum.test.ts"],
             workspace,
           }),
         ),

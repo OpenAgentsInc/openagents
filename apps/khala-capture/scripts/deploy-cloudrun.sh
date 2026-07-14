@@ -64,7 +64,7 @@ PW_SECRET="${KHALA_CAPTURE_PGPASSWORD_SECRET:-khala-sync-capture-password}"
 cd "$APP_DIR"
 
 echo "==> Building Cloud Run server bundle"
-bun run build:cloudrun
+pnpm run build:cloudrun
 
 if ! gcloud secrets describe "$PW_SECRET" --project "$PROJECT" >/dev/null 2>&1; then
   echo "==> Secret $PW_SECRET is missing." >&2

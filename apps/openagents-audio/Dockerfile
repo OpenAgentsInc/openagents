@@ -1,5 +1,5 @@
-FROM oven/bun:1
+FROM node:24.13.1-bookworm-slim
 WORKDIR /app
-COPY dist/server.js ./dist/server.js
+COPY dist/main.mjs ./dist/main.mjs
 EXPOSE 8080
-CMD ["bun", "run", "dist/server.js"]
+CMD ["node", "dist/main.mjs"]

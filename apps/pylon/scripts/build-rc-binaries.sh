@@ -1,70 +1,57 @@
 #!/usr/bin/env bash
-# Build signed, standalone Pylon binaries (bun --compile) for all platforms, sign
-# each with the OpenAgents ed25519 release key, and verify. RC artifacts only —
-# published to our GCP feed (updates.openagents.com) by oa-updates (#5043).
-#
-# Usage: bash scripts/build-rc-binaries.sh [version]   (default 1.0.0-rc.1)
-# Output: dist/rc/<version>/pylon-<platform> + .sig.json + manifest.json (gitignored)
+# Build signed, portable Node Pylon launchers. The same Vite Plus/tsdown-built
+# ESM artifact runs on every supported Node 24 host; Bun native executables are
+# intentionally no longer produced.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../../.."
+
 VERSION="${1:-1.0.0-rc.2}"
 CHANNEL="${OA_PYLON_CHANNEL:-rc}"
-OUT="dist/rc/$VERSION"
-SIGNER="../oa-updates/scripts/sign-release.ts"
-VERIFIER="../oa-updates/scripts/verify-release.ts"
-mkdir -p "$OUT"
+OUT="apps/pylon/dist/rc/$VERSION"
+SIGNER="apps/oa-updates/scripts/sign-release.ts"
+VERIFIER="apps/oa-updates/scripts/verify-release.ts"
 
-# Version-sync guard (rc.13 incident): the compiled binary reports
-# src/version.ts PYLON_VERSION and the npm package ships package.json "version".
-# If either drifts from the version being cut, binaries self-report the wrong
-# version and auto-update-loop. Fail closed before building.
-SRC_VERSION="$(bun -e 'import { PYLON_VERSION } from "./src/version.ts"; console.log(PYLON_VERSION)')"
-PKG_VERSION="$(bun -e 'console.log(require("./package.json").version)')"
+SRC_VERSION="$(node --import tsx -e 'import { PYLON_VERSION } from "./apps/pylon/src/version.ts"; console.log(PYLON_VERSION)')"
+PKG_VERSION="$(node -e 'console.log(require("./apps/pylon/package.json").version)')"
 if [ "$SRC_VERSION" != "$VERSION" ] || [ "$PKG_VERSION" != "$VERSION" ]; then
-  echo "FAIL: cutting $VERSION but src/version.ts=$SRC_VERSION, package.json=$PKG_VERSION — bump BOTH to $VERSION." >&2
+  echo "FAIL: cutting $VERSION but source=$SRC_VERSION package=$PKG_VERSION" >&2
   exit 1
 fi
-echo "== version sync OK: $VERSION (src/version.ts + package.json) =="
 
-# bun --compile cross-targets. darwin-arm64 is native here; the rest cross-compile.
-TARGETS=(bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-linux-arm64 bun-windows-x64)
-built=()
-
-for t in "${TARGETS[@]}"; do
-  plat="${t#bun-}"
-  bin="$OUT/pylon-$plat"
-  echo "== build $plat =="
-  if bun build src/index.ts --compile --target="$t" --outfile "$bin" 2>/tmp/pylon-build-$plat.err; then
-    OPENAGENTS_RELEASE_SIGNED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" bun "$SIGNER" "$bin" > "$bin.sig.json"
-    bun "$VERIFIER" "$bin" "$bin.sig.json"
-    built+=("$plat")
-  else
-    echo "  SKIP $plat (cross-compile failed — see /tmp/pylon-build-$plat.err)" >&2
-  fi
+node scripts/build-public-cli-artifacts.mjs --filter @openagentsinc/pylon
+mkdir -p "$OUT"
+platforms=(darwin-arm64 darwin-x64 linux-x64 linux-arm64)
+for platform in "${platforms[@]}"; do
+  artifact="$OUT/pylon-$platform"
+  cp apps/pylon/dist/index.mjs "$artifact"
+  chmod 0755 "$artifact"
+  OPENAGENTS_RELEASE_SIGNED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    node --import tsx "$SIGNER" "$artifact" > "$artifact.sig.json"
+  node --import tsx "$VERIFIER" "$artifact" "$artifact.sig.json"
 done
 
-# Per-platform manifest (the seed oa-updates publishes to the rc feed; #5043).
-{
-  echo "{"
-  echo "  \"schema\": \"openagents.pylon.release_manifest.v1\","
-  echo "  \"product\": \"pylon\","
-  echo "  \"version\": \"$VERSION\","
-  echo "  \"channel\": \"$CHANNEL\","
-  echo "  \"platforms\": {"
-  first=1
-  for plat in "${built[@]}"; do
-    sig=$(python3 -c "import json;print(json.load(open('$OUT/pylon-$plat.sig.json'))['signature'])")
-    sha=$(python3 -c "import json;print(json.load(open('$OUT/pylon-$plat.sig.json'))['sha256'])")
-    [ $first -eq 0 ] && echo ","
-    first=0
-    printf '    "%s": { "file": "pylon-%s", "sha256": "%s", "signature": "%s", "kid": "%s" }' \
-      "$plat" "$plat" "$sha" "$sig" "$(python3 -c "import json;print(json.load(open('$OUT/pylon-$plat.sig.json'))['kid'])")"
-  done
-  echo ""
-  echo "  }"
-  echo "}"
-} > "$OUT/manifest.json"
+node --input-type=module - "$OUT" "$VERSION" "$CHANNEL" "${platforms[@]}" <<'NODE'
+import { readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+const [out, version, channel, ...platforms] = process.argv.slice(2)
+const records = Object.fromEntries(platforms.map((platform) => {
+  const envelope = JSON.parse(readFileSync(join(out, `pylon-${platform}.sig.json`), "utf8"))
+  return [platform, {
+    file: `pylon-${platform}`,
+    sha256: envelope.sha256,
+    signature: envelope.signature,
+    kid: envelope.kid,
+    runtime: "node>=24.13.1",
+  }]
+}))
+writeFileSync(join(out, "manifest.json"), JSON.stringify({
+  schema: "openagents.pylon.release_manifest.v1",
+  product: "pylon",
+  version,
+  channel,
+  artifactKind: "portable-node-esm",
+  platforms: records,
+}, null, 2) + "\n")
+NODE
 
-echo "== built: ${built[*]:-none} =="
-echo "RC binaries + signatures + manifest in $OUT (channel=$CHANNEL, version=$VERSION)"
-echo "NOTE: rc channel only — do not publish to stable until owner GA."
+echo "portable Node RC artifacts written to $OUT"

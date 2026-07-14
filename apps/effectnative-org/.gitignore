@@ -1,3 +1,0 @@
-# Build artifact staged by scripts/deploy-cloudrun.sh (from
-# effect-native `bun run site:build`); never committed.
-/site/

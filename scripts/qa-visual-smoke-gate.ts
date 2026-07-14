@@ -83,7 +83,7 @@ const todayIsoDate = (
 
 export const khalaVisualSmokeGateSteps = (): ReadonlyArray<KhalaVisualSmokeGateStep> => [
   {
-    command: ["bun", "run", "--cwd", "apps/openagents-desktop", "verify"],
+    command: ["pnpm", "--dir", "apps/openagents-desktop", "run", "verify"],
     id: "desktop-verify",
     label: "OpenAgents Desktop verification",
   },

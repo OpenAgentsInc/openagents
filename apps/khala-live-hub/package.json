@@ -4,23 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun src/server.ts",
-    "dev": "bun --watch src/server.ts",
-    "test": "bun test",
+    "start": "node --import tsx src/server.ts",
+    "dev": "node --watch --import tsx src/server.ts",
+    "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:cloudrun": "bun build src/server.ts --target=bun --outdir dist --entry-naming server.js",
+    "build:cloudrun": "vp pack src/server.ts --format esm --platform node --out-dir dist",
     "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh"
   },
   "dependencies": {
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-server": "workspace:*",
     "@openagentsinc/postgres-runtime": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/sqlite-runtime": "workspace:*",
-    "@openagentsinc/khala-sync": "workspace:*",
-    "@openagentsinc/khala-sync-server": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

@@ -25,23 +25,22 @@
     "./visual-baseline": "./src/visual-baseline.ts"
   },
   "scripts": {
-    "test": "bun test src/*.test.ts",
-    "lag:sweep": "bun src/lag-profiling-sweep.ts",
-    "smoke:architect-coder-judge-live": "bun src/architect-coder-judge-live-smoke.ts",
-    "monkey:night": "bun src/monkey-night.ts --runs 100 --steps 64",
-    "monkey:smoke": "bun test src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'",
+    "test": "vp test --run src/*.test.ts",
+    "lag:sweep": "node --import tsx src/lag-profiling-sweep.ts",
+    "smoke:architect-coder-judge-live": "node --import tsx src/architect-coder-judge-live-smoke.ts",
+    "monkey:night": "node --import tsx src/monkey-night.ts --runs 100 --steps 64",
+    "monkey:smoke": "vp test --run src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/khala-fleet-intents": "workspace:*",
     "@openagentsinc/khala-tools": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "fast-check": "^4.8.0",
     "typescript": "catalog:",
     "vitest": "^4.1.8"

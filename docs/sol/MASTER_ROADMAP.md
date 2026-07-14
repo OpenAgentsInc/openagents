@@ -596,16 +596,7 @@ self-referential queue churn. Refresh live `roadmap:sol` issues and claims
 before operational selection; this table owns the complete product queue, not
 the currently unclaimed worker lease.
 
-| Issue | Current bounded role |
-| --- | --- |
-| [#8772](https://github.com/OpenAgentsInc/openagents/issues/8772) | VP-4a canonical root verbs; folded TC-1 leaf |
-| [#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) | VP-3/4 invariant lint; folded TC-2 leaf |
-| [#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) | VP-4b staged hook/gate gradient; folded TC-3 leaf |
-| [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777) | Sole full-cutover epic |
-| [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | VP-3 Effect TSGo and Vite Plus parity |
-| [#8798](https://github.com/OpenAgentsInc/openagents/issues/8798) | VP-4 atomic pnpm/Vite Plus cutover |
-| [#8799](https://github.com/OpenAgentsInc/openagents/issues/8799) | VP-5 stabilization and Node production images |
-| [#8800](https://github.com/OpenAgentsInc/openagents/issues/8800) | VP-6 Bun excision and closure |
+There are no open `roadmap:sol` product issues at this snapshot.
 
 The superseded broad program/client, CUT-27, AUDIO-8, and PORT-03 through PORT-08
 issues are closed `not planned` with comments; their bodies were not rewritten.
@@ -634,16 +625,17 @@ At this snapshot:
    `0.1.1` are public on npm in dependency order; #8767 and #8770 are closed.
 6. RC9 remains unpublished. Conditional public-language, telemetry, release,
    concurrency, registry, and product-successor gates remain unchanged.
-7. Full cutover is active under epic #8777. VP-0 #8794 is closed with its
+7. Full cutover is complete. VP-0 #8794 is closed with its
    [freeze/ledger receipt](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md),
    and VP-1 #8795 completed money/Sites retirement with its
    [reconciliation/decommission receipt](./2026-07-14-node-pnpm-vite-plus-vp1-reconciliation-decommission-receipt.md).
    VP-2 #8796 is also closed with its
    [Node-runtime receipt](./2026-07-14-node-pnpm-vite-plus-vp2-node-runtime-receipt.md).
-   VP-3 #8797 is complete. Execute atomic VP-4 #8798 next (including
-   #8772–#8774), then VP-5 #8799 and VP-6 #8800 in order.
+   VP-3 #8797, VP-4 #8798 (including #8772–#8774), VP-5 #8799, VP-6
+   #8800, and epic #8777 are closed with their phase receipts.
 
 This is an infrastructure-retirement queue, not a successor product queue.
+There is no active product issue in the current Sol projection.
 The completed AssuranceSpec lane has no remaining owner action.
 Supported security, privacy, data-loss, accessibility, production-outage, or
 compatibility defects may use new bounded repair issues; product expansion

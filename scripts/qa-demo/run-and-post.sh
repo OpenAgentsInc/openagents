@@ -19,14 +19,14 @@ if [ -z "$RUN_DIR" ]; then
   : "${OPENAGENTS_API_KEY:?set OPENAGENTS_API_KEY to a Khala agent token}"
   RUN_DIR="apps/qa-runner/runs/pr-${PR}"
   echo "[1/3] Khala-driven QA run -> $RUN_DIR"
-  bun run --cwd apps/qa-runner demo:khala -- --out "$ROOT/$RUN_DIR"
+  pnpm --dir apps/qa-runner run demo:khala -- --out "$ROOT/$RUN_DIR"
 else
   echo "[1/3] reusing run dir $RUN_DIR"
 fi
 
 echo "[2/3] compose polished video"
 OUT="$RUN_DIR/compose.mp4"
-bun run --cwd apps/qa-runner compose -- --run "$ROOT/$RUN_DIR" --out "$ROOT/$OUT"
+pnpm --dir apps/qa-runner run compose -- --run "$ROOT/$RUN_DIR" --out "$ROOT/$OUT"
 
 echo "[3/3] attach to PR #$PR via gh-attach"
 GH_ATTACH="${GH_ATTACH:-gh-attach}"

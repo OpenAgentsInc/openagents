@@ -1,14 +1,11 @@
 /**
- * Dual-runtime SQLite seam — the ONE typed surface production stores use to
- * touch embedded SQLite, so `bun:sqlite` never leaks past this package
- * (BUN-1, openagents#8779; Option C of
- * docs/fable/2026-07-13-bun-vs-vite-plus-analysis.md).
+ * Node SQLite seam — the ONE typed surface production stores use to touch
+ * embedded SQLite (openagents#8779).
  *
  * Modeled on T3 Code's `apps/server/src/persistence/Layers/Sqlite.ts` +
  * `NodeSqliteClient.ts` (reference clone `projects/repos/t3code`): the
- * runtime is detected once via `process.versions.bun` and the matching
- * client — `bun:sqlite` under Bun, `node:sqlite` under Node — is loaded
- * lazily at open time. Unlike T3 (which targets `effect/unstable/sql`),
+ * `node:sqlite` is loaded lazily at open time. Unlike T3 (which targets
+ * `effect/unstable/sql`),
  * this seam is shaped like the synchronous `SqlDriver` our stores already
  * consume (khala-sync-client `store-core.ts`), with Effect wrappers in
  * `effect.ts` for Effect-surfaced callers.
@@ -19,17 +16,15 @@
  */
 
 /** Which embedded-SQLite implementation backs a database handle. */
-export type SqliteRuntime = "bun" | "node"
+export type SqliteRuntime = "node"
 
 /**
- * Runtime selection, T3-style (`Sqlite.ts` line 27): Bun advertises itself
- * via `process.versions.bun`; anything else is treated as Node.
+ * The cutover has one runtime authority.
  */
-export const detectSqliteRuntime = (): SqliteRuntime =>
-  process.versions.bun !== undefined ? "bun" : "node"
+export const detectSqliteRuntime = (): SqliteRuntime => "node"
 
 /**
- * Bind-parameter values accepted by both `bun:sqlite` and `node:sqlite`.
+ * Bind-parameter values accepted by `node:sqlite`.
  * A superset of khala-sync-client's `SqlValue` (`string | number`), so the
  * seam slots under existing `SqlDriver` consumers without a cast.
  */
@@ -37,7 +32,7 @@ export type SqliteValue = string | number | bigint | null | Uint8Array
 
 export interface SqliteStatement<Row = any, Params extends Array<any> = Array<any>> {
   // Driver compatibility requires the same variadic binding surface exposed
-  // by both bun:sqlite and node:sqlite.
+  // by node:sqlite and retained store adapters.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly run: (...params: Params) => { readonly changes: number | bigint }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

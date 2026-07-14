@@ -89,7 +89,7 @@ else
 fi
 
 run chown -R "$service_user:$service_user" "$install_dir"
-run sudo -u "$service_user" env HOME="$pylon_home" PYLON_HOME="$pylon_home" bun install --cwd "$install_dir"
+run sudo -u "$service_user" env HOME="$pylon_home" PYLON_HOME="$pylon_home" pnpm --dir "$install_dir" install --frozen-lockfile
 run sudo -u "$service_user" env HOME="$pylon_home" PYLON_HOME="$pylon_home" node "$install_dir/scripts/build-public-cli-artifacts.mjs" --filter @openagentsinc/pylon
 
 bootstrap_args=(

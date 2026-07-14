@@ -330,8 +330,10 @@ const failCount = lastCount("fail")
 if (failCount !== 0) throw new Error(`Full Desktop gate reported ${failCount} failures.`)
 const fullGateReceipt = canonicalArtifact({
   full_desktop_gate_receipt_format_version: "0.1",
-  command: "bun run --cwd apps/openagents-desktop verify",
-  command_digest: sha256Digest(JSON.stringify(["bun", "run", "--cwd", "apps/openagents-desktop", "verify"])),
+  command: "pnpm --dir apps/openagents-desktop run verify",
+  command_digest: sha256Digest(
+    JSON.stringify(["pnpm", "--dir", "apps/openagents-desktop", "run", "verify"]),
+  ),
   output_digest: sha256Digest(fullGateOutput),
   source_digest: sha256Digest([
     read(testPath),

@@ -1507,7 +1507,7 @@ const groupedPlannerCoderJudgeScenarios: readonly GroupedScenario[] = [
             repo: "OpenAgentsInc/openagents",
             sessionId: desktopSessionId,
             threadId,
-            verify: "bun run check:deploy",
+            verify: "pnpm run check:deploy",
           }],
         }],
         expect: [schema("architectPlanRun"), crash()],
@@ -2947,14 +2947,14 @@ const architectPlanDag = () => ({
     objective: "Run the fixture coder turn and preserve verify authority.",
     repo: "OpenAgentsInc/openagents",
     title: "Fixture coder turn",
-    verify: "bun run check:deploy",
+    verify: "pnpm run check:deploy",
   }],
   objective: "fixture plan then code then judge",
   planRef: architectPlanRef,
   repo: "OpenAgentsInc/openagents",
   schema: "openagents.khala_code.claude_plan_fanout_dag.v1",
   source: "claude_plan_mode",
-  verify: "bun run check:deploy",
+  verify: "pnpm run check:deploy",
 })
 
 const architectPlanArtifact = (

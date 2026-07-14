@@ -81,17 +81,17 @@ const runCheck = async (check: GateCheck): Promise<GateCheckReceipt> => {
 
 const checks: readonly GateCheck[] = [
   {
-    command: ["bun", "run", "typecheck"],
+    command: ["pnpm", "run", "typecheck"],
     id: "static.typecheck",
     name: "Static TypeScript check",
   },
   {
-    command: ["bun", "run", "architecture:check"],
+    command: ["pnpm", "run", "architecture:check"],
     id: "static.dependency_cruiser",
     name: "Dependency Cruiser architecture check",
   },
   {
-    command: ["bun", "test"],
+    command: ["pnpm", "run", "test"],
     id: "unit.mounts.contracts.generator_fixture",
     name: "Unit, mount, behavior-contract, generator-conformance, and fixture-tier tests",
   },

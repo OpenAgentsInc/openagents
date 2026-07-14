@@ -71,13 +71,13 @@ elif [ -n "$main_local_sha" ]; then
   fi
 fi
 
-if ! ( cd "$root" && bun run check:fast ) >&2; then
+if ! ( cd "$root" && pnpm run check:fast ) >&2; then
   echo "[pre-push guard] BLOCKED: shared fast check profile failed." >&2
   exit 1
 fi
 
 echo "[pre-push guard] checking scoped Khala Code visual smoke gate..." >&2
-if ! ( cd "$root" && OPENAGENTS_PRE_PUSH_LOCAL_SHA="$main_local_sha" OPENAGENTS_PRE_PUSH_REMOTE_SHA="$main_remote_sha" bun scripts/qa-visual-smoke-gate.ts ) >&2; then
+if ! ( cd "$root" && OPENAGENTS_PRE_PUSH_LOCAL_SHA="$main_local_sha" OPENAGENTS_PRE_PUSH_REMOTE_SHA="$main_remote_sha" node --import tsx scripts/qa-visual-smoke-gate.ts ) >&2; then
   echo "[pre-push guard] BLOCKED: Khala Code visual smoke gate failed." >&2
   exit 1
 fi
@@ -90,7 +90,7 @@ fi
 
 if [ -n "$mobile_changed" ]; then
   echo "[pre-push guard] Khala mobile/testing changes detected -> running qa:mobile:gate..." >&2
-  if ! ( cd "$root/clients/khala-mobile" && bun run qa:mobile:gate ) >&2; then
+  if ! ( cd "$root/clients/khala-mobile" && pnpm run qa:mobile:gate ) >&2; then
     echo "[pre-push guard] BLOCKED: qa:mobile:gate failed." >&2
     exit 1
   fi
@@ -106,7 +106,7 @@ fi
 
 if [ -n "$desktop_changed" ]; then
   echo "[pre-push guard] OpenAgents Desktop changes detected -> running desktop typecheck + tests + built Electron smoke..." >&2
-  if ! ( cd "$root/apps/openagents-desktop" && bun run typecheck && bun test && bun run smoke ) >&2; then
+  if ! ( cd "$root/apps/openagents-desktop" && pnpm run typecheck && pnpm run test && pnpm run smoke ) >&2; then
     echo "[pre-push guard] BLOCKED: desktop gate failed. This gate exists because a desktop push once landed with the fable streaming smoke red (#8712); fix before pushing to main." >&2
     exit 1
   fi
@@ -117,7 +117,7 @@ fi
 
 if is_enabled "${OPENAGENTS_PRE_PUSH_FULL_GATE:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_CHECK_DEPLOY:-}"; then
   echo "[pre-push guard] OPENAGENTS_PRE_PUSH_FULL_GATE enabled -> running check:deploy..." >&2
-  if ! ( cd "$root/apps/openagents.com" && bun run check:deploy ) >&2; then
+  if ! ( cd "$root/apps/openagents.com" && pnpm run check:deploy ) >&2; then
     echo "[pre-push guard] BLOCKED: check:deploy failed. Fix it before pushing to main." >&2
     exit 1
   fi
@@ -128,14 +128,14 @@ fi
 
 if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_QA_SMOKE:-}"; then
   echo "[pre-push guard] running warning-only Tier 1 QA smoke..." >&2
-  if ! ( cd "$root" && bun scripts/qa-pre-push-smoke.ts ) >&2; then
+  if ! ( cd "$root" && node --import tsx scripts/qa-pre-push-smoke.ts ) >&2; then
     echo "[pre-push guard] WARNING: Tier 1 QA smoke did not pass or did not finish. Push remains allowed; Tier 2 async QA is authoritative." >&2
   fi
 fi
 
 if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_ASYNC_QA:-}"; then
   echo "[pre-push guard] launching warning-only Tier 2 async QA on OpenAgents GCE..." >&2
-  if ! ( cd "$root" && bun scripts/qa-async-gce-trigger.ts ) >&2; then
+  if ! ( cd "$root" && node --import tsx scripts/qa-async-gce-trigger.ts ) >&2; then
     echo "[pre-push guard] WARNING: Tier 2 async QA trigger failed. Push remains allowed; inspect oa-codex-control / GCE runner health." >&2
   fi
 fi

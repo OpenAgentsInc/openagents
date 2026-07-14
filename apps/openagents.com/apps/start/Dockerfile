@@ -1,13 +1,13 @@
-FROM oven/bun:1
+FROM node:24.13.1-bookworm-slim
 
 WORKDIR /app
 
 COPY dist/server ./dist/server
 COPY dist/client ./dist/client
-COPY cloudrun/server.mjs ./cloudrun/server.mjs
+COPY dist/cloudrun ./dist/cloudrun
 
 ENV OPENAGENTS_START_CLIENT_DIR=/app/dist/client
 
 EXPOSE 8080
 
-CMD ["bun", "cloudrun/server.mjs"]
+CMD ["node", "dist/cloudrun/server.mjs"]

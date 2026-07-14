@@ -2,28 +2,27 @@
   "name": "@openagentsinc/reactor-contracts",
   "version": "0.1.0",
   "private": false,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "files": [
     "src",
     "README.md"
   ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "smoke:dogfood": "bun scripts/dogfood-smoke.ts",
-    "smoke:install": "bun scripts/install-smoke.ts",
-    "test": "bun test",
+    "smoke:dogfood": "node --import tsx scripts/dogfood-smoke.ts",
+    "smoke:install": "node --import tsx scripts/install-smoke.ts",
+    "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

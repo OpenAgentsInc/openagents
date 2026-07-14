@@ -232,7 +232,7 @@ const defaultSpawnPylon = (here: string) => (args: ReadonlyArray<string>): Child
   if (root === null) return null
   // No provider-home env injection — pylon owns credential custody and its
   // isolated per-account homes. Inherited env only.
-  return spawn("bun", ["apps/pylon/src/index.ts", ...args], {
+  return spawn("node", ["--import", "tsx", "apps/pylon/src/index.ts", ...args], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
     env: process.env,

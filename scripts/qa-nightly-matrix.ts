@@ -1059,26 +1059,28 @@ export const buildQaNightlySteps = (input: Readonly<{
   const monkeyArtifactDir = join(input.artifactDir, "monkey-night")
   const steps: QaNightlyStep[] = [
     {
-      command: ["bun", "run", "--cwd", "packages/khala-qa-harness", "test"],
+      command: ["pnpm", "--dir", "packages/khala-qa-harness", "run", "test"],
       cwd: ".",
       id: "harness-suite",
       label: "Khala QA harness suite",
     },
     {
-      command: ["bun", "run", "--cwd", "packages/behavior-contracts", "test"],
+      command: ["pnpm", "--dir", "packages/behavior-contracts", "run", "test"],
       cwd: ".",
       id: "behavior-contracts",
       label: "Behavior-contract registry suite",
     },
     {
-      command: ["bun", "run", "--cwd", "apps/openagents-desktop", "verify"],
+      command: ["pnpm", "--dir", "apps/openagents-desktop", "run", "verify"],
       cwd: ".",
       id: "desktop-verify",
       label: "OpenAgents Desktop verify",
     },
     {
       command: [
-        "bun",
+        "node",
+        "--import",
+        "tsx",
         "src/monkey-night.ts",
         "--runs",
         String(monkeyRuns),
@@ -1097,7 +1099,7 @@ export const buildQaNightlySteps = (input: Readonly<{
       label: `Seeded monkey night (${monkeyRuns * monkeySteps} actions)`,
     },
     {
-      command: ["bun", "test", "src/model-based.test.ts"],
+      command: ["pnpm", "exec", "vp", "test", "--run", "src/model-based.test.ts"],
       cwd: "packages/khala-qa-harness",
       id: "model-based",
       label: "Model-based tier",

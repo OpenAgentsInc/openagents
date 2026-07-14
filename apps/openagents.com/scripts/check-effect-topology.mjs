@@ -113,7 +113,7 @@ let localNodeModulesRealPath = null
 
 if (!existsSync(REPO_NODE_MODULES)) {
   localInstallProblems.push(
-    `Missing local ${repoRelative(REPO_NODE_MODULES)}; run bun install --frozen-lockfile in this checkout before checking Effect topology`,
+    `Missing local ${repoRelative(REPO_NODE_MODULES)}; run pnpm install --frozen-lockfile in this checkout before checking Effect topology`,
   )
 } else {
   localNodeModulesRealPath = realpathSync(REPO_NODE_MODULES)

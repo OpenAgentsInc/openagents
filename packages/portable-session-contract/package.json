@@ -2,28 +2,27 @@
   "name": "@openagentsinc/portable-session-contract",
   "version": "0.1.0",
   "private": false,
+  "files": [
+    "src",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./model": "./src/model.ts",
     "./journeys": "./src/journeys.ts"
   },
-  "files": [
-    "src",
-    "README.md"
-  ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "bun test",
+    "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build src/cloudrun.ts --target=bun --outfile=dist/server.js",
+    "build": "vp pack src/cloudrun.ts --format esm --platform node --out-dir dist",
     "deploy": "bash deploy-cloudrun.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

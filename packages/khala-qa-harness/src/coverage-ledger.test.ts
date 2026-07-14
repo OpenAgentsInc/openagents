@@ -66,7 +66,7 @@ describe("Khala Code QA coverage ledger", () => {
     expect(ledger.rpcMethods.codexConfigValueWrite?.argumentShapes).toEqual(["[{keyPath:string,value:string}]"])
     for (const [group, methods] of Object.entries(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)) {
       expect(ledger.rpcGroups[group]?.calls).toBeGreaterThan(0)
-      expect(ledger.rpcGroups[group]?.methods).toEqual(expect.arrayContaining(methods))
+      expect(ledger.rpcGroups[group]?.methods).toEqual(expect.arrayContaining([...methods]))
     }
     for (const key of KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.settingsKeys) {
       expect(ledger.settingsKeysWritten).toContain(key)
@@ -96,7 +96,7 @@ describe("Khala Code QA coverage ledger", () => {
         ledger.slashCommands[command]?.availabilityStates.length,
       )
       expect(ledger.slashCommands[command]?.availabilityStates).toEqual(
-        expect.arrayContaining(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommandAvailabilityStates[command] ?? []),
+        expect.arrayContaining([...(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommandAvailabilityStates[command] ?? [])]),
       )
     }
     for (const variant of KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.threadItemVariants) {

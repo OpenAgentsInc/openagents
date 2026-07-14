@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+
+const execFileAsync = promisify(execFile)
+
 const status = await git(["status", "--porcelain=v1", "--untracked-files=all"])
 const dirtyLines = status
   .split(/\r?\n/u)
@@ -20,17 +25,14 @@ if (dirtyLines.length > 0) {
 console.log("Khala Code read-only smoke verification passed: worktree clean.")
 
 async function git(args: readonly string[]): Promise<string> {
-  const proc = Bun.spawn(["git", ...args], {
-    stderr: "pipe",
-    stdout: "pipe",
-  })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  if (exitCode !== 0) {
-    throw new Error(`git ${args.join(" ")} failed: ${stderr.trim() || `exit ${exitCode}`}`)
+  try {
+    const { stdout } = await execFileAsync("git", [...args], { encoding: "utf8" })
+    return stdout
+  } catch (error) {
+    const detail =
+      typeof error === "object" && error !== null && "stderr" in error
+        ? String(error.stderr).trim()
+        : String(error)
+    throw new Error(`git ${args.join(" ")} failed: ${detail}`)
   }
-  return stdout
 }

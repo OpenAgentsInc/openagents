@@ -36,7 +36,7 @@ const makeFetch = (
     headers: Headers
     url: string
   }> = []
-  const fetchImpl = Object.assign(
+  const fetchImpl: typeof globalThis.fetch =
     async (
       url: Parameters<typeof globalThis.fetch>[0],
       init?: Parameters<typeof globalThis.fetch>[1],
@@ -47,9 +47,7 @@ const makeFetch = (
         url: String(url),
       })
       return response.clone()
-    },
-    { preconnect: globalThis.fetch.preconnect },
-  )
+    }
   return { fetchImpl, requests }
 }
 

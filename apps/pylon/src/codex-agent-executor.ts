@@ -394,15 +394,15 @@ async function readPackageManifest(directory: string): Promise<PackageManifest |
 function verificationCwdFromArgs(workspace: string, args: string[]): string | null {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
-    if (arg === "--cwd" || arg === "-C") {
+    if (arg === "--cwd" || arg === "--dir" || arg === "-C") {
       const value = args[index + 1]
       if (typeof value !== "string" || value.length === 0) return null
       const resolved = resolve(workspace, value)
       const workspaceRoot = resolve(workspace)
       return resolved === workspaceRoot || resolved.startsWith(`${workspaceRoot}/`) ? resolved : null
     }
-    if (arg.startsWith("--cwd=")) {
-      const resolved = resolve(workspace, arg.slice("--cwd=".length))
+    if (arg.startsWith("--cwd=") || arg.startsWith("--dir=")) {
+      const resolved = resolve(workspace, arg.slice(arg.indexOf("=") + 1))
       const workspaceRoot = resolve(workspace)
       return resolved === workspaceRoot || resolved.startsWith(`${workspaceRoot}/`) ? resolved : null
     }
@@ -410,15 +410,15 @@ function verificationCwdFromArgs(workspace: string, args: string[]): string | nu
   return null
 }
 
-function bunScriptNameFromArgs(args: string[]): string | null {
-  if (args[0] !== "bun") return null
+function pnpmScriptNameFromArgs(args: string[]): string | null {
+  if (args[0] !== "pnpm") return null
   for (let index = 1; index < args.length; index += 1) {
     const arg = args[index]
-    if (arg === "--cwd" || arg === "-C") {
+    if (arg === "--cwd" || arg === "--dir" || arg === "-C") {
       index += 1
       continue
     }
-    if (arg.startsWith("--cwd=") || arg.startsWith("-")) continue
+    if (arg.startsWith("--cwd=") || arg.startsWith("--dir=") || arg.startsWith("-")) continue
     if (arg === "run") continue
     return arg
   }
@@ -454,7 +454,7 @@ async function dependencyInstallDirectories(input: {
   const verifierCwd = verificationCwdFromArgs(workspaceRoot, input.verificationArgs)
   if (verifierCwd === null || verifierCwd === workspaceRoot) return dirs
 
-  const scriptName = bunScriptNameFromArgs(input.verificationArgs)
+  const scriptName = pnpmScriptNameFromArgs(input.verificationArgs)
   const verifierManifest = await readPackageManifest(verifierCwd)
   const scriptCommand =
     scriptName === null ? undefined : verifierManifest?.scripts?.[scriptName]
@@ -482,18 +482,18 @@ async function dependencyInstallDirectories(input: {
  *
  * A git worktree shares the bare object store but never shares
  * `node_modules`, so N concurrent `codex_agent_task` assignments each ran a
- * fresh `bun install` and thrashed disk/CPU, serializing fleet startup. The
+ * fresh `pnpm install` and thrashed disk/CPU, serializing fleet startup. The
  * helpers below let the FIRST task install once and every subsequent task with
  * a matching lockfile symlink the prebuilt `node_modules` in instantly.
  *
- * Correctness rule: reuse is keyed by the SHA-256 of the workspace `bun.lock`,
+ * Correctness rule: reuse is keyed by the SHA-256 of the workspace `pnpm-lock.yaml`,
  * so stale dependency trees are never shared. Any miss/mismatch falls back to a
- * fresh `bun install`. Sharing is a read-only symlink; the one-time cache
+ * fresh `pnpm install`. Sharing is a read-only symlink; the one-time cache
  * populate is guarded by an atomic mkdir lock so concurrent first-runs cannot
  * corrupt the shared entry.
  */
 async function workspaceLockfileHash(workspaceRoot: string): Promise<string | null> {
-  for (const name of ["bun.lock", "bun.lockb"]) {
+  for (const name of ["pnpm-lock.yaml"]) {
     try {
       const bytes = await readFile(join(workspaceRoot, name))
       return createHash("sha256").update(bytes).digest("hex").slice(0, 24)
@@ -581,10 +581,8 @@ export async function prepareWorkspaceDependencies(input: {
 }): Promise<DependencyPreparation> {
   const workspaceRoot = resolve(input.workspace)
   const hasPackageJson = await pathExists(join(input.workspace, "package.json"))
-  const hasBunLock =
-    (await pathExists(join(input.workspace, "bun.lock"))) ||
-    (await pathExists(join(input.workspace, "bun.lockb")))
-  if (!hasPackageJson || !hasBunLock) {
+  const hasPnpmLock = await pathExists(join(input.workspace, "pnpm-lock.yaml"))
+  if (!hasPackageJson || !hasPnpmLock) {
     return { ok: true, prepared: false }
   }
 
@@ -606,7 +604,7 @@ export async function prepareWorkspaceDependencies(input: {
     }
   }
 
-  // Lockfile-keyed shared cache root: only reuse when bun.lock matches exactly.
+  // Lockfile-keyed shared cache root: only reuse when pnpm-lock.yaml matches exactly.
   const lockHash = await workspaceLockfileHash(workspaceRoot)
   const sharedCacheRoot =
     input.sharedCacheRoot !== undefined && lockHash !== null
@@ -637,12 +635,12 @@ export async function prepareWorkspaceDependencies(input: {
 
     // Cache miss (or mismatch/missing cache): install into this worktree directory.
     const install = await installer({
-      args: ["bun", "install", "--no-save", "--ignore-scripts"],
+      args: ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
       cwd: directory,
       timeoutMs: 5 * 60 * 1000,
     })
     const receiptRef = stableRef(
-      "dependency.pylon.codex_agent_task.bun_install",
+      "dependency.pylon.codex_agent_task.pnpm_install",
       `${directory}:${install.exitCode}:${install.timedOut}:${install.stdoutBytes}:${install.stderrBytes}`,
     )
     installReceipts.push(receiptRef)
@@ -662,7 +660,7 @@ export async function prepareWorkspaceDependencies(input: {
     }
   }
 
-  // Only a real `bun install` can dirty tracked files (package.json/bun.lock);
+  // Only a real `pnpm install` can dirty tracked files (package.json/pnpm-lock.yaml);
   // a pure symlink-reuse pass leaves the checkout pristine, so skip the restore.
   if (installedDirectoryCount === 0) {
     return {
@@ -692,7 +690,7 @@ export async function prepareWorkspaceDependencies(input: {
     ok: true,
     prepared: true,
     receiptRef: stableRef(
-      "dependency.pylon.codex_agent_task.bun_install",
+      "dependency.pylon.codex_agent_task.pnpm_install",
       installReceipts.join(":"),
     ),
   }

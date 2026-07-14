@@ -80,7 +80,7 @@ npx  @openagentsinc/qa-runner run --fake-model --url https://example.test --out 
 npx playwright install chromium             # one-time, real-browser path
 ```
 
-It runs on plain Node (`node dist/qa.js …`) or Bun.
+It runs on the pinned Node runtime (`node dist/qa.js …`).
 
 ### Dev (inside the monorepo, against source)
 
@@ -165,7 +165,7 @@ And a **committed e2e test** at `generated/<slug>.e2e.test.ts` (override with
 run against any target:
 
 ```sh
-TARGET_URL=http://localhost:3000 bun test ./generated/<slug>.e2e.test.ts
+TARGET_URL=http://localhost:3000 pnpm exec vitest run ./generated/<slug>.e2e.test.ts
 ```
 
 ---

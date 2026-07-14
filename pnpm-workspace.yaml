@@ -1,0 +1,86 @@
+packages:
+  - apps/openagents.com
+  - apps/openagents.com/apps/*
+  - apps/openagents.com/packages/*
+  - apps/openagents.com/services/*
+  - apps/openagents.com/workers/*
+  - apps/acceptance-runner
+  - apps/qa-runner
+  - apps/aiur
+  - apps/forge
+  - apps/forum
+  - apps/khala-capture
+  - apps/khala-live-hub
+  - apps/oa-queue-worker
+  - apps/oa-updates
+  - apps/openagents-mobile
+  - apps/nostr-relay
+  - apps/openagents-audio
+  - apps/openagents-audio-edge
+  - apps/openagents-desktop
+  - apps/openagents-world
+  - apps/pylon
+  - apps/pylon/packages/*
+  - clients/khala-cli
+  - clients/khala-mobile
+  - clients/khala-ios/*
+  - packages/*
+  - packages/probe
+  - packages/probe/packages/*
+  - types/*
+
+# Electron Forge currently resolves its maintained node-gyp fork from Git.
+blockExoticSubdeps: false
+
+catalog:
+  "@cloudflare/workers-types": 4.20260702.1
+  "@types/node": 24.13.1
+  effect: 4.0.0-beta.94
+  typescript: ^6.0.3
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.4
+  vite-plus: 0.2.4
+
+allowBuilds:
+  "@electron/node-gyp": true
+  "@openrouter/sdk": false
+  "@shopify/react-native-skia": true
+  electron: true
+  electrobun: true
+  esbuild: true
+  fs-xattr: true
+  macos-alias: true
+  msgpackr-extract: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
+  workerd: false
+  "@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2": true
+  nostr-effect@https://codeload.github.com/OpenAgentsInc/nostr-effect/tar.gz/2bb57870eeeb214ed80ca8a275292f5e4dd89863: false
+  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz: false
+
+overrides:
+  "@effect/platform-browser": 4.0.0-beta.94
+  "@effect/sql-d1": 4.0.0-beta.94
+  "@effect/sql-pg": 4.0.0-beta.94
+  "@effect/sql-sqlite-do": 4.0.0-beta.94
+  "@cloudflare/workers-types": "catalog:"
+  "@types/node": "catalog:"
+  effect: "catalog:"
+  vite: "catalog:"
+
+packageExtensions:
+  vite-plus@*:
+    dependencies:
+      vite: "catalog:"
+
+patchedDependencies:
+  foldkit@0.102.1: patches/foldkit@0.102.1.patch
+
+peerDependencyRules:
+  allowAny:
+    - vite
+
+supportedArchitectures:
+  cpu: [current, x64]
+  libc: [current, glibc]
+  os: [current, linux]

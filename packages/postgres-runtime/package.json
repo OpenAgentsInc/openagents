@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "sideEffects": false,
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
   "exports": {
     ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "postgres": "3.4.9"

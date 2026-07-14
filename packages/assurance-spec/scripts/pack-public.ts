@@ -54,8 +54,8 @@ export const buildPublicTarballs = (
   repositoryRoot: string,
   outputDirectory: string,
 ): PublicTarballReceipt => {
-  const rootPackage = readJson<{ workspaces: { catalog: Record<string, string> } }>(resolve(repositoryRoot, "package.json"))
-  const effectVersion = rootPackage.workspaces.catalog.effect
+  const workspace = readFileSync(resolve(repositoryRoot, "pnpm-workspace.yaml"), "utf8")
+  const effectVersion = workspace.match(/^  effect:\s*["']?([^"'\n]+)["']?$/m)?.[1]
   if (effectVersion === undefined) throw new Error("missing_effect_catalog_version")
   mkdirSync(outputDirectory, { recursive: true })
   const staging = mkdtempSync(resolve(tmpdir(), "openagents-assurance-pack-"))
@@ -115,7 +115,7 @@ if (import.meta.main) {
   const outputFlag = process.argv.indexOf("--out")
   const out = outputFlag === -1 ? undefined : process.argv[outputFlag + 1]
   if (out === undefined) {
-    console.error("usage: bun scripts/pack-public.ts --out <directory>")
+    console.error("usage: node --import tsx scripts/pack-public.ts --out <directory>")
     process.exit(2)
   }
   const root = resolve(import.meta.dirname, "../../..")

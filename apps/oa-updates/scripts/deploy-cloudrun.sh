@@ -3,6 +3,9 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 app_dir="$(cd "$script_dir/.." && pwd)"
+repo_dir="$(cd "$app_dir/../.." && pwd)"
+
+(cd "$repo_dir" && pnpm --dir apps/oa-updates run build:server)
 
 # Deploy OpenAgents Updates to Cloud Run from the oa-updates app directory.
 #

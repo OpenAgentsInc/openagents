@@ -40,7 +40,7 @@ describe("Khala visual smoke gate scoping", () => {
 
   test("runs the active desktop verification", () => {
     expect(khalaVisualSmokeGateSteps().map(step => step.command.join(" "))).toEqual([
-      "bun run --cwd apps/openagents-desktop verify",
+      "pnpm --dir apps/openagents-desktop run verify",
     ])
   })
 })
@@ -91,7 +91,7 @@ describe("Khala visual smoke gate verdict", () => {
       },
     })
 
-    expect(commands).toEqual(["bun run --cwd apps/openagents-desktop verify"])
+    expect(commands).toEqual(["pnpm --dir apps/openagents-desktop run verify"])
     expect(verdict.status).toBe("failed")
     expect(verdict.exitCode).toBe(1)
     expect(verdict.visualFiles).toEqual(["apps/openagents-desktop/src/renderer.ts"])

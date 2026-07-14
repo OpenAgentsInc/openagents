@@ -115,7 +115,7 @@ export const buildKhalaMobileNightlySteps = (): readonly KhalaMobileNightlyStep[
     verdict: "inconclusive",
   },
   {
-    command: ["bun", "run", "--cwd", "packages/khala-qa-harness", "mobile:device-monkey"],
+    command: ["pnpm", "--dir", "packages/khala-qa-harness", "run", "mobile:device-monkey"],
     id: "device-monkey",
     label: "Seeded device monkey with screenshot-on-crash and memory oracle",
     ownedRunner: "tailnet-macos-launchd",
@@ -127,7 +127,7 @@ export const buildKhalaMobileNightlySteps = (): readonly KhalaMobileNightlyStep[
     verdict: "inconclusive",
   },
   {
-    command: ["bun", "run", "--cwd", "packages/khala-qa-harness", "mobile:visual-capture"],
+    command: ["pnpm", "--dir", "packages/khala-qa-harness", "run", "mobile:visual-capture"],
     id: "visual-capture",
     label: "QAM-4 mobile visual capture and baseline comparison",
     ownedRunner: "tailnet-macos-launchd",
@@ -138,7 +138,7 @@ export const buildKhalaMobileNightlySteps = (): readonly KhalaMobileNightlyStep[
     verdict: "blocked",
   },
   {
-    command: ["bun", "run", "--cwd", "clients/khala-mobile", "qa:mobile:perf-budgets"],
+    command: ["pnpm", "--dir", "clients/khala-mobile", "run", "qa:mobile:perf-budgets"],
     id: "perf-budgets",
     label: "Khala Mobile named perf budgets",
     ownedRunner: "tailnet-macos-launchd",
@@ -146,7 +146,7 @@ export const buildKhalaMobileNightlySteps = (): readonly KhalaMobileNightlyStep[
     verdict: "inconclusive",
   },
   {
-    command: ["bun", "run", "--cwd", "apps/qa-runner", "khala-sync-once", "--mobile-nightly"],
+    command: ["pnpm", "--dir", "apps/qa-runner", "run", "khala-sync-once", "--mobile-nightly"],
     id: "seam-probes",
     label: "R6 khala-sync transport live classification and mobile-session bearer probe",
     ownedRunner: "tailnet-macos-launchd",

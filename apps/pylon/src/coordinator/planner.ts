@@ -72,7 +72,7 @@ export function planIntent(
   const parts = partsFromIntent(intent)
   const workspace = workspaceSelector(options)
   const adapter = options.adapter ?? "codex"
-  const verify = options.verify === undefined ? ["bun", "--version"] : [...options.verify]
+  const verify = options.verify === undefined ? ["node", "--version"] : [...options.verify]
   const accountPool = options.availableAccounts.map(account => ({ ...account }))
   const baseId = slug(intent.intentId, "intent")
 

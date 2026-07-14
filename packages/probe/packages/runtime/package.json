@@ -2,6 +2,9 @@
   "name": "@openagentsinc/probe-runtime",
   "version": "0.0.0",
   "private": true,
+  "bin": {
+    "probe": "./src/cli.ts"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -14,19 +17,16 @@
     "./computer-use/terminal-snapshot": "./src/computer-use/terminal-snapshot.ts",
     "./openrouter": "./src/llm/openrouter.ts"
   },
-  "bin": {
-    "probe": "./src/cli.ts"
-  },
   "scripts": {
-    "probe": "bun src/cli.ts",
-    "test": "bun test",
+    "probe": "node --import tsx src/cli.ts",
+    "test": "vp test --run",
     "typecheck": "node scripts/verify-test-typecheck.mjs",
     "typecheck:baseline:update": "node scripts/verify-test-typecheck.mjs --update-baseline"
   },
   "dependencies": {
-    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/blueprint-contracts": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openrouter/sdk": "^0.13.7",
     "@opentui/core": "0.3.4",
     "diff": "^9.0.0",
@@ -34,7 +34,6 @@
     "marked": "^18.0.5"
   },
   "devDependencies": {
-    "bun-types": "^1.3.14",
     "typescript": "catalog:"
   }
 }

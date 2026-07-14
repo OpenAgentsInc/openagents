@@ -7,13 +7,13 @@
       "name": "@openagentsinc/product-spec",
       "version": "0.1.0",
       "filename": "openagentsinc-product-spec-0.1.0.tgz",
-      "sha256": "sha256:8d39e6ec0337570e9bd4441331c5a1e10e617e0c833d2048357081fb7e946e14"
+      "sha256": "sha256:7dd097b8adf461da445d93d302f3836b3462d0f4cae8d411a834001ef4aa8bfb"
     },
     {
       "name": "@openagentsinc/assurance-spec",
       "version": "0.1.1",
       "filename": "openagentsinc-assurance-spec-0.1.1.tgz",
-      "sha256": "sha256:bc23d8c7468db8ed5b317607d753aef93c7d3257ad149f70825efbb987413872"
+      "sha256": "sha256:ed88e62a744c5b705b26db7ea76f0a2bfe8208a4393ae6a7652f6e0445a51aa5"
     }
   ],
   "publish_order": [

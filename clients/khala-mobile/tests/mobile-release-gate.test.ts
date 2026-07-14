@@ -28,7 +28,7 @@ describe("QAM-1 mobile release gate policy", () => {
       scripts?: Record<string, string>
     }
 
-    expect(packageJson.scripts?.["qa:mobile:gate"]).toBe("bun run scripts/qa-mobile-gate.ts")
+    expect(packageJson.scripts?.["qa:mobile:gate"]).toBe("node --import tsx scripts/qa-mobile-gate.ts")
   })
 
   test("every screen has a mount artifact and no QAM-2 screen waiver remains", () => {

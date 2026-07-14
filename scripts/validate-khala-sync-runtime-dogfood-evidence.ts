@@ -305,10 +305,10 @@ export const validateKhalaSyncRuntimeDogfoodEvidence = (
 }
 
 if (import.meta.main) {
-  const path = Bun.argv[2]
+  const path = process.argv[2]
   if (path === undefined) {
     console.error(
-      "usage: bun scripts/validate-khala-sync-runtime-dogfood-evidence.ts <bundle.json>",
+      "usage: node --import tsx scripts/validate-khala-sync-runtime-dogfood-evidence.ts <bundle.json>",
     )
     process.exit(2)
   }

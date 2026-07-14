@@ -38,7 +38,7 @@ const event = decodeKhalaRuntimeEvent({
 describe("recordRuntimeTurnUsageReceipt", () => {
   test("posts the exact usage.recorded event to the cloud runtime usage route", async () => {
     const requests: Array<{ body: unknown; headers: Headers; url: string }> = []
-    const fetchImpl: typeof globalThis.fetch = Object.assign(
+    const fetchImpl: typeof globalThis.fetch =
       async (
         url: Parameters<typeof globalThis.fetch>[0],
         init?: Parameters<typeof globalThis.fetch>[1],
@@ -56,9 +56,7 @@ describe("recordRuntimeTurnUsageReceipt", () => {
           }),
           { status: 200 },
         )
-      },
-      { preconnect: globalThis.fetch.preconnect },
-    )
+      }
     const result = await recordRuntimeTurnUsageReceipt({
       agentToken: "oa_agent_fixture",
       baseUrl: "https://openagents.com",
@@ -108,7 +106,7 @@ describe("recordRuntimeTurnUsageReceipt", () => {
   })
 
   test("returns typed failures for validation errors", async () => {
-    const fetchImpl: typeof globalThis.fetch = Object.assign(
+    const fetchImpl: typeof globalThis.fetch =
       async () =>
         new Response(
           JSON.stringify({
@@ -116,9 +114,7 @@ describe("recordRuntimeTurnUsageReceipt", () => {
             reason: "usage must be exact",
           }),
           { status: 400 },
-        ),
-      { preconnect: globalThis.fetch.preconnect },
-    )
+        )
     const result = await recordRuntimeTurnUsageReceipt({
       agentToken: "oa_agent_fixture",
       baseUrl: "https://openagents.com",

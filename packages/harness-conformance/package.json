@@ -2,6 +2,10 @@
   "name": "@openagentsinc/harness-conformance",
   "version": "0.0.1",
   "private": true,
+  "files": [
+    "src",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -9,12 +13,8 @@
     "./runner": "./src/runner.ts",
     "./chat-turn-projection": "./src/chat-turn-projection.ts"
   },
-  "files": [
-    "src",
-    "README.md"
-  ],
   "scripts": {
-    "test": "bun test src/*.test.ts",
+    "test": "vp test --run src/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -25,7 +25,6 @@
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

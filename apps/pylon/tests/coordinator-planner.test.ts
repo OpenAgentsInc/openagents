@@ -58,7 +58,7 @@ describe("coordinator planner", () => {
     expect(plan).toHaveLength(1)
     expect(plan[0]?.id).toBe("simple-1")
     expect(plan[0]?.adapter).toBe("codex")
-    expect(plan[0]?.verify).toEqual(["bun", "--version"])
+    expect(plan[0]?.verify).toEqual(["node", "--version"])
     expect(plan[0]?.objective).toContain("Implement intent simple-1: Tighten coordinator copy")
     expect(parsePlanJson(plan)).toHaveLength(1)
   })

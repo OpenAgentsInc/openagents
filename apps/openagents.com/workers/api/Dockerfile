@@ -1,19 +1,19 @@
 # openagents.com monolith on Cloud Run (CFG-9, #8524).
 #
 # The build happens on the deploy machine (scripts/deploy-cloudrun.sh):
-#   dist-cloudrun/server.js   — self-contained `bun build --target=bun`
+#   dist-cloudrun/server.mjs  — self-contained `vp pack` Node bundle
 #                               bundle of src/cloudrun/server.ts
 #   dist-cloudrun/preload.js  — bundled cloudflare:workers virtual-module
 #                               plugin (src/cloudrun/preload.ts)
 #   dist-cloudrun/web-dist/   — the built apps/web SPA assets
 # so this image needs no node_modules and no workspace context.
 
-FROM oven/bun:1
+FROM node:24.13.1-bookworm-slim
 
 WORKDIR /app
 
-COPY dist-cloudrun/server.js ./dist-cloudrun/server.js
-COPY dist-cloudrun/preload.js ./dist-cloudrun/preload.js
+COPY dist-cloudrun/server.mjs ./dist-cloudrun/server.mjs
+COPY dist-cloudrun/preload.mjs ./dist-cloudrun/preload.mjs
 COPY dist-cloudrun/web-dist ./web-dist
 # Sarah removed at owner direction 2026-07-10 (epic #8610): the former
 # sarah-ui / sarah-agent / sarah-clips image layers and SARAH_* env are gone.
@@ -28,4 +28,4 @@ ENV FORUM_UI_DIR=/app/forum-ui
 
 EXPOSE 8080
 
-CMD ["bun", "--preload", "./dist-cloudrun/preload.js", "dist-cloudrun/server.js"]
+CMD ["node", "--import", "./dist-cloudrun/preload.mjs", "dist-cloudrun/server.mjs"]

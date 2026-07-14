@@ -168,11 +168,11 @@ describe("updates server", () => {
     const signingKeyPem = privateKey.export({
       type: "pkcs1",
       format: "pem",
-    })
+    }).toString()
     const publicKeyPem = publicKey.export({
       type: "pkcs1",
       format: "pem",
-    })
+    }).toString()
     const server = createUpdatesServer({
       signingKeyPem,
       keyid: "test-key",

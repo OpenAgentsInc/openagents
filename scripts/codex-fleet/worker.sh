@@ -142,8 +142,8 @@ BASE_SHA="$(git rev-parse HEAD)"
 log "base pinned: ${BASE_SHA}"
 
 # Install deps so check:deploy can run. Reuse bun's global cache (fast).
-log "installing deps (bun install)..."
-bun install >>"$AGENT_LOG" 2>&1 || log "WARN: bun install returned nonzero (continuing)"
+log "installing deps (pnpm install)..."
+pnpm install --frozen-lockfile >>"$AGENT_LOG" 2>&1 || log "WARN: pnpm install returned nonzero (continuing)"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   log "DRY RUN: skipping codex agent; brief is:"
@@ -275,7 +275,7 @@ fi
 # ---- check:deploy (the merge gate) ------------------------------------------
 log "running check:deploy..."
 CHECK="fail"
-if bun run check:deploy >>"$AGENT_LOG" 2>&1; then
+if pnpm run check:deploy >>"$AGENT_LOG" 2>&1; then
   CHECK="pass"
   log "check:deploy PASSED"
 else

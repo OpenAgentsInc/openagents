@@ -2,6 +2,12 @@
   "name": "@openagentsinc/khala-sync-server",
   "version": "0.1.0",
   "private": true,
+  "files": [
+    "src",
+    "scripts",
+    "migrations",
+    "README.md"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,34 +17,27 @@
     "./migrate": "./src/migrate.ts",
     "./test/local-postgres": "./src/test/local-postgres.ts"
   },
-  "files": [
-    "src",
-    "scripts",
-    "migrations",
-    "README.md"
-  ],
   "scripts": {
-    "compact": "bun scripts/compact.ts",
-    "load-test": "bun scripts/load-test.ts",
-    "migrate": "bun scripts/migrate.ts",
-    "test": "bun test",
+    "compact": "node --import tsx scripts/compact.ts",
+    "load-test": "node --import tsx scripts/load-test.ts",
+    "migrate": "node --import tsx scripts/migrate.ts",
+    "test": "vp test --run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.port03-production-driver.json --noEmit",
-    "capture": "bun scripts/capture.ts",
-    "check:pending-migrations": "bun scripts/check-pending-migrations.ts",
-    "test:pending-migrations-guard": "bun test scripts/check-pending-migrations.test.ts",
-    "query-compare-soak": "bun scripts/query-compare-soak.ts"
+    "capture": "node --import tsx scripts/capture.ts",
+    "check:pending-migrations": "node --import tsx scripts/check-pending-migrations.ts",
+    "test:pending-migrations-guard": "vp test --run scripts/check-pending-migrations.test.ts",
+    "query-compare-soak": "node --import tsx scripts/query-compare-soak.ts"
   },
   "dependencies": {
-    "@openagentsinc/postgres-runtime": "workspace:*",
     "@openagentsinc/khala-fleet-intents": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/portable-session-contract": "workspace:*",
+    "@openagentsinc/postgres-runtime": "workspace:*",
     "effect": "catalog:",
     "postgres": "3.4.9"
   },
   "devDependencies": {
     "@openagentsinc/runtime-platform": "workspace:*",
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

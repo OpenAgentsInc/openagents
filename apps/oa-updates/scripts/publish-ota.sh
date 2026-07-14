@@ -23,20 +23,20 @@ UPDATES_OWNER="${OA_UPDATES_OWNER:-openagents-mobile}"
 CHANNEL="${OA_UPDATES_CHANNEL:-openagents-production}"
 
 echo "==> computing build runtime fingerprint"
-RUNTIME="$(cd "$MOBILE" && bunx expo-updates fingerprint:generate --platform "$PLATFORM" 2>/dev/null \
+RUNTIME="$(cd "$MOBILE" && pnpm exec expo-updates fingerprint:generate --platform "$PLATFORM" 2>/dev/null \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["hash"])')"
 echo "    runtime = $RUNTIME"
 
 echo "==> exporting JS bundle + assets"
 rm -rf "$REPO/apps/oa-updates/dist"
-( cd "$MOBILE" && bunx expo export --platform "$PLATFORM" --output-dir "$REPO/apps/oa-updates/dist" )
+( cd "$MOBILE" && pnpm exec expo export --platform "$PLATFORM" --output-dir "$REPO/apps/oa-updates/dist" )
 
 echo "==> resolving public app config (embedded as manifest extra.expoClient)"
 # expo-constants / expo-linking need Constants.expoConfig on a *downloaded*
 # update, not just the embedded one — without this a downloaded update throws
 # "runtime not ready" the instant it launches and expo-updates silently rolls
 # back to the cached/embedded update.
-( cd "$MOBILE" && bunx expo config --type public --json > "$REPO/apps/oa-updates/dist/expo-client.json" 2>/dev/null )
+( cd "$MOBILE" && pnpm exec expo config --type public --json > "$REPO/apps/oa-updates/dist/expo-client.json" 2>/dev/null )
 
 echo "==> deploying to Cloud Run (seed = this export, runtime $RUNTIME, branch $CHANNEL)"
 export OA_PUBLIC_URL="${OA_PUBLIC_URL:-https://oa-updates-ezxz4mgdsq-uc.a.run.app}"

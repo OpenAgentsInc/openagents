@@ -64,7 +64,7 @@ describe("Khala Code QA seed scenario corpus", () => {
       expect(idsForGroup(group).length).toBeGreaterThan(0)
     }
     for (const [group, methods] of Object.entries(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)) {
-      expect(rpcMethodsForGroup(group)).toEqual(expect.arrayContaining(methods))
+      expect(rpcMethodsForGroup(group)).toEqual(expect.arrayContaining([...methods]))
     }
 
     expect(idsForGroup("hotbar")).toEqual([

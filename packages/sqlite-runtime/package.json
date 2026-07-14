@@ -2,18 +2,18 @@
   "name": "@openagentsinc/sqlite-runtime",
   "version": "0.1.0",
   "private": true,
+  "files": [
+    "src",
+    "README.md"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
     "./test": "./src/test-database.ts"
   },
-  "files": [
-    "src",
-    "README.md"
-  ],
   "scripts": {
-    "test": "bun test && bun run test:node",
+    "test": "vp test --run && pnpm run test:node",
     "test:node": "node --test src/node-database.node-suite.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -21,7 +21,6 @@
     "effect": "catalog:"
   },
   "devDependencies": {
-    "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
 }

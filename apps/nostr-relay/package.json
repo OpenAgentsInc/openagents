@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "wrangler dev --port 8787",
     "deploy": "wrangler deploy",
-    "smoke": "bun scripts/smoke.ts",
-    "test": "bun test src",
+    "smoke": "node --import tsx scripts/smoke.ts",
+    "test": "vp test --run src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "nostr-effect": "github:OpenAgentsInc/nostr-effect#2bb5787"
+    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260609.0",

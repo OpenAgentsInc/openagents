@@ -60,8 +60,8 @@ export const decidePendingKhalaSyncMigrations = (
       `✘ check-pending-migrations: ${pending.length} Khala Sync migration(s) PENDING (Postgres):\n${list}\n` +
       "  The Worker must NOT ship ahead of the Khala Sync schema (openagents #8410,\n" +
       "  follow-up to the 2026-06-25 D1 AAR). Apply them first:\n" +
-      "    cd packages/khala-sync-server && KHALA_SYNC_DATABASE_URL=<direct-url> bun run migrate\n" +
-      "  then re-run the sanctioned deploy (`bun run deploy:safe`).",
+      "    cd packages/khala-sync-server && KHALA_SYNC_DATABASE_URL=<direct-url> pnpm run migrate\n" +
+      "  then re-run the sanctioned deploy (`pnpm run deploy:safe`).",
   }
 }
 

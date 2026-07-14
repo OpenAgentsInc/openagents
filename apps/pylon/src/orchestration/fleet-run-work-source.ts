@@ -201,7 +201,7 @@ const normalizeOptionalPin = (
     repo: kind === "repo" ? value : "OpenAgentsInc/openagents",
     branch: kind === "branch" ? value : "main",
     baseCommit: kind === "baseCommit" ? value : VALIDATION_COMMIT,
-    verify: kind === "verify" ? value : "bun test",
+    verify: kind === "verify" ? value : "pnpm test",
   })
   return workspace[kind]
 }

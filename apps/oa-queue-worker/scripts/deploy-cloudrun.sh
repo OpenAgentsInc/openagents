@@ -29,7 +29,7 @@ DELIVERY_URL="${OA_QUEUE_DELIVERY_URL:-https://openagents.com}"
 cd "$APP_DIR"
 
 echo "==> Building self-contained server bundle"
-bun run build
+pnpm run build
 
 echo "==> Deploying $SERVICE to Cloud Run ($REGION)"
 gcloud run deploy "$SERVICE" \
