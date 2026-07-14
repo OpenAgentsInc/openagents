@@ -1,0 +1,27 @@
+{
+  "distribution_proof_format_version": "0.1",
+  "prepared_from_commit": "c6292a0f22",
+  "clean_checkout": "pass",
+  "owned_runner_verdict": "pass",
+  "package_tarballs": [
+    {
+      "name": "@openagentsinc/product-spec",
+      "version": "0.1.0",
+      "filename": "openagentsinc-product-spec-0.1.0.tgz",
+      "sha256": "sha256:4dab97a72f1d65c88ea1bb746321c665408b109230fb001efc2752c15b9306eb"
+    },
+    {
+      "name": "@openagentsinc/assurance-spec",
+      "version": "0.1.0",
+      "filename": "openagentsinc-assurance-spec-0.1.0.tgz",
+      "sha256": "sha256:36b75b2055fdd73b5771b38b163023c01a6dde11acdad4cde397c0485c0fb72d"
+    }
+  ],
+  "publish_order": [
+    "@openagentsinc/product-spec",
+    "@openagentsinc/assurance-spec"
+  ],
+  "starter_kit": "one_commit_copy",
+  "github_hosted_ci": false,
+  "npm_publication": "owner_authentication_required"
+}

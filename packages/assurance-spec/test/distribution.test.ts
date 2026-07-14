@@ -69,10 +69,16 @@ describe("AT-6 public package readiness", () => {
   test("packs concrete public manifests with no workspace or catalog protocols", async () => {
     const out = mkdtempSync(resolve(tmpdir(), "assurance-pack-test-"))
     const receipt = buildPublicTarballs(repositoryRoot, out)
+    const committed = JSON.parse(readFileSync(resolve(
+      repositoryRoot,
+      "assurance/assurance-spec-public-distribution-receipt.json",
+    ), "utf8"))
     expect(receipt.packages.map((entry) => entry.name)).toEqual([
       "@openagentsinc/product-spec",
       "@openagentsinc/assurance-spec",
     ])
+    expect(receipt.packages).toEqual(committed.package_tarballs)
+    expect(receipt.publish_order).toEqual(committed.publish_order)
     expect(receipt.packages.every((entry) => existsSync(resolve(out, entry.filename)))).toBe(true)
     expect(receipt.npm_publication).toBe("owner_authentication_required")
     for (const file of readdirSync(out).filter((path) => path.endsWith(".tgz"))) {
