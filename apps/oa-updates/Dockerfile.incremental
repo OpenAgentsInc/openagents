@@ -12,4 +12,4 @@ COPY openagents-desktop-dist ./openagents-desktop-dist
 
 EXPOSE 8080
 
-CMD ["node", "dist-server/server.mjs"]
+CMD ["node", "dist-server/serve.mjs"]

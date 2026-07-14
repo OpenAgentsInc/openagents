@@ -455,21 +455,3 @@ export function createUpdatesServer(
     },
   }
 }
-
-if (Runtime.isMain(import.meta.url)) {
-  const port = Number(Runtime.env.PORT ?? defaultPort)
-  const { resolveLegacyDesktopLockoutMode, LEGACY_DESKTOP_LOCKOUT_ENV } = await import(
-    "./legacy-desktop-lockout.ts"
-  )
-  const server = createUpdatesServer({
-    port,
-    legacyDesktopLockout: resolveLegacyDesktopLockoutMode(
-      Runtime.env[LEGACY_DESKTOP_LOCKOUT_ENV],
-    ),
-  })
-
-  Runtime.serve({
-    port,
-    fetch: server.fetch,
-  })
-}
