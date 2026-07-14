@@ -53,6 +53,11 @@ import {
   type PublishTraceResult,
   publishRunDir,
 } from "./publish-trace";
+import {
+  publishQaSwarmProjection,
+  type QaSwarmProjectionPublishConfig,
+  type QaSwarmPublishFetch,
+} from "./publish-swarm";
 import { makeTarget, type Target } from "./target";
 import { TARGET_REGISTRY, isTargetName } from "./target-registry";
 import {
@@ -286,6 +291,10 @@ export interface ControlOptions {
   readonly publishTrace?: PublishTraceConfig;
   /** Injectable fetch for the trace publish call (deterministic fake in tests). */
   readonly publishFetch?: FetchLike;
+  /** Public QA Swarm projection publication; absent is an honest no-op. */
+  readonly publishSwarm?: QaSwarmProjectionPublishConfig;
+  /** Injectable fetch for deterministic projection publication tests. */
+  readonly publishSwarmFetch?: QaSwarmPublishFetch;
 }
 
 let counter = 0;
@@ -551,9 +560,20 @@ export class QaControl {
           targetName,
           tokenBudget,
         });
+        const published = await Effect.runPromise(
+          publishQaSwarmProjection({
+            ...(this.options.publishSwarm === undefined
+              ? {}
+              : { config: this.options.publishSwarm }),
+            ...(this.options.publishSwarmFetch === undefined
+              ? {}
+              : { fetch: this.options.publishSwarmFetch }),
+            projection: summary.projection,
+          }),
+        );
         this.set(id, {
           childRunIds: summary.childRunIds,
-          qaShareUrl: summary.shareUrl,
+          qaShareUrl: published.published ? published.shareUrl : summary.shareUrl,
         });
       }),
     );

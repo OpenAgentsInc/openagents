@@ -161,7 +161,8 @@ QA_CONTROL_TOKENS="raynor:tok_demo_secret" bun run --cwd apps/qa-runner api
 
 # QA Swarm hosted-run composition (#8065): one command emits the QS2
 # openagents.qa_swarm.run_projection.v1 artifact plus a candidate /qa/{runRef}
-# share URL. Publishing that route is a separate operation.
+# share URL. Set QA_SWARM_PUBLISH_TOKEN on the control daemon to publish the
+# final public-safe projection to that URL through the admin-gated Worker API.
 # Fixture tier is no-spend by default; live tiers are skip-safe unless armed.
 bun run --cwd apps/qa-runner qa -- swarm run \
   --target https://openagents.com \
@@ -185,8 +186,10 @@ no Chrome/network/spend; real runs are owner-gated. Full curl walkthrough:
 fixture-tier fanout, FleetRun-style worker/run caps, skip-safe live tier rows
 for GCE Tier-2 and CF Browser Rendering, and an
 `openagents.qa_swarm.run_projection.v1` artifact with a `/qa/{runRef}` share
-URL candidate. `GET /swarm-runs/:id` returns the projection and tier statuses;
-it does not publish that candidate route. The shared contract lives in
+URL candidate. `GET /swarm-runs/:id` returns the projection and tier statuses.
+When `QA_SWARM_PUBLISH_TOKEN` is configured, the completed projection is PUT to
+the admin-gated Worker boundary and the returned share URL dereferences that
+exact public document; without it, publication is an honest no-op. The shared contract lives in
 `packages/qa-swarm-contract`. Artifact fields are emitted only for observed,
 published artifacts, and evidence edges require exact receipt admission from a
 resolver. The fixture composer has neither, so its artifact/evidence arrays are

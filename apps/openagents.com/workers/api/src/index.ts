@@ -1229,6 +1229,10 @@ import {
   makeD1QaSwarmFirstEngagementStore,
   makeQaSwarmFirstEngagementRoutes,
 } from './qa-swarm-first-engagement-routes'
+import {
+  makeArtifactQaSwarmProjectionStore,
+  makeQaSwarmProjectionRoutes,
+} from './qa-swarm-projection-routes'
 import { handleReactLandingPage } from './react-landing-routes'
 import {
   type RelayHealthFetch,
@@ -9535,6 +9539,12 @@ const qaSwarmFirstEngagementRoutes = makeQaSwarmFirstEngagementRoutes<Env>({
   nowIso: currentIsoTimestamp,
 })
 
+const qaSwarmProjectionRoutes = makeQaSwarmProjectionRoutes<Env>({
+  makeStore: env =>
+    makeArtifactQaSwarmProjectionStore(artifactsBucketForEnv(env)),
+  requireAdminApiToken,
+})
+
 const hostedGeminiPromiseReadinessRoutes =
   makeHostedGeminiPromiseReadinessRoutes<Env>({
     makeInferenceReceiptStore: env =>
@@ -16189,6 +16199,7 @@ const routeRequest = makeWorkerRouteRequest({
   },
   routeMulletRequest: mulletRoutes.routeMulletRequest,
   routeOmniRequest: (request, env, ctx) =>
+    qaSwarmProjectionRoutes.routeQaSwarmProjectionRequest(request, env, ctx) ??
     omniRoutes.routeOmniRequest(request, env, ctx) ??
     omniWorkroomRoutes.routeOmniWorkroomRequest(request, env, ctx) ??
     omniWorkroomLifecycleRoutes.routeOmniWorkroomLifecycleRequest(

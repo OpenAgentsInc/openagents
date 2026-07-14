@@ -9,6 +9,7 @@ import {
 } from '../scene/qaSwarmSceneElement'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
+import { qaSwarmLiveRunView } from './qa-swarm/liveRunElement'
 import {
   type QaSwarmCoverageFrontierItem,
   type QaSwarmFindingsLedgerProjection,
@@ -849,7 +850,10 @@ export const view = <Message>(
     [
       PublicHeader.view(authState),
       projection === null
-        ? notFoundArticle<Message>(route.runRef)
+        ? qaSwarmLiveRunView<Message>(
+            [h.DataAttribute('run-ref', route.runRef)],
+            [notFoundArticle<Message>(route.runRef)],
+          )
         : runArticle<Message>(projection),
     ],
   )

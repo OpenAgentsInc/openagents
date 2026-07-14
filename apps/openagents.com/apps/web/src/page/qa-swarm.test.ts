@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { Option, Schema as S } from 'effect'
+import type { QaSwarmRunProjection as SharedQaSwarmRunProjection } from '@openagentsinc/qa-swarm-contract'
 import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
@@ -16,6 +17,11 @@ import {
   qaSwarmProjectionHasPrivateMaterial,
   sampleQaSwarmRunProjection,
 } from './qa-swarm/projection'
+import {
+  fetchPublishedQaSwarmProjection,
+  qaSwarmProjectionNeedsRefresh,
+  renderPublishedQaSwarmProjection,
+} from './qa-swarm/liveRunElement'
 
 const appUrl = (pathname: string) => ({
   protocol: 'https:',
@@ -149,8 +155,60 @@ describe('QA Swarm route', () => {
     )
 
     expect(rendered).toContain('data-component="qa-swarm-not-found"')
+    expect(rendered).toContain('oa-qa-swarm-live-run')
+    expect(rendered).toContain('data-run-ref="qa-run.private.customer-one"')
     expect(rendered).toContain('Run unavailable')
     expect(rendered).toContain('Private or owner-only targets are not disclosed')
+  })
+
+  test('decodes an arbitrary published run and renders active tier transitions', async () => {
+    const running = {
+      ...sampleQaSwarmRunProjection,
+      runRef: 'qa-run.control.live-001',
+      title: 'Control live run 001',
+      execution: {
+        status: 'running' as const,
+        tiers: [{ backend: 'fixture', status: 'running' as const }],
+      },
+    }
+    const completed = {
+      ...running,
+      generatedAt: '2026-07-14T10:01:00.000Z',
+      execution: {
+        status: 'completed' as const,
+        tiers: [{ backend: 'fixture', status: 'passed' as const }],
+      },
+    }
+    let current: SharedQaSwarmRunProjection = running
+    const fetchFn = async (input: string | URL | Request) => {
+      expect(String(input)).toBe(
+        '/api/public/qa-swarm/runs/qa-run.control.live-001',
+      )
+      return new Response(JSON.stringify({ projection: current }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+
+    const first = await fetchPublishedQaSwarmProjection(
+      running.runRef,
+      fetchFn as typeof fetch,
+    )
+    expect(first?.runRef).toBe(running.runRef)
+    expect(first !== null && qaSwarmProjectionNeedsRefresh(first)).toBe(true)
+    const root = document.createElement('div')
+    renderPublishedQaSwarmProjection(root, first!)
+    expect(root.textContent).toContain('Execution: running')
+    expect(root.querySelector('[data-tier-status="running"]')).not.toBeNull()
+
+    current = completed
+    const second = await fetchPublishedQaSwarmProjection(
+      running.runRef,
+      fetchFn as typeof fetch,
+    )
+    expect(second !== null && qaSwarmProjectionNeedsRefresh(second)).toBe(false)
+    renderPublishedQaSwarmProjection(root, second!)
+    expect(root.textContent).toContain('Execution: completed')
+    expect(root.querySelector('[data-tier-status="passed"]')).not.toBeNull()
   })
 
   test('uses Khala tokens instead of bespoke hex page colors', () => {

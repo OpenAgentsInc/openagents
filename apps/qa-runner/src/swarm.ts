@@ -167,10 +167,42 @@ export const writeQaSwarmRunSummary = (input: Readonly<{
     "blocker.qa_swarm.artifacts.not_published",
     ...(input.includeLiveTiers ? ["blocker.qa_swarm.live_tiers.receipts_missing"] : []),
   ];
+  const tiers: readonly QaSwarmRunTier[] = [
+    ...input.childJobs.map(job => ({
+      backend: "fixture" as const,
+      jobId: job.id,
+      status: job.status === "succeeded"
+        ? readRunStatus(input.storeDir, job.id) === "pass" ? "passed" as const : "failed" as const
+        : job.status === "failed" ? "failed" as const : "running" as const,
+    })),
+    {
+      backend: "gce-tier-2",
+      reason: input.includeLiveTiers
+        ? "live tier requested; external runner receipt not attached in fixture composition"
+        : "skip-safe fixture tier: set includeLiveTiers with an armed daemon for live evidence",
+      status: "skipped",
+    },
+    {
+      backend: "cf-browser-rendering",
+      reason: input.includeLiveTiers
+        ? "live tier requested; CF Browser Rendering receipt not attached in fixture composition"
+        : "skip-safe fixture tier: set includeLiveTiers with an armed daemon for live evidence",
+      status: "skipped",
+    },
+  ];
   const projectionEvidence: QaSwarmProjectionEvidence = {
     blockerRefs,
     coverageFrontier: [],
     distilledTests: [],
+    execution: {
+      status: failedCount > 0 ? "failed" : "completed",
+      tiers: tiers.map(tier => ({
+        backend: tier.backend,
+        ...(tier.jobId === undefined ? {} : { jobRef: tier.jobId }),
+        ...(tier.reason === undefined ? {} : { reason: tier.reason }),
+        status: tier.status,
+      })),
+    },
     generatedAt: input.generatedAt,
     opaqueTargetRefs: [],
     perfBudgets: [],
@@ -206,30 +238,6 @@ export const writeQaSwarmRunSummary = (input: Readonly<{
       blockerRefs: resolverBacked.evidenceAdmission.blockerRefs,
     }),
   );
-
-  const tiers: readonly QaSwarmRunTier[] = [
-    ...input.childJobs.map(job => ({
-      backend: "fixture" as const,
-      jobId: job.id,
-      status: job.status === "succeeded"
-        ? readRunStatus(input.storeDir, job.id) === "pass" ? "passed" as const : "failed" as const
-        : job.status === "failed" ? "failed" as const : "running" as const,
-    })),
-    {
-      backend: "gce-tier-2",
-      reason: input.includeLiveTiers
-        ? "live tier requested; external runner receipt not attached in fixture composition"
-        : "skip-safe fixture tier: set includeLiveTiers with an armed daemon for live evidence",
-      status: "skipped",
-    },
-    {
-      backend: "cf-browser-rendering",
-      reason: input.includeLiveTiers
-        ? "live tier requested; CF Browser Rendering receipt not attached in fixture composition"
-        : "skip-safe fixture tier: set includeLiveTiers with an armed daemon for live evidence",
-      status: "skipped",
-    },
-  ];
 
   const summary: QaSwarmRunSummary = {
     caps: {

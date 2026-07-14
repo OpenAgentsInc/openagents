@@ -69,6 +69,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   `packages/qa-swarm-contract/src/index.test.ts`, the QA Runner cross-package
   assertions in `apps/qa-runner/src/control.test.ts`, and the web false-green
   tests in `apps/openagents.com/apps/web/src/page/qa-swarm.test.ts`.
+- Generated public boards are published only through the authenticated
+  `PUT /api/operator/qa-swarm/runs/{runRef}` boundary. The Worker decodes the
+  shared contract, requires the path and document `runRef` to match exactly,
+  rejects private-looking material, and stores only that public-safe document
+  in the owned artifacts bucket. Public reads at
+  `GET /api/public/qa-swarm/runs/{runRef}` disclose no existence beyond a
+  published document. The two committed Khala Code samples remain fixtures,
+  not runtime lookup authority.
+- A generated `/qa/{runRef}` board decodes that public read through the shared
+  contract and polls only while the optional execution state is `scheduled` or
+  `running`, with a hard client-side poll bound. Unknown, invalid, private, and
+  unavailable runs retain the same non-disclosing unavailable shell.
 
 ## Product Surface Ownership
 

@@ -189,6 +189,7 @@ export interface ServeOptions {
  *   QA_CONTROL_ARM_REAL=1 to allow real (network/spend) runs (default mock-only)
  *   QA_CONTROL_TOKEN_BUDGET default per-run token cap for real runs
  *   QA_CONTROL_TOKENS     comma-separated agent:token allowlist (fail closed if empty)
+ *   QA_SWARM_PUBLISH_TOKEN admin bearer for public-safe run projection publication
  */
 export function serveControlApi(opts: ServeOptions = {}): ReturnType<typeof Bun.serve> {
   const env = process.env;
@@ -199,6 +200,14 @@ export function serveControlApi(opts: ServeOptions = {}): ReturnType<typeof Bun.
     proBaseUrl: env.QA_CONTROL_PRO_BASE_URL ?? "https://openagents.com",
     allowReal: env.QA_CONTROL_ARM_REAL === "1",
     defaultTokenBudget: Number(env.QA_CONTROL_TOKEN_BUDGET ?? 0),
+    ...(env.QA_SWARM_PUBLISH_TOKEN === undefined
+      ? {}
+      : {
+          publishSwarm: {
+            baseUrl: env.QA_CONTROL_PRO_BASE_URL ?? "https://openagents.com",
+            token: env.QA_SWARM_PUBLISH_TOKEN,
+          },
+        }),
     ...opts.controlOptions,
   });
   const verifier = opts.verifier ?? makeTokenVerifier(allowlistFromEnv(env));

@@ -808,6 +808,23 @@ khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   `workers/api/src/openagents-openapi-routes.test.ts`,
   `workers/api/src/openagents-capability-manifest-routes.test.ts`.
 
+## QA Swarm Published Run Projections
+
+- The operator QA Swarm publication route is admin-bearer gated and accepts
+  only an `openagents.qa_swarm.run_projection.v1` document whose bounded
+  `runRef` exactly matches the URL. Resolver false-greens, malformed payloads,
+  and private-looking material fail before the owned artifacts store is
+  mutated.
+- Public readback returns only the exact latest published document or the same
+  non-disclosing 404 used for unknown/private runs. `/qa/{runRef}` treats the
+  two committed samples as explicit fixtures and resolves every other run from
+  this readback, decoding the shared contract before rendering.
+- Active projections may refresh the board only while execution is scheduled
+  or running, and the client polling loop is bounded. Publication and viewing
+  grant no runner, receipt-admission, release, payment, or settlement authority.
+  Regression coverage lives in `workers/api/src/qa-swarm-projection-routes.test.ts`
+  and `apps/web/src/page/qa-swarm.test.ts`.
+
 ## QA Swarm First-Engagement Receipts
 
 - The RL-8 first-engagement intake

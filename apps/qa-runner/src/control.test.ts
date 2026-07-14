@@ -162,6 +162,42 @@ describe("submitSwarmRun (fixture path)", () => {
     expect(artifacts.swarm?.projection.runRef).toBe("qa-run.executor.qs7-public-home");
   });
 
+  test("publishes the exact projection addressed by the returned share URL", async () => {
+    const published = new Map<string, unknown>();
+    const publishFetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input), "https://openagents.com");
+      const runRef = decodeURIComponent(url.pathname.split("/").at(-1)!);
+      if (init?.method === "PUT") {
+        published.set(runRef, JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return published.has(runRef)
+        ? new Response(JSON.stringify({ projection: published.get(runRef) }))
+        : new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
+    };
+    const control = mkControl({
+      publishSwarm: { baseUrl: "https://openagents.com", token: "admin-test" },
+      publishSwarmFetch: publishFetch,
+    });
+    const runRef = "qa-run.control.published-round-trip";
+    const submitted = control.submitSwarmRun({
+      runRef,
+      target: "https://example.test",
+      targetName: "Published target",
+    });
+    await control.wait(submitted.id);
+    const artifacts = control.swarmRunArtifacts(submitted.id);
+    expect(artifacts.qaShareUrl).toBe(`https://openagents.com/qa/${runRef}`);
+
+    const readUrl = artifacts.qaShareUrl!.replace(
+      `/qa/${runRef}`,
+      `/api/public/qa-swarm/runs/${runRef}`,
+    );
+    const read = await publishFetch(readUrl);
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({ projection: artifacts.swarm!.projection });
+  });
+
   test("rejects missing target and invalid caps", () => {
     const control = mkControl();
     // @ts-expect-error intentionally missing target

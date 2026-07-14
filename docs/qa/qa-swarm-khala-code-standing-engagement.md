@@ -14,6 +14,12 @@ The customer-one engagement report is the QA Swarm run projection for Khala Code
 - Stable share URL: `/qa/qa-run.khala-code-nightly.latest`
 - Seed snapshot alias: `/qa/qa-run.khala-code-nightly.2026-07-02`
 - Projection schema: `openagents.qa_swarm.run_projection.v1`
+- Generated-run publication: authenticated
+  `PUT /api/operator/qa-swarm/runs/{runRef}` with public readback at
+  `GET /api/public/qa-swarm/runs/{runRef}`. The page polls the public-safe
+  projection only while its execution is scheduled/running and stops after a
+  bounded number of attempts. The two URLs above are committed fixtures; other
+  valid run refs come from the publication store.
 - Declared source artifact: `artifact.khala_code.qa_status_surface.latest`
 - Declared weekly report ref: `artifact.qa_swarm.weekly_report.khala_code.latest`
 

@@ -77,6 +77,39 @@ export class QaSwarmEvidenceAdmission extends S.Class<QaSwarmEvidenceAdmission>(
   resolverContract: S.Literal("qa_swarm.receipt_resolver.v1"),
 }) {}
 
+export const QaSwarmExecutionStatus = S.Literals([
+  "scheduled",
+  "running",
+  "completed",
+  "failed",
+])
+export type QaSwarmExecutionStatus = typeof QaSwarmExecutionStatus.Type
+
+export const QaSwarmExecutionTierStatus = S.Literals([
+  "scheduled",
+  "running",
+  "passed",
+  "failed",
+  "skipped",
+])
+export type QaSwarmExecutionTierStatus = typeof QaSwarmExecutionTierStatus.Type
+
+export class QaSwarmExecutionTier extends S.Class<QaSwarmExecutionTier>(
+  "QaSwarmExecutionTier",
+)({
+  backend: S.String,
+  jobRef: S.optional(S.String),
+  reason: S.optional(S.String),
+  status: QaSwarmExecutionTierStatus,
+}) {}
+
+export class QaSwarmExecutionProjection extends S.Class<QaSwarmExecutionProjection>(
+  "QaSwarmExecutionProjection",
+)({
+  status: QaSwarmExecutionStatus,
+  tiers: S.Array(QaSwarmExecutionTier),
+}) {}
+
 export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   "QaSwarmRunProjection",
 )({
@@ -85,6 +118,7 @@ export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   coverageFrontier: S.Array(QaSwarmCoverageFrontierItem),
   distilledTests: S.Array(QaSwarmDistilledTestRef),
   evidenceAdmission: QaSwarmEvidenceAdmission,
+  execution: S.optional(QaSwarmExecutionProjection),
   generatedAt: S.String,
   nightlyArtifactRef: S.optional(S.String),
   opaqueTargetRefs: S.Array(S.String),
