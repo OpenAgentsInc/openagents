@@ -348,13 +348,14 @@ const ledgers = (args: ReadonlyArray<string>): void => {
   const [path] = positional(args, 1)
   if (path === undefined) usage()
   const json = jsonFlag(args)
-  const report = runOrExit(getCoverageLedgers({ path, ...rootArg(args) }), json)
+  const evidenceIndex = flagValue(args, "--evidence-index")
+  const report = runOrExit(getCoverageLedgers({ path, ...rootArg(args), ...(evidenceIndex === undefined ? {} : { evidence_index_path: evidenceIndex }) }), json)
   if (json) {
     printJson(report)
     return
   }
   console.log(`traceability ${report.criterion_traceability.traceable_criteria}/${report.criterion_traceability.total_criteria} criteria bound to obligations`)
-  console.log(`execution ${report.execution.executed_obligations}/${report.execution.total_obligations} obligations executed (every observation is not_run; receipt source: ${report.execution.receipt_source})`)
+  console.log(`execution ${report.execution.executed_obligations}/${report.execution.total_obligations} obligations executed (receipt source: ${report.execution.receipt_source})`)
   console.log(`frontier ${report.reachable_frontier.status}: ${report.reachable_frontier.reason}`)
 }
 
@@ -363,8 +364,9 @@ const checklist = (args: ReadonlyArray<string>): void => {
   if (path === undefined) usage()
   const json = jsonFlag(args)
   const criterion = flagValue(args, "--criterion")
+  const evidenceIndex = flagValue(args, "--evidence-index")
   const report = runOrExit(
-    getEvidenceChecklist({ path, ...rootArg(args), ...(criterion === undefined ? {} : { criterion_ref: criterion }) }),
+    getEvidenceChecklist({ path, ...rootArg(args), ...(criterion === undefined ? {} : { criterion_ref: criterion }), ...(evidenceIndex === undefined ? {} : { evidence_index_path: evidenceIndex }) }),
     json,
   )
   if (json) {
@@ -385,8 +387,9 @@ const claim = (args: ReadonlyArray<string>): void => {
   if (path === undefined) usage()
   const json = jsonFlag(args)
   const claimText = flagValue(args, "--claim")
+  const evidenceIndex = flagValue(args, "--evidence-index")
   const audit = runOrExit(
-    checkCompletionClaim({ path, ...rootArg(args), ...(claimText === undefined ? {} : { claim: claimText }) }),
+    checkCompletionClaim({ path, ...rootArg(args), ...(claimText === undefined ? {} : { claim: claimText }), ...(evidenceIndex === undefined ? {} : { evidence_index_path: evidenceIndex }) }),
     json,
   )
   if (json) {

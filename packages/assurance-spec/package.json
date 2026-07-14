@@ -20,6 +20,7 @@
     "access": "public"
   },
   "scripts": {
+    "assure:mvp": "bun scripts/run-mvp-assurance.ts",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

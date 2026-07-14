@@ -10,7 +10,8 @@ import {
 } from "../src/index.ts"
 
 const mvpPath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
-const mvpAssurancePath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md")
+const mvpAssurancePath = resolve(import.meta.dir, "../conformance/valid/mvp-proposal.assurance-spec.md")
+const admittedMvpAssurancePath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md")
 
 describe("AssuranceSpec format and proposal", () => {
   test("keeps the checked-in MVP proposal bound to the current ProductSpec", async () => {
@@ -32,6 +33,18 @@ describe("AssuranceSpec format and proposal", () => {
       needs_design: 18,
     })
     expect(serializeAssuranceSpec(validation.document)).toBe(generatedMarkdown)
+  })
+
+  test("advances the live MVP assurance artifact without rewriting the frozen proposal", async () => {
+    const live = parseAssuranceSpec(await Bun.file(admittedMvpAssurancePath).text())
+    expect(live.frontmatter).toMatchObject({ assurance_revision: 2, lifecycle_state: "admitted" })
+    expect(assessAssuranceSpec(live).coverage).toEqual({
+      criteria: 18,
+      obligations: 18,
+      ready: 18,
+      needs_design: 0,
+    })
+    expect(live.gates.map((gate) => gate.id)).toEqual(["GATE-MVP-FULL-ASSURANCE"])
   })
 
   test("proposes exact criterion coverage for the current MVP without inventing proof", async () => {

@@ -17,9 +17,9 @@
     "release-acceptance": "bun scripts/run-release-acceptance.ts",
     "smoke": "bun scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
     "startup-bench": "bun scripts/startup-bench.ts",
-    "test": "bun test",
+    "test": "bun test --max-concurrency 1",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify": "bun run typecheck && bun test && bun run build && OPENAGENTS_DESKTOP_SMOKE=1 bun run smoke"
+    "verify": "bun run typecheck && bun run test && bun run build && OPENAGENTS_DESKTOP_SMOKE=1 bun run smoke"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.172",

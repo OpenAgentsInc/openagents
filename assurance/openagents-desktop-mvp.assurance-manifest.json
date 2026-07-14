@@ -1,0 +1,891 @@
+{
+  "adapter_lock_digest": "sha256:86a07914a1ad753e0818ef0ecf6a602d23c7af4f82a132ca18d8086ce4fa1a91",
+  "admission": {
+    "digest": "sha256:4db81a5ebc6288f3be85d3c427883517afd27dfa2b9e92c254b3f86e0bf1debd",
+    "ref": "admission.openagents.desktop.mvp.assurance.2",
+    "review_set_digest": "sha256:ebc0c3a7f14c70b8d779e37313441f9de8c7f04fd458e463573742a5d63e4a0e"
+  },
+  "assurance_manifest_format_version": "0.1",
+  "assurance_spec": {
+    "document_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09",
+    "id": "assurance.openagents.desktop.codex.workroom.mvp",
+    "revision": 2
+  },
+  "compiler": {
+    "content_digest": "sha256:d91be5c5faa31a3b58e25bd7dc03234b7048094e5f4d10e89705d79d3ad32a5e",
+    "version": "0.1.0"
+  },
+  "do_not_edit": true,
+  "environment": {
+    "digest": "sha256:9ad4e93af55ee64e6977506796051e7e8687865bd6f00bf8a60114473ce32306",
+    "profile_id": "ENV-OA-DESKTOP-MVP-BUN-1",
+    "revision": 1
+  },
+  "evidence_requirements": [
+    "native_report",
+    "normalized_receipt",
+    "oracle_sensitivity_receipt"
+  ],
+  "execution_units": [
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-01 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-01-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-01-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-01-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-01 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-01-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-01-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-01-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-02 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-02-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-02-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-02-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-02 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-02-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-02-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-02-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-03 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-03-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-03-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-03-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-03 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-03-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-03-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-03-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-04 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-04-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-04-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-04-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-04 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-04-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-04-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-04-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-05 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-05-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-05-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-05-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-05 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-05-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-05-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-05-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-06 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-06-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-06-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-06-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-06 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-06-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-06-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-06-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-07 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-07-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-07-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-07-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-07 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-07-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-07-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-07-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-08 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-08-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-08-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-08-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-08 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-08-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-08-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-08-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-09 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-09-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-09-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-09-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-09 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-09-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-09-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-09-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-10 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-10-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-10-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-10-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-10 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-10-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-10-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-10-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-11 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-11-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-11-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-11-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-11 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-11-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-11-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-11-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-12 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-12-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-12-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-12-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-12 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-12-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-12-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-12-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-13 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-13-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-13-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-13-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-13 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-13-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-13-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-13-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-14 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-14-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-14-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-14-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-14 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-14-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-14-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-14-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-15 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-15-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-15-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-15-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-15 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-15-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-15-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-15-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-16 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-16-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-16-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-16-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-16 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-16-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-16-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-16-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-17 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-17-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-17-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-17-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-17 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-17-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-17-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-17-01.falsifier"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-18 candidate evidence remains bound"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-18-01/candidate.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "CONFIRMED",
+      "obligation_id": "AO-CW-AC-18-01",
+      "role": "candidate",
+      "unit_ref": "unit.ao-cw-ac-18-01.candidate"
+    },
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "argv": [
+        "bun",
+        "test",
+        "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+        "--test-name-pattern",
+        "CW-AC-18 missing-anchor falsifier is rejected"
+      ],
+      "artifact_slots": [
+        "var/assurance/openagents-desktop-mvp/AO-CW-AC-18-01/falsifier.junit.xml"
+      ],
+      "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "expected_observation": "REFUTED",
+      "obligation_id": "AO-CW-AC-18-01",
+      "role": "falsifier",
+      "unit_ref": "unit.ao-cw-ac-18-01.falsifier"
+    }
+  ],
+  "gate_refs": [
+    "GATE-MVP-FULL-ASSURANCE"
+  ],
+  "obligation_graph": [
+    {
+      "criterion_refs": [
+        "CW-AC-01"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-01-01.candidate",
+        "unit.ao-cw-ac-01-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-01-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-02"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-02-01.candidate",
+        "unit.ao-cw-ac-02-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-02-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-03"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-03-01.candidate",
+        "unit.ao-cw-ac-03-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-03-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-04"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-04-01.candidate",
+        "unit.ao-cw-ac-04-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-04-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-05"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-05-01.candidate",
+        "unit.ao-cw-ac-05-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-05-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-06"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-06-01.candidate",
+        "unit.ao-cw-ac-06-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-06-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-07"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-07-01.candidate",
+        "unit.ao-cw-ac-07-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-07-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-08"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-08-01.candidate",
+        "unit.ao-cw-ac-08-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-08-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-09"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-09-01.candidate",
+        "unit.ao-cw-ac-09-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-09-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-10"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-10-01.candidate",
+        "unit.ao-cw-ac-10-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-10-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-11"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-11-01.candidate",
+        "unit.ao-cw-ac-11-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-11-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-12"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-12-01.candidate",
+        "unit.ao-cw-ac-12-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-12-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-13"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-13-01.candidate",
+        "unit.ao-cw-ac-13-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-13-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-14"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-14-01.candidate",
+        "unit.ao-cw-ac-14-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-14-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-15"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-15-01.candidate",
+        "unit.ao-cw-ac-15-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-15-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-16"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-16-01.candidate",
+        "unit.ao-cw-ac-16-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-16-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-17"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-17-01.candidate",
+        "unit.ao-cw-ac-17-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-17-01"
+    },
+    {
+      "criterion_refs": [
+        "CW-AC-18"
+      ],
+      "dependency_refs": [],
+      "execution_unit_refs": [
+        "unit.ao-cw-ac-18-01.candidate",
+        "unit.ao-cw-ac-18-01.falsifier"
+      ],
+      "obligation_id": "AO-CW-AC-18-01"
+    }
+  ],
+  "product_spec": {
+    "document_digest": "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
+    "path": "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+    "revision": 6
+  },
+  "public_safety": {
+    "classification": "review_required",
+    "raw_artifacts_public": false
+  }
+}

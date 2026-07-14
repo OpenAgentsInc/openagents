@@ -28,6 +28,7 @@ import {
   type AgentRunSelfReportEvidence,
 } from "./agent-run.ts"
 import { projectObligationGraph, type ObligationGraph } from "./graph.ts"
+import { decodeAssuranceEvidenceIndex, type AssuranceEvidenceIndex } from "./receipt.ts"
 import { inventoryRepository } from "./repository-inventory.ts"
 import {
   ASSURANCE_SPEC_EXTENSION,
@@ -274,6 +275,38 @@ const probeSubject = (root: string, document: AssuranceSpecDocument): SubjectPro
 // ---------------------------------------------------------------------------
 
 export type PathArgs = Readonly<{ root?: string; path: string }>
+export type EvidencePathArgs = PathArgs & Readonly<{ evidence_index_path?: string }>
+
+const readEvidenceIndex = (
+  root: string,
+  args: EvidencePathArgs,
+  spec: ValidSpec,
+): Effect.Effect<AssuranceEvidenceIndex | undefined, AssuranceToolError> =>
+  Effect.gen(function* () {
+    if (args.evidence_index_path === undefined) return undefined
+    if (!args.evidence_index_path.endsWith(".evidence-index.json")) {
+      return yield* toolError("invalid_evidence_index_path", "Evidence Index paths must end in .evidence-index.json.", { path: args.evidence_index_path })
+    }
+    const confined = yield* confinePath(root, args.evidence_index_path)
+    let decoded: AssuranceEvidenceIndex
+    try {
+      decoded = decodeAssuranceEvidenceIndex(JSON.parse(readFileSync(confined.absolute, "utf8")))
+    } catch (error) {
+      return yield* toolError("invalid_evidence_index", `Evidence Index is not schema-valid: ${error instanceof Error ? error.message : String(error)}`, { path: confined.relative })
+    }
+    if (
+      decoded.subject.assurance_spec_digest !== spec.digest ||
+      decoded.subject.product_spec_digest !== spec.document.subject.product_spec.document_digest
+    ) {
+      return yield* toolError("evidence_index_subject_mismatch", "Evidence Index does not bind the exact AssuranceSpec and ProductSpec digests.", { path: confined.relative })
+    }
+    const expected = spec.document.obligations.map((obligation) => obligation.id)
+    const received = decoded.receipts.map((receipt) => receipt.obligation_id)
+    if (expected.length !== received.length || expected.some((id, index) => received[index] !== id)) {
+      return yield* toolError("evidence_index_obligation_mismatch", "Evidence Index receipt order/set does not match the AssuranceSpec obligations.", { path: confined.relative })
+    }
+    return decoded
+  })
 
 /**
  * Ingest an upstream Agent Run 0.1 as self-reported evidence only. This is a
@@ -778,16 +811,23 @@ export const getGates = (args: PathArgs): Effect.Effect<GateReport, AssuranceToo
 // ---------------------------------------------------------------------------
 
 export const getCoverageLedgers = (
-  args: PathArgs,
+  args: EvidencePathArgs,
 ): Effect.Effect<CoverageLedgers, AssuranceToolError> =>
-  Effect.map(readValidSpec(resolveRoot(args.root), args.path), (spec) => coverageLedgers(spec.document))
+  Effect.gen(function* () {
+    const root = resolveRoot(args.root)
+    const spec = yield* readValidSpec(root, args.path)
+    const evidence = yield* readEvidenceIndex(root, args, spec)
+    return coverageLedgers(spec.document, evidence)
+  })
 
 export const getEvidenceChecklist = (
-  args: PathArgs & Readonly<{ criterion_ref?: string }>,
+  args: EvidencePathArgs & Readonly<{ criterion_ref?: string }>,
 ): Effect.Effect<EvidenceChecklist, AssuranceToolError> =>
   Effect.gen(function* () {
-    const spec = yield* readValidSpec(resolveRoot(args.root), args.path)
-    const checklist = evidenceChecklist(spec.document, args.criterion_ref)
+    const root = resolveRoot(args.root)
+    const spec = yield* readValidSpec(root, args.path)
+    const evidence = yield* readEvidenceIndex(root, args, spec)
+    const checklist = evidenceChecklist(spec.document, args.criterion_ref, evidence)
     if (checklist === null) {
       return yield* toolError(
         "criterion_not_found",
@@ -799,12 +839,13 @@ export const getEvidenceChecklist = (
   })
 
 export const checkCompletionClaim = (
-  args: PathArgs & Readonly<{ claim?: string }>,
+  args: EvidencePathArgs & Readonly<{ claim?: string }>,
 ): Effect.Effect<CompletionClaimAudit, AssuranceToolError> =>
   Effect.gen(function* () {
     const root = resolveRoot(args.root)
     const spec = yield* readValidSpec(root, args.path)
-    return completionClaimAudit(spec.document, probeSubject(root, spec.document), args.claim)
+    const evidence = yield* readEvidenceIndex(root, args, spec)
+    return completionClaimAudit(spec.document, probeSubject(root, spec.document), args.claim, evidence)
   })
 
 export const getTypedGaps = (

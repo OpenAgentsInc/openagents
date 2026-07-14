@@ -1,0 +1,101 @@
+{
+  "assurance_spec_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09",
+  "assurance_spec_id": "assurance.openagents.desktop.codex.workroom.mvp",
+  "assurance_spec_revision": 2,
+  "review_annotation_format_version": "0.1",
+  "review_id": "review.openagents.desktop.mvp.assurance.2",
+  "reviewed_at": "2026-07-13T20:00:00Z",
+  "reviewer_tool": "Codex independent assurance review",
+  "targets": [
+    {
+      "axes": [
+        {
+          "axis_key": "subject_fidelity",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "criterion_traceability",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "risk_coverage",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "oracle_adequacy",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "falsifier_strength",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "seam_reality",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "environment_fidelity",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "evidence_sufficiency",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "verifier_independence",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "public_safety",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "authority_containment",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "feasibility",
+          "evidence_refs": [
+            "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+          ],
+          "verdict": "pass"
+        }
+      ],
+      "target_id": "assurance.openagents.desktop.codex.workroom.mvp",
+      "target_type": "document"
+    }
+  ]
+}

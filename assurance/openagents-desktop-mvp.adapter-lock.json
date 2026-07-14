@@ -1,0 +1,18 @@
+{
+  "adapter_lock_format_version": "0.1",
+  "adapters": [
+    {
+      "adapter_ref": "openagents.bun_test.v1",
+      "capabilities": [
+        "bun_test",
+        "junit",
+        "normalized_receipt"
+      ],
+      "content_digest": "sha256:81c9f95454ab20544d67f38c16e04627aeb848ed403a35d40526b09f069931ef",
+      "techniques": [
+        "criterion_contract_with_sensitivity"
+      ],
+      "version": "1.0.0"
+    }
+  ]
+}

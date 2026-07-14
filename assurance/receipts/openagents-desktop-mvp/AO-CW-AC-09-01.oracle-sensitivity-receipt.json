@@ -1,0 +1,14 @@
+{
+  "candidate_observation": "CONFIRMED",
+  "candidate_receipt_ref": "assurance.receipt.91c37d948cf14953645783c01ac486dcd8c38115bd4893abb15d76f3b239764a",
+  "diagnostic_refs": [],
+  "falsifier_observation": "REFUTED",
+  "falsifier_receipt_ref": "assurance.receipt.20ab6469c68fba316151354cbe613233c17ed1d635ce2e3fc422d9803cb426ce",
+  "falsifier_ref": "AO-CW-AC-09-01.missing_required_anchor",
+  "obligation_id": "AO-CW-AC-09-01",
+  "oracle_ref": "AO-CW-AC-09-01.criterion_contract",
+  "oracle_sensitivity_receipt_format_version": "0.1",
+  "receipt_ref": "oracle.sensitivity.946904b10e7282134b33cae41f865bfe510740286f58ee87b1e483d6d57064ff",
+  "sensitivity_observation": "CONFIRMED",
+  "surviving_mutant_refs": []
+}

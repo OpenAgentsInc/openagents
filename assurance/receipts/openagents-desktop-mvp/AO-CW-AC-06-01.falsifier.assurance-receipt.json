@@ -1,0 +1,35 @@
+{
+  "adapter_ref": "openagents.bun_test.v1",
+  "admission_digest": "sha256:4db81a5ebc6288f3be85d3c427883517afd27dfa2b9e92c254b3f86e0bf1debd",
+  "assurance_receipt_format_version": "0.1",
+  "assurance_spec_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09",
+  "axes": {
+    "admission": "admitted",
+    "disposition": "accepted",
+    "exception": "none",
+    "freshness": "current",
+    "infrastructure": "ready",
+    "observation": "REFUTED",
+    "readiness": "executable",
+    "stability": "stable"
+  },
+  "command_digest": "sha256:f564ce9d941b9f603ef4a3fd7e978936c73c8fc92535b2c93f161037c9fbe172",
+  "criterion_refs": [
+    "CW-AC-06"
+  ],
+  "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+  "execution_unit_ref": "unit.ao-cw-ac-06-01.falsifier",
+  "manifest_digest": "sha256:62447d7814a15117898ca3d06bd1ed15bdc6628d655c536c827d55b93a00ddd5",
+  "native_report_digest": "sha256:ad43b7ec19defb739c0c9ef1fff9f13cb498a2aa55b5e304e4319e09cc4c8202",
+  "native_report_ref": "var/assurance/openagents-desktop-mvp/AO-CW-AC-06-01/falsifier.junit.xml",
+  "obligation_id": "AO-CW-AC-06-01",
+  "producer_ref": "runner.openagents.local.20260713",
+  "product_spec_digest": "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_raw_output": false
+  },
+  "receipt_ref": "assurance.receipt.8d92665253c07769179f0d80ac6687c019952ce9eac58c236ee9c5f5748f40d4",
+  "reviewer_ref": "reviewer.codex.assurance.20260713",
+  "source_digest": "sha256:24ade88f79fde9ea96314efe5f1f0828fc3352e9671fc9cbadb64d200a706457"
+}

@@ -1,0 +1,22 @@
+{
+  "admission_format_version": "0.1",
+  "admission_ref": "admission.openagents.desktop.mvp.assurance.2",
+  "allowed_gate_refs": [
+    "GATE-MVP-FULL-ASSURANCE"
+  ],
+  "assurance_spec": {
+    "document_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09",
+    "id": "assurance.openagents.desktop.codex.workroom.mvp",
+    "revision": 2
+  },
+  "authority_statement": "The owner directed full MVP AssuranceSpec execution and accepted the installed ProductSpec-native Codex workroom journey and read-only review boundary; this admits proof execution without publishing or changing public promises.",
+  "decision": "admitted",
+  "product_spec": {
+    "document_digest": "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
+    "path": "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+    "revision": 6
+  },
+  "recognized_actor_ref": "owner.christopherdavid",
+  "recognized_role": "openagents.owner",
+  "review_set_digest": "sha256:ebc0c3a7f14c70b8d779e37313441f9de8c7f04fd458e463573742a5d63e4a0e"
+}

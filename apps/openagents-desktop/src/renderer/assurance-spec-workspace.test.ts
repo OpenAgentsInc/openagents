@@ -47,15 +47,15 @@ const source = readFileSync(
 )
 
 describe("AssuranceSpec document support", () => {
-  test("renders the checked-in proposal without overstating proof or execution", () => {
+  test("renders the admitted proof design without inventing execution evidence", () => {
     const workspace = assuranceSpecWorkspaceStateFromSource(source)
     expect(workspace.projection.state).toBe("ready")
     if (workspace.projection.state !== "ready") throw new Error("fixture must be valid")
     expect(workspace.projection.assessment.coverage).toEqual({
       criteria: 18,
       obligations: 18,
-      ready: 0,
-      needs_design: 18,
+      ready: 18,
+      needs_design: 0,
     })
     expect(workspace.projection.document.repositoryInventory.candidateCount).toBe(400)
     expect(JSON.stringify(workspace.projection)).not.toContain("candidate_artifact_refs")
@@ -63,8 +63,9 @@ describe("AssuranceSpec document support", () => {
 
     const view = assuranceSpecWorkspaceView(workspace)
     expect(byKey(view, "assurance-spec-structure")).toMatchObject({ label: "Structure valid", tone: "success" })
-    expect(byKey(view, "assurance-spec-design-state")).toMatchObject({ label: "18 need proof design", tone: "warn" })
-    expect(byKey(view, "assurance-spec-execution-state")).toMatchObject({ label: "Not executable", tone: "neutral" })
+    expect(byKey(view, "assurance-spec-lifecycle")).toMatchObject({ label: "Admitted", tone: "success" })
+    expect(byKey(view, "assurance-spec-design-state")).toMatchObject({ label: "18 proof designs ready", tone: "success" })
+    expect(byKey(view, "assurance-spec-execution-state")).toMatchObject({ label: "Evidence not loaded", tone: "neutral" })
     expect(byKey(view, "assurance-selected-criterion")).toMatchObject({ label: "CW-AC-04", tone: "info" })
     expect(byKey(view, "assurance-proof-design-table")).toMatchObject({ _tag: "Table" })
     expect(byKey(view, "assurance-repository-policy-value")?.content).toBe("400 candidates · unmapped")
@@ -74,7 +75,7 @@ describe("AssuranceSpec document support", () => {
       .map(node => String(node.label ?? ""))
     expect(labels).toHaveLength(18)
     expect(labels.some(label => /^(Run|Admit|Verify|Release)\b/.test(label))).toBe(false)
-    expect(textContent(view).join("\n")).toContain("It cannot admit work, execute checks, verify evidence")
+    expect(textContent(view).join("\n")).toContain("Read-only review. Admission is recorded")
   })
 
   test("changes the selected obligation through one typed intent", async () => {

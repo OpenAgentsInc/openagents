@@ -21,7 +21,7 @@ import {
 
 const root = resolve(import.meta.dir, "../../..")
 const productSpecBytes = readFileSync(resolve(root, "docs/mvp/openagents-codex-workroom-mvp.product-spec.md"), "utf8")
-const proposalBytes = readFileSync(resolve(root, "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md"), "utf8")
+const proposalBytes = readFileSync(resolve(root, "packages/assurance-spec/conformance/valid/mvp-proposal.assurance-spec.md"), "utf8")
 
 const profilePayload = {
   environment_format_version: "0.1" as const,

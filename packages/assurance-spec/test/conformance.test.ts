@@ -37,7 +37,7 @@ import {
 import { sha256Digest } from "../src/tooling.ts"
 
 const conformanceDir = resolve(import.meta.dir, "../conformance")
-const mvpAssurancePath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md")
+const mvpAssurancePath = resolve(conformanceDir, "valid/mvp-proposal.assurance-spec.md")
 
 const fixture = (relative: string): string => readFileSync(resolve(conformanceDir, relative), "utf8")
 const names = (relative: string, extension: string): ReadonlyArray<string> =>
@@ -73,7 +73,7 @@ describe("conformance corpus: valid documents", () => {
     })
   }
 
-  test("the corpus is seeded from the checked-in MVP proposal, byte-exact", () => {
+  test("the corpus retains the frozen MVP revision-1 proposal bytes", () => {
     expect(fixture("valid/mvp-proposal.assurance-spec.md")).toBe(readFileSync(mvpAssurancePath, "utf8"))
   })
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import test from "node:test"
@@ -122,7 +122,10 @@ test("rename, submodule, detached, conflict, and no-repository states remain exp
   git(root, ["commit", "--quiet", "-m", "rename"])
 
   const sub = repo()
-  git(root, ["-c", "protocol.file.allow=always", "submodule", "add", "--quiet", sub, "vendor/sub"])
+  const subHead = git(sub, ["rev-parse", "HEAD"]).trim()
+  mkdirSync(path.join(root, "vendor"), { recursive: true })
+  renameSync(sub, path.join(root, "vendor/sub"))
+  git(root, ["update-index", "--add", "--cacheinfo", `160000,${subHead},vendor/sub`])
   git(root, ["commit", "--quiet", "-m", "submodule"])
   write(path.join(root, "vendor/sub"), "review.txt", "submodule dirty\n")
   snapshot = status(root)

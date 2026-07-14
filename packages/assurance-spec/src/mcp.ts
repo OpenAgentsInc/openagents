@@ -97,6 +97,16 @@ const specPathSchema = (): object =>
     ["path"],
   )
 
+const evidenceSpecPathSchema = (): object =>
+  objectSchema(
+    {
+      root: ROOT_PROPERTY,
+      path: requiredStringProperty("Root-relative path to a .assurance-spec.md file."),
+      evidence_index_path: stringProperty("Optional root-relative schema-valid .evidence-index.json bound to the exact subject."),
+    },
+    ["path"],
+  )
+
 // ---------------------------------------------------------------------------
 // Argument coercion
 // ---------------------------------------------------------------------------
@@ -151,6 +161,7 @@ const confineSubRoot = (serverRoot: string, requested: string | undefined): stri
 const pathArgs = (args: Record<string, unknown>, serverRoot: string) => ({
   root: confineSubRoot(serverRoot, optionalString(args.root)),
   path: requiredString(args, "path"),
+  ...(optionalString(args.evidence_index_path) === undefined ? {} : { evidence_index_path: optionalString(args.evidence_index_path)! }),
 })
 
 export const MCP_TOOLS: Readonly<Record<string, ToolDefinition>> = {
@@ -277,8 +288,8 @@ export const MCP_TOOLS: Readonly<Record<string, ToolDefinition>> = {
   },
   get_coverage_ledgers: {
     description:
-      "The three coverage ledgers, separately: criterion traceability, obligation-by-environment execution (all not_run today), reachable frontier (not_computed until a compiler exists). Never a blended score.",
-    inputSchema: specPathSchema(),
+      "The three coverage ledgers, separately. Without an Evidence Index observations remain not_run; with an exact schema-valid index they project receipts without a blended score.",
+    inputSchema: evidenceSpecPathSchema(),
     handler: (args, root) => getCoverageLedgers(pathArgs(args, root)),
   },
   get_evidence_checklist: {
@@ -289,6 +300,7 @@ export const MCP_TOOLS: Readonly<Record<string, ToolDefinition>> = {
         root: ROOT_PROPERTY,
         path: requiredStringProperty("Root-relative path to a .assurance-spec.md file."),
         criterion_ref: stringProperty("Only the checklist for this criterion."),
+        evidence_index_path: stringProperty("Optional exact Evidence Index path."),
       },
       ["path"],
     ),
@@ -300,12 +312,13 @@ export const MCP_TOOLS: Readonly<Record<string, ToolDefinition>> = {
   },
   check_completion_claim: {
     description:
-      "The honesty tool: every obligation across all eight status axes (admission, readiness, observation, infrastructure, stability, freshness, disposition, exception). observation is not_run until receipts exist; the claim is echoed for the record, never evaluated.",
+      "The honesty tool: every obligation across all eight status axes. Observations remain not_run without an exact Evidence Index; claim text is echoed, never evaluated.",
     inputSchema: objectSchema(
       {
         root: ROOT_PROPERTY,
         path: requiredStringProperty("Root-relative path to a .assurance-spec.md file."),
         claim: stringProperty("The completion claim to audit; echoed, not evaluated."),
+        evidence_index_path: stringProperty("Optional exact Evidence Index path."),
       },
       ["path"],
     ),

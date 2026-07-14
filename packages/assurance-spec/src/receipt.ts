@@ -91,3 +91,48 @@ export const makeOracleSensitivityReceipt = (
 }
 
 export const assuranceReceiptArtifact = (receipt: AssuranceReceipt) => canonicalArtifact(receipt)
+
+export const ASSURANCE_EVIDENCE_INDEX_FORMAT_VERSION = "0.1" as const
+const EvidenceArtifactPointerSchema = S.Struct({
+  ref: StableRef,
+  digest: Digest,
+  path: RelativePath,
+})
+
+export const AssuranceEvidenceIndexSchema = S.Struct({
+  assurance_evidence_index_format_version: S.Literal(ASSURANCE_EVIDENCE_INDEX_FORMAT_VERSION),
+  subject: S.Struct({
+    product_spec_digest: Digest,
+    assurance_spec_digest: Digest,
+    manifest_digest: Digest,
+    admission_digest: Digest,
+  }),
+  gate: S.Struct({
+    gate_ref: StableRef,
+    admitted: S.Boolean,
+    executable: S.Boolean,
+    confirmed_obligations: S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0)),
+    total_obligations: S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0)),
+    infrastructure: S.Literals(["ready", "unavailable", "failed"]),
+    stability: S.Literals(["stable", "flaky", "unknown"]),
+    freshness: S.Literals(["current", "stale"]),
+    disposition: S.Literals(["accepted", "pending_review", "rejected", "exception"]),
+    exception: S.Literals(["none", "scoped"]),
+    full_desktop_gate: S.Literals(["pending_external_run", "green", "failed"]),
+  }),
+  receipts: S.Array(S.Struct({
+    obligation_id: StableRef,
+    criterion_refs: S.Array(StableRef),
+    candidate: EvidenceArtifactPointerSchema,
+    falsifier: EvidenceArtifactPointerSchema,
+    sensitivity: EvidenceArtifactPointerSchema,
+    axes: AssuranceReceiptSchema.fields.axes,
+  })),
+  companion_evidence_refs: S.Array(RelativePath),
+  public_safety: S.Struct({
+    classification: S.Literal("reviewed_public_safe"),
+    raw_artifacts_public: S.Literal(false),
+  }),
+})
+export type AssuranceEvidenceIndex = typeof AssuranceEvidenceIndexSchema.Type
+export const decodeAssuranceEvidenceIndex = S.decodeUnknownSync(AssuranceEvidenceIndexSchema)

@@ -6,9 +6,9 @@
  * clock, no randomness, no model calls (Law 2). The CLI and the MCP server
  * share these code paths through the Effect handlers in ./handlers.ts.
  *
- * Honesty posture (Law 7): no receipts exist yet, so the observation axis is
- * `not_run` everywhere, the reachable frontier is `not_computed`, and nothing
- * here rounds a typed gap up into a pass.
+ * Honesty posture (Law 7): observations remain `not_run` unless a caller
+ * supplies a schema-valid, exact-subject Evidence Index. Even then the eight
+ * axes remain separate and nothing is rounded into a blended score.
  */
 import { createHash } from "node:crypto"
 
@@ -17,6 +17,7 @@ import type {
   AssuranceObligation,
   AssuranceSpecDocument,
 } from "./schema.ts"
+import type { AssuranceEvidenceIndex } from "./receipt.ts"
 import { missingObligationDesignFields } from "./validator.ts"
 
 export const sha256Digest = (value: string): string =>
@@ -328,21 +329,24 @@ export type CoverageLedgers = Readonly<{
   execution: Readonly<{
     total_obligations: number
     executed_obligations: number
-    receipt_source: "none"
+    receipt_source: "none" | "assurance_evidence_index"
     entries: ReadonlyArray<Readonly<{
       obligation_id: string
       environment_ref: string | null
-      observation: "not_run"
+      observation: "not_run" | "CONFIRMED" | "REFUTED" | "INCONCLUSIVE"
     }>>
   }>
   reachable_frontier: Readonly<{
-    status: "not_computed"
+    status: "not_computed" | "computed"
     reason: string
   }>
   message: string
 }>
 
-export const coverageLedgers = (document: AssuranceSpecDocument): CoverageLedgers => {
+export const coverageLedgers = (
+  document: AssuranceSpecDocument,
+  evidenceIndex?: AssuranceEvidenceIndex,
+): CoverageLedgers => {
   const traceabilityEntries = document.subject.product_spec.criterion_refs.map((criterionRef) => ({
     criterion_ref: criterionRef,
     obligation_refs: document.obligations
@@ -352,16 +356,17 @@ export const coverageLedgers = (document: AssuranceSpecDocument): CoverageLedger
   type ExecutionEntry = Readonly<{
     obligation_id: string
     environment_ref: string | null
-    observation: "not_run"
+    observation: "not_run" | "CONFIRMED" | "REFUTED" | "INCONCLUSIVE"
   }>
   const executionEntries = document.obligations.flatMap((obligation): ReadonlyArray<ExecutionEntry> => {
     const environments = obligation.environment_refs ?? []
+    const observed = evidenceIndex?.receipts.find((entry) => entry.obligation_id === obligation.id)?.axes.observation ?? "not_run"
     return environments.length === 0
-      ? [{ obligation_id: obligation.id, environment_ref: null, observation: "not_run" }]
+      ? [{ obligation_id: obligation.id, environment_ref: null, observation: observed }]
       : environments.map((environmentRef) => ({
           obligation_id: obligation.id,
           environment_ref: environmentRef,
-          observation: "not_run",
+          observation: observed,
         }))
   })
   return {
@@ -372,13 +377,15 @@ export const coverageLedgers = (document: AssuranceSpecDocument): CoverageLedger
     },
     execution: {
       total_obligations: document.obligations.length,
-      executed_obligations: 0,
-      receipt_source: "none",
+      executed_obligations: new Set(executionEntries.filter((entry) => entry.observation !== "not_run").map((entry) => entry.obligation_id)).size,
+      receipt_source: evidenceIndex === undefined ? "none" : "assurance_evidence_index",
       entries: executionEntries,
     },
     reachable_frontier: {
-      status: "not_computed",
-      reason: "No compiler exists; the reachable frontier is a compiler projection, not a repository guess.",
+      status: evidenceIndex === undefined ? "not_computed" : "computed",
+      reason: evidenceIndex === undefined
+        ? "No Evidence Index was supplied; the reachable frontier is a compiler/receipt projection, not a repository guess."
+        : `Manifest execution produced ${evidenceIndex.gate.confirmed_obligations}/${evidenceIndex.gate.total_obligations} confirmed obligations; full Desktop gate is ${evidenceIndex.gate.full_desktop_gate}.`,
     },
     message: "Three ledgers reported separately. No blended coverage percentage is computed (Law 7).",
   }
@@ -402,7 +409,7 @@ export type EvidenceChecklist = Readonly<{
         environment_ref: string | null
         status: "missing"
       }>>
-      present: ReadonlyArray<never>
+      present: ReadonlyArray<Readonly<{ ref: string; digest: string; path: string }>>
       gaps: ReadonlyArray<Readonly<{ code: string; message: string }>>
     }>>
   }>>
@@ -412,6 +419,7 @@ export type EvidenceChecklist = Readonly<{
 export const evidenceChecklist = (
   document: AssuranceSpecDocument,
   criterionRef?: string,
+  evidenceIndex?: AssuranceEvidenceIndex,
 ): EvidenceChecklist | null => {
   const criterionRefs = document.subject.product_spec.criterion_refs
   if (criterionRef !== undefined && !criterionRefs.includes(criterionRef)) return null
@@ -430,14 +438,15 @@ export const evidenceChecklist = (
             environment_ref: string | null
             status: "missing"
           }>
-          const missing = requiredKinds.flatMap((kind): ReadonlyArray<MissingEntry> =>
+          const observed = evidenceIndex?.receipts.find((entry) => entry.obligation_id === obligation.id)
+          const missing = observed === undefined ? requiredKinds.flatMap((kind): ReadonlyArray<MissingEntry> =>
             environments.length === 0
               ? [{ kind, environment_ref: null, status: "missing" }]
               : environments.map((environmentRef) => ({
                   kind,
                   environment_ref: environmentRef,
                   status: "missing",
-                })))
+                }))) : []
           return {
             obligation_id: obligation.id,
             evidence_state: evidence === undefined ? ("needs_design" as const) : ("designed" as const),
@@ -445,7 +454,7 @@ export const evidenceChecklist = (
             proof_rung: evidence?.proof_rung ?? null,
             environment_refs: environments,
             missing,
-            present: [],
+            present: observed === undefined ? [] : [observed.candidate, observed.falsifier, observed.sensitivity],
             gaps: evidence === undefined
               ? [{
                   code: "evidence_requirements_undesigned",
@@ -466,13 +475,13 @@ export const evidenceChecklist = (
 
 export type ObligationStatusAxes = Readonly<{
   admission: string
-  readiness: "needs_design" | "not_computed"
-  observation: "not_run"
-  infrastructure: "not_computed"
-  stability: "unknown"
+  readiness: "needs_design" | "not_computed" | "planned_red" | "blocked" | "executable" | "not_applicable"
+  observation: "not_run" | "CONFIRMED" | "REFUTED" | "INCONCLUSIVE"
+  infrastructure: "not_computed" | "ready" | "unarmed" | "unavailable" | "failed"
+  stability: "unknown" | "stable" | "flaky"
   freshness: "current" | "stale"
-  disposition: "pending_review"
-  exception: "none"
+  disposition: "pending_review" | "accepted" | "rejected" | "exception"
+  exception: "none" | "scoped"
 }>
 
 export type CompletionClaimAudit = Readonly<{
@@ -495,6 +504,7 @@ export const completionClaimAudit = (
   document: AssuranceSpecDocument,
   subject: SubjectProbe,
   claim?: string,
+  evidenceIndex?: AssuranceEvidenceIndex,
 ): CompletionClaimAudit => {
   const admission = document.frontmatter.lifecycle_state
   const freshness: "current" | "stale" = subject.status === "bound" ? "current" : "stale"
@@ -505,26 +515,31 @@ export const completionClaimAudit = (
     subject_binding: subject.status,
     obligations: document.obligations.map((obligation) => {
       const unresolved = missingObligationDesignFields(obligation)
+      const receipt = evidenceIndex?.receipts.find((entry) => entry.obligation_id === obligation.id)
       return {
         obligation_id: obligation.id,
         title: obligation.title,
         criterion_refs: obligation.criterion_refs,
         axes: {
           admission,
-          readiness: unresolved.length > 0 ? ("needs_design" as const) : ("not_computed" as const),
-          observation: "not_run" as const,
-          infrastructure: "not_computed" as const,
-          stability: "unknown" as const,
-          freshness,
-          disposition: "pending_review" as const,
-          exception: "none" as const,
+          readiness: unresolved.length > 0 ? ("needs_design" as const) : receipt?.axes.readiness ?? ("not_computed" as const),
+          observation: receipt?.axes.observation ?? ("not_run" as const),
+          infrastructure: receipt?.axes.infrastructure ?? ("not_computed" as const),
+          stability: receipt?.axes.stability ?? ("unknown" as const),
+          freshness: receipt?.axes.freshness ?? freshness,
+          disposition: receipt?.axes.disposition ?? ("pending_review" as const),
+          exception: receipt?.axes.exception ?? ("none" as const),
         },
         unresolved_fields: unresolved,
       }
     }),
     notes: [
-      "observation is not_run for every obligation: no Assurance Receipts exist, and repository state, test files, and claim text never become observations.",
-      "readiness beyond needs_design and infrastructure are not_computed: no compiler or runner receipts exist.",
+      evidenceIndex === undefined
+        ? "observation is not_run for every obligation because no schema-valid Evidence Index was supplied."
+        : "Observation and the other seven axes come only from the exact schema-valid Evidence Index; links and claim text never become verdicts.",
+      evidenceIndex === undefined
+        ? "readiness beyond needs_design and infrastructure are not_computed without compiler/runner receipts."
+        : `The indexed full Desktop gate remains separately ${evidenceIndex.gate.full_desktop_gate}; it is not collapsed into criterion observations.`,
       "freshness projects only the subject document binding (declared digest vs current bytes).",
       "The claim text is echoed for the record, not evaluated; semantic claim evaluation is reviewable planner work, not this tool (Law 2).",
     ],

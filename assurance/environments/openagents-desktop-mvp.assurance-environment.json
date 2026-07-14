@@ -1,0 +1,50 @@
+{
+  "authentication_strategy": "none",
+  "capabilities": [
+    "bun_test",
+    "junit",
+    "isolated_run_artifacts",
+    "reviewed_installed_release_receipt"
+  ],
+  "data_classification": "private_local",
+  "dependency_lock": {
+    "digest": "sha256:b9cbc17f17a885cab9665410cd3b470cf6e430a1c15c7f6a04467f12a9741017",
+    "path": "bun.lock"
+  },
+  "environment_format_version": "0.1",
+  "evidence_visibility": "reviewed_public_safe",
+  "forbidden_actions": [
+    "network",
+    "credentials",
+    "production_mutation",
+    "customer_data",
+    "release_publication"
+  ],
+  "isolation": {
+    "fresh_identity": true,
+    "reset_between_runs": true,
+    "restart_supported": true
+  },
+  "mutability": "isolated_write",
+  "owner": "first_party",
+  "permitted_actions": [
+    "read_repository",
+    "run_bun_tests",
+    "write_isolated_artifacts"
+  ],
+  "platform": {
+    "architecture": "arm64",
+    "framework": "Effect Native / Electron",
+    "os": "macos",
+    "runtime": "Bun 1.3.11"
+  },
+  "profile_digest": "sha256:9ad4e93af55ee64e6977506796051e7e8687865bd6f00bf8a60114473ce32306",
+  "profile_id": "ENV-OA-DESKTOP-MVP-BUN-1",
+  "redaction_policy": "No raw output, hostname, absolute path, credential, prompt, transcript, or repository content in public projections.",
+  "required_commands": [
+    "bun"
+  ],
+  "retention": "Private native JUnit under var/; reviewed normalized receipts committed by digest.",
+  "revision": 1,
+  "target_class": "release_artifact"
+}

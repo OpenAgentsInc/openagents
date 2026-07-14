@@ -1,0 +1,25 @@
+{
+  "build": "passed",
+  "command": "bun run --cwd apps/openagents-desktop verify",
+  "command_digest": "sha256:bd62499ae137ed5702641185cb508628cf694bb0dadc17ddf3de09a41b023da8",
+  "electron_smoke": "passed",
+  "exit_code": 0,
+  "full_desktop_gate_receipt_format_version": "0.1",
+  "native_output": {
+    "path": "var/assurance/openagents-desktop-mvp/full-desktop-gate.log",
+    "visibility": "private"
+  },
+  "output_digest": "sha256:73f03cd5c047b75b54c3b7cad3822b2f791674ffb18588ddbf497d079abebec7",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_raw_output": false
+  },
+  "source_digest": "sha256:b8a7a46b064f65beaacce0e5c2cc0c9472231a7d5ca304932f981af9b8b3819f",
+  "tests": {
+    "failed": 0,
+    "passed": 1204,
+    "skipped_retired": 39
+  },
+  "typecheck": "passed",
+  "verdict": "green"
+}

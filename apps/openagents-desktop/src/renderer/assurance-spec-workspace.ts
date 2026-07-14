@@ -178,7 +178,7 @@ const obligationNavigator = (
     Text({ key: "assurance-obligation-navigator-title", content: "Obligations", variant: "label", color: "textPrimary", weight: "semibold" }),
     Badge({ key: "assurance-obligation-count", label: String(projection.document.obligations.length), tone: "neutral" }),
   ]),
-  Text({ key: "assurance-obligation-navigator-copy", content: "One proposed obligation per ProductSpec criterion", variant: "caption", color: "textFaint" }),
+  Text({ key: "assurance-obligation-navigator-copy", content: "One obligation per ProductSpec criterion", variant: "caption", color: "textFaint" }),
   Stack({ key: "assurance-obligation-list", direction: "column", gap: "0.5", style: { flex: 1, minHeight: 0, minWidth: 0 } },
     projection.document.obligations.map(obligation => {
       const selected = obligation.id === selectedObligationId
@@ -236,7 +236,11 @@ const selectedObligationDetail = (
         Badge({ key: "assurance-selected-criterion", label: obligation.criterion_refs.join(", "), tone: "info" }),
         Text({ key: "assurance-selected-obligation", content: obligation.id, variant: "caption", color: "textFaint" }),
         Spacer({ key: "assurance-selected-spacer", flex: true }),
-        Badge({ key: "assurance-selected-status", label: `${missing.length} missing fields`, tone: "warn" }),
+        Badge({
+          key: "assurance-selected-status",
+          label: missing.length === 0 ? "Proof design complete" : `${missing.length} missing fields`,
+          tone: missing.length === 0 ? "success" : "warn",
+        }),
       ]),
       Stack({ key: "assurance-source-claim", direction: "column", gap: "1.5", style: { width: "full", minWidth: 0 } }, [
         Text({ key: "assurance-source-claim-label", content: "SOURCE CLAIM", variant: "caption", color: "textFaint", weight: "semibold" }),
@@ -259,7 +263,7 @@ const selectedObligationDetail = (
           policyRow("assurance-subject-digest", "Digest", shortDigest(subject.document_digest)),
         ]),
         Stack({ key: "assurance-policy-state", direction: "column", gap: "1.5", style: { flex: 1, minWidth: 0 } }, [
-          Text({ key: "assurance-policy-state-title", content: "Proposal context", variant: "label", color: "textPrimary", weight: "semibold" }),
+          Text({ key: "assurance-policy-state-title", content: "Assurance context", variant: "label", color: "textPrimary", weight: "semibold" }),
           policyRow("assurance-risk-policy", "Risk model", projection.document.riskCount === 0 ? "Not designed" : `${projection.document.riskCount} risks` , "warning"),
           policyRow("assurance-environment-policy", "Environments", projection.document.environmentProfileCount === 0 ? "None bound" : `${projection.document.environmentProfileCount} bound`, "warning"),
           policyRow("assurance-gate-policy", "Gates", projection.document.gateCount === 0 ? "None" : String(projection.document.gateCount), "warning"),
@@ -296,6 +300,8 @@ export const assuranceSpecDocumentView = (
     diagnostics: [{ code: "missing_obligations", message: "The AssuranceSpec contains no obligations.", severity: "error" }],
   })
   const fileName = projection.relativePath.split("/").at(-1) ?? projection.relativePath
+  const admitted = document.frontmatter.lifecycle_state === "admitted"
+  const designReady = projection.assessment.coverage.needs_design === 0
   return Stack({ key: "assurance-spec-document", direction: "column", gap: "0", style: { flex: 1, width: "full", minWidth: 0, minHeight: 0 } }, [
     Stack({ key: "assurance-spec-file-header", direction: "column", gap: "2", style: { width: "full", minWidth: 0, padding: "4" } }, [
       Stack({ key: "assurance-spec-file-line", direction: "row", gap: "2", align: "center", style: { width: "full", minWidth: 0 } }, [
@@ -303,18 +309,29 @@ export const assuranceSpecDocumentView = (
         Text({ key: "assurance-spec-file-name", content: fileName, variant: "caption", color: "textMuted" }),
         Text({ key: "assurance-spec-file-revision", content: `r${document.frontmatter.assurance_revision}`, variant: "caption", color: "textFaint" }),
         Spacer({ key: "assurance-spec-file-spacer", flex: true }),
-        Badge({ key: "assurance-spec-lifecycle", label: "Proposed", tone: "info" }),
+        Badge({ key: "assurance-spec-lifecycle", label: admitted ? "Admitted" : "Proposed", tone: admitted ? "success" : "info" }),
         Badge({ key: "assurance-spec-structure", label: "Structure valid", tone: "success" }),
       ]),
       Stack({ key: "assurance-spec-title-line", direction: "row", gap: "2", align: "center", style: { width: "full", minWidth: 0 } }, [
         Text({ key: "assurance-spec-title", content: document.frontmatter.title, variant: "title", color: "textPrimary", weight: "semibold", style: { minWidth: 0 } }),
         Spacer({ key: "assurance-spec-title-spacer", flex: true }),
-        Badge({ key: "assurance-spec-design-state", label: `${projection.assessment.coverage.needs_design} need proof design`, tone: "warn" }),
-        Badge({ key: "assurance-spec-execution-state", label: "Not executable", tone: "neutral" }),
+        Badge({
+          key: "assurance-spec-design-state",
+          label: designReady ? `${projection.assessment.coverage.ready} proof designs ready` : `${projection.assessment.coverage.needs_design} need proof design`,
+          tone: designReady ? "success" : "warn",
+        }),
+        Badge({ key: "assurance-spec-execution-state", label: admitted ? "Evidence not loaded" : "Not executable", tone: "neutral" }),
       ]),
       Stack({ key: "assurance-spec-authority-notice", direction: "row", gap: "2", align: "center", style: { width: "full", minWidth: 0, padding: "2", backgroundColor: "surfaceRaised", borderRadius: "md" } }, [
-        Icon({ key: "assurance-spec-authority-icon", name: "InfoCircle", size: "sm", color: "warning", label: "Proposal authority boundary" }),
-        Text({ key: "assurance-spec-authority-copy", content: "Proposal only. It cannot admit work, execute checks, verify evidence, waive obligations, release software, or change public promises.", variant: "caption", color: "textMuted" }),
+        Icon({ key: "assurance-spec-authority-icon", name: "InfoCircle", size: "sm", color: "warning", label: "Read-only authority boundary" }),
+        Text({
+          key: "assurance-spec-authority-copy",
+          content: admitted
+            ? "Read-only review. Admission is recorded, but this view cannot execute checks, verify or accept evidence, waive obligations, release software, or change public promises."
+            : "Proposal only. It cannot admit work, execute checks, verify evidence, waive obligations, release software, or change public promises.",
+          variant: "caption",
+          color: "textMuted",
+        }),
       ]),
       assuranceSummary(projection),
     ]),

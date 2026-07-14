@@ -1,20 +1,20 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.desktop.codex.workroom.mvp"
-assurance_revision: 1
+assurance_revision: 2
 title: "OpenAgents Desktop Codex Workroom MVP Assurance Spec"
 artifact_type: "product_assurance"
-lifecycle_state: "proposed"
+lifecycle_state: "admitted"
 author: "OpenAgents"
 ---
 
 ## Assurance Objective
 
-This proposed AssuranceSpec creates exact criterion-to-obligation coverage without claiming that proof design, execution, evidence, admission, or release is complete.
+Prove the accepted first-deployable OpenAgents Desktop Codex workroom against all eighteen frozen ProductSpec criteria. The run retains criterion-local candidate and falsifier observations, the signed/notarized installed journey, and the full current Desktop regression gate without collapsing their distinct authority or evidence tiers.
 
 ## Subject
 
-The proposal is bound to the exact ProductSpec bytes, revision, path, and stable criterion identifiers below.
+This admitted assurance revision remains byte-bound to ProductSpec revision 6 and its legacy CW-AC identities. A later ProductSpec identity migration must create a new admission and may not retarget these receipts or rewrite this historical proof chain.
 
 ```assurancespec-subject
 {
@@ -50,11 +50,28 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
 
 ## Risk Model
 
-No risk objects are inferred from ProductSpec prose. Reviewers must design the applicable risk model.
+The proof design treats runtime compatibility, ordinary Codex-session custody, durable work identity, authority containment, restart safety, privacy, and release lifecycle fidelity as separate risks. Candidate evidence is never sufficient without a named falsifier, an exact environment, independent review, and current immutable bindings.
 
 ```assurancespec-risks
 {
-  "risks": [],
+  "risks": [
+    {
+      "id": "RISK-RUNTIME-CUSTODY",
+      "statement": "A second engine, inherited CODEX_HOME, or account selector could violate ordinary logged-in Codex-session custody."
+    },
+    {
+      "id": "RISK-WORK-AUTHORITY",
+      "statement": "Agent prose or evidence presence could be mistaken for admission, verification, owner acceptance, or release authority."
+    },
+    {
+      "id": "RISK-DURABILITY",
+      "statement": "Reload, restart, retry, or update could duplicate work, flatten causal history, or silently retarget intent."
+    },
+    {
+      "id": "RISK-PUBLIC-SAFETY",
+      "statement": "Private native reports, credentials, paths, prompts, or repository content could leak into a public projection."
+    }
+  ],
   "source_digest": "sha256:2597133237cb20832d7c0f6f932548e666fa10ca4bf8d07b5f492750635f748a",
   "source_snapshot": "- Codex app-server evolves quickly. Compatibility must fail explicitly and\n  remain tied to a tested app/runtime set instead of silently parsing a changed\n  provider protocol.\n- The Runtime Gateway can accidentally become a second engine or database.\n  Any alternate model/tool loop or independent session truth blocks launch.\n- The built-in skill can accidentally become hidden authority. All durable\n  spec, plan, work-packet, criterion, and evidence transitions must remain\n  host-validated typed operations that the workroom can inspect.\n- ProductSpec ceremony can slow small work. The guided draft must be quick, and\n  the workroom must not require a spec for mechanical tasks outside the repo's\n  consequential-work threshold.\n- A polished timeline can hide data loss. Completeness, explicit gaps, durable\n  admission, and restart fault receipts remain acceptance requirements.\n- Reusing the ordinary Codex session can inherit stale or missing auth. The\n  host clears inherited `CODEX_HOME`, probes the exact current session, and\n  reports a precise sign-in or quota prerequisite without rotating elsewhere.\n- Read-only review may be too narrow for repeated daily use. That is a\n  falsifiable post-launch result, not permission to add editor/PTY/Git breadth\n  before the first complete workroom is accepted.\n- Opt-in metrics can bias toward expert dogfood users. Segment and consent\n  provenance must remain visible; no prompt, path, account, or machine identity\n  is collected to improve the number.\n- A raw Codex escape can hide an OpenAgents defect if external completion is\n  reported as workroom success. Every fallback must remain visible, and only an\n  exact OpenAgents rerun may convert that packet into OpenAgents-native proof.\n- Fleet capacity can be mistaken for available work. Concurrency is bounded by\n  distinct admitted packets, non-overlapping paths and hot contracts, and\n  review capacity—not connected accounts or idle workers.\n- Closed broader issues can tempt a premature claim. Only the exact current\n  artifact and MVP journey prove this spec; CUT-27 and portable/mobile/Fleet\n  claims retain their own gates."
 }
@@ -62,15 +79,20 @@ No risk objects are inferred from ProductSpec prose. Reviewers must design the a
 
 ## Assurance Scope
 
-Every executable ProductSpec criterion is in assurance scope. No criterion is silently excluded or marked not applicable.
+Every executable ProductSpec criterion is required and has exactly one obligation in this MVP run. No criterion is deferred or marked not applicable; release and public-promise authority remain outside the execution grant even after all observations are confirmed.
 
 ## Environments
 
-Repository facts are proposal context only. No Environment Profile, adapter, capability, or permission is selected by inventory.
+Execution uses the admitted first-party macOS ARM64 Bun environment with network and credential access forbidden. Native JUnit remains private; normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.
 
 ```assurancespec-environments
 {
-  "profiles": [],
+  "profiles": [
+    {
+      "id": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "status": "admitted"
+    }
+  ],
   "repository_inventory": {
     "candidate_artifact_refs": [
       "apps/acceptance-runner/src/daemon.test.ts",
@@ -3493,206 +3515,818 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
 
 ## Obligations
 
-Each criterion receives one incomplete proposed obligation. Missing proof-design fields project as needs_design and prevent admission or execution.
+Each obligation binds one criterion to a criterion-local contract oracle and a deterministic missing-anchor falsifier. The complete Desktop suite and installed RC9 journey are required companion evidence, so a narrow contract result cannot independently authorize release or a public completion claim.
 
 ```assurancespec-obligations
 [
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-01"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-01-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-01 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:96254dc85e649218554d1cdb9ec7ec36a0813f7696204b48df6119025b35cf7c",
     "source_claim_snapshot": "A signed/notarized release candidate installs and launches without a source\ncheckout, resolves only its pinned compatible Codex runtime path, and reports\nmissing or incompatible runtime state explicitly.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-01"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-02"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-02-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-02 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:9956af177e2962268ada34b1eb0f7b6c5e9a495115c68d72b67b1b8b5c51283f",
     "source_claim_snapshot": "Local-first mode can reach the first useful Codex workroom without an\nOpenAgents account or hosted service. It uses only the user's ordinary\nlogged-in Codex session, clears any inherited `CODEX_HOME`, and exposes no\nnamed-Pylon account linking, isolated device-auth, or account rotation in the\nMVP workroom.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-02"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-03"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-03-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-03 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:520b3de4719ed980c5df9a8f56a963eefb3c426ed70c044566c0d7e991fd45f8",
     "source_claim_snapshot": "Granting one repository creates a stable WorkContext and product session ref\nthat do not derive from a path, process, port, machine, or provider thread ID.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-03"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-04"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-04-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-04 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:ea6517af8f157701b183991dbcedbbe2e603b9ec28dc53109659063d1850ecba",
     "source_claim_snapshot": "From one guided conversation, the workroom creates a validator-clean\nProductSpec v0.1 draft or opens an existing spec. Validation failures identify\nthe exact section. An unlabeled legacy spec remains viewable, but executable\ncriteria require unique author-visible IDs and no work starts while any ID is\nmissing or duplicated.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-04"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-05"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-05-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-05 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:af4e081e296d638acc389a976a2adab0cd4f232e8f7e94f06bb4eb94356cf814",
     "source_claim_snapshot": "The workroom shows the exact ProductSpec digest and `spec_revision`, previews\nevery intent-changing edit as a diff, requires user confirmation plus a\nrevision bump, and retains the prior revision for already admitted work.\nRetained criterion IDs may map across revisions; changed or removed IDs\nrequire explicit reconciliation.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-05"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-06"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-06-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-06 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:d7099615d7a3c38b037a9b79556edf9cadc04e39b6c32037d1c01926458ad9c2",
     "source_claim_snapshot": "A user-accepted execution plan contains at least two durable work packets.\nEvery packet cites the exact spec revision and one or more criterion refs;\nat least one packet can be allocated to a child agent and opened from both\nthe criterion board and causal timeline. Before execution, every criterion is\nmapped or explicitly deferred, every mutating packet has at most one active\nexecution lease, and duplicate or cyclic work packets refuse.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-06"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-07"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-07-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-07 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:0fc9b7aa277bc5ee0556fae35b13ab8041c83d25a2307fb5f3533bc56e080025",
     "source_claim_snapshot": "The product-owned `productspec-work` skill ships hash-pinned in the signed\ncompatibility set, is registered from the app-owned resource root into the\ncurrent Codex session through the native app-server surface, and can refine, decompose,\nallocate, and report through typed host tools. Removing, corrupting, or\nversion-mismatching it produces an explicit incompatible workflow state; it\nnever falls back to an ambient/user-installed skill and never copies itself\ninto the default Codex home.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-07"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-08"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-08-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-08 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:4350ae8c8ff59199e024df4462387b3d8c0a994c7f99e4a1166cb6d26815a4bb",
     "source_claim_snapshot": "Skill or agent prose cannot approve a spec edit, admit a work packet, change\nthe pinned revision, or mark a criterion verified. Evidence-present and\nverified remain distinct. Verification requires linked test/verifier output,\nbehavior/Eval oracle, artifact or diff review, or receipt; owner acceptance\nor waiver remains a separate typed disposition.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-08"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-09"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-09-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-09 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:07e64e1ead0897b6da45a95871ae61f27c2a45b66b29f47af75f82fde8eb137c",
     "source_claim_snapshot": "A spec revision/digest change while work is active produces a typed mismatch.\nNew dispatch stops until the user reconciles, supersedes, or cancels the old\nplan; active work is never silently retargeted and no evidence crosses\nrevisions without an explicit mapping.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-09"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-10"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-10-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-10 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:202d24f1116fff61ca338f6458bc4cf68caa529cb2b146fe916bab19ad7e5104",
     "source_claim_snapshot": "The session rail paints bounded metadata before transcript hydration, lists\nonly top-level sessions, pages without an age ceiling, and preserves stable\ntitles, status, attention, ordering, and selected session through restart.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-10"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-11"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-11-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-11 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:e29a2fd859224fe11e32bbf56f89c70ec90bec4e3e9888da559fc3d40bb25896",
     "source_claim_snapshot": "One real Codex task is durably admitted before dispatch and renders typed\ntext plus at least one non-text plan, tool, patch/file-change, usage, blocker,\nor lifecycle item and exactly one terminal disposition.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-11"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-12"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-12-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-12 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:111e82a689f475b833dceadfde912b40ca663335b56fac363c97196d067ca730",
     "source_claim_snapshot": "Exact retry reconciles to the admitted intent; conflicting reuse refuses.\nSend, stop, steer, queue, question, approval, and plan-review actions use the\nsame registered command identities across direct, keyboard, palette, and\nnative-menu entry points.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-12"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-13"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-13-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-13 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:2cb93d68bef3e709f3e0a42c3f2a79c563396ca8d96a183a135a6454a273d2be",
     "source_claim_snapshot": "The complete child graph retains exact parentage and lifecycle. A causal\ninline card opens one child's independent transcript; reload/reconnect never\nflattens, duplicates, re-roots, or leaks a child into the top-level catalog.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-13"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-14"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-14-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-14 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:fb91c82fe2706512e4285fac6725ea32925403058f84449fe0a7e90d74a1c024",
     "source_claim_snapshot": "The granted repository exposes a bounded file tree, Git status, and exact\ndiff correlated to timeline item refs. Revocation and post-image conflict\nfail visibly without exposing general filesystem or Git mutation authority.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-14"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-15"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-15-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-15 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:9b603d9c1b3a91f3a77e8e59c41a81b2a103acda23388c697c9e0ca7f9014f73",
     "source_claim_snapshot": "Renderer reload does not stop or duplicate host-owned work. App-process\nrestart restores the exact persisted prefix and either continues the\nrecorded Codex thread at most once or records an explicit interrupted\nterminal outcome; it never silently reruns the task. Open in Codex is offered\nonly after the OpenAgents attempt is quiescent or authoritatively reconciled,\npreserves the admitted packet identity, and labels exact-thread continuation\nseparately from repository-state handoff and transcript-gap recovery.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-15"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-16"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-16-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-16 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:e9b73d46b15a925a64e6149d36d724d32ca45e9cd8fbaaa04d6ee4dd9f19b8ff",
     "source_claim_snapshot": "Lost acknowledgement, duplicate/out-of-order frame, cursor gap, stale\ngeneration, revoked grant, quota exhaustion, rate limit, auth revocation,\nand policy denial converge to distinct typed states. Durable repair precedes\nlive resubscription.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-16"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-17"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-17-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-17 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:618c2b5880038c5c6526b0071ac4f5d0c363a0ef2df808039f57114711236687",
     "source_claim_snapshot": "Diagnostics and non-content renderer control envelopes contain no\ncredential, account identity, loopback URL/secret, raw provider event,\nprompt/transcript body, repository content, absolute root, generic IPC,\nprocess handle, or general filesystem handle. Content views receive only\nbounded transcript and repository projections admitted for the selected\nwork context; they never receive raw provider payloads, credentials,\nabsolute roots, or general process/filesystem authority.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-17"
   },
   {
-    "candidate_artifact_refs": [],
+    "activation_gate": "GATE-MVP-FULL-ASSURANCE",
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"
+    ],
     "criterion_refs": [
       "CW-AC-18"
     ],
     "disposition": "required",
+    "domains": [
+      "desktop_workroom",
+      "release_artifact"
+    ],
+    "environment_refs": [
+      "ENV-OA-DESKTOP-MVP-BUN-1"
+    ],
+    "evidence": {
+      "proof_rung": "reviewed_release_plus_current_regression",
+      "required_kinds": [
+        "native_junit",
+        "assurance_receipt",
+        "oracle_sensitivity_receipt",
+        "installed_release_receipt",
+        "full_desktop_gate"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "missing_required_anchor",
+      "ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+    },
     "id": "AO-CW-AC-18-01",
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
+      "statement": "The exact CW-AC-18 implementation/release anchors remain present and the criterion-local candidate test passes."
+    },
     "source_claim_digest": "sha256:c0a258b64639d90909f16e2d5db2720371cb0f89f0e3cb240d7b4f3317a815a0",
     "source_claim_snapshot": "The exact release candidate passes install, launch, one real Codex workroom\ntask, renderer reload, app restart, interrupted update, rollback/downgrade\nrefusal, diagnostics export, uninstall/reinstall, and cleanup receipts.",
+    "technique": "criterion_contract_with_sensitivity",
     "title": "Assure CW-AC-18"
   }
 ]
@@ -3700,44 +4334,57 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
 
 ## Gates
 
-No execution or release gates are inferred. Gate design remains blocked pending review.
+The MVP assurance gate passes only when exact admission and environment bindings are current, every candidate is CONFIRMED, every falsifier is REFUTED, infrastructure is ready, observations are stable, independent review accepts each candidate, no exception remains, and the full Desktop regression gate is green.
 
 ```assurancespec-gates
-[]
+[
+  {
+    "expression": "admitted && executable && candidate=CONFIRMED && falsifier=REFUTED && infrastructure=ready && stability=stable && freshness=current && disposition=accepted && exception=none && full_desktop_gate=green",
+    "id": "GATE-MVP-FULL-ASSURANCE"
+  }
+]
 ```
 
 ## Evidence Policy
 
-Links are pointers, not verdicts. Missing or unreviewed evidence remains INCONCLUSIVE.
+Links remain evidence locations rather than verdicts. Native output stays private, normalized receipts are reviewed public-safe projections, and missing or stale artifacts remain INCONCLUSIVE. Candidate, sensitivity, installed-release, and full-regression evidence must all remain independently visible.
 
 ```assurancespec-evidence-policy
 {
   "links_are_verdicts": false,
   "missing_evidence_verdict": "INCONCLUSIVE",
-  "policy_state": "needs_design",
+  "policy_state": "designed",
   "required_for_ready_obligation": [
     "oracle_observation",
     "falsifier_observation",
     "environment_binding",
-    "independent_review"
+    "independent_review",
+    "installed_release_receipt",
+    "full_desktop_gate"
   ]
 }
 ```
 
 ## Authority Boundaries
 
-This proposal cannot admit, execute, verify, waive, release, or change a public promise.
+The owner admits this exact proof design and has accepted the installed ProductSpec-native journey and its read-only review boundary. The runner may execute and report only; it cannot alter owner acceptance, publish RC9, change registries or promises, waive failures, or infer authority from prose or green tests.
 
 ```assurancespec-authority
 {
-  "admitted_roles": [],
-  "policy_state": "needs_design",
+  "admitted_roles": [
+    "openagents.owner"
+  ],
+  "policy_state": "designed",
   "proposal_may_change_public_promises": false,
   "proposal_may_execute": false,
   "proposal_may_release": false,
   "proposal_may_self_admit": false,
   "proposal_may_verify": false,
-  "release_roles": [],
-  "verifier_roles": []
+  "release_roles": [
+    "openagents.owner"
+  ],
+  "verifier_roles": [
+    "openagents.assurance_reviewer"
+  ]
 }
 ```
