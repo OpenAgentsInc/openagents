@@ -19,8 +19,10 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(deployScript).toContain('! -f dist-cloudrun/preload.mjs')
     expect(deployScript).toContain('assert-self-contained-bundle.mjs')
     expect(deployScript).toContain(
-      'pnpm --filter @openagentsinc/api-worker deploy',
+      'pnpm --config.node-linker=hoisted',
     )
+    expect(deployScript).toContain('--filter @openagentsinc/api-worker deploy')
+    expect(deployScript).toContain('pnpm install --frozen-lockfile')
     expect(deployScript).toContain('cd "$REPO_ROOT"')
     expect(deployScript).not.toContain('--deps.never-bundle')
   })

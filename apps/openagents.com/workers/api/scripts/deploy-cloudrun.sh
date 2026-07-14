@@ -75,9 +75,14 @@ fi
 # stage a portable production node_modules tree into the Cloud Build context.
 RUNTIME_DEPLOY_DIR="$(mktemp -d)"
 trap 'rm -rf "$RUNTIME_DEPLOY_DIR"' EXIT
-(cd "$REPO_ROOT" && CI=true pnpm --filter @openagentsinc/api-worker deploy \
-  "$RUNTIME_DEPLOY_DIR" --prod --legacy >/dev/null)
+(cd "$REPO_ROOT" && CI=true pnpm --config.node-linker=hoisted \
+  --filter @openagentsinc/api-worker deploy "$RUNTIME_DEPLOY_DIR" \
+  --prod --legacy >/dev/null)
 mv "$RUNTIME_DEPLOY_DIR/node_modules" dist-cloudrun/node_modules
+# Legacy deploy mutates the workspace install mode while materializing the
+# portable tree. Restore the development install before later build/smoke
+# commands invoke pnpm again.
+(cd "$REPO_ROOT" && CI=true pnpm install --frozen-lockfile >/dev/null)
 node scripts/cloudrun/assert-self-contained-bundle.mjs dist-cloudrun
 cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
 # Sarah removed at owner direction 2026-07-10 (epic #8610): the former
