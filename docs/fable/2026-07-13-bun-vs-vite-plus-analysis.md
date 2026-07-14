@@ -873,3 +873,101 @@ Finally, T3 still has stale Bun prose and a few optional Bun adapters after the
 migration. Its precedent proves serious operational adoption, not automatic
 perfection. OpenAgents needs an explicit final scan of commands, docs, images,
 tarballs, adapters, and fixtures before it may say “full conversion.”
+
+## Addendum — 2026-07-14: the decision is made; what tonight already built
+
+Author note: this addendum is written by **Opus**, after a mid-session model
+handoff from the Fable lane that authored the body and from the Sol lane that
+authored the §B steelman. Per this repository's own no-silent-substitution
+posture — the same law the Cursor/Composer teardown made load-bearing — the
+byline is named rather than ghost-written under an earlier voice. The analysis
+above stands; this is a shorter, execution-facing coda.
+
+**The owner has decided: Bun comes out. Option C is dead; the destination is
+full Option B (Node LTS runtime, pnpm workspace, Vite Plus command layer), on
+the phased contract in
+[`Sol conversion plan`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).**
+This addendum does not re-argue that; it records what the same night's work
+already contributed to the migration, because three of the plan's named proof
+obligations moved from "asserted" to "evidenced" while this document was being
+written.
+
+### C.1 The extraction is already a countable, gated burn-down — not a vibe
+
+BUN-1 ([#8779](https://github.com/OpenAgentsInc/openagents/issues/8779),
+`23ffe398e7`) landed two things that convert "rip out Bun" from a slogan into a
+tracked program:
+
+1. **A dual-runtime SQLite seam** (`@openagentsinc/sqlite-runtime`): one
+   synchronous contract with a `bun:sqlite` implementation and a `node:sqlite`
+   implementation selected at runtime, with the Node path tested under real
+   `node --test` rather than a mocked flag. The deepest Bun-native coupling in
+   the codebase — `bun:sqlite` in the orchestration, sync, and wallet stores —
+   now has a proven, conformance-tested escape hatch. One store
+   (`khala-sync-client`) is already migrated onto it with zero wire change.
+2. **A perimeter scan with a checked-in burn-down allowlist**
+   (`scan:bun-api-perimeter`): it measured the exact extraction surface —
+   **710 `Bun.*`/`bun:*` findings across 214 files** — grandfathered them, and
+   fails the sweep on any *new* Bun usage.
+
+That second artifact is the single most useful thing to come out of this whole
+question, and it should be the migration's scoreboard. The honest cost of the
+runtime extraction is not "+98 packages / 169 MB" (an additive-pilot artifact,
+correctly discounted in §B.9) — it is **214 files, counting down to zero**.
+Every store ported onto the seam, every `Bun.*` call replaced by an owned
+platform adapter, shrinks the allowlist by a nameable amount, and the guard
+guarantees the number only moves the right direction. The runtime flip is
+safe to schedule when the perimeter reaches zero in the supported path, not
+before — and now that is a measurement, not a judgment call.
+
+### C.2 The typecheck-parity leg is de-risked; the toolchain half-measure is ruled out
+
+Two pilots the same night bear directly on §B.9–B.12's proof obligations:
+
+- **TC-4** ([#8775](https://github.com/OpenAgentsInc/openagents/issues/8775),
+  `8b84af0043`): `@effect/tsgo` typechecked a real Effect-heavy package (~17.7k
+  lines) at **~9× the speed and ~2.5× less memory than `tsc`, with zero
+  semantic drift** (0 false positives, 0 missed errors). Sol's plan names
+  "Effect TSGo/test parity" as a gate; for the typecheck half, that gate now
+  has affirmative evidence. The remaining obligation is precise and known: the
+  proven backend is a preview compiler installed by patching a binary inside
+  `node_modules`, so it earns an opt-in package-local lane today and the
+  canonical path only once a patch-free `@effect/tsgo` on `typescript>=7`
+  ships. That is a real dependency, cleanly stated.
+- **TC-5** ([#8776](https://github.com/OpenAgentsInc/openagents/issues/8776),
+  `8158e6948f`): the additive Vite Plus pilot on aiur returned a *disqualifier*
+  — `vp` silently ran its bundled Vite 8.1.3 instead of the workspace-pinned
+  8.0.16, with no aliasing requested. Read narrowly that kills additive
+  adoption. Read correctly, as §B.9 does, it **confirms the atomic-swap
+  ordering**: there is no safe toe-in-the-water topology. It is T3's
+  inverse-topology conversion (`b440dd18`: remove `bun.lock`/Turbo, migrate
+  test imports, make pnpm authoritative, alias `vite` to exact-pinned core, and
+  change CI/release/hooks together) or nothing. The half-measure that would
+  have quietly split engine identity is off the table, which is a gift to the
+  program, not a setback.
+
+### C.3 The one caution worth carrying into execution
+
+The payment-path-first ordering (§B.13) is right — it deletes rather than ports
+the hardest Bun-native storage/process work and honors the MVP boundary. My
+only addition, as the lane that inventoried the runtime coupling: **the SQLite
+stores are the critical path, and BUN-1 piloted exactly one of them.** The seam
+is proven; the remaining stores are mechanical but each needs dual-runtime
+wiring plus its own Node-suite conformance before the runtime can flip. That
+work is fully parallelizable now that the contract exists — it is the part of
+the graph most amenable to fanning out, and the perimeter allowlist is the
+shared ledger that keeps concurrent extraction honest.
+
+### C.4 Bottom line
+
+The strategic case (§B.1) was always the real case: **move the production
+runtime off an Anthropic-owned engine onto a neutrally-governed foundation, and
+push the corporate dependency outward to a replaceable, removable toolchain
+layer.** Tonight did not decide that — the owner did — but it built the seam,
+measured the surface, de-risked the typecheck gate, and eliminated the unsafe
+shortcut. The migration starts from a stronger footing than the body of this
+document assumed when it recommended Option C. Execute it on the Sol plan;
+watch the perimeter count to zero; keep the runtime on Node the moment it can
+be, and keep `vp` where it can always be pulled back out.
+
+— Opus, 2026-07-14
