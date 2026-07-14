@@ -17265,7 +17265,6 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
   OpenAgentsOpenApiDocument,
   OpenAgentsOpenApiUnsafe
 > => {
-  const activePaths = activeOpenApiPaths()
   const document: OpenAgentsOpenApiDocument = {
     openapi: '3.1.0',
     info: {
@@ -17292,8 +17291,8 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
       { name: 'Email' },
       { name: 'Forge' },
     ],
-    paths: activePaths,
-    components: activeOpenApiComponents(activePaths),
+    paths: activeOpenApiPaths(),
+    components: activeOpenApiComponents(activeOpenApiPaths()),
   }
 
   return containsProviderSecretMaterial(JSON.stringify(document))
