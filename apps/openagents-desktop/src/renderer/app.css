@@ -1,6 +1,12 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 
 @theme inline {
+  /* Disable Tailwind's independent default scales. Renderer-private utilities
+     may name only semantics mapped to the canonical Effect Native variables. */
+  --color-*: initial;
+  --radius-*: initial;
+  --spacing-*: initial;
+  --font-*: initial;
   --color-background: var(--en-color-background);
   --color-foreground: var(--en-color-textPrimary);
   --color-muted: var(--en-color-surfaceRaised);
@@ -20,7 +26,7 @@
 @layer base {
   /* A real Tailwind-compiled renderer boundary, sourced entirely from EN
      semantic variables. Portable View nodes never carry these classes. */
-  [data-en-react-surface="hybrid"] {
+  [data-en-react-surface="true"] {
     @apply bg-background text-foreground;
   }
 }

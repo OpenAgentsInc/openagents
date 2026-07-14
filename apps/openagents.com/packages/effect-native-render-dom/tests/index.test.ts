@@ -169,9 +169,9 @@ describe("DOM renderer host boundaries", () => {
         ],
       })), report)
       const divider = root.querySelector<HTMLElement>('[data-en-role="divider"]')!
-      divider.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, clientX: 500, pointerId: 1 }))
-      document.dispatchEvent(new window.PointerEvent("pointermove", { bubbles: true, clientX: 450, pointerId: 1 }))
-      document.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true, clientX: 450, pointerId: 1 }))
+      divider.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, clientX: 500, pointerId: 1 }) as unknown as Event)
+      document.dispatchEvent(new window.PointerEvent("pointermove", { bubbles: true, clientX: 450, pointerId: 1 }) as unknown as Event)
+      document.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true, clientX: 450, pointerId: 1 }) as unknown as Event)
       yield* nextTask
       expect(reported).toContainEqual({ paneId: "inspector", size: 386 })
     })))
@@ -424,7 +424,7 @@ describe("DOM renderer host boundaries", () => {
     expect(textarea.selectionEnd).toBe(3)
 
     textarea.value = "local"
-    textarea.dispatchEvent(new window.Event("input"))
+    textarea.dispatchEvent(new window.Event("input") as unknown as Event)
     instance.update(driver.decodeProps(CodeEditor({
       value: "authoritative",
       language: "json",
@@ -442,7 +442,7 @@ describe("DOM renderer host boundaries", () => {
     expect(textarea.getAttribute("data-en-minimap")).toBe("true")
 
     textarea.setSelectionRange(1, 4)
-    textarea.dispatchEvent(new window.KeyboardEvent("keydown", { key: "s", metaKey: true }))
+    textarea.dispatchEvent(new window.KeyboardEvent("keydown", { key: "s", metaKey: true }) as unknown as Event)
     expect(emitted).toEqual([
       { type: "change", value: "local" },
       { type: "selection", start: 1, end: 4 },
@@ -451,7 +451,7 @@ describe("DOM renderer host boundaries", () => {
 
     instance.unmount()
     instance.unmount()
-    textarea.dispatchEvent(new window.Event("input"))
+    textarea.dispatchEvent(new window.Event("input") as unknown as Event)
     expect(root.querySelector("textarea")).toBeNull()
     expect(emitted).toHaveLength(3)
   })
@@ -583,7 +583,7 @@ describe("commit idempotency: unrelated re-render never re-parents persisted key
     let detailsMoves = 0
     const proto = (window as unknown as { Node: { prototype: Record<string, (...a: Array<unknown>) => unknown> } }).Node.prototype
     for (const method of ["appendChild", "append", "insertBefore"] as const) {
-      const real = proto[method]
+      const real = proto[method]!
       proto[method] = function (this: Node, ...args: Array<unknown>) {
         for (const arg of args) {
           if (isDetails(arg) && (arg as Node).parentNode != null && (arg as Node).parentNode !== this) {

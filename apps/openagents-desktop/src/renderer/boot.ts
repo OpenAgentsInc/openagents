@@ -1637,6 +1637,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       document.documentElement.setAttribute(name, value)
     }
     const renderer = makeReactDomRenderer({
+      // The complete Desktop catalog stays on the one explicit compatibility
+      // backend until the scoped React lowerings land in the following packets.
+      backend: "compatibility",
       theme: themeForPreferences(preferences),
       hostDrivers: [makeStubCodeEditorDriver()],
     })

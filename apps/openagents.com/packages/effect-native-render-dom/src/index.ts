@@ -1040,6 +1040,18 @@ class AtomicStyleSheet {
   }
 }
 
+export interface DomThemeStyleSheet {
+  readonly element: HTMLStyleElement
+  readonly setTheme: (theme: Theme) => void
+  readonly dispose: () => void
+}
+
+/** Shared canonical token and component CSS for both DOM backends. */
+export const mountDomThemeStyleSheet = (
+  document: Document,
+  theme: Theme = defaultTheme
+): DomThemeStyleSheet => new AtomicStyleSheet(document, theme)
+
 class DomRendererState {
   readonly root: HTMLElement
   readonly styles: AtomicStyleSheet

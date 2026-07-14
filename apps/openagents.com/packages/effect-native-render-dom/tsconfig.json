@@ -12,5 +12,5 @@
     { "path": "../effect-native-core" },
     { "path": "../effect-native-tokens" }
   ],
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
 }

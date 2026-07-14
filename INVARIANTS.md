@@ -994,11 +994,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   row always unmounts any provider-history page before projecting that row's
   transcript, so a successful selection cannot leave stale chat content visible.
 - Desktop's application, component, state, projection, and typed-intent model
-  remain Effect Native. React 19 owns the renderer root and lifecycle only
-  through the shared `@effect-native/render-dom/react` renderer; the initial
-  surface may retain the proven direct catalog lowering as a compatibility
-  backend while native React component lowerings reach parity. Tailwind and any future Base UI
-  adoption are renderer-private implementation tools. Portable renderer modules remain
+  remain Effect Native. React 19 owns the renderer root, lifecycle, synchronous
+  snapshot consumption, and declared ordinary-element lowerings only through
+  the shared `@effect-native/render-dom/react` renderer. One authoritative
+  surface selects exactly one whole-surface backend for its lifetime: declared
+  React lowerings or the proven direct catalog compatibility backend, never
+  both. The Effect-owned stream opens once outside React effects; Strict Mode
+  replay may reattach React listeners but cannot duplicate the host
+  subscription, command effect, or terminal outcome. Unmount closes the
+  selected backend, subscription, root, and token stylesheet. Tailwind and any
+  future Base UI adoption are renderer-private implementation tools and derive
+  from canonical `--en-*` variables, with Tailwind defaults disabled rather
+  than becoming a second theme. Portable renderer modules remain
   `.ts`, React-free, and free of `className`/`ReactNode`; no Zustand, Effect
   Atom React, TanStack router, Zod, arbitrary JSX component, or second theme/
   icon system may become application authority. The Electron renderer remains

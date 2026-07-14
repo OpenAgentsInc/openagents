@@ -2,11 +2,11 @@
 
 - Date: 2026-07-14
 - OpenAgents snapshot: `53c33ff8cfa1f8b2ce5f2c2b7adaf7461e44cf2e`
-- Effect Native snapshot: `d82ef135a43420883bacf9580f5b644b40787b23`
+- Effect Native snapshot: `086378e03b2546d39a85b6b74ac1269e8587b23b`
   (`effect-native/v39`)
 - T3 Code reference: `c1ec1915fc16f3dc1ec5d47d9a97f6210a574526`
 - Class: source-grounded architecture gap analysis
-- Status: recommendation plus Desktop R1 implementation; not broad route-conversion authority
+- Status: recommendation plus Desktop R2 projection foundation; not broad route-conversion authority
 
 ## Executive decision
 
@@ -34,22 +34,31 @@ In one sentence: **keep Effect Native above React; put React underneath the
 Effect Native DOM contract; wrap the old direct-DOM renderer only while
 migrating.**
 
-## Implementation status — Desktop R1 landed 2026-07-14
+## Implementation status — Desktop R2 projection foundation landed 2026-07-14
 
-The first executable rung now exists upstream at Effect Native commit
-`d82ef135a43420883bacf9580f5b644b40787b23` and is consumed by OpenAgents
+The first executable rung remains intact, and the R2 projection foundation now
+exists upstream at Effect Native commit
+`086378e03b2546d39a85b6b74ac1269e8587b23b` and is consumed by OpenAgents
 Desktop:
 
 - `@effect-native/render-dom/react` is an optional-peer subpath with
   `EffectNativeReactDomSurface` and `makeReactDomRenderer`;
-- React owns the root and lifecycle, while the existing direct renderer remains
-  the compatibility catalog lowering inside that surface;
+- one explicit whole-surface selector chooses `react` or `compatibility` for a
+  surface lifetime; Desktop remains explicitly on compatibility until its full
+  scoped node set has declared React lowerings;
+- React mode opens the Effect stream once outside React effects and exposes a
+  referentially stable, monotonic snapshot through `useSyncExternalStore`;
+- the initial React kernel lowers Stack, Text, Button, Card, Spacer, and Divider
+  to ordinary semantic elements with stable keys, closed a11y projection,
+  canonical styles, and exact existing intent dispatch;
+- unsupported nodes fail into a public error-boundary state instead of silently
+  nesting or switching renderers;
 - the mount adapter waits until the nested renderer's first View commit, so
   Desktop does not remove its boot frame or begin background hydration early;
 - Scope close idempotently unmounts React and the nested renderer;
 - Desktop now bundles the renderer with Vite, the React plugin, and Tailwind
   CSS 4, with semantic Tailwind roles mapped to canonical `--en-*` variables;
-- React/React DOM are deduped to one app-owned `19.2.3` pair and production
+- React/React DOM are deduped to one app-owned `19.2.7` pair and production
   mode is selected at build time without injecting Node's `process` into the
   sandbox;
 - the Electron boundary continues to forbid Node, tokens, generic host
@@ -59,8 +68,8 @@ Desktop:
   benchmark pass. The measured median was 694 ms to `shellMounted`, under the
   existing 2,500 ms budget.
 
-This is **R1**, not the final R2–R6 destination. React does not yet lower each
-catalog node natively, Base UI is not yet wired, and there is no SSR/hydration,
+This is the **R2 foundation**, not the final catalog-wide destination. React
+does not yet lower each catalog node natively, Base UI is not yet wired, and there is no SSR/hydration,
 Lexical, LegendList, Pierre, or xterm migration in this change. Keeping those
 dependencies out until a real catalog/Host implementation exists avoids
 turning a stack audit into unused supply-chain surface.
@@ -79,10 +88,10 @@ implementation is already a substantial multi-renderer framework:
 | --- | --- | --- | --- |
 | `@effect-native/core` | 7,323-line React-free package; 79 Schema-backed component tags; typed keys, accessibility, interactions, bindings, styles, hosts, intents, and `ViewProgram` | no dependency | Keep it as the portable authority |
 | `@effect-native/tokens` | 1,140-line semantic token, theme, spacing, type, control, motion, breakpoint, and matrix system | no dependency | Project it into every renderer; do not replace it with Tailwind strings |
-| `@effect-native/render-dom` | Direct DOM renderer plus optional `./react` R1 host; React owns root/lifecycle while direct catalog lowering remains the compatibility backend | optional peer at `./react` | R1 removes route-local host boilerplate but does not yet deliver native React component lowering |
+| `@effect-native/render-dom` | Direct DOM renderer plus optional `./react` surface with one Effect-backed external store, a foundation ordinary-element kernel, error boundary, and explicit whole-surface backend selector | optional peer at `./react` | Downstream packets can expand React coverage without inventing state or command authority |
 | `@effect-native/render-rn` | 6,331-line lowering from the same `View` union to React Native elements, plus a hook-backed surface | yes, internally | This already proves React can render Effect Native without becoming its authoring model |
 | OpenAgents web | TanStack Start/Router, React 19, React DOM, Tailwind 4; retained Effect Native routes mount the direct DOM renderer from `useEffect` | React owns the route shell only | Effect Native content is an opaque client-only island |
-| OpenAgents Desktop | Electron plus the shared React-owned Effect Native DOM surface; Vite/React/Tailwind renderer build; Effect Native application/state/intents unchanged | renderer host only | R1 passed package tests, built smoke/reload, security boundary, and startup budgets |
+| OpenAgents Desktop | Electron plus the shared React-owned Effect Native DOM surface; Vite/React/Tailwind renderer build; Effect Native application/state/intents unchanged | renderer host plus declared foundation lowerings | R2 keeps the complete shell explicitly on compatibility while downstream packets expand React coverage |
 | OpenAgents mobile | Expo/React Native host plus `createEffectNativeSurface`; screen programs stay in Effect Native | yes, as renderer/host | This is the working architectural precedent |
 
 The current vendor manifest pins core, tokens, direct DOM/React host, and React
@@ -282,10 +291,10 @@ domain-authoring modules, not from reviewed renderer and host modules.
 
 ### G1 — a React-compatible View source
 
-**Current:** `ViewProgram` exposes a push-only `Stream<View>` plus an Effectful
-`currentState`. Every state emission reconstructs and resolves a whole View
-tree. React 19 expects a synchronous, stable snapshot/subscription contract
-for concurrency-safe external stores.
+**Current:** `ViewProgram` remains a push-only `Stream<View>`, while the DOM
+renderer now adapts it once per Scope into a stable synchronous snapshot store.
+React 19 consumes that store with `useSyncExternalStore`; Strict Mode listener
+replay does not reopen the upstream Effect stream.
 
 **Required:** add a renderer-neutral source/store seam with:
 
@@ -319,9 +328,10 @@ interface EffectNativeRootProps {
 
 ### G2 — first-class React DOM surface
 
-**Current:** there is no pure `View -> ReactElement` lowering and no React DOM
-surface. The app shell owns a bare `div`; the direct DOM renderer owns its
-contents.
+**Current:** `renderReactDomView` provides the declared foundation subset and
+the owned React surface provides loading, failed, incompatible, recovery, and
+teardown behavior. Catalog-wide lowering, portals, host services, and SSR are
+still open.
 
 **Required:** provide:
 

@@ -1,141 +1,239 @@
-/**
- * React-owned Effect Native DOM surface.
- *
- * React owns the application root and stream subscription. During the first
- * migration phase the existing DOM renderer remains the compatibility
- * lowering for the catalog itself, preserving every Effect Native component,
- * host driver, intent, accessibility attribute, and CSS contract while React
- * applications adopt this entrypoint. Native React component lowerings can be
- * moved across this boundary incrementally without changing application code.
- */
-import { Deferred, Effect, Exit, Fiber, Scope, Stream } from "effect"
-import { createElement, useEffect, useRef, type ReactElement } from "react"
+/** React-owned Effect Native DOM surface with an explicit whole-surface backend. */
+import { Component, StrictMode, createElement, useLayoutEffect, useSyncExternalStore, type ErrorInfo, type ReactElement, type ReactNode } from "react"
 import { createRoot, type Root } from "react-dom/client"
+import { Deferred, Effect, Exit, Fiber, Scope, Stream } from "effect"
 import type { IntentReporter, MountedSurface, RendererAdapter, View } from "@effect-native/core"
 import {
   makeDomRenderer,
+  mountDomThemeStyleSheet,
   type DomMountedSurface,
-  type DomRendererOptions
+  type DomRendererOptions,
+  type DomThemeStyleSheet
 } from "./index.js"
+import { renderReactDomView } from "./react-lowering.js"
+import { makeReactViewStore, type ReactViewSnapshot, type ReactViewStore } from "./react-store.js"
 
 export const packageName = "@effect-native/render-dom/react" as const
 
+export type ReactDomBackend = "react" | "compatibility"
+
 export interface EffectNativeReactDomSurfaceProps extends DomRendererOptions {
-  readonly viewStream: Stream.Stream<View>
+  readonly viewStore: ReactViewStore
   readonly report: IntentReporter
-}
-
-export interface ReactDomMountedSurface extends MountedSurface {
-  readonly reactRoot: Root
-  readonly domSurface: DomMountedSurface
-}
-
-interface InternalSurfaceProps extends EffectNativeReactDomSurfaceProps {
-  readonly onReady?: (surface: DomMountedSurface) => void
   readonly onError?: (error: unknown) => void
+  readonly onCommit?: (snapshot: ReactViewSnapshot) => void
 }
 
-/**
- * A React component that owns an Effect Native DOM surface.
- *
- * The bridge is deliberately explicit: React owns mounting and cleanup while
- * `makeDomRenderer` performs the catalog lowering. This gives React/Electron
- * applications a stable integration point without duplicating renderer state
- * or weakening the typed Effect Native view and intent contracts.
- */
-const ReactDomSurfaceHost = (
-  props: InternalSurfaceProps
-): ReactElement => {
-  const hostRef = useRef<HTMLDivElement>(null)
+export type ReactDomMountedSurface = MountedSurface & {
+  readonly reactRoot: Root
+  readonly backend: ReactDomBackend
+  readonly activeReactSubscribers: () => number
+} & (
+  | { readonly backend: "react"; readonly stylesheet: DomThemeStyleSheet }
+  | { readonly backend: "compatibility"; readonly domSurface: DomMountedSurface }
+)
 
-  useEffect(() => {
-    const host = hostRef.current
-    if (host === null) return
+interface BoundaryProps {
+  readonly children?: ReactNode
+  readonly resetKey: number
+  readonly onError?: (error: unknown) => void
+  readonly onSettled?: () => void
+}
 
-    const scope = Effect.runSync(Scope.make())
-    const { viewStream, report, onReady, onError, ...rendererOptions } = props
-    const renderer = makeDomRenderer(rendererOptions)
-    const mountFiber = Effect.runFork(Scope.provide(scope)(
-      renderer.mount(host, viewStream, report)
-    ))
-    void Effect.runPromise(Fiber.join(mountFiber)).then(
-      (surface) => onReady?.(surface),
-      (error) => onError?.(error)
-    )
+interface BoundaryState {
+  readonly error: Error | undefined
+  readonly resetKey: number
+}
 
-    return () => {
-      void Effect.runPromise(Scope.close(scope, Exit.void))
-      void Effect.runPromise(Fiber.interrupt(mountFiber))
+export class ReactSurfaceErrorBoundary extends Component<BoundaryProps, BoundaryState> {
+  override state: BoundaryState = { error: undefined, resetKey: this.props.resetKey }
+
+  static getDerivedStateFromError(error: Error): Partial<BoundaryState> {
+    return { error }
+  }
+
+  static getDerivedStateFromProps(props: BoundaryProps, state: BoundaryState): Partial<BoundaryState> | null {
+    return props.resetKey === state.resetKey ? null : { error: undefined, resetKey: props.resetKey }
+  }
+
+  override componentDidCatch(error: Error, _info: ErrorInfo): void {
+    this.props.onError?.(error)
+    this.props.onSettled?.()
+  }
+
+  override componentDidMount(): void {
+    if (this.state.error === undefined) this.props.onSettled?.()
+  }
+
+  override componentDidUpdate(previous: BoundaryProps): void {
+    if (previous.resetKey !== this.props.resetKey && this.state.error === undefined) {
+      this.props.onSettled?.()
     }
-  }, [
-    props.clipboard,
-    props.document,
-    props.hostDrivers,
-    props.onError,
-    props.onReady,
-    props.reducedMotion,
-    props.report,
-    props.theme,
-    props.viewStream,
-    props.viewport
-  ])
+  }
 
-  return createElement("div", {
-    ref: hostRef,
-    "data-en-react-surface": "hybrid"
-  })
+  override render(): ReactNode {
+    if (this.state.error !== undefined) {
+      return createElement("section", {
+        role: "alert",
+        "data-en-react-state": "incompatible",
+        "data-en-react-error": this.state.error.name
+      }, "This surface is not available in the React renderer yet.")
+    }
+    return this.props.children
+  }
+}
+
+const ReactLoweredView = (props: {
+  readonly view: View
+  readonly report: IntentReporter
+}): ReactElement => renderReactDomView(props.view, { report: props.report })
+
+const ReactStatus = (props: {
+  readonly state: "loading" | "failed"
+  readonly onCommit?: () => void
+}): ReactElement => {
+  useLayoutEffect(() => props.onCommit?.(), [props.onCommit])
+  return props.state === "loading"
+    ? createElement("div", { role: "status", "data-en-react-state": "loading" }, "Loading…")
+    : createElement("section", { role: "alert", "data-en-react-state": "failed" }, "The surface stopped updating.")
+}
+
+const ReactViewProjection = (props: EffectNativeReactDomSurfaceProps): ReactElement => {
+  const snapshot = useSyncExternalStore(
+    props.viewStore.subscribe,
+    props.viewStore.getSnapshot,
+    props.viewStore.getServerSnapshot
+  )
+  if (snapshot.status === "loading") {
+    return createElement(ReactStatus, { state: "loading" })
+  }
+  if (snapshot.status === "failed") {
+    return createElement(ReactStatus, {
+      state: "failed",
+      ...(props.onCommit === undefined ? {} : { onCommit: () => props.onCommit?.(snapshot) })
+    })
+  }
+  return createElement(ReactSurfaceErrorBoundary, {
+    resetKey: snapshot.revision,
+    ...(props.onError === undefined ? {} : { onError: props.onError }),
+    ...(props.onCommit === undefined ? {} : {
+      onSettled: () => queueMicrotask(() => props.onCommit?.(snapshot))
+    })
+  }, createElement(ReactLoweredView, { view: snapshot.view, report: props.report }))
 }
 
 export const EffectNativeReactDomSurface = (
   props: EffectNativeReactDomSurfaceProps
-): ReactElement => createElement(ReactDomSurfaceHost, props)
+): ReactElement => createElement(ReactViewProjection, props)
 
-/**
- * RendererAdapter for applications that want React to own the DOM root.
- *
- * The returned surface is scope-bound just like `makeDomRenderer`: closing
- * the mounting scope unmounts the React root and the nested DOM renderer.
- */
-export const makeReactDomRenderer = (
-  options: DomRendererOptions = {}
-): RendererAdapter<Element, ReactDomMountedSurface> => ({
-  mount: (container, viewStream, report) =>
-    Effect.gen(function*() {
-      const ready = yield* Deferred.make<DomMountedSurface, unknown>()
-      const reactRoot = yield* Effect.sync(() => createRoot(container))
-      let unmounted = false
-      const unmountRoot = (): void => {
-        if (unmounted) return
-        unmounted = true
-        reactRoot.unmount()
+const mountCompatibilityBackend = (
+  container: Element,
+  viewStream: Stream.Stream<View>,
+  report: IntentReporter,
+  options: DomRendererOptions
+): Effect.Effect<ReactDomMountedSurface, never, Scope.Scope> =>
+  Effect.gen(function*() {
+    const ready = yield* Deferred.make<DomMountedSurface, unknown>()
+    const attached = yield* Deferred.make<void>()
+    const reactRoot = yield* Effect.sync(() => createRoot(container))
+    const host = options.document?.createElement("div") ?? container.ownerDocument.createElement("div")
+    host.setAttribute("data-en-react-surface", "true")
+    host.setAttribute("data-en-react-backend", "compatibility")
+    yield* Effect.sync(() => reactRoot.render(createElement("div", {
+      ref: (element: HTMLDivElement | null) => {
+        if (element !== null && host.parentNode === null) {
+          element.appendChild(host)
+          Effect.runFork(Deferred.succeed(attached, undefined))
+        }
       }
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(unmountRoot)
+    })))
+    yield* Deferred.await(attached)
+    const backendScope = yield* Scope.make()
+    const mountFiber = Effect.runFork(Scope.provide(backendScope)(
+      makeDomRenderer(options).mount(host, viewStream, report)
+    ))
+    void Effect.runPromise(Fiber.join(mountFiber)).then(
+      (surface) => Effect.runFork(Deferred.succeed(ready, surface)),
+      (error) => Effect.runFork(Deferred.fail(ready, error))
+    )
+    const domSurface = yield* Deferred.await(ready).pipe(Effect.orDie)
+    let disposed = false
+    const unmount = Effect.suspend(() => {
+      if (disposed) return Effect.void
+      disposed = true
+      return Effect.andThen(
+        Scope.close(backendScope, Exit.void),
+        Effect.sync(() => reactRoot.unmount())
       )
-      yield* Effect.sync(() => {
-        reactRoot.render(createElement(ReactDomSurfaceHost, {
-          ...options,
-          viewStream,
-          report,
-          onReady: (surface) => {
-            Effect.runFork(Deferred.succeed(ready, surface))
-          },
-          onError: (error) => {
-            Effect.runFork(Deferred.fail(ready, error))
-          }
-        }))
-      })
-      // Match makeDomRenderer's readiness contract: callers do not proceed
-      // until the first View has committed beneath the React-owned root.
-      const domSurface = yield* Deferred.await(ready).pipe(Effect.orDie)
-
-      const surface: ReactDomMountedSurface = {
-        reactRoot,
-        domSurface,
-        unmount: Effect.sync(unmountRoot)
-      }
-      return surface
     })
+    yield* Effect.addFinalizer(() => unmount)
+    return {
+      reactRoot,
+      backend: "compatibility" as const,
+      domSurface,
+      activeReactSubscribers: () => 0,
+      unmount
+    }
+  })
+
+const mountReactBackend = (
+  container: Element,
+  viewStream: Stream.Stream<View>,
+  report: IntentReporter,
+  options: DomRendererOptions
+): Effect.Effect<ReactDomMountedSurface, never, Scope.Scope> =>
+  Effect.gen(function*() {
+    const document = options.document ?? container.ownerDocument
+    const viewStore = yield* makeReactViewStore(viewStream)
+    const committed = yield* Deferred.make<void>()
+    const stylesheet = yield* Effect.sync(() => mountDomThemeStyleSheet(document, options.theme))
+    const reactRoot = yield* Effect.sync(() => createRoot(container))
+    let disposed = false
+    const unmount = Effect.sync(() => {
+      if (disposed) return
+      disposed = true
+      reactRoot.unmount()
+      stylesheet.dispose()
+    })
+    yield* Effect.addFinalizer(() => unmount)
+    yield* Effect.sync(() => reactRoot.render(createElement(StrictMode, null,
+      createElement("div", {
+        "data-effect-native-surface": "dom",
+        "data-en-react-surface": "true",
+        "data-en-react-backend": "react"
+      }, createElement(EffectNativeReactDomSurface, {
+        ...options,
+        viewStore,
+        report,
+        onCommit: (snapshot) => {
+          if (snapshot.status === "ready" || snapshot.status === "failed") {
+            Effect.runFork(Deferred.succeed(committed, undefined))
+          }
+        }
+      }))
+    )))
+    yield* viewStore.firstCommit
+    yield* Deferred.await(committed)
+    return {
+      reactRoot,
+      backend: "react" as const,
+      stylesheet,
+      activeReactSubscribers: viewStore.activeSubscribers,
+      unmount
+    }
+  })
+
+/** Selects one backend for the lifetime of one authoritative surface. */
+export const makeReactDomRenderer = (
+  options: DomRendererOptions & { readonly backend?: ReactDomBackend } = {}
+): RendererAdapter<Element, ReactDomMountedSurface> => ({
+  mount: (container, viewStream, report) => {
+    const { backend = "compatibility", ...domOptions } = options
+    return backend === "react"
+      ? mountReactBackend(container, viewStream, report, domOptions)
+      : mountCompatibilityBackend(container, viewStream, report, domOptions)
+  }
 })
 
-export type { DomMountedSurface }
+export type { DomMountedSurface, ReactViewSnapshot, ReactViewStore }
+export { makeReactViewStore, renderReactDomView }

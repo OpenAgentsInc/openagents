@@ -253,6 +253,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     const boot = read("src/renderer/boot.ts")
     expect(boot).toContain('from "@effect-native/render-dom/react"')
     expect(boot).toContain("makeReactDomRenderer({")
+    expect(boot).toContain('backend: "compatibility"')
     expect(boot).not.toContain("makeDomRenderer({")
   })
 
@@ -301,6 +302,8 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
       ...Object.keys(manifest.dependencies ?? {}),
       ...Object.keys(manifest.devDependencies ?? {}),
     ]
+    expect(manifest.dependencies?.react).toBe("19.2.7")
+    expect(manifest.dependencies?.["react-dom"]).toBe("19.2.7")
     expect(dependencyNames).toEqual(
       expect.arrayContaining([
         "react",

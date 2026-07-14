@@ -77,6 +77,17 @@ describe("design conformance (a): no raw color literals in renderer modules", ()
     expect(css).toContain("var(--en-motion-fast)")
   })
 
+  test("Tailwind exposes only canonical Effect Native semantic aliases", () => {
+    const css = readFileSync(path.join(rendererDir, "app.css"), "utf8")
+    for (const namespace of ["color", "radius", "spacing", "font"]) {
+      expect(css).toContain(`--${namespace}-*: initial`)
+    }
+    expect(css).toContain("--color-primary: var(--en-color-accent)")
+    expect(css).toContain("--color-destructive: var(--en-color-danger)")
+    expect(css).toContain("--radius-md: var(--en-radius-md)")
+    expect(css).not.toMatch(/--color-(?:blue|red|slate|gray)-/)
+  })
+
   test("the only desktop theme stays dark khalaTheme with the canonical Protoss-blue primary", () => {
     expect(openagentsDesktopTheme).toBe(khalaTheme)
     expect(openagentsDesktopTheme.color.background).toBe("#05070d")

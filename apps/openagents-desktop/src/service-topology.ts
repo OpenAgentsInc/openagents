@@ -731,6 +731,9 @@ export const desktopServiceTopology = [
       "apps/openagents-desktop/src/renderer/history-workspace.ts",
       "apps/openagents-desktop/src/renderer/command-registry.ts",
       "apps/openagents-desktop/src/renderer/settings.ts",
+      "apps/openagents.com/packages/effect-native-render-dom/src/react.ts",
+      "apps/openagents.com/packages/effect-native-render-dom/src/react-store.ts",
+      "apps/openagents.com/packages/effect-native-render-dom/src/react-lowering.ts",
     ],
     sourceEvidence: [{
       module: "apps/openagents-desktop/src/renderer/boot.ts",

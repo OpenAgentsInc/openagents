@@ -23,7 +23,7 @@ describe('effect-native vendor guard', () => {
     expect(manifest.vendoredPackages.length).toBeGreaterThan(0)
   })
 
-  test('the pinned DOM renderer carries the React-owned R1 subpath atomically', () => {
+  test('the pinned DOM renderer carries the React projection boundary atomically', () => {
     const packageJson = JSON.parse(
       readFileSync(
         new URL('../packages/effect-native-render-dom/package.json', import.meta.url),
@@ -44,7 +44,9 @@ describe('effect-native vendor guard', () => {
       'react-dom': '^19.0.0',
     })
     expect(source).toContain('makeReactDomRenderer')
-    expect(source).toContain('Deferred.await(ready)')
+    expect(source).toContain('useSyncExternalStore')
+    expect(source).toContain('backend?: ReactDomBackend')
+    expect(source).toContain('data-en-react-backend')
     expect(source).toContain('data-en-react-surface')
   })
 
