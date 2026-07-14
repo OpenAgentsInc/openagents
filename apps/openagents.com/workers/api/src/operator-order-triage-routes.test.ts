@@ -1851,119 +1851,6 @@ describe('operator order triage routes', () => {
     ])
   })
 
-  test('applies first-batch no-payment policy idempotently', async () => {
-    const store = new OperatorOrderTriageDbStore()
-    const first = await runRoute(
-      store,
-      '/api/operator/orders/triage/first-batch/payment-policy',
-      {
-        body: JSON.stringify({
-          softwareOrderIds: ['software_order_site'],
-        }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      },
-    )
-    const firstBody = (await first.json()) as {
-      policies: Array<Record<string, unknown>>
-    }
-
-    expect(first.status).toBe(201)
-    expect(firstBody.policies[0]).toMatchObject({
-      assignmentId: 'assignment_1',
-      paymentPolicy: {
-        appliedByUserId: 'admin_user',
-        policyMode: 'public_beta_free',
-        softwareOrderId: 'software_order_site',
-      },
-      siteId: 'site_project_1',
-      softwareOrderId: 'software_order_site',
-    })
-    expect(store.paymentPolicies).toHaveLength(1)
-
-    const second = await runRoute(
-      store,
-      '/api/operator/orders/triage/first-batch/payment-policy',
-      {
-        body: JSON.stringify({
-          policyMode: 'operator_grant',
-          reason: 'Operator grant for first overnight batch.',
-          customerSafeSummary:
-            'This first-batch run is covered by an OpenAgents operator grant.',
-          softwareOrderIds: ['software_order_site'],
-        }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      },
-    )
-    const secondBody = (await second.json()) as {
-      policies: Array<Record<string, unknown>>
-    }
-
-    expect(second.status).toBe(201)
-    expect(store.paymentPolicies).toHaveLength(1)
-    expect(secondBody.policies[0]).toMatchObject({
-      paymentPolicy: {
-        policyMode: 'operator_grant',
-        reason: 'Operator grant for first overnight batch.',
-      },
-    })
-    expect(store.triageEvents.map(event => event.event_type)).toEqual([
-      'order_triage.first_batch_payment_policy_applied',
-      'order_triage.first_batch_payment_policy_applied',
-    ])
-    expect(JSON.stringify(secondBody)).not.toContain('settled')
-    expect(JSON.stringify(secondBody)).not.toContain('provider payout')
-  })
-
-  test('applies first-batch no-payment policy with admin API token', async () => {
-    const store = new OperatorOrderTriageDbStore()
-    const response = await runRoute(
-      store,
-      '/api/operator/orders/triage/first-batch/payment-policy',
-      {
-        body: JSON.stringify({
-          softwareOrderIds: ['software_order_site'],
-        }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      },
-      null,
-      true,
-    )
-    const body = (await response.json()) as {
-      policies: Array<Record<string, unknown>>
-    }
-
-    expect(response.status).toBe(201)
-    expect(body.policies[0]).toMatchObject({
-      paymentPolicy: {
-        appliedByUserId: 'github:14167547',
-        policyMode: 'public_beta_free',
-        softwareOrderId: 'software_order_site',
-      },
-    })
-  })
-
-  test('rejects no-payment policy copy that implies settlement', async () => {
-    const response = await runRoute(
-      new OperatorOrderTriageDbStore(),
-      '/api/operator/orders/triage/first-batch/payment-policy',
-      {
-        body: JSON.stringify({
-          customerSafeSummary:
-            'This launch has been settled over Lightning for the customer.',
-          softwareOrderIds: ['software_order_site'],
-        }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      },
-    )
-    const body = (await response.json()) as Record<string, unknown>
-
-    expect(response.status).toBe(400)
-    expect(body).toMatchObject({ error: 'payment_policy_unsafe' })
-  })
 
   test('keeps held first-batch records out of assignment creation', async () => {
     const store = new OperatorOrderTriageDbStore()
@@ -2120,21 +2007,6 @@ describe('operator order triage routes', () => {
       previous_provider_account_ref: 'provider-account_ref_failed',
       run_id: 'agent_run_stale',
     })
-    store.paymentPolicies.push({
-      applied_by_user_id: 'admin_user',
-      archived_at: null,
-      assignment_id: 'assignment_stale',
-      created_at: '2026-06-05T04:00:00.000Z',
-      customer_safe_summary:
-        'This first-batch OpenAgents run is covered by a public beta free slice.',
-      id: 'first_batch_payment_policy_1',
-      policy_mode: 'public_beta_free',
-      reason: 'Public beta free slice.',
-      site_id: null,
-      software_order_id: 'software_order_fresh_site',
-      updated_at: '2026-06-05T04:00:00.000Z',
-    })
-
     const response = await runRoute(
       store,
       '/api/operator/orders/triage/first-batch/monitor',
@@ -2169,11 +2041,6 @@ describe('operator order triage routes', () => {
         failureClass: 'rate_limited',
         outcome: 'retrying',
       },
-      paymentPolicy: {
-        id: 'first_batch_payment_policy_1',
-        required: true,
-        status: 'satisfied',
-      },
       state: 'blocked',
     })
     expect(stale.currentBlocker).toContain('Runner callback is stale')
@@ -2183,11 +2050,6 @@ describe('operator order triage routes', () => {
     )
     expect(assigned).toMatchObject({
       assignment: { id: 'assignment_1' },
-      currentBlocker: 'First-batch no-payment policy has not been applied.',
-      paymentPolicy: {
-        required: true,
-        status: 'missing',
-      },
       state: 'queued',
     })
 

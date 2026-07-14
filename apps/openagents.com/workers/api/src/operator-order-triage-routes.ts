@@ -13,22 +13,12 @@ import {
   AdjutantAssignmentService,
 } from './adjutant-assignments'
 import { CustomerOrderStatus } from './customer-orders'
-import {
-  type FirstBatchPaymentPolicy,
-  type FirstBatchPaymentPolicyError,
-  FirstBatchPaymentPolicyMode,
-  readFirstBatchPaymentGate,
-  systemFirstBatchPaymentPolicyRuntime,
-  upsertFirstBatchPaymentPolicy,
-} from './first-batch-payment-policies'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonRecord } from './json-boundary'
 // KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
 // mirroring database is a passthrough for non-scoped statements and
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
 import { businessDomainDatabaseForEnv } from './business-domain-store'
-import type { BillingDomainMirror } from './billing'
-import { type BillingSyncEnv, billingDomainMirrorFromEnv } from './billing-store'
 import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import {
@@ -37,8 +27,7 @@ import {
   AutopilotSitesService,
 } from './sites'
 
-type OperatorOrderTriageEnv = BillingSyncEnv &
-  IdentityDbEnv &
+type OperatorOrderTriageEnv = IdentityDbEnv &
   Readonly<{
     OPENAGENTS_DB: D1Database
   }>
@@ -116,15 +105,6 @@ export class PrepareOrderFulfillmentRequest extends S.Class<PrepareOrderFulfillm
   'PrepareOrderFulfillmentRequest',
 )({
   dryRun: S.optionalKey(S.Boolean),
-}) {}
-
-export class ApplyFirstBatchPaymentPolicyRequest extends S.Class<ApplyFirstBatchPaymentPolicyRequest>(
-  'ApplyFirstBatchPaymentPolicyRequest',
-)({
-  customerSafeSummary: S.optionalKey(S.String),
-  policyMode: S.optionalKey(FirstBatchPaymentPolicyMode),
-  reason: S.optionalKey(S.String),
-  softwareOrderIds: S.Array(S.String),
 }) {}
 
 export type OperatorOrderTriageOrder = Readonly<{
@@ -209,14 +189,6 @@ export type OrderTriageRuntime = Readonly<{
   makeRecordId: () => string
   nowIso: () => string
   /**
-   * KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror for
-   * `first_batch_payment_policies` (`billingDomainMirrorFromEnv`).
-   * `OrderTriageService.layer` wires this from the route env; the bare
-   * `systemOrderTriageRuntime` default leaves it undefined (D1-only,
-   * converged by the next backfill sweep).
-   */
-  firstBatchPaymentPolicyMirror?: BillingDomainMirror | undefined
-  /**
    * CFG-4 Domain 2 (#8519): injectable Postgres identity handle for the
    * customer display/email enrichment (tests); the layer defaults to the
    * env `KHALA_SYNC_DB` wiring.
@@ -272,7 +244,6 @@ class OperatorOrderTriageSessionError extends S.TaggedErrorClass<OperatorOrderTr
 type OperatorOrderTriageRouteError =
   | AdjutantAssignmentError
   | AutopilotSiteError
-  | FirstBatchPaymentPolicyError
   | OperatorOrderTriageBadRequest
   | OperatorOrderTriageForbidden
   | OperatorOrderTriageSessionError
@@ -318,15 +289,6 @@ type FirstBatchAssignmentSummary = Readonly<{
   wouldCreate: number
 }>
 
-type FirstBatchPaymentPolicyApplyResult = Readonly<{
-  assignmentId: string | null
-  classification: OrderTriageClassification
-  firstBatchEligible: boolean
-  overnightLaunchEligible: boolean
-  paymentPolicy: FirstBatchPaymentPolicy
-  siteId: string | null
-  softwareOrderId: string
-}>
 
 type FirstBatchMonitorState =
   | 'blocked'
@@ -489,16 +451,6 @@ type FirstBatchMonitorItem = Readonly<{
     repositoryFullName: string | null
     title: string
     updatedAt: string
-  }>
-  paymentPolicy: Readonly<{
-    appliedByUserId: string | null
-    customerSafeSummary: string | null
-    id: string | null
-    mode: FirstBatchPaymentPolicy['policyMode'] | null
-    reason: string | null
-    required: boolean
-    status: 'not_required' | 'missing' | 'satisfied'
-    updatedAt: string | null
   }>
   run: Readonly<{
     completedAt: string | null
@@ -803,7 +755,6 @@ const monitorState = (
 const currentBlocker = (
   record: OperatorOrderTriageRecord,
   state: FirstBatchMonitorState,
-  paymentPolicy: Readonly<{ required: boolean; status: string }>,
   lease: MonitorLeaseRow | null,
   failover: MonitorFailoverRow | null,
   callbackLagSeconds: number | null,
@@ -811,10 +762,6 @@ const currentBlocker = (
 ): string | null => {
   if (state === 'held' || state === 'waiting_for_input') {
     return record.holdReason ?? record.nextAction
-  }
-
-  if (paymentPolicy.required && paymentPolicy.status === 'missing') {
-    return 'First-batch no-payment policy has not been applied.'
   }
 
   if (failover?.outcome === 'blocked') {
@@ -1828,97 +1775,6 @@ const prepareOrderFulfillment = (
     )
   })
 
-const defaultNoPaymentPolicyReason =
-  'First submitted-order batch is covered by the OpenAgents public beta free-slice policy.'
-
-const defaultNoPaymentCustomerSummary =
-  'This first-batch OpenAgents run is covered by a public beta free slice. No customer charge is being recorded for this launch.'
-
-const applyFirstBatchPaymentPolicies = (
-  db: D1Database,
-  identityDb: IdentityDb,
-  runtime: OrderTriageRuntime,
-  actorUserId: string,
-  input: ApplyFirstBatchPaymentPolicyRequest,
-): Effect.Effect<
-  ReadonlyArray<FirstBatchPaymentPolicyApplyResult>,
-  | FirstBatchPaymentPolicyError
-  | OperatorOrderTriageBadRequest
-  | OrderTriageStorageError
-> =>
-  Effect.gen(function* () {
-    const uniqueOrderIds = [...new Set(input.softwareOrderIds)]
-
-    if (uniqueOrderIds.length === 0) {
-      return yield* new OperatorOrderTriageBadRequest({
-        reason: 'At least one softwareOrderId is required.',
-      })
-    }
-
-    const results: Array<FirstBatchPaymentPolicyApplyResult> = []
-
-    for (const softwareOrderId of uniqueOrderIds) {
-      const record = yield* readRecordByOrderId(db, identityDb, softwareOrderId)
-
-      if (record === null) {
-        return yield* new OperatorOrderTriageBadRequest({
-          reason: `No first-batch triage record exists for ${softwareOrderId}.`,
-        })
-      }
-
-      if (!record.firstBatchEligible) {
-        return yield* new OperatorOrderTriageBadRequest({
-          reason: `${softwareOrderId} is not first-batch eligible.`,
-        })
-      }
-
-      const assignment = yield* readMonitorAssignment(db, record)
-      const policy = yield* upsertFirstBatchPaymentPolicy(
-        db,
-        {
-          ...systemFirstBatchPaymentPolicyRuntime,
-          mirror: runtime.firstBatchPaymentPolicyMirror,
-        },
-        {
-          appliedByUserId: actorUserId,
-          assignmentId: assignment?.id ?? record.order.latestAssignmentId,
-          customerSafeSummary:
-            input.customerSafeSummary ?? defaultNoPaymentCustomerSummary,
-          policyMode: input.policyMode ?? 'public_beta_free',
-          reason: input.reason ?? defaultNoPaymentPolicyReason,
-          siteId: assignment?.site_id ?? record.order.siteProjectId,
-          softwareOrderId,
-        },
-      )
-
-      yield* recordTriageEvent(db, runtime, record, {
-        actorUserId,
-        assignmentId: policy.assignmentId,
-        eventType: 'order_triage.first_batch_payment_policy_applied',
-        payload: {
-          customerSafeSummary: policy.customerSafeSummary,
-          policyId: policy.id,
-          policyMode: policy.policyMode,
-          softwareOrderId,
-        },
-        siteId: policy.siteId,
-        summary:
-          'First-batch no-payment policy applied for public beta fulfillment.',
-      })
-
-      results.push({
-        assignmentId: policy.assignmentId,
-        classification: record.classification,
-        firstBatchEligible: record.firstBatchEligible,
-        overnightLaunchEligible: record.overnightLaunchEligible,
-        paymentPolicy: policy,
-        siteId: policy.siteId,
-        softwareOrderId,
-      })
-    }
-
-    return results
-  })
 
 const monitorItem = (
   db: D1Database,
@@ -1966,22 +1822,9 @@ const monitorItem = (
       latestFailover,
       callbackLagSeconds,
     )
-    const paymentGate = yield* readFirstBatchPaymentGate(
-      db,
-      record.softwareOrderId,
-    ).pipe(
-      Effect.mapError(
-        error =>
-          new OrderTriageStorageError({
-            error,
-            operation: 'orderTriage.monitor.paymentPolicy.read',
-          }),
-      ),
-    )
     const blocker = currentBlocker(
       record,
       state,
-      paymentGate,
       activeLease,
       latestFailover,
       callbackLagSeconds,
@@ -2076,16 +1919,6 @@ const monitorItem = (
         repositoryFullName: record.order.repositoryFullName,
         title: titleFromRecord(record),
         updatedAt: record.order.updatedAt,
-      },
-      paymentPolicy: {
-        appliedByUserId: paymentGate.policy?.appliedByUserId ?? null,
-        customerSafeSummary: paymentGate.policy?.customerSafeSummary ?? null,
-        id: paymentGate.policy?.id ?? null,
-        mode: paymentGate.policy?.policyMode ?? null,
-        reason: paymentGate.policy?.reason ?? null,
-        required: paymentGate.required,
-        status: paymentGate.status,
-        updatedAt: paymentGate.policy?.updatedAt ?? null,
       },
       run:
         run === null
@@ -2475,15 +2308,6 @@ export class OrderTriageService extends Context.Service<
       | OrderTriageStorageError,
       AdjutantAssignmentService | AutopilotSitesService
     >
-    readonly applyFirstBatchPaymentPolicies: (
-      actorUserId: string,
-      input: ApplyFirstBatchPaymentPolicyRequest,
-    ) => Effect.Effect<
-      ReadonlyArray<FirstBatchPaymentPolicyApplyResult>,
-      | FirstBatchPaymentPolicyError
-      | OperatorOrderTriageBadRequest
-      | OrderTriageStorageError
-    >
     readonly foldoverInventory: (
       limit: number,
     ) => Effect.Effect<FoldoverInventoryReport, OrderTriageStorageError>
@@ -2523,14 +2347,7 @@ export class OrderTriageService extends Context.Service<
 >()('@openagentsinc/autopilot-omega/OrderTriageService') {
   static readonly layer = (
     env: OperatorOrderTriageEnv,
-    runtime: OrderTriageRuntime = {
-      ...systemOrderTriageRuntime,
-      // KS-8.7 (#8318/#8337): mirror the operator-triage-applied
-      // `first_batch_payment_policies` row fail-soft (absent when
-      // KHALA_SYNC_DB/dual-write is unavailable — degrades to D1-only,
-      // converged by the next backfill sweep).
-      firstBatchPaymentPolicyMirror: billingDomainMirrorFromEnv(env),
-    },
+    runtime: OrderTriageRuntime = systemOrderTriageRuntime,
   ) =>
     {
     // CFG-4 Domain 2 (#8519): the Postgres identity handle for the customer
@@ -2546,17 +2363,6 @@ export class OrderTriageService extends Context.Service<
             actorUserId,
             input,
           ),
-      ),
-      applyFirstBatchPaymentPolicies: Effect.fn(
-        'OrderTriageService.applyFirstBatchPaymentPolicies',
-      )((actorUserId, input) =>
-        applyFirstBatchPaymentPolicies(
-          openAgentsDatabase(env),
-          identityDb,
-          runtime,
-          actorUserId,
-          input,
-        ),
       ),
       listQueue: Effect.fn('OrderTriageService.listQueue')(limit =>
         readQueue(openAgentsDatabase(env), identityDb, limit),
@@ -2640,11 +2446,6 @@ const routeErrorResponse = (
         { error: 'site_slug_unavailable', slug: error.slug },
         { status: 409 },
       )
-    case 'FirstBatchPaymentPolicyUnsafe':
-      return noStoreJsonResponse(
-        { error: 'payment_policy_unsafe', reason: error.reason },
-        { status: 400 },
-      )
     case 'OperatorOrderTriageBadRequest':
       return noStoreJsonResponse(
         { error: 'bad_request', reason: error.reason },
@@ -2658,7 +2459,6 @@ const routeErrorResponse = (
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     case 'AdjutantAssignmentStorageError':
     case 'AutopilotSiteStorageError':
-    case 'FirstBatchPaymentPolicyStorageError':
     case 'OrderTriageStorageError':
       return noStoreJsonResponse({ error: 'storage_error' }, { status: 500 })
     default:
@@ -2892,40 +2692,6 @@ export const makeOperatorOrderTriageRoutes = <
       }),
     )
 
-  const applyFirstBatchPaymentPolicyRoute = (
-    request: Request,
-    env: Bindings,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
-        const session = yield* requireAdminSession(
-          dependencies,
-          request,
-          env,
-          ctx,
-        )
-        const body = yield* decodeJsonBody(
-          request,
-          ApplyFirstBatchPaymentPolicyRequest,
-        )
-        const triage = yield* OrderTriageService
-        const policies = yield* triage.applyFirstBatchPaymentPolicies(
-          session.user.userId,
-          body,
-        )
-
-        return dependencies.appendRefreshedSessionCookies(
-          noStoreJsonResponse({ policies }, { status: 201 }),
-          session,
-        )
-      }),
-    )
 
   const monitorFirstBatchRoute = (
     request: Request,
@@ -3001,13 +2767,6 @@ export const makeOperatorOrderTriageRoutes = <
 
       if (url.pathname === '/api/operator/orders/triage/first-batch/assign') {
         return assignFirstBatchRoute(request, env, ctx)
-      }
-
-      if (
-        url.pathname ===
-        '/api/operator/orders/triage/first-batch/payment-policy'
-      ) {
-        return applyFirstBatchPaymentPolicyRoute(request, env, ctx)
       }
 
       if (
