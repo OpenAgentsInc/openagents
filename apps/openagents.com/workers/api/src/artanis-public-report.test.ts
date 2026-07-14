@@ -14,14 +14,9 @@ import {
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { projectArtanisTickMonitor } from './artanis-tick-monitor'
 import { publicPylonStatsFromNexusPayload } from './public-pylon-stats'
-import { publicScannerSafeRef } from './public-ref-scanner-safety'
 
 const nowIso = '2026-06-07T02:00:00.000Z'
 const scannerShapedBridgeRef = 'artanis-mdk-bridge-8b378373002501f3e896dcd3'
-const scannerSafeBridgeRef = publicScannerSafeRef(
-  'evidence.public.pylon_v0_2.omega_gate',
-  scannerShapedBridgeRef,
-)
 
 const deliveredForumQueue = (): ArtanisForumPublicationQueueRecord => {
   const queue = exampleArtanisForumPublicationQueue()
@@ -214,25 +209,6 @@ describe('Artanis public report', () => {
         shippedClaimAllowed: false,
         sourceLevelSupportVisible: true,
         state: 'blocked',
-      },
-      pylonOmegaReleaseGate: {
-        canAnnouncePylonV02Release: true,
-        hostedMdkDirectPayoutClaimAllowed: false,
-        failedOrPendingRequiredCount: 0,
-        multiPylonObservedDistinctPylonCount: 2,
-        multiPylonPaidWorkProofComplete: true,
-        multiPylonRequiredDistinctPylonCount: 2,
-        payoutModeGate: {
-          activeMode: 'local_mdk_agent_wallet_bridge',
-          hostedDirectPayoutClaimAllowed: false,
-          localBridgePayoutClaimAllowed: true,
-          livePayoutClaimAllowed: true,
-          state: 'ready',
-        },
-        releasePublicationAllowed: false,
-        state: 'limited_launcher_release_shipped',
-        stateLabel:
-          'Pylon v0.2 package launcher is shipped with listed platform and authority limits',
       },
       productionLaunchGate: {
         canClaimBoundedStatusProjection: true,
@@ -460,16 +436,6 @@ describe('Artanis public report', () => {
         'caveat.public.pylon_work_unpaid_smoke_no_settlement_claim',
         'caveat.public.gepa_text_optimization_not_model_training',
         'caveat.mdk_agent_wallet.local_bridge_not_hosted_direct_payout',
-      ]),
-    )
-    expect(report.pylonOmegaReleaseGate.multiPylonProofRefs).toEqual(
-      expect.arrayContaining([
-        'assignment.public.issue_438.issue_438_artanis_1780822221',
-        'pylon.public.issue_438_edge_wallet',
-        'receipt.nexus.issue_438.settlement.issue_438_artanis_1780822221',
-        scannerSafeBridgeRef,
-        'pylon.public.artanis.bridge.8b378373',
-        'receipt.nexus_pylon.settlement.artanis_mdk_bridge_8b378373002501f3e896dcd3',
       ]),
     )
     expect(artanisPublicReportHasPrivateMaterial(report)).toBe(false)

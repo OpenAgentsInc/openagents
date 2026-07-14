@@ -102,11 +102,6 @@ import {
 } from './public-pylon-stats'
 import { publicRefTriggersAgentSecretScanner } from './public-ref-scanner-safety'
 import {
-  PylonV02OmegaReleaseGateProjection,
-  currentPylonV02OmegaReleaseGateRecord,
-  projectPylonV02OmegaReleaseGate,
-} from './pylon-v02-omega-release-gate'
-import {
   projectR10PylonCampaign,
   r10PylonCampaignInput,
 } from './r10-pylon-campaign'
@@ -361,7 +356,6 @@ export class ArtanisPublicReport extends S.Class<ArtanisPublicReport>(
   publicCaveatRefs: S.Array(S.String),
   publicGoalRefs: S.Array(S.String),
   publicUrls: S.Array(S.String),
-  pylonOmegaReleaseGate: PylonV02OmegaReleaseGateProjection,
   pylonLaunchCommunication: ArtanisPylonV02LaunchCommunicationProjection,
   pylonReleaseParity: ArtanisPylonV02ReleaseParityProjection,
   productionLaunchGate: ArtanisProductionLaunchGateProjection,
@@ -1246,11 +1240,6 @@ export const artanisPublicReportSnapshot = (input: {
     'public',
     nowIso,
   )
-  const pylonOmegaReleaseGate = projectPylonV02OmegaReleaseGate(
-    currentPylonV02OmegaReleaseGateRecord(),
-    'public',
-    nowIso,
-  )
   const decisionLog = decisionLogFromTickMonitor(input.tickMonitor, nowIso)
   const productionLaunchGate =
     exampleArtanisProductionLaunchGateProjection(nowIso)
@@ -1467,10 +1456,6 @@ export const artanisPublicReportSnapshot = (input: {
     ...modelLab.blockerRefs,
     ...publicationQueue.intents.flatMap(intent => intent.blockerRefs),
     ...forumRewardVisibility.blockerRefs,
-    ...pylonOmegaReleaseGate.blockerRefs,
-    ...(pylonOmegaReleaseGate.hostedMdkDirectPayoutClaimAllowed
-      ? []
-      : ['blocker.mdk.hosted_programmatic_payouts_disabled']),
     ...productionLaunchGate.blockerRefs,
     ...authoritySummary.authorityBlockerRefs,
     ...probeGepaProductionSmoke.blockerRefs,
@@ -1652,12 +1637,7 @@ export const artanisPublicReportSnapshot = (input: {
       ...forumRewardVisibility.caveatRefs,
       ...forumRewardSmoke.caveatRefs,
       ...pylonReleaseParity.caveatRefs,
-      ...pylonOmegaReleaseGate.payoutModeGate.caveatRefs,
       ...probeGepaProductionSmoke.caveatRefs,
-      ...(pylonOmegaReleaseGate.state === 'ready_for_operator_release_review' ||
-      pylonOmegaReleaseGate.state === 'limited_launcher_release_shipped'
-        ? []
-        : ['caveat.public.pylon_v0_2_omega_release_gate_blocked']),
       ...(productionLaunchGate.canClaimContinuouslyRunning
         ? []
         : [
@@ -1679,7 +1659,6 @@ export const artanisPublicReportSnapshot = (input: {
       ...publicationQueue.intents.flatMap(intent => intent.goalRefs),
     ]),
     publicUrls: runtime.publicUrls,
-    pylonOmegaReleaseGate,
     pylonLaunchCommunication,
     pylonReleaseParity,
     productionLaunchGate,
@@ -1696,8 +1675,6 @@ export const artanisPublicReportSnapshot = (input: {
       ...pylonReleaseParity.paidWorkReceiptRefs,
       ...pylonReleaseParity.settlementReceiptRefs,
       ...input.pylonStats.nexusAcceptedWorkPayoutReceiptRefs,
-      ...receiptRefsFromRefs(pylonOmegaReleaseGate.evidenceRefs),
-      ...receiptRefsFromRefs(pylonOmegaReleaseGate.multiPylonProofRefs),
       ...receiptRefsFromRefs(probeGepaProductionSmoke.closeoutBundleRefs),
       ...receiptRefsFromRefs(probeGepaProductionSmoke.psionicImportRefs),
       ...receiptRefsFromRefs(gepaScheduledRunner.closeoutReceiptRefs),
