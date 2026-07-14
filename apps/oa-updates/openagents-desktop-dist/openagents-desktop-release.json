@@ -1,9 +1,9 @@
 {
   "releases": [
     {
-      "manifestPath": "manifest-rc-0.1.0-rc.12.json",
-      "signaturePath": "manifest-rc-0.1.0-rc.12.sig.json",
-      "artifactUrl": "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/openagents-desktop/OpenAgents-0.1.0-rc.12-arm64.dmg"
+      "manifestPath": "manifest-rc-0.1.0-rc.13.json",
+      "signaturePath": "manifest-rc-0.1.0-rc.13.sig.json",
+      "artifactUrl": "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/openagents-desktop/OpenAgents-0.1.0-rc.13-arm64.dmg"
     }
   ]
 }

@@ -1,0 +1,6 @@
+{
+  "alg": "ed25519",
+  "kid": "2dbe811d19f67528",
+  "sha256": "747e2edac2ad2f5222a3dc47239f70cdeb551845750bf20e19e094e99d67ed8d",
+  "signature": "4uBig5iyU9d4DduDIrKgpiCbhprxbNmassf2ve3XyDvlGMDL8bej-ur3fnxkTyqTIh6ZmtbfDNcgs4-YcFRfAw"
+}
