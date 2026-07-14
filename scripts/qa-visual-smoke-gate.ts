@@ -10,10 +10,7 @@ export const KHALA_VISUAL_SMOKE_GATE_SCHEMA = "openagents.khala_code.visual_smok
 export const KHALA_VISUAL_SMOKE_GATE_HARD_FAIL_DATE = "2026-07-09"
 export const KHALA_VISUAL_SMOKE_GATE_DEFAULT_TIMEOUT_MS = 295_000
 
-export const KHALA_VISUAL_SMOKE_GATE_PREFIXES = [
-  "apps/openagents-desktop/",
-  "packages/ui/",
-] as const
+export const KHALA_VISUAL_SMOKE_GATE_PREFIXES = ["apps/openagents-desktop/"] as const
 
 export type KhalaVisualSmokeGateMode = "warning-only" | "hard-fail"
 export type KhalaVisualSmokeGateStatus = "skipped" | "passed" | "failed" | "incomplete"
@@ -187,7 +184,7 @@ export const runKhalaVisualSmokeGate = async (
       exitCode: 0,
       hardFailDate: KHALA_VISUAL_SMOKE_GATE_HARD_FAIL_DATE,
       mode,
-      reason: "no OpenAgents Desktop or shared UI changes vs the pushed main range",
+      reason: "no OpenAgents Desktop changes vs the pushed main range",
       schema: KHALA_VISUAL_SMOKE_GATE_SCHEMA,
       status: "skipped",
       steps: [],

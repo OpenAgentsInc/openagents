@@ -6,11 +6,11 @@ luminous blue energy, precise high-craft, technical typography. This is the
 the Khala API surface, and (over time) the in-app product chrome. New surfaces
 inherit this; they do not invent a new palette.
 
-The canonical token source for the existing app is
-`@openagentsinc/design-tokens` (projected into `apps/openagents.com/apps/web/
-src/styles.css`). This file documents the Protoss *brand* layer that sits on
-top of those neutrals: the glow palette, the energy motif, and how to apply
-them. Khala-specific glow tokens are added under `@theme` in `styles.css`.
+The canonical token source is `@effect-native/tokens`; OpenAgents surfaces use
+its `khalaTheme` projection. This file documents the Protoss *brand* layer that
+sits on top of those semantic roles: the glow palette, the energy motif, and
+how to apply them. Renderer-specific CSS variables are projections of that
+theme, not a second token authority.
 
 ## Theme
 
@@ -91,13 +91,13 @@ canvas behind it share one palette.
 
 ## Iconography
 
-- **Only use the OpenAI Apps SDK icon catalog exposed by
-  `@openagentsinc/ui/icon`.** Product and brand surfaces render those icons via
-  `iconView` (Foldkit) or `iconElement` (DOM). Do not introduce Lucide, emoji,
-  ASCII glyphs, hand-authored SVGs, icon fonts, or text stand-ins for icon
-  controls.
-- If an icon is missing, sync or add it to the shared catalog first, then consume
-  it from `packages/ui`. Local one-off icon assets are a design-system violation.
+- **Only use the closed `IconName` catalog exposed by `@effect-native/core`.**
+  Product surfaces render those names through their Effect Native renderer.
+  Do not introduce Lucide, emoji, ASCII glyphs, icon fonts, or text stand-ins
+  for icon controls.
+- If an icon is missing, add its name to the Effect Native catalog and its asset
+  to each supported renderer in the same change. App-local one-off icon assets
+  are a design-system violation.
 - Icon-only controls keep accessible labels through `aria-label`, `title`, or
   visually hidden text. The visible mark still comes from the shared catalog.
 

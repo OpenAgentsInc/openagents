@@ -13,7 +13,7 @@ describe("qa pre-push smoke scoping", () => {
     expect(isUserFacingSurfaceChange("apps/openagents.com/apps/web/src/page/home.ts")).toBe(true)
     expect(isUserFacingSurfaceChange("apps/openagents.com/workers/api/src/index.ts")).toBe(true)
     expect(isUserFacingSurfaceChange("apps/qa-runner/src/byo.ts")).toBe(true)
-    expect(isUserFacingSurfaceChange("packages/ui/src/button.ts")).toBe(true)
+    expect(isUserFacingSurfaceChange("packages/input-bindings/src/index.ts")).toBe(true)
   })
 
   test("skips unrelated docs and reference-only changes", () => {

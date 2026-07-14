@@ -1,9 +1,9 @@
 // SVG glyph registry for the closed `IconName` catalog from `@effect-native/core`
 // (issue #31, "resolves every closed icon" contract). Effect Native render-dom owns
 // its concrete DOM icon assets directly instead of reaching into the legacy
-// `@openagentsinc/ui` package (openagents#8813 Lane A) -- that dependency direction
+// UI package (openagents#8813 Lane A) -- that dependency direction
 // was backwards: EN must never depend on the legacy ui package. Source SVG markup
-// matches the glyphs previously served by @openagentsinc/ui's Apps SDK icon set;
+// matches the glyphs previously served by the legacy Apps SDK icon set;
 // "Compose" resolves through the "ChatCompose" asset below, same as before.
 //
 // Vendor pin bump to effect-native catalog v39 (openagents#8811 step 1)

@@ -9,17 +9,16 @@ import {
 } from "./qa-visual-smoke-gate"
 
 describe("Khala visual smoke gate scoping", () => {
-  test("selects only OpenAgents Desktop and shared UI changes", () => {
+  test("selects only OpenAgents Desktop changes", () => {
     expect(
       selectKhalaVisualSmokeGateFiles([
         "docs/qa/khala-code-visual-smoke-gate.md",
         "apps/openagents-desktop/src/renderer.ts",
-        "packages/ui/src/ai-elements/command-composer.ts",
+        "apps/openagents.com/packages/effect-native-core/src/index.ts",
         "apps/openagents.com/apps/web/src/page/home.ts",
       ]),
     ).toEqual([
       "apps/openagents-desktop/src/renderer.ts",
-      "packages/ui/src/ai-elements/command-composer.ts",
     ])
   })
 
@@ -99,7 +98,7 @@ describe("Khala visual smoke gate verdict", () => {
 
   test("keeps failures warning-only before the flip date", async () => {
     const verdict = await runKhalaVisualSmokeGate({
-      changedFiles: ["packages/ui/src/ai-elements/command-composer.ts"],
+      changedFiles: ["apps/openagents-desktop/src/renderer.ts"],
       env: { OA_KHALA_VISUAL_SMOKE_GATE_TODAY: "2026-07-08" },
       root: process.cwd(),
       runCommand: async () => ({ elapsedMs: 1, exitCode: 1, timedOut: false }),

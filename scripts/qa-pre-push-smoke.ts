@@ -25,9 +25,7 @@ export const USER_FACING_SURFACE_PREFIXES = [
   "apps/openagents-world/",
   "apps/pylon/",
   "clients/khala-ios/",
-  "packages/design-tokens/",
   "packages/input-bindings/",
-  "packages/ui/",
 ] as const
 
 export type QaPrePushSmokeVerdict = Readonly<{

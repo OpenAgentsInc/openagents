@@ -6,8 +6,7 @@ import type {
 import { userFacingCopy } from './-share-fetch'
 
 // Shared workroom-timeline rendering for the `/share/{shareId}` route.
-// Ported from `@openagentsinc/ui`'s Foldkit-`Html` `workroomTimelinePart` /
-// `workroomTimelineMessage` (`packages/ui/src/workroom.ts`) and from
+// Ported from the retired Foldkit workroom timeline implementation and from
 // `apps/web/src/page/loggedOut/page/share.ts`'s own inline
 // `shareUserTimelineMessage`. Neither of those exists as a React component
 // yet — this is the first port of that component set. Visual styling is

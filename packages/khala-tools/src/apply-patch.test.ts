@@ -252,7 +252,7 @@ describe("apply_patch tool", () => {
     }
   })
 
-  test("emits private structured diff receipts for packages/ui rendering", async () => {
+  test("emits private structured diff receipts for shared UI rendering", async () => {
     const workspace = await makeWorkspace()
     await writeFile(join(workspace, "a.txt"), "before\n")
 

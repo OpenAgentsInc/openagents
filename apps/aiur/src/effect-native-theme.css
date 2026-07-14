@@ -10,7 +10,7 @@
  * `renderThemeCss`). This file hand-mirrors that same `khalaTheme.color`
  * object as static CSS using the identical `--en-color-<key>` naming
  * convention, so Aiur reads the one canonical palette instead of the
- * legacy `@openagentsinc/design-tokens` `--oa-color-khala-*` set. Keep this
+ * legacy `--oa-color-khala-*` token set. Keep this
  * file in sync with
  * apps/openagents.com/packages/effect-native-tokens/src/index.ts
  * `khalaTheme.color` if that theme changes (see

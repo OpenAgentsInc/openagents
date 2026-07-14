@@ -8,13 +8,10 @@ const defaultSource = resolve(repoRoot, '..', 'fireball', 'src', 'icon.ts')
 const sourcePath = resolve(
   process.env.OMEGA_FIREBALL_ICON_SOURCE ?? defaultSource,
 )
-// Lane C (openagents#8813): apps/web vendors its own copy of the generated
-// catalog instead of importing `@openagentsinc/ui/icon` (packages/ui still
-// needs its own copy for `workroom.ts` and other shared-kit call sites, so
-// this stays a dual-write rather than a single shared file). Both copies are
-// generated from the same Fireball source and must stay byte-identical.
+// apps/web owns the generated Fireball catalog used by its remaining native
+// route code. Effect Native renderers intentionally own their closed icon
+// registries rather than depending on this app-specific catalog.
 const targetPaths = [
-  resolve(repoRoot, '..', '..', 'packages', 'ui', 'src', 'icon.ts'),
   resolve(repoRoot, 'apps', 'web', 'src', 'icon.ts'),
 ]
 const source = readFileSync(sourcePath, 'utf8')
