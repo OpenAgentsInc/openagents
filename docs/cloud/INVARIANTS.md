@@ -30,6 +30,13 @@ design context only.
 
 ## Wallet And Settlement
 
+- Payments and settlement are outside the accepted MVP and are selected for
+  orderly retirement under the
+  [`Node/pnpm/Vite Plus conversion contract`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
+  Disable paid/credit-backed admission when its owning rail retires; never
+  reinterpret removal as free managed compute. Historical redacted receipts
+  may remain read-only, while the no-wallet workroom boundary below remains
+  permanent.
 - Contributor-wallet mode is not the default for managed cloud nodes.
 - Workrooms do not receive wallet authority by default.
 - Workrooms may receive settlement metadata through scoped local gateways, but

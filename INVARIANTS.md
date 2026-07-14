@@ -1,6 +1,6 @@
 # OpenAgents Invariants
 
-This is the root invariant ledger for the rebuilt `openagents` Bun workspace.
+This is the root invariant ledger for the rebuilt `openagents` Effect workspace.
 More specific invariant ledgers apply inside imported apps and packages.
 
 ## Preserved Transcript Archive
@@ -12,7 +12,15 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 ## Effect Workspace Boundary
 
-- New production TypeScript code in this repo must use Bun and Effect.
+- New production TypeScript code in this repo must use Effect. Retained server,
+  CLI, test, and repository-tooling code targets the owner-selected Node 24 LTS
+  destination; browser, Electron-renderer, React Native/Hermes, and native
+  hosts keep their explicit runtime boundaries.
+- Bun is migration-only under the
+  [`Node/pnpm/Vite Plus conversion contract`](docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
+  Do not add a new `Bun.*`, `bun:*`, `bun:test`, Bun shebang, Bun container, or
+  Bun-only package path. Existing allowlisted uses remain factual until their
+  claimed phase ports or deletes them; the final supported path has none.
 - External boundaries must be modeled with typed data structures or Effect
   Schema. Do not add ad hoc keyword routing for user intent, CRM/database
   query routing, retrieval routing, or tool selection.
@@ -82,6 +90,14 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 - Public UI does not own settlement, payout, runtime promotion, or accepted
   outcome authority.
+- Payments, markets, tipping, wallet custody, payout, and settlement are not
+  part of the accepted MVP and are selected for orderly decommission and code
+  deletion, not Node porting. Until a claimed removal phase lands, every
+  existing money invariant below remains in force. Removal must first stop new
+  money, reconcile outstanding value, preserve applied migrations and
+  historical receipts read-only, withdraw active promises, and revoke runtime
+  authority; it must never strand value, erase history, or turn paid external
+  cost into free admission.
 - Probe evidence does not authorize deployment, spend, provider mutation, or
   public claim promotion without a separate approved authority path.
 - Pylon payment, assignment, and earning claims must remain receipt-backed and

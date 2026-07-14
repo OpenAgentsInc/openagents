@@ -9,6 +9,12 @@
       "disposition": "retain-execution-ledger",
       "dispatch": false
     },
+    "docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md": {
+      "class": "contract",
+      "owner": "Sol runtime and toolchain conversion",
+      "disposition": "retain-contract",
+      "dispatch": false
+    },
     "docs/sol/2026-07-13-fc4-hybrid-client-acceptance-receipt.md": {
       "class": "receipt",
       "owner": "Sol Fleet cutover",

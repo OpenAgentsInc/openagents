@@ -2,7 +2,9 @@
 
 ## Scope
 
-This repository is the new OpenAgents Bun and Effect monorepo.
+This repository is the OpenAgents Effect monorepo. Its owner-selected
+destination is Node + pnpm + Vite Plus; the checked-in implementation remains
+partly Bun-backed until the phased conversion contract lands.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
@@ -721,7 +723,12 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   authority's neutral canonical path is `/api/fleet-runs`;
   `/api/sarah/fleet-runs` remains a served compatibility alias for shipped
   desktop/mobile binaries (do not 410 it).
-- Keep new TypeScript implementation work on Bun, Effect, and Effect Schema.
+- Keep new TypeScript implementation work on Effect and Effect Schema, and
+  target Node for retained server, CLI, test, and repository-tooling code. Do
+  not add new Bun APIs or Bun-only surfaces. Follow
+  `docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`; current Bun
+  commands remain factual until its atomic pnpm/Vite Plus cutover, so do not
+  mechanically rewrite commands ahead of the claimed migration phase.
   **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
   React+Tailwind clause): the entire repo converts to Effect Native, ASAP**
   — one typed Effect-Schema component set with typed intents, an Effect v4
@@ -759,7 +766,8 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   roadmap governs UI surfaces and does not convert them. TypeScript callers
   never link the crates directly; they use the Effect Schema mirrors in
   `packages/cloud-contract` and the documented HTTP contracts. Product, UI,
-  Worker, and Pylon logic stays on Bun/Effect/TypeScript.
+  Worker, and Pylon logic stays on Effect/TypeScript and moves to the selected
+  Node runtime under the conversion contract.
 - **Narrow persistent-audio Rust exception (owner direction, 2026-07-12):**
   AUDIO-0 #8733 may add `crates/oa-desktop-audio` as a process-opaque native
   Desktop media helper. It owns microphone/playback device I/O, resampling,

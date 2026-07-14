@@ -245,10 +245,14 @@ Do not:
 ## 8. Web and commercial surfaces
 
 Web remains a supported public/API/operations surface. Preserve auth, security,
-promise/service-deliverable integrity, receipts, health, legal, and required
-production routes. Broad route conversion, landing, Forum expansion, portal,
-CRM, sales, outbound, and payment product work is maintenance/deferred during
-R0–R7 unless it is an exact reliability dependency or production incident.
+promise/service-deliverable integrity, historical receipts, health, legal, and
+required production routes. Under the 2026-07-14 owner decision, payment,
+wallet, checkout, tip, payout, market, and settlement mutations are not merely
+deferred: they are retired and deleted through the
+[`Node/pnpm/Vite Plus conversion contract`](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
+Safe drain/reconciliation and stable read-only history precede deletion. Broad
+route conversion, landing, Forum expansion, portal, CRM, sales, and outbound
+product work remain closed unless separately reauthorized.
 
 ## 9. Closed presentation scope and retained voice modality
 

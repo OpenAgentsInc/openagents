@@ -2,9 +2,11 @@
 
 - Date: 2026-07-13
 - Author: Fable (workspace strategy lane)
-- Status: decision input, not an execution claim. This document does not
-  commit the repo to any migration; it exists so the runtime/toolchain
-  decision is made on evidence rather than category confusion.
+- Status: decision evidence. The original hybrid recommendation is superseded
+  by the 2026-07-14 owner selection of full Node + pnpm + Vite Plus adoption.
+  Execution is governed by the separate
+  [`Sol conversion plan`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md),
+  not by this historical analysis.
 - Prompted by: owner question — "analyzing bun vs vite-plus, pros and cons
   etc — like what one does vs the other. anything u can tell from t3code
   repo why they went the vite plus route, why not bun, could we / should we
@@ -58,11 +60,12 @@ vendor-neutral option on this menu. Both toolchains are MIT-licensed and
 forkable; the question is which platform vendor's roadmap gravity we prefer,
 and how much concentration we accept.
 
-**Recommendation (§6): the hybrid.** Keep Bun as runtime where it is
-load-bearing today; adopt the toolchain *contract* tool-independently
-exactly as TC-1..TC-3 already specify; let TC-4/TC-5 pilots plus explicit
-revisit triggers (§7) decide any future runtime move. Do not start a
-wholesale Bun→Node migration now.
+**Updated recommendation (§7 and addendum): full Option B.** Make retained
+production code Node-native, replace the workspace atomically with pnpm and
+Vite Plus in T3's operating pattern, and remove—not port—the payment graph
+that the accepted MVP explicitly excludes. TC-5 remains valid evidence that
+*additive* Vite Plus adoption is the wrong topology; it is not a test of the
+integrated replacement T3 actually performed.
 
 ## 1. The category asymmetry
 
@@ -356,20 +359,22 @@ deprioritizes the Node-compat work that keeps our exit cheap, we feel it.
 
 ### Option B — Node + pnpm + vp wholesale (mirror T3)
 
-- Pros: maximal toolchain consolidation; standard runtime everywhere,
-  matching the Electron/Expo surfaces that are Node-shaped anyway; one
-  root config and one `vp check` verb; widest npm-package audience for
-  Pylon.
-- Cons: by far the most expensive option — rewriting ~170 files of `Bun.*`
-  usage, replacing `bun:sqlite` in the orchestration store, sync client,
-  and wallet storage, rebasing ~10 production Docker images, converting
-  127 root scripts and the entire pre-push gate, and re-verifying the
-  payments path, all for a 0.2.x toolchain; trades Anthropic stewardship
-  for Cloudflare stewardship rather than reducing exposure; forfeits
-  `bun test` speed on a 2,660-file suite with no measured replacement;
-  directly competes with the live TC sequence instead of feeding it.
+- Pros: removes Anthropic-owned Bun from the production failure path; puts the
+  server/tooling baseline on OpenJS-governed Node; makes Pylon a conventional
+  compiled npm artifact; replaces root-script entropy with pnpm's explicit
+  graph and `vp run`; gives humans, agents, owned CI, and releases the same
+  gate; and pushes the corporate dependency outward into a replaceable build
+  layer rather than the deployed runtime.
+- Cons: by far the largest conversion—214 grandfathered Bun-API production
+  files at the post-BUN-1 snapshot, thousands of Bun tests, root scripts,
+  containers, native dependencies, and release paths. Vite Plus is beta and
+  deliberately substitutes a bundled toolchain, pnpm exposes undeclared
+  dependency assumptions, and test/runtime parity must be re-proved. Removing
+  the non-MVP payment graph avoids spending migration effort on its Bun-native
+  wallet/services, but requires an orderly balance/receipt shutdown before
+  deletion.
 
-### Option C — Hybrid: keep the runtime, adopt the contract (recommended)
+### Option C — Hybrid: keep the runtime, adopt the contract (superseded)
 
 Keep Bun as runtime where it is load-bearing (§2.1). Adopt the toolchain
 *contract* tool-independently, exactly per the filed sequence: TC-1 one
@@ -409,31 +414,35 @@ the interim; two toolstacks coexist during the pilots; requires discipline
 
 ## 7. Recommendation
 
-**Option C.** Concretely:
+**Option B is selected.** The source audit changes the relevant comparison
+from “working Bun versus an additive beta dependency” to “one integrated
+system versus two permanent systems.” T3's actual order is the template:
 
-1. Execute TC-1..TC-3 now, on the existing Bun toolchain, exactly as filed
-   (#8772, #8773, #8774). Nothing in the contract requires vp or Node.
-2. Add the Bun-API containment rule to the TC-2 plugin scope and start the
-   runtime-seam refactor with `bun:sqlite` (one adapter module, T3's
-   `Sqlite.ts` as the reference pattern).
-3. Run TC-4 (#8775) and TC-5 (#8776) as bounded pilots and judge them on
-   measured speed, config deletion, and drift — not on vendor sentiment.
-4. Defer the runtime decision, explicitly, to these **revisit triggers**:
-   - Bun licensing, release cadence, or Node-compat posture materially
-     changes under Anthropic `[public signals]`;
-   - Vite Plus reaches 1.0 with a stable config surface and the TC-5 pilot
-     shows decisive wins on our workloads;
-   - the Bun-API adapter work gets the load-bearing surface small enough
-     that a runtime swap becomes a bounded task instead of a program;
-   - a business requirement (e.g. Pylon distribution, a partner's runtime
-     constraint) forces runtime neutrality on a deadline;
-   - our Anthropic concentration changes materially in either direction
-     (e.g. model/harness diversification, or deeper platform integration
-     that makes runtime alignment an asset instead of a risk).
+1. make retained server/CLI code Node-native behind owned platform seams;
+2. establish Effect TSGo and Vite Plus test parity with explicit host
+   exceptions;
+3. replace Bun's package-manager/test/task/build authority atomically with
+   pnpm and exact-pinned Vite Plus, deleting the displaced stack; and
+4. stabilize native installs, packaging, host configs, publishing, owned CI,
+   and production images, then delete every temporary Bun branch.
 
-Per docs/fable convention: this is decision input. No migration is approved
-or scheduled by this document; TC-5 and the revisit triggers own the next
-decision point.
+OpenAgents should go further than T3 at the runtime boundary: T3's public
+artifact is Node-first but retains optional Bun HTTP, PTY, platform, and
+SQLite adapters. The selected OpenAgents destination keeps the adapter seam
+and deletes the Bun implementation after conformance.
+
+Payments are not a late conversion risk. They are outside the accepted MVP
+and should be decommissioned and deleted before the atomic workspace cutover:
+stop new money, reconcile outstanding balances/intents, preserve applied
+migrations and historical receipts read-only, withdraw active payment
+promises, shut down/revoke the money services, then remove wallet/tip/payout/
+settlement code and dependencies. Restoration later is a new ProductSpec and
+custody program, not a revert.
+
+The binding implementation sequence, gates, and payment retirement order are
+in the
+[`Sol full-conversion plan`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
+This Fable document remains evidence and does not dispatch work by itself.
 
 ---
 
@@ -679,13 +688,14 @@ Node. The full conversion can therefore be understood as a platform-boundary
 program whose chosen destination is Node, not as 214 isolated search-and-
 replace jobs.
 
-### B.9 What the completed TC-5 pilot changes
+### B.9 What the completed TC-5 pilot does—and does not—change
 
 The bounded aiur result landed after the original analysis:
 [`docs/research/2026-07-14-vite-plus-pilot.md`](../research/2026-07-14-vite-plus-pilot.md),
 with the closeout summarized on
 [#8776](https://github.com/OpenAgentsInc/openagents/issues/8776#issuecomment-4966050487).
-It is direct evidence against adopting Vite Plus 0.2.4 today:
+It is direct evidence against **additive** Vite Plus 0.2.4 adoption inside the
+existing Bun workspace:
 
 - build/test deltas were wall-clock parity (at most about 0.5 seconds on a
   one-to-two-second lane), partly because the compared engines differed;
@@ -700,45 +710,57 @@ It is direct evidence against adopting Vite Plus 0.2.4 today:
   `vp` without leaking `vp` commands, while `vp install` correctly delegated
   to the existing Bun package manager.
 
-Because the bounded pilot preserved the baseline toolchain, its +98 packages
-is an incremental pilot delta, not a forecast of the net full-conversion
-footprint; a wholesale cutover could delete direct Vite/Vitest and Bun-only
-dependencies. The silent engine substitution and loss of workspace pin
-authority remain regardless.
+The issue and its closeout explicitly ruled out monorepo-wide Vite Plus, pnpm,
+the `vite` → Vite Plus core alias, `@effect/vitest` rewiring, and changes to
+`main`. It invoked direct `vp` built-ins on one Cloudflare-plugin app, not a
+root `vp run` workspace graph. Direct built-ins do not participate in Vite
+Task's task cache. The pilot therefore selected exactly the topology most
+likely to duplicate dependencies while deleting nothing.
+
+T3's `b440dd18` migration selected the inverse topology: remove `bun.lock`,
+Turbo, standalone Vitest/tsdown/Oxlint/Oxfmt configs, migrate the test imports,
+make pnpm the workspace authority, alias `vite` explicitly to exact-pinned
+Vite Plus core, and change CI/releases/agents/hooks together. Its conversion
+touched 299 files and was followed immediately by install, task-graph,
+Effect-test, publishing, Electron, and hook repairs. The +98 packages and
+169 MB are consequently an incremental-pilot measurement, not a forecast of
+the net replacement footprint.
 
 This changes the honest steelman in two ways.
 
 First, the benefits in B.1-B.8 are **end-state benefits of Node, pnpm, explicit
 artifacts, architectural seams, and a workspace control plane**. TC-5 supplies
 no OpenAgents-specific performance or config-deletion evidence for Vite Plus
-itself. A full conversion cannot cite that pilot as a win.
+itself. A full conversion cannot cite that pilot as a speed win, but neither can
+the pilot falsify a topology it prohibited.
 
-Second, if the owner still chooses Vite Plus 0.2.4 now, the coherent posture is
-to make its bundled Vite/Vitest versions the explicit source of build
-provenance, not pretend the workspace pins remain authoritative. Exact-pin
-`vite-plus`, remove split-brain entrypoints where possible, record the embedded
-engine versions in release receipts, preserve separate host configs where
-plugins require them, and accept the dependency delta as the price of the
-unified command layer. The alternative is to complete Node/pnpm/runtime
-portability first and hold the final `vp` binding to TC-5's revisit trigger:
-Vite Plus 1.0 with workspace-resolved or explicitly selectable engine versions.
+Second, bundled substitution is not accidental in the full system. Vite Plus
+builds and projects pinned Vite/Rolldown/Vitest/tsdown/Oxc sources as one
+known-compatible stack; its test resolution is bundle-first specifically to
+avoid split type identity. The adoption posture is therefore to exact-pin the
+reviewed Vite Plus release and lockfile, accept the matching core/test aliases,
+delete split-brain direct entrypoints, and record both reported component
+versions and available upstream source revisions in release receipts.
 
-That distinction keeps "full Node conversion" from being held hostage to one
-pre-1.0 tool release while still treating Node + pnpm + Vite Plus as the desired
-destination if the owner selects it.
+The pilot's Cloudflare-plugin result still matters. T3 itself does not really
+have one physical config: root policy is merged into server, web, Desktop, and
+client-runtime configs with host-specific task, pack, plugin, and test rules.
+OpenAgents should copy that hierarchy and keep aiur's environment-validating
+build/test boundary rather than force a false one-file abstraction.
 
 ### B.10 The strongest credible end state
 
 If choosing Option B, the clean version would look like this:
 
-- one pinned, active Node LTS line in `engines`, local setup, CI, Docker, and
-  release smokes;
+- one exact `.node-version` on the active Node LTS line, with compatible
+  `engines`, local setup, owned CI, Docker, and release smokes;
 - pnpm 11 with one root workspace/lockfile, catalogs, and strict
-  `workspace:` dependencies;
+  `workspace:` dependencies plus an exact integrity-bearing package-manager
+  pin and explicit native build-script policy;
 - an exact-pinned Vite Plus release as the command layer, with its Node-manager
-  behavior optional rather than the only record of the runtime version and,
-  while 0.2.x bundles its own engines, those Vite/Vitest versions recorded as
-  explicit build provenance;
+  behavior reinforcing the exact project pin and, while it bundles its own
+  engines, those Vite/Rolldown/Vitest/Oxc/tsdown versions and source provenance
+  recorded explicitly;
 - a root `vite.config.ts` that owns shared check/fmt/lint/test/staged/task
   defaults and composes package overrides where hosts genuinely differ, while
   retaining separate configs for environment-validating plugins such as
@@ -748,8 +770,9 @@ If choosing Option B, the clean version would look like this:
 - Node-based production images with no `vite-plus` production dependency;
 - no direct `Bun.*`, `bun:*`, `bun:test`, `bun.lock`, or Bun shebangs left in
   the supported path; and
-- deployment parity receipts for the API, realtime services, SQLite stores,
-  Pylon orchestration, and payments before each Bun image is retired.
+- deployment parity receipts for the retained API, realtime services, SQLite
+  stores, and Pylon orchestration; payment paths are decommissioned and deleted
+  rather than ported because the accepted MVP excludes them.
 
 This keeps the strategic center on Node and owned contracts. `vp` is the chosen
 front door in this option, but it remains replaceable by its constituent tools
@@ -772,19 +795,20 @@ if its 0.2.x release train becomes a liability.
 
 The steelman should not turn into sales copy. Full Option B would not
 automatically make tests faster, erase browser/Hermes/native runtime
-differences, make Vite Plus 1.0-stable, or eliminate all vendor influence. The
+differences, make Vite Plus GA-stable, or eliminate all vendor influence. Vite
+Plus describes the audited release line as beta: stable but incomplete. The
 task cache must be measured against OpenAgents' real filesystem-heavy tests;
-Vitest parity must be proven; pnpm strictness will initially break undeclared
-assumptions; Node's built-in TypeScript stripping ignores `tsconfig.json` and
+only modeled `vp run` tasks are cached, and there is no built-in remote-cache
+service (external cross-run cache reuse is experimental). Vitest parity must
+be proven; pnpm strictness will initially break undeclared assumptions;
+Node's built-in TypeScript stripping ignores `tsconfig.json` and
 does not make source-TypeScript npm packages a good distribution format
-([Node TypeScript docs](https://nodejs.org/api/typescript.html)); and payment/
-wallet behavior must be requalified on V8.
+([Node TypeScript docs](https://nodejs.org/api/typescript.html)).
 
-TC-5 also rules out claiming immediate Vite Plus speed, dependency reduction,
-config deletion, or workspace-version control: the measured result was parity,
-+98 packages / ~169 MB, zero deleted config lines, and bundled-engine
-substitution. Those facts are the current adoption price until a revisit
-trigger fires.
+TC-5 also rules out claiming immediate Vite Plus speed. Its dependency and
+config numbers describe additive adoption, while its bundled-engine finding is
+the explicit coherence contract of full adoption—not a reason to maintain two
+authorities.
 
 Those are migration costs and proof obligations, not evidence that the end
 state has no value.
@@ -799,18 +823,53 @@ approaches asymptotically**. In that framing, the migration is not a speculative
 tool swap; it is a deliberate portability, distribution, and monorepo-
 governance program.
 
-If the only desired outcome is one check command and better lint/format gates,
-Option C remains the rational cheaper route. If the owner values the four
-structural outcomes above enough to fund the cutover, Option B is a defensible
-destination—provided it is executed service-by-service with dual-runtime
-conformance, production parity receipts, and the payment path last, rather than
-as a lockfile-and-shebang big bang.
+The owner has selected those structural outcomes and the full stack. Option C
+is no longer the recommendation. The execution should mirror T3's ordering—
+Node readiness, Effect TSGo/test parity, atomic pnpm/Vite Plus replacement,
+focused stabilization—while going further to delete the temporary Bun runtime
+branches at completion.
 
-On the current evidence, the case for **Node + pnpm** is materially stronger
-than the case for **Vite Plus 0.2.4**. Choosing the full stack now can still be
-rational, but it is a strategic bet on the future control plane and a conscious
-acceptance of TC-5's engine-coupling cost—not a conclusion supported by the
-pilot's speed or config results.
+The payment path moves first, not last. Disable new money, reconcile pending
+balances/intents, freeze applied migrations and historical receipts read-only,
+withdraw active payment promises, shut down and revoke the money services, and
+delete wallet/tip/payout/settlement code instead of porting it. That both honors
+the MVP boundary and removes some of the hardest Bun-native storage/process
+work from the conversion graph.
 
-This addendum steelmans the destination; it does not itself approve or schedule
-the migration.
+The separate
+[`Sol conversion plan`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md)
+owns the phased contract and gates. This addendum records why the selected
+destination is rational; it does not claim that implementation has started.
+
+### B.14 Source-audit details worth copying literally
+
+The strongest adoption pattern is more precise than “use `vp` everywhere”:
+
+- T3's domain/dev scripts remain ordinary Node, Expo, Astro, and host commands;
+  `vp run` owns package selection, ordering, filtering, and the shared verb.
+- Root config owns defaults, while server, web, Desktop, and client packages
+  own honest overrides. Server and Desktop model build dependencies and
+  multiple `vp pack` entries locally.
+- The current staged hook is formatter-only (`vp staged` → `vp fmt`); full
+  correctness belongs at agent completion, pre-push, owned CI, and release.
+- `vp check` is paired with a separate bounded-concurrency TSGo task because
+  type-aware Oxlint/TSGo parity is not assumed.
+- pnpm policy includes catalogs, overrides, `workspace:*`, package extensions,
+  patches, supported architectures, and an allow/deny list for install scripts;
+  the graph is a supply-chain contract, not just a lockfile format.
+- T3's `@effect/vitest` integration requires a 124-line patch at the audited
+  versions. OpenAgents should copy it only if its selected Effect/Vite Plus
+  versions still need it, prove the single test identity, and delete it when
+  upstream support lands.
+- Public CLIs are compiled, packed, start with `#!/usr/bin/env node`, and are
+  tested as artifacts. Node's source-work pin can be narrow while the compiled
+  public artifact supports a broader separately tested engine range.
+- Vite Plus managed Node verifies signed official SHASUMS and archive hashes;
+  owned CI uses managed mode plus `vp install --frozen-lockfile`. Dynamic heavy
+  host plugins should be lazy so lint/fmt/task config reads do not eagerly load
+  every build plugin.
+
+Finally, T3 still has stale Bun prose and a few optional Bun adapters after the
+migration. Its precedent proves serious operational adoption, not automatic
+perfection. OpenAgents needs an explicit final scan of commands, docs, images,
+tarballs, adapters, and fixtures before it may say “full conversion.”

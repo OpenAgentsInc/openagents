@@ -3,10 +3,11 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-14
-- Revision: 110
+- Revision: 111
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: empty; the AssuranceSpec distribution program is complete and
-  no product-expansion lane is authorized
+- Current queue: empty; the AssuranceSpec distribution program is complete,
+  no product-expansion lane is authorized, and the owner-selected runtime/
+  toolchain conversion has no live implementation issue yet
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: no product-expansion lane; new outcomes require a bounded owner
   decision and live issue under [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -268,6 +269,15 @@ there is no remaining AssuranceSpec program queue.
     change a pinned revision, or verify itself. Existing typed work, intent,
     agent, dependency, and evidence contracts remain the execution substrate;
     no second scheduler or authority universe is created.
+26. **The retained TypeScript estate converts fully to Node + pnpm + Vite
+    Plus in T3 Code's integrated operating pattern.** Node readiness precedes
+    one atomic workspace/toolchain replacement; temporary Bun adapters have
+    deletion gates. Payments, wallets, tips, payout, markets, and settlement
+    are outside the accepted MVP and are decommissioned and deleted instead of
+    ported, after outstanding value is reconciled and historical receipts stay
+    read-only and truthful. The non-dispatch contract is the
+    [`full-conversion plan`](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md);
+    implementation requires bounded live issues and claims.
 
 ## Product and authority model
 
@@ -615,6 +625,9 @@ At this snapshot:
    `0.1.1` are public on npm in dependency order; #8767 and #8770 are closed.
 6. RC9 remains unpublished. Conditional public-language, telemetry, release,
    concurrency, registry, and product-successor gates remain unchanged.
+7. The Node/pnpm/Vite Plus destination is authorized as infrastructure policy,
+   but no conversion implementation is dispatchable until bounded live issues
+   and claims exist; it does not reopen a product-expansion queue.
 
 There is no active product queue or successor product queue to claim. The
 AssuranceSpec distribution lane has no remaining owner action and does not

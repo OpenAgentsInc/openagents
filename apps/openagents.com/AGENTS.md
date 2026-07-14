@@ -1,5 +1,17 @@
 # Agent Development Notes
 
+## 2026-07-14 runtime and payment override
+
+The owner-selected destination is the repository-wide Node + pnpm + Vite Plus
+conversion in
+[`docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`](../../docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
+Do not add new Bun-only code or new payment, wallet, tip, payout, checkout,
+market, or settlement paths. Current Bun commands and payment invariants below
+remain factual and binding for safe maintenance until a claimed phase lands;
+they do not authorize porting those money paths to Node. The payment phase must
+stop new money, reconcile outstanding value, preserve historical receipts and
+applied migrations, withdraw promises, and revoke authority before deletion.
+
 ## 2026-07-09 product and UI override
 
 This directory is converging on the single OpenAgents web app described by
@@ -219,7 +231,8 @@ For DOM operations (focus, scroll, modals, scroll lock), Foldkit ships a `Dom` m
 
 ### File Organization
 
-This repo is a Bun workspace:
+This directory is currently inside the Bun workspace until the atomic
+pnpm/Vite Plus cutover; these are present-tense paths, not the destination:
 
 - `apps/web/` is the Foldkit/Vite browser app.
 - `workers/api/` is the Cloudflare Worker API and Durable Object surface.

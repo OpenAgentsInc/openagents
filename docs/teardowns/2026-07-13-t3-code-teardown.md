@@ -739,6 +739,23 @@ framework are clever but couple the whole repo to one vendor's pre-1.0
 release train — T3 already stacks that bet on top of a patched Effect beta
 and a preview compiler. OpenAgents takes the contract, not the coupling.
 
+**Owner disposition, 2026-07-14 — the last paragraph is superseded.** After
+the bounded TC-5 result and a source-level audit of T3's migration history and
+Vite Plus itself, OpenAgents selected the full integrated topology, including
+the exact Vite Plus core alias and test-framework wiring when required by the
+chosen versions. TC-5 tested an intentionally additive one-app topology that
+kept Bun and direct Vite/Vitest authority and prohibited T3's workspace
+replacement; its footprint/config result does not test the system above.
+
+The pattern to copy is T3's actual sequence: Node-native runtime first,
+Effect TSGo second, one atomic pnpm/Vite Plus replacement third, then focused
+stabilization. Root policy composes with host-specific configs; `vp run` owns
+the graph; format-only staging stays cheap; Effect-aware typecheck remains a
+separate gate; bundled engine versions are explicit provenance. OpenAgents'
+Node-only destination then deletes the optional Bun adapters T3 retains. The
+binding implementation and payment-removal contract is the
+[`Sol full-conversion plan`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
+
 ### Adapt with stronger boundaries
 
 - **Multi-instance provider homes** — already the Pylon pattern; T3 confirms

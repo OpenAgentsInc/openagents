@@ -3,9 +3,14 @@
 - Issue: #8776 (T3 Code Vite Plus adaptation plan; plan source:
   `docs/teardowns/2026-07-13-t3-code-teardown.md` §17)
 - Date: 2026-07-14
-- Verdict: **do not adopt — close.** Wall-clock parity, zero config deleted,
-  +98 packages / ~169 MB, and vp silently swaps the pinned vite/vitest
-  versions for its own bundled fork. Revisit triggers at the end.
+- Pilot verdict: **do not adopt additively — closed.** Wall-clock parity, zero
+  config deleted, +98 packages / ~169 MB, and vp substituted its bundled
+  Vite/Vitest for the separately pinned workspace versions.
+- Subsequent disposition: the 2026-07-14 owner decision selects a full
+  T3-style Node + pnpm + Vite Plus replacement. That destination deliberately
+  removes the duplicate baseline and accepts the exact bundled engines as
+  toolchain provenance. See the
+  [`Sol conversion plan`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
 
 ## Scope and non-goals
 
@@ -25,6 +30,13 @@ Explicit non-goals (restated from the issue):
 The pilot conversion was performed in a disposable worktree and deliberately
 NOT landed; `main`'s aiur lane is untouched. This document is the only
 artifact.
+
+Those non-goals also bound the conclusion. This pilot did not exercise pnpm,
+a monorepo `vp run` graph/cache, root policy plus layered package configs,
+test-import rewrites, deletion of Bun/direct Vite/Vitest tooling, compiled Node
+artifacts, or production Node execution. It remains strong evidence against
+running two toolchains permanently, but it is not a test of T3's atomic
+replacement topology.
 
 ## Method and environment
 
