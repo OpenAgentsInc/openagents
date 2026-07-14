@@ -719,6 +719,20 @@ How OpenAgents should mimic, in order:
    *contract* (one verb, one config, laws-as-lint, agent gate) is adopted
    everywhere immediately, tool-independently.
 
+This plan is now tracked as GitHub issues: epic
+[#8777](https://github.com/OpenAgentsInc/openagents/issues/8777), with the
+five steps above filed as ordered leaves
+[#8772](https://github.com/OpenAgentsInc/openagents/issues/8772) (TC-1,
+unified root verb set),
+[#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) (TC-2,
+`oxlint-plugin-openagents`),
+[#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) (TC-3,
+fmt-on-commit staged gradient),
+[#8775](https://github.com/OpenAgentsInc/openagents/issues/8775) (TC-4,
+`@effect/tsgo` pilot), and
+[#8776](https://github.com/OpenAgentsInc/openagents/issues/8776) (TC-5,
+bounded `vp` pilot on `apps/aiur`).
+
 What not to copy: aliasing the ecosystem's core package to a fork
 (`vite` → `vite-plus-core`) and `packageExtensions` rewiring of a test
 framework are clever but couple the whole repo to one vendor's pre-1.0
@@ -758,6 +772,104 @@ and a preview compiler. OpenAgents takes the contract, not the coupling.
    without regression gates. OpenAgents' Effect upgrades keep contract,
    startup, and resource-finalization gates; patching the framework is a
    last resort with an upstream PR attached.
+
+### Proposed follow-on issue sequence (drafts for owner review — NOT yet opened)
+
+The toolchain lanes above are filed (#8772–#8777); the remaining adapt items
+below are drafted as an ordered issue sequence for owner review and are
+deliberately NOT opened yet.
+
+1. **remote(ENV-1): adopt the ExecutionEnvironment/AccessEndpoint vocabulary
+   in the portable-sessions pathway.** Fold T3's
+   environment/endpoint/advertised-endpoint model — access and launch as
+   separate concerns, endpoint providers (Tailscale first) as plugins
+   outside the core model — into the portable-sessions pathway contracts as
+   the canonical language for "where a session can run" versus "how to
+   reach it". Owning surfaces:
+   `docs/sol/2026-07-11-remote-first-portable-sessions-pathway.md`-class
+   contracts. T3 reference:
+   `projects/repos/t3code/docs/architecture/remote.md`. Dependencies: none;
+   vocabulary-first, unblocks ENV-2.
+2. **auth(ENV-2): DPoP-bound, scope-limited capability tokens for local
+   runtime sockets and Khala Sync device grants.** Replace the
+   password/env-token local-server pattern with per-client capability
+   tokens carrying explicit scopes, RFC 8693-style token exchange, and DPoP
+   proof-of-possession, so a leaked token is useless without the client
+   key. Owning surfaces: Pylon socket exposure, Runtime Gateway, and Khala
+   Sync device grants. T3 reference:
+   `projects/repos/t3code/docs/cloud/environment-auth.md` and
+   `apps/server/src/auth/dpop.ts`. Dependencies: ENV-1 for the endpoint
+   vocabulary the scopes attach to.
+3. **desktop(GIT-1): hidden-ref turn checkpoints.** Capture workspace
+   checkpoints as hidden Git refs at turn boundaries via a reactor, with
+   typed revert through the event model and no user-visible commits — the
+   cheap, honest middle ground between nothing and Claude Code's full
+   file-history store. Owning surfaces: the desktop workbench D3 lane,
+   combined with the existing update/rollback contracts. T3 reference:
+   `projects/repos/t3code/apps/server/src/checkpointing/CheckpointStore.ts`.
+   Dependencies: none.
+4. **runtime(SIG-1): typed completion receipts for async pipelines as test
+   oracles.** Add a DrainableWorker/RuntimeReceiptBus-style seam so every
+   async pipeline emits a typed milestone signal tests can await instead of
+   polling — the deterministic-verification ergonomics OpenAgents' oracles
+   need at the runtime seam. Owning surfaces: Runtime Gateway and the
+   khala-tools dispatcher. T3 reference:
+   `packages/shared/src/DrainableWorker.ts` and
+   `docs/architecture/overview.md` in the pinned clone. Dependencies: none;
+   strengthens the oracles the later lanes rely on.
+5. **mcp(FEED-1): serve owned capabilities to wrapped harnesses over
+   MCP.** Build an OpenAgents MCP server that hands receipts, policy
+   queries, fleet context, and preview tools to the Codex/Claude sessions
+   we supervise, through the harnesses' native MCP support rather than
+   forks, gated by provider-scoped bearer credentials. T3 reference:
+   `projects/repos/t3code/apps/server/src/mcp/McpHttpServer.ts`.
+   Dependencies: ENV-2 for the credential shape.
+6. **mobile(LIVE-1): lock-screen agent presence (Live Activities) for fleet
+   status.** Ship running-agent presence to the lock screen as typed status
+   projections only — never completion authority — following the second
+   incumbent signal (after Cursor Remote Control) that ambient mobile
+   supervision is a differentiating surface. Owning surfaces:
+   `apps/openagents-mobile` over Khala Sync projections. T3 reference:
+   `apps/mobile/src/widgets/AgentActivity.tsx` plus the relay APNs
+   pipeline. Dependencies: Khala Sync projection classes.
+7. **onboarding(NPX-1): zero-install front door — one npx-shaped command
+   boots the local runtime, migrates its store, prints a pairing URL with a
+   fragment token.** Give the local-first tier the entry point the night
+   addendum records: fully usable before any account exists, pairing gate
+   on by default, auth staying an upgrade rather than a gate. Owning
+   surfaces: the khala CLI / Pylon bootstrap. T3 reference: the observed
+   `npx t3@latest` flow (night addendum). Dependencies: ENV-2 recommended
+   so the pairing token is a scoped capability from day one.
+8. **fleet(MAINT-1): one-click provider install/update with ledger pinning
+   and provenance receipts.** Make harness install/update a typed
+   per-harness maintenance action (detect installed version, resolve
+   channel, execute update, re-probe capability) surfaced as one click in
+   Desktop Settings, with the two additions T3 does not show: version
+   pinning against the component ledger, and provenance verification plus a
+   receipt for the binary just swapped under the fleet. T3 reference: the
+   driver maintenance resolvers in `apps/server/src/provider/Drivers/`.
+   Dependencies: the component ledger; SIG-1-style receipts.
+9. **release(DMG-1): Gatekeeper release oracles — notarize+staple the DMG,
+   fail closed.** Mechanize the night-addendum rule: notarize the DMG
+   (covering the nested app), staple the ticket to both artifacts, and gate
+   publish on `codesign --verify --deep --strict` (app), `spctl -a -t open`
+   on the image, `spctl -a -t exec` on the app, and `xcrun stapler
+   validate` on both — refusing to publish when identity or notary
+   credentials are absent. Also fold in the post-update
+   launch-receipt/rollback lesson from
+   `docs/fable/2026-07-13-chatgpt-codex-launch-failure-analysis.md`. Owning
+   surfaces: `apps/openagents-desktop/forge.config.ts`,
+   `scripts/release-preflight.ts`, `scripts/publish-release.ts` (CUT-26
+   lane). Dependencies: none; the T3 DMG failure is live evidence of the
+   cost.
+10. **protocol(EVT-1): version-negotiation audit of the provider-runtime
+    event vocabulary.** Compare the OpenAgents harness-adapter event union
+    against T3's versioned `ProviderRuntimeEventV2`
+    (`packages/contracts/src/providerRuntime.ts`) and add explicit
+    version/compat fixtures wherever ours is implicit — keeping ours
+    generated and version-negotiated where theirs is hand-written. Owning
+    surfaces: the harness-adapter seam and its contract fixtures.
+    Dependencies: none.
 
 ## 18. Final assessment
 
