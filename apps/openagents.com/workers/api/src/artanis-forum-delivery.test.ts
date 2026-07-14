@@ -124,7 +124,9 @@ const deliveryIdentityDb = (store: DeliveryStore): IdentityDb => ({
     const registered = store.registeredArtanis
     if (sql.includes('FROM agent_profiles')) {
       return Promise.resolve(
-        registered !== null && params.map(String).includes(registered.slug)
+        registered !== null &&
+          registered.slug !== null &&
+          params.map(String).includes(registered.slug)
           ? [{
               credential_id: registered.credential_id,
               metadata_json: registered.metadata_json,

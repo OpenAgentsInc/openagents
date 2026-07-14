@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { makeBrowserSessionBoundary } from './session'
+import { noopExecutionContextTracing } from '../execution-context-tracing'
 
 type TestUser = Readonly<{ userId: string }>
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: {},
   waitUntil: () => undefined,
 })

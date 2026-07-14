@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import { EmailAddress, ResendEmailSender, WorkerSecret } from './config'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestSession = Readonly<{
   user: Readonly<{
@@ -557,6 +558,7 @@ const db = (store: EmailInspectionStore): D1Database =>
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

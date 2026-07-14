@@ -11,6 +11,7 @@ import {
   type SiteReferralPayoutState,
 } from './site-referral-payout-ledger'
 import { makeSiteReferralPayoutLedgerRoutes } from './site-referral-payout-ledger-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type StoredPayoutEntry = Readonly<{
   amount_sats: number
@@ -184,6 +185,7 @@ const baseEligibility = {
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

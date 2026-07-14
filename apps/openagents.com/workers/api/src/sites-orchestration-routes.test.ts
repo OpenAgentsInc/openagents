@@ -6,6 +6,7 @@ import {
   createSiteBuilderSession,
 } from './sites-builder-sessions'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type Row = Record<string, unknown>
 
@@ -248,6 +249,7 @@ const orchestrationDb = (store: OrchestrationStore): D1Database => ({
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

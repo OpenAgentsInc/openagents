@@ -19,11 +19,13 @@ import {
   AgentGoalValidationError,
 } from './agent-goals'
 import type { TeamRole, UserTeamProject } from './team-repository'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestSession = Readonly<{ user: Readonly<{ userId: string }> }>
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

@@ -9,11 +9,13 @@ import {
 } from './github'
 import { makeOnboardingRoutes } from './routes'
 import type { OnboardingGitHubRepository } from './schema'
+import { noopExecutionContextTracing } from '../execution-context-tracing'
 
 type TestSession = Readonly<{ user: Readonly<{ userId: string }> }>
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

@@ -6,6 +6,7 @@ import {
   readSiteReferralOwnerOverview,
 } from './site-referral-inspection'
 import { makeSiteReferralInspectionRoutes } from './site-referral-inspection-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestSession = Readonly<{
   user: Readonly<{
@@ -66,6 +67,7 @@ type AttributionInspectionRow = Readonly<{
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

@@ -3,11 +3,13 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { makeAdminOverviewHandlers } from './admin-overview-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestSession = Readonly<{ user: Readonly<{ email: string }> }>
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

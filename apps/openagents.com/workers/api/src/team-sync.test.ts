@@ -4,6 +4,7 @@ import {
   publishTeamChatMessageSync,
   publishTeamThreadFileSync,
 } from './sync-notifier'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type StoredChange = Readonly<{
   actor_id: string | null
@@ -204,6 +205,7 @@ const makeExecutionContext = () => {
   const waits: Array<Promise<unknown>> = []
   const ctx = {
     passThroughOnException: () => undefined,
+    tracing: noopExecutionContextTracing,
     props: undefined,
     waitUntil: (promise: Promise<unknown>) => {
       waits.push(promise)

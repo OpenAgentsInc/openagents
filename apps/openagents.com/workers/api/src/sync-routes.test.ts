@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { Env } from './index'
 import { makeSyncRoutes } from './sync-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestSession = Readonly<{
   user: Readonly<{
@@ -186,6 +187,7 @@ const makeSyncRoom = (capturedScopes: Array<string>): DurableObjectNamespace =>
 const makeExecutionContext = (): ExecutionContext =>
   ({
     passThroughOnException: () => undefined,
+    tracing: noopExecutionContextTracing,
     props: undefined,
     waitUntil: () => undefined,
   }) satisfies ExecutionContext

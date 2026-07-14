@@ -117,6 +117,7 @@ import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
 import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { makeSupervisionLongtailMirrorForEnv } from './supervision-longtail-domain-store'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 import {
   notifyAgentRunSyncScopes,
   publishAgentGoalEventSync,
@@ -534,6 +535,7 @@ const agentGoalRuntimeLayer = (workerEnv: OmniHandlerEnv) => {
 const immediateSyncContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
   props: undefined,
+  tracing: noopExecutionContextTracing,
   waitUntil: promise => {
     void promise.catch(() => undefined)
   },

@@ -8,6 +8,7 @@ import {
   type AgentRegistrationStore,
 } from './agent-registration'
 import { makeOnboardingRoutes } from './onboarding/routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestSession = Readonly<{ user: Readonly<{ userId: string }> }>
 type StoredUsageReceipt = Readonly<{
@@ -153,6 +154,7 @@ type StoredOrderReferralAttribution = Readonly<{
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

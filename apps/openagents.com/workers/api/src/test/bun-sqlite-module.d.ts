@@ -1,12 +1,13 @@
 // Ambient `bun:sqlite` module declaration for THIS Worker's typecheck only.
 //
-// `@openagentsinc/khala-sync-client/sqlite-store` imports `bun:sqlite`; this
-// Worker's vitest suites drive that real client store through the
-// `node:sqlite`-backed adapter in `src/test/bun-sqlite.ts` (aliased in
-// `vitest.config.ts`). The Worker typechecks against
+// `@openagentsinc/khala-sync-client/sqlite-store` (and, through it, the
+// `@openagentsinc/sqlite-runtime` seam's `bun-database.ts`) imports
+// `bun:sqlite`; this Worker's vitest suites drive that real client store
+// through the `node:sqlite`-backed adapter in `src/test/bun-sqlite.ts`
+// (aliased in `vitest.config.ts`). The Worker typechecks against
 // `@cloudflare/workers-types` — no `bun-types` ambients (they collide with
 // the workers globals) — so the module is declared here with exactly the
-// structural surface the client store uses. The declaration mirrors the
+// structural surface those modules use. The declaration mirrors the
 // adapter's types; the adapter itself is real code and stays in sync by
 // construction (both are reviewed together).
 
@@ -21,7 +22,7 @@ declare module 'bun:sqlite' {
   }
 
   export class Database {
-    constructor(filename: string, options?: { create?: boolean })
+    constructor(filename: string, options?: { create?: boolean; readonly?: boolean })
     exec(sql: string): void
     query<
       Row = unknown,

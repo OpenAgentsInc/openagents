@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestSession = Readonly<{
   user: Readonly<{
@@ -82,6 +83,7 @@ const stepRows = [
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

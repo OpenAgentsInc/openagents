@@ -13,6 +13,7 @@ import {
   scheduleBackgroundWork,
   syncScope,
 } from './runtime'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 const durableObjectId = (name: string): DurableObjectId => ({
   equals: other => other.toString() === name,
@@ -157,6 +158,7 @@ describe('OpenAgents Cloudflare runtime services', () => {
     const request = new Request('https://openagents.test/api/health')
     const ctx = {
       passThroughOnException: () => undefined,
+      tracing: noopExecutionContextTracing,
       props: undefined,
       waitUntil: (promise: Promise<unknown>) => {
         scheduled.push(promise)

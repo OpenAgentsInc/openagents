@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import type { OpenAgentsWorkerConfigEnv } from './config'
 import { makeOperatorAdjutantRoutes } from './operator-adjutant-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestEnv = OpenAgentsWorkerConfigEnv &
   Readonly<{
@@ -446,6 +447,7 @@ type StoredAgentGoal = Readonly<{
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

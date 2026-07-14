@@ -24,6 +24,7 @@ import {
   TreasuryPaymentAuthorityError,
   makeTreasuryPaymentAuthority,
 } from './treasury-payment-authority'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 const nowIso = '2026-06-07T07:30:00.000Z'
 const persistedNowIso = '2026-06-07T07:20:00.000Z'
@@ -37,6 +38,7 @@ const artanisAdminTraceDigest =
 
 const executionContext = {
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: {},
   waitUntil: () => undefined,
 } satisfies ExecutionContext

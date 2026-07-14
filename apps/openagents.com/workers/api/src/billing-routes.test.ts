@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import { applyStripeCheckoutCredit } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 type TestSession = Readonly<{ user: Readonly<{ userId: string }> }>
 type QueryBinding = Readonly<{
@@ -180,6 +181,7 @@ function makeHandlers(
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

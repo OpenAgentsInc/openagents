@@ -2,9 +2,11 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { makeImageGenerationRoutes } from './image-generation-routes'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: undefined,
   waitUntil: () => undefined,
 })

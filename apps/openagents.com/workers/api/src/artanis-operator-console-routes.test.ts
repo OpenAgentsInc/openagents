@@ -8,11 +8,13 @@ import {
   ArtanisPersistenceTestStore,
   artanisPersistenceTestDb,
 } from './test/artanis-persistence-fixture'
+import { noopExecutionContextTracing } from './execution-context-tracing'
 
 const nowIso = '2026-06-07T05:20:00.000Z'
 
 const executionContext = {
   passThroughOnException: () => undefined,
+  tracing: noopExecutionContextTracing,
   props: {},
   waitUntil: () => undefined,
 } satisfies ExecutionContext
