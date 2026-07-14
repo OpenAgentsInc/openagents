@@ -19,9 +19,20 @@ describe('/observer landing page', () => {
       'fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1',
     )
     expect(html).toContain('CW-AC-01')
-    // Honest status vocabulary: planned surfaces stay visibly unbuilt.
-    expect(html).toContain('needs_design')
+    // The admitted dogfood result is current while broader adapters stay planned.
+    expect(html).toContain('revision 2 · reviewed and admitted')
+    expect(html).toContain('18 CONFIRMED · 18 falsifiers REFUTED')
+    expect(html).not.toContain('all still marked needs_design')
     expect(html).toContain('PLANNED')
+    for (const identifier of [
+      'false_green_fixture_assert',
+      'false_green_api_mirror',
+      'false_green_mocked_seam',
+      'false_green_coverage_theater',
+      'false_green_round_up',
+    ]) {
+      expect(html).toContain(identifier)
+    }
     // Receipt verdict vocabulary from ASSURANCE_SPEC.md.
     for (const verdict of ['CONFIRMED', 'REFUTED', 'INCONCLUSIVE']) {
       expect(html).toContain(verdict)

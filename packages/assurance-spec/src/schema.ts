@@ -108,6 +108,20 @@ export const ASSURANCE_STRUCTURAL_ERROR_CODES = [
  */
 export const ASSURANCE_NON_FIXTURE_ERROR_CODES = ["invalid_assurance_spec"] as const
 
+/**
+ * Episode 252's stable false-green taxonomy. These identifiers are shared by
+ * validators, compiler diagnostics, and public projections; changing one is
+ * an API change rather than a copy edit.
+ */
+export const ASSURANCE_FALSE_GREEN_IDENTIFIERS = [
+  "false_green_fixture_assert",
+  "false_green_api_mirror",
+  "false_green_mocked_seam",
+  "false_green_coverage_theater",
+  "false_green_round_up",
+] as const
+export type AssuranceFalseGreenIdentifier = (typeof ASSURANCE_FALSE_GREEN_IDENTIFIERS)[number]
+
 /** Structural warnings: honesty about skeleton documents, never validity. */
 export const ASSURANCE_STRUCTURAL_WARNING_CODES = [
   "empty_required_section",
@@ -223,6 +237,21 @@ export const AssuranceIndependenceSchema = S.Struct({
 })
 export type AssuranceIndependence = typeof AssuranceIndependenceSchema.Type
 
+/**
+ * A seam declaration names the two repository artifacts that participate in
+ * the real boundary and the evidence references that can establish the
+ * connection. Distinctness and non-empty evidence are semantic constraints,
+ * enforced by the generic validator and compiler rather than hidden in one
+ * adapter.
+ */
+export const AssuranceSeamSchema = S.Struct({
+  side_a_ref: RelativePath,
+  side_b_ref: RelativePath,
+  boundary_ref: StableRef,
+  qualifying_evidence_refs: S.Array(RelativePath),
+})
+export type AssuranceSeam = typeof AssuranceSeamSchema.Type
+
 export const AssuranceObligationSchema = S.Struct({
   id: StableRef,
   title: NonEmptyString,
@@ -238,6 +267,7 @@ export const AssuranceObligationSchema = S.Struct({
   falsifier: S.optionalKey(AssuranceFalsifierSchema),
   evidence: S.optionalKey(AssuranceEvidenceRequirementSchema),
   independence: S.optionalKey(AssuranceIndependenceSchema),
+  seam: S.optionalKey(AssuranceSeamSchema),
   dependency_refs: S.optionalKey(S.Array(StableRef)),
   activation_gate: S.optionalKey(StableRef),
 })

@@ -116,31 +116,31 @@ ${OBSERVER_PAGE_CSS}</style>
 <h2>THE FAILURE MODE — A PASSING SUITE IS NOT PROOF</h2>
 <div class="reg">
 <div class="row">
-<span class="ref">false_green.fixture_assert</span>
+<span class="ref">false_green_fixture_assert</span>
 <div class="what"><strong>The test asserts the fixture</strong>
 <p>It proves the mock behaves like the mock — not that the product behaves like the spec.</p></div>
 <span class="chip bad">FALSE GREEN</span>
 </div>
 <div class="row">
-<span class="ref">false_green.impl_mirror</span>
+<span class="ref">false_green_api_mirror</span>
 <div class="what"><strong>The test mirrors the implementation</strong>
 <p>Written after the code, it inherits the code's assumptions — including the wrong ones.</p></div>
 <span class="chip bad">FALSE GREEN</span>
 </div>
 <div class="row">
-<span class="ref">false_green.mocked_seam</span>
+<span class="ref">false_green_mocked_seam</span>
 <div class="what"><strong>The real seam is never exercised</strong>
 <p>Both sides of a client–server or renderer–host boundary are faked, so integration defects pass clean.</p></div>
 <span class="chip bad">FALSE GREEN</span>
 </div>
 <div class="row">
-<span class="ref">false_green.coverage_theater</span>
+<span class="ref">false_green_coverage_theater</span>
 <div class="what"><strong>Coverage stands in for behavior</strong>
 <p>Line coverage measures execution, not correctness — activity dressed up as evidence.</p></div>
 <span class="chip bad">FALSE GREEN</span>
 </div>
 <div class="row">
-<span class="ref">false_green.round_up</span>
+<span class="ref">false_green_round_up</span>
 <div class="what"><strong>Everything rounds up to green</strong>
 <p>Skipped, stale, flaky, and inconclusive results quietly disappear into a passing summary.</p></div>
 <span class="chip bad">FALSE GREEN</span>
@@ -238,7 +238,8 @@ ${OBSERVER_PAGE_CSS}</style>
 <span class="f">revision:</span>     <span class="val">6</span>
 <span class="f">sha256:</span>       <span class="hl">fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1</span>
 <span class="f">criteria:</span>     <span class="val">CW-AC-01 … CW-AC-18</span>
-<span class="f">proposal:</span>     <span class="val">18/18 obligations generated — all still marked needs_design</span></pre>
+<span class="f">assurance:</span>    <span class="val">revision 2 · reviewed and admitted · 18/18 obligations designed</span>
+<span class="f">evidence:</span>     <span class="val">18 CONFIRMED · 18 falsifiers REFUTED · 18 sensitivity receipts</span></pre>
 </div>
 <p class="reg-note">That binding is real, quoted from the repository — Observer's first subject is the OpenAgents Desktop MVP spec itself. The design documents, format tooling, and generated first proposal are public in <a href="https://github.com/OpenAgentsInc/openagents/tree/main/docs/assurance" rel="noopener">docs/assurance</a>.</p>
 </section>
@@ -254,8 +255,8 @@ ${OBSERVER_PAGE_CSS}</style>
 </div>
 <div class="row">
 <span class="ref">docs/mvp · assurance-spec.md</span>
-<div class="what"><strong>First Assurance Spec proposal</strong>
-<p>Generated against the MVP spec: structurally valid and deliberately non-executable. Every obligation awaits proof design and review.</p></div>
+<div class="what"><strong>First admitted Assurance Spec</strong>
+<p>Revision 2 is reviewed and admitted: all 18 candidate oracles confirmed, all 18 falsifiers refuted, with 18 sensitivity receipts and a green Desktop gate.</p></div>
 <span class="chip live">REAL TODAY</span>
 </div>
 <div class="row">
@@ -267,20 +268,20 @@ ${OBSERVER_PAGE_CSS}</style>
 <div class="row">
 <span class="ref">planner · admission</span>
 <div class="what"><strong>Semantic planning and review flow</strong>
-<p>Typed planning whose output stays reviewable proposal material — never compiler output, never admitted policy.</p></div>
+<p>Review annotations and exact-digest admission are implemented. Rich semantic planning remains reviewable proposal work, never compiler output or self-admitted policy.</p></div>
 <span class="chip design">IN DESIGN</span>
 </div>
 <div class="row">
 <span class="ref">compiler · manifest</span>
 <div class="what"><strong>Deterministic manifest compiler</strong>
-<p>Byte-stable compilation with golden-byte conformance fixtures, plus a self-hosting Assurance Spec for Observer itself.</p></div>
-<span class="chip design">IN DESIGN</span>
+<p>Exact-digest bindings and byte-stable compilation are implemented with golden-byte and stale-input regression coverage.</p></div>
+<span class="chip live">REAL TODAY</span>
 </div>
 <div class="row">
 <span class="ref">adapters · receipts</span>
 <div class="what"><strong>Native adapters and normalized receipts</strong>
-<p>Unit, browser, device, property, resilience, security, accessibility, and formal adapters emitting exact Assurance Receipts.</p></div>
-<span class="chip planned">PLANNED</span>
+<p>The narrow native Bun-test adapter and normalized eight-axis receipts are implemented. Browser, device, resilience, accessibility, and formal adapters remain planned.</p></div>
+<span class="chip live">REAL TODAY · NARROW</span>
 </div>
 <div class="row">
 <span class="ref">qa-swarm</span>

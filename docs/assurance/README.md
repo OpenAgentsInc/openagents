@@ -89,27 +89,21 @@ OpenAgents `CW-AC-*` profile and is not valid under upstream ProductSpec
 reviewed ProductSpec revision must perform the portable ID/Related Artifact
 migration before we claim upstream-current Evidence Loop interoperability.
 
-The first generated proposal lives beside that ProductSpec as:
+The reviewed and admitted live AssuranceSpec lives beside that ProductSpec as:
 
 ```text
 docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md
 ```
 
-The proposal utility creates that file from the exact ProductSpec plus optional
-committed-repository inventory. It is structurally valid but deliberately not
-executable: all 18 generated obligations begin as `needs_design`. Admission,
-Environment Profiles, deterministic manifests, and native adapters remain
-future slices.
-
-The first reviewed executable vertical slice will target `CW-AC-04`: validator-clean
-ProductSpec creation/opening with stable Acceptance Criterion IDs. It binds
-the existing ProductSpec test before generating anything new, then uses the
-existing duplicate-ID rejection as its falsifier. The generated revision names
-all 18 criteria and creates one unresolved obligation for each. A later
-reviewed revision may fully design this one narrow obligation while the other
-17 remain `needs_design`.
-Desktop workroom tests and receipt registration through the existing workroom
-loop are the next expansion. None silently rounds up to green.
+The proposal utility created revision 1 from the exact ProductSpec plus
+committed-repository inventory; its frozen bytes remain in the conformance
+corpus. The live revision 2 is reviewed and admitted. All 18 obligations have
+candidate, falsifier, and sensitivity receipts, and the full Desktop gate is
+green. The deterministic compiler, digest-bound Environment Profile and
+adapter lock, narrow Bun-test adapter, receipt normalizer, and Desktop workroom
+receipt bridge are implemented. That evidence does not grant release or
+public-claim authority, and broader browser/device/formal adapters remain
+separate future work.
 
 This dogfood validates the companion system alongside MVP development. It does
 not expand MVP product scope, declare any criterion passed, make Observer a
@@ -126,12 +120,15 @@ release prerequisite, or change a public promise.
   AssuranceSpec feeds it receipts by reference; it does not replace its state.
 - `docs/qa/` retains QA execution notes, runbooks, reports, and historical
   Khala Code evidence. It does not own AssuranceSpec semantics.
-- `packages/product-spec/` implements the current OpenAgents ProductSpec
-  profile. It is behind upstream `0.19.0`; structured AC/SM items and Related
-  Artifacts are planned catch-up work, not current compatibility claims.
-- `packages/assurance-spec/` owns the implemented bounded proposal profile,
-  parser, serializer, structural validator, adequacy assessment, repository
-  inventory, and CLI. It does not own test execution or release authority.
+- `packages/product-spec/` implements the pinned upstream `0.19.0` structured
+  AC/EVAL/SM, Related Artifact, dual-digest/evidence-edit, and Decision Trace
+  v0.1 surfaces alongside the legacy OpenAgents profile. The dependency graph
+  and upstream MCP checklist/session behavior remain unsupported.
+- `packages/assurance-spec/` owns the implemented bounded profile, parser,
+  serializer, validators, review/admission artifacts, deterministic compiler,
+  Environment Profile and adapter contracts, narrow owned runner, normalized
+  receipts, repository inventory, CLI, and MCP surfaces. It owns no release or
+  public-claim authority.
 - Native tests, behavior contracts, Eval Suites, and formal models stay in
   their owning packages. AssuranceSpec references them; it does not duplicate
   them.

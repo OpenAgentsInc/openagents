@@ -20,6 +20,7 @@ import { readdirSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 import {
+  ASSURANCE_FALSE_GREEN_IDENTIFIERS,
   ASSURANCE_NON_FIXTURE_ERROR_CODES,
   ASSURANCE_REVIEW_ERROR_CODES,
   ASSURANCE_SPEC_FORMAT_VERSION,
@@ -228,6 +229,16 @@ describe("conformance corpus: review annotations", () => {
 })
 
 describe("schema/parser parity", () => {
+  test("Episode 252 false-green identifiers remain exact and ordered", () => {
+    expect(ASSURANCE_FALSE_GREEN_IDENTIFIERS).toEqual([
+      "false_green_fixture_assert",
+      "false_green_api_mirror",
+      "false_green_mocked_seam",
+      "false_green_coverage_theater",
+      "false_green_round_up",
+    ])
+  })
+
   test("the parser's known frontmatter keys are exactly the schema's fields", () => {
     expect([...KNOWN_FRONTMATTER_KEYS].sort()).toEqual(
       Object.keys(AssuranceSpecFrontmatterSchema.fields).sort(),

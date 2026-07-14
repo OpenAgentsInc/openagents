@@ -4,6 +4,7 @@ import type { AssuranceAdapterLock, AssuranceEnvironmentProfileDocument } from "
 import { validateAdapterLock, validateEnvironmentProfileDigest } from "./environment.ts"
 import type { AssuranceSpecDocument } from "./schema.ts"
 import { sha256Digest } from "./tooling.ts"
+import { obligationFalseGreenDiagnostics } from "./validator.ts"
 
 export const ASSURANCE_MANIFEST_FORMAT_VERSION = "0.1" as const
 export const ASSURANCE_COMPILER_VERSION = "0.1.0" as const
@@ -101,6 +102,10 @@ export const compileAssuranceManifest = (
 
   const unitByObligation = new Map<string, AssuranceExecutionUnit[]>()
   const adapterRefs = new Set(input.adapterLock.adapters.map((adapter) => adapter.adapter_ref))
+  for (const obligation of spec.obligations) {
+    const falseGreen = obligationFalseGreenDiagnostics(obligation)[0]
+    if (falseGreen !== undefined) fail(falseGreen.code, falseGreen.message)
+  }
   for (const unit of input.executionUnits) {
     const obligation = spec.obligations.find((candidate) => candidate.id === unit.obligation_id)
     if (obligation === undefined) throw new AssuranceCompileError(

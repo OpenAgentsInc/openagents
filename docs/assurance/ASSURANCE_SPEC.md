@@ -2,9 +2,11 @@
 
 Date: 2026-07-13
 
-Status: canonical design proposal; the bounded `0.1` proposal profile and CLI
-exist in `packages/assurance-spec`; semantic planning, admission, compilation,
-adapters, execution, receipts, and hosted service are not implemented
+Status: canonical design proposal with an implemented bounded `0.1` profile,
+review/admission artifacts, deterministic compiler, one narrow Bun-test
+adapter, normalized receipts, owned runner, and read-only hosted Observatory.
+Rich semantic planning and broader browser/device/formal adapters remain
+unimplemented; release and public-claim authority remain deliberately separate.
 
 Reference implementation studied:
 official `gokulrajaram/ProductSpec` at `9ef2654` (parser `0.19.0`, document
@@ -395,6 +397,12 @@ then project `needs_design`):
     proof_rung: "live_staging"
   independence:
     producer_may_verify: false
+  seam:
+    side_a_ref: "packages/khala-sync-client/src/session.ts"
+    side_b_ref: "apps/openagents.com/workers/api/src/khala-sync-connect-routes.ts"
+    boundary_ref: "khala_sync.seam.cookie_less_bearer.v1"
+    qualifying_evidence_refs:
+      - "tests/live-seam-smoke.e2e.test.ts"
   dependency_refs: []
   activation_gate: "GATE-INTEGRATION"
 ```
@@ -466,20 +474,26 @@ receipt and can go stale independently from the Assurance Spec.
 
 ### 5.3 Seam declarations
 
-A seam is its own obligation. A normative seam record must name:
+A seam is its own obligation. Its typed `seam` declaration must name:
 
 - both real client and server, renderer and host, process and persistence
-  artifact, or other connected sides;
-- the route, protocol, wire contract, or lifecycle boundary crossed;
+  artifact, or other connected sides as distinct `side_a_ref` and
+  `side_b_ref` repository artifacts;
+- the route, protocol, wire contract, or lifecycle boundary crossed as
+  `boundary_ref`;
 - the environment tier;
 - a wiring-level oracle;
 - a falsifier that breaks the relationship rather than only one isolated
   component;
-- the evidence kinds that qualify.
+- at least one `qualifying_evidence_refs` entry, in addition to the evidence
+  kinds that qualify.
 
 Mock-only tests of both components do not satisfy the seam. A qualifying test
 imports/drives the real code from both sides, or a receipt proves the actual
-end-to-end connection.
+end-to-end connection. Generic adequacy assessment marks a seam-domain
+obligation that omits this declaration, repeats one side as both sides, or
+names no qualifying evidence as not design-ready; manifest compilation rejects
+it fail closed.
 
 ### 5.4 Formal obligations
 
@@ -616,6 +630,12 @@ Annotations are portable opinions. They become admission only when an external
 policy recognizes the reviewer role and emits an admission receipt.
 
 ### 8.2 Calibration corpus
+
+The stable Episode 252 false-green identifiers are
+`false_green_fixture_assert`, `false_green_api_mirror`,
+`false_green_mocked_seam`, `false_green_coverage_theater`, and
+`false_green_round_up`. Validators and public projections use these exact
+identifiers; unavailable evidence never gets renamed into a passing class.
 
 Calibration fixtures should include strong and weak examples, not only
 schema-valid documents:

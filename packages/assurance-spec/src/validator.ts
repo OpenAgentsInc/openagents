@@ -34,6 +34,47 @@ export const missingObligationDesignFields = (
 })
 
 /**
+ * Portable false-green guards. These run for every consumer of the generic
+ * validator; adapter-specific validation must not be the only place where a
+ * self-verifying or label-only seam design is rejected.
+ */
+export const obligationFalseGreenDiagnostics = (
+  obligation: AssuranceObligation,
+): ReadonlyArray<AssuranceDiagnostic> => {
+  const diagnostics: AssuranceDiagnostic[] = []
+  if (obligation.independence?.producer_may_verify === true) {
+    diagnostics.push({
+      code: "false_green_api_mirror",
+      message: `Obligation ${obligation.id} lets its producer verify the same claim.`,
+      severity: "error",
+      path: `obligations.${obligation.id}.independence.producer_may_verify`,
+      obligation_id: obligation.id,
+    })
+  }
+  if (obligation.domains?.includes("seam") === true) {
+    const seam = obligation.seam
+    if (
+      seam === undefined ||
+      seam.side_a_ref === seam.side_b_ref ||
+      seam.qualifying_evidence_refs.length === 0
+    ) {
+      diagnostics.push({
+        code: "false_green_mocked_seam",
+        message: `Seam obligation ${obligation.id} must name two distinct real sides and at least one qualifying evidence ref.`,
+        severity: "error",
+        path: `obligations.${obligation.id}.seam`,
+        obligation_id: obligation.id,
+      })
+    }
+  }
+  return diagnostics
+}
+
+export const falseGreenDiagnostics = (
+  document: AssuranceSpecDocument,
+): ReadonlyArray<AssuranceDiagnostic> => document.obligations.flatMap(obligationFalseGreenDiagnostics)
+
+/**
  * Skeleton-document honesty (GAP_ANALYSIS §2): a mandatory section whose
  * narrative — the prose outside its typed structured block — is empty or a
  * single boilerplate sentence warns without affecting validity. The
@@ -101,7 +142,9 @@ export const assessAssuranceSpec = (document: AssuranceSpecDocument): AssuranceA
   let ready = 0
   for (const obligation of document.obligations) {
     const missingFields = missingObligationDesignFields(obligation)
-    if (missingFields.length === 0) {
+    const falseGreen = obligationFalseGreenDiagnostics(obligation)
+    diagnostics.push(...falseGreen)
+    if (missingFields.length === 0 && falseGreen.length === 0) {
       ready += 1
     } else {
       diagnostics.push({

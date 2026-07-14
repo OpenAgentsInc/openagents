@@ -4,6 +4,7 @@ import { resolve } from "node:path"
 
 import {
   assuranceReviewSetDigest,
+  AssuranceCompileError,
   canonicalArtifact,
   compileAssuranceManifest,
   computeEnvironmentProfileDigest,
@@ -221,6 +222,41 @@ describe("AS-L2 deterministic compiler", () => {
       compilerContentDigest: sha256Digest("different compiler bytes"),
     })
     expect(second.digest).not.toBe(first.digest)
+  })
+
+  test("fails closed on self-verifying and label-only seam obligations", () => {
+    const compileCode = (run: () => unknown): string => {
+      try {
+        run()
+      } catch (error) {
+        expect(error).toBeInstanceOf(AssuranceCompileError)
+        return (error as AssuranceCompileError).code
+      }
+      throw new Error("expected compilation to fail")
+    }
+    const selfVerifying = fixture()
+    expect(compileCode(() => compileAssuranceManifest({
+      ...selfVerifying,
+      assuranceSpec: {
+        ...selfVerifying.assuranceSpec,
+        obligations: selfVerifying.assuranceSpec.obligations.map((obligation) =>
+          obligation.id === "AO-CW-AC-04-01"
+            ? { ...obligation, independence: { producer_may_verify: true } }
+            : obligation),
+      },
+    }))).toBe("false_green_api_mirror")
+
+    const labelOnlySeam = fixture()
+    expect(compileCode(() => compileAssuranceManifest({
+      ...labelOnlySeam,
+      assuranceSpec: {
+        ...labelOnlySeam.assuranceSpec,
+        obligations: labelOnlySeam.assuranceSpec.obligations.map((obligation) =>
+          obligation.id === "AO-CW-AC-04-01"
+            ? { ...obligation, domains: [...(obligation.domains ?? []), "seam"] }
+            : obligation),
+      },
+    }))).toBe("false_green_mocked_seam")
   })
 })
 

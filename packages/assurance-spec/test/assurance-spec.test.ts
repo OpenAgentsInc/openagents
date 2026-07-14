@@ -168,6 +168,61 @@ describe("AssuranceSpec format and proposal", () => {
     expect(validation.document.frontmatter.lifecycle_state).toBe("proposed")
   })
 
+  test("rejects self-verification and label-only seam designs with stable false-green diagnostics", async () => {
+    const source = await Bun.file(mvpPath).text()
+    const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
+    if (!result.ok) throw new Error("fixture proposal failed")
+    const baseObligation = result.document.obligations[0]!
+    const designed = {
+      ...baseObligation,
+      domains: ["seam"],
+      technique: "deterministic_e2e",
+      environment_refs: ["ENV-LOCAL"],
+      oracle: { statement: "The real boundary is crossed.", evaluator_ref: "tests/seam.test.ts" },
+      falsifier: { kind: "wrong_side_pair", ref: "fixtures/wrong-side.json", expected_verdict: "REFUTED" as const },
+      evidence: { required_kinds: ["seam_receipt"], proof_rung: "local_fixture" },
+      independence: { producer_may_verify: true },
+      activation_gate: "GATE-LOCAL",
+    }
+    const invalid = {
+      ...result.document,
+      environments: { ...result.document.environments, profiles: [{ id: "ENV-LOCAL", status: "proposed" as const }] },
+      obligations: result.document.obligations.map((obligation, index) => index === 0 ? designed : obligation),
+      gates: [{ id: "GATE-LOCAL", expression: "the seam design is admitted" }],
+    }
+    const invalidValidation = validateAssuranceSpec(serializeAssuranceSpec(invalid))
+    expect(invalidValidation.valid).toBe(true)
+    if (invalidValidation.document === undefined) throw new Error("fixture did not parse")
+    expect(assessAssuranceSpec(invalidValidation.document).diagnostics
+      .map((diagnostic) => diagnostic.code)
+      .filter((code) => code.startsWith("false_green_"))).toEqual([
+      "false_green_api_mirror",
+      "false_green_mocked_seam",
+    ])
+
+    const valid = {
+      ...invalid,
+      obligations: invalid.obligations.map((obligation, index) => index === 0 ? {
+        ...obligation,
+        independence: { producer_may_verify: false },
+        seam: {
+          side_a_ref: "apps/client/src/transport.ts",
+          side_b_ref: "apps/server/src/upgrade.ts",
+          boundary_ref: "websocket.auth.v1",
+          qualifying_evidence_refs: ["tests/seam.test.ts"],
+        },
+      } : obligation),
+    }
+    const validValidation = validateAssuranceSpec(serializeAssuranceSpec(valid))
+    expect(validValidation.errors).toEqual([])
+    expect(validValidation.document?.obligations[0]?.seam).toEqual({
+      side_a_ref: "apps/client/src/transport.ts",
+      side_b_ref: "apps/server/src/upgrade.ts",
+      boundary_ref: "websocket.auth.v1",
+      qualifying_evidence_refs: ["tests/seam.test.ts"],
+    })
+  })
+
   test("rejects missing sections and dangling criterion references", async () => {
     const source = await Bun.file(mvpPath).text()
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
