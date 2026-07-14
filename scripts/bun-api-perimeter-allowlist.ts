@@ -32,6 +32,12 @@ export type BunApiGrandfatheredEntry = {
 
 export const bunApiPerimeter = [
   {
+    category: "bun-global",
+    path: "apps/pylon/src/harness-mcp-server.ts",
+    reason:
+      "Named Bun perimeter: the FEED-1 per-session harness MCP server (c7044f5a28) — a loopback-only Bun.serve on 127.0.0.1 gated by a minted per-session bearer credential. Landed after the 2026-07-13 grandfather freeze; the Pylon Bun app has no dual-runtime HTTP-serve seam yet, so this is the reviewed serve boundary for wrapped-harness MCP.",
+  },
+  {
     category: "bun-import",
     path: "packages/sqlite-runtime/src/bun-database.ts",
     reason:
