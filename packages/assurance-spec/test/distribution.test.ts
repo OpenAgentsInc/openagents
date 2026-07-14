@@ -39,6 +39,30 @@ describe("AT-6 starter kit and owned-runner contract", () => {
     expect(() => parseOwnedRunnerConfig({ ...base, spec_paths: [] })).toThrow()
     expect(existsSync(resolve(starterRoot, ".github/workflows"))).toBe(false)
   })
+
+  test("the OpenAgents monorepo adopts the kit with a current pinned MVP session", () => {
+    const config = readOwnedRunnerConfig(repositoryRoot, "assurance/owned-runner.json")
+    const receipt = runOwnedRunnerVerification(repositoryRoot, config)
+    expect(receipt).toMatchObject({
+      blocking_verdict: "pass",
+      github_hosted_ci: false,
+      ledger_policy: "informational_never_threshold",
+      specs: [{
+        path: "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
+        structurally_valid: true,
+        subject_binding: "bound",
+        traceability: { total_criteria: 18, traceable_criteria: 18 },
+        execution: { total_obligations: 18 },
+        errors: [],
+      }],
+      session_checks: [{
+        spec_path: "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
+        pin_path: "assurance/openagents-desktop-mvp.session.json",
+        status: "unchanged",
+        blocking: false,
+      }],
+    })
+  })
 })
 
 describe("AT-6 public package readiness", () => {

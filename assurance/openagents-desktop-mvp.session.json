@@ -1,0 +1,39 @@
+{
+  "session_id": "assurance-session-5bc6f7fb13eaca43accfe539",
+  "assurance_spec": {
+    "path": "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
+    "revision": 2,
+    "document_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09"
+  },
+  "subject": {
+    "path": "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+    "revision": 6,
+    "document_digest": "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1"
+  },
+  "subject_binding": "bound",
+  "criterion_refs": [
+    "CW-AC-01",
+    "CW-AC-02",
+    "CW-AC-03",
+    "CW-AC-04",
+    "CW-AC-05",
+    "CW-AC-06",
+    "CW-AC-07",
+    "CW-AC-08",
+    "CW-AC-09",
+    "CW-AC-10",
+    "CW-AC-11",
+    "CW-AC-12",
+    "CW-AC-13",
+    "CW-AC-14",
+    "CW-AC-15",
+    "CW-AC-16",
+    "CW-AC-17",
+    "CW-AC-18"
+  ],
+  "notes": [
+    "Sessions are stateless by design: store this full pin yourself; no daemon or in-memory registry holds it.",
+    "intent_digest is not present: the subject profile is document-digest-only today; the field is declared in the format and never faked."
+  ],
+  "message": "Assurance session pinned against the current on-disk digests. Run session check before mutation and before reporting."
+}

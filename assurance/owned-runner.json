@@ -1,0 +1,16 @@
+{
+  "owned_runner_format_version": "0.1",
+  "spec_paths": [
+    "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md"
+  ],
+  "session_pins": [
+    {
+      "spec_path": "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
+      "pin_path": "assurance/openagents-desktop-mvp.session.json"
+    }
+  ],
+  "validation_blocks": true,
+  "ledgers_are_informational": true,
+  "execution_authority": "openagents_owned_runner",
+  "github_hosted_ci": false
+}
