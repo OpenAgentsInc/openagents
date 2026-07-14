@@ -6,8 +6,40 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-14.3",
+    version: "2026-07-14.4",
     contracts: [
+      {
+        contractId: "openagents_desktop.mvp.assurance_surface_congruence.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "MVP visible-surface assurance coverage",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-14" },
+        statement:
+          "The assurance spec needs to be fully covering everything that we should expect to actually work, and then nothing else, and ensure that that is specified in the contract.",
+        authorityBoundary:
+          "UX-5 (#8791) treats the UX-4 MVP dock allowlist as the exact expected-working surface set. Every allowlisted surface interaction must map to ProductSpec criteria, proposed AssuranceSpec items, enforced behavior contracts, and executable oracles; a missing row, empty proof field, or row for a non-MVP surface fails the normal Desktop test sweep. Files and read-only review remain bounded command-reachable supporting views under CW-AC-12/CW-AC-14, not visible dock surfaces. This proof map adds no product authority and cannot admit or verify its proposed AssuranceSpec revision.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/mvp-visible-surfaces.ts",
+          "apps/openagents-desktop/src/renderer/mvp-assurance-congruence.ts",
+          "docs/mvp/openagents-codex-workroom-mvp-assurance-coverage-matrix.md",
+          "docs/mvp/openagents-codex-workroom-mvp.rev4-proposed.assurance-spec.md",
+          "github:OpenAgentsInc/openagents#8791",
+        ],
+        oracles: [
+          {
+            id: "mvp_assurance.exact_surface_congruence",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/mvp-assurance-congruence.test.ts",
+            description:
+              "Diffs the UX-4 allowlist against the coverage matrix, checks every proof link and the checked-in Markdown projection, and proves planted under-coverage and over-coverage both fail.",
+          },
+        ],
+        verification:
+          "Desktop typecheck and the normal test sweep enforce the exact allowlist-to-assurance mapping with under-coverage and over-coverage falsifiers.",
+      },
       {
         contractId: "openagents_desktop.mvp.visible_surface_allowlist.v1",
         state: "enforced",

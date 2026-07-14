@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.desktop.codex.workroom.mvp"
-assurance_revision: 3
+assurance_revision: 4
 title: "OpenAgents Desktop Codex Workroom MVP Assurance Spec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -10,7 +10,26 @@ author: "OpenAgents"
 
 ## Assurance Objective
 
-### Revision 3 Reconciliation (2026-07-14, proposed)
+### Revision 4 Expected-Working Surface Congruence (2026-07-14, proposed)
+
+Owner decision (verbatim, 2026-07-14): "The assurance spec needs to be fully
+covering everything that we should expect to actually work, and then nothing
+else, and ensure that that is specified in the contract."
+
+This proposed revision makes the UX-4 expected-working dock allowlist and its
+interaction proof coverage congruent. The checked-in matrix at
+`docs/mvp/openagents-codex-workroom-mvp-assurance-coverage-matrix.md` maps
+every allowed surface interaction to its ProductSpec criterion, assurance
+item, behavior contract, and executable oracle. The normal Desktop sweep
+diffs that matrix against the machine-readable allowlist and fails for both
+missing coverage and coverage of a non-MVP surface. It explicitly incorporates
+UX-1 composer focus, UX-2 full-catalog search, and UX-3 truthful history scope.
+
+This is an AssuranceSpec revision, not a ProductSpec intent revision: the
+accepted product criteria remain byte-bound to ProductSpec revision 6. This
+proposal cannot admit itself or retarget any accepted run or receipt.
+
+### Revision 3 Supersession Reconciliation (carried forward)
 
 Owner decision (verbatim, 2026-07-14): "khala-code-desktop must itself be
 deprecated and all relevant promises removed (OpenAgents desktop supercedes
@@ -22,8 +41,9 @@ owner-directed supersession removals: `apps/autopilot-desktop`,
 `packages/sarah-take-scoreboard`, and `.agents/skills/khala-fleet` were
 deleted from the workspace (recover any path with
 `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`).
-`clients/khala-code-desktop` and `packages/autopilot-ui` remain in the
-workspace with live dependents, so their sweep entries are unchanged.
+`clients/khala-code-desktop` was subsequently removed under the same owner
+supersession direction. `packages/autopilot-ui` remains as an internal package;
+it does not authorize an additional OpenAgents Desktop visible surface.
 
 The full-sweep `test` command of record for this revision is the
 post-removal root `package.json` aggregate, which no longer names
@@ -32,7 +52,7 @@ post-removal root `package.json` aggregate, which no longer names
 `test:sarah-take-scoreboard` scripts:
 
 ```text
-bun run test:sol-docs && bun run test:qa-pre-push-smoke && bun run test:qa-async-gce-trigger && bun run test:qa-nightly-matrix && bun run test:qa-visual-smoke-gate && bun run test:github-issue-triage && bun run test:khala-sync-runtime-dogfood-evidence && bun run test:ui-velocity-receipt && bun run test:bun-api-perimeter && bun run test:sqlite-runtime && bun run test:forge && bun run test:forum && bun run test:pylon && bun run test:pylon-core && bun run test:probe && bun run test:qa-runner && bun run test:khala-cli && bun run test:khala-code-desktop && bun run test:khala-mobile && bun run test:openagents-mobile && bun run test:khala-qa-harness && bun run test:khala-ai-sdk-core && bun run test:ai-sdk-sandbox-local && bun run test:ai-sdk-sandbox-openagents && bun run test:behavior-contracts && bun run test:assurance-spec && bun run test:agent-readiness && bun run test:nip90 && bun run test:arbiter-effect && bun run test:public-activity-timeline && bun run test:input-bindings && bun run test:design-tokens && bun run test:ui && bun run test:composer-state && bun run test:agent-runtime-schema && bun run test:khala-fleet-intents && bun run test:grok-harness && bun run test:harness-conformance && bun run test:reactor-contracts && bun run test:provider-account-schema && bun run test:effect-boundary && bun run test:effect-start && bun run test:khala-sync-db-collection && bun run test:blueprint-contracts && bun run test:connector-sidecar && bun run test:pipeline-signals && bun run test:khala-tools && bun run test:mcp-contract && bun run test:portable-session-contract && bun run test:environment-auth && bun run test:forge-protocol && bun run test:world-contract && bun run test:world-client && bun run test:openagents-world && bun run test:autopilot-ui && bun run test:oa-updates && bun run test:khala-capture && bun run test:khala-live-hub && bun run test:nostr-relay && bun run test:durable-stream && bun run test:openagents-desktop && bun run test:cloud-contract && bun run test:oa-infra && bun run test:oa-queue-worker && bun run test:aiur
+bun run test:sol-docs && bun run test:qa-pre-push-smoke && bun run test:qa-async-gce-trigger && bun run test:qa-nightly-matrix && bun run test:qa-visual-smoke-gate && bun run test:github-issue-triage && bun run test:khala-sync-runtime-dogfood-evidence && bun run test:ui-velocity-receipt && bun run test:bun-api-perimeter && bun run test:sqlite-runtime && bun run test:forge && bun run test:forum && bun run test:pylon && bun run test:pylon-core && bun run test:probe && bun run test:qa-runner && bun run test:khala-cli && bun run test:khala-mobile && bun run test:openagents-mobile && bun run test:khala-qa-harness && bun run test:khala-ai-sdk-core && bun run test:ai-sdk-sandbox-local && bun run test:ai-sdk-sandbox-openagents && bun run test:behavior-contracts && bun run test:assurance-spec && bun run test:agent-readiness && bun run test:nip90 && bun run test:arbiter-effect && bun run test:public-activity-timeline && bun run test:input-bindings && bun run test:design-tokens && bun run test:ui && bun run test:composer-state && bun run test:agent-runtime-schema && bun run test:khala-fleet-intents && bun run test:grok-harness && bun run test:harness-conformance && bun run test:reactor-contracts && bun run test:provider-account-schema && bun run test:effect-boundary && bun run test:effect-start && bun run test:khala-sync-db-collection && bun run test:blueprint-contracts && bun run test:connector-sidecar && bun run test:pipeline-signals && bun run test:khala-tools && bun run test:mcp-contract && bun run test:portable-session-contract && bun run test:environment-auth && bun run test:forge-protocol && bun run test:world-contract && bun run test:world-client && bun run test:openagents-world && bun run test:autopilot-ui && bun run test:oa-updates && bun run test:khala-capture && bun run test:khala-live-hub && bun run test:nostr-relay && bun run test:durable-stream && bun run test:openagents-desktop && bun run test:cloud-contract && bun run test:oa-infra && bun run test:oa-queue-worker && bun run test:aiur
 ```
 
 The embedded `assurancespec-environments` repository inventory below is the
@@ -91,7 +111,7 @@ This admitted assurance revision remains byte-bound to ProductSpec revision 6 an
 
 ## Risk Model
 
-The proof design treats runtime compatibility, ordinary Codex-session custody, durable work identity, authority containment, restart safety, privacy, and release lifecycle fidelity as separate risks. Candidate evidence is never sufficient without a named falsifier, an exact environment, independent review, and current immutable bindings.
+The proof design treats runtime compatibility, ordinary Codex-session custody, durable work identity, authority containment, restart safety, privacy, release lifecycle fidelity, and visible-surface proof congruence as separate risks. Candidate evidence is never sufficient without a named falsifier, an exact environment, independent review, and current immutable bindings.
 
 ```assurancespec-risks
 {
@@ -111,6 +131,10 @@ The proof design treats runtime compatibility, ordinary Codex-session custody, d
     {
       "id": "RISK-PUBLIC-SAFETY",
       "statement": "Private native reports, credentials, paths, prompts, or repository content could leak into a public projection."
+    },
+    {
+      "id": "RISK-SURFACE-CONGRUENCE",
+      "statement": "An expected-working MVP interaction could lack an executable assurance item, or assurance coverage could preserve a removed non-MVP surface."
     }
   ],
   "source_digest": "sha256:2597133237cb20832d7c0f6f932548e666fa10ca4bf8d07b5f492750635f748a",
@@ -120,7 +144,7 @@ The proof design treats runtime compatibility, ordinary Codex-session custody, d
 
 ## Assurance Scope
 
-Every executable ProductSpec criterion is required and has exactly one obligation in this MVP run. No criterion is deferred or marked not applicable; release and public-promise authority remain outside the execution grant even after all observations are confirmed.
+Every executable ProductSpec criterion is required and has exactly one criterion obligation in this MVP run. UX-5 additionally requires every expected-working dock interaction to map to those obligations, enforced behavior contracts, and executable oracles in the checked-in coverage matrix; the congruence sweep fails both omissions and non-MVP additions. No criterion is deferred or marked not applicable; release and public-promise authority remain outside the execution grant even after all observations are confirmed.
 
 ## Environments
 
@@ -3556,7 +3580,7 @@ Execution uses the admitted first-party macOS ARM64 Bun environment with network
 
 ## Obligations
 
-Each obligation binds one criterion to a criterion-local contract oracle and a deterministic missing-anchor falsifier. The complete Desktop suite and installed RC9 journey are required companion evidence, so a narrow contract result cannot independently authorize release or a public completion claim.
+Each obligation binds one criterion to a criterion-local contract oracle and a deterministic missing-anchor falsifier. The UX-5 coverage matrix is the interaction-level projection of those items; it adds the explicit UX-1/UX-2/UX-3 contract and oracle links and rejects any visible surface not justified by this exact scope. The complete Desktop suite and installed RC9 journey are required companion evidence, so a narrow contract result cannot independently authorize release or a public completion claim.
 
 ```assurancespec-obligations
 [
