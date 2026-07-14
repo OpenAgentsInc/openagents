@@ -2,7 +2,7 @@
 
 ## The Agent IDE
 
-**OpenAgents is The Agent IDE: the integrated development environment for
+**OpenAgents ships The Agent IDE: the integrated development environment for
 building software with agents.** It is the place where developers start work,
 direct agents, inspect what they are doing, resolve blockers, review repository
 effects, and return to durable sessions.
@@ -12,7 +12,13 @@ necessary, but it is not the whole product. OpenAgents owns the working
 environment around the loop: conversations, project context, agent and
 subagent topology, controls, history, review, recovery, and evidence.
 
-> The model is a worker. OpenAgents is where the work lives.
+> Models are workers. OpenAgents keeps the work.
+
+The Agent IDE is also OpenAgents' human front door to the broader open agent
+network being bootstrapped. The IDE gives a person one coherent cockpit for
+intent, authority, supervision, and review; the network direction is intended
+to connect that cockpit to a growing ecology of agents, models, tools, compute,
+and contributors beyond any one lab.
 
 ## What makes it an Agent IDE
 
@@ -90,20 +96,58 @@ point is institutional rather than model-specific: intelligence should be
 plural, execution inspectable, history portable, and private knowledge under
 the user's control.
 
-## Product first, broader mission around it
+## The front door to an open agent network
 
-“OpenAgents” names both the product and the larger project. The distinction is
-useful:
+The long-term OpenAgents thesis is not one better assistant. It is an open,
+group-forming network where independently owned agents and people can discover
+one another, assemble temporary teams around a goal, divide work, verify the
+result, and recombine for the next task without one model vendor owning the
+graph.
 
-| Layer        | Meaning                                                                                                                                                                                |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Product**  | The Agent IDE: OpenAgents Desktop today and the retained OpenAgents mobile companion                                                                                                   |
-| **Platform** | The typed runtime, workspace capabilities, Effect Native, receipts, and broader retained Sync, Pylon, and Agent Computer substrate; not all of it is required by the current local MVP |
-| **Network**  | The longer-term open topology in which agents, tools, compute, and contributors can be discovered and combined without one model vendor owning the system                              |
-| **Lab**      | Research, evaluation, and open-model work that improves the available workers while keeping the Agent IDE neutral among them                                                           |
+The Agent IDE makes that network useful and legible to a human. It is where an
+operator supplies goals, repositories, judgment, and boundaries; sees which
+agents and tools did what; intervenes when needed; and decides whether the
+result counts. In the other direction, the network can make the IDE more
+capable than any single agent: broader specialists, tools, compute, review, and
+eventually reusable capabilities can meet behind one durable workroom.
 
-The platform, network, and lab explain how the product can grow. They do not
-replace the simple user-facing answer: **OpenAgents is the Agent IDE.**
+The bootstrap loop is bidirectional: the IDE creates real demand and
+verifiable outcomes; the network can return a wider supply of agents, tools,
+capacity, and reusable capabilities.
+
+The atomic unit is an **accepted outcome**, not a token, model response, or
+claim of completion. Work must be scoped, executed, checked, and recorded with
+evidence before unfamiliar participants can compose without trusting one
+another blindly. Over time, that same verification layer can let value flow
+back to the people who contribute useful skills, compute, data, review, and
+verification.
+
+Any future multiplayer participation must remain opt-in and owner-controlled.
+Independent workrooms would share nothing by default; participation would
+require explicit grants, bounded authority, visibility rules, and evidence
+that other participants can inspect without receiving private prompts,
+credentials, or repository data.
+
+“OpenAgents” therefore names both the product and the larger project:
+
+| Layer        | Meaning                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Product**  | The Agent IDE: OpenAgents Desktop today and the retained OpenAgents mobile companion                                                                                           |
+| **Platform** | The typed runtime, workspace capabilities, Effect Native, receipts, and broader retained Sync, Pylon, and Agent Computer substrate; not all of it is required by the local MVP |
+| **Network**  | The intended open coordination topology being bootstrapped behind the Agent IDE: agents, tools, compute, people, verification, and accepted outcomes                           |
+| **Lab**      | Research, evaluation, and open-model work that improves the available workers while keeping the Agent IDE neutral among them                                                   |
+
+This network is a direction being bootstrapped, not a claim that every routing,
+market, settlement, distributed-training, or multiplayer path ships in the
+current product. The accepted Desktop MVP proves the local control surface
+first; broader paths retain their own owner decisions and evidence gates.
+
+The project thesis begins in
+[`Episode 200: The Agent Network`](docs/transcripts/200.md), while
+[`Episode 237`](docs/transcripts/237.md) connects the human cockpit to the
+network and names the accepted outcome as its economic unit. The
+[`transcript theme guide`](docs/transcripts/README.md) traces how that network
+thesis narrowed into the current Desktop product without disappearing.
 
 ## Working in this repository
 
