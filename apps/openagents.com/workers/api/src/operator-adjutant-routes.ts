@@ -116,11 +116,6 @@ import {
   type ExaSearchResult,
   makeExaClient,
 } from './exa'
-import {
-  type FirstBatchPaymentPolicy,
-  type FirstBatchPaymentPolicyStorageError,
-  readFirstBatchPaymentGate,
-} from './first-batch-payment-policies'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import {
@@ -2829,7 +2824,6 @@ const recordGenerationLaunchUsageReceipt = (
   db: CrmEmailDatabase,
   input: Readonly<{
     assignment: AdjutantAssignment
-    paymentPolicy?: FirstBatchPaymentPolicy | null | undefined
     runId: string
     site: PreflightSiteRow | null
   }>,
@@ -2849,11 +2843,7 @@ const recordGenerationLaunchUsageReceipt = (
             'generation',
           ].join(':'),
           publicDetails: {
-            billingNote:
-              input.paymentPolicy?.customerSafeSummary ??
-              'Public beta Site generation is free.',
-            firstBatchPaymentPolicyMode:
-              input.paymentPolicy?.policyMode ?? null,
+            usageMode: 'no_spend',
             siteTitle: input.site?.title ?? null,
           },
           quantity: 1,
@@ -2863,10 +2853,7 @@ const recordGenerationLaunchUsageReceipt = (
           summary: 'Autopilot Site generation run was queued.',
           teamDetails: {
             assignmentKind: input.assignment.assignmentKind,
-            billingPolicy: 'public_beta_free',
-            firstBatchPaymentPolicyId: input.paymentPolicy?.id ?? null,
-            firstBatchPaymentPolicyMode:
-              input.paymentPolicy?.policyMode ?? null,
+            usagePolicy: 'public_beta_free_no_spend',
             runId: input.runId,
             siteId: input.assignment.siteId,
             softwareOrderId: input.assignment.softwareOrderId,
@@ -5974,45 +5961,12 @@ export const makeOperatorAdjutantRoutes = <
           },
           config.exa.enabled,
         )
-        const paymentGate = yield* readFirstBatchPaymentGate(
-          crmEmailAuthorityDb(db),
-          assignment.softwareOrderId,
-        ).pipe(
-          Effect.mapError(
-            (error: FirstBatchPaymentPolicyStorageError) =>
-              new OperatorAdjutantStorageError({
-                error,
-                operation: 'operatorAdjutant.launch.firstBatchPaymentGate',
-              }),
-          ),
+        const paymentCheck = operatorCheck(
+          'no_spend_usage_policy',
+          'ok',
+          'This MVP launch records usage without payment or settlement authority.',
+          { mode: 'public_beta_free_no_spend' },
         )
-        const paymentCheck = paymentGate.required
-          ? paymentGate.policy === null
-            ? operatorCheck(
-                'first_batch_payment_policy',
-                'blocked',
-                'First-batch no-payment policy is required before launch.',
-                {
-                  requiredPolicyModes: ['public_beta_free', 'operator_grant'],
-                  softwareOrderId: assignment.softwareOrderId,
-                },
-              )
-            : operatorCheck(
-                'first_batch_payment_policy',
-                'ok',
-                paymentGate.policy.customerSafeSummary,
-                {
-                  policyId: paymentGate.policy.id,
-                  policyMode: paymentGate.policy.policyMode,
-                  softwareOrderId: assignment.softwareOrderId,
-                },
-              )
-          : operatorCheck(
-              'first_batch_payment_policy',
-              'ok',
-              'No first-batch no-payment policy is required for this assignment.',
-              { required: false },
-            )
         const checks = [
           ...autopilotPreflight.checks,
           ...sourceChecks,
@@ -6153,7 +6107,6 @@ export const makeOperatorAdjutantRoutes = <
             db,
             {
               assignment,
-              paymentPolicy: paymentGate.policy,
               runId: launch.launch.runId,
               site,
             },
