@@ -136,10 +136,14 @@ export const executeBunTestUnit = (input: Readonly<{
   }
   const inspection = inspectBunJUnit(nativeBytes)
   const selectedExactlyOne = inspection.unskippedNames.length === 1 && inspection.unskippedNames[0] === testName
-  const infrastructureReady = result.status === 0 && nativeBytes !== "" && selectedExactlyOne && inspection.failed === 0
-  const observation = infrastructureReady
-    ? input.unit.role === "candidate" ? "CONFIRMED" as const : "REFUTED" as const
-    : "INCONCLUSIVE" as const
+  const oraclePassed = result.status === 0 && inspection.failed === 0
+  const oracleRefuted = result.status !== null && result.status !== 0 && inspection.failed > 0
+  const infrastructureReady = nativeBytes !== "" && selectedExactlyOne && (oraclePassed || oracleRefuted)
+  const observation = !infrastructureReady
+    ? "INCONCLUSIVE" as const
+    : oraclePassed
+      ? input.unit.expected_observation
+      : input.unit.expected_observation === "CONFIRMED" ? "REFUTED" as const : "CONFIRMED" as const
   const criterionRefs = input.manifest.obligation_graph.find((entry) =>
     entry.obligation_id === input.unit.obligation_id)?.criterion_refs ?? []
   const commandDigest = sha256Digest(JSON.stringify({ argv: input.unit.argv, adapter: OPENAGENTS_BUN_TEST_ADAPTER_REF }))

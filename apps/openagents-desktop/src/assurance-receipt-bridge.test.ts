@@ -93,7 +93,7 @@ const harness = () => {
   return { root, workroom, identity: opened.value.identity, runRef: accepted.value.runRef }
 }
 
-const receipt = (productSpecDigest: string): AssuranceReceipt => ({
+const receipt = (productSpecDigest: string, adapterRef = "openagents.bun_test.v1"): AssuranceReceipt => ({
   assurance_receipt_format_version: "0.1",
   receipt_ref: "receipt.bridge.fixture",
   manifest_digest: sha256Digest("manifest"),
@@ -103,7 +103,7 @@ const receipt = (productSpecDigest: string): AssuranceReceipt => ({
   obligation_id: "AO-FX-AC-01-01",
   criterion_refs: ["FX-AC-01"],
   environment_ref: "ENV-OA-LOCAL-BUN-1",
-  adapter_ref: "openagents.bun_test.v1",
+  adapter_ref: adapterRef,
   execution_unit_ref: "unit.fx.candidate",
   producer_ref: "runner.local.1",
   reviewer_ref: "reviewer.independent.1",
@@ -159,6 +159,18 @@ describe("openagents.assurance_receipt_bridge.v1", () => {
       evidenceRefs: [result.handle],
       evidenceProducerRef: "runner.local.1",
       verifierRefs: ["reviewer.independent.1"],
+      ownerDisposition: null,
+    })
+  })
+
+  test("mutation receipts use the unchanged normalized bridge and gain no special authority", () => {
+    const state = harness()
+    const result = invoke(state, receipt(state.identity.digest, "openagents.mutation.v1"))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const packet = result.run.plan.packets.find((candidate) => candidate.packetRef === "packet.evidence")
+    expect(packet).toMatchObject({
+      state: "verified",
       ownerDisposition: null,
     })
   })
