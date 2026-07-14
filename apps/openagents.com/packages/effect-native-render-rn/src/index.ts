@@ -1,7 +1,12 @@
 import { Deferred, Effect, Exit, FiberSet, Ref, Scope, Stream } from "effect"
 import {
   type AriaRole,
+  type AlertView,
+  resolveAlertAppearance,
   type BadgeView,
+  resolveBadgeAppearance,
+  resolveSelectAppearance,
+  resolveTextFieldAppearance,
   type ButtonView,
   type CardView,
   type CheckboxView,
@@ -38,6 +43,13 @@ import {
   type BlurredPopupView,
   type IconButtonView,
   type ToolbarView,
+  type AvatarGroupView,
+  type AvatarVariant,
+  type AvatarView,
+  type ControlToken,
+  type CopyButtonView,
+  type Clipboard,
+  copyButtonDefaultResetMillis,
   type ComboboxOption,
   type ComboboxView,
   type CommandPaletteView,
@@ -58,6 +70,7 @@ import {
   type PopoverView,
   type RadioGroupView,
   type RecoveryOverlayView,
+  type SegmentedControlView,
   type SelectView,
   type SliderView,
   type StatusBannerView,
@@ -68,10 +81,14 @@ import {
   type StatTileView,
   type TableView,
   type Tone,
+  type EmptyMessageIconSize,
+  type EmptyMessageIconTone,
+  type EmptyMessageView,
   type HostKind,
   type HostView,
   type IconName,
   type IconSize,
+  iconSizeValues,
   type IconView,
   type Dimension,
   type FlatStyle,
@@ -101,12 +118,17 @@ import {
   type WorkbenchView,
   type Viewport,
   type ViewportInput,
+  type SpinnerView,
+  type LoadingDotsView,
+  type ShimmerTextView,
   StaticPayload,
   defaultViewportInput,
   defaultTheme,
   makeViewport,
   makeViewportService,
   makeNavigateIntent,
+  resolveButtonAppearance,
+  type ResolvedButtonAppearance,
   resolveResponsiveValue,
   resolveView,
   resolveStyle
@@ -116,6 +138,7 @@ import {
   type RadiusToken,
   type SpacingToken,
   type Theme,
+  type ToneToken,
   type TypeScaleToken
 } from "@effect-native/tokens"
 
@@ -210,6 +233,18 @@ export interface ReactNativeRenderOptions {
   // renders on iOS 26+; this override exists for tests (inject a fake runtime)
   // — app code must never import @expo/ui.
   readonly expoUi?: ExpoUiSwiftUiRuntime
+  // Injected clipboard driver (v35, #84) for CopyButton. React Native core
+  // ships no clipboard API, so the app supplies one (e.g. expo-clipboard
+  // wrapped as a `Clipboard`). When absent, pressing a CopyButton still fires
+  // the typed `onCopy` intent with the content so the app can perform the
+  // write itself — an honest declared subset, never a silent success.
+  readonly clipboard?: Clipboard
+  // Reduced-motion default (issue #83), resolved through `resolveView` the
+  // same way as `viewport`/`platform`. RN renders `Spinner`/`LoadingDots`/
+  // `ShimmerText` as a static affordance regardless (see the doc comment on
+  // those render functions), but the typed `reduceMotion` field still
+  // resolves consistently across every renderer for app code that reads it.
+  readonly reducedMotion?: boolean
 }
 
 export type ReactNativeHostEffectRuntime = (effect: Effect.Effect<void, never>) => void
@@ -788,30 +823,23 @@ const renderText = (
   )
 }
 
-// Button variant lowering (openagents #8597 escalation; vendored from
-// upstream effect-native fd1ccc5): RN Text does NOT inherit color and
-// Pressable has no default surface, so a Button without explicit theme
-// lowering renders a default-black label on whatever the app background is —
-// invisible on dark themes. Variants lower to theme tokens: primary = accent
-// surface, secondary = surface + border, ghost = accent text on transparent.
-// App-level `view.style` still wins via merge order.
-const buttonVariantStyle = (view: ButtonView, theme: Theme): ReactNativeStyle => {
-  switch (view.variant) {
-    case "primary":
-      return { backgroundColor: colorValue(theme, "accent") }
-    case "secondary":
-      return {
-        backgroundColor: colorValue(theme, "surface"),
-        borderColor: colorValue(theme, "border"),
-        borderWidth: 1
-      }
-    case "ghost":
-      return { backgroundColor: "transparent" }
-  }
-}
+// Button tone/variant/size lowering (harmonization #78; extends the
+// #8597/#71-class fix): RN Text does NOT inherit color and Pressable has no
+// default surface, so the renderer — not the app — resolves the matrix +
+// control lattice into concrete style values.
+// `resolveButtonAppearance` (core, #78) normalizes pre-#78 legacy variant
+// tokens ("primary"/"secondary"/"ghost") onto their exact tone+variant
+// equivalents first, so the same matrix lookup renders old and new trees
+// identically: "primary" -> accent/solid, "secondary" -> secondary/solid,
+// "ghost" -> accent/ghost (unchanged token). App-level `view.style` still
+// wins via merge order.
+const buttonAppearanceCell = (theme: Theme, appearance: ResolvedButtonAppearance) =>
+  theme.colorMatrix[appearance.tone][appearance.variant].rest
 
+// Shared by the Expo UI / Liquid Glass button lowering below, which draws its
+// own SwiftUI label and only needs the resolved matrix text color.
 const buttonLabelColor = (view: ButtonView, theme: Theme): string =>
-  view.variant === "ghost" ? colorValue(theme, "accent") : colorValue(theme, "textPrimary")
+  buttonAppearanceCell(theme, resolveButtonAppearance(view)).text
 
 const renderButton = (
   view: ButtonView,
@@ -826,15 +854,28 @@ const renderButton = (
     }
   }
   const theme = options.theme ?? defaultTheme
+  const appearance = resolveButtonAppearance(view)
+  const cell = buttonAppearanceCell(theme, appearance)
+  const control = theme.control[appearance.size]
+  const loading = view.loading === true
+  const disabled = view.disabled === true || loading
+  const selected = view.selected === true
+  const backgroundColor = selected
+    ? theme.colorMatrix[appearance.tone][appearance.variant].selected.background
+    : cell.background
+
   const style = mergeNativeStyles(
     {
-      ...buttonVariantStyle(view, theme),
-      paddingVertical: spacingValue(theme, "2.5"),
-      paddingHorizontal: spacingValue(theme, "4"),
-      borderRadius: radiusValue(theme, "md"),
+      backgroundColor,
+      borderColor: cell.border,
+      borderWidth: 1,
+      borderRadius: view.pill === true ? radiusValue(theme, "full") : control.radius,
+      minHeight: control.height,
+      paddingHorizontal: control.gutter,
       alignItems: "center",
       justifyContent: "center",
-      opacity: view.disabled === true ? 0.5 : 1
+      opacity: disabled ? 0.5 : 1,
+      ...(view.block === true ? { alignSelf: "stretch" as const, width: "100%" } : {})
     },
     viewStyle(view, options)
   )
@@ -845,10 +886,14 @@ const renderButton = (
     {
       ...baseProps(view, style),
       accessibilityRole: "button",
-      accessibilityState: { disabled: view.disabled === true },
-      disabled: view.disabled === true,
+      accessibilityState: {
+        disabled,
+        busy: loading,
+        ...(view.selected === undefined ? {} : { selected })
+      },
+      disabled,
       onPress: () => {
-        if (view.disabled !== true) {
+        if (!disabled) {
           runReportedIntent(report, view.onPress)
         }
       }
@@ -857,10 +902,12 @@ const renderButton = (
       dependencies,
       dependencies.ReactNative.Text,
       {
-        style: mergeNativeStyles(
-          typeScaleValue(theme, "label"),
-          { color: buttonLabelColor(view, theme) }
-        )
+        style: {
+          fontSize: control.fontSize,
+          fontWeight: typeScaleValue(theme, "label").fontWeight,
+          lineHeight: typeScaleValue(theme, "label").lineHeight,
+          color: cell.text
+        }
       },
       view.label
     )
@@ -1049,20 +1096,46 @@ const renderImage = (
   )
 }
 
+// TextField matrix axes (harmonization #79). `resolveTextFieldAppearance`'s
+// `isLegacy` flag gates the new chrome: a pre-#79 tree never sets
+// `variant`/`size`, so it keeps the exact pre-#79 (renderer-drawn-chromeless)
+// look, relying entirely on `view.style` as before. `invalid` and
+// `gutterSize` are wholly new axes with nothing to preserve, so they always
+// apply when set. `autoResize` is honored by continuing to omit any height
+// constraint on a multiline field — RN's `TextInput` already grows with its
+// content when nothing constrains its height, so this is a declared
+// (accurate, not fabricated) no-op rather than new imperative sizing logic.
 const renderTextField = (
   view: TextFieldView,
   dependencies: ReactNativeDependencies,
   report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
   const onChange = view.field === undefined
     ? view.onChange
     : IntentRef("FormFieldChanged", FormFieldValueBinding(view.field))
+  const appearance = resolveTextFieldAppearance(view)
+  const chromeStyle = appearance.isLegacy
+    ? (view.invalid === true ? { borderBottomWidth: 1, borderBottomColor: colorValue(theme, "danger") } : {})
+    : (() => {
+        const cell = theme.colorMatrix[appearance.tone][appearance.variant].rest
+        const control = theme.control[appearance.size]
+        return {
+          backgroundColor: cell.background,
+          borderColor: cell.border,
+          borderWidth: 1,
+          borderRadius: control.radius,
+          minHeight: control.height,
+          color: cell.text
+        }
+      })()
+  const gutterStyle = view.gutterSize === undefined ? {} : { paddingHorizontal: spacingValue(theme, view.gutterSize) }
   return createElement(
     dependencies,
     dependencies.ReactNative.TextInput,
     {
-      ...baseProps(view, viewStyle(view, options)),
+      ...baseProps(view, mergeNativeStyles(mergeNativeStyles(chromeStyle, gutterStyle), viewStyle(view, options))),
       accessibilityLabel: view.label,
       autoFocus: view.focused === true,
       multiline: view.multiline === true,
@@ -1362,19 +1435,6 @@ const renderHost = (
 // token-driven color). Decorative vs meaningful is honored via accessibility
 // props. No raw SVG/markup enters the tree.
 const iconGlyphs: Record<IconName, string> = {
-  Home: "⌂",
-  Agent: "◌",
-  ChatCompose: "✎",
-  Chats: "☷",
-  Code: "‹›",
-  Compare: "⇄",
-  Folder: "□",
-  NotificationBell: "♢",
-  Plane: "➤",
-  ArrowUp: "↑",
-  Settings: "⚙",
-  Terminal: ">_",
-  Tools: "⌘",
   Plus: "+",
   Play: "▶",
   Pause: "❚❚",
@@ -1393,12 +1453,98 @@ const iconGlyphs: Record<IconName, string> = {
   Compose: "✎",
   Mic: "🎤",
   Sparkles: "✦",
+  // Desktop shell set (v32, #85) — upstreamed from the monorepo-vendored copy.
+  Agent: "◌",
+  ChatCompose: "✎",
+  Chats: "☷",
+  Code: "‹›",
+  Compare: "⇄",
+  Folder: "□",
+  Home: "⌂",
+  NotificationBell: "♢",
+  Plane: "➤",
+  Settings: "⚙",
+  Terminal: ">_",
+  Tools: "⌘",
   History: "↶",
   Branch: "⑂",
-  InfoCircle: "ⓘ"
+  InfoCircle: "ⓘ",
+  // Expansion batch (v32, #85) — honest text glyphs for the RN-core path.
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  ArrowUpRight: "↗",
+  CheckCircle: "✓",
+  XCircle: "⊗",
+  AlertTriangle: "⚠",
+  AlertCircle: "!",
+  CircleFilled: "●",
+  CircleDot: "◉",
+  Loader: "◌",
+  GitCommit: "─●─",
+  GitPullRequest: "⇅",
+  GitMerge: "⑃",
+  Minus: "−",
+  File: "▢",
+  FileText: "▤",
+  FilePlus: "▢+",
+  FolderOpen: "◱",
+  FolderPlus: "□+",
+  Image: "▦",
+  Pencil: "✎",
+  Trash: "🗑",
+  Copy: "⧉",
+  Save: "💾",
+  Undo: "↶",
+  Redo: "↷",
+  ThumbsUp: "👍",
+  ThumbsDown: "👎",
+  Share: "⤴",
+  Ellipsis: "…",
+  EllipsisVertical: "⋮",
+  Expand: "⤢",
+  Collapse: "⤡",
+  Search: "🔍",
+  Filter: "∇",
+  Sliders: "🎚",
+  Wifi: "📶",
+  WifiOff: "⊘",
+  Server: "🖥",
+  Database: "⛁",
+  Cpu: "▣",
+  Activity: "∿",
+  Globe: "🌐",
+  Lock: "🔒",
+  Unlock: "🔓",
+  Key: "🔑",
+  Shield: "🛡",
+  User: "👤",
+  Users: "👥",
+  LogOut: "↪",
+  Wallet: "👛",
+  CreditCard: "💳",
+  Zap: "⚡",
+  Clock: "🕐",
+  Download: "⤓",
+  Upload: "⤒",
+  ExternalLink: "↗",
+  Link: "🔗",
+  Eye: "👁",
+  EyeOff: "⊘",
+  Paperclip: "📎",
+  Pin: "📌",
+  Star: "★",
+  Archive: "🗃",
+  Command: "⌘",
+  Bug: "🐛",
+  Package: "📦",
+  HelpCircle: "?"
 }
 
-const iconFontSize: Record<IconSize, number> = { sm: 16, md: 20, lg: 24 }
+// RN sizes from the same icon-size token values render-dom lowers as
+// `--en-icon-size-*` custom properties (#85) — one source of truth in core.
+const iconFontSize: Record<IconSize, number> = iconSizeValues
 
 const renderIcon = (
   view: IconView,
@@ -1460,6 +1606,11 @@ const renderDivider = (
   })
 }
 
+// Badge/Chip matrix axes (harmonization #79). `resolveBadgeAppearance`'s
+// `isLegacy` flag gates every new visual, mirroring the DOM renderer: a
+// pre-#79 tree never sets `variant`/`size`, so it keeps the exact pre-#79
+// bare-Text look; only an explicit `variant`/`size` opts a badge into the
+// matrix cell + control-lattice box.
 const renderBadge = (
   view: BadgeView,
   dependencies: ReactNativeDependencies,
@@ -1467,12 +1618,42 @@ const renderBadge = (
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
   const tone = view.tone ?? "neutral"
-  const style = mergeNativeStyles({ color: colorValue(theme, toneColorToken[tone]) }, viewStyle(view, options))
+  const appearance = resolveBadgeAppearance(view)
+  if (appearance.isLegacy) {
+    const style = mergeNativeStyles({ color: colorValue(theme, toneColorToken[tone]) }, viewStyle(view, options))
+    return createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      { ...baseProps(view, style), testID: `en-badge:${tone}` },
+      view.label
+    )
+  }
+  const cell = theme.colorMatrix[appearance.tone][appearance.variant].rest
+  const control = theme.control[appearance.size]
+  const style = mergeNativeStyles(
+    {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      backgroundColor: cell.background,
+      borderColor: cell.border,
+      borderWidth: 1,
+      borderRadius: control.radius,
+      paddingHorizontal: control.gutter,
+      minHeight: control.height
+    },
+    viewStyle(view, options)
+  )
   return createElement(
     dependencies,
-    dependencies.ReactNative.Text,
-    { ...baseProps(view, style), testID: `en-badge:${tone}` },
-    view.label
+    dependencies.ReactNative.View,
+    { ...baseProps(view, style), testID: `en-badge:${appearance.tone}:${appearance.variant}` },
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      { key: "label", style: { color: cell.text, fontSize: control.fontSize } },
+      view.label
+    )
   )
 }
 
@@ -1483,21 +1664,60 @@ const renderChip = (
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
   const tone = view.tone ?? "neutral"
-  const style = mergeNativeStyles({ flexDirection: "row", gap: spacingValue(theme, "1") }, viewStyle(view, options))
+  const appearance = resolveBadgeAppearance(view)
+  if (appearance.isLegacy) {
+    const style = mergeNativeStyles({ flexDirection: "row", gap: spacingValue(theme, "1") }, viewStyle(view, options))
+    const parts: Array<ReactElementLike> = [
+      createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, view.label)
+    ]
+    if (view.value !== undefined) {
+      parts.push(
+        createElement(
+          dependencies,
+          dependencies.ReactNative.Text,
+          { key: "value", style: { color: colorValue(theme, toneColorToken[tone]) } },
+          view.value
+        )
+      )
+    }
+    return createElement(dependencies, dependencies.ReactNative.View, baseProps(view, style), ...parts)
+  }
+  const cell = theme.colorMatrix[appearance.tone][appearance.variant].rest
+  const control = theme.control[appearance.size]
+  const style = mergeNativeStyles(
+    {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      gap: spacingValue(theme, "1"),
+      backgroundColor: cell.background,
+      borderColor: cell.border,
+      borderWidth: 1,
+      borderRadius: control.radius,
+      paddingHorizontal: control.gutter,
+      minHeight: control.height
+    },
+    viewStyle(view, options)
+  )
   const parts: Array<ReactElementLike> = [
-    createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, view.label)
+    createElement(dependencies, dependencies.ReactNative.Text, { key: "label", style: { color: cell.text, fontSize: control.fontSize } }, view.label)
   ]
   if (view.value !== undefined) {
     parts.push(
       createElement(
         dependencies,
         dependencies.ReactNative.Text,
-        { key: "value", style: { color: colorValue(theme, toneColorToken[tone]) } },
+        { key: "value", style: { color: cell.text, fontSize: control.fontSize } },
         view.value
       )
     )
   }
-  return createElement(dependencies, dependencies.ReactNative.View, baseProps(view, style), ...parts)
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    { ...baseProps(view, style), testID: `en-chip:${appearance.tone}:${appearance.variant}` },
+    ...parts
+  )
 }
 
 const renderMeter = (
@@ -1552,6 +1772,452 @@ const renderStatTile = (
       { key: "value", style: { color: colorValue(theme, toneColorToken[tone]) } },
       view.value
     )
+  )
+}
+
+// Empty-state message (issue #82, harmonization P2.9) on React Native.
+// Centered column on spacing tokens: optional icon badge (font glyph from the
+// bounded registry, tone/size from the closed EmptyMessage vocabularies),
+// required title, optional muted description, optional typed Button action.
+const emptyMessageToneColor: Record<EmptyMessageIconTone, ColorToken> = {
+  secondary: "textMuted",
+  danger: "danger",
+  warning: "warning"
+}
+
+const emptyMessageBadgeSize: Record<EmptyMessageIconSize, number> = { sm: 32, md: 40 }
+const emptyMessageGlyphSize: Record<EmptyMessageIconSize, number> = { sm: 20, md: 24 }
+
+const renderEmptyMessage = (
+  view: EmptyMessageView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const children: Array<ReactElementLike> = []
+  if (view.icon !== undefined) {
+    const tone = view.icon.tone ?? "secondary"
+    const size = view.icon.size ?? "md"
+    children.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        {
+          key: "icon",
+          testID: `en-empty-message-icon:${tone}`,
+          accessibilityElementsHidden: true,
+          importantForAccessibility: "no-hide-descendants",
+          style: {
+            width: emptyMessageBadgeSize[size],
+            height: emptyMessageBadgeSize[size],
+            borderRadius: radiusValue(theme, "md"),
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: spacingValue(theme, "3"),
+            backgroundColor: colorValue(theme, "surfaceRaised")
+          }
+        },
+        createElement(
+          dependencies,
+          dependencies.ReactNative.Text,
+          {
+            key: "glyph",
+            style: {
+              fontSize: emptyMessageGlyphSize[size],
+              color: colorValue(theme, emptyMessageToneColor[tone])
+            }
+          },
+          iconGlyphs[view.icon.name]
+        )
+      )
+    )
+  }
+  children.push(
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      {
+        key: "title",
+        testID: "en-empty-message-title",
+        style: {
+          maxWidth: "90%",
+          textAlign: "center",
+          fontWeight: "600",
+          color: colorValue(theme, "textPrimary")
+        }
+      },
+      view.title
+    )
+  )
+  if (view.description !== undefined) {
+    children.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.Text,
+        {
+          key: "description",
+          testID: "en-empty-message-description",
+          style: {
+            maxWidth: "90%",
+            textAlign: "center",
+            marginTop: spacingValue(theme, "1"),
+            color: colorValue(theme, "textMuted")
+          }
+        },
+        view.description
+      )
+    )
+  }
+  if (view.action !== undefined) {
+    children.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        { key: "action", testID: "en-empty-message-action", style: { marginTop: spacingValue(theme, "4") } },
+        renderResolvedReactNativeView(view.action, dependencies, report, options)
+      )
+    )
+  }
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    baseProps(
+      view,
+      mergeNativeStyles(
+        {
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100%",
+          height: "100%",
+          padding: spacingValue(theme, "6")
+        },
+        viewStyle(view, options)
+      )
+    ),
+    ...children
+  )
+}
+
+// Avatar + AvatarGroup (issue #80) on React Native. The typed fallback chain
+// is layered honestly without renderer state: the initials/icon fallback
+// renders beneath and the app-supplied image sits absolutely on top, so a
+// failed image load (RN Image renders nothing) reveals the fallback. Sizes
+// ride the shared control lattice from the theme; the soft variant tints the
+// tone color to a translucent fill, solid paints the tone with inverse text.
+interface AvatarDefaults {
+  readonly size?: ControlToken
+  readonly tone?: Tone
+  readonly variant?: AvatarVariant
+}
+
+// Bounded translucent tint of a theme hex color (#rgb / #rrggbb / #rrggbbaa).
+const avatarSoftFill = (color: string): string => {
+  if (/^#[0-9a-f]{3}$/i.test(color)) {
+    const [r, g, b] = color.slice(1)
+    return `#${r}${r}${g}${g}${b}${b}2e`
+  }
+  if (/^#[0-9a-f]{6}$/i.test(color)) {
+    return `${color}2e`
+  }
+  return color
+}
+
+const renderAvatarView = (
+  view: AvatarView,
+  dependencies: ReactNativeDependencies,
+  options: ReactNativeRenderOptions,
+  defaults: AvatarDefaults = {},
+  groupStyle: ReactNativeStyle = {}
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const size = view.size ?? defaults.size ?? "md"
+  const tone = view.tone ?? defaults.tone ?? "neutral"
+  const variant = view.variant ?? defaults.variant ?? "soft"
+  const height = theme.control[size].height
+  const toneColor = colorValue(theme, toneColorToken[tone])
+  const textColor = variant === "solid" ? colorValue(theme, "textInverse") : toneColor
+  const style = mergeNativeStyles(
+    {
+      position: "relative",
+      width: height,
+      height,
+      borderRadius: height / 2,
+      overflow: "hidden",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: variant === "solid" ? toneColor : avatarSoftFill(toneColor)
+    },
+    groupStyle,
+    viewStyle(view, options)
+  )
+  const parts: Array<ReactElementLike> = []
+  if (view.initials !== undefined) {
+    parts.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.Text,
+        {
+          key: "initials",
+          testID: "en-avatar-initials",
+          style: { color: textColor, fontSize: Math.round(height * 0.42), fontWeight: "600" }
+        },
+        view.initials
+      )
+    )
+  } else if (view.icon !== undefined) {
+    parts.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.Text,
+        {
+          key: "icon",
+          testID: `en-avatar-icon:${view.icon}`,
+          style: { color: textColor, fontSize: theme.control[size].icon }
+        },
+        iconGlyphs[view.icon]
+      )
+    )
+  }
+  if (view.image !== undefined) {
+    parts.push(
+      createElement(dependencies, dependencies.ReactNative.Image, {
+        key: "image",
+        testID: "en-avatar-image",
+        source: { uri: view.image },
+        resizeMode: "cover",
+        style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }
+      })
+    )
+  }
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(view, style),
+      testID: `en-avatar:${tone}:${variant}`,
+      ...(view.label === undefined
+        ? { accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" }
+        : { accessibilityRole: "image", accessibilityLabel: view.label })
+    },
+    ...parts
+  )
+}
+
+const renderAvatar = (
+  view: AvatarView,
+  dependencies: ReactNativeDependencies,
+  options: ReactNativeRenderOptions
+): ReactElementLike => renderAvatarView(view, dependencies, options)
+
+const renderAvatarGroup = (
+  view: AvatarGroupView,
+  dependencies: ReactNativeDependencies,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const size = view.size ?? "md"
+  const tone = view.tone ?? "neutral"
+  const variant = view.variant ?? "soft"
+  const height = theme.control[size].height
+  const visible = view.max === undefined ? view.avatars : view.avatars.slice(0, view.max)
+  const overflow = view.avatars.length - visible.length
+  const overlap = -Math.round(height * 0.25)
+  const ring = {
+    borderWidth: 2,
+    borderColor: colorValue(theme, "background")
+  }
+  const parts: Array<ReactElementLike> = visible.map((avatar, index) =>
+    renderAvatarView(avatar, dependencies, options, { size, tone, variant }, {
+      ...ring,
+      zIndex: visible.length + (overflow > 0 ? 1 : 0) - index,
+      ...(index === 0 ? {} : { marginLeft: overlap })
+    })
+  )
+  if (overflow > 0) {
+    const toneColor = colorValue(theme, toneColorToken[tone])
+    parts.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        {
+          key: "overflow",
+          testID: "en-avatar-overflow",
+          accessibilityLabel: `${overflow} more`,
+          style: {
+            width: height,
+            height,
+            borderRadius: height / 2,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: variant === "solid" ? toneColor : avatarSoftFill(toneColor),
+            ...ring,
+            zIndex: 0,
+            ...(parts.length === 0 ? {} : { marginLeft: overlap })
+          }
+        },
+        createElement(
+          dependencies,
+          dependencies.ReactNative.Text,
+          {
+            key: "count",
+            style: {
+              color: variant === "solid" ? colorValue(theme, "textInverse") : toneColor,
+              fontSize: Math.round(height * 0.42),
+              fontWeight: "600"
+            }
+          },
+          `+${overflow}`
+        )
+      )
+    )
+  }
+  const style = mergeNativeStyles(
+    { flexDirection: "row", alignItems: "center" },
+    viewStyle(view, options)
+  )
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    { ...baseProps(view, style), testID: "en-avatar-group" },
+    ...parts
+  )
+}
+
+// Loading indicators (issue #83). React Native core has no CSS keyframes and
+// this dependency-free catalog has never carried an `Animated`/gesture-loop
+// dependency (every existing continuous-motion case — glass, drag, mobile
+// gestures — is honestly a static or host-optional approximation on RN
+// today; see GAPS.md). Rather than introduce the FIRST live `Animated` loop
+// as a side effect of this issue, these three render an honest STATIC
+// affordance on RN unconditionally — the same shape/tone/size as the DOM
+// renderer's animated state, just without the sweep. That trivially and
+// honestly satisfies "reduced motion falls back to a static affordance" for
+// this renderer (there is no motion to fall back FROM), and keeps `Spinner`/
+// `LoadingDots`/`ShimmerText` fully usable on RN today. A live native
+// `Animated` loop is an additive, demand-gated enhancement for a future
+// screen that specifically needs RN motion parity with DOM, tracked in
+// GAPS.md rather than shipped unverified here. `reduceMotion` is still a
+// valid typed field on RN — `resolveView`/`ReactNativeRenderOptions.
+// reducedMotion` resolve it the same way as every other renderer — apps can
+// read it even though the RN visual output does not change today.
+const renderSpinner = (
+  view: SpinnerView,
+  dependencies: ReactNativeDependencies,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const tone = view.tone ?? "info"
+  const size = view.size ?? "md"
+  const icon = theme.control[size].icon
+  const toneColor = colorValue(theme, toneColorToken[tone])
+  const borderWidth = Math.max(2, Math.round(icon / 8))
+  const style = mergeNativeStyles(
+    {
+      width: icon,
+      height: icon,
+      borderRadius: icon / 2,
+      borderWidth,
+      borderColor: avatarSoftFill(toneColor),
+      borderTopColor: toneColor
+    },
+    viewStyle(view, options)
+  )
+  return createElement(dependencies, dependencies.ReactNative.View, {
+    ...baseProps(view, style),
+    testID: `en-spinner:${tone}`,
+    ...(view.label === undefined
+      ? { accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" }
+      : { accessibilityRole: "progressbar", accessibilityLabel: view.label, "aria-busy": true })
+  })
+}
+
+const renderLoadingDots = (
+  view: LoadingDotsView,
+  dependencies: ReactNativeDependencies,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const tone = view.tone ?? "info"
+  const size = view.size ?? "md"
+  const icon = theme.control[size].icon
+  const dotSize = Math.max(4, Math.round(icon * 0.3))
+  const toneColor = colorValue(theme, toneColorToken[tone])
+  const gap = Math.max(2, Math.round(dotSize * 0.6))
+  const dots = [0, 1, 2].map((index) =>
+    createElement(dependencies, dependencies.ReactNative.View, {
+      key: `dot-${index}`,
+      testID: `en-loading-dots-dot:${index}`,
+      style: {
+        width: dotSize,
+        height: dotSize,
+        borderRadius: dotSize / 2,
+        backgroundColor: toneColor,
+        opacity: 0.6,
+        ...(index === 0 ? {} : { marginLeft: gap })
+      }
+    })
+  )
+  const style = mergeNativeStyles({ flexDirection: "row", alignItems: "center" }, viewStyle(view, options))
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(view, style),
+      testID: `en-loading-dots:${tone}`,
+      ...(view.label === undefined
+        ? { accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" }
+        : { accessibilityRole: "progressbar", accessibilityLabel: view.label, "aria-busy": true })
+    },
+    ...dots
+  )
+}
+
+const renderShimmerText = (
+  view: ShimmerTextView,
+  dependencies: ReactNativeDependencies,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const typeScale = view.typeScale ?? "body"
+  const typeValue = theme.typeScale[typeScale]
+  const a11yProps = view.label === undefined
+    ? { accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" as const }
+    : { accessibilityRole: "text" as const, accessibilityLabel: view.label }
+  if (view.text !== undefined) {
+    // RN has no background-clip:text — the DOM gradient-sweep technique is
+    // web-only. The honest RN rendering is the real text at a muted flat
+    // color, identical to the DOM reduced-motion state.
+    const style = mergeNativeStyles(
+      {
+        color: colorValue(theme, "textFaint"),
+        fontSize: typeValue.fontSize,
+        lineHeight: typeValue.lineHeight
+      },
+      viewStyle(view, options)
+    )
+    return createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      { ...baseProps(view, style), testID: "en-shimmer-text", ...a11yProps },
+      view.text
+    )
+  }
+  const width = dimensionValue(theme, view.width!)
+  const style = mergeNativeStyles(
+    {
+      width,
+      height: typeValue.lineHeight,
+      borderRadius: radiusValue(theme, "sm"),
+      backgroundColor: colorValue(theme, "surfaceRaised")
+    },
+    viewStyle(view, options)
+  )
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    { ...baseProps(view, style), testID: "en-shimmer-placeholder", ...a11yProps }
   )
 }
 
@@ -2530,18 +3196,56 @@ const renderToggle = (
   )
 }
 
+// Select/SelectControl trigger conventions (harmonization #79). React
+// Native has no native `<select>`, so this renders selectable rows
+// (picker-style) rather than a closed trigger + popup — a declared,
+// pre-existing fidelity gap (see the original comment below), which also
+// means `dropdownIcon` has no trigger glyph to attach to on this renderer;
+// it is accepted and typed for cross-renderer parity but intentionally
+// unused here, exactly like SegmentedControl's declared RN thumb-animation
+// gap. `variant`/`size`/`pill` still apply real container/row chrome from
+// the matrix + control lattice, gated by `resolveSelectAppearance`'s
+// `isLegacy` flag so a pre-#79 tree keeps its exact unstyled-row look.
+// Multi-select is additive: toggling membership in `values` when `multiple`
+// is true, else the original single-select `value` behavior.
 const renderSelect = (
   view: SelectView,
   dependencies: ReactNativeDependencies,
   report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
   const onChange = controlChangeIntent(view)
+  const appearance = resolveSelectAppearance(view)
+  const multiple = view.multiple === true
+  const selectedValues = view.values ?? []
+  const isSelected = (optionValue: string): boolean =>
+    multiple ? selectedValues.includes(optionValue) : view.value === optionValue
+  const nextIntentPayload = (optionValue: string): string | ReadonlyArray<string> =>
+    multiple
+      ? (selectedValues.includes(optionValue)
+        ? selectedValues.filter((value) => value !== optionValue)
+        : [...selectedValues, optionValue])
+      : optionValue
   // No native <select> in RN; render selectable rows (picker-style).
+  const containerStyle = appearance.isLegacy
+    ? { flexDirection: "column" as const }
+    : (() => {
+        const cell = theme.colorMatrix[appearance.tone][appearance.variant].rest
+        const control = theme.control[appearance.size]
+        return {
+          flexDirection: "column" as const,
+          backgroundColor: cell.background,
+          borderColor: cell.border,
+          borderWidth: 1,
+          borderRadius: appearance.pill ? radiusValue(theme, "full") : control.radius,
+          paddingHorizontal: control.gutter
+        }
+      })()
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
-    { ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))), testID: "en-select", accessibilityLabel: view.label },
+    { ...baseProps(view, mergeNativeStyles(containerStyle, viewStyle(view, options))), testID: "en-select", accessibilityLabel: view.label },
     ...view.options.map((option) =>
       createElement(
         dependencies,
@@ -2550,11 +3254,11 @@ const renderSelect = (
           key: `option-${option.value}`,
           testID: `en-select-option:${option.value}`,
           accessibilityRole: "menuitem",
-          accessibilityState: { selected: view.value === option.value, disabled: view.disabled === true || option.disabled === true },
+          accessibilityState: { selected: isSelected(option.value), disabled: view.disabled === true || option.disabled === true },
           disabled: view.disabled === true || option.disabled === true,
           ...(onChange === undefined || view.disabled === true || option.disabled === true
             ? {}
-            : { onPress: () => runReportedIntent(report, onChange, option.value) })
+            : { onPress: () => runReportedIntent(report, onChange, nextIntentPayload(option.value)) })
         },
         createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, option.label)
       ))
@@ -2615,6 +3319,109 @@ const renderRadioGroup = (
         createElement(dependencies, dependencies.ReactNative.Text, { key: "dot" }, view.value === option.value ? "◉" : "○"),
         createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, option.label)
       ))
+  )
+}
+
+// SegmentedControl (issue #81, harmonization P2.8). Pressable segments with a
+// typed onChange, mirroring Tabs' accessibilityActions increment/decrement for
+// switch-control-style OS navigation.
+//
+// Fidelity limitation, declared honestly: the DOM renderer measures the
+// selected segment's live bounds via ResizeObserver and slides a shared thumb
+// with the #76 "move" easing token. This catalog has no Reanimated/
+// gesture-handler dependency to drive an equivalent cross-segment layout
+// animation on React Native, so the selected segment instead gets a static
+// background highlight applied directly to it — no shared/sliding element.
+// This is a real fidelity gap versus DOM, not a workaround; a future
+// Reanimated-backed render-rn could close it without changing the typed
+// contract.
+const renderSegmentedControl = (
+  view: SegmentedControlView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const control = theme.control[view.size ?? "md"]
+  const gutter = view.gutterSize === undefined ? 0 : spacingValue(theme, view.gutterSize)
+  const radius = view.pill === true ? 9999 : control.radius
+  const enabledIds = view.options.filter((option) => option.disabled !== true).map((option) => option.id)
+  const move = (direction: 1 | -1) => {
+    if (enabledIds.length === 0) return
+    const index = enabledIds.indexOf(view.value)
+    const next = enabledIds[(index + direction + enabledIds.length) % enabledIds.length]!
+    runReportedIntent(report, view.onChange, next)
+  }
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(view, mergeNativeStyles(
+        {
+          flexDirection: "row",
+          backgroundColor: colorValue(theme, "surface"),
+          borderRadius: radius,
+          padding: gutter,
+          gap: gutter
+        },
+        viewStyle(view, options)
+      )),
+      testID: "en-segmented-control",
+      accessibilityRole: "radiogroup",
+      accessibilityActions: [{ name: "increment" }, { name: "decrement" }],
+      onAccessibilityAction: (event: { readonly nativeEvent: { readonly actionName: string } }) => {
+        if (event.nativeEvent.actionName === "increment") move(1)
+        if (event.nativeEvent.actionName === "decrement") move(-1)
+      }
+    },
+    ...view.options.map((option) => {
+      const selected = view.value === option.id
+      const parts: Array<ReactElementLike> = []
+      if (option.icon !== undefined) {
+        parts.push(
+          createElement(
+            dependencies,
+            dependencies.ReactNative.Text,
+            { key: "icon", style: { fontSize: control.icon, color: colorValue(theme, "textPrimary") } },
+            iconGlyphs[option.icon]
+          )
+        )
+      }
+      parts.push(
+        createElement(
+          dependencies,
+          dependencies.ReactNative.Text,
+          { key: "label", style: { fontSize: control.fontSize, color: colorValue(theme, "textPrimary") } },
+          option.label
+        )
+      )
+      return createElement(
+        dependencies,
+        dependencies.ReactNative.Pressable,
+        {
+          key: `segment-${option.id}`,
+          testID: `en-segment:${option.id}`,
+          accessibilityRole: "radio",
+          accessibilityState: { selected, disabled: option.disabled === true },
+          disabled: option.disabled === true,
+          style: {
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: spacingValue(theme, "1"),
+            height: control.height,
+            paddingHorizontal: control.gutter,
+            borderRadius: radius,
+            opacity: option.disabled === true ? 0.5 : 1,
+            ...(selected ? { backgroundColor: colorValue(theme, "surfaceRaised") } : {})
+          },
+          ...(option.disabled === true
+            ? {}
+            : { onPress: () => runReportedIntent(report, view.onChange, option.id) })
+        },
+        ...parts
+      )
+    })
   )
 }
 
@@ -2879,6 +3686,82 @@ const renderStatusBanner = (
       testID: `en-status-banner:${view.tone}`,
       accessibilityRole: view.tone === "danger" ? "alert" : "text",
       accessibilityLiveRegion: rnLiveRegion(view.tone)
+    },
+    ...parts
+  )
+}
+
+const rnAlertLiveRegion = (tone: ToneToken): string => (tone === "danger" ? "assertive" : "polite")
+
+// Alert (harmonization #79, new component — see the AlertView doc comment in
+// core for the Alert-vs-StatusBanner decision). No legacy rendering to
+// preserve, so `resolveAlertAppearance` always resolves a concrete
+// tone/variant/icon and the matrix cell always drives the chrome.
+const renderAlert = (
+  view: AlertView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const appearance = resolveAlertAppearance(view)
+  const cell = theme.colorMatrix[appearance.tone][appearance.variant].rest
+  const bodyParts: Array<ReactElementLike> = []
+  if (view.title !== undefined) {
+    bodyParts.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.Text,
+        { key: "title", accessibilityRole: "header", style: { color: cell.text, fontWeight: "600" } },
+        view.title
+      )
+    )
+  }
+  bodyParts.push(
+    createElement(dependencies, dependencies.ReactNative.Text, { key: "message", style: { color: cell.text } }, view.message)
+  )
+  const parts: Array<ReactElementLike> = [
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      { key: "body", style: { flexDirection: "column", gap: spacingValue(theme, "1"), flex: 1 } },
+      ...bodyParts
+    )
+  ]
+  if (view.onDismiss !== undefined) {
+    const onDismiss = view.onDismiss
+    parts.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.Pressable,
+        { key: "dismiss", testID: "en-alert-dismiss", accessibilityLabel: "Dismiss", onPress: () => runReportedIntent(report, onDismiss) },
+        createElement(dependencies, dependencies.ReactNative.Text, { key: "x", style: { color: cell.text } }, "×")
+      )
+    )
+  }
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(
+        view,
+        mergeNativeStyles(
+          {
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: spacingValue(theme, "2"),
+            padding: spacingValue(theme, "3"),
+            borderRadius: radiusValue(theme, "md"),
+            borderWidth: 1,
+            backgroundColor: cell.background,
+            borderColor: cell.border
+          },
+          viewStyle(view, options)
+        )
+      ),
+      testID: `en-alert:${appearance.tone}:${appearance.variant}`,
+      accessibilityRole: appearance.tone === "danger" ? "alert" : "text",
+      accessibilityLiveRegion: rnAlertLiveRegion(appearance.tone)
     },
     ...parts
   )
@@ -3637,6 +4520,8 @@ const renderResolvedReactNativeView = (
       return renderToastRegion(view, dependencies, report, options)
     case "StatusBanner":
       return renderStatusBanner(view, dependencies, report, options)
+    case "Alert":
+      return renderAlert(view, dependencies, report, options)
     case "RecoveryOverlay":
       return renderRecoveryOverlay(view, dependencies, report, options)
     case "Markdown":
@@ -3679,6 +4564,22 @@ const renderResolvedReactNativeView = (
       return renderIconButton(view, dependencies, report, options)
     case "Toolbar":
       return renderToolbar(view, dependencies, report, options)
+    case "EmptyMessage":
+      return renderEmptyMessage(view, dependencies, report, options)
+    case "Avatar":
+      return renderAvatar(view, dependencies, options)
+    case "AvatarGroup":
+      return renderAvatarGroup(view, dependencies, options)
+    case "CopyButton":
+      return renderCopyButton(view, dependencies, report, options)
+    case "SegmentedControl":
+      return renderSegmentedControl(view, dependencies, report, options)
+    case "Spinner":
+      return renderSpinner(view, dependencies, options)
+    case "LoadingDots":
+      return renderLoadingDots(view, dependencies, options)
+    case "ShimmerText":
+      return renderShimmerText(view, dependencies, options)
   }
 }
 
@@ -3823,8 +4724,7 @@ const sfSymbolForIcon: Record<IconName, string> = {
   Compose: "square.and.pencil",
   Mic: "mic",
   Sparkles: "sparkles",
-  // Monorepo-vendored icon extensions (desktop/mobile app set; see the core
-  // iconNames divergence note in VENDORING.md).
+  // Desktop shell set (v32, #85) — upstreamed from the monorepo-vendored copy.
   Home: "house",
   Agent: "circle.dashed",
   ChatCompose: "square.and.pencil",
@@ -3834,13 +4734,83 @@ const sfSymbolForIcon: Record<IconName, string> = {
   Folder: "folder",
   NotificationBell: "bell",
   Plane: "paperplane.fill",
-  ArrowUp: "arrow.up",
   Settings: "gearshape",
   Terminal: "apple.terminal",
   Tools: "wrench.and.screwdriver",
   History: "clock.arrow.circlepath",
   Branch: "arrow.triangle.branch",
-  InfoCircle: "info.circle"
+  InfoCircle: "info.circle",
+  // Expansion batch (v32, #85).
+  ArrowUp: "arrow.up",
+  ArrowDown: "arrow.down",
+  ArrowLeft: "arrow.left",
+  ArrowRight: "arrow.right",
+  ArrowUpRight: "arrow.up.right",
+  CheckCircle: "checkmark.circle",
+  XCircle: "xmark.circle",
+  AlertTriangle: "exclamationmark.triangle",
+  AlertCircle: "exclamationmark.circle",
+  CircleFilled: "circle.fill",
+  CircleDot: "smallcircle.filled.circle",
+  Loader: "rays",
+  GitCommit: "circle.and.line.horizontal",
+  GitPullRequest: "arrow.triangle.pull",
+  GitMerge: "arrow.triangle.merge",
+  Minus: "minus",
+  File: "doc",
+  FileText: "doc.text",
+  FilePlus: "doc.badge.plus",
+  FolderOpen: "folder",
+  FolderPlus: "folder.badge.plus",
+  Image: "photo",
+  Pencil: "pencil",
+  Trash: "trash",
+  Copy: "doc.on.doc",
+  Save: "square.and.arrow.down",
+  Undo: "arrow.uturn.backward",
+  Redo: "arrow.uturn.forward",
+  ThumbsUp: "hand.thumbsup",
+  ThumbsDown: "hand.thumbsdown",
+  Share: "square.and.arrow.up",
+  Ellipsis: "ellipsis",
+  EllipsisVertical: "ellipsis",
+  Expand: "arrow.up.left.and.arrow.down.right",
+  Collapse: "arrow.down.right.and.arrow.up.left",
+  Search: "magnifyingglass",
+  Filter: "line.3.horizontal.decrease",
+  Sliders: "slider.horizontal.3",
+  Wifi: "wifi",
+  WifiOff: "wifi.slash",
+  Server: "server.rack",
+  Database: "cylinder.split.1x2",
+  Cpu: "cpu",
+  Activity: "waveform.path.ecg",
+  Globe: "globe",
+  Lock: "lock",
+  Unlock: "lock.open",
+  Key: "key",
+  Shield: "shield",
+  User: "person",
+  Users: "person.2",
+  LogOut: "rectangle.portrait.and.arrow.right",
+  Wallet: "wallet.pass",
+  CreditCard: "creditcard",
+  Zap: "bolt.fill",
+  Clock: "clock",
+  Download: "arrow.down.to.line",
+  Upload: "arrow.up.to.line",
+  ExternalLink: "arrow.up.right.square",
+  Link: "link",
+  Eye: "eye",
+  EyeOff: "eye.slash",
+  Paperclip: "paperclip",
+  Pin: "pin",
+  Star: "star",
+  Archive: "archivebox",
+  Command: "command",
+  Bug: "ant",
+  Package: "shippingbox",
+  HelpCircle: "questionmark.circle"
 }
 
 // Resolved flat style (responsive variants applied, tokens NOT yet lowered) —
@@ -4490,6 +5460,150 @@ const renderToolbar = (
   )
 }
 
+// ── CopyButton (v35, #84) ────────────────────────────────────────────────────
+//
+// React Native lowering of the typed copy-to-clipboard control. The write goes
+// through the injected `options.clipboard` driver when present (RN core has no
+// clipboard API); without one the press fires the typed `onCopy` intent with
+// the content so the app performs the write — an honest declared subset.
+//
+// Copied feedback is the CONTROLLED path on RN: element trees are pure per
+// emission, so renderer-owned uncontrolled feedback is declared unsupported.
+// The app drives `copied` as data; while it is true and `onCopiedReset` is
+// provided, the renderer schedules the typed reset intent (the Toast
+// auto-dismiss precedent, #53).
+const scheduleCopiedReset = (
+  view: CopyButtonView,
+  report: IntentReporter
+): void => {
+  if (view.copied !== true || view.onCopiedReset === undefined) return
+  const onCopiedReset = view.onCopiedReset
+  setTimeout(() => {
+    runReportedIntent(report, onCopiedReset, view.content)
+  }, view.resetMillis ?? copyButtonDefaultResetMillis)
+}
+
+const renderCopyButton = (
+  view: CopyButtonView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const variant = view.variant ?? "ghost"
+  const size = view.size ?? "md"
+  const control = theme.control[size]
+  const copied = view.copied === true
+  scheduleCopiedReset(view, report)
+
+  const variantStyle: ReactNativeStyle = variant === "primary"
+    ? { backgroundColor: colorValue(theme, "accent") }
+    : variant === "secondary"
+      ? {
+        backgroundColor: colorValue(theme, "surface"),
+        borderColor: colorValue(theme, "border"),
+        borderWidth: 1
+      }
+      : { backgroundColor: "transparent" }
+  const contentColor = variant === "primary"
+    ? colorValue(theme, "textPrimary")
+    : variant === "secondary"
+      ? colorValue(theme, "textPrimary")
+      : colorValue(theme, "textMuted")
+
+  const style = mergeNativeStyles(
+    {
+      ...variantStyle,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      height: control.height,
+      borderRadius: radiusValue(theme, "md"),
+      opacity: view.disabled === true ? 0.5 : 1,
+      // IconButton-shaped default: icon-only is a square lattice hit target;
+      // with a label it takes the lattice gutter as horizontal padding.
+      ...(view.label === undefined
+        ? { width: control.height }
+        : { paddingHorizontal: control.gutter })
+    },
+    viewStyle(view, options)
+  )
+
+  const copiedLabel = view.copiedLabel ?? "Copied"
+  const children: Array<ReactNodeLike> = [
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      {
+        key: "glyph",
+        style: { fontSize: control.icon, color: contentColor }
+      },
+      copied ? iconGlyphs.Check : iconGlyphs.Copy
+    )
+  ]
+  if (view.label !== undefined) {
+    children.push(createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      {
+        key: "label",
+        style: mergeNativeStyles(typeScaleValue(theme, "label"), {
+          color: contentColor,
+          marginLeft: spacingValue(theme, "1")
+        })
+      },
+      copied ? copiedLabel : view.label
+    ))
+  }
+  if (copied) {
+    // Copied announcement for screen readers (polite live region).
+    children.push(createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      {
+        key: "copied-status",
+        accessibilityLiveRegion: "polite",
+        style: { position: "absolute", width: 1, height: 1, opacity: 0 }
+      },
+      copiedLabel
+    ))
+  }
+
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.Pressable,
+    {
+      ...baseProps(view, style),
+      testID: `en-copy-button${copied ? ":copied" : ""}`,
+      accessibilityRole: "button",
+      accessibilityLabel: view.accessibilityLabel ?? view.label ?? "Copy",
+      accessibilityState: { disabled: view.disabled === true },
+      disabled: view.disabled === true,
+      onPress: () => {
+        if (view.disabled === true) return
+        const clipboard = options.clipboard
+        if (clipboard === undefined) {
+          // Declared subset: no injected driver, so the app owns the write.
+          if (view.onCopy !== undefined) {
+            runReportedIntent(report, view.onCopy, view.content)
+          }
+          return
+        }
+        void Effect.runPromise(clipboard.writeText(view.content))
+          .then(() => {
+            if (view.onCopy !== undefined) {
+              runReportedIntent(report, view.onCopy, view.content)
+            }
+          })
+          .catch(() => {
+            // Clipboard write failed: no onCopy intent; handlers stay total.
+          })
+      }
+    },
+    ...children
+  )
+}
+
 const renderMobileSurfaceShell = (
   view: BackgroundGradientView | WallpaperView | SpotlightView | FrameView | BlurredPopupView,
   dependencies: ReactNativeDependencies,
@@ -4763,7 +5877,8 @@ export const renderReactNativeView = (
     : makeViewport(options.viewport, options.theme ?? defaultTheme)
   const resolved = resolveView(view, {
     ...(viewport === undefined ? {} : { viewport }),
-    platform: options.platform ?? "ios"
+    platform: options.platform ?? "ios",
+    ...(options.reducedMotion === undefined ? {} : { reducedMotion: options.reducedMotion })
   })
   const ownedRuntime = options.runEffect === undefined
     ? makeReactNativeRefOwnedEffectRuntime()
@@ -4992,6 +6107,18 @@ export const viewStructure = (view: View): ReactNativeStructure => {
         ...(view.key === undefined ? {} : { key: view.key }),
         children: view.children.map(viewStructure)
       }
+    case "EmptyMessage":
+      return {
+        tag: "EmptyMessage",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        ...(view.action === undefined ? {} : { children: [viewStructure(view.action)] })
+      }
+    case "AvatarGroup":
+      return {
+        tag: "AvatarGroup",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        children: view.avatars.map(viewStructure)
+      }
     default:
       return {
         tag: view._tag,
@@ -5141,7 +6268,8 @@ export const makeReactNativeRenderer = (
           Stream.zipLatestWith(viewport.stream, (view, currentViewport) =>
             resolveView(view, {
               viewport: currentViewport,
-              platform: options.platform ?? "ios"
+              platform: options.platform ?? "ios",
+              ...(options.reducedMotion === undefined ? {} : { reducedMotion: options.reducedMotion })
             })
           )
         )

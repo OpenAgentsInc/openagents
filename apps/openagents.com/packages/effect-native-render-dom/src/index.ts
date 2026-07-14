@@ -1,7 +1,12 @@
-import { Deferred, Effect, Exit, FiberSet, Layer, Scope, Stream } from "effect"
+import { Deferred, Effect, Exit, FiberSet, Layer, Option, Scope, Stream } from "effect"
 import { iconAssetSvg } from "./icons"
 import {
+  type AlertView,
+  resolveAlertAppearance,
   type BadgeView,
+  resolveBadgeAppearance,
+  resolveSelectAppearance,
+  resolveTextFieldAppearance,
   type ButtonView,
   type CardView,
   type CheckboxView,
@@ -39,6 +44,17 @@ import {
   type BlurredPopupView,
   type IconButtonView,
   type ToolbarView,
+  type AvatarGroupView,
+  type AvatarVariant,
+  type AvatarView,
+  type ControlToken,
+  type CopyButtonView,
+  Clipboard,
+  clipboardWriteError,
+  copyButtonDefaultResetMillis,
+  makeClipboardLayer,
+  resolveButtonAppearance,
+  type ResolvedButtonAppearance,
   type SurfaceMaterial,
   type ComboboxOption,
   type ComboboxView,
@@ -67,6 +83,7 @@ import {
   type PopoverView,
   type RadioGroupView,
   type RecoveryOverlayView,
+  type SegmentedControlView,
   type SelectView,
   type SliderView,
   type StatusBannerView,
@@ -77,12 +94,16 @@ import {
   type StatTileView,
   type TableView,
   type Tone,
+  type EmptyMessageIconSize,
+  type EmptyMessageIconTone,
+  type EmptyMessageView,
   type FlatStyle,
   FormFieldValueBinding,
   type HostKind,
   type HostView,
   type IconName,
   type IconSize,
+  iconSizeValues,
   type IconView,
   type ImageView,
   type IntentError,
@@ -113,11 +134,17 @@ import {
   type WorkbenchView,
   type Viewport,
   type ViewportInput,
+  type SpinnerView,
+  type LoadingDotsView,
+  type ShimmerTextView,
+  type MotionPreferenceInput,
   StaticPayload,
   defaultViewportInput,
+  defaultMotionPreferenceInput,
   defaultTheme,
   makeNavigateIntent,
   makeViewportService,
+  makeMotionPreferenceService,
   resolveResponsiveValue,
   resolveView,
   resolveStyle
@@ -127,6 +154,10 @@ import {
   type RadiusToken,
   type SpacingToken,
   type Theme,
+  toneTokens,
+  toneVariantTokens,
+  controlTokens,
+  type ToneToken,
   type TypeScaleToken
 } from "@effect-native/tokens"
 
@@ -379,6 +410,17 @@ export interface DomRendererOptions {
   // Registered host drivers, one per supported host kind. A Host node whose
   // kind has no registered driver renders a loud error marker.
   readonly hostDrivers?: ReadonlyArray<DomHostDriver>
+  // Injected clipboard driver (v35, #84). Resolution order: this option, then
+  // the `Clipboard` service from the mounting Effect context (Layer), then the
+  // navigator-backed default. Components never call `navigator.clipboard`
+  // directly.
+  readonly clipboard?: Clipboard
+  // Reduced-motion override (issue #83). When omitted, the surface detects
+  // the live `prefers-reduced-motion` media query at mount and keeps it
+  // live via a `change` listener — the one place this renderer ever checks
+  // that media query; `Spinner`/`LoadingDots`/`ShimmerText` only ever see
+  // the already-resolved typed `reduceMotion` field.
+  readonly reducedMotion?: boolean
 }
 
 type DomHostInstanceBinding = Readonly<{
@@ -386,6 +428,28 @@ type DomHostInstanceBinding = Readonly<{
   instance: DomHostInstance
   eventBinding: { current: IntentRef | undefined }
 }>
+
+// Navigator-backed clipboard driver. The `navigator.clipboard` lookup happens
+// at write time (not construction), so mounting in a host without the async
+// clipboard API stays total — the write fails as a typed ClipboardWriteError.
+export const makeNavigatorClipboard = (document?: Document): Clipboard => ({
+  writeText: (text) =>
+    Effect.callback((resume) => {
+      const window = document?.defaultView ?? globalThis.window
+      const clipboard = window?.navigator?.clipboard
+      if (clipboard === undefined || typeof clipboard.writeText !== "function") {
+        resume(Effect.fail(clipboardWriteError("navigator.clipboard is unavailable in this host")))
+        return
+      }
+      clipboard.writeText(text).then(
+        () => resume(Effect.void),
+        (cause) => resume(Effect.fail(clipboardWriteError(String(cause))))
+      )
+    })
+})
+
+export const makeNavigatorClipboardLayer = (document?: Document) =>
+  makeClipboardLayer(makeNavigatorClipboard(document))
 
 export interface DomMountedSurface extends MountedSurface {
   readonly root: HTMLElement
@@ -522,6 +586,18 @@ const readDomViewport = (document: Document): ViewportInput => {
   }
 }
 
+// The one place this renderer checks `prefers-reduced-motion` (issue #83):
+// read it once at mount, and keep it live via the media query's own change
+// event. Every animated component downstream only ever sees the resolved
+// typed `ViewResolution.reducedMotion` boolean this produces.
+const readDomMotionPreference = (document: Document): MotionPreferenceInput => {
+  const window = document.defaultView
+  if (window === null || typeof window.matchMedia !== "function") {
+    return defaultMotionPreferenceInput
+  }
+  return { reduced: window.matchMedia("(prefers-reduced-motion: reduce)").matches }
+}
+
 const styleDeclarations = (key: string, value: unknown): ReadonlyArray<readonly [string, string]> => {
   switch (key) {
     case "margin":
@@ -583,27 +659,216 @@ const styleDeclarations = (key: string, value: unknown): ReadonlyArray<readonly 
 }
 
 // Application-chrome physics shared by every DOM surface (the apps-sdk-ui
-// chrome-language port, vendored from upstream effect-native): the
-// alpha-overlay state engine — hover/active/selected are translucent
-// overlays of one base color, never new hues — a 150ms basic transition,
-// press-scale feedback, one focus ring, nav-item chrome, and token-derived
-// thin scrollbars. Every value resolves through the :root theme variables.
-// `:where()` keeps rest-state rules at zero specificity so typed style
-// overrides (atomic classes) still win; the interactive state fills use
-// `!important` deliberately, because the state engine is uniform chrome
-// physics that must beat the inline variant colors the renderer sets at rest.
+// chrome-language port): the alpha-overlay state engine — hover/active/
+// selected are translucent overlays of one base color, never new hues — a
+// 150ms basic transition, press-scale feedback, one focus ring, nav-item
+// chrome, and token-derived thin scrollbars. Every value resolves through
+// the :root theme variables. `:where()` keeps rest-state rules at zero
+// specificity so typed style overrides (atomic classes) still win; the
+// interactive state fills use `!important` deliberately, because the state
+// engine is uniform chrome physics that must beat the inline variant colors
+// the renderer sets at rest.
+// Button tone x variant color-matrix selectors (harmonization #78): every
+// {tone, variant} cell re-points --en-button-background(-hover/-active/
+// -selected), --en-button-text, and --en-button-border from the already-
+// lowered --en-matrix-<tone>-<variant>-<state>-<role> vars (#75/#77) — never
+// a raw theme value. Only `background` genuinely varies across rest/hover/
+// active/selected within one cell (border/text/ring stay constant — see
+// `toneCells` in @effect-native/tokens), so one selector carries all four
+// background flavors instead of four separate state selectors per cell.
+// `resolveButtonAppearance` (the pre-#78 legacy-variant normalizer, #78) is
+// what guarantees `data-en-tone`/`data-en-variant` are always one of these
+// generated combinations, never a legacy "primary"/"secondary" token.
+const buttonToneVariantRules = toneTokens.flatMap((tone) =>
+  toneVariantTokens.map((variant) =>
+    `[data-effect-native-surface="dom"] [data-en-component="button"][data-en-tone="${tone}"][data-en-variant="${variant}"]{` +
+    `--en-button-background:var(--en-matrix-${tone}-${variant}-rest-background);` +
+    `--en-button-background-hover:var(--en-matrix-${tone}-${variant}-hover-background);` +
+    `--en-button-background-active:var(--en-matrix-${tone}-${variant}-active-background);` +
+    `--en-button-background-selected:var(--en-matrix-${tone}-${variant}-selected-background);` +
+    `--en-button-text:var(--en-matrix-${tone}-${variant}-rest-text);` +
+    `--en-button-border:var(--en-matrix-${tone}-${variant}-rest-border);` +
+    "}"
+  )
+).join("")
+
+// Button control-lattice size selectors (harmonization #78, C3/#76): one
+// `size` prop coherently sizes height, horizontal gutter, corner radius,
+// label font size, and (while loading) the spinner glyph from the same
+// lattice step — the apps-sdk-ui `--control-*` indirection extended to
+// Button's own local vars.
+const buttonSizeRules = controlTokens.map((size) =>
+  `[data-effect-native-surface="dom"] [data-en-component="button"][data-en-size="${size}"]{` +
+  `--en-button-height:var(--en-control-${size}-height);` +
+  `--en-button-gutter:var(--en-control-${size}-gutter);` +
+  `--en-button-radius:var(--en-control-${size}-radius);` +
+  `--en-button-font-size:var(--en-control-${size}-font-size);` +
+  `--en-button-icon-size:var(--en-control-${size}-icon);` +
+  "}"
+).join("")
+
+// Component-token tier (C1 tier 3 + C4 data-* lowering, issue #77, extended by
+// #78's tone/variant/size matrix): the apps-sdk-ui indirection chain —
+// semantic/matrix token → component-local custom property → CSS property —
+// translated to render-dom's data-attribute + generated-CSS mechanism.
+// `data-en-component="button"` base rule consumes only `--en-button-*` local
+// vars (defaulted in :root above); the tone/variant/size selectors above
+// re-point those vars, never a raw theme value. `pill`/`block`/`loading` are
+// generic convenience selectors layered after the size rules so they always
+// win a specificity tie (equal attribute-selector count, later source wins).
+const componentBaseRules = [
+  ':where([data-effect-native-surface="dom"]) :where([data-en-component="button"]){font:inherit;font-size:var(--en-button-font-size);position:relative;display:inline-flex;align-items:center;justify-content:center;gap:var(--en-button-gutter);background-color:var(--en-button-background);color:var(--en-button-text);border-width:1px;border-style:solid;border-color:var(--en-button-border);border-radius:var(--en-button-radius);min-height:var(--en-button-height);padding-inline:var(--en-button-gutter);}',
+  buttonToneVariantRules,
+  buttonSizeRules,
+  '[data-effect-native-surface="dom"] [data-en-component="button"][data-en-disabled="true"]{cursor:not-allowed;opacity:0.5;}',
+  '[data-effect-native-surface="dom"] [data-en-component="button"]:not([data-en-disabled="true"]){cursor:pointer;}',
+  '[data-effect-native-surface="dom"] [data-en-component="button"][data-en-pill="true"]{--en-button-radius:var(--en-radius-full);}',
+  '[data-effect-native-surface="dom"] [data-en-component="button"][data-en-block="true"]{display:flex;width:var(--en-dimension-full);}',
+  // Loading (harmonization #78): the label text hides (color:transparent, so
+  // layout is unaffected and no separate label element is needed) and a
+  // lattice-icon-sized spinner glyph draws over it via ::before — the one
+  // icon-shaped element Button draws, sized from the control lattice's icon
+  // sub-token and nothing beyond that (non-goal: no general icon-autosizing).
+  '[data-effect-native-surface="dom"] [data-en-component="button"][data-en-loading="true"]{color:transparent;cursor:wait;pointer-events:none;}',
+  '[data-effect-native-surface="dom"] [data-en-component="button"][data-en-loading="true"]::before{content:"";position:absolute;top:50%;left:50%;width:var(--en-button-icon-size);height:var(--en-button-icon-size);margin:calc(var(--en-button-icon-size) / -2) 0 0 calc(var(--en-button-icon-size) / -2);border-radius:var(--en-radius-full);border:2px solid var(--en-button-text);border-right-color:transparent;border-bottom-color:transparent;animation:en-button-spin 0.6s linear infinite;}',
+  "@keyframes en-button-spin{to{transform:rotate(360deg);}}"
+].join("")
+
+// Matrix axes on Badge/Chip/TextField/Select (harmonization P1.6, issue #79):
+// a shared, lighter-weight version of Button's component-token-tier pattern.
+// These five components have no hover/press/selected states in scope for
+// #79 (rest-state chrome only), so the CSS property is set directly from the
+// already-lowered `--en-matrix-<tone>-<variant>-rest-<role>` /
+// `--en-control-<size>-*` custom properties (#75/#76/#77) rather than
+// re-pointing an intermediate `--en-<component>-*` var — there is no second
+// consumer of that indirection yet. Each renderer only emits
+// `data-en-tone`/`data-en-variant`/`data-en-size` when the view explicitly set
+// the corresponding new axis (`resolveBadgeAppearance`/`resolveTextFieldAppearance`/
+// `resolveSelectAppearance`'s `isLegacy` flag), so these selectors can never
+// match a pre-#79 tree and cannot change its rendering.
+const toneVariantColorRules = (component: string): string =>
+  toneTokens.flatMap((tone) =>
+    toneVariantTokens.map((variant) =>
+      `[data-effect-native-surface="dom"] [data-en-component="${component}"][data-en-tone="${tone}"][data-en-variant="${variant}"]{` +
+      `background-color:var(--en-matrix-${tone}-${variant}-rest-background);` +
+      `border-color:var(--en-matrix-${tone}-${variant}-rest-border);` +
+      `color:var(--en-matrix-${tone}-${variant}-rest-text);` +
+      "border-width:1px;border-style:solid;" +
+      "}"
+    )
+  ).join("")
+
+const controlSizeBoxRules = (component: string): string =>
+  controlTokens.map((size) =>
+    `[data-effect-native-surface="dom"] [data-en-component="${component}"][data-en-size="${size}"]{` +
+    `min-height:var(--en-control-${size}-height);` +
+    `padding-inline:var(--en-control-${size}-gutter);` +
+    `border-radius:var(--en-control-${size}-radius);` +
+    `font-size:var(--en-control-${size}-font-size);` +
+    "}"
+  ).join("")
+
+const matrixAxesComponentRules = [
+  `:where([data-effect-native-surface="dom"]) :where([data-en-component="badge"][data-en-variant]){display:inline-flex;align-items:center;gap:${spacingValue("1")};padding-block:${spacingValue("0.5")};}`,
+  toneVariantColorRules("badge"),
+  controlSizeBoxRules("badge"),
+  `:where([data-effect-native-surface="dom"]) :where([data-en-component="chip"][data-en-variant]){display:inline-flex;align-items:center;gap:${spacingValue("1")};padding-block:${spacingValue("0.5")};}`,
+  toneVariantColorRules("chip"),
+  controlSizeBoxRules("chip"),
+  toneVariantColorRules("textfield"),
+  controlSizeBoxRules("textfield"),
+  `[data-effect-native-surface="dom"] [data-en-component="textfield"][data-en-invalid="true"]{border-color:${colorValue("danger")} !important;}`,
+  toneVariantColorRules("select"),
+  controlSizeBoxRules("select"),
+  `[data-effect-native-surface="dom"] [data-en-component="select"][data-en-variant]{appearance:none;-webkit-appearance:none;background-repeat:no-repeat;background-position:right ${spacingValue("2")} center;padding-inline-end:${spacingValue("6")};}`,
+  `[data-effect-native-surface="dom"] [data-en-component="select"][data-en-pill="true"]{border-radius:${radiusValue("full")};}`,
+  // Alert (harmonization #79, new component — always resolved, no legacy
+  // gating): icon + title + body callout on the tone x variant matrix.
+  `:where([data-effect-native-surface="dom"]) :where([data-en-component="alert"]){display:flex;align-items:flex-start;gap:${spacingValue("2")};padding:${spacingValue("3")};border-radius:${radiusValue("md")};border-width:1px;border-style:solid;}`,
+  toneVariantColorRules("alert")
+].join("")
+
+// SegmentedControl (issue #81) component-token tier: the container's track
+// background and corner radius resolve through `--en-segmented-*` local vars;
+// `data-en-size` re-points the radius to the matching control-lattice step
+// and `data-en-pill` overrides it to the full radius — same indirection chain
+// as Button, just re-pointed by size/pill instead of variant.
+const segmentedControlBaseRules = [
+  ':where([data-effect-native-surface="dom"]) :where([data-en-component="segmented-control"]){background-color:var(--en-segmented-background);border-radius:var(--en-segmented-radius);}',
+  '[data-effect-native-surface="dom"] [data-en-component="segmented-control"][data-en-size="2xs"]{--en-segmented-radius:var(--en-control-2xs-radius);}',
+  '[data-effect-native-surface="dom"] [data-en-component="segmented-control"][data-en-size="xs"]{--en-segmented-radius:var(--en-control-xs-radius);}',
+  '[data-effect-native-surface="dom"] [data-en-component="segmented-control"][data-en-size="sm"]{--en-segmented-radius:var(--en-control-sm-radius);}',
+  '[data-effect-native-surface="dom"] [data-en-component="segmented-control"][data-en-size="md"]{--en-segmented-radius:var(--en-control-md-radius);}',
+  '[data-effect-native-surface="dom"] [data-en-component="segmented-control"][data-en-size="lg"]{--en-segmented-radius:var(--en-control-lg-radius);}',
+  '[data-effect-native-surface="dom"] [data-en-component="segmented-control"][data-en-size="xl"]{--en-segmented-radius:var(--en-control-xl-radius);}',
+  '[data-effect-native-surface="dom"] [data-en-component="segmented-control"][data-en-pill="true"]{--en-segmented-radius:var(--en-radius-full);}',
+  '[data-effect-native-surface="dom"] [data-en-component="segmented-control"] [data-en-role="segment"]:disabled{cursor:not-allowed;}'
+].join("")
+
+// Motion lowering (C6, issue #77): generic `data-entering`/`data-exiting`
+// presence-transition infra, consuming the named easing + duration tokens.
+// `pointer-events:none` while exiting matches the apps-sdk-ui contract. This
+// is deliberately component-agnostic and not yet wired into Modal/Sheet/Toast
+// — the audit tracks full Animate/Transition primitives as a separate,
+// demand-gated Phase 2 gap; this ships the token-consumption mechanism ahead
+// of that so wiring a presence lifecycle later is additive CSS-attribute
+// wiring, not a new transition system.
+const motionBaseRules = [
+  '[data-effect-native-surface="dom"] [data-entering="true"]{transition:opacity var(--en-motion-enter) var(--en-ease-enter),transform var(--en-motion-enter) var(--en-ease-enter);}',
+  '[data-effect-native-surface="dom"] [data-exiting="true"]{pointer-events:none;transition:opacity var(--en-motion-exit) var(--en-ease-exit),transform var(--en-motion-exit) var(--en-ease-exit);}'
+].join("")
+
+// Loading-indicator keyframes (issue #83). Each animation is gated behind a
+// typed `data-en-motion="auto"` attribute the renderer sets from the
+// resolved `reduceMotion` field (see `resolveSpinnerMotion` etc. below) —
+// never a raw `@media (prefers-reduced-motion)` check inside the component.
+// The existing global chrome fallback (`chromeBaseRules` below) still
+// collapses these to near-zero duration as defense in depth when the OS
+// preference changes after mount without a re-render.
+const loadingIndicatorBaseRules = [
+  "@keyframes en-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}",
+  "@keyframes en-dot-pulse{0%,80%,100%{opacity:0.35;transform:scale(0.75);}40%{opacity:1;transform:scale(1);}}",
+  "@keyframes en-shimmer-sweep{0%{background-position:150% 0;}100%{background-position:-50% 0;}}",
+  '[data-effect-native-surface="dom"] [data-en-component="spinner"][data-en-motion="auto"] [data-en-role="ring"]{animation:en-spin var(--en-motion-loop) linear infinite;}',
+  '[data-effect-native-surface="dom"] [data-en-component="loading-dots"][data-en-motion="auto"] [data-en-role="dot"]{animation:en-dot-pulse calc(var(--en-motion-loop) * 1.8) ease-in-out infinite;}',
+  '[data-effect-native-surface="dom"] [data-en-component="shimmer-text"][data-en-motion="auto"] [data-en-role="shimmer"]{background-size:200% 100%;animation:en-shimmer-sweep calc(var(--en-motion-loop) * 1.8) linear infinite;}'
+].join("")
+
+// Fine-pointer hover gating (C6, issue #77): every hover-triggered rule is
+// wrapped in `@media (hover:hover) and (pointer:fine)` so touch/coarse-
+// pointer contexts never get sticky hover (the apps-sdk-ui mixin discipline).
+// `:active` rules stay ungated — press feedback is valid on touch.
+const chromeHoverRules = [
+  // Button hover (harmonization #78): one generic rule keyed on the
+  // component attribute, consuming the tone/variant-repointed
+  // `--en-button-background-hover` var instead of branching per legacy
+  // variant literal.
+  '[data-effect-native-surface="dom"] [data-en-component="button"]:hover:not(:disabled):not(:active){background-color:var(--en-button-background-hover) !important;}',
+  '[data-effect-native-surface="dom"] [data-en-nav-item]:hover:not(:disabled){background-color:var(--en-color-stateHover);color:var(--en-color-textPrimary);}'
+].join("")
+
+// Application-chrome physics shared by every DOM surface (the apps-sdk-ui
+// chrome-language port): the alpha-overlay state engine — hover/active/
+// selected are translucent overlays of one base color, never new hues — a
+// 150ms basic transition, press-scale feedback, one focus ring, nav-item
+// chrome, and token-derived thin scrollbars. Every value resolves through
+// the :root theme variables. `:where()` keeps rest-state rules at zero
+// specificity so typed style overrides (atomic classes) still win; the
+// interactive state fills use `!important` deliberately, because the state
+// engine is uniform chrome physics that must beat the inline variant colors
+// the renderer sets at rest.
 const chromeBaseRules = [
   ':where([data-effect-native-surface="dom"]) :where(button){transition:background-color var(--en-motion-fast) var(--en-ease-basic),border-color var(--en-motion-fast) var(--en-ease-basic),color var(--en-motion-fast) var(--en-ease-basic),opacity var(--en-motion-fast) var(--en-ease-basic),transform var(--en-motion-fast) var(--en-ease-basic);}',
   '[data-effect-native-surface="dom"] button:not(:disabled):active{transform:scale(0.98);}',
   '[data-effect-native-surface="dom"] :is(button,a,input,textarea,[tabindex]):focus-visible{outline:2px solid var(--en-color-focus);outline-offset:2px;}',
   '[data-effect-native-surface="dom"] button:disabled{cursor:not-allowed;}',
-  '[data-effect-native-surface="dom"] button[data-en-variant="ghost"]:hover:not(:disabled):not(:active){background-color:var(--en-color-stateHover) !important;}',
-  '[data-effect-native-surface="dom"] button[data-en-variant="ghost"]:active:not(:disabled){background-color:var(--en-color-stateActive) !important;}',
-  '[data-effect-native-surface="dom"] button[data-en-variant="primary"]:hover:not(:disabled):not(:active){background-color:var(--en-color-accentHover) !important;}',
-  '[data-effect-native-surface="dom"] button[data-en-variant="primary"]:active:not(:disabled){background-color:var(--en-color-accentActive) !important;}',
-  '[data-effect-native-surface="dom"] button[data-en-variant="secondary"]:hover:not(:disabled){background-color:var(--en-color-surfaceRaised) !important;}',
+  `@media (hover:hover) and (pointer:fine){${chromeHoverRules}}`,
+  // Button active/selected (harmonization #78): generic rules keyed on the
+  // component attribute, consuming the tone/variant-repointed
+  // `--en-button-background-active`/`-selected` vars.
+  '[data-effect-native-surface="dom"] [data-en-component="button"]:active:not(:disabled){background-color:var(--en-button-background-active) !important;}',
+  '[data-effect-native-surface="dom"] [data-en-component="button"][data-en-selected="true"]:not(:disabled){background-color:var(--en-button-background-selected) !important;}',
   ':where([data-effect-native-surface="dom"]) :where([data-en-nav-item]){display:flex;align-items:center;background:transparent;border:0;border-radius:var(--en-radius-md);padding:var(--en-spacing-1) var(--en-spacing-2);color:var(--en-color-textMuted);font:inherit;font-size:var(--en-type-label-fontSize);line-height:var(--en-type-label-lineHeight);cursor:pointer;text-align:left;}',
-  '[data-effect-native-surface="dom"] [data-en-nav-item]:hover:not(:disabled){background-color:var(--en-color-stateHover);color:var(--en-color-textPrimary);}',
   '[data-effect-native-surface="dom"] [data-en-nav-item]:active:not(:disabled){background-color:var(--en-color-stateActive);}',
   '[data-effect-native-surface="dom"] [data-en-nav-item][data-en-active="true"]{background-color:var(--en-color-stateSelected);color:var(--en-color-textPrimary);}',
   ':where([data-effect-native-surface="dom"]) :where([data-en-role="section-label"]){display:block;color:var(--en-color-textFaint);font-size:var(--en-type-caption-fontSize);line-height:var(--en-type-caption-lineHeight);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;padding:var(--en-spacing-3) var(--en-spacing-2) var(--en-spacing-1);}',
@@ -689,23 +954,83 @@ class AtomicStyleSheet {
       `--en-motion-fast:${this.#theme.motion.durationFastMs}ms;`,
       `--en-motion-enter:${this.#theme.motion.durationEnterMs}ms;`,
       `--en-motion-exit:${this.#theme.motion.durationExitMs}ms;`,
+      // Continuous-loop base period (#83): Spinner/LoadingDots/ShimmerText
+      // scale off this one named duration via CSS calc() multipliers instead
+      // of minting a duration token per component.
+      `--en-motion-loop:${this.#theme.motion.durationLoopMs}ms;`,
       `--en-ease-basic:${this.#theme.motion.easeBasic};`,
       `--en-ease-enter:${this.#theme.motion.easeEnter};`,
       `--en-ease-exit:${this.#theme.motion.easeExit};`,
+      // Named easing tier from #76 (apps-sdk-ui harmonization C6): exitSnappy
+      // (less inertia on dismissal) and move (on-screen positional
+      // transitions). Consumed today by the generic data-entering/
+      // data-exiting motion infra below; component call sites pick up
+      // exitSnappy/move as those lifecycles land.
+      `--en-ease-exit-snappy:${this.#theme.motion.easeExitSnappy};`,
+      `--en-ease-move:${this.#theme.motion.easeMove};`,
       `--en-elevation-overlay-shadow:${this.#theme.elevation.overlayShadow};`,
       `--en-elevation-hairline:0 0 0 ${px(this.#theme.elevation.hairlineWidth)} var(--en-color-borderSubtle);`,
       ...Object.entries(this.#theme.control).flatMap(([key, value]) => [
         `--en-control-${cssEscape(key)}-height:${px(value.height)};`,
         `--en-control-${cssEscape(key)}-gutter:${px(value.gutter)};`,
+        // Radius + font-size sub-tokens (#76 control lattice) — ready for a
+        // future `size` prop (#78/#79) to size a control's corner radius and
+        // label coherently from the same lattice step as height/gutter/icon.
+        `--en-control-${cssEscape(key)}-radius:${px(value.radius)};`,
+        `--en-control-${cssEscape(key)}-font-size:${px(value.fontSize)};`,
         `--en-control-${cssEscape(key)}-icon:${px(value.icon)};`
       ]),
+      // Icon-size tokens (#85): glyphs draw on a 1em box, so font-size — set
+      // from these custom properties — is the single sizing channel.
+      ...Object.entries(iconSizeValues).map(([key, value]) => `--en-icon-size-${cssEscape(key)}:${px(value)};`),
+      // Tier-2 tone × variant × state color matrix (#75), lowered to CSS
+      // custom properties so a future Button/Badge/Alert/Chip matrix (#78/
+      // #79) can select `--en-matrix-<tone>-<variant>-<state>-<role>` instead
+      // of reaching into the typed theme object at render time. Additive:
+      // nothing selects these vars yet.
+      ...Object.entries(this.#theme.colorMatrix).flatMap(([tone, variantMap]) =>
+        Object.entries(variantMap as Record<string, Record<string, Record<string, string>>>).flatMap(
+          ([variant, stateMap]) =>
+            Object.entries(stateMap).flatMap(([state, cell]) =>
+              Object.entries(cell as Record<string, string>).map(([role, value]) =>
+                `--en-matrix-${cssEscape(tone)}-${cssEscape(variant)}-${cssEscape(state)}-${cssEscape(role)}:${value};`
+              )
+            )
+        )
+      ),
+      // Component-token tier (C1 tier 3, issue #77; extended by #78's tone/
+      // variant/size matrix): default component-local vars a component's
+      // rest-state CSS rule consumes; tone/variant/size attribute selectors
+      // below re-point these per instance, mirroring the apps-sdk-ui
+      // `--button-*` indirection chain. These are renderer-owned chrome, not
+      // part of the typed authoring style contract. Defaults resolve to the
+      // "accent"/"solid"/"md" resting cell — `resolveButtonAppearance`'s
+      // defaults — so an (unexpected) unattributed button still renders a
+      // sane resting chrome.
+      "--en-button-background:transparent;",
+      "--en-button-background-hover:transparent;",
+      "--en-button-background-active:transparent;",
+      "--en-button-background-selected:transparent;",
+      "--en-button-text:var(--en-color-textPrimary);",
+      "--en-button-border:transparent;",
+      "--en-button-height:var(--en-control-md-height);",
+      "--en-button-gutter:var(--en-control-md-gutter);",
+      "--en-button-radius:var(--en-control-md-radius);",
+      "--en-button-font-size:var(--en-control-md-font-size);",
+      "--en-button-icon-size:var(--en-control-md-icon);",
+      // SegmentedControl (#81): defaults to the md lattice step; the
+      // data-en-size/data-en-pill selectors in segmentedControlBaseRules
+      // re-point --en-segmented-radius per instance.
+      "--en-segmented-background:var(--en-color-surface);",
+      "--en-segmented-radius:var(--en-control-md-radius);",
       "}"
     ].join("")
     const atomicRules = Array.from(this.#rules.entries())
       .filter(([key]) => this.#used.has(key))
       .map(([, rule]) => `.${rule.className}{${rule.property}:${rule.value};}`)
       .join("")
-    this.element.textContent = `${themeRules}${chromeBaseRules}${atomicRules}`
+    this.element.textContent =
+      `${themeRules}${componentBaseRules}${matrixAxesComponentRules}${segmentedControlBaseRules}${motionBaseRules}${loadingIndicatorBaseRules}${chromeBaseRules}${atomicRules}`
   }
 
   dispose(): void {
@@ -733,15 +1058,28 @@ class DomRendererState {
   readonly anchoredOpen = new Map<string, boolean>()
   // Scheduled toast auto-dismiss timers, keyed by notification id (issue #40).
   readonly toastTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  // Uncontrolled CopyButton copied-feedback timers, keyed by node key (v35,
+  // #84). Presence of a key means the node is currently in the copied state;
+  // the timer reverts it after the typed reset delay.
+  readonly copyFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  // Injected clipboard driver (v35, #84); the only write path for copy intents.
+  readonly clipboard: Clipboard
   readonly hostDrivers: Map<HostKind, DomHostDriver>
   readonly hostInstances = new Map<string, DomHostInstanceBinding>()
   readonly retainedHostInstanceKeys = new Set<string>()
+  // SegmentedControl (#81): one ResizeObserver per mounted control instance,
+  // keyed by its root element, keeping the sliding thumb aligned to the
+  // selected segment's measured bounds across layout changes. Disconnected on
+  // re-render (a fresh observer is attached to the current segment set) and on
+  // surface disposal.
+  readonly segmentedControlObservers = new Map<HTMLElement, ResizeObserver>()
 
   constructor(
     container: Element,
     document: Document,
     theme: Theme,
-    hostDrivers: ReadonlyArray<DomHostDriver> = []
+    hostDrivers: ReadonlyArray<DomHostDriver> = [],
+    clipboard?: Clipboard
   ) {
     this.theme = theme
     this.root = document.createElement("div")
@@ -749,6 +1087,7 @@ class DomRendererState {
     container.appendChild(this.root)
     this.styles = new AtomicStyleSheet(document, theme)
     this.hostDrivers = new Map(hostDrivers.map((driver) => [driver.kind, driver] as const))
+    this.clipboard = clipboard ?? makeNavigatorClipboard(document)
   }
 
   dispose(): void {
@@ -756,6 +1095,14 @@ class DomRendererState {
       clearTimeout(timer)
     }
     this.toastTimers.clear()
+    for (const timer of this.copyFeedbackTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.copyFeedbackTimers.clear()
+    for (const observer of this.segmentedControlObservers.values()) {
+      observer.disconnect()
+    }
+    this.segmentedControlObservers.clear()
     for (const { instance } of this.hostInstances.values()) {
       instance.unmount()
     }
@@ -1195,46 +1542,43 @@ const renderText = (view: TextView, state: DomRendererState, report: IntentRepor
 
 const renderButton = (view: ButtonView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "button") as HTMLButtonElement
-  const style = view.style
-  const hasPaddingOverride = style?.padding !== undefined
-    || style?.paddingTop !== undefined
-    || style?.paddingRight !== undefined
-    || style?.paddingBottom !== undefined
-    || style?.paddingLeft !== undefined
-  const hasBorderOverride = style?.borderWidth !== undefined || style?.borderColor !== undefined
   state.resetListeners(element)
   element.type = "button"
   element.textContent = view.label
-  element.disabled = view.disabled === true
-  element.setAttribute("data-en-variant", view.variant)
-  // Variant theme lowering (parity with the render-rn fix for the #71-class
-  // bug): themed surface + label color instead of the native default button.
-  // Applied before applyBaseStyle so typed style overrides still win.
-  element.style.font = "inherit"
-  element.style.borderRadius = style?.borderRadius === undefined ? "var(--en-radius-md)" : ""
-  element.style.padding = hasPaddingOverride ? "" : "var(--en-spacing-2) var(--en-spacing-4)"
-  element.style.border = hasBorderOverride ? "" : "1px solid transparent"
-  element.style.borderColor = ""
-  element.style.background = ""
-  element.style.color = ""
-  element.style.cursor = view.disabled === true ? "not-allowed" : "pointer"
-  element.style.opacity = view.disabled === true ? "0.5" : "1"
-  switch (view.variant) {
-    case "primary":
-      if (style?.backgroundColor === undefined) element.style.background = colorValue("accent")
-      if (style?.color === undefined) element.style.color = colorValue("textPrimary")
-      break
-    case "secondary":
-      if (style?.backgroundColor === undefined) element.style.background = colorValue("surface")
-      if (style?.color === undefined) element.style.color = colorValue("textPrimary")
-      if (style?.borderColor === undefined) element.style.borderColor = colorValue("border")
-      break
-    case "ghost":
-      if (style?.backgroundColor === undefined) element.style.background = "transparent"
-      if (style?.color === undefined) element.style.color = colorValue("accent")
-      break
-  }
-  state.addListener(element, "click", () => runReportedIntent(report, view.onPress))
+  const appearance: ResolvedButtonAppearance = resolveButtonAppearance(view)
+  const loading = view.loading === true
+  const disabled = view.disabled === true || loading
+  element.disabled = disabled
+  // Component-token tier lowering (C1 tier 3 + C4 data-* lowering, issue
+  // #77; extended to the full tone/variant/size matrix by #78): the themed
+  // surface + label color + radius + sizing + disabled/pill/block/loading
+  // chrome are expressed as the `data-en-component="button"` base rule plus
+  // `data-en-tone`/`data-en-variant`/`data-en-size`/`data-en-disabled`/
+  // `data-en-pill`/`data-en-block`/`data-en-loading`/`data-en-selected`
+  // re-pointing rules in the generated stylesheet (`componentBaseRules`)
+  // instead of inline styles or JS branching. `resolveButtonAppearance` is
+  // the single normalizer that turns a pre-#78 legacy `variant` token (or an
+  // omitted tone/variant/size) into the canonical matrix cell every renderer
+  // consumes, so `data-en-variant` here is always one of the matrix's own
+  // tokens (solid/soft/outline/ghost), never a legacy "primary"/"secondary".
+  // `:where()`-zero-specificity base rule keeps typed style overrides
+  // (applyBaseStyle) able to win.
+  element.setAttribute("data-en-component", "button")
+  element.setAttribute("data-en-tone", appearance.tone)
+  element.setAttribute("data-en-variant", appearance.variant)
+  element.setAttribute("data-en-size", appearance.size)
+  element.setAttribute("data-en-disabled", disabled ? "true" : "false")
+  element.setAttribute("data-en-pill", view.pill === true ? "true" : "false")
+  element.setAttribute("data-en-block", view.block === true ? "true" : "false")
+  element.setAttribute("data-en-loading", loading ? "true" : "false")
+  element.setAttribute("data-en-selected", view.selected === true ? "true" : "false")
+  if (loading) element.setAttribute("aria-busy", "true")
+  else element.removeAttribute("aria-busy")
+  if (view.selected !== undefined) element.setAttribute("aria-pressed", String(view.selected))
+  else element.removeAttribute("aria-pressed")
+  state.addListener(element, "click", () => {
+    if (!disabled) runReportedIntent(report, view.onPress)
+  })
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
   applyInteractions(element, view, state, report)
@@ -1508,12 +1852,58 @@ const renderTextField = (view: TextFieldView, state: DomRendererState, report: I
   if (field.localName === "textarea") {
     field.style.resize = "vertical"
   }
+  // TextField matrix axes (harmonization #79). `resolveTextFieldAppearance`'s
+  // `isLegacy` flag gates every new visual: a pre-#79 tree never sets
+  // `variant`/`size`, so it keeps the exact chromeless look above (no
+  // data-en-tone/variant/size attributes, no border/background/lattice
+  // sizing). `gutterSize` and `invalid` are wholly new axes with nothing to
+  // preserve, so they always apply when set, independent of `variant`.
+  const textFieldAppearance = resolveTextFieldAppearance(view)
+  field.setAttribute("data-en-component", "textfield")
+  if (textFieldAppearance.isLegacy) {
+    field.removeAttribute("data-en-tone")
+    field.removeAttribute("data-en-variant")
+    field.removeAttribute("data-en-size")
+  } else {
+    field.setAttribute("data-en-tone", textFieldAppearance.tone)
+    field.setAttribute("data-en-variant", textFieldAppearance.variant)
+    field.setAttribute("data-en-size", textFieldAppearance.size)
+    field.style.background = ""
+    field.style.border = ""
+    field.style.outline = ""
+  }
+  field.setAttribute("data-en-invalid", view.invalid === true ? "true" : "false")
+  applyControlA11y(field, view)
+  if (view.invalid === true) {
+    field.style.borderBottom = textFieldAppearance.isLegacy ? `1px solid ${colorValue("danger")}` : ""
+  } else if (textFieldAppearance.isLegacy) {
+    field.style.borderBottom = ""
+  }
+  if (view.gutterSize !== undefined) {
+    field.style.paddingInline = spacingValue(view.gutterSize)
+  } else if (textFieldAppearance.isLegacy) {
+    field.style.paddingInline = ""
+  }
+  // Textarea-equivalent autoResize (harmonization #79, Textarea parity): grow
+  // the textarea's height to its scrollHeight on every input, so a plain
+  // multiline TextField needs no app-side row-counting logic.
+  const autoResize = field.localName === "textarea" &&
+    (view as unknown as { readonly autoResize?: boolean }).autoResize === true
+  const applyAutoResize = (): void => {
+    field.style.height = "auto"
+    field.style.height = `${field.scrollHeight}px`
+  }
+  if (autoResize) {
+    field.style.overflowY = "hidden"
+    applyAutoResize()
+  }
   const onChange = view.field === undefined
     ? view.onChange
     : IntentRef("FormFieldChanged", FormFieldValueBinding(view.field))
-  if (onChange !== undefined) {
+  if (onChange !== undefined || autoResize) {
     state.addListener(field, "input", () => {
-      if (view.disabled === true) return
+      if (autoResize) applyAutoResize()
+      if (view.disabled === true || onChange === undefined) return
       runReportedIntent(report, onChange, fieldValue(field))
     })
   }
@@ -1969,14 +2359,34 @@ const renderDivider = (view: DividerView, state: DomRendererState): HTMLElement 
   return element
 }
 
+// Badge/Chip matrix axes (harmonization #79). `resolveBadgeAppearance`'s
+// `isLegacy` flag is the back-compat gate: a pre-#79 tree never sets
+// `variant`/`size`, so `isLegacy` is true and the renderer keeps drawing the
+// exact pre-#79 look (data-en-tone holding the legacy `Tone` value, colored
+// text, no fill). Only when a caller opts in does `data-en-tone` switch to
+// the resolved matrix tone and `data-en-variant`/`data-en-size` attach,
+// activating the generated `toneVariantColorRules("badge")`/
+// `controlSizeBoxRules("badge")` selectors.
 const renderBadge = (view: BadgeView, state: DomRendererState): HTMLElement => {
   const element = state.keyedElement(view, "span")
   state.resetListeners(element)
   const tone = view.tone ?? "neutral"
-  element.setAttribute("data-en-tone", tone)
+  const appearance = resolveBadgeAppearance(view)
+  element.setAttribute("data-en-component", "badge")
+  if (appearance.isLegacy) {
+    element.setAttribute("data-en-tone", tone)
+    element.removeAttribute("data-en-variant")
+    element.removeAttribute("data-en-size")
+    element.style.display = "inline-flex"
+    element.style.color = colorValue(toneColorToken[tone])
+  } else {
+    element.setAttribute("data-en-tone", appearance.tone)
+    element.setAttribute("data-en-variant", appearance.variant)
+    element.setAttribute("data-en-size", appearance.size)
+    element.style.display = ""
+    element.style.color = ""
+  }
   element.textContent = view.label
-  element.style.display = "inline-flex"
-  element.style.color = colorValue(toneColorToken[tone])
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
   applyInteractions(element, view, state, () => Effect.succeed(undefined))
@@ -1987,9 +2397,21 @@ const renderChip = (view: ChipView, state: DomRendererState): HTMLElement => {
   const element = state.keyedElement(view, "span")
   state.resetListeners(element)
   const tone = view.tone ?? "neutral"
-  element.setAttribute("data-en-tone", tone)
-  element.style.display = "inline-flex"
-  element.style.gap = "var(--en-spacing-1)"
+  const appearance = resolveBadgeAppearance(view)
+  element.setAttribute("data-en-component", "chip")
+  if (appearance.isLegacy) {
+    element.setAttribute("data-en-tone", tone)
+    element.removeAttribute("data-en-variant")
+    element.removeAttribute("data-en-size")
+    element.style.display = "inline-flex"
+    element.style.gap = "var(--en-spacing-1)"
+  } else {
+    element.setAttribute("data-en-tone", appearance.tone)
+    element.setAttribute("data-en-variant", appearance.variant)
+    element.setAttribute("data-en-size", appearance.size)
+    element.style.display = ""
+    element.style.gap = ""
+  }
   const document = element.ownerDocument
   const label = document.createElement("span")
   label.setAttribute("data-en-role", "label")
@@ -1998,7 +2420,9 @@ const renderChip = (view: ChipView, state: DomRendererState): HTMLElement => {
   if (view.value !== undefined) {
     const value = document.createElement("span")
     value.setAttribute("data-en-role", "value")
-    value.style.color = colorValue(toneColorToken[tone])
+    if (appearance.isLegacy) {
+      value.style.color = colorValue(toneColorToken[tone])
+    }
     value.textContent = view.value
     children.push(value)
   }
@@ -2059,6 +2483,385 @@ const renderStatTile = (view: StatTileView, state: DomRendererState): HTMLElemen
   return element
 }
 
+// Empty-state message (issue #82, harmonization P2.9). Centered block on
+// spacing tokens: optional icon badge over the closed IconName set (bounded
+// tone/size vocabularies), required title, optional muted description, and an
+// optional typed Button action slot.
+const emptyMessageToneColor: Record<EmptyMessageIconTone, ColorToken> = {
+  secondary: "textMuted",
+  danger: "danger",
+  warning: "warning"
+}
+
+const emptyMessageBadgePx: Record<EmptyMessageIconSize, number> = { sm: 32, md: 40 }
+const emptyMessageGlyphPx: Record<EmptyMessageIconSize, number> = { sm: 20, md: 24 }
+
+const renderEmptyMessage = (view: EmptyMessageView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const element = state.keyedElement(view, "div")
+  state.resetListeners(element)
+  element.style.display = "flex"
+  element.style.flexDirection = "column"
+  element.style.alignItems = "center"
+  element.style.justifyContent = "center"
+  element.style.textAlign = "center"
+  element.style.width = "100%"
+  element.style.height = "100%"
+  element.style.padding = "var(--en-spacing-6)"
+  const document = element.ownerDocument
+  const children: Array<HTMLElement> = []
+  if (view.icon !== undefined) {
+    const tone = view.icon.tone ?? "secondary"
+    const size = view.icon.size ?? "md"
+    const badge = document.createElement("div")
+    badge.setAttribute("data-en-role", "icon")
+    badge.setAttribute("data-en-tone", tone)
+    badge.setAttribute("data-en-size", size)
+    badge.setAttribute("aria-hidden", "true")
+    badge.style.display = "flex"
+    badge.style.alignItems = "center"
+    badge.style.justifyContent = "center"
+    badge.style.width = `${emptyMessageBadgePx[size]}px`
+    badge.style.height = `${emptyMessageBadgePx[size]}px`
+    badge.style.borderRadius = radiusValue("md")
+    badge.style.marginBottom = "var(--en-spacing-3)"
+    badge.style.background = colorValue("surfaceRaised")
+    badge.style.color = colorValue(emptyMessageToneColor[tone])
+    badge.style.fontSize = `${emptyMessageGlyphPx[size]}px`
+    badge.innerHTML = iconSvg(view.icon.name, emptyMessageGlyphPx[size])
+    children.push(badge)
+  }
+  const title = document.createElement("span")
+  title.setAttribute("data-en-role", "title")
+  title.style.maxWidth = "90%"
+  title.style.color = colorValue("textPrimary")
+  title.style.fontSize = "var(--en-type-label-fontSize)"
+  title.style.lineHeight = "var(--en-type-label-lineHeight)"
+  title.style.fontWeight = "600"
+  title.textContent = view.title
+  children.push(title)
+  if (view.description !== undefined) {
+    const description = document.createElement("span")
+    description.setAttribute("data-en-role", "description")
+    description.style.maxWidth = "90%"
+    description.style.marginTop = "var(--en-spacing-1)"
+    description.style.color = colorValue("textMuted")
+    description.style.fontSize = "var(--en-type-body-fontSize)"
+    description.style.lineHeight = "var(--en-type-body-lineHeight)"
+    description.textContent = view.description
+    children.push(description)
+  }
+  if (view.action !== undefined) {
+    const action = document.createElement("div")
+    action.setAttribute("data-en-role", "action")
+    action.style.marginTop = "var(--en-spacing-4)"
+    action.appendChild(renderView(view.action, state, report))
+    children.push(action)
+  }
+  element.replaceChildren(...children)
+  applyBaseStyle(element, view, state)
+  applyA11y(element, view)
+  return element
+}
+
+// Avatar + AvatarGroup (issue #80). The typed fallback chain is layered DOM:
+// the initials/icon fallback always renders beneath and the app-supplied
+// image sits absolutely on top, so a failed image load (onerror hides the
+// img) reveals the fallback without any renderer-side state. Sizes ride the
+// shared control lattice from the theme; tones reuse the closed Tone set
+// with a soft (tinted translucent fill) or solid (tone fill + inverse text)
+// variant. No remote fetching or identicon generation happens here.
+interface AvatarDefaults {
+  readonly size?: ControlToken
+  readonly tone?: Tone
+  readonly variant?: AvatarVariant
+}
+
+const applyAvatarSurface = (
+  element: HTMLElement,
+  size: ControlToken,
+  tone: Tone,
+  variant: AvatarVariant,
+  state: DomRendererState
+): void => {
+  const height = state.theme.control[size].height
+  element.setAttribute("data-en-avatar-size", size)
+  element.setAttribute("data-en-tone", tone)
+  element.setAttribute("data-en-avatar-variant", variant)
+  element.style.position = "relative"
+  element.style.display = "inline-flex"
+  element.style.alignItems = "center"
+  element.style.justifyContent = "center"
+  element.style.flexShrink = "0"
+  element.style.overflow = "hidden"
+  element.style.width = `${height}px`
+  element.style.height = `${height}px`
+  element.style.borderRadius = "50%"
+  element.style.fontSize = `${Math.round(height * 0.42)}px`
+  const toneColor = colorValue(toneColorToken[tone])
+  if (variant === "solid") {
+    element.style.background = toneColor
+    element.style.color = colorValue("textInverse")
+  } else {
+    element.style.background = `color-mix(in srgb, ${toneColor} 18%, transparent)`
+    element.style.color = toneColor
+  }
+}
+
+const renderAvatarElement = (
+  view: AvatarView,
+  state: DomRendererState,
+  defaults: AvatarDefaults = {}
+): HTMLElement => {
+  const element = state.keyedElement(view, "span")
+  state.resetListeners(element)
+  applyAvatarSurface(
+    element,
+    view.size ?? defaults.size ?? "md",
+    view.tone ?? defaults.tone ?? "neutral",
+    view.variant ?? defaults.variant ?? "soft",
+    state
+  )
+  const document = element.ownerDocument
+  const children: Array<HTMLElement> = []
+  // Fallback layer: initials over icon (the chain past the image).
+  if (view.initials !== undefined) {
+    const initials = document.createElement("span")
+    initials.setAttribute("data-en-role", "initials")
+    initials.style.fontWeight = "600"
+    initials.style.lineHeight = "1"
+    initials.style.userSelect = "none"
+    initials.textContent = view.initials
+    children.push(initials)
+  } else if (view.icon !== undefined) {
+    const icon = document.createElement("span")
+    icon.setAttribute("data-en-role", "icon")
+    icon.setAttribute("data-en-icon", view.icon)
+    icon.style.display = "inline-flex"
+    // Icon conventions (#85): pin the glyph's pixel size to the
+    // control-lattice icon step for this avatar size (same channel
+    // `iconSvg`'s explicit width/height already uses elsewhere).
+    const avatarIconPx = state.theme.control[view.size ?? defaults.size ?? "md"].icon
+    icon.style.fontSize = `${avatarIconPx}px`
+    icon.innerHTML = iconSvg(view.icon, avatarIconPx)
+    children.push(icon)
+  }
+  if (view.image !== undefined) {
+    const image = document.createElement("img")
+    image.setAttribute("data-en-role", "image")
+    image.setAttribute("src", view.image)
+    image.setAttribute("alt", "")
+    image.style.position = "absolute"
+    image.style.inset = "0"
+    image.style.width = "100%"
+    image.style.height = "100%"
+    image.style.objectFit = "cover"
+    // A failed load reveals the initials/icon layer beneath — the typed
+    // fallback chain needs no renderer state.
+    image.addEventListener("error", () => {
+      image.style.display = "none"
+    })
+    children.push(image)
+  }
+  element.replaceChildren(...children)
+  if (view.label === undefined) {
+    element.setAttribute("aria-hidden", "true")
+  } else {
+    element.setAttribute("role", "img")
+    element.setAttribute("aria-label", view.label)
+  }
+  applyBaseStyle(element, view, state)
+  applyA11y(element, view)
+  return element
+}
+
+const renderAvatar = (view: AvatarView, state: DomRendererState): HTMLElement =>
+  renderAvatarElement(view, state)
+
+const renderAvatarGroup = (view: AvatarGroupView, state: DomRendererState): HTMLElement => {
+  const element = state.keyedElement(view, "span")
+  state.resetListeners(element)
+  const size = view.size ?? "md"
+  const tone = view.tone ?? "neutral"
+  const variant = view.variant ?? "soft"
+  element.setAttribute("data-en-avatar-size", size)
+  element.style.display = "inline-flex"
+  element.style.alignItems = "center"
+  const visible = view.max === undefined ? view.avatars : view.avatars.slice(0, view.max)
+  const overflow = view.avatars.length - visible.length
+  const overlap = `${-Math.round(state.theme.control[size].height * 0.25)}px`
+  const children: Array<HTMLElement> = []
+  visible.forEach((avatar, index) => {
+    const child = renderAvatarElement(avatar, state, { size, tone, variant })
+    // Cutout overlap: a background-colored ring separates stacked marks;
+    // earlier avatars stay on top.
+    child.style.boxShadow = `0 0 0 2px ${colorValue("background")}`
+    child.style.zIndex = String(visible.length + (overflow > 0 ? 1 : 0) - index)
+    if (index > 0) {
+      child.style.marginLeft = overlap
+    }
+    children.push(child)
+  })
+  if (overflow > 0) {
+    const more = element.ownerDocument.createElement("span")
+    more.setAttribute("data-en-role", "overflow")
+    applyAvatarSurface(more, size, tone, variant, state)
+    more.style.boxShadow = `0 0 0 2px ${colorValue("background")}`
+    more.style.zIndex = "0"
+    if (children.length > 0) {
+      more.style.marginLeft = overlap
+    }
+    const label = more.ownerDocument.createElement("span")
+    label.style.fontWeight = "600"
+    label.style.lineHeight = "1"
+    label.style.userSelect = "none"
+    label.textContent = `+${overflow}`
+    more.replaceChildren(label)
+    more.setAttribute("aria-label", `${overflow} more`)
+    children.push(more)
+  }
+  element.replaceChildren(...children)
+  applyBaseStyle(element, view, state)
+  applyA11y(element, view)
+  return element
+}
+
+// Loading indicators (issue #83). Meaningful vs decorative mirrors Icon/
+// Avatar: a `label` means role="status" + aria-live="polite"; absent means
+// aria-hidden (the surrounding context usually carries the meaning). The
+// resolved `reduceMotion` field (baked in by `resolveView` from the live
+// `prefers-reduced-motion` signal, or an explicit app override) selects
+// `data-en-motion="auto"|"reduced"` — the CSS in `loadingIndicatorBaseRules`
+// only animates the "auto" case, so "reduced" renders the identical static
+// markup with no animation, never a raw media-query check here.
+const applyLoadingIndicatorA11y = (element: HTMLElement, label: string | undefined): void => {
+  if (label === undefined) {
+    element.setAttribute("aria-hidden", "true")
+  } else {
+    element.setAttribute("role", "status")
+    element.setAttribute("aria-live", "polite")
+    element.setAttribute("aria-label", label)
+  }
+}
+
+const renderSpinner = (view: SpinnerView, state: DomRendererState): HTMLElement => {
+  const element = state.keyedElement(view, "span")
+  state.resetListeners(element)
+  const tone = view.tone ?? "info"
+  const size = view.size ?? "md"
+  const reduceMotion = view.reduceMotion === true
+  const icon = state.theme.control[size].icon
+  element.setAttribute("data-en-component", "spinner")
+  element.setAttribute("data-en-tone", tone)
+  element.setAttribute("data-en-motion", reduceMotion ? "reduced" : "auto")
+  element.style.display = "inline-flex"
+  applyLoadingIndicatorA11y(element, view.label)
+
+  const toneColor = colorValue(toneColorToken[tone])
+  const borderWidth = Math.max(2, Math.round(icon / 8))
+  const ring = element.ownerDocument.createElement("span")
+  ring.setAttribute("data-en-role", "ring")
+  ring.style.display = "block"
+  ring.style.boxSizing = "border-box"
+  ring.style.width = `${icon}px`
+  ring.style.height = `${icon}px`
+  ring.style.borderRadius = "50%"
+  ring.style.border = `${borderWidth}px solid color-mix(in srgb, ${toneColor} 25%, transparent)`
+  ring.style.borderTopColor = toneColor
+  element.replaceChildren(ring)
+
+  applyBaseStyle(element, view, state)
+  applyA11y(element, view)
+  return element
+}
+
+const renderLoadingDots = (view: LoadingDotsView, state: DomRendererState): HTMLElement => {
+  const element = state.keyedElement(view, "span")
+  state.resetListeners(element)
+  const tone = view.tone ?? "info"
+  const size = view.size ?? "md"
+  const reduceMotion = view.reduceMotion === true
+  const icon = state.theme.control[size].icon
+  const dotSize = Math.max(4, Math.round(icon * 0.3))
+  element.setAttribute("data-en-component", "loading-dots")
+  element.setAttribute("data-en-tone", tone)
+  element.setAttribute("data-en-motion", reduceMotion ? "reduced" : "auto")
+  element.style.display = "inline-flex"
+  element.style.alignItems = "center"
+  element.style.gap = `${Math.max(2, Math.round(dotSize * 0.6))}px`
+  applyLoadingIndicatorA11y(element, view.label)
+
+  const toneColor = colorValue(toneColorToken[tone])
+  const document = element.ownerDocument
+  const dots = [0, 1, 2].map((index) => {
+    const dot = document.createElement("span")
+    dot.setAttribute("data-en-role", "dot")
+    dot.style.display = "block"
+    dot.style.width = `${dotSize}px`
+    dot.style.height = `${dotSize}px`
+    dot.style.borderRadius = "50%"
+    dot.style.background = toneColor
+    if (reduceMotion) {
+      dot.style.opacity = "0.6"
+    } else {
+      dot.style.animationDelay = `${index * 160}ms`
+    }
+    return dot
+  })
+  element.replaceChildren(...dots)
+
+  applyBaseStyle(element, view, state)
+  applyA11y(element, view)
+  return element
+}
+
+const renderShimmerText = (view: ShimmerTextView, state: DomRendererState): HTMLElement => {
+  const element = state.keyedElement(view, "span")
+  state.resetListeners(element)
+  const reduceMotion = view.reduceMotion === true
+  const typeScale = view.typeScale ?? "body"
+  const typeValue = state.theme.typeScale[typeScale]
+  element.setAttribute("data-en-component", "shimmer-text")
+  element.setAttribute("data-en-motion", reduceMotion ? "reduced" : "auto")
+
+  if (view.text !== undefined) {
+    // Real pending text: a shimmering gradient sweep clipped to the glyphs
+    // via background-clip:text. Reduced motion keeps the real text legible
+    // at a muted flat color — no gradient, no animation.
+    element.setAttribute("data-en-role", "shimmer")
+    element.textContent = view.text
+    element.style.fontSize = `${typeValue.fontSize}px`
+    element.style.lineHeight = `${typeValue.lineHeight}px`
+    if (reduceMotion) {
+      element.style.color = colorValue("textFaint")
+    } else {
+      element.style.color = "transparent"
+      element.style.backgroundImage =
+        `linear-gradient(90deg, ${colorValue("textFaint")} 25%, ${colorValue("textPrimary")} 50%, ${colorValue("textFaint")} 75%)`
+      element.style.setProperty("-webkit-background-clip", "text")
+      element.style.setProperty("background-clip", "text")
+    }
+  } else {
+    // Skeleton placeholder bar (no content has arrived yet). Reduced motion
+    // is a flat static bar in the same shape — still legible as "pending".
+    element.setAttribute("data-en-role", "shimmer")
+    element.style.display = "inline-block"
+    element.style.height = `${typeValue.lineHeight}px`
+    element.style.borderRadius = radiusValue("sm")
+    element.style.width = dimensionValue(view.width!)
+    if (reduceMotion) {
+      element.style.background = colorValue("surfaceRaised")
+    } else {
+      element.style.backgroundImage =
+        `linear-gradient(90deg, ${colorValue("surfaceRaised")} 25%, ${colorValue("surfaceOverlay")} 50%, ${colorValue("surfaceRaised")} 75%)`
+    }
+  }
+  applyLoadingIndicatorA11y(element, view.label)
+
+  applyBaseStyle(element, view, state)
+  applyA11y(element, view)
+  return element
+}
+
 const renderTable = (view: TableView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "table") as HTMLTableElement
   state.resetListeners(element)
@@ -2109,6 +2912,17 @@ const iconSvg = (name: IconName, sizePx: number): string => {
     `width="${sizePx}" height="${sizePx}"`,
   )
 }
+
+// Select trigger dropdown-indicator glyph (harmonization #79). A CSS
+// `background-image: url(...)` SVG renders in an isolated image document, so
+// neither `currentColor` nor a `var(--en-*)` custom property resolves against
+// the host page's color/theme there — a declared, honest simplification (not
+// a silent bug): the indicator glyph paints a fixed neutral tone instead of
+// tracking the resolved matrix text color. `dropdownIcon` still selects the
+// real glyph shape from the closed icon set.
+const dropdownIndicatorColor = "#8b93a7"
+const dropdownIconDataUri = (name: IconName): string =>
+  `url("data:image/svg+xml,${encodeURIComponent(iconSvg(name, iconSizePixels.sm).replace(/currentColor/g, dropdownIndicatorColor))}")`
 
 const splitAxis = (orientation: "row" | "column"): {
   readonly clientAxis: "clientX" | "clientY"
@@ -3097,6 +3911,11 @@ const renderToggle = (view: ToggleView, state: DomRendererState, report: IntentR
   element.type = "button"
   element.setAttribute("role", "switch")
   element.setAttribute("data-en-role", "control")
+  // data-* lowering (C4, issue #77): a stable, non-visual QA/behavior-contract
+  // selector for the checked state axis, additive to the existing aria-checked
+  // reflection — no CSS selects on it yet, so this cannot change rendering.
+  element.setAttribute("data-en-component", "toggle")
+  element.setAttribute("data-checked", view.value ? "true" : "false")
   element.setAttribute("aria-checked", view.value ? "true" : "false")
   if (view.label !== undefined) element.setAttribute("aria-label", view.label)
   element.disabled = view.disabled === true
@@ -3112,34 +3931,76 @@ const renderToggle = (view: ToggleView, state: DomRendererState, report: IntentR
   return element
 }
 
+// Select/SelectControl trigger conventions (harmonization #79).
+// `resolveSelectAppearance`'s `isLegacy` flag gates every new visual: a
+// pre-#79 tree never sets `variant`/`size`, so it keeps the exact
+// platform-default `<select>` look. Once a caller opts in, the trigger draws
+// through the generated `toneVariantColorRules("select")`/
+// `controlSizeBoxRules("select")` selectors plus a decorative dropdown-icon
+// background-image (no wrapper element — the `<select>` stays the keyed root
+// so existing `element.value =` call sites keep working unchanged).
+// Multi-select is additive: `multiple`/`values` only take effect when
+// `view.multiple` is true; `value` keeps its pre-#79 single-select meaning.
 const renderSelect = (view: SelectView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "select") as HTMLSelectElement
   state.resetListeners(element)
   element.setAttribute("data-en-role", "control")
   element.disabled = view.disabled === true
+  element.multiple = view.multiple === true
   if (view.label !== undefined) element.setAttribute("aria-label", view.label)
   applyControlA11y(element, view)
   const document = element.ownerDocument
   const optionEls: Array<HTMLOptionElement> = []
-  if (view.placeholder !== undefined) {
+  if (view.placeholder !== undefined && view.multiple !== true) {
     const placeholder = document.createElement("option")
     placeholder.value = ""
     placeholder.textContent = view.placeholder
     placeholder.disabled = true
     optionEls.push(placeholder)
   }
+  const selectedValues = view.multiple === true ? (view.values ?? []) : undefined
   for (const option of view.options) {
     const optionEl = document.createElement("option")
     optionEl.value = option.value
     optionEl.textContent = option.label
     optionEl.disabled = option.disabled === true
+    if (selectedValues !== undefined) {
+      optionEl.selected = selectedValues.includes(option.value)
+    }
     optionEls.push(optionEl)
   }
   element.replaceChildren(...optionEls)
-  element.value = view.value
+  if (selectedValues === undefined) {
+    element.value = view.value
+  }
   const onChange = controlChangeIntent(view)
   if (onChange !== undefined) {
-    state.addListener(element, "change", () => runReportedIntent(report, onChange, element.value))
+    state.addListener(element, "change", () => {
+      if (view.multiple === true) {
+        runReportedIntent(
+          report,
+          onChange,
+          Array.from(element.selectedOptions).map((option) => option.value)
+        )
+      } else {
+        runReportedIntent(report, onChange, element.value)
+      }
+    })
+  }
+  const appearance = resolveSelectAppearance(view)
+  element.setAttribute("data-en-component", "select")
+  if (appearance.isLegacy) {
+    element.removeAttribute("data-en-variant")
+    element.removeAttribute("data-en-size")
+    element.removeAttribute("data-en-pill")
+    element.style.backgroundImage = ""
+  } else {
+    element.setAttribute("data-en-tone", appearance.tone)
+    element.setAttribute("data-en-variant", appearance.variant)
+    element.setAttribute("data-en-size", appearance.size)
+    element.setAttribute("data-en-pill", appearance.pill ? "true" : "false")
+    element.style.backgroundImage = dropdownIconDataUri(appearance.dropdownIcon)
+    element.style.backgroundSize = `${iconSizePixels.sm}px`
   }
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
@@ -3213,6 +4074,180 @@ const renderRadioGroup = (view: RadioGroupView, state: DomRendererState, report:
   element.replaceChildren(...optionEls)
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
+  return element
+}
+
+// SegmentedControl (issue #81, harmonization P2.8). A single-choice INPUT
+// control — WAI-ARIA radiogroup/radio semantics with roving tabindex/arrow-key
+// nav (the Tabs keyboard model), plus an animated sliding thumb measured via
+// ResizeObserver against the selected segment's live bounds (component-token
+// tier + data-* lowering, issue #77: `data-en-component="segmented-control"`,
+// `data-en-size`, `data-en-pill` re-point `--en-segmented-*` local vars).
+const positionSegmentedThumb = (
+  container: HTMLElement,
+  thumb: HTMLElement,
+  selected: HTMLElement | undefined
+): void => {
+  if (selected === undefined) {
+    thumb.style.opacity = "0"
+    return
+  }
+  const containerRect = container.getBoundingClientRect()
+  const selectedRect = selected.getBoundingClientRect()
+  thumb.style.opacity = "1"
+  thumb.style.width = `${selectedRect.width}px`
+  thumb.style.height = `${selectedRect.height}px`
+  thumb.style.transform = `translate(${selectedRect.left - containerRect.left}px,${
+    selectedRect.top - containerRect.top
+  }px)`
+}
+
+const renderSegmentedControl = (
+  view: SegmentedControlView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const element = state.keyedElement(view, "div")
+  state.resetListeners(element)
+  const size = view.size ?? "md"
+  element.setAttribute("role", "radiogroup")
+  element.setAttribute("data-en-component", "segmented-control")
+  element.setAttribute("data-en-size", size)
+  element.setAttribute("data-en-pill", view.pill === true ? "true" : "false")
+  element.style.position = "relative"
+  element.style.display = "inline-flex"
+  element.style.gap = view.gutterSize === undefined ? "0" : `var(--en-spacing-${cssEscape(view.gutterSize)})`
+  element.style.padding = view.gutterSize === undefined ? "0" : `var(--en-spacing-${cssEscape(view.gutterSize)})`
+  // Background + radius resolve through the component-token tier
+  // (segmentedControlBaseRules): the data-en-size/data-en-pill attributes
+  // above re-point --en-segmented-radius; no inline recipe here.
+  const document = element.ownerDocument
+
+  // The thumb element is created once and reused across renders (the
+  // container itself is key-stable via `keyedElement`), so its CSS transition
+  // animates between the previous and next measured position instead of
+  // popping.
+  let thumb = element.querySelector('[data-en-role="thumb"]') as HTMLElement | null
+  if (thumb === null) {
+    thumb = document.createElement("div")
+    thumb.setAttribute("data-en-role", "thumb")
+    thumb.setAttribute("aria-hidden", "true")
+    thumb.style.position = "absolute"
+    thumb.style.top = "0"
+    thumb.style.left = "0"
+    thumb.style.zIndex = "0"
+    thumb.style.pointerEvents = "none"
+    // The #76 named "move" easing token: on-screen positional transitions.
+    thumb.style.transitionProperty = "transform,width,height"
+    thumb.style.transitionDuration = "var(--en-motion-fast)"
+    thumb.style.transitionTimingFunction = "var(--en-ease-move)"
+    thumb.style.backgroundColor = "var(--en-color-surfaceRaised)"
+    thumb.style.borderRadius = "inherit"
+  }
+
+  const enabledIds = view.options.filter((option) => option.disabled !== true).map((option) => option.id)
+  const moveSelection = (direction: 1 | -1) => {
+    if (enabledIds.length === 0) return
+    const index = enabledIds.indexOf(view.value)
+    const nextId = enabledIds[(index + direction + enabledIds.length) % enabledIds.length]!
+    runReportedIntent(report, view.onChange, nextId)
+  }
+
+  // Reused per option id (not just the thumb): preserves focus and gives the
+  // ResizeObserver stable element identity across re-renders, same reuse
+  // discipline as the thumb above.
+  const existingSegments = new Map(
+    Array.from(element.querySelectorAll('[data-en-role="segment"]')).map((segmentEl) =>
+      [segmentEl.getAttribute("data-en-segment"), segmentEl as HTMLButtonElement] as const
+    )
+  )
+
+  const optionEls = view.options.map((option) => {
+    const button = existingSegments.get(option.id) ?? (document.createElement("button") as HTMLButtonElement)
+    button.replaceChildren()
+    button.type = "button"
+    button.setAttribute("role", "radio")
+    button.setAttribute("data-en-role", "segment")
+    button.setAttribute("data-en-segment", option.id)
+    const selected = view.value === option.id
+    button.setAttribute("aria-checked", selected ? "true" : "false")
+    button.tabIndex = selected ? 0 : -1
+    button.disabled = option.disabled === true
+    button.style.position = "relative"
+    button.style.zIndex = "1"
+    button.style.display = "inline-flex"
+    button.style.alignItems = "center"
+    button.style.justifyContent = "center"
+    button.style.gap = "var(--en-spacing-1)"
+    button.style.background = "transparent"
+    button.style.border = "0"
+    button.style.font = "inherit"
+    button.style.fontSize = `var(--en-control-${cssEscape(size)}-font-size)`
+    button.style.color = "var(--en-color-textPrimary)"
+    button.style.padding = `0 var(--en-control-${cssEscape(size)}-gutter)`
+    button.style.height = `var(--en-control-${cssEscape(size)}-height)`
+    button.style.cursor = option.disabled === true ? "not-allowed" : "pointer"
+    button.style.opacity = option.disabled === true ? "0.5" : "1"
+    if (option.icon !== undefined) {
+      const iconEl = document.createElement("span")
+      iconEl.setAttribute("aria-hidden", "true")
+      iconEl.style.display = "inline-flex"
+      iconEl.style.fontSize = `var(--en-control-${cssEscape(size)}-icon)`
+      iconEl.innerHTML = iconSvg(option.icon, iconSizePixels.sm)
+      button.appendChild(iconEl)
+    }
+    const label = document.createElement("span")
+    label.setAttribute("data-en-role", "label")
+    label.textContent = option.label
+    button.appendChild(label)
+
+    state.resetListeners(button)
+    if (option.disabled !== true) {
+      state.addListener(button, "click", () => runReportedIntent(report, view.onChange, option.id))
+    }
+    state.addListener(button, "keydown", (event) => {
+      const key = (event as KeyboardEvent).key
+      if (key === "ArrowRight" || key === "ArrowDown") {
+        event.preventDefault()
+        moveSelection(1)
+      } else if (key === "ArrowLeft" || key === "ArrowUp") {
+        event.preventDefault()
+        moveSelection(-1)
+      } else if (key === "Home") {
+        event.preventDefault()
+        if (enabledIds.length > 0) runReportedIntent(report, view.onChange, enabledIds[0]!)
+      } else if (key === "End") {
+        event.preventDefault()
+        if (enabledIds.length > 0) runReportedIntent(report, view.onChange, enabledIds[enabledIds.length - 1]!)
+      }
+    })
+    return button
+  })
+
+  element.replaceChildren(thumb, ...optionEls)
+
+  const selectedIndex = view.options.findIndex((option) => option.id === view.value)
+  const selectedButton = selectedIndex === -1 ? undefined : optionEls[selectedIndex]
+  const reposition = () => positionSegmentedThumb(element, thumb!, selectedButton)
+  reposition()
+
+  // ResizeObserver (issue #81): keeps the thumb aligned to the selected
+  // segment's live bounds across layout changes (container resize, font
+  // loading, content reflow) that don't otherwise trigger a re-render.
+  state.segmentedControlObservers.get(element)?.disconnect()
+  const observerWindow = element.ownerDocument.defaultView as unknown as
+    | { readonly ResizeObserver?: typeof ResizeObserver }
+    | null
+  if (observerWindow?.ResizeObserver !== undefined) {
+    const observer = new observerWindow.ResizeObserver(() => reposition())
+    observer.observe(element)
+    for (const optionEl of optionEls) observer.observe(optionEl)
+    state.segmentedControlObservers.set(element, observer)
+  }
+
+  applyBaseStyle(element, view, state)
+  applyA11y(element, view)
+  applyInteractions(element, view, state, report)
   return element
 }
 
@@ -3424,6 +4459,64 @@ const renderStatusBanner = (view: StatusBannerView, state: DomRendererState, rep
     state.addListener(retry, "click", () => runReportedIntent(report, onRetry))
     children.push(retry)
   }
+  if (view.onDismiss !== undefined) {
+    const dismiss = document.createElement("button") as HTMLButtonElement
+    dismiss.type = "button"
+    dismiss.setAttribute("data-en-role", "dismiss")
+    dismiss.setAttribute("aria-label", "Dismiss")
+    dismiss.textContent = "×"
+    const onDismiss = view.onDismiss
+    state.addListener(dismiss, "click", () => runReportedIntent(report, onDismiss))
+    children.push(dismiss)
+  }
+  element.replaceChildren(...children)
+  applyBaseStyle(element, view, state)
+  applyA11y(element, view)
+  return element
+}
+
+// Alert (harmonization #79, new component — see the AlertView doc comment
+// for the Alert-vs-StatusBanner decision). A brand-new tag has no legacy
+// rendering to preserve, so `resolveAlertAppearance` always resolves a
+// concrete tone/variant/icon and the generated `toneVariantColorRules("alert")`
+// selector always applies.
+const alertLiveRole = (tone: ToneToken): { readonly role: string; readonly live: string } =>
+  tone === "danger" ? { role: "alert", live: "assertive" } : { role: "status", live: "polite" }
+
+const renderAlert = (view: AlertView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const element = state.keyedElement(view, "div")
+  state.resetListeners(element)
+  const appearance = resolveAlertAppearance(view)
+  const live = alertLiveRole(appearance.tone)
+  element.setAttribute("role", live.role)
+  element.setAttribute("aria-live", live.live)
+  element.setAttribute("data-en-component", "alert")
+  element.setAttribute("data-en-tone", appearance.tone)
+  element.setAttribute("data-en-variant", appearance.variant)
+  const document = element.ownerDocument
+  const icon = document.createElement("span")
+  icon.setAttribute("data-en-role", "icon")
+  icon.setAttribute("aria-hidden", "true")
+  icon.style.display = "inline-flex"
+  icon.style.fontSize = `${iconSizePixels.md}px`
+  icon.innerHTML = iconSvg(appearance.icon, iconSizePixels.md)
+  const body = document.createElement("div")
+  body.setAttribute("data-en-role", "body")
+  body.style.display = "flex"
+  body.style.flexDirection = "column"
+  body.style.gap = "var(--en-spacing-1)"
+  if (view.title !== undefined) {
+    const title = document.createElement("span")
+    title.setAttribute("data-en-role", "title")
+    title.style.fontWeight = "600"
+    title.textContent = view.title
+    body.appendChild(title)
+  }
+  const message = document.createElement("span")
+  message.setAttribute("data-en-role", "message")
+  message.textContent = view.message
+  body.appendChild(message)
+  const children: Array<HTMLElement> = [icon, body]
   if (view.onDismiss !== undefined) {
     const dismiss = document.createElement("button") as HTMLButtonElement
     dismiss.type = "button"
@@ -4145,6 +5238,8 @@ const renderView = (view: View, state: DomRendererState, report: IntentReporter)
       return renderToastRegion(view, state, report)
     case "StatusBanner":
       return renderStatusBanner(view, state, report)
+    case "Alert":
+      return renderAlert(view, state, report)
     case "RecoveryOverlay":
       return renderRecoveryOverlay(view, state, report)
     case "Markdown":
@@ -4198,8 +5293,24 @@ const renderView = (view: View, state: DomRendererState, report: IntentReporter)
       return renderBlurredPopup(view, state, report)
     case "IconButton":
       return renderIconButton(view, state, report)
+    case "CopyButton":
+      return renderCopyButton(view, state, report)
     case "Toolbar":
       return renderToolbar(view, state, report)
+    case "EmptyMessage":
+      return renderEmptyMessage(view, state, report)
+    case "Avatar":
+      return renderAvatar(view, state)
+    case "AvatarGroup":
+      return renderAvatarGroup(view, state)
+    case "SegmentedControl":
+      return renderSegmentedControl(view, state, report)
+    case "Spinner":
+      return renderSpinner(view, state)
+    case "LoadingDots":
+      return renderLoadingDots(view, state)
+    case "ShimmerText":
+      return renderShimmerText(view, state)
   }
 }
 
@@ -4493,6 +5604,18 @@ export const viewStructure = (view: View): DomStructure => {
         ...(view.key === undefined ? {} : { key: view.key }),
         children: view.children.map(viewStructure)
       }
+    case "EmptyMessage":
+      return {
+        tag: "EmptyMessage",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        ...(view.action === undefined ? {} : { children: [viewStructure(view.action)] })
+      }
+    case "AvatarGroup":
+      return {
+        tag: "AvatarGroup",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        children: view.avatars.map(viewStructure)
+      }
     default:
       return {
         tag: view._tag,
@@ -4516,12 +5639,28 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
           runFiber(effect)
         }
         const scopedReport = withDomHostEffectRuntime(report, runEffect)
-        const state = new DomRendererState(container, document, theme, options.hostDrivers ?? [])
+        // Clipboard resolution (v35, #84): explicit option, then the Clipboard
+        // Layer from the mounting Effect context, then the navigator default.
+        const contextClipboard = yield* Effect.serviceOption(Clipboard)
+        const clipboard = options.clipboard ??
+          (Option.isSome(contextClipboard) ? contextClipboard.value : makeNavigatorClipboard(document))
+        const motionPreference = yield* makeMotionPreferenceService(
+          options.reducedMotion !== undefined
+            ? { reduced: options.reducedMotion }
+            : readDomMotionPreference(document)
+        )
+        const state = new DomRendererState(container, document, theme, options.hostDrivers ?? [], clipboard)
         const ready = yield* Deferred.make<void>()
         const window = document.defaultView
         const resolvedViewStream = viewStream.pipe(
-          Stream.zipLatestWith(viewport.stream, (view, currentViewport) =>
-            resolveView(view, { viewport: currentViewport, platform: "web" })
+          Stream.zipLatestWith(
+            Stream.zipLatest(viewport.stream, motionPreference.stream),
+            (view, [currentViewport, currentMotionPreference]) =>
+              resolveView(view, {
+                viewport: currentViewport,
+                platform: "web",
+                reducedMotion: currentMotionPreference.reduced
+              })
           )
         )
 
@@ -4540,6 +5679,22 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
               window.removeEventListener("resize", updateViewport)
             })
           )
+          // Live `prefers-reduced-motion` updates (issue #83): only wired when
+          // the app has not pinned a static `reducedMotion` override.
+          if (options.reducedMotion === undefined && typeof window.matchMedia === "function") {
+            const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
+            const updateMotionPreference = () => {
+              void Effect.runPromise(motionPreference.set({ reduced: mediaQuery.matches })).catch(() => {
+                // Host media-query callbacks must stay total.
+              })
+            }
+            mediaQuery.addEventListener("change", updateMotionPreference)
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                mediaQuery.removeEventListener("change", updateMotionPreference)
+              })
+            )
+          }
         }
 
         yield* resolvedViewStream.pipe(
@@ -5258,5 +6413,182 @@ const renderToolbar = (
   applyA11y(element, view)
   applyInteractions(element, view, state, report)
   renderChildren(element, view.children, state, report)
+  return element
+}
+
+// ── CopyButton (v35, #84) ────────────────────────────────────────────────────
+//
+// Copy-to-clipboard control for transcript message actions, diagnostics
+// panels, and code surfaces. The clipboard write goes through the injected
+// `Clipboard` driver on `state` — never a bare `navigator.clipboard` call —
+// then the typed `onCopy` intent fires with the copied content.
+//
+// Copied feedback: uncontrolled (no `copied` prop) is renderer-owned — the
+// icon swaps to Check, `copiedLabel` becomes the title/live announcement, and
+// a per-node timer reverts after `resetMillis`. Controlled (`copied` as data)
+// renders from the prop and, when `onCopiedReset` is provided, schedules the
+// typed reset intent (the Toast auto-dismiss precedent, #40).
+
+const copyFeedbackKey = (view: CopyButtonView): string => `CopyButton:${view.key ?? ""}`
+
+const applyCopyButtonPresentation = (
+  element: HTMLButtonElement,
+  view: CopyButtonView,
+  copied: boolean,
+  state: DomRendererState
+): void => {
+  const document = element.ownerDocument
+  const control = state.theme.control[view.size ?? "md"]
+  element.setAttribute("data-en-copied", copied ? "true" : "false")
+  element.replaceChildren()
+
+  const glyphName: IconName = copied ? "Check" : "Copy"
+  const icon = document.createElement("span")
+  icon.setAttribute("data-en-role", "copy-icon")
+  icon.style.display = "inline-flex"
+  icon.innerHTML = iconSvg(glyphName, control.icon).replace("<svg ", '<svg aria-hidden="true" ')
+  element.appendChild(icon)
+
+  const copiedLabel = view.copiedLabel ?? "Copied"
+  if (view.label !== undefined) {
+    const label = document.createElement("span")
+    label.setAttribute("data-en-role", "copy-label")
+    label.textContent = copied ? copiedLabel : view.label
+    element.appendChild(label)
+  }
+
+  // Copied announcement: a polite live region for screen readers plus the
+  // native `title` tooltip affordance while the copied state is showing.
+  const status = document.createElement("span")
+  status.setAttribute("data-en-role", "copy-status")
+  status.setAttribute("role", "status")
+  status.style.position = "absolute"
+  status.style.width = "1px"
+  status.style.height = "1px"
+  status.style.overflow = "hidden"
+  status.style.clipPath = "inset(50%)"
+  status.textContent = copied ? copiedLabel : ""
+  element.appendChild(status)
+
+  if (copied) {
+    element.title = copiedLabel
+  } else {
+    element.removeAttribute("title")
+  }
+}
+
+const renderCopyButton = (
+  view: CopyButtonView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const element = state.keyedElement(view, "button") as HTMLButtonElement
+  state.resetListeners(element)
+  element.type = "button"
+  element.disabled = view.disabled === true
+  const variant = view.variant ?? "ghost"
+  const size = view.size ?? "md"
+  const control = state.theme.control[size]
+  element.setAttribute("data-en-variant", variant)
+  element.setAttribute("data-en-size", size)
+  element.setAttribute("aria-label", view.accessibilityLabel ?? view.label ?? "Copy")
+  if (view.surface === undefined) {
+    element.removeAttribute("data-en-surface")
+  } else {
+    element.setAttribute("data-en-surface", view.surface)
+  }
+  element.style.position = "relative"
+  element.style.display = "inline-flex"
+  element.style.alignItems = "center"
+  element.style.justifyContent = "center"
+  element.style.gap = "var(--en-spacing-1)"
+  element.style.height = `${control.height}px`
+  element.style.font = "inherit"
+  element.style.borderRadius = "var(--en-radius-md)"
+  element.style.border = "1px solid transparent"
+  element.style.cursor = view.disabled === true ? "not-allowed" : "pointer"
+  element.style.opacity = view.disabled === true ? "0.5" : "1"
+  // IconButton-shaped default: icon-only is a square control-lattice hit
+  // target; with a label it takes the lattice gutter as horizontal padding.
+  if (view.label === undefined) {
+    element.style.width = `${control.height}px`
+    element.style.padding = "0"
+  } else {
+    element.style.width = ""
+    element.style.padding = `0 ${control.gutter}px`
+  }
+  // Existing Button variant vocabulary (the full tone × variant matrix is a
+  // separate later issue).
+  switch (variant) {
+    case "primary":
+      element.style.background = colorValue("accent")
+      element.style.color = colorValue("textPrimary")
+      break
+    case "secondary":
+      element.style.background = colorValue("surface")
+      element.style.color = colorValue("textPrimary")
+      element.style.borderColor = colorValue("border")
+      break
+    case "ghost":
+      element.style.background = "transparent"
+      element.style.color = colorValue("textMuted")
+      break
+  }
+
+  const feedbackKey = copyFeedbackKey(view)
+  const controlled = view.copied !== undefined
+  const copied = controlled ? view.copied === true : state.copyFeedbackTimers.has(feedbackKey)
+  applyCopyButtonPresentation(element, view, copied, state)
+
+  // Controlled reset: while `copied` is data-true and the app asked for a
+  // typed reset, schedule it once (renderer-scheduled, like Toast
+  // auto-dismiss). The app flips `copied` back to false in its reducer.
+  if (controlled && view.copied === true && view.onCopiedReset !== undefined) {
+    const onCopiedReset = view.onCopiedReset
+    if (!state.copyFeedbackTimers.has(feedbackKey)) {
+      const timer = setTimeout(() => {
+        state.copyFeedbackTimers.delete(feedbackKey)
+        runReportedIntent(report, onCopiedReset, view.content)
+      }, view.resetMillis ?? copyButtonDefaultResetMillis)
+      state.copyFeedbackTimers.set(feedbackKey, timer)
+    }
+  }
+  if (controlled && view.copied !== true) {
+    const pending = state.copyFeedbackTimers.get(feedbackKey)
+    if (pending !== undefined) {
+      clearTimeout(pending)
+      state.copyFeedbackTimers.delete(feedbackKey)
+    }
+  }
+
+  state.addListener(element, "click", () => {
+    if (view.disabled === true) return
+    void Effect.runPromise(state.clipboard.writeText(view.content))
+      .then(() => {
+        if (!controlled) {
+          const existing = state.copyFeedbackTimers.get(feedbackKey)
+          if (existing !== undefined) clearTimeout(existing)
+          const timer = setTimeout(() => {
+            state.copyFeedbackTimers.delete(feedbackKey)
+            if (element.isConnected) {
+              applyCopyButtonPresentation(element, view, false, state)
+            }
+          }, view.resetMillis ?? copyButtonDefaultResetMillis)
+          state.copyFeedbackTimers.set(feedbackKey, timer)
+          applyCopyButtonPresentation(element, view, true, state)
+        }
+        if (view.onCopy !== undefined) {
+          runReportedIntent(report, view.onCopy, view.content)
+        }
+      })
+      .catch(() => {
+        // Clipboard write failed (driver unavailable/denied): no copied
+        // feedback, no onCopy intent; the handler stays total.
+      })
+  })
+
+  applySurfaceMergedStyle(element, view.style, view.surface, state)
+  applyA11y(element, view)
+  applyInteractions(element, view, state, report)
   return element
 }

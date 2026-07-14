@@ -1,6 +1,12 @@
-import { defineTheme } from '@effect-native/tokens'
+import { defineTheme, khalaTheme } from '@effect-native/tokens'
 
 export const stage1EffectNativeTheme = defineTheme({
+  // The tone x variant x state color matrix (harmonization #75) is theme data
+  // consumed only by the newer matrix-aware components (Button/Badge/Chip/
+  // TextField/Select/Alert, harmonization #78/#79) that this bounded stage1
+  // demo route does not use. Reusing khalaTheme's matrix here is inert filler
+  // to satisfy the Theme shape -- it changes nothing this route renders.
+  colorMatrix: khalaTheme.colorMatrix,
   spacing: {
     '0': 0,
     '0.5': 2,
@@ -93,18 +99,23 @@ export const stage1EffectNativeTheme = defineTheme({
     durationFastMs: 150,
     durationEnterMs: 350,
     durationExitMs: 200,
+    durationLoopMs: 900,
     easeBasic: 'ease',
     easeEnter: 'cubic-bezier(0.19, 1, 0.22, 1)',
     easeExit: 'cubic-bezier(0.8, 0, 0.4, 1)',
+    easeExitSnappy: 'cubic-bezier(0.65, 0, 0.4, 1)',
+    easeMove: 'cubic-bezier(0.65, 0, 0.35, 1)',
   },
   elevation: {
     overlayShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.6)',
     hairlineWidth: 1,
   },
   control: {
-    sm: { height: 24, gutter: 8, icon: 14 },
-    md: { height: 28, gutter: 10, icon: 16 },
-    lg: { height: 32, gutter: 12, icon: 18 },
-    xl: { height: 40, gutter: 14, icon: 20 },
+    '2xs': { height: 16, gutter: 4, radius: 2, fontSize: 11, icon: 10 },
+    xs: { height: 20, gutter: 6, radius: 4, fontSize: 12, icon: 12 },
+    sm: { height: 24, gutter: 8, radius: 4, fontSize: 12, icon: 14 },
+    md: { height: 28, gutter: 10, radius: 6, fontSize: 14, icon: 16 },
+    lg: { height: 32, gutter: 12, radius: 6, fontSize: 14, icon: 18 },
+    xl: { height: 40, gutter: 14, radius: 8, fontSize: 16, icon: 20 },
   },
 })

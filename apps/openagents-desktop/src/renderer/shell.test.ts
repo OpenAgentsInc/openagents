@@ -2878,7 +2878,9 @@ describe("theme parity (one OpenAgents blue theme, many hosts)", () => {
     expect(openagentsDesktopTheme.color.textFaint).toBe("#6b7ca1")
     expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#182640")
     expect(openagentsDesktopTheme.motion.durationFastMs).toBe(150)
-    expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, icon: 16 })
+    // Control-lattice sub-tokens (harmonization #76) added `radius`/`fontSize`
+    // per step; height/gutter/icon are unchanged from before the vendor bump.
+    expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, radius: 4, fontSize: 13, icon: 16 })
   })
 })
 

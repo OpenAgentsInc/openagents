@@ -17,43 +17,58 @@ import {
 import {
   BreakpointTokenSchema,
   ColorTokenSchema,
+  ControlTokenSchema,
   DimensionTokenSchema,
   RadiusTokenSchema,
   SpacingTokenSchema,
+  ToneTokenSchema,
+  ToneVariantTokenSchema,
   TypeScaleTokenSchema,
   breakpointTokens,
   defaultTheme,
   type BreakpointTheme,
   type BreakpointToken,
   type ColorToken,
+  type ControlToken,
   type DimensionToken,
   type RadiusToken,
   type SpacingToken,
   type Theme,
+  type ToneToken,
+  type ToneVariantToken,
   type TypeScaleToken
 } from "@effect-native/tokens"
 
 export {
   BreakpointTokenSchema,
   ColorTokenSchema,
+  ControlTokenSchema,
   DimensionTokenSchema,
   RadiusTokenSchema,
   SpacingTokenSchema,
+  ToneTokenSchema,
+  ToneVariantTokenSchema,
   TypeScaleTokenSchema,
   breakpointTokens,
   colorTokens,
+  controlTokens,
   defaultTheme,
   defineTheme,
   dimensionTokens,
   radiusTokens,
   spacingTokens,
+  toneTokens,
+  toneVariantTokens,
   typeScaleTokens,
   type BreakpointToken,
   type ColorToken,
+  type ControlToken,
   type DimensionToken,
   type RadiusToken,
   type SpacingToken,
   type Theme,
+  type ToneToken,
+  type ToneVariantToken,
   type TypeScaleToken
 } from "@effect-native/tokens"
 
@@ -90,8 +105,21 @@ export const GlassCatalogVersion = "effect-native/v27" as const
 export const MarkdownLinkHrefCatalogVersion = "effect-native/v28" as const
 export const ChatChromeCatalogVersion = "effect-native/v29" as const
 export const GlassChromeIconsCatalogVersion = "effect-native/v30" as const
-export const PreviousCatalogVersion = ChatChromeCatalogVersion
-export const CatalogVersion = GlassChromeIconsCatalogVersion
+export const GraphProvenanceCatalogVersion = "effect-native/v31" as const
+export const EmptyMessageCatalogVersion = "effect-native/v32" as const
+export const IconExpansionCatalogVersion = "effect-native/v33" as const
+export const AvatarCatalogVersion = "effect-native/v34" as const
+export const CopyButtonCatalogVersion = "effect-native/v35" as const
+export const SegmentedControlCatalogVersion = "effect-native/v36" as const
+export const ButtonMatrixCatalogVersion = "effect-native/v37" as const
+export const LoadingIndicatorCatalogVersion = "effect-native/v38" as const
+// Harmonization P1.6 (issue #79): tone x variant x size matrix axes on Badge,
+// Chip, TextField, and Select/SelectControl trigger conventions, plus a new
+// Alert component (see the AlertView doc comment for the Alert-vs-StatusBanner
+// decision).
+export const MatrixAxesCatalogVersion = "effect-native/v39" as const
+export const PreviousCatalogVersion = LoadingIndicatorCatalogVersion
+export const CatalogVersion = MatrixAxesCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -125,7 +153,16 @@ export const compatibleCatalogVersions = [
   GlassCatalogVersion,
   MarkdownLinkHrefCatalogVersion,
   ChatChromeCatalogVersion,
-  GlassChromeIconsCatalogVersion
+  GlassChromeIconsCatalogVersion,
+  GraphProvenanceCatalogVersion,
+  EmptyMessageCatalogVersion,
+  IconExpansionCatalogVersion,
+  AvatarCatalogVersion,
+  CopyButtonCatalogVersion,
+  SegmentedControlCatalogVersion,
+  ButtonMatrixCatalogVersion,
+  LoadingIndicatorCatalogVersion,
+  MatrixAxesCatalogVersion
 ] as const
 export type CompatibleCatalogVersion = (typeof compatibleCatalogVersions)[number]
 export const CompatibleCatalogVersionSchema = Schema.Literals(compatibleCatalogVersions)
@@ -200,7 +237,16 @@ export const componentTags = [
   "Frame",
   "BlurredPopup",
   "IconButton",
-  "Toolbar"
+  "Toolbar",
+  "EmptyMessage",
+  "Avatar",
+  "AvatarGroup",
+  "CopyButton",
+  "SegmentedControl",
+  "Spinner",
+  "LoadingDots",
+  "ShimmerText",
+  "Alert"
 ] as const
 export type ComponentTag = (typeof componentTags)[number]
 
@@ -1113,6 +1159,47 @@ export const makeViewportServiceLayer = (
   options?: { readonly theme?: Theme }
 ) => Layer.effect(ViewportService, makeViewportService(initial, options))
 
+// Reduced-motion runtime signal (issue #83, harmonization audit §7 "typed
+// data not CSS runtime"): mirrors `ViewportService` exactly so DOM/RN/mobile
+// hosts detect `prefers-reduced-motion` (or a native equivalent) in ONE
+// place at the surface boundary and thread a typed boolean through
+// `ViewResolution.reducedMotion`, rather than every animated component
+// checking a media query on its own. `Spinner`/`LoadingDots`/`ShimmerText`
+// resolve this as their default when the app has not set an explicit
+// `reduceMotion` override.
+export const MotionPreferenceInputSchema = Schema.Struct({
+  reduced: Schema.Boolean
+})
+export type MotionPreferenceInput = Schema.Schema.Type<typeof MotionPreferenceInputSchema>
+export const defaultMotionPreferenceInput: MotionPreferenceInput = { reduced: false }
+
+export interface MotionPreferenceService {
+  readonly current: Effect.Effect<MotionPreferenceInput>
+  readonly stream: Stream.Stream<MotionPreferenceInput>
+  readonly set: (input: MotionPreferenceInput) => Effect.Effect<void>
+}
+
+export const MotionPreferenceService = Context.Service<MotionPreferenceService>(
+  "@effect-native/core/MotionPreferenceService"
+)
+
+export const makeMotionPreferenceService = (
+  initial: MotionPreferenceInput = defaultMotionPreferenceInput
+): Effect.Effect<MotionPreferenceService> =>
+  Effect.gen(function*() {
+    const ref = yield* SubscriptionRef.make(initial)
+
+    return {
+      current: SubscriptionRef.get(ref),
+      stream: SubscriptionRef.changes(ref),
+      set: (input) => SubscriptionRef.set(ref, input)
+    }
+  })
+
+export const makeMotionPreferenceServiceLayer = (
+  initial: MotionPreferenceInput = defaultMotionPreferenceInput
+) => Layer.effect(MotionPreferenceService, makeMotionPreferenceService(initial))
+
 export const OpacitySchema = Schema.Number.check(
   Schema.isFinite({ title: "FiniteNumber" }),
   Schema.isGreaterThanOrEqualTo(0, { title: "MinOpacity" }),
@@ -1643,10 +1730,109 @@ export const iconNames = [
   "Compose",
   "Mic",
   "Sparkles",
-  // History transcript actions use the shared OpenAI Apps SDK catalog names.
+  // Desktop shell set (v33, #85): names the OpenAgents Desktop renderer already
+  // consumes through the monorepo-vendored copy — upstreamed for parity so the
+  // vendored fork stops diverging.
+  "Agent",
+  "ChatCompose",
+  "Chats",
+  "Code",
+  "Compare",
+  "Folder",
+  "Home",
+  "NotificationBell",
+  "Plane",
+  "Settings",
+  "Terminal",
+  "Tools",
   "History",
   "Branch",
-  "InfoCircle"
+  "InfoCircle",
+  // Expansion batch (v33, #85) from the desktop demand audit (harmonization
+  // audit §2.4/§5/§6-C5): sidebar, tool cards, git panel, settings, fleet,
+  // transcript actions, and status glyphs. Semantic PascalCase names; still a
+  // closed set — growth remains a reviewed catalog change.
+  // Arrows / navigation.
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUpRight",
+  // Status glyphs (success/error/warning/info/loading/marker).
+  "CheckCircle",
+  "XCircle",
+  "AlertTriangle",
+  "AlertCircle",
+  "CircleFilled",
+  "CircleDot",
+  "Loader",
+  // Git panel.
+  "GitCommit",
+  "GitPullRequest",
+  "GitMerge",
+  "Minus",
+  // Files / workspace tree.
+  "File",
+  "FileText",
+  "FilePlus",
+  "FolderOpen",
+  "FolderPlus",
+  "Image",
+  // Edit actions.
+  "Pencil",
+  "Trash",
+  "Copy",
+  "Save",
+  "Undo",
+  "Redo",
+  // Transcript / message actions.
+  "ThumbsUp",
+  "ThumbsDown",
+  "Share",
+  "Ellipsis",
+  "EllipsisVertical",
+  "Expand",
+  "Collapse",
+  // Search / filtering.
+  "Search",
+  "Filter",
+  "Sliders",
+  // Fleet / connectivity / infrastructure.
+  "Wifi",
+  "WifiOff",
+  "Server",
+  "Database",
+  "Cpu",
+  "Activity",
+  "Globe",
+  // Account / security.
+  "Lock",
+  "Unlock",
+  "Key",
+  "Shield",
+  "User",
+  "Users",
+  "LogOut",
+  // Payments.
+  "Wallet",
+  "CreditCard",
+  "Zap",
+  // Common desktop chrome.
+  "Clock",
+  "Download",
+  "Upload",
+  "ExternalLink",
+  "Link",
+  "Eye",
+  "EyeOff",
+  "Paperclip",
+  "Pin",
+  "Star",
+  "Archive",
+  "Command",
+  "Bug",
+  "Package",
+  "HelpCircle"
 ] as const
 export const IconNameSchema = Schema.Literals(iconNames)
 export type IconName = (typeof iconNames)[number]
@@ -1654,6 +1840,13 @@ export type IconName = (typeof iconNames)[number]
 export const iconSizes = ["sm", "md", "lg"] as const
 export const IconSizeSchema = Schema.Literals(iconSizes)
 export type IconSize = (typeof iconSizes)[number]
+
+// Icon-size token values in px (harmonization #85). The single source of truth
+// both renderers size from: render-dom lowers these as `--en-icon-size-*`
+// custom properties and draws every glyph on a 1em × 1em box (viewBox 0 0 24
+// 24, currentColor) so size flows from the token and color inherits; render-rn
+// uses the same numbers as font sizes.
+export const iconSizeValues: Record<IconSize, number> = { sm: 16, md: 20, lg: 24 }
 
 // Closed tone set for data-display components (issue #39), aligned to the blue
 // status system.
@@ -1852,10 +2045,29 @@ export interface TextView extends NodeBase {
   readonly style?: TextStyle
 }
 
+/**
+ * The Button `variant` field accepts the current matrix variant vocabulary
+ * plus the two pre-#78 legacy tokens that named a tone+variant pairing before
+ * the matrix existed ("primary"/"secondary"; "ghost" is unchanged and needs
+ * no alias). `resolveButtonAppearance` is the one normalizer every renderer
+ * calls to turn either shape into a canonical `{ tone, variant, size }`.
+ */
 export interface ButtonView extends NodeBase {
   readonly _tag: "Button"
   readonly label: string
-  readonly variant: ButtonVariant
+  /** Matrix tone (harmonization #78). Resolves to "accent" when omitted. */
+  readonly tone?: ToneToken
+  readonly variant?: ToneVariantToken | ButtonVariant
+  /** Control-lattice size (harmonization #78, #76). Resolves to "md" when omitted. */
+  readonly size?: ControlToken
+  /** Fully rounded corners (radius token "full"). */
+  readonly pill?: boolean
+  /** Busy/submitting state: disables press, marks aria-busy, dims the label. */
+  readonly loading?: boolean
+  /** Full-width layout. */
+  readonly block?: boolean
+  /** Persistent pressed/active-looking state (e.g. a segmented choice). */
+  readonly selected?: boolean
   readonly disabled?: boolean
   readonly onPress: IntentRef
   readonly style?: ButtonStyle
@@ -1871,6 +2083,21 @@ export interface ImageView extends NodeBase {
   readonly style?: ImageStyle
 }
 
+// TextField matrix axes (harmonization P1.6, issue #79). Pre-#79 trees never
+// set `variant`/`size`/`gutterSize` and got zero renderer-drawn chrome (fully
+// transparent, unbordered, unpadded — call sites hand-rolled the box via
+// `style`, the exact "one-off" the harmonization audit calls out). Omitting
+// all three keeps that legacy no-chrome look identically; setting `variant`
+// opts a field into the tone-neutral matrix box (border for "outline", tinted
+// fill for "soft") via `resolveTextFieldAppearance`, `size` opts it into the
+// control lattice, and `gutterSize` independently overrides the horizontal
+// inline padding regardless of variant (a plain additive token consumption,
+// so it is safe to honor even when `variant` is omitted). `invalid` is a
+// wholly new axis (TextField never had one), so it is safe to always reflect
+// via aria-invalid and a danger-tone border cue.
+export type TextFieldVariantToken = "outline" | "soft"
+export const TextFieldVariantTokenSchema = Schema.Literals(["outline", "soft"] as const)
+
 export interface BaseTextFieldView extends NodeBase {
   readonly _tag: "TextField"
   readonly value: string
@@ -1880,6 +2107,14 @@ export interface BaseTextFieldView extends NodeBase {
   readonly focused?: boolean
   /** Disabled fields accept no input and dispatch no change/submit intents (v29, #72). */
   readonly disabled?: boolean
+  /** Invalid/error state (harmonization #79): reflects aria-invalid; adds a danger-tone cue. */
+  readonly invalid?: boolean
+  /** Matrix variant (harmonization #79). Omitted keeps the pre-#79 (chromeless) look. */
+  readonly variant?: TextFieldVariantToken
+  /** Control-lattice size (harmonization #79). Omitted keeps the pre-#79 (unsized) look. */
+  readonly size?: ControlToken
+  /** Horizontal inline padding override (harmonization #79), independent of `size`. */
+  readonly gutterSize?: SpacingToken
   /**
    * Contract-level submit lifecycle (v29, #72): after dispatching `onSubmit`,
    * the renderer clears the field locally so the input is empty and
@@ -1899,6 +2134,15 @@ export interface SecureTextFieldView extends BaseTextFieldView {
 export interface PlainTextFieldView extends BaseTextFieldView {
   readonly secure?: false
   readonly multiline?: boolean
+  /**
+   * Textarea-equivalent auto-grow (harmonization #79, Textarea parity):
+   * meaningful only alongside `multiline: true`. DOM grows the `<textarea>`'s
+   * height to its scrollHeight on every input. React Native never applies a
+   * fixed height to begin with, so a multiline `TextInput` already grows with
+   * its content by default — `autoResize` there is honored by continuing to
+   * omit any height constraint (a declared no-op, not a fabricated behavior).
+   */
+  readonly autoResize?: boolean
 }
 
 export type TextFieldView = SecureTextFieldView | PlainTextFieldView
@@ -2040,10 +2284,28 @@ export interface DividerView extends NodeBase {
   readonly style?: CardStyle
 }
 
+// Badge/Chip matrix axes (harmonization P1.6, issue #79). Pre-#79 trees only
+// ever set `tone` (the closed `Tone` set) and got a fixed "colored text, no
+// fill" look with no size control — that is exactly what a tree with
+// `variant`/`size` both omitted must keep rendering as, so old trees decode
+// and render identically. `variant` is additive and, when set, opts a badge
+// into the tone x variant color-matrix fill (solid/soft/outline) via
+// `resolveBadgeAppearance`; `size` is additive and, when set, opts it into the
+// control lattice (height/gutter/radius/font). Neither axis is exposed with a
+// "ghost" option publicly — `resolveBadgeAppearance` uses "ghost" internally
+// only as the resolved cell for the legacy omitted-variant look, so it can
+// never collide with an author-chosen value (the input schema forbids it).
+export type BadgeVariantToken = "solid" | "soft" | "outline"
+export const BadgeVariantTokenSchema = Schema.Literals(["solid", "soft", "outline"] as const)
+
 export interface BadgeView extends NodeBase {
   readonly _tag: "Badge"
   readonly label: string
   readonly tone?: Tone
+  /** Matrix variant (harmonization #79). Omitted keeps the pre-#79 look. */
+  readonly variant?: BadgeVariantToken
+  /** Control-lattice size (harmonization #79). Omitted keeps the pre-#79 (unsized) look. */
+  readonly size?: ControlToken
   readonly style?: CardStyle
 }
 
@@ -2052,6 +2314,10 @@ export interface ChipView extends NodeBase {
   readonly label: string
   readonly value?: string
   readonly tone?: Tone
+  /** Matrix variant (harmonization #79). Omitted keeps the pre-#79 look. */
+  readonly variant?: BadgeVariantToken
+  /** Control-lattice size (harmonization #79). Omitted keeps the pre-#79 (unsized) look. */
+  readonly size?: ControlToken
   readonly style?: CardStyle
 }
 
@@ -2380,6 +2646,19 @@ export interface ToggleView extends NodeBase {
   readonly style?: CardStyle
 }
 
+// Select/SelectControl trigger conventions (harmonization P1.6, issue #79).
+// Pre-#79 trees never set `variant`/`size`/`pill`/`dropdownIcon`, so the
+// renderer drew the platform-default control chrome (a bare `<select>` on
+// DOM, an unstyled rows list on React Native) — omitting all of them keeps
+// that exact look. Setting `variant` opts a Select into the neutral matrix
+// trigger chrome (no "solid" cell — a select trigger is never a call-to-
+// action) via `resolveSelectAppearance`. Multi-select is additive: `value`
+// stays required (mirroring `values[0] ?? ""` by convention) so every
+// pre-#79 single-select tree keeps its exact shape; `multiple`/`values` are
+// new optional fields consulted only when `multiple` is true.
+export type SelectVariantToken = "soft" | "outline" | "ghost"
+export const SelectVariantTokenSchema = Schema.Literals(["soft", "outline", "ghost"] as const)
+
 export interface SelectView extends NodeBase {
   readonly _tag: "Select"
   readonly value: string
@@ -2389,6 +2668,18 @@ export interface SelectView extends NodeBase {
   readonly disabled?: boolean
   readonly invalid?: boolean
   readonly field?: FieldBinding
+  /** Matrix variant (harmonization #79). Omitted keeps the pre-#79 platform-default look. */
+  readonly variant?: SelectVariantToken
+  /** Control-lattice size (harmonization #79). Omitted keeps the pre-#79 (unsized) look. */
+  readonly size?: ControlToken
+  /** Fully rounded corners (harmonization #79), meaningful alongside an explicit `variant`. */
+  readonly pill?: boolean
+  /** Trigger dropdown-indicator glyph (harmonization #79). Defaults to "ChevronDown" once `variant` opts in. */
+  readonly dropdownIcon?: IconName
+  /** Multi-select (harmonization #79, refs demand for tag-style multi-choice fields). */
+  readonly multiple?: boolean
+  /** Selected values when `multiple` is true. Ignored otherwise. */
+  readonly values?: ReadonlyArray<string>
   readonly onChange?: IntentRef
   readonly style?: TextFieldStyle
 }
@@ -2495,6 +2786,39 @@ export interface StatusBannerView extends NodeBase {
   readonly tone: Tone
   readonly message: string
   readonly onRetry?: IntentRef
+  readonly onDismiss?: IntentRef
+  readonly style?: CardStyle
+}
+
+/**
+ * Alert (harmonization P1.6, issue #79) — a NEW component, not a StatusBanner
+ * reshape. Decision, recorded here because the issue asked for it to be made
+ * in-repo: apps-sdk-ui's `Alert` is a rich inline callout (icon + title +
+ * body, full tone x variant matrix) typically embedded in page/form content
+ * (validation summaries, inline warnings in a settings panel); our
+ * `StatusBanner` is a persistent single-line app-chrome status row (a
+ * connectivity/health bar bound to `aria-live`, message + retry/dismiss only,
+ * no title/body split). Reshaping StatusBanner in place to carry icon/title/
+ * body would blur that narrower persistent-banner role and change the
+ * required shape of every existing StatusBanner call site (`message` is
+ * currently the only content field). Adding a distinct `Alert` instead keeps
+ * StatusBanner's contract and rendering completely unchanged (zero back-compat
+ * risk) and gives the richer inline-callout shape its own typed home,
+ * matching the GAPS growth rule (a new named component for a new named use)
+ * rather than a breaking reshape of an existing one. Demanding screen: inline
+ * form-validation summaries and settings-panel warning/info callouts
+ * (harmonization audit §5 "Alert" row + desktop settings/forms demand).
+ */
+export interface AlertView extends NodeBase {
+  readonly _tag: "Alert"
+  /** Matrix tone. Defaults to "info" when omitted. */
+  readonly tone?: ToneToken
+  /** Matrix variant. Defaults to "soft" when omitted (the typical callout fill). */
+  readonly variant?: ToneVariantToken
+  /** Leading icon. Defaults to a tone-appropriate glyph (see `defaultAlertIcon`) when omitted. */
+  readonly icon?: IconName
+  readonly title?: string
+  readonly message: string
   readonly onDismiss?: IntentRef
   readonly style?: CardStyle
 }
@@ -2988,6 +3312,211 @@ export interface ToolbarView extends NodeBase {
   readonly style?: CardStyle
 }
 
+// Empty-state message (issue #82, harmonization P2.9). One typed centered
+// block for empty panes — Desktop history/workspace/fleet each hand-rolled
+// this composition before. The icon is a badge over the closed IconName set
+// with its own bounded tone (secondary|danger|warning) and size (sm|md)
+// vocabularies; the optional action slot is a typed child Button view. No
+// illustrations/images and no loading state (Spinner/Shimmer is #83).
+export const emptyMessageIconTones = ["secondary", "danger", "warning"] as const
+export const EmptyMessageIconToneSchema = Schema.Literals(emptyMessageIconTones)
+export type EmptyMessageIconTone = (typeof emptyMessageIconTones)[number]
+
+export const emptyMessageIconSizes = ["sm", "md"] as const
+export const EmptyMessageIconSizeSchema = Schema.Literals(emptyMessageIconSizes)
+export type EmptyMessageIconSize = (typeof emptyMessageIconSizes)[number]
+
+export interface EmptyMessageIcon {
+  readonly name: IconName
+  readonly tone?: EmptyMessageIconTone
+  readonly size?: EmptyMessageIconSize
+}
+
+export interface EmptyMessageView extends NodeBase {
+  readonly _tag: "EmptyMessage"
+  readonly icon?: EmptyMessageIcon
+  readonly title: string
+  readonly description?: string
+  readonly action?: ButtonView
+  readonly style?: CardStyle
+}
+
+// Avatar + AvatarGroup (issue #80, harmonization P2.7). Identity marks for
+// sidebar accounts, fleet operator rows, and forum identity. The fallback
+// chain is typed data — `image` (an app-supplied src; the catalog does no
+// remote fetching or identicon generation) renders over `initials`, which
+// render over the closed-set `icon` — and at least one source must be
+// present, so an empty avatar is not constructible. `size` rides the shared
+// control lattice; `tone` is the closed Tone set with a soft (tinted text on
+// a translucent fill) or solid (inverse text on a tone fill) variant.
+export const avatarVariants = ["soft", "solid"] as const
+export const AvatarVariantSchema = Schema.Literals(avatarVariants)
+export type AvatarVariant = (typeof avatarVariants)[number]
+
+export interface AvatarView extends NodeBase {
+  readonly _tag: "Avatar"
+  /** App-supplied image src. On load failure renderers reveal the fallback. */
+  readonly image?: string
+  /** Bounded 1-3 character initials fallback. */
+  readonly initials?: string
+  /** Closed-set icon fallback (defaults to no icon; the chain ends here). */
+  readonly icon?: IconName
+  readonly size?: ControlToken
+  readonly tone?: Tone
+  readonly variant?: AvatarVariant
+  // Meaningful vs decorative is typed, mirroring Icon: a `label` present
+  // means the avatar names its entity (aria-label / role img); absent means
+  // decorative (aria-hidden).
+  readonly label?: string
+  readonly style?: CardStyle
+}
+
+export type KeyedAvatarView = AvatarView & { readonly key: NodeKey }
+
+export interface AvatarGroupView extends NodeBase {
+  readonly _tag: "AvatarGroup"
+  /** Keyed child avatars drawn with a cutout overlap, first on top. */
+  readonly avatars: ReadonlyArray<KeyedAvatarView>
+  // Show at most `max` avatars; the remainder collapses into a "+N" overflow
+  // count rendered in the same size/tone treatment.
+  readonly max?: number
+  /** Group-level defaults applied to children without their own value and to the overflow count. */
+  readonly size?: ControlToken
+  readonly tone?: Tone
+  readonly variant?: AvatarVariant
+  readonly style?: CardStyle
+}
+
+// CopyButton (v35, #84; harmonization audit §5/§7 Phase 2.11). A typed
+// copy-to-clipboard control for transcript message actions, diagnostics
+// panels, and code surfaces beyond CodeBlock's built-in copy intent.
+//
+// The contract never touches `navigator.clipboard` itself: renderers perform
+// the write through the injected `Clipboard` service/driver, then report the
+// typed `onCopy` intent with the copied content as the component value.
+//
+// Copied-state feedback (icon swap to Check + the `copiedLabel` announcement):
+//   - Uncontrolled: the DOM renderer owns transient per-node feedback and
+//     reverts it after `resetMillis` (default
+//     `copyButtonDefaultResetMillis`); the enter/exit transition rides the
+//     shared motion tokens (`durationFastMs`/`easeBasic`).
+//   - Controlled: the app drives `copied` as data; while `copied` is true and
+//     `onCopiedReset` is provided, renderers schedule the typed reset intent
+//     after `resetMillis` (the Toast auto-dismiss precedent, #40/#53). This is
+//     the React Native parity path — RN element trees are pure per emission,
+//     so RN declares uncontrolled self-feedback unsupported.
+//
+// `label` absent means the IconButton-shaped icon-only default; present means
+// a Button-shaped icon+label control. `size` rides the shared control lattice
+// and `variant` reuses the existing Button vocabulary (the full tone × variant
+// matrix is a separate later issue).
+export const copyButtonDefaultResetMillis = 2000
+
+export interface CopyButtonView extends NodeBase {
+  readonly _tag: "CopyButton"
+  readonly content: string
+  readonly label?: string
+  // Accessible name; defaults to "Copy" (or `label` when present).
+  readonly accessibilityLabel?: string
+  // Feedback text announced (and shown as the tooltip affordance) while
+  // copied; defaults to "Copied".
+  readonly copiedLabel?: string
+  readonly size?: ControlToken
+  readonly variant?: ButtonVariant
+  // Controlled copied state (data). Omit for renderer-managed feedback.
+  readonly copied?: boolean
+  // Fired after the injected clipboard write succeeds; componentValue is the
+  // copied content string.
+  readonly onCopy?: IntentRef
+  // Renderer-scheduled reset for the controlled path: fires once `copied` has
+  // been true for `resetMillis`.
+  readonly onCopiedReset?: IntentRef
+  readonly resetMillis?: number
+  readonly disabled?: boolean
+  readonly surface?: SurfaceMaterial
+  readonly style?: ButtonStyle
+}
+
+// SegmentedControl (issue #81, harmonization P2.8). Distinct from Tabs: a
+// single-choice INPUT control with an animated selection thumb, not a peer
+// selector for associated panels — there is no panel/content association at
+// all. Options are typed data (id/label/icon?/disabled?); `value` is the
+// selected option id; `onChange` is the one typed intent. `size` rides the
+// shared control lattice (#76) so height/gutter/radius/font/icon size
+// coherently from one step; `gutterSize` is the token gap between segments
+// (0 renders the classic touching-segments look); `pill` renders full radius
+// instead of the lattice step's radius. DOM renders an animated sliding thumb
+// measured via ResizeObserver; React Native renders a static (non-animated)
+// selection highlight — see the render-rn `renderSegmentedControl` comment
+// for the honest fidelity-limitation note.
+export interface SegmentedOption {
+  readonly id: string
+  readonly label: string
+  readonly icon?: IconName
+  readonly disabled?: boolean
+}
+
+export interface SegmentedControlView extends NodeBase {
+  readonly _tag: "SegmentedControl"
+  readonly options: ReadonlyArray<SegmentedOption>
+  readonly value: string
+  readonly size?: ControlToken
+  readonly gutterSize?: SpacingToken
+  readonly pill?: boolean
+  readonly onChange: IntentRef
+  readonly style?: CardStyle
+}
+
+// Loading indicators (issue #83, harmonization P2.10: Desktop transcript
+// streaming states, tool-card wait states, pending text). `Spinner` is a
+// compact indeterminate in-flight mark — determinate circular progress stays
+// a `Meter` variant (its existing `indeterminate` flag already covers
+// unknown-duration bars); this does not duplicate that. `LoadingDots` is a
+// 3-dot pulse. `ShimmerText` sweeps either a skeleton placeholder (`width`,
+// no content yet) or real pending text (`text`) — not a full skeleton-screen
+// layout system (no simulated-progress percentage logic belongs here either;
+// that stays an app/runtime concern feeding a `Meter`).
+//
+// All three honor reduced motion the same way: an explicit `reduceMotion`
+// always wins; otherwise the renderer bakes in the resolved OS-level
+// preference via `ViewResolution.reducedMotion` / `MotionPreferenceService`
+// so no component reaches for a raw media query itself. `size` rides the
+// shared control lattice (its icon sub-token from #76); `tone` is the closed
+// Tone set.
+export interface SpinnerView extends NodeBase {
+  readonly _tag: "Spinner"
+  readonly size?: ControlToken
+  readonly tone?: Tone
+  // Meaningful vs decorative is typed, mirroring Icon/Avatar: a `label`
+  // present means meaningful (role status + aria-live); absent means
+  // decorative (aria-hidden) — the surrounding context (a button's loading
+  // state, a status row) usually carries the meaning instead.
+  readonly label?: string
+  readonly reduceMotion?: boolean
+  readonly style?: CardStyle
+}
+
+export interface LoadingDotsView extends NodeBase {
+  readonly _tag: "LoadingDots"
+  readonly size?: ControlToken
+  readonly tone?: Tone
+  readonly label?: string
+  readonly reduceMotion?: boolean
+  readonly style?: CardStyle
+}
+
+export interface ShimmerTextView extends NodeBase {
+  readonly _tag: "ShimmerText"
+  /** Wraps real pending text content with the shimmer sweep. */
+  readonly text?: string
+  /** Skeleton placeholder bar width when no text has arrived yet. */
+  readonly width?: Dimension
+  readonly typeScale?: TypeScaleToken
+  readonly label?: string
+  readonly reduceMotion?: boolean
+  readonly style?: TextStyle
+}
+
 export type View =
   | StackView
   | TextView
@@ -3059,6 +3588,15 @@ export type View =
   | BlurredPopupView
   | IconButtonView
   | ToolbarView
+  | EmptyMessageView
+  | AvatarView
+  | AvatarGroupView
+  | CopyButtonView
+  | SegmentedControlView
+  | SpinnerView
+  | LoadingDotsView
+  | ShimmerTextView
+  | AlertView
 
 export type KeyedView = View & { readonly key: NodeKey }
 
@@ -3164,6 +3702,10 @@ const childViewEntries = (
       )
     case "PricingTable":
       return view.columns.map((child, index) => ({ path: ["columns", index], view: child }))
+    case "EmptyMessage":
+      return view.action === undefined ? [] : [{ path: ["action"], view: view.action }]
+    case "AvatarGroup":
+      return view.avatars.map((avatar, index) => ({ path: ["avatars", index], view: avatar }))
     default:
       return []
   }
@@ -3278,14 +3820,213 @@ export const TextSchema: Schema.Codec<TextView, TextView> = Schema.TaggedStruct(
   style: TextStyleSchema.pipe(Schema.optionalKey)
 })
 
+// The prior-version decoder for Button (harmonization #78): a `variant` of
+// "primary"/"secondary"/"ghost" with no `tone`/`size` is exactly the shape a
+// pre-#78 tree carries, and this union lets it keep decoding under the same
+// field name the matrix now uses for a different vocabulary. See
+// `resolveButtonAppearance` for the normalization every renderer applies.
+export const ButtonVariantInputSchema = Schema.Union([ToneVariantTokenSchema, ButtonVariantSchema])
+export type ButtonVariantInput = Schema.Schema.Type<typeof ButtonVariantInputSchema>
+
 export const ButtonSchema: Schema.Codec<ButtonView, ButtonView> = Schema.TaggedStruct("Button", {
   ...CommonFields,
   label: Schema.String,
-  variant: ButtonVariantSchema,
+  tone: ToneTokenSchema.pipe(Schema.optionalKey),
+  variant: ButtonVariantInputSchema.pipe(Schema.optionalKey),
+  size: ControlTokenSchema.pipe(Schema.optionalKey),
+  pill: Schema.Boolean.pipe(Schema.optionalKey),
+  loading: Schema.Boolean.pipe(Schema.optionalKey),
+  block: Schema.Boolean.pipe(Schema.optionalKey),
+  selected: Schema.Boolean.pipe(Schema.optionalKey),
   disabled: Schema.Boolean.pipe(Schema.optionalKey),
   onPress: IntentRefSchema,
   style: ButtonStyleSchema.pipe(Schema.optionalKey)
 })
+
+/** The fully resolved appearance every renderer consumes for a Button. */
+export interface ResolvedButtonAppearance {
+  readonly tone: ToneToken
+  readonly variant: ToneVariantToken
+  readonly size: ControlToken
+}
+
+// Legacy tone implied by a pre-#78 variant token when no explicit `tone` is
+// given. Preserves the exact pre-#78 rendering: "primary" was the accent
+// solid recipe, "secondary" was the neutral solid recipe. "ghost" already
+// names a matrix variant, so it needs no tone table entry — it falls through
+// to the default branch below with its implied tone of "accent" unchanged.
+const legacyButtonToneByVariant: Record<"primary" | "secondary", ToneToken> = {
+  primary: "accent",
+  secondary: "secondary"
+}
+
+/**
+ * Resolves a ButtonView's `tone`/`variant`/`size` onto the matrix + control
+ * lattice, normalizing pre-#78 legacy variant tokens onto their exact
+ * tone+variant equivalents. Every renderer (DOM, React Native, headless)
+ * calls this single resolver instead of branching on legacy strings itself,
+ * so the mapping stays in one place:
+ *
+ * - `variant: "primary"`   -> `{ tone: "accent", variant: "solid" }`
+ * - `variant: "secondary"` -> `{ tone: "secondary", variant: "solid" }`
+ * - `variant: "ghost"`     -> `{ tone: "accent", variant: "ghost" }` (already
+ *   a matrix token; unchanged)
+ * - anything else (a matrix variant, or omitted) resolves tone/variant/size
+ *   to their explicit values or the "accent"/"solid"/"md" defaults.
+ */
+export const resolveButtonAppearance = (view: ButtonView): ResolvedButtonAppearance => {
+  const rawVariant = view.variant
+  if (rawVariant === "primary" || rawVariant === "secondary") {
+    return {
+      tone: view.tone ?? legacyButtonToneByVariant[rawVariant],
+      variant: "solid",
+      size: view.size ?? "md"
+    }
+  }
+  return {
+    tone: view.tone ?? "accent",
+    variant: rawVariant ?? "solid",
+    size: view.size ?? "md"
+  }
+}
+
+/** The fully resolved appearance every renderer consumes for a Badge/Chip. */
+export interface ResolvedBadgeAppearance {
+  readonly tone: ToneToken
+  readonly variant: ToneVariantToken
+  readonly size: ControlToken
+  /**
+   * True when the caller set neither `variant` nor `size` — the renderer must
+   * reproduce the exact pre-#79 look (tone-colored text, no fill/border/
+   * sizing) rather than draw the resolved matrix cell, since old serialized
+   * trees never carry these fields and must keep rendering identically.
+   */
+  readonly isLegacy: boolean
+}
+
+// Pre-#79 Badge/Chip tone -> matrix tone, used whenever a caller opts into the
+// matrix (sets `variant` and/or `size`) so the color family stays the same
+// one the old `Tone` value named.
+const legacyToneToMatrixTone: Record<Tone, ToneToken> = {
+  neutral: "secondary",
+  info: "info",
+  success: "success",
+  warn: "warning",
+  danger: "danger"
+}
+
+/**
+ * Resolves a Badge/Chip's `tone`/`variant`/`size` onto the matrix + control
+ * lattice (harmonization #79). Every renderer calls this single resolver.
+ * `variant` is publicly `solid | soft | outline` only; the resolved
+ * `variant` defaults to `"ghost"` (a matrix token no author can pass in
+ * directly) when omitted so `isLegacy` and the "ghost" sentinel agree, and
+ * renderers must use `isLegacy` (not a `=== "ghost"` check) to decide whether
+ * to draw the pre-#79 legacy look or the matrix cell.
+ */
+export const resolveBadgeAppearance = (
+  view: { readonly tone?: Tone; readonly variant?: BadgeVariantToken; readonly size?: ControlToken }
+): ResolvedBadgeAppearance => ({
+  tone: legacyToneToMatrixTone[view.tone ?? "neutral"],
+  variant: view.variant ?? "ghost",
+  size: view.size ?? "md",
+  isLegacy: view.variant === undefined && view.size === undefined
+})
+
+/** The fully resolved appearance every renderer consumes for a TextField. */
+export interface ResolvedTextFieldAppearance {
+  readonly tone: ToneToken
+  readonly variant: ToneVariantToken
+  readonly size: ControlToken
+  /** True when the caller set neither `variant` nor `size` — keep the pre-#79 chromeless look. */
+  readonly isLegacy: boolean
+}
+
+/**
+ * Resolves a TextField's `variant`/`size` onto the matrix + control lattice
+ * (harmonization #79). TextField carries no tone axis (it is a neutral input
+ * surface, not a semantic-status control), so the resolved tone is fixed at
+ * "secondary" — the same neutral box the matrix already uses for
+ * Button's secondary tone — unless `invalid` is set, in which case the danger
+ * tone drives the border/ring so invalid fields read as invalid even without
+ * touching `style`.
+ */
+export const resolveTextFieldAppearance = (
+  view: { readonly variant?: TextFieldVariantToken; readonly size?: ControlToken; readonly invalid?: boolean }
+): ResolvedTextFieldAppearance => ({
+  tone: view.invalid === true ? "danger" : "secondary",
+  variant: view.variant ?? "outline",
+  size: view.size ?? "md",
+  isLegacy: view.variant === undefined && view.size === undefined
+})
+
+/** The fully resolved appearance every renderer consumes for a Select trigger. */
+export interface ResolvedSelectAppearance {
+  readonly tone: ToneToken
+  readonly variant: ToneVariantToken
+  readonly size: ControlToken
+  readonly pill: boolean
+  readonly dropdownIcon: IconName
+  /** True when the caller set neither `variant` nor `size` — keep the pre-#79 platform-default look. */
+  readonly isLegacy: boolean
+}
+
+/**
+ * Resolves a Select's `variant`/`size`/`pill`/`dropdownIcon` onto the matrix +
+ * control lattice (harmonization #79). A select trigger has no tone axis
+ * (fixed at "secondary", the same neutral surface TextField uses) and no
+ * "solid" variant (a trigger is never a call-to-action) — the public
+ * `SelectVariantToken` is `soft | outline | ghost` only.
+ */
+export const resolveSelectAppearance = (
+  view: {
+    readonly variant?: SelectVariantToken
+    readonly size?: ControlToken
+    readonly pill?: boolean
+    readonly dropdownIcon?: IconName
+  }
+): ResolvedSelectAppearance => ({
+  tone: "secondary",
+  variant: view.variant ?? "outline",
+  size: view.size ?? "md",
+  pill: view.pill === true,
+  dropdownIcon: view.dropdownIcon ?? "ChevronDown",
+  isLegacy: view.variant === undefined && view.size === undefined
+})
+
+/** Default leading icon per matrix tone for a tone-omitted/icon-omitted Alert. */
+export const defaultAlertIcon: Record<ToneToken, IconName> = {
+  accent: "InfoCircle",
+  secondary: "InfoCircle",
+  danger: "AlertCircle",
+  success: "CheckCircle",
+  warning: "AlertTriangle",
+  info: "InfoCircle"
+}
+
+/** The fully resolved appearance every renderer consumes for an Alert. */
+export interface ResolvedAlertAppearance {
+  readonly tone: ToneToken
+  readonly variant: ToneVariantToken
+  readonly icon: IconName
+}
+
+/**
+ * Resolves an Alert's `tone`/`variant`/`icon` onto the matrix + default icon
+ * table (harmonization #79). Alert is a brand-new component (no prior
+ * catalog version ever shipped it), so there is no legacy-omitted-look to
+ * preserve — every field always resolves to a concrete default.
+ */
+export const resolveAlertAppearance = (
+  view: { readonly tone?: ToneToken; readonly variant?: ToneVariantToken; readonly icon?: IconName }
+): ResolvedAlertAppearance => {
+  const tone = view.tone ?? "info"
+  return {
+    tone,
+    variant: view.variant ?? "soft",
+    icon: view.icon ?? defaultAlertIcon[tone]
+  }
+}
 
 export const ImageSchema: Schema.Codec<ImageView, ImageView> = Schema.TaggedStruct("Image", {
   ...CommonFields,
@@ -3305,6 +4046,10 @@ const BaseTextFieldFields = {
   field: FieldBindingSchema.pipe(Schema.optionalKey),
   focused: Schema.Boolean.pipe(Schema.optionalKey),
   disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  invalid: Schema.Boolean.pipe(Schema.optionalKey),
+  variant: TextFieldVariantTokenSchema.pipe(Schema.optionalKey),
+  size: ControlTokenSchema.pipe(Schema.optionalKey),
+  gutterSize: SpacingTokenSchema.pipe(Schema.optionalKey),
   clearOnSubmit: Schema.Boolean.pipe(Schema.optionalKey),
   onChange: IntentRefSchema.pipe(Schema.optionalKey),
   onSubmit: IntentRefSchema.pipe(Schema.optionalKey),
@@ -3322,7 +4067,8 @@ export const PlainTextFieldSchema: Schema.Codec<PlainTextFieldView, PlainTextFie
   Schema.TaggedStruct("TextField", {
     ...BaseTextFieldFields,
     secure: Schema.Literal(false).pipe(Schema.optionalKey),
-    multiline: Schema.Boolean.pipe(Schema.optionalKey)
+    multiline: Schema.Boolean.pipe(Schema.optionalKey),
+    autoResize: Schema.Boolean.pipe(Schema.optionalKey)
   })
 
 export const TextFieldSchema: Schema.Codec<TextFieldView, TextFieldView> = Schema.Union([
@@ -3458,6 +4204,8 @@ export const BadgeSchema: Schema.Codec<BadgeView, BadgeView> = Schema.TaggedStru
   ...CommonFields,
   label: Schema.String,
   tone: ToneSchema.pipe(Schema.optionalKey),
+  variant: BadgeVariantTokenSchema.pipe(Schema.optionalKey),
+  size: ControlTokenSchema.pipe(Schema.optionalKey),
   style: CardStyleSchema.pipe(Schema.optionalKey)
 })
 
@@ -3466,6 +4214,8 @@ export const ChipSchema: Schema.Codec<ChipView, ChipView> = Schema.TaggedStruct(
   label: Schema.String,
   value: Schema.String.pipe(Schema.optionalKey),
   tone: ToneSchema.pipe(Schema.optionalKey),
+  variant: BadgeVariantTokenSchema.pipe(Schema.optionalKey),
+  size: ControlTokenSchema.pipe(Schema.optionalKey),
   style: CardStyleSchema.pipe(Schema.optionalKey)
 })
 
@@ -3763,6 +4513,12 @@ export const SelectSchema: Schema.Codec<SelectView, SelectView> = Schema.TaggedS
   value: Schema.String,
   options: Schema.Array(ChoiceOptionSchema),
   placeholder: Schema.String.pipe(Schema.optionalKey),
+  variant: SelectVariantTokenSchema.pipe(Schema.optionalKey),
+  size: ControlTokenSchema.pipe(Schema.optionalKey),
+  pill: Schema.Boolean.pipe(Schema.optionalKey),
+  dropdownIcon: IconNameSchema.pipe(Schema.optionalKey),
+  multiple: Schema.Boolean.pipe(Schema.optionalKey),
+  values: Schema.Array(Schema.String).pipe(Schema.optionalKey),
   style: TextFieldStyleSchema.pipe(Schema.optionalKey)
 })
 
@@ -3842,6 +4598,17 @@ export const StatusBannerSchema: Schema.Codec<StatusBannerView, StatusBannerView
   tone: ToneSchema,
   message: Schema.String,
   onRetry: IntentRefSchema.pipe(Schema.optionalKey),
+  onDismiss: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const AlertSchema: Schema.Codec<AlertView, AlertView> = Schema.TaggedStruct("Alert", {
+  ...CommonFields,
+  tone: ToneTokenSchema.pipe(Schema.optionalKey),
+  variant: ToneVariantTokenSchema.pipe(Schema.optionalKey),
+  icon: IconNameSchema.pipe(Schema.optionalKey),
+  title: Schema.String.pipe(Schema.optionalKey),
+  message: Schema.String,
   onDismiss: IntentRefSchema.pipe(Schema.optionalKey),
   style: CardStyleSchema.pipe(Schema.optionalKey)
 })
@@ -4297,6 +5064,163 @@ export const ToolbarSchema: Schema.Codec<ToolbarView, ToolbarView> =
     style: CardStyleSchema.pipe(Schema.optionalKey)
   })
 
+export const EmptyMessageIconSchema: Schema.Codec<EmptyMessageIcon, EmptyMessageIcon> = Schema.Struct({
+  name: IconNameSchema,
+  tone: EmptyMessageIconToneSchema.pipe(Schema.optionalKey),
+  size: EmptyMessageIconSizeSchema.pipe(Schema.optionalKey)
+})
+
+export const EmptyMessageSchema: Schema.Codec<EmptyMessageView, EmptyMessageView> = Schema.TaggedStruct(
+  "EmptyMessage",
+  {
+    ...CommonFields,
+    icon: EmptyMessageIconSchema.pipe(Schema.optionalKey),
+    title: Schema.String,
+    description: Schema.String.pipe(Schema.optionalKey),
+    // The action slot is typed as a Button view specifically — not an open
+    // child array. An arbitrary view there is a decode failure.
+    action: Schema.suspend((): Schema.Codec<ButtonView, ButtonView> => ButtonSchema).pipe(Schema.optionalKey),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  }
+)
+
+// Avatar (issue #80). The bounded initials keep the mark legible at every
+// lattice size, and the source filter makes an empty avatar unconstructible:
+// the typed fallback chain image -> initials -> icon must have a first link.
+const AvatarInitialsSchema = Schema.NonEmptyString.check(
+  Schema.isMaxLength(3, { title: "AvatarInitialsMaxLength" })
+)
+
+const AvatarSourceFilter = Schema.makeFilter<AvatarView>((view) =>
+  view.image === undefined && view.initials === undefined && view.icon === undefined
+    ? { path: ["image"], issue: "Avatar requires at least one of image, initials, or icon" }
+    : undefined
+)
+
+export const AvatarSchema: Schema.Codec<AvatarView, AvatarView> = Schema.TaggedStruct("Avatar", {
+  ...CommonFields,
+  image: Schema.NonEmptyString.pipe(Schema.optionalKey),
+  initials: AvatarInitialsSchema.pipe(Schema.optionalKey),
+  icon: IconNameSchema.pipe(Schema.optionalKey),
+  size: ControlTokenSchema.pipe(Schema.optionalKey),
+  tone: ToneSchema.pipe(Schema.optionalKey),
+  variant: AvatarVariantSchema.pipe(Schema.optionalKey),
+  label: Schema.String.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+}).check(AvatarSourceFilter)
+
+const KeyedAvatarArraySchema = Schema.Array(AvatarSchema).check(
+  Schema.makeFilter<ReadonlyArray<AvatarView>>((items) => {
+    const unkeyedIndex = items.findIndex((item) => item.key === undefined)
+    return unkeyedIndex === -1
+      ? undefined
+      : { path: [unkeyedIndex, "key"], issue: "AvatarGroup avatars require explicit keys" }
+  })
+) as Schema.Codec<ReadonlyArray<KeyedAvatarView>, ReadonlyArray<KeyedAvatarView>>
+
+const AvatarGroupMaxSchema = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThan(0, { title: "AvatarGroupMaxPositive" })
+)
+
+export const AvatarGroupSchema: Schema.Codec<AvatarGroupView, AvatarGroupView> =
+  Schema.TaggedStruct("AvatarGroup", {
+    ...CommonFields,
+    avatars: KeyedAvatarArraySchema,
+    max: AvatarGroupMaxSchema.pipe(Schema.optionalKey),
+    size: ControlTokenSchema.pipe(Schema.optionalKey),
+    tone: ToneSchema.pipe(Schema.optionalKey),
+    variant: AvatarVariantSchema.pipe(Schema.optionalKey),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  })
+
+export const CopyButtonSchema: Schema.Codec<CopyButtonView, CopyButtonView> =
+  Schema.TaggedStruct("CopyButton", {
+    ...CommonFields,
+    content: Schema.String,
+    label: Schema.NonEmptyString.pipe(Schema.optionalKey),
+    accessibilityLabel: Schema.NonEmptyString.pipe(Schema.optionalKey),
+    copiedLabel: Schema.NonEmptyString.pipe(Schema.optionalKey),
+    size: ControlTokenSchema.pipe(Schema.optionalKey),
+    variant: ButtonVariantSchema.pipe(Schema.optionalKey),
+    copied: Schema.Boolean.pipe(Schema.optionalKey),
+    onCopy: IntentRefSchema.pipe(Schema.optionalKey),
+    onCopiedReset: IntentRefSchema.pipe(Schema.optionalKey),
+    resetMillis: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+    disabled: Schema.Boolean.pipe(Schema.optionalKey),
+    surface: SurfaceMaterialSchema.pipe(Schema.optionalKey),
+    style: ButtonStyleSchema.pipe(Schema.optionalKey)
+  })
+
+export const SegmentedOptionSchema: Schema.Codec<SegmentedOption, SegmentedOption> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  icon: IconNameSchema.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey)
+})
+
+export const SegmentedControlSchema: Schema.Codec<SegmentedControlView, SegmentedControlView> = Schema.TaggedStruct(
+  "SegmentedControl",
+  {
+    ...CommonFields,
+    // A single-choice control needs at least two choices to mean anything;
+    // one option is a mislabeled static chip, not a segmented control.
+    options: Schema.Array(SegmentedOptionSchema).check(
+      Schema.isMinLength(2, { title: "SegmentedControlNeedsAtLeastTwoOptions" })
+    ),
+    value: Schema.NonEmptyString,
+    size: ControlTokenSchema.pipe(Schema.optionalKey),
+    gutterSize: SpacingTokenSchema.pipe(Schema.optionalKey),
+    pill: Schema.Boolean.pipe(Schema.optionalKey),
+    onChange: IntentRefSchema,
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  }
+)
+
+// Loading indicators (issue #83). See the SpinnerView/LoadingDotsView/
+// ShimmerTextView doc comments for the full design rationale.
+export const SpinnerSchema: Schema.Codec<SpinnerView, SpinnerView> = Schema.TaggedStruct("Spinner", {
+  ...CommonFields,
+  size: ControlTokenSchema.pipe(Schema.optionalKey),
+  tone: ToneSchema.pipe(Schema.optionalKey),
+  label: Schema.String.pipe(Schema.optionalKey),
+  reduceMotion: Schema.Boolean.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const LoadingDotsSchema: Schema.Codec<LoadingDotsView, LoadingDotsView> = Schema.TaggedStruct(
+  "LoadingDots",
+  {
+    ...CommonFields,
+    size: ControlTokenSchema.pipe(Schema.optionalKey),
+    tone: ToneSchema.pipe(Schema.optionalKey),
+    label: Schema.String.pipe(Schema.optionalKey),
+    reduceMotion: Schema.Boolean.pipe(Schema.optionalKey),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  }
+)
+
+// An empty ShimmerText (no text, no width) is not constructible — mirrors
+// the AvatarSourceFilter discipline: the typed fallback needs a first link.
+const ShimmerTextSourceFilter = Schema.makeFilter<ShimmerTextView>((view) =>
+  view.text === undefined && view.width === undefined
+    ? { path: ["width"], issue: "ShimmerText requires text or width" }
+    : undefined
+)
+
+export const ShimmerTextSchema: Schema.Codec<ShimmerTextView, ShimmerTextView> = Schema.TaggedStruct(
+  "ShimmerText",
+  {
+    ...CommonFields,
+    text: Schema.String.pipe(Schema.optionalKey),
+    width: DimensionSchema.pipe(Schema.optionalKey),
+    typeScale: TypeScaleTokenSchema.pipe(Schema.optionalKey),
+    label: Schema.String.pipe(Schema.optionalKey),
+    reduceMotion: Schema.Boolean.pipe(Schema.optionalKey),
+    style: TextStyleSchema.pipe(Schema.optionalKey)
+  }
+).check(ShimmerTextSourceFilter)
+
 export const ViewSchema: Schema.Codec<View, View> = Schema.suspend(() =>
   Schema.Union([
     StackSchema,
@@ -4368,7 +5292,16 @@ export const ViewSchema: Schema.Codec<View, View> = Schema.suspend(() =>
     FrameSchema,
     BlurredPopupSchema,
     IconButtonSchema,
-    ToolbarSchema
+    ToolbarSchema,
+    EmptyMessageSchema,
+    AvatarSchema,
+    AvatarGroupSchema,
+    CopyButtonSchema,
+    SegmentedControlSchema,
+    SpinnerSchema,
+    LoadingDotsSchema,
+    ShimmerTextSchema,
+    AlertSchema
   ]).check(OverlayStackFilter)
 )
 
@@ -4838,6 +5771,10 @@ export type StatusBannerProps = WithoutTagAndVersion<StatusBannerView>
 export const StatusBanner = (props: StatusBannerProps): StatusBannerView =>
   StatusBannerSchema.make({ _tag: "StatusBanner", catalogVersion: CatalogVersion, ...props })
 
+export type AlertProps = WithoutTagAndVersion<AlertView>
+export const Alert = (props: AlertProps): AlertView =>
+  AlertSchema.make({ _tag: "Alert", catalogVersion: CatalogVersion, ...props })
+
 export type RecoveryOverlayProps = WithoutTagAndVersion<RecoveryOverlayView>
 export const RecoveryOverlay = (props: RecoveryOverlayProps): RecoveryOverlayView =>
   RecoveryOverlaySchema.make({ _tag: "RecoveryOverlay", catalogVersion: CatalogVersion, ...props })
@@ -4982,6 +5919,10 @@ export type IconButtonProps = WithoutTagAndVersion<IconButtonView>
 export const IconButton = (props: IconButtonProps): IconButtonView =>
   IconButtonSchema.make({ _tag: "IconButton", catalogVersion: CatalogVersion, ...props })
 
+export type CopyButtonProps = WithoutTagAndVersion<CopyButtonView>
+export const CopyButton = (props: CopyButtonProps): CopyButtonView =>
+  CopyButtonSchema.make({ _tag: "CopyButton", catalogVersion: CatalogVersion, ...props })
+
 export type ToolbarProps = Omit<WithoutTagAndVersion<ToolbarView>, "children">
 export const Toolbar = (
   props: ToolbarProps,
@@ -4989,6 +5930,33 @@ export const Toolbar = (
 ): ToolbarView =>
   ToolbarSchema.make({ _tag: "Toolbar", catalogVersion: CatalogVersion, ...props, children })
 
+export type EmptyMessageProps = WithoutTagAndVersion<EmptyMessageView>
+export const EmptyMessage = (props: EmptyMessageProps): EmptyMessageView =>
+  EmptyMessageSchema.make({ _tag: "EmptyMessage", catalogVersion: CatalogVersion, ...props })
+
+export type AvatarProps = WithoutTagAndVersion<AvatarView>
+export const Avatar = (props: AvatarProps): AvatarView =>
+  AvatarSchema.make({ _tag: "Avatar", catalogVersion: CatalogVersion, ...props })
+
+export type AvatarGroupProps = WithoutTagAndVersion<AvatarGroupView>
+export const AvatarGroup = (props: AvatarGroupProps): AvatarGroupView =>
+  AvatarGroupSchema.make({ _tag: "AvatarGroup", catalogVersion: CatalogVersion, ...props })
+
+export type SegmentedControlProps = WithoutTagAndVersion<SegmentedControlView>
+export const SegmentedControl = (props: SegmentedControlProps): SegmentedControlView =>
+  SegmentedControlSchema.make({ _tag: "SegmentedControl", catalogVersion: CatalogVersion, ...props })
+
+export type SpinnerProps = WithoutTagAndVersion<SpinnerView>
+export const Spinner = (props: SpinnerProps): SpinnerView =>
+  SpinnerSchema.make({ _tag: "Spinner", catalogVersion: CatalogVersion, ...props })
+
+export type LoadingDotsProps = WithoutTagAndVersion<LoadingDotsView>
+export const LoadingDots = (props: LoadingDotsProps): LoadingDotsView =>
+  LoadingDotsSchema.make({ _tag: "LoadingDots", catalogVersion: CatalogVersion, ...props })
+
+export type ShimmerTextProps = WithoutTagAndVersion<ShimmerTextView>
+export const ShimmerText = (props: ShimmerTextProps): ShimmerTextView =>
+  ShimmerTextSchema.make({ _tag: "ShimmerText", catalogVersion: CatalogVersion, ...props })
 
 
 
@@ -5085,6 +6053,12 @@ export interface ViewResolution {
   readonly state?: unknown
   readonly viewport?: Viewport
   readonly platform?: PlatformVariant
+  // Resolved `prefers-reduced-motion` state (issue #83): renderers read the
+  // live OS-level signal once at the surface boundary (see
+  // `MotionPreferenceService`) and thread it through here so an animated
+  // component never reaches for a raw media query itself. An app-authored
+  // `reduceMotion` on the view always wins over this resolved default.
+  readonly reducedMotion?: boolean
 }
 
 const styleResolution = (input: ViewResolution): StyleResolution => ({
@@ -5199,11 +6173,34 @@ export const resolveView = (view: View, input: ViewResolution = {}): View => {
     case "AnnouncementBadge":
     case "LogoRow":
     case "PricingColumn":
+    case "Avatar":
+    case "SegmentedControl":
+    case "Alert":
       return {
         ...view,
         ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) })
       }
+    case "AvatarGroup":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        avatars: view.avatars.map((avatar) => resolveView(avatar, input) as KeyedAvatarView)
+      }
+    // Loading indicators (issue #83): an app-authored `reduceMotion` always
+    // wins; otherwise bake in the renderer's resolved OS-level preference so
+    // the per-tag DOM/RN renderers never check a media query themselves.
+    case "Spinner":
+    case "LoadingDots":
+    case "ShimmerText":
+      return {
+        ...view,
+        ...(view.reduceMotion === undefined && input.reducedMotion !== undefined
+          ? { reduceMotion: input.reducedMotion }
+          : {}),
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) })
+      }
     case "IconButton":
+    case "CopyButton":
       return {
         ...view,
         ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) })
@@ -5376,6 +6373,12 @@ export const resolveView = (view: View, input: ViewResolution = {}): View => {
           ? {}
           : { autocomplete: { ...view.autocomplete, combobox: resolveView(view.autocomplete.combobox, input) as ComboboxView } })
       }
+    case "EmptyMessage":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        ...(view.action === undefined ? {} : { action: resolveView(view.action, input) as ButtonView })
+      }
   }
 }
 
@@ -5422,6 +6425,14 @@ export const resolveBindings = <State>(view: View, state: State): View => {
     case "LogoRow":
     case "PricingColumn":
     case "IconButton":
+    case "Avatar":
+    case "AvatarGroup":
+    case "CopyButton":
+    case "SegmentedControl":
+    case "Spinner":
+    case "LoadingDots":
+    case "ShimmerText":
+    case "Alert":
       return view
     case "Section":
     case "Glow":
@@ -5608,6 +6619,10 @@ export const resolveBindings = <State>(view: View, state: State): View => {
         open: resolveBoundBoolean(view.open, state),
         children: view.children.map((child) => resolveBindings(child, state))
       }
+    case "EmptyMessage":
+      return view.action === undefined
+        ? view
+        : { ...view, action: resolveBindings(view.action, state) as ButtonView }
   }
 }
 
@@ -5705,6 +6720,10 @@ export const redactSecureView = (view: View): View => {
         ...view,
         control: redactSecureView(view.control)
       }
+    case "EmptyMessage":
+      return view.action === undefined
+        ? view
+        : { ...view, action: redactSecureView(view.action) as ButtonView }
     case "Transcript":
       return {
         ...view,
@@ -5804,6 +6823,56 @@ export interface RendererAdapter<Container, Surface extends MountedSurface = Mou
   ) => Effect.Effect<Surface, never, Scope.Scope>
 }
 
+// ── Clipboard service (v35, #84) ─────────────────────────────────────────────
+//
+// The one injection seam for copy-to-clipboard writes. Components (CopyButton,
+// CodeBlock consumers) never call `navigator.clipboard` in their contract;
+// renderers perform the write through this service — injected per renderer
+// (options) or provided as a Layer to the app's Effect program.
+
+export interface ClipboardWriteError {
+  readonly _tag: "ClipboardWriteError"
+  readonly message: string
+}
+
+export const clipboardWriteError = (message: string): ClipboardWriteError => ({
+  _tag: "ClipboardWriteError",
+  message
+})
+
+export interface Clipboard {
+  readonly writeText: (text: string) => Effect.Effect<void, ClipboardWriteError>
+}
+
+export const Clipboard = Context.Service<Clipboard>("@effect-native/core/Clipboard")
+
+export const makeClipboardLayer = (clipboard: Clipboard) => Layer.succeed(Clipboard, clipboard)
+
+// Recording clipboard for headless/conformance runs: every write is retained
+// in order so tests assert the exact copied strings.
+export interface RecordingClipboard extends Clipboard {
+  readonly writes: Effect.Effect<ReadonlyArray<string>>
+}
+
+export const makeRecordingClipboard: Effect.Effect<RecordingClipboard> = Effect.gen(function*() {
+  const writes = yield* Ref.make<ReadonlyArray<string>>([])
+  return {
+    writeText: (text: string) => Ref.update(writes, (current) => [...current, text]),
+    writes: Ref.get(writes)
+  }
+})
+
+// Depth-first search for a keyed view in a resolved tree (headless copy
+// simulation and test helpers).
+export const findViewByKey = (view: View, key: string): View | undefined => {
+  if (view.key === key) return view
+  for (const entry of childViewEntries(view)) {
+    const found = findViewByKey(entry.view, key)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
 export interface HeadlessContainer {
   readonly onFinalize?: Effect.Effect<void>
 }
@@ -5812,6 +6881,11 @@ export interface HeadlessRendererOptions {
   readonly viewport?: ViewportInput
   readonly theme?: Theme
   readonly platform?: PlatformVariant
+  // Optional clipboard delegate. The headless renderer always records writes
+  // (exposed as `clipboardWrites`); when provided, writes are forwarded here
+  // after recording.
+  readonly clipboard?: Clipboard
+  readonly reducedMotion?: boolean
 }
 
 export interface HeadlessSurface extends MountedSurface {
@@ -5820,6 +6894,13 @@ export interface HeadlessSurface extends MountedSurface {
   readonly currentViewport: Effect.Effect<Viewport>
   readonly setViewport: (input: ViewportInput) => Effect.Effect<void>
   readonly simulate: (ref: IntentRef, runtimeValue?: JsonPayload) => Effect.Effect<void, IntentError, IntentRegistry>
+  // Perform a CopyButton press by node key: write `content` through the
+  // recording clipboard, then report the node's typed `onCopy` intent with the
+  // content as component value. Fails as a defect when the key does not name a
+  // CopyButton in the current view.
+  readonly simulateCopy: (key: string) => Effect.Effect<void, IntentError | ClipboardWriteError, IntentRegistry>
+  // Every clipboard write performed through this surface, in order.
+  readonly clipboardWrites: Effect.Effect<ReadonlyArray<string>>
 }
 
 export const makeHeadlessRenderer = (
@@ -5832,6 +6913,13 @@ export const makeHeadlessRenderer = (
 
       return yield* Scope.provide(surfaceScope)(Effect.gen(function*() {
         const snapshots = yield* Ref.make<ReadonlyArray<View>>([])
+        const recorder = yield* makeRecordingClipboard
+        const clipboard: Clipboard = options.clipboard === undefined
+          ? recorder
+          : {
+            writeText: (text) =>
+              recorder.writeText(text).pipe(Effect.andThen(options.clipboard!.writeText(text)))
+          }
         const viewport = yield* makeViewportService(
           options.viewport ?? defaultViewportInput,
           options.theme === undefined ? {} : { theme: options.theme }
@@ -5841,7 +6929,8 @@ export const makeHeadlessRenderer = (
           Stream.zipLatestWith(viewport.stream, (view, currentViewport) =>
             resolveView(view, {
               viewport: currentViewport,
-              ...(options.platform === undefined ? {} : { platform: options.platform })
+              ...(options.platform === undefined ? {} : { platform: options.platform }),
+              ...(options.reducedMotion === undefined ? {} : { reducedMotion: options.reducedMotion })
             })
           )
         )
@@ -5874,7 +6963,23 @@ export const makeHeadlessRenderer = (
           currentViewport: viewport.current,
           setViewport: viewport.set,
           simulate: (ref: IntentRef, runtimeValue: JsonPayload = null) =>
-            report(ref, runtimeValue).pipe(Effect.andThen(Effect.yieldNow))
+            report(ref, runtimeValue).pipe(Effect.andThen(Effect.yieldNow)),
+          simulateCopy: (key: string) =>
+            Effect.gen(function*() {
+              const view = yield* current
+              const target = view === undefined ? undefined : findViewByKey(view, key)
+              if (target === undefined || target._tag !== "CopyButton") {
+                return yield* Effect.die(
+                  new Error(`simulateCopy: no CopyButton with key "${key}" in the current view`)
+                )
+              }
+              if (target.disabled === true) return
+              yield* clipboard.writeText(target.content)
+              if (target.onCopy !== undefined) {
+                yield* report(target.onCopy, target.content).pipe(Effect.andThen(Effect.yieldNow))
+              }
+            }),
+          clipboardWrites: recorder.writes
         }
       }))
     })

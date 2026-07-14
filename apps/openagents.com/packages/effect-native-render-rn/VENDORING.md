@@ -21,9 +21,10 @@ so swapping to the real published dependency later is a package.json-only change
 ## Provenance
 
 - Upstream repo: `OpenAgentsInc/effect-native`
-- Upstream commit: `f8251374b6cca27e67a88265e2adb0e5967e36f6` (catalog `v30`)
-- Vendored: 2026-07-10 (bumped from `e0c57cb`, catalog `v29`; earlier `eb9685b`
-  `v25`, `1aa6e364` `v19`, `e32b97e` `v5`)
+- Upstream commit: `9d811394fb5c3ee7b56c974d6df85d06a1463006` (catalog `v39`)
+- Vendored: 2026-07-14 (bumped from `6db0a67b`, catalog `v30`; earlier
+  `f8251374` `v30`, `e0c57cb` `v29`, `eb9685b` `v25`, `1aa6e364` `v19`,
+  `e32b97e` `v5`)
 - Files copied verbatim: `packages/render-rn/src/**`
 
 ### Single source of truth + anti-staleness guard (2026-07-09)
@@ -136,3 +137,61 @@ upstream delta hunk-wise as done here.
   now sit inside a full-width role-aligned row and carry `minWidth: 0` plus
   `flexShrink: 1` under their 82% bound. The catalog and the shared v30 vendor
   manifest remain unchanged because this is a lowering-only fix.
+
+## v39 pin bump — harmonization catalog convergence (2026-07-14, openagents#8811 step 1)
+
+Mechanical pin-bump-only step (no recipe sweep, no new-component adoption).
+Upstream `6db0a67b -> 9d81139` (9 commits) landed the Apps SDK UI
+harmonization catalog through `v31`-`v39`: tier-1 primitive token ramps and a
+tone x variant x state color matrix (`#74`/`#75`), control-lattice
+sub-tokens (`#76`), render-dom's component-token-tier + `data-*` variant
+lowering mechanism (`#77`), Button's full tone/variant/size matrix (`#78`),
+matrix axes + a new Alert component on Badge/Chip/TextField/Select (`#79`),
+Avatar/AvatarGroup (`#80`), a 101-name icon expansion (`#85`, absorbing the
+monorepo's desktop-shell icon set upstream "for parity"), EmptyMessage
+(`#82`), CopyButton (`#84`), SegmentedControl, and Spinner/LoadingDots/
+ShimmerText (`#83`). All of it is documented upstream as backward-compatible:
+legacy trees resolve through an `isLegacy` flag (Badge/Chip/TextField/Select)
+or a pre-`#78` variant normalizer (Button), so old serialized/JS-authored
+trees keep rendering identically.
+
+Applied as a `git merge-file` three-way merge (base = old pin, ours =
+vendored copy with its known divergences, theirs = new upstream tip) per
+package, then resolved conflicts by hand:
+
+- **core / tokens**: took upstream's side wherever it touched the catalog
+  version ladder or the icon-name closed set (a strict superset — v33's
+  icon expansion explicitly absorbed the monorepo's desktop-shell names and
+  three new roles/a11y fields the monorepo did not have). `tokens` merged
+  with zero conflicts.
+- **render-dom**: kept the monorepo's OWN pixel-sized icon path
+  (`iconSizePixels` + `iconSvg(name, sizePx)` reading the sibling `./icons.ts`
+  asset file added earlier the same day by openagents#8813 Lane A) instead of
+  adopting upstream's new inline `iconRegistry` + CSS-var (`--en-icon-size-*`)
+  sizing mechanism for the ORIGINAL 31 icon names — upstream's glyphs for
+  those names are a different, simpler stroke style, and swapping them would
+  have been a real visual regression for icons already live in
+  `openagents-desktop`, not a mechanical pin bump. `icons.ts` was extended
+  with the ~70 brand-new v33 icon names (verbatim upstream SVG bodies,
+  re-wrapped in the file's existing template) so the type still compiles
+  against the expanded 101-name `IconName` union; none of those 70 names had
+  any pre-bump consumer, so there is no regression surface there. All ~19
+  icon-drawing call sites across render-dom (Button loading spinner, Avatar,
+  EmptyMessage, Combobox/Select/Tabs/Sidebar items, Graph markers, the new
+  Select dropdown-indicator glyph, CopyButton, IconButton, Icon) were
+  reconciled onto that one signature. The new Button/Badge/Chip/TextField/
+  Select/Alert matrix CSS, SegmentedControl, Avatar, EmptyMessage, CopyButton,
+  and Spinner/LoadingDots/ShimmerText renderers were taken from upstream
+  in full — they are new, additive, `isLegacy`-gated code paths with zero
+  current desktop call sites, so vendoring them carries no rendering risk.
+- **render-rn**: took upstream's side for the icon glyph tables (its own
+  honest-text-glyph/SF-Symbol fallback tables were already a strict superset,
+  byte-identical on every overlapping name) and for the Button tone/variant/
+  size matrix rewrite (mirrors render-dom's `#78` adoption; `resolveButtonAppearance`
+  normalizes the pre-`#78` `"primary"`/`"secondary"`/`"ghost"` tokens onto their
+  exact matrix equivalents, so old and new trees render identically).
+
+No `shell.ts`/`settings.ts`/etc. recipe file changed, no `app.css` change, no
+`design-conformance.test.ts` rule change, and no new component was adopted
+into any desktop or mobile view — those are separately scoped follow-up work
+(openagents#8811 steps 2+).
