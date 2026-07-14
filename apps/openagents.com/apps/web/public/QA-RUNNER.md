@@ -16,7 +16,7 @@ MIT-licensed package `@openagentsinc/qa-runner`. Khala / OpenAgents Cloud /
 > **Publish status (be honest about install):** the package is **publish-ready
 > but is NOT yet on the public npm registry** — `npm view @openagentsinc/qa-runner`
 > currently 404s. Until it is published, use the **local-tarball** or
-> **clone-and-build** paths below, which work today. The `bunx` / `npx` lines are
+> **clone-and-build** paths below, which work today. The `pnpm exec` / `npx` lines are
 > shown for once it is published.
 
 ---
@@ -31,8 +31,8 @@ real `result.json`, a video artifact, and a committed e2e test.
 ```sh
 # Inside a clone of the monorepo:
 git clone https://github.com/OpenAgentsInc/openagents && cd openagents
-bun install
-bun run --cwd apps/qa-runner demo:byo
+pnpm install
+pnpm --dir apps/qa-runner run demo:byo
 # == qa run (BYO-model, OSS, local-first) ==
 # MODE: --fake-model — deterministic, no network, NO OpenAgents login, NO model key.
 # ...
@@ -56,8 +56,8 @@ that stays external is `playwright`, which downloads its own browser.
 
 ```sh
 git clone https://github.com/OpenAgentsInc/openagents && cd openagents
-bun install
-bun run --cwd apps/qa-runner build          # produces apps/qa-runner/dist/qa.js
+pnpm install
+pnpm --dir apps/qa-runner run build          # produces apps/qa-runner/dist/qa.js
 cd apps/qa-runner && bun pm pack            # -> openagentsinc-qa-runner-0.1.0.tgz
 
 # now, in ANY clean dir OUTSIDE the monorepo, with no workspace:
@@ -75,7 +75,7 @@ inlined, not required at run time). The run needs no OpenAgents account.
 ### From the published registry (once it is on npm)
 
 ```sh
-bunx @openagentsinc/qa-runner run --fake-model --url https://example.test --out ./runs/qa
+pnpm exec @openagentsinc/qa-runner run --fake-model --url https://example.test --out ./runs/qa
 npx  @openagentsinc/qa-runner run --fake-model --url https://example.test --out ./runs/qa
 npx playwright install chromium             # one-time, real-browser path
 ```
@@ -85,9 +85,9 @@ It runs on the pinned Node runtime (`node dist/qa.js …`).
 ### Dev (inside the monorepo, against source)
 
 ```sh
-git clone https://github.com/OpenAgentsInc/openagents && cd openagents && bun install
-bun run --cwd apps/qa-runner playwright:install     # one-time, real-browser path
-bun run --cwd apps/qa-runner qa run --url http://localhost:3000 ...
+git clone https://github.com/OpenAgentsInc/openagents && cd openagents && pnpm install
+pnpm --dir apps/qa-runner run playwright:install     # one-time, real-browser path
+pnpm --dir apps/qa-runner run qa run --url http://localhost:3000 ...
 ```
 
 ---
@@ -107,7 +107,7 @@ qa run \
   --out ./runs/my-app
 ```
 
-(Inside the monorepo, prefix the command with `bun run --cwd apps/qa-runner`.)
+(Inside the monorepo, prefix the command with `pnpm run --cwd apps/qa-runner`.)
 
 Env equivalents — the de-facto OpenAI standard, so existing CI works unchanged:
 
@@ -186,8 +186,8 @@ qa run --url https://example.com         --goal "verify the sign-in flow" --out 
 
 ```yaml
 # .github/workflows/qa.yml (sketch)
-- run: bun install
-- run: bun run --cwd apps/qa-runner playwright:install
+- run: pnpm install
+- run: pnpm --dir apps/qa-runner run playwright:install
 - run: |
     qa run \
       --url "$DEV_URL" \
@@ -195,8 +195,8 @@ qa run --url https://example.com         --goal "verify the sign-in flow" --out 
       --out ./runs/ci
   env:
     OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
-    OPENAI_API_KEY:  ${{ secrets.OPENAI_API_KEY }}
-    OPENAI_MODEL:    gpt-4o-mini
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    OPENAI_MODEL: gpt-4o-mini
 # upload ./runs/ci/* as build artifacts; commit ./generated/*.e2e.test.ts
 ```
 

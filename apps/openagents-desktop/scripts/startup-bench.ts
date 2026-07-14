@@ -14,7 +14,7 @@
  * writes a privacy-safe JSON receipt (timings only — no paths, no user data).
  *
  * Usage:
- *   bun scripts/startup-bench.ts [--runs N] [--warmup W] [--out FILE] [--label L] [--no-build]
+ *   node --import tsx scripts/startup-bench.ts [--runs N] [--warmup W] [--out FILE] [--label L] [--no-build]
  *
  * Default receipt: benchmarks/startup/latest.json
  *

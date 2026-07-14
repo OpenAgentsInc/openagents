@@ -34,7 +34,7 @@ const collectTestFiles = async (directory) => {
 }
 
 // Diagnostic messages can embed absolute module paths (e.g. tsc prints
-// `import("/abs/checkout/node_modules/.bun/effect@…/dist/Stream")` when two
+// an absolute package-store import when two
 // module instances collide). Those paths are checkout-specific, and the
 // baseline diff keys on the message text, so an un-normalized message reds
 // the gate on every machine except the one that recorded the baseline.

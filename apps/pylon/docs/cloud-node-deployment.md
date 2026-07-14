@@ -59,7 +59,7 @@ Defaults:
 The service runs:
 
 ```sh
-bun /opt/openagents-pylon/apps/pylon/src/index.ts node
+node --import tsx /opt/openagents-pylon/apps/pylon/src/index.ts node
 ```
 
 with env from:
@@ -85,7 +85,7 @@ Verify local status:
 ```sh
 sudo -u pylon env \
   PYLON_HOME=/var/lib/openagents-pylon \
-  bun /opt/openagents-pylon/apps/pylon/src/index.ts status --json
+  node --import tsx /opt/openagents-pylon/apps/pylon/src/index.ts status --json
 ```
 
 Send a live heartbeat:
@@ -94,7 +94,7 @@ Send a live heartbeat:
 sudo -u pylon env \
   PYLON_HOME=/var/lib/openagents-pylon \
   PYLON_OPENAGENTS_BASE_URL=https://openagents.com \
-  bun /opt/openagents-pylon/apps/pylon/src/index.ts presence heartbeat \
+  node --import tsx /opt/openagents-pylon/apps/pylon/src/index.ts presence heartbeat \
     --base-url https://openagents.com
 ```
 
@@ -104,7 +104,7 @@ Verify Claude Agent capability before leaving the node unattended:
 sudo -u pylon env \
   PYLON_HOME=/var/lib/openagents-pylon \
   ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-  bun /opt/openagents-pylon/apps/pylon/src/index.ts provider go-online
+  node --import tsx /opt/openagents-pylon/apps/pylon/src/index.ts provider go-online
 ```
 
 The Pylon may declare `capability.pylon.local_claude_agent` only when the local
@@ -164,7 +164,7 @@ Upgrade from `main`:
 cd /opt/openagents-pylon
 sudo git fetch --depth 1 origin main
 sudo git reset --hard origin/main
-sudo -u pylon env HOME=/var/lib/openagents-pylon PYLON_HOME=/var/lib/openagents-pylon bun install
+sudo -u pylon env HOME=/var/lib/openagents-pylon PYLON_HOME=/var/lib/openagents-pylon pnpm install
 sudo systemctl restart openagents-pylon
 ```
 

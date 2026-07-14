@@ -1,7 +1,7 @@
 /**
  * MM-H2 (#8488): pure onboarding logic — the suggested first-task list and
  * thread-title derivation. No native/RN imports so this stays unit-testable
- * under `bun test`; the orchestration (create thread, bind repo, push the
+ * under `pnpm exec vp test`; the orchestration (create thread, bind repo, push the
  * first message + start-turn intent, navigate) lives in
  * `onboarding-flow.tsx`.
  */

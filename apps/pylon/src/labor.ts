@@ -297,7 +297,7 @@ function laborCommand(
     // run untrusted requester work with `--dangerously-bypass-...`); and
     // `network_access=false` denies the sandbox network so an untrusted job
     // cannot clone/fetch a repo into the workspace (observed: codex otherwise
-    // cloned the target repo, polluting the sandbox so `bun test` ran the whole
+    // cloned the target repo, polluting the sandbox so `pnpm exec vp test` ran the whole
     // suite). Output-only labor stays self-contained in the workspace.
     return path
       ? [

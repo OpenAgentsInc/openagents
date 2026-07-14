@@ -5,7 +5,7 @@ Status: implemented for `0.3.0-rc1` local release gating.
 Run the local release gate:
 
 ```sh
-bun run release:gate
+pnpm run release:gate
 ```
 
 The gate runs:
@@ -23,7 +23,7 @@ The public package claim currently allowed is:
 
 - `@openagentsinc/pylon@0.3.0-rc1` is the v0.3 release candidate.
 - `Pylon can use optional local Qwen3.5 inference when the Psionic backend,
-  model, and tool-call gates pass`.
+model, and tool-call gates pass`.
 
 The optional local inference claim is bounded. It does not claim default
 bundled models, startup downloads, paid inference, training, or universal
@@ -47,7 +47,7 @@ the named evidence refs before copy can change.
 
 macOS and Linux are the only first launch platforms. A CI workflow is still
 blocked until the GitHub token used by the agent has workflow scope; until then,
-`bun run release:gate` is the required local gate before public copy changes.
+`pnpm run release:gate` is the required local gate before public copy changes.
 
 ## Allowed scoped executor claim (v0.3)
 

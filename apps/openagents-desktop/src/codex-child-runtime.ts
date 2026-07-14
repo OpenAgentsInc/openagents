@@ -46,7 +46,7 @@
  * Concurrency: every call gets its own scratch dir under
  * `<scratchRoot>/codex-children/<childRef>` and its own parser state, so
  * multiple children run simultaneously without shared mutable state. This
- * module never imports `electron` (unit-testable under `bun test`).
+ * module never imports `electron` (unit-testable under `pnpm exec vp test`).
  */
 import { spawn } from "node:child_process"
 import { mkdirSync } from "node:fs"

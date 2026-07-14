@@ -765,14 +765,14 @@ export const exampleArtanisProductionLaunchGateRecord = (
       }),
       command({
         command:
-          'bun run --cwd workers/api build:web && bunx wrangler deploy --config workers/api/wrangler.jsonc --keep-vars --var ARTANIS_SCHEDULED_RUNNER_ENABLED:true',
+          'pnpm --dir workers/api run build:web && pnpm exec wrangler deploy --config workers/api/wrangler.jsonc --keep-vars --var ARTANIS_SCHEDULED_RUNNER_ENABLED:true',
         description:
           'Enable scheduled Artanis execution for a controlled launch window after every required gate is passed.',
         kind: 'enable',
       }),
       command({
         command:
-          'bun run --cwd workers/api build:web && bunx wrangler deploy --config workers/api/wrangler.jsonc --keep-vars --var ARTANIS_SCHEDULED_RUNNER_ENABLED:false',
+          'pnpm --dir workers/api run build:web && pnpm exec wrangler deploy --config workers/api/wrangler.jsonc --keep-vars --var ARTANIS_SCHEDULED_RUNNER_ENABLED:false',
         description:
           'Disable scheduled Artanis execution by removing or setting the flag false and redeploying the Worker.',
         kind: 'disable',
@@ -794,7 +794,7 @@ export const exampleArtanisProductionLaunchGateRecord = (
       }),
       command({
         command:
-          'bunx wrangler d1 execute openagents-autopilot --remote --command "SELECT record_ref, record_type, updated_at FROM artanis_records ORDER BY updated_at DESC LIMIT 20;"',
+          'pnpm exec wrangler d1 execute openagents-autopilot --remote --command "SELECT record_ref, record_type, updated_at FROM artanis_records ORDER BY updated_at DESC LIMIT 20;"',
         description:
           'Inspect recent retained Artanis records when a tick fails, duplicates, or becomes stale.',
         kind: 'recover',

@@ -13,7 +13,7 @@
  * for the live route chain this feeds).
  *
  * Usage:
- *   bun run scripts/cs336-a1-live-homework.ts [--assignment <assignmentRef>]
+ *   node --import tsx scripts/cs336-a1-live-homework.ts [--assignment <assignmentRef>]
  */
 import {
   computeCs336A1TokenizerShard,

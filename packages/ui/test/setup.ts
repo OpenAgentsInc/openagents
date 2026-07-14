@@ -1,7 +1,7 @@
-// Minimal DOM-global shim for `bun test`.
+// Minimal DOM-global shim for `pnpm exec vp test`.
 //
 // Foldkit's vdom layer pulls in snabbdom's `style` module, which references
-// `window.requestAnimationFrame` at module-evaluation time. Under `bun test`
+// `window.requestAnimationFrame` at module-evaluation time. Under `pnpm exec vp test`
 // there is no DOM, so importing any kit module (transitively `foldkit/html`)
 // throws `ReferenceError: window is not defined` before any test body runs.
 //

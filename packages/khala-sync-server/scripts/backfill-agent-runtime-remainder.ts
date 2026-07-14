@@ -3,7 +3,7 @@
  * KS-8.5 follow-up (#8334): agent runtime remainder backfill CLI.
  *
  * Usage (from packages/khala-sync-server/):
- *   bun scripts/backfill-agent-runtime-remainder.ts \
+ *   node --import tsx scripts/backfill-agent-runtime-remainder.ts \
  *     [--database-url <postgres-url>]   # default $KHALA_SYNC_DATABASE_URL
  *     [--d1-database <name>]            # default openagents-autopilot
  *     [--wrangler-cwd <dir>]            # default ../../apps/openagents.com/workers/api
@@ -41,7 +41,7 @@ import {
 import type { SyncSql } from "../src/sql.js"
 
 const USAGE =
-  "Usage: bun scripts/backfill-agent-runtime-remainder.ts [options]   (see file header)"
+  "Usage: node --import tsx scripts/backfill-agent-runtime-remainder.ts [options]   (see file header)"
 
 type Options = {
   batchSize: number
@@ -123,8 +123,9 @@ const d1Query = (
   command: string,
 ): Array<Record<string, unknown>> => {
   const result = spawnSync(
-    "bunx",
+    "pnpm",
     [
+      "exec",
       "wrangler",
       "d1",
       "execute",

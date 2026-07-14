@@ -18,53 +18,53 @@ headline demo for the **Khala autonomous-QA example flow** (epic #6174).
 >
 > ```sh
 > # 10-second proof: no key, no network, no login. Emits a video + a committed test.
-> bun run --cwd apps/qa-runner demo:byo
+> pnpm --dir apps/qa-runner run demo:byo
 >
 > # Real Khala run against your dev server. Mint a free key first:
 > export QA_API_KEY="$(curl -fsS -X POST https://openagents.com/api/keys/free | jq -r '.credential.token')"
-> bun run --cwd apps/qa-runner qa run \
+> pnpm --dir apps/qa-runner run qa run \
 >   --url http://localhost:3000 --out ./runs/my-app
 >
 > # BYO override still works:
-> bun run --cwd apps/qa-runner qa run \
+> pnpm --dir apps/qa-runner run qa run \
 >   --url http://localhost:3000 --model gpt-4o-mini \
 >   --base-url https://api.openai.com/v1 --api-key "$OPENAI_API_KEY" --out ./runs/my-app-openai
 > ```
 >
 > **Genuinely standalone.** The shipped `qa` CLI is a single self-contained
-> bundle (`dist/qa.js`) built by `bun run build` — `@openagentsinc/probe-runtime`
+> bundle (`dist/qa.js`) built by `pnpm run build` — `@openagentsinc/probe-runtime`
 > and `effect` are inlined, so a standalone install needs **no workspace and no
 > login** (only `playwright` stays external). Install the packed tarball in any
 > clean dir (`npm install ./openagentsinc-qa-runner-0.1.0.tgz` →
-> `qa run --fake-model ...`), or `bunx @openagentsinc/qa-runner` once published.
+> `qa run --fake-model ...`), or `pnpm exec @openagentsinc/qa-runner` once published.
 > Mechanics + proof in the quick-start (§1, §5).
 
 It executes a **computer-use session** (via the Probe computer-use tools, #6175)
 against a **Target** (dev or prod), inside an **isolation backend**, and emits a
 **dereferenceable, public-safe receipt**: a playable video + Playwright trace +
 per-step screenshots + `result.json`. A reviewer confirms a run by reading the
-result and watching the video — *no local run*.
+result and watching the video — _no local run_.
 
 > Origin: modeled as prior art on `projects/repos/executor/e2e` (Target / VM /
-> artifact substrate) and on `apps/acceptance-runner` (the Bun+Effect+Playwright
+> artifact substrate) and on `apps/acceptance-runner` (the Node+Effect+Playwright
 > fakes-in-CI / real-for-proof discipline).
 
 ## What's real now vs owner-gated
 
-| Piece | Status |
-|---|---|
-| `scriptedBrain` (deterministic decision-maker) | **real now** — deterministic CI + `demo:login` |
-| Khala driver (`runKhalaSession`): Khala **autonomously** drives via `openagents/khala` | **real now** — `demo:khala`; a prompt-based ReAct/JSON-action loop over `/chat/completions` (plain `fetch`, no native function-calling) |
-| `khalaBrain` (BrainStep seam for `runQaSession`) | **inert seam** — throws "not armed" without an injected driver; the live loop is `runKhalaSession`, not this seam |
-| `KhalaSessionTrace` capture + `assertSessionTracePublicSafe` tripwire | **real now** — deterministic, replayable, public-safe (`session-trace.json`) |
-| session → executor-style e2e scenario **candidate distiller** (spec §E.2) | **real now** — `distill(trace)` emits `generated/<slug>.e2e.test.ts`; reviewed lifecycle state is `validated` / `proposed` / `landed` |
-| skill emitter (NIP-SKL marketplace candidate, spec §E.1) | **typed seam + TODO, FUTURE/owner-gated** |
-| `localBackend` (real chromium on this host) | **real now** — the default |
-| `khalaDesktopBackend` (Khala Code Desktop preview + typed RPC) | **real now** — boots headless with fixture Codex app-server by default; live/headed paths remain explicitly armed |
+| Piece                                                                                                                                                                                                                                                                                           | Status                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `scriptedBrain` (deterministic decision-maker)                                                                                                                                                                                                                                                  | **real now** — deterministic CI + `demo:login`                                                                                                                           |
+| Khala driver (`runKhalaSession`): Khala **autonomously** drives via `openagents/khala`                                                                                                                                                                                                          | **real now** — `demo:khala`; a prompt-based ReAct/JSON-action loop over `/chat/completions` (plain `fetch`, no native function-calling)                                  |
+| `khalaBrain` (BrainStep seam for `runQaSession`)                                                                                                                                                                                                                                                | **inert seam** — throws "not armed" without an injected driver; the live loop is `runKhalaSession`, not this seam                                                        |
+| `KhalaSessionTrace` capture + `assertSessionTracePublicSafe` tripwire                                                                                                                                                                                                                           | **real now** — deterministic, replayable, public-safe (`session-trace.json`)                                                                                             |
+| session → executor-style e2e scenario **candidate distiller** (spec §E.2)                                                                                                                                                                                                                       | **real now** — `distill(trace)` emits `generated/<slug>.e2e.test.ts`; reviewed lifecycle state is `validated` / `proposed` / `landed`                                    |
+| skill emitter (NIP-SKL marketplace candidate, spec §E.1)                                                                                                                                                                                                                                        | **typed seam + TODO, FUTURE/owner-gated**                                                                                                                                |
+| `localBackend` (real chromium on this host)                                                                                                                                                                                                                                                     | **real now** — the default                                                                                                                                               |
+| `khalaDesktopBackend` (Khala Code Desktop preview + typed RPC)                                                                                                                                                                                                                                  | **real now** — boots headless with fixture Codex app-server by default; live/headed paths remain explicitly armed                                                        |
 | `khala-sync-transport` backend (#8512): headless seam probe driving the REAL `createHttpKhalaSyncTransport` (bootstrap → log page → WS connect) with a cookie-less bearer and classifying outcomes (`live` / `connect_unauthenticated` / `connect_denied` / `silent_retry_loop` / `never_live`) | **real now** — `khala-sync-once`; env-resolved or self-registered bearer, clean SKIP without one; a 401'd/never-live connect is a REFUTED `connect-reaches-live` finding |
-| `cloudVmBackend` (per-run OpenAgents Cloud firecracker / sek8s microVM) | **interface-only, owner-gated** — throws "not armed" unless an injected provisioner is supplied |
-| video (mp4 via ffmpeg, webm fallback) + trace + screenshots + `result.json` | **real now** |
-| run = verified receipt / settlement wrapper | **follow-up, owner-gated (settlement INERT)** |
+| `cloudVmBackend` (per-run OpenAgents Cloud firecracker / sek8s microVM)                                                                                                                                                                                                                         | **interface-only, owner-gated** — throws "not armed" unless an injected provisioner is supplied                                                                          |
+| video (mp4 via ffmpeg, webm fallback) + trace + screenshots + `result.json`                                                                                                                                                                                                                     | **real now**                                                                                                                                                             |
+| run = verified receipt / settlement wrapper                                                                                                                                                                                                                                                     | **follow-up, owner-gated (settlement INERT)**                                                                                                                            |
 
 There is **no fake green**: an un-armed cloud backend or khala brain throws; a
 missing-chromium real run fails honestly; a failed assertion produces a `fail`
@@ -104,40 +104,40 @@ variants. (`openagents/khala-oss-20b` is a separate served alias.)
 
 ```sh
 # Unit tests — fakes-in-CI, NO chromium, NO network (the default gate)
-bun run --cwd apps/qa-runner test
+pnpm --dir apps/qa-runner run test
 
 # Build the self-contained standalone CLI bundle (dist/qa.js; inlines workspace deps)
-bun run --cwd apps/qa-runner build
+pnpm --dir apps/qa-runner run build
 # Verify the publish-ready tarball contents (includes a freshly-built dist/qa.js via prepack)
-cd apps/qa-runner && bun pm pack --dry-run
+cd apps/qa-runner && pnpm pack --dry-run
 
 # Install chromium for the real-browser paths below
-bun run --cwd apps/qa-runner playwright:install   # or: bunx playwright install chromium
+pnpm --dir apps/qa-runner run playwright:install   # or: pnpm exec playwright install chromium
 
 # HEADLINE demo (epic #6174): Khala AUTONOMOUSLY drives the session, records it,
 # and distills it into a reviewable executor-style e2e candidate.
-bun run --cwd apps/qa-runner demo:khala
-bun run --cwd apps/qa-runner demo:khala -- --goal "..." --url https://openagents.com --out ./runs/khala
+pnpm --dir apps/qa-runner run demo:khala
+pnpm --dir apps/qa-runner run demo:khala -- --goal "..." --url https://openagents.com --out ./runs/khala
 #   -> writes session.mp4 + trace.zip + screenshots + result.json + session-trace.json,
 #      and emits generated/<slug>.e2e.test.ts (the review artifact alongside the video).
 # Run the generated scenario (a real, runnable test) against any target:
-TARGET_URL=https://openagents.com bun test apps/qa-runner/generated/login-verify.e2e.test.ts
+TARGET_URL=https://openagents.com pnpm test apps/qa-runner/generated/login-verify.e2e.test.ts
 
 # Khala Code flagship native demo (Q3.4): headed packaged app, AX/screenshot
 # seeded-bug hunt, public-safe report, and distilled regression candidate.
-QA_NATIVE_DESKTOP=1 bun run --cwd apps/qa-runner khala:flagship-demo -- \
+QA_NATIVE_DESKTOP=1 pnpm --dir apps/qa-runner run khala:flagship-demo -- \
   --out ../../var/qa-8026/flagship-demo \
   --seeded-bug-text "Seeded bug: packaged Khala Code fixture response is rendered"
-bun test apps/qa-runner/generated/khala-code-packaged-seeded-bug.e2e.test.ts
+pnpm test apps/qa-runner/generated/khala-code-packaged-seeded-bug.e2e.test.ts
 
 # Deterministic /login regression demo (scriptedBrain; no model, for CI):
-bun run --cwd apps/qa-runner demo:login
-bun run --cwd apps/qa-runner demo:login -- --out ./runs/login --headed
+pnpm --dir apps/qa-runner run demo:login
+pnpm --dir apps/qa-runner run demo:login -- --out ./runs/login --headed
 # Prove honest failure: point the same scenario at a deliberately-wrong assertion
-bun run --cwd apps/qa-runner demo:login -- --wrong
+pnpm --dir apps/qa-runner run demo:login -- --wrong
 
 # One-shot run against any target (real chromium)
-bun run --cwd apps/qa-runner run-once -- --url https://openagents.com --out ./runs/manual
+pnpm --dir apps/qa-runner run run-once -- --url https://openagents.com --out ./runs/manual
 
 # khala-sync-transport seam probe (#8512): drive the REAL khala-sync client
 # transport (bootstrap -> log page -> WebSocket connect) with a cookie-less
@@ -146,20 +146,20 @@ bun run --cwd apps/qa-runner run-once -- --url https://openagents.com --out ./ru
 # Bearer: QA_KHALA_SYNC_TOKEN (+ QA_KHALA_SYNC_OWNER_USER_ID), else
 # OPENAGENTS_AGENT_TOKEN, else KHALA_MOBILE_TEST_TOKEN; --register mints a
 # throwaway agent; no bearer -> clean SKIP (exit 0). Never hardcoded.
-bun run --cwd apps/qa-runner khala-sync-once -- --target staging --out ./runs/khala-sync
-bun run --cwd apps/qa-runner khala-sync-once -- --target prod            # read-only probe
-bun run --cwd apps/qa-runner khala-sync-once -- --target prod --public   # anonymous public scope
+pnpm --dir apps/qa-runner run khala-sync-once -- --target staging --out ./runs/khala-sync
+pnpm --dir apps/qa-runner run khala-sync-once -- --target prod            # read-only probe
+pnpm --dir apps/qa-runner run khala-sync-once -- --target prod --public   # anonymous public scope
 # Per-PR: pr-comment-run diff-scopes any change under packages/khala-sync*,
 # *transport*, or *auth* into this probe; it runs for real only when
 # QA_KHALA_SYNC_ARM=1 (unarmed -> honest "scoped but not armed" in the comment).
 
 # Long-running daemon scaffold (inert without QA_JOB_LEASE_URL)
-bun run --cwd apps/qa-runner serve
+pnpm --dir apps/qa-runner run serve
 
 # QA CONTROL API (#6196): drive the full submit->run->fetch flow over HTTP, not
 # just the CLI. Auth'd by a Khala agent bearer token; deterministic mock path
 # (no Chrome/network/spend) by default; real runs gated by QA_CONTROL_ARM_REAL=1.
-QA_CONTROL_TOKENS="raynor:tok_demo_secret" bun run --cwd apps/qa-runner api
+QA_CONTROL_TOKENS="raynor:tok_demo_secret" pnpm --dir apps/qa-runner run api
 #   curl quick-start a third party can follow: docs/control-api-quickstart.md
 
 # QA Swarm hosted-run composition (#8065): one command emits the QS2
@@ -167,7 +167,7 @@ QA_CONTROL_TOKENS="raynor:tok_demo_secret" bun run --cwd apps/qa-runner api
 # share URL. Set QA_SWARM_PUBLISH_TOKEN on the control daemon to publish the
 # final public-safe projection to that URL through the admin-gated Worker API.
 # Fixture tier is no-spend by default; live tiers are skip-safe unless armed.
-bun run --cwd apps/qa-runner qa -- swarm run \
+pnpm --dir apps/qa-runner run qa -- swarm run \
   --target https://openagents.com \
   --out ./runs/qa-swarm \
   --max-workers 2 \
@@ -255,7 +255,7 @@ A `Target` is a deployment seen from outside (`name`, `baseUrl`, `capabilities`)
 Swap `baseUrl` to point the same scenario at dev or prod:
 
 ```sh
-QA_TARGET_URL=https://staging.openagents.com bun run --cwd apps/qa-runner run-once
+QA_TARGET_URL=https://staging.openagents.com pnpm --dir apps/qa-runner run run-once
 ```
 
 Default target is `https://openagents.com`.
@@ -291,10 +291,10 @@ persists a public-safe `openagents.qa_runner.eval.v1` result (tripwire-checked).
 
 ```sh
 # Deterministic, no-network/no-spend comparison (fixtures), prints the PR markdown:
-bun run --cwd apps/qa-runner evals -- --fixtures --id login-mcp-compare --out ./runs/eval --md
+pnpm --dir apps/qa-runner run evals -- --fixtures --id login-mcp-compare --out ./runs/eval --md
 
 # Real chromium against a target:
-bun run --cwd apps/qa-runner evals -- --url https://openagents.com --out ./runs/eval
+pnpm --dir apps/qa-runner run evals -- --url https://openagents.com --out ./runs/eval
 ```
 
 A variant supplies its own `brain` / `backend` factory, so "model A vs B" or
@@ -316,7 +316,7 @@ ref, and the **`/pro/evals/<id>` link**.
 
 ```sh
 # Compose the PR comment locally (dry run; writes ./pr-comment.md):
-bun run --cwd apps/qa-runner pr-comment -- \
+pnpm --dir apps/qa-runner run pr-comment -- \
   --changed "apps/openagents.com/...,apps/qa-runner/..." \
   --out ./runs/pr-eval --comment-out ./pr-comment.md
 ```

@@ -10,7 +10,7 @@
  * contribution), nothing is sent and the blocker refs are printed.
  *
  * Usage:
- *   OPENAGENTS_ADMIN_API_TOKEN=... bun run scripts/training-validator-live-dispatch.ts \
+ *   OPENAGENTS_ADMIN_API_TOKEN=... node --import tsx scripts/training-validator-live-dispatch.ts \
  *     --challenge <challengeRef> \
  *     --validator-pylon <pylonRef> \
  *     --worker-pylon <pylonRef> \
@@ -42,7 +42,7 @@ if (
   workerPylonRef === undefined
 ) {
   console.error(
-    'usage: OPENAGENTS_ADMIN_API_TOKEN=... bun run scripts/training-validator-live-dispatch.ts --challenge <challengeRef> --validator-pylon <pylonRef> --worker-pylon <pylonRef>',
+    'usage: OPENAGENTS_ADMIN_API_TOKEN=... node --import tsx scripts/training-validator-live-dispatch.ts --challenge <challengeRef> --validator-pylon <pylonRef> --worker-pylon <pylonRef>',
   )
   process.exit(2)
 }

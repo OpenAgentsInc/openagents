@@ -20,8 +20,8 @@ export const CODEX_LOGIN_COMMAND = 'codex login'
 export const KHALA_CODE_SOURCE_BUILD_COMMANDS =
   'git clone --depth 1 https://github.com/OpenAgentsInc/openagents\n' +
   'cd openagents\n' +
-  'bun install\n' +
-  'bun run dev:khala-code-desktop'
+  'pnpm install\n' +
+  'pnpm run dev:khala-code-desktop'
 
 export const KHALA_CODE_DOWNLOAD_COPY_GATE = {
   gateRef: 'gate.public.khala_code.download_copy.v1',

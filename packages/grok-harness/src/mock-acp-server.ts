@@ -139,7 +139,7 @@ export function createMockAcpStdioPair(options: MockAcpServerOptions = {}) {
 
 /**
  * Spawnable mock as a real subprocess for integration-shaped tests.
- * Usage: `bun packages/grok-harness/scripts/mock-acp-stdio.ts`
+ * Usage: `node --import tsx packages/grok-harness/scripts/mock-acp-stdio.ts`
  */
 export async function runMockAcpStdioMain(): Promise<void> {
   const pair = createMockAcpStdioPair({

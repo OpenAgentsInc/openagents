@@ -13,10 +13,10 @@ not advertise a new release.
 
 Quick map — what do you want to install?
 
-| Product | What it is | Fastest path |
-| --- | --- | --- |
+| Product             | What it is                                                          | Fastest path                                                                                                     |
+| ------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | **OpenAgents apps** | Sarah-first web, greenfield mobile, and greenfield Electron desktop | Web is live; mobile/desktop are not installable until their release gates pass — [section 1](#1-openagents-apps) |
-| **Pylon** | Headless contributor node (the agent path) | `npx @openagentsinc/pylon` — [section 2](#2-pylon-headless-contributor-node) |
+| **Pylon**           | Headless contributor node (the agent path)                          | `npx @openagentsinc/pylon` — [section 2](#2-pylon-headless-contributor-node)                                     |
 
 ## 1. OpenAgents apps
 
@@ -34,7 +34,7 @@ contract, native-module, and service-extraction references. The superseded
 **Connect coding capacity from the terminal**
 
 ```sh
-npm install -g @openagentsinc/khala     # Node 20+ or Bun
+npm install -g @openagentsinc/khala     # Node 20+
 khala fleet connect     # link a Codex account (isolated home; paste-free device login)
 khala fleet status      # see your fleet
 ```
@@ -64,10 +64,11 @@ settlement stay behind their own gated public promises.
 - **Clone shallow.** Always `git clone --depth 1` this repo. A full clone
   downloads the entire history (~460 MB of `.git`; shallow is ~40 MB) for
   zero benefit — the working tree at HEAD is all any build needs.
-- **Do not sparse-checkout.** The Bun workspace resolves `workspace:*`
-  dependencies against the checked-out tree; partial checkouts break
-  `bun install`. Shallow-full is the supported cheap path.
-- **Run `bun install` at the repo root**, never inside an individual workspace.
+- **Do not sparse-checkout.** The pnpm workspace resolves `workspace:*`
+  dependencies against the checked-out tree; partial checkouts break the
+  frozen install. Shallow-full is the supported cheap path.
+- **Run `pnpm install --frozen-lockfile` at the repo root**, never inside an
+  individual workspace.
 - **Never disturb an existing Codex login.** Do not run `codex login` (or
   any device-auth flow) against the default `~/.codex` home if a session
   already exists there, unless the owner explicitly asks — the flow wipes

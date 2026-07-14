@@ -113,11 +113,12 @@ export const resolveQaPrePushTimeoutMs = (
 export const buildQaPrePushCommand = (
   artifactDir: string,
 ): ReadonlyArray<string> => [
-  "bun",
-  "run",
-  "--cwd",
+  "pnpm",
+  "--dir",
   "apps/qa-runner",
+  "run",
   "qa",
+  "--",
   "run",
   "--fake-model",
   "--url",

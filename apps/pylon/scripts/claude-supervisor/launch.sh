@@ -59,8 +59,7 @@ if [ -z "${OPENAGENTS_AGENT_TOKEN:-}" ]; then
   exit 1
 fi
 
-# Ensure bun is on PATH for the detached process.
-export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 echo "launching claude-supervisor (log: $SUP_LOG)"
 nohup caffeinate -i bash "$SCRIPT_DIR/claude-supervisor.sh" >> "$SUP_LOG" 2>&1 &

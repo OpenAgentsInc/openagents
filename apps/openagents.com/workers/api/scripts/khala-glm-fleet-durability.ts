@@ -29,7 +29,7 @@ const readinessJson = option('--readiness-json')
 const outputDir = option('--output-dir')
 
 const help = (): string => [
-  'Usage: bun run scripts/khala-glm-fleet-durability.ts [options]',
+  'Usage: node --import tsx scripts/khala-glm-fleet-durability.ts [options]',
   '',
   'Public-safe #6311 GLM fleet durability evidence bundler.',
   'By default it fetches the live public readiness projection and exits 2 until acceptance is complete.',

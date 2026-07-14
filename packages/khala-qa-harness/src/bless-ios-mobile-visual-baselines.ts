@@ -18,7 +18,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * only from real captured simulator truth, never from fixtures.
  *
  * Usage:
- *   bun packages/khala-qa-harness/src/bless-ios-mobile-visual-baselines.ts \
+ *   node --import tsx packages/khala-qa-harness/src/bless-ios-mobile-visual-baselines.ts \
  *       <candidateDir> <reportPath> [--verify]
  */
 import { readdir, mkdir, writeFile } from "node:fs/promises"
@@ -35,7 +35,7 @@ const baselineDir = join(repoRoot, "docs/khala-code/receipts/qam-4-baselines")
 const [, , rawCandidateDir, rawReportPath, ...rest] = process.argv
 if (rawCandidateDir === undefined || rawReportPath === undefined) {
   console.error(
-    "Usage: bun src/bless-ios-mobile-visual-baselines.ts <candidateDir> <reportPath> [--verify]",
+    "Usage: node --import tsx src/bless-ios-mobile-visual-baselines.ts <candidateDir> <reportPath> [--verify]",
   )
   process.exit(2)
 }

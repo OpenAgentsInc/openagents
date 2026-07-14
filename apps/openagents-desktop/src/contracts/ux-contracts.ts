@@ -361,7 +361,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun test apps/openagents-desktop/src/codex-local-runtime.test.ts plus Desktop typecheck and build enforce the no-default-deadline lifecycle and explicit Stop authority.",
+          "pnpm exec vp test apps/openagents-desktop/src/codex-local-runtime.test.ts plus Desktop typecheck and build enforce the no-default-deadline lifecycle and explicit Stop authority.",
       },
       {
         contractId: "openagents_desktop.chat.provider_event_interleaving.v1",
@@ -399,7 +399,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun test apps/openagents-desktop/src/renderer/local-harness.test.ts apps/openagents-desktop/src/renderer/shell.test.ts apps/openagents-desktop/src/thread-store.test.ts plus Desktop typecheck and build cover live projection, tool-card folding, durable keyed replacement, and host integration.",
+          "pnpm exec vp test apps/openagents-desktop/src/renderer/local-harness.test.ts apps/openagents-desktop/src/renderer/shell.test.ts apps/openagents-desktop/src/thread-store.test.ts plus Desktop typecheck and build cover live projection, tool-card folding, durable keyed replacement, and host integration.",
       },
       {
         contractId: "openagents_desktop.chrome.command_notice_is_transient_toast.v1",
@@ -439,7 +439,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the command-notice controller/toast suite, the shell view suite, and the Electron smoke command-duplicate-visible-rejection step asserting appear-then-auto-dismiss.",
+          "pnpm --dir apps/openagents-desktop run verify runs the command-notice controller/toast suite, the shell view suite, and the Electron smoke command-duplicate-visible-rejection step asserting appear-then-auto-dismiss.",
       },
       {
         contractId: "openagents_desktop.chat.details_affordance_visibility_is_pointer_only.v1",
@@ -477,7 +477,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the details-affordance-stable-on-composer-input Electron smoke step; bun test at apps/openagents.com/packages/effect-native-render-dom runs the commit-idempotency guard.",
+          "pnpm --dir apps/openagents-desktop run verify runs the details-affordance-stable-on-composer-input Electron smoke step; pnpm exec vp test at apps/openagents.com/packages/effect-native-render-dom runs the commit-idempotency guard.",
       },
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -514,7 +514,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell view suite and the Electron smoke message-inspector step with the compact-affordance guards.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell view suite and the Electron smoke message-inspector step with the compact-affordance guards.",
       },
       {
         contractId: "openagents_desktop.chat.typed_tool_call_cards.v1",
@@ -561,7 +561,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the tool-card projector suite, the shell view suite, and the Electron smoke tool-card assertions.",
+          "pnpm --dir apps/openagents-desktop run verify runs the tool-card projector suite, the shell view suite, and the Electron smoke tool-card assertions.",
       },
       {
         contractId: "openagents_desktop.chat.interactive_question_cards.v1",
@@ -609,7 +609,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell question-card suite, the local-harness projection suite, and the Electron smoke question-card step.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell question-card suite, the local-harness projection suite, and the Electron smoke question-card step.",
       },
       {
         contractId: "openagents_desktop.chat.opencode_card_design_language.v1",
@@ -648,7 +648,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell card suites and the Electron smoke; the design-port provenance note records the opencode source receipts.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell card suites and the Electron smoke; the design-port provenance note records the opencode source receipts.",
       },
       {
         contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
@@ -684,7 +684,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell view suite and the Electron smoke journey asserting the label-free assistant row.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell view suite and the Electron smoke journey asserting the label-free assistant row.",
       },
       {
         contractId: "openagents_desktop.chat.message_metadata_inspector.v1",
@@ -730,7 +730,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell inspector suite and the Electron smoke message-metadata-inspector step.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell inspector suite and the Electron smoke message-metadata-inspector step.",
       },
       {
         contractId: "openagents_desktop.chat.no_composer_disabled_caption.v1",
@@ -768,7 +768,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the composer suite and the Electron smoke; the live-proof driver journals the chip's disabled state + aria-label instead of any visible caption.",
+          "pnpm --dir apps/openagents-desktop run verify runs the composer suite and the Electron smoke; the live-proof driver journals the chip's disabled state + aria-label instead of any visible caption.",
       },
       {
         contractId: "openagents_desktop.chat.composer_stop_button.v1",
@@ -816,7 +816,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell Stop-button suite and the capability-evals interrupt-path oracle; the interrupt-stop live-proof step is exercised by the live-proof driver run.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell Stop-button suite and the capability-evals interrupt-path oracle; the interrupt-stop live-proof step is exercised by the live-proof driver run.",
       },
       {
         contractId: "openagents_desktop.chat.durable_runtime_turn_controls.v1",
@@ -873,7 +873,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the runtime-conversation control suite, the shell queue-refusal suite, and the gateway lane pass-through oracle in the normal sweep.",
+          "pnpm --dir apps/openagents-desktop run verify runs the runtime-conversation control suite, the shell queue-refusal suite, and the gateway lane pass-through oracle in the normal sweep.",
       },
       {
         contractId: "openagents_desktop.chat.opencode_composer_shape.v1",
@@ -919,7 +919,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell composer-layout suite, the design-conformance oracle, and the Electron smoke; pixel receipts of the empty/text/image/streaming composer states are captured under scratchpad ep250-composer-shots/.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell composer-layout suite, the design-conformance oracle, and the Electron smoke; pixel receipts of the empty/text/image/streaming composer states are captured under scratchpad ep250-composer-shots/.",
       },
       {
         contractId: "openagents_desktop.chat.composer_image_input.v1",
@@ -986,7 +986,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the composer-images, shell, fable-local-runtime, and codex-local-runtime suites plus the image-attach smoke step; a real live provider image turn is deferred to a live-proof run.",
+          "pnpm --dir apps/openagents-desktop run verify runs the composer-images, shell, fable-local-runtime, and codex-local-runtime suites plus the image-attach smoke step; a real live provider image turn is deferred to a live-proof run.",
       },
       {
         contractId: "openagents_desktop.chat.markdown_rendering.v1",
@@ -1032,7 +1032,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the markdown projector suite, the shell view suite, and the Electron smoke markdown assertion.",
+          "pnpm --dir apps/openagents-desktop run verify runs the markdown projector suite, the shell view suite, and the Electron smoke markdown assertion.",
       },
       {
         contractId: "openagents_desktop.seam.replaceable_owned_correlated_services.v1",
@@ -1104,7 +1104,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             "Runs inside built Electron against the real local Codex catalog, checks named/order-stable roots, child containment, nested topology, completeness, keyboard bindings, tool inspection, public-safe timings, and reload restoration.",
         }],
         verification:
-          "bun run --cwd apps/openagents-desktop verify builds Electron, runs the normal contract suite, executes the real-history journey, reloads the renderer, and fails on every named video-blocking regression.",
+          "pnpm --dir apps/openagents-desktop run verify builds Electron, runs the normal contract suite, executes the real-history journey, reloads the renderer, and fails on every named video-blocking regression.",
       },
       {
         contractId: "openagents_desktop.seam.identity.local_first_account_link.v1",
@@ -1223,7 +1223,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun test apps/openagents-desktop/tests/codex-history.e2e.test.ts enforces the 50 ms wall-clock budget in the normal desktop test sweep.",
+          "pnpm exec vp test apps/openagents-desktop/tests/codex-history.e2e.test.ts enforces the 50 ms wall-clock budget in the normal desktop test sweep.",
       },
       {
         contractId:
@@ -1261,7 +1261,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the seam suite, mechanical boundary oracle, bundle, and real Electron bootstrap smoke.",
+          "pnpm --dir apps/openagents-desktop run verify runs the seam suite, mechanical boundary oracle, bundle, and real Electron bootstrap smoke.",
       },
       {
         contractId: "openagents_desktop.sync.host_owned_sqlite.v1",
@@ -1295,7 +1295,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the host lifecycle suite and real Electron gateway bootstrap.",
+          "pnpm --dir apps/openagents-desktop run verify runs the host lifecycle suite and real Electron gateway bootstrap.",
       },
       {
         contractId: "openagents_desktop.sync.native_conversation_continuity.v1",
@@ -1891,7 +1891,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the child-runtime, delegate, ledger, and fleet suites plus the fixture smoke journey where a fable fixture turn calls the delegate once (scripted child) and the transcript shows the tool_use/tool_result pair with the ledger row rendered in the Fleet view.",
+          "pnpm --dir apps/openagents-desktop run verify runs the child-runtime, delegate, ledger, and fleet suites plus the fixture smoke journey where a fable fixture turn calls the delegate once (scripted child) and the transcript shows the tool_use/tool_result pair with the ledger row rendered in the Fleet view.",
       },
       {
         contractId: "openagents_desktop.agent_graph.pointer_keyboard_focus_equivalence.v1",
@@ -1944,7 +1944,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun test src/renderer/runtime-agent-graph.test.ts src/renderer/runtime-conversation.test.ts src/renderer/shell.test.ts plus typecheck, full test, build, and Electron smoke in apps/openagents-desktop; shared projection tests/typecheck run in packages/khala-sync-client.",
+          "pnpm exec vp test src/renderer/runtime-agent-graph.test.ts src/renderer/runtime-conversation.test.ts src/renderer/shell.test.ts plus typecheck, full test, build, and Electron smoke in apps/openagents-desktop; shared projection tests/typecheck run in packages/khala-sync-client.",
       },
       // =====================================================================
       // EP250 UI-owned reconnect lane — separate block: parallel lanes also
@@ -2000,7 +2000,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the settings, codex-connect, and fleet suites plus the Electron smoke journey asserting the revoked fixture account renders its Reconnect button in Settings.",
+          "pnpm --dir apps/openagents-desktop run verify runs the settings, codex-connect, and fleet suites plus the Electron smoke journey asserting the revoked fixture account renders its Reconnect button in Settings.",
       },
       // -----------------------------------------------------------------------
       // EP250 local Fable lane permissions (#8712). HISTORY: the scoped-write
@@ -2079,7 +2079,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime suite (full-toolset posture, allow-all canUseTool, question-flow regression) and the codex-child suite (danger-full-access spawn args).",
+          "pnpm --dir apps/openagents-desktop run verify runs the fable-local runtime suite (full-toolset posture, allow-all canUseTool, question-flow regression) and the codex-child suite (danger-full-access spawn args).",
       },
       {
         contractId: "openagents_desktop.chat.fable_local_question_flow.v1",
@@ -2111,7 +2111,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime suite covering the full question flow (answered, timeout, denied, typed rejections, multiSelect).",
+          "pnpm --dir apps/openagents-desktop run verify runs the fable-local runtime suite covering the full question flow (answered, timeout, denied, typed rejections, multiSelect).",
       },
       {
         contractId: "openagents_desktop.coding_catalog.restart_safe_navigation.v1",
@@ -2214,7 +2214,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the design-conformance sweep, the shell/theme suites, and the Electron smoke over the restyled surfaces.",
+          "pnpm --dir apps/openagents-desktop run verify runs the design-conformance sweep, the shell/theme suites, and the Electron smoke over the restyled surfaces.",
       },
       {
         contractId: "openagents_desktop.chat.new_chat_autofocuses_composer.v1",
@@ -2252,7 +2252,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the palette-registry assertions and the Electron smoke new-chat + cmd-n focus steps.",
+          "pnpm --dir apps/openagents-desktop run verify runs the palette-registry assertions and the Electron smoke new-chat + cmd-n focus steps.",
       },
       {
         contractId: "openagents_desktop.chat.new_chat_always_exits_history.v1",
@@ -2290,7 +2290,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the converging-host fallback unit test and both built-Electron New Chat paths.",
+          "pnpm --dir apps/openagents-desktop run verify runs the converging-host fallback unit test and both built-Electron New Chat paths.",
       },
       {
         contractId: "openagents_desktop.chrome.disabled_control_reason_popover.v1",
@@ -2329,7 +2329,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the popover unit assertions and the Electron smoke hover-reveal step.",
+          "pnpm --dir apps/openagents-desktop run verify runs the popover unit assertions and the Electron smoke hover-reveal step.",
       },
       {
         contractId: "openagents_desktop.window.fullscreen_hotkey.v1",
@@ -2359,7 +2359,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell registry dispatch assertion.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell registry dispatch assertion.",
       },
       {
         contractId: "openagents_desktop.shell.no_sidebar_brand_row.v1",
@@ -2387,7 +2387,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the sidebar absence assertion.",
+          "pnpm --dir apps/openagents-desktop run verify runs the sidebar absence assertion.",
       },
       {
         contractId: "openagents_desktop.chat.codex_first_class_local_lane.v1",
@@ -2434,7 +2434,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the codex-local runtime suite and the Electron smoke codex-local step; OPENAGENTS_DESKTOP_LIVE_PROOF=1 exercises the real lane.",
+          "pnpm --dir apps/openagents-desktop run verify runs the codex-local runtime suite and the Electron smoke codex-local step; OPENAGENTS_DESKTOP_LIVE_PROOF=1 exercises the real lane.",
       },
       {
         contractId: "openagents_desktop.reliability.codex_connection_signature_corpus.v1",
@@ -2473,7 +2473,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the signature corpus and preflight suites in the normal sweep; the live-proof journey journals the real per-account probe round as step 0.",
+          "pnpm --dir apps/openagents-desktop run verify runs the signature corpus and preflight suites in the normal sweep; the live-proof journey journals the real per-account probe round as step 0.",
       },
       {
         contractId: "openagents_desktop.seam.codex_local_lane_no_substitution.v1",
@@ -2516,7 +2516,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the codex-local runtime and local-harness suites in the normal sweep.",
+          "pnpm --dir apps/openagents-desktop run verify runs the codex-local runtime and local-harness suites in the normal sweep.",
       },
       {
         contractId: "openagents_desktop.chat.codex_chip_verified_evidence.v1",
@@ -2556,7 +2556,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the lifecycle suite and the Electron smoke chip assertions; the live-proof journal records the real per-account probe round.",
+          "pnpm --dir apps/openagents-desktop run verify runs the lifecycle suite and the Electron smoke chip assertions; the live-proof journal records the real per-account probe round.",
       },
       {
         contractId: "openagents_desktop.chat.composer_shift_tab_harness_toggle.v1",
@@ -2594,7 +2594,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the composer-shortcuts suite and the Electron smoke composer-gestures step.",
+          "pnpm --dir apps/openagents-desktop run verify runs the composer-shortcuts suite and the Electron smoke composer-gestures step.",
       },
       {
         contractId: "openagents_desktop.chat.composer_icon_only_send.v1",
@@ -2631,7 +2631,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the shell composer suite and the Electron smoke composer-gestures step.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shell composer suite and the Electron smoke composer-gestures step.",
       },
       {
         contractId: "openagents_desktop.sidebar.connected_accounts_usage_box.v1",
@@ -2671,7 +2671,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the sidebar-accounts view suite, the shell pinning assertions, and the design-conformance token oracle over the new module.",
+          "pnpm --dir apps/openagents-desktop run verify runs the sidebar-accounts view suite, the shell pinning assertions, and the design-conformance token oracle over the new module.",
       },
       {
         contractId: "openagents_desktop.history.markdown_prose_rendering.v1",
@@ -2701,7 +2701,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the history workspace suite plus the codex-history completeness suites.",
+          "pnpm --dir apps/openagents-desktop run verify runs the history workspace suite plus the codex-history completeness suites.",
       },
       {
         contractId: "openagents_desktop.history.agent_roster_shortcut_traversal.v1",
@@ -2731,7 +2731,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the history workspace traversal suite.",
+          "pnpm --dir apps/openagents-desktop run verify runs the history workspace traversal suite.",
       },
       {
         contractId: "openagents_desktop.history.humanized_tool_cards.v1",
@@ -2761,7 +2761,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the history workspace and tool-card humanization suites.",
+          "pnpm --dir apps/openagents-desktop run verify runs the history workspace and tool-card humanization suites.",
       },
       {
         contractId: "openagents_desktop.history.bottom_anchored_autoload.v1",
@@ -2801,7 +2801,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the windowed-loading unit suite; the Electron smoke bottom-anchored + prefetch steps are written but were not executed this session (owner watching a movie) — the coordinator runs the visual/smoke gate on integration.",
+          "pnpm --dir apps/openagents-desktop run verify runs the windowed-loading unit suite; the Electron smoke bottom-anchored + prefetch steps are written but were not executed this session (owner watching a movie) — the coordinator runs the visual/smoke gate on integration.",
       },
       {
         contractId: "openagents_desktop.history.claude_import.v1",
@@ -2841,7 +2841,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the Claude importer unit suite, the merged-catalog + search suite, the scale oracle, and the capability-evals headless H3 oracle.",
+          "pnpm --dir apps/openagents-desktop run verify runs the Claude importer unit suite, the merged-catalog + search suite, the scale oracle, and the capability-evals headless H3 oracle.",
       },
       {
         contractId: "openagents_desktop.history.free_text_search.v1",
@@ -2881,7 +2881,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the search ranking/open-at-item suite, the history-workspace search UI suite, and the capability-evals headless H4 oracle.",
+          "pnpm --dir apps/openagents-desktop run verify runs the search ranking/open-at-item suite, the history-workspace search UI suite, and the capability-evals headless H4 oracle.",
       },
       {
         contractId: "openagents_desktop.chat.fable_local_runtime_capabilities.v1",
@@ -2948,7 +2948,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime capability suite (src/fable-local-runtime-caps.test.ts) as programmatic oracles; the wave-2 renderer surfaces are proven by runtime-cards.test.ts + the smoke.",
+          "pnpm --dir apps/openagents-desktop run verify runs the fable-local runtime capability suite (src/fable-local-runtime-caps.test.ts) as programmatic oracles; the wave-2 renderer surfaces are proven by runtime-cards.test.ts + the smoke.",
       },
       {
         contractId: "openagents_desktop.chat.runtime_capability_cards.v1",
@@ -3008,7 +3008,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs runtime-cards.test.ts + the local-harness projection suite as the renderer oracles and the Electron smoke plan-card step.",
+          "pnpm --dir apps/openagents-desktop run verify runs runtime-cards.test.ts + the local-harness projection suite as the renderer oracles and the Electron smoke plan-card step.",
       },
       {
         contractId: "openagents_desktop.seam.typed_git_github_surface.v1",
@@ -3070,7 +3070,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the host real-repo suite, the contract both-sides suite, the panel intent-loop suite, and the Electron smoke git-review step.",
+          "pnpm --dir apps/openagents-desktop run verify runs the host real-repo suite, the contract both-sides suite, the panel intent-loop suite, and the Electron smoke git-review step.",
       },
       // =====================================================================
       // I2 (#8712 EP250 wave-2) — the MCP-config SETTINGS surface, landing the
@@ -3128,7 +3128,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the settings renderer suite and the persistence-host suite as programmatic/UI oracles, plus the Electron smoke MCP add-and-list step.",
+          "pnpm --dir apps/openagents-desktop run verify runs the settings renderer suite and the persistence-host suite as programmatic/UI oracles, plus the Electron smoke MCP add-and-list step.",
       },
       {
         contractId: "openagents_desktop.terminal.workspace_bounded_pty.v1",
@@ -3141,7 +3141,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Interactive terminal / stdin steering — the audit's #1 daily-coding gap (8,333 write_stdin observations, capability D3). Ordinary build/test/dev-server work must run in scoped Desktop terminals with an explicit local-preview lifecycle and no renderer ambient process authority. (CUT-20, #8700)",
         authorityBoundary:
-          "The renderer holds no shell and no process: every terminal operation is a typed intent (create/input/resize/interrupt/restart/close/preview-open) schema-decoded on both sides of the sandbox. Main alone binds each session to the currently authorized workspace root + a bounded environment; the renderer sends a session ref and, for input/resize, bounded data / integer geometry — never a shell, argv, cwd, or env, so a compromised renderer can steer stdin but never chooses WHAT is spawned or WHERE. Output crossing to the renderer is BOUNDED (a byte-capped ring, loss-accounted with a gap flag) and REDACTED (secret-named/secret-shaped env VALUES and token-shaped literals are scrubbed in main before any chunk is sent). On project/workspace close the OWNED process tree is killed exactly once (SIGTERM then SIGKILL against the process group; a second close is a no-op). A bounded tail persists (mode 0600) and is reloaded as an explicitly recovered, gap-marked session after an app restart. Local preview discovers an EXPLICIT announced port parsed from the session's OWN output (never a port scan), shows readiness, and stops with its owning session; opening it is out-of-process (external browser) behind a confirmation — never arbitrary in-app navigation. The shipped backend is a child-process-group terminal (zero native deps, runs under bun test AND Electron); node-pty pseudo-TTY + xterm.js are a documented TerminalBackend swap deferred to the #8574 packaging lane. The terminal UI (bounded monospace output + a typed input line + interrupt/restart) composes only shared catalog primitives on the design-conformance token scales.",
+          "The renderer holds no shell and no process: every terminal operation is a typed intent (create/input/resize/interrupt/restart/close/preview-open) schema-decoded on both sides of the sandbox. Main alone binds each session to the currently authorized workspace root + a bounded environment; the renderer sends a session ref and, for input/resize, bounded data / integer geometry — never a shell, argv, cwd, or env, so a compromised renderer can steer stdin but never chooses WHAT is spawned or WHERE. Output crossing to the renderer is BOUNDED (a byte-capped ring, loss-accounted with a gap flag) and REDACTED (secret-named/secret-shaped env VALUES and token-shaped literals are scrubbed in main before any chunk is sent). On project/workspace close the OWNED process tree is killed exactly once (SIGTERM then SIGKILL against the process group; a second close is a no-op). A bounded tail persists (mode 0600) and is reloaded as an explicitly recovered, gap-marked session after an app restart. Local preview discovers an EXPLICIT announced port parsed from the session's OWN output (never a port scan), shows readiness, and stops with its owning session; opening it is out-of-process (external browser) behind a confirmation — never arbitrary in-app navigation. The shipped backend is a child-process-group terminal (zero native deps, runs under pnpm exec vp test AND Electron); node-pty pseudo-TTY + xterm.js are a documented TerminalBackend swap deferred to the #8574 packaging lane. The terminal UI (bounded monospace output + a typed input line + interrupt/restart) composes only shared catalog primitives on the design-conformance token scales.",
         evidenceRefs: [
           "apps/openagents-desktop/src/terminal-host.ts",
           "apps/openagents-desktop/src/terminal-contract.ts",
@@ -3178,7 +3178,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the adversarial PTY host suite and the renderer intent-loop suite as programmatic/UI oracles, plus the built-Electron smoke terminal PTY receipt step and its lifecycle-teardown disposal check.",
+          "pnpm --dir apps/openagents-desktop run verify runs the adversarial PTY host suite and the renderer intent-loop suite as programmatic/UI oracles, plus the built-Electron smoke terminal PTY receipt step and its lifecycle-teardown disposal check.",
       },
       {
         contractId: "openagents_desktop.preferences.typed_durable_migratable_schemas.v1",
@@ -3219,7 +3219,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the preferences migration/host/effects suite and the Electron smoke preferences round-trip.",
+          "pnpm --dir apps/openagents-desktop run verify runs the preferences migration/host/effects suite and the Electron smoke preferences round-trip.",
       },
       {
         contractId: "openagents_desktop.accessibility.core_flows_meet_wcag_aa.v1",
@@ -3258,7 +3258,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the accessibility contrast/reduced-motion suite and the diagnostics accessible-name suite. Mobile a11y is tracked separately as the #8704 residual.",
+          "pnpm --dir apps/openagents-desktop run verify runs the accessibility contrast/reduced-motion suite and the diagnostics accessible-name suite. Mobile a11y is tracked separately as the #8704 residual.",
       },
       {
         contractId: "openagents_desktop.notifications.refs_only_and_authoritative_clear.v1",
@@ -3289,7 +3289,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the notification/attention suite; the authoritative-clearing of interactive decisions is additionally exercised by runtime-interactions.test.ts.",
+          "pnpm --dir apps/openagents-desktop run verify runs the notification/attention suite; the authoritative-clearing of interactive decisions is additionally exercised by runtime-interactions.test.ts.",
       },
       {
         contractId: "openagents_desktop.diagnostics.watchdog_redacted_export_and_recovery.v1",
@@ -3337,7 +3337,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the diagnostics builder/redaction/host suite, the diagnostics view/handler suite, and the Electron smoke diagnostics-and-preferences step.",
+          "pnpm --dir apps/openagents-desktop run verify runs the diagnostics builder/redaction/host suite, the diagnostics view/handler suite, and the Electron smoke diagnostics-and-preferences step.",
       },
       {
         contractId: "openagents_desktop.microinteraction.owner_review_register.v1",
@@ -3368,7 +3368,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; it fails if either concrete rule is removed, renamed, downgraded from enforced, detached from its oracle file, or undocumented in the assurance clarification doc.",
+          "pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; it fails if either concrete rule is removed, renamed, downgraded from enforced, detached from its oracle file, or undocumented in the assurance clarification doc.",
       },
       {
         contractId: "openagents_desktop.microinteraction.icon_slot_no_raw_text.v1",
@@ -3398,7 +3398,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep and enforces the structural subset on real view trees; the residual pixel-level generalization is deferred to an AssuranceSpec visual-technique obligation referencing this contractId, per docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md.",
+          "pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep and enforces the structural subset on real view trees; the residual pixel-level generalization is deferred to an AssuranceSpec visual-technique obligation referencing this contractId, per docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md.",
       },
       {
         contractId: "openagents_desktop.typography.approved_fonts_only.v1",
@@ -3428,7 +3428,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "bun test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; adding any stray font family anywhere under apps/openagents-desktop/src fails it.",
+          "pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; adding any stray font family anywhere under apps/openagents-desktop/src fails it.",
       },
       {
         contractId: "openagents_desktop.startup.window_first_no_blank_frame.v1",

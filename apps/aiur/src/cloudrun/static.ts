@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 /**
- * Static asset serving for the Cloud Run Bun server (CFG-11, #8526).
+ * Static asset serving for the Cloud Run Node server (CFG-11, #8526).
  * Serves the Vite client build (`dist/client`). Implemented on
  * `node:fs/promises` (not `Runtime.file`) so the logic is unit-testable under
  * vitest's node environment while running identically under Runtime.

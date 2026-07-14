@@ -7,7 +7,7 @@
 // `@opentui/core` resolves platform-native optional dependencies (for example
 // `@opentui/core-darwin-x64`) through cross-platform dynamic `import()` calls
 // that a bundler cannot statically resolve. If a bundler ever traverses into
-// `@opentui/core`, `bun build` of the headless Pylon node fails (#5037).
+// `@opentui/core`, `vp build` of the headless Pylon node fails (#5037).
 //
 // To keep the headless node bundle-able while preserving full interactive TUI
 // rendering for humans, this module never statically imports `@opentui/core`.

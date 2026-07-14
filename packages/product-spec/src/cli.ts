@@ -3,10 +3,10 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 // product-spec CLI: validate `.product-spec.md` files, scaffold new ones,
 // and compute document/intent digests.
 //
-//   bun packages/product-spec/src/cli.ts validate <file...> [--profile openagents|upstream]
-//   bun packages/product-spec/src/cli.ts validate --specs-root <dir> [--profile ...]
-//   bun packages/product-spec/src/cli.ts digest <file...>
-//   bun packages/product-spec/src/cli.ts init <file> [--title "..."] [--type prd|hypothesis]
+//   node --import tsx packages/product-spec/src/cli.ts validate <file...> [--profile openagents|upstream]
+//   node --import tsx packages/product-spec/src/cli.ts validate --specs-root <dir> [--profile ...]
+//   node --import tsx packages/product-spec/src/cli.ts digest <file...>
+//   node --import tsx packages/product-spec/src/cli.ts init <file> [--title "..."] [--type prd|hypothesis]
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { basename, join } from "node:path"
 

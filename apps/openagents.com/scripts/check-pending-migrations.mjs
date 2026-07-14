@@ -5,7 +5,7 @@
 // worker code that read a column added by migration 0234 WITHOUT applying 0234 to
 // remote D1 — the worker shipped AHEAD of its schema, so every credential lookup
 // threw and `POST /api/v1/chat/completions` returned 500 for all keys. The cause:
-// a shortcut deploy (`build:web && bunx wrangler deploy --assets`) that bypassed
+// a shortcut deploy (`build:web && pnpm exec wrangler deploy --assets`) that bypassed
 // the flaky `verse-launch-smoke` ALSO skipped `wrangler d1 migrations apply`.
 //
 // WHAT IT DOES. Runs `wrangler d1 migrations list <db> --remote` and EXITS
@@ -77,7 +77,7 @@ export const decidePendingMigrations = (pending, database = DEFAULT_DATABASE) =>
       `  The worker must NOT ship ahead of its schema (AAR 2026-06-25).\n` +
       `  Apply them first:\n` +
       `    cd workers/api && wrangler d1 migrations apply ${database} --remote\n` +
-      `  then re-run the sanctioned deploy (\`bun run deploy:safe\`).`,
+      `  then re-run the sanctioned deploy (\`pnpm run deploy:safe\`).`,
   }
 }
 
@@ -85,7 +85,7 @@ export const decidePendingMigrations = (pending, database = DEFAULT_DATABASE) =>
 // the pure parser/decider above stay testable without a network/OAuth dependency.
 const runMigrationsList = (database) => {
   // Run from workers/api (where wrangler.jsonc + migrations live) regardless of
-  // the caller's cwd, so the guard works from `bun run` at the app root too.
+// the caller's cwd, so the guard works from `pnpm run` at the app root too.
   const cwd = new URL('../workers/api', import.meta.url).pathname
   try {
     return execSync(

@@ -99,7 +99,7 @@ const issueLooksCodeBounded = (
 const issueContainsExplicitVerification = (
   issue: GitHubIssueForMarchingOrders,
 ): boolean =>
-  /(verification command|bun test|vitest|npm test|pnpm test|cargo test|go test|pytest)/iu
+  /(verification command|pnpm exec vp test|vitest|npm test|pnpm test|cargo test|go test|pytest)/iu
     .test(`${issue.title}\n${issue.body ?? ''}`)
 
 export const proposeMarchingOrderIssues = (

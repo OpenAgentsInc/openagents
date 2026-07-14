@@ -466,7 +466,7 @@ export const view = <Message>(
           showLineNumbers: true,
           result: {
             status: 'passed',
-            summary: 'bun test · 6 passed',
+            summary: 'pnpm exec vp test · 6 passed',
             duration: '0.4s',
           },
         }),

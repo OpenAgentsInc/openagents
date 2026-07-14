@@ -6,7 +6,7 @@ import { chromium } from 'playwright'
 import { verifyKhalaCodeCompletion } from '../workers/api/src/inference/khala-code-verifier.ts'
 
 const usage =
-  'usage: bun scripts/khala-code-headless-harness.mjs <artifact.html>'
+  'usage: node --import tsx scripts/khala-code-headless-harness.mjs <artifact.html>'
 const artifactPath = process.argv[2]
 
 if (artifactPath === undefined || artifactPath.trim() === '') {

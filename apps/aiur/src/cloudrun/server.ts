@@ -45,7 +45,7 @@ const noStoreJson = (body: unknown, status: number): Response =>
   })
 
 /**
- * Cloud Run terminates TLS at its front proxy, so the Bun server receives
+ * Cloud Run terminates TLS at its front proxy, so the Node server receives
  * plain-HTTP request URLs. Origin-derived values (the OpenAuth
  * `redirect_uri`, cookie security) must use the public `https://` origin,
  * which the proxy reports via `X-Forwarded-Proto`.
@@ -72,7 +72,7 @@ export type AiurCloudRunHandlerOptions = Readonly<{
 
 /**
  * The non-WebSocket request handler. Pure w.r.t. its options — unit tests
- * drive it with a fake env/client dir and no Bun runtime.
+ * drive it with a fake env/client dir and no legacy runtime.
  */
 export const createAiurCloudRunFetchHandler = (
   options: AiurCloudRunHandlerOptions,

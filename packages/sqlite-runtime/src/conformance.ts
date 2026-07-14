@@ -4,7 +4,7 @@ import { SqliteRuntimeError, type SqliteDatabase } from "./sqlite-database.ts"
 /**
  * Runtime-agnostic conformance suite for {@link SqliteDatabase}
  * implementations. Uses `node:assert/strict` (available under both Bun and
- * Node), so the SAME cases run under `bun test` against the Bun client and
+ * Node), so the SAME cases run under `pnpm exec vp test` against the legacy runtime client and
  * under `node --test` against the Node client — the dual-runtime proof the
  * seam exists to provide (BUN-1, openagents#8779).
  */

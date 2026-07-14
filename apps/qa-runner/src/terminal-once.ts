@@ -8,7 +8,7 @@
 // which uses only a POSIX shell (no network), so it is a quick honest proof.
 //
 // Usage:
-//   bun run src/terminal-once.ts --out ./runs/terminal [--wrong]
+//   node --import tsx src/terminal-once.ts --out ./runs/terminal [--wrong]
 
 import { makeTarget } from "./target";
 import { runTerminalScenario } from "./terminal-backend";

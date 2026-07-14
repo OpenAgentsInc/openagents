@@ -25,7 +25,7 @@ Ask the fleet to verify or re-implement the behavior in `src/backlog.js`:
 From the fixture root:
 
 ```sh
-bun test
+pnpm test
 ```
 
 Expected result after the task is complete:
@@ -40,7 +40,7 @@ A completed tester run should record only public-safe refs:
 
 - the public repo and pinned commit used for the run,
 - the issue or task summary,
-- the verification command (`bun test`),
+- the verification command (`pnpm test`),
 - the assignment ref and durable request id,
 - the closeout status and public result refs,
 - the before/after public token-counter values.

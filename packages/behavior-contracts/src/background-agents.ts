@@ -171,7 +171,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Auto-pause after 3 consecutive failures; maxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.",
       surface: "openagents.com-worker",
       verification:
-        "BA-B4 is enforced by the openagents.com Worker definition-run route tests and trigger-store tests in the normal bun test sweep.",
+        "BA-B4 is enforced by the openagents.com Worker definition-run route tests and trigger-store tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -234,7 +234,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Dispatch failures are classified as transient or permanent; per-account/lane breakers cool or quarantine failed lanes and feed delegate readiness/capacity instead of repeatedly dispatching into known failures.",
       surface: "pylon-worker",
       verification:
-        "BA-F1 is enforced by the Pylon orchestration store test plus Khala spawn, dispatch, and burndown planner tests in the normal Pylon bun test sweep.",
+        "BA-F1 is enforced by the Pylon orchestration store test plus Khala spawn, dispatch, and burndown planner tests in the normal Pylon pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -288,7 +288,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Definition toolset compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access; ask entries route to escalation instead of failing; no lane may reach tools outside compiled policy.",
       surface: "openagents.com-worker",
       verification:
-        "BA-A5 is enforced by the agent-runtime-schema compiler test, the packages/khala-tools dispatcher test, and the openagents.com Worker Forge git-token scope test in their normal bun test sweeps.",
+        "BA-A5 is enforced by the agent-runtime-schema compiler test, the packages/khala-tools dispatcher test, and the openagents.com Worker Forge git-token scope test in their normal pnpm exec vp test sweeps.",
     },
     {
       authorityBoundary:
@@ -323,7 +323,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Autopilot Lead Gen v0 is a drafting-only standing background agent: target discovery, agent-readiness analysis, report drafts, sequence-entry drafts, receipt writing, and operator-inbox escalation are permitted; outreach send/activation tools are denied and absent from allow/ask.",
       surface: "openagents.com-worker",
       verification:
-        "LG-7 is enforced by the openagents.com Worker lead-gen agent-definition test in the normal bun test sweep.",
+        "LG-7 is enforced by the openagents.com Worker lead-gen agent-definition test in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -359,7 +359,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Autopilot Lead Gen may produce reports and sequence drafts, but no outreach leaves the system unless a separate LG-4 approval receipt exists; the v0 dogfood receipt records sendAuthority.allowed=false.",
       surface: "openagents.com-worker",
       verification:
-        "LG-7 is enforced by the openagents.com Worker lead-gen agent-definition test in the normal bun test sweep.",
+        "LG-7 is enforced by the openagents.com Worker lead-gen agent-definition test in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -467,7 +467,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout. Short-lived helper cache entries may exist only under Git admin state; GitHub PATs, raw Forge git tokens, credentialed Git URLs, and Git extraheader authorization material are rejected in the bounded checkout or selected isolated account home.",
       surface: "pylon-worker",
       verification:
-        "BA-D3 is enforced by the Pylon materializer, worktree, Codex executor, and Claude executor tests in the normal Pylon bun test sweep.",
+        "BA-D3 is enforced by the Pylon materializer, worktree, Codex executor, and Claude executor tests in the normal Pylon pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -520,7 +520,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Prepared-worktree cache in the Pylon workspace materializer: typed reuse reasons (post-completion snapshot, restore = quick sync + reset), cache keyed by repo+baseline, integrity checks, bounded disk budget with eviction.",
       surface: "pylon-worker",
       verification:
-        "BA-E1 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.",
+        "BA-E1 is enforced by the Pylon workspace-worktree test suite in the normal Pylon pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -573,7 +573,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Prebuilt baselines in the Pylon workspace materializer use a staleness-checked upstream refresh cadence, start matching cold dispatches from a setup-prepared baseline, and keep registry rows with honest hit/miss metrics.",
       surface: "pylon-worker",
       verification:
-        "BA-E2 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.",
+        "BA-E2 is enforced by the Pylon workspace-worktree test suite in the normal Pylon pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -618,7 +618,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Forum-triggered background-agent runs follow one integration template: signed source event, verified Forum source post, bounded normalization, owner-scoped definition dispatch, and a completion callback that can post only back to the stored source Forum thread through Forum write authority.",
       surface: "openagents.com-worker",
       verification:
-        "BA-G1 is enforced by agent-runtime-schema Forum webhook normalization tests and openagents.com Worker Forum webhook/completion route tests in the normal bun test sweep.",
+        "BA-G1 is enforced by agent-runtime-schema Forum webhook normalization tests and openagents.com Worker Forum webhook/completion route tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -663,7 +663,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "GitHub @mention background-agent runs follow the shared integration template: signed issue_comment.created event, configured mention extraction, bounded normalization, owner-scoped definition dispatch, and a result comment posted only back to the stored source issue or PR thread without loose issue spam.",
       surface: "openagents.com-worker",
       verification:
-        "BA-G2 is enforced by agent-runtime-schema GitHub mention normalization tests and openagents.com Worker GitHub webhook/completion route tests in the normal bun test sweep.",
+        "BA-G2 is enforced by agent-runtime-schema GitHub mention normalization tests and openagents.com Worker GitHub webhook/completion route tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -710,7 +710,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "event_ledger.v1 ingests matched GitHub source events through Queues into owner-scoped private D1 rows, orders and dedupes through a per-owner Durable Object, stores refs and bounded summaries rather than raw content, and is never training data or cross-account projection material.",
       surface: "openagents.com-worker",
       verification:
-        "BA-H1 is enforced by the openagents.com Worker event-ledger and GitHub webhook route tests in the normal bun test sweep.",
+        "BA-H1 is enforced by the openagents.com Worker event-ledger and GitHub webhook route tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -757,7 +757,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "event_ledger.v1 treats handled-state as first-class (`open`, `handled`, `responded`, `ignored`), records the definition run that touched an entry, and exposes owner-scoped definition reads only through a toolset-gated gateway that redacts according to secretPolicy.",
       surface: "openagents.com-worker",
       verification:
-        "BA-H2 is enforced by the openagents.com Worker event-ledger store and definition event-ledger gateway route tests in the normal bun test sweep.",
+        "BA-H2 is enforced by the openagents.com Worker event-ledger store and definition event-ledger gateway route tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -813,7 +813,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "Slack webhook events enter event_ledger.v1 only after Slack signature verification and typed normalization, then become owner-scoped private rows with refs and bounded summaries rather than raw message text.",
       surface: "openagents.com-worker",
       verification:
-        "BA-H3 is enforced by agent-runtime-schema Slack normalization tests plus openagents.com Worker Slack webhook route and event-ledger store tests in the normal bun test sweep.",
+        "BA-H3 is enforced by agent-runtime-schema Slack normalization tests plus openagents.com Worker Slack webhook route and event-ledger store tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:

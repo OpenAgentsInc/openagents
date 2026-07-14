@@ -23,7 +23,7 @@ byte-for-byte on the committed fixtures:
 Replay CLI:
 
 ```
-bun run replay fixtures/tassadar-poc-loop-sum-v1.json \
+pnpm run replay fixtures/tassadar-poc-loop-sum-v1.json \
   --validator-device device.example [--claimed-digest <hex>] [--tamper-step 10]
 ```
 

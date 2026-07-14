@@ -5,19 +5,19 @@ The owned Google Cloud Run replacement for the `openagents.com` Worker's
 epic [#8515](https://github.com/OpenAgentsInc/openagents/issues/8515)):
 the Khala Sync per-scope live hub — recent changelog window, live-tail
 WebSocket fan-out, offset-resumable catch-up, MustRefetch-below-window —
-as a Bun WS/HTTP service. Postgres stays authoritative; this service is a
+as a Node WS/HTTP service. Postgres stays authoritative; this service is a
 CACHE AND FAN-OUT LAYER ONLY (docs/khala-sync/SPEC.md §5 semantics,
 ported 1:1 — see `src/scope-hub.ts`).
 
 ## Surfaces (same relative paths the DO served)
 
-| Route | Purpose |
-| --- | --- |
-| `GET /health` | liveness (no auth) |
-| `POST /append?scope=…` | capture batch append (idempotent by version, dense with the window edge, 409 `khala_sync_hub_version_gap` on gaps) |
-| `GET /log?scope=…&cursor=…&limit=…` | LogPage from the window; 410 behind-window / 409 ahead-of-window typed `SyncError`s |
-| `POST /access-changed` `{scope}` | broadcast `MustRefetch(access_changed)` + close every scope socket (KS-7.1) |
-| `GET /connect?scope=…&cursor=…` | live-tail WebSocket upgrade (catch-up from cursor, then DeltaFrame fan-out) |
+| Route                               | Purpose                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `GET /health`                       | liveness (no auth)                                                                                                 |
+| `POST /append?scope=…`              | capture batch append (idempotent by version, dense with the window edge, 409 `khala_sync_hub_version_gap` on gaps) |
+| `GET /log?scope=…&cursor=…&limit=…` | LogPage from the window; 410 behind-window / 409 ahead-of-window typed `SyncError`s                                |
+| `POST /access-changed` `{scope}`    | broadcast `MustRefetch(access_changed)` + close every scope socket (KS-7.1)                                        |
+| `GET /connect?scope=…&cursor=…`     | live-tail WebSocket upgrade (catch-up from cursor, then DeltaFrame fan-out)                                        |
 
 Auth: one shared bearer (`KHALA_LIVE_HUB_TOKEN`) on everything except
 `/health`, via `Authorization: Bearer …` or `?token=` (WebSocket clients

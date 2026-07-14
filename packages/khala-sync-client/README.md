@@ -5,8 +5,8 @@ in `docs/khala-sync/SPEC.md` §6, server in `packages/khala-sync-server`).
 
 Components (KS-5 workstream):
 
-- **Local store** — ✅ shipped on `bun:sqlite` (KS-5.1), Electron
-  `node:sqlite`, Expo SQLite, and ✅ on web (KS-5.4): SQLite-WASM on the
+- **Local store** — ✅ shipped on Node/Electron `node:sqlite` (KS-5.1),
+  Expo SQLite, and ✅ on web (KS-5.4): SQLite-WASM on the
   `opfs-sahpool` VFS
   behind a SharedWorker with Web Locks single-writer election — see
   "Web store" below. Both adapters share ONE driver-agnostic SQL core
@@ -82,34 +82,34 @@ OpenAgents Desktop/mobile hosts.
 `@openagentsinc/khala-sync-client/expo-sqlite-store` maps Expo's synchronous
 SQLite surface onto the same driver-agnostic store core. It deliberately does
 not import the native Expo module: the React Native host injects
-`openDatabaseSync`, so Bun/web package entry points stay loadable and the app
+`openDatabaseSync`, so Node/web package entry points stay loadable and the app
 retains native-handle ownership. WAL, foreign keys, initialization cleanup,
 transaction rollback, typed close, restart-stable identity, and the durable
 mutation queue are covered by the package and OpenAgents mobile test sweeps.
 
-## Local store usage (`bun:sqlite`)
+## Local store usage (`node:sqlite`)
 
 ```ts
-import { Effect } from "effect"
-import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client/sqlite-store"
+import { Effect } from "effect";
+import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client/sqlite-store";
 
-const store = openKhalaSyncStore("/path/to/store.sqlite") // or ":memory:"
+const store = openKhalaSyncStore("/path/to/store.sqlite"); // or ":memory:"
 
 // Apply a confirmed delta: entries + cursor land in ONE SQLite
 // transaction. Idempotent under at-least-once redelivery (stale entry
 // versions are skipped); a cursor behind the stored cursor fails typed
 // with reason "cursor_regression".
-await Effect.runPromise(store.applyConfirmed(scope, entries, nextCursor))
+await Effect.runPromise(store.applyConfirmed(scope, entries, nextCursor));
 
 // MustRefetch: replace the scope from a bootstrap snapshot atomically.
-await Effect.runPromise(store.resetScope(scope, snapshotEntities, cursor))
+await Effect.runPromise(store.resetScope(scope, snapshotEntities, cursor));
 
 // Durable FIFO push queue: mutationId must be exactly last pending/acked
 // + 1 (reason "mutation_id_gap" otherwise); ack drops rows through the id.
-await Effect.runPromise(store.enqueueMutation(envelope))
-await Effect.runPromise(store.ackMutations(lastMutationId))
+await Effect.runPromise(store.enqueueMutation(envelope));
+await Effect.runPromise(store.ackMutations(lastMutationId));
 
-await Effect.runPromise(store.close())
+await Effect.runPromise(store.close());
 ```
 
 Tables: `entities(scope, entity_type, entity_id, post_image_json, version)`
@@ -145,7 +145,7 @@ pool directory, which is the single-writer shape this architecture wants.
    │  startKhalaSyncStorageWorker (./web/worker)      │
    │   · worker-runtime: queue-until-ready ports      │
    │   · worker-server: wire ⇄ domain, typed errors   │
-   │   · store core (same SQL as bun:sqlite desktop)  │
+   │   · store core (same SQL as node:sqlite desktop) │
    │   · sqliteWasmDriver → oo1.DB on opfs-sahpool    │
    │            ONE database connection               │
    └───────────────────────┬──────────────────────────┘
@@ -180,31 +180,31 @@ loads the WASM bundle):
 
 ```ts
 // khala-sync-worker.ts
-import { startKhalaSyncStorageWorker } from "@openagentsinc/khala-sync-client/web/worker"
+import { startKhalaSyncStorageWorker } from "@openagentsinc/khala-sync-client/web/worker";
 
-startKhalaSyncStorageWorker(globalThis as never)
+startKhalaSyncStorageWorker(globalThis as never);
 // options: { dbFilename?: string; poolDirectory?: string }
 ```
 
 Main thread:
 
 ```ts
-import { Effect } from "effect"
-import { openKhalaSyncWasmStore } from "@openagentsinc/khala-sync-client/web"
+import { Effect } from "effect";
+import { openKhalaSyncWasmStore } from "@openagentsinc/khala-sync-client/web";
 
-const worker = new SharedWorker(
-  new URL("./khala-sync-worker.js", import.meta.url),
-  { type: "module", name: "khala-sync" },
-)
-const store = openKhalaSyncWasmStore({ port: worker.port })
+const worker = new SharedWorker(new URL("./khala-sync-worker.js", import.meta.url), {
+  type: "module",
+  name: "khala-sync",
+});
+const store = openKhalaSyncWasmStore({ port: worker.port });
 // locks/storage default to navigator.locks / navigator.storage;
 // inject fakes (or null) in tests.
 
-await Effect.runPromise(store.applyConfirmed(scope, entries, cursor))
-const pending = await Effect.runPromise(store.pendingMutations())
+await Effect.runPromise(store.applyConfirmed(scope, entries, cursor));
+const pending = await Effect.runPromise(store.pendingMutations());
 
-await store.writerElected // true when this tab holds the writer lock
-await Effect.runPromise(store.close()) // detaches THIS tab only
+await store.writerElected; // true when this tab holds the writer lock
+await Effect.runPromise(store.close()); // detaches THIS tab only
 ```
 
 `store.close()` detaches the tab (rejects in-flight calls, releases the
@@ -213,11 +213,11 @@ it, and the connection lives for the SharedWorker's lifetime.
 
 ### Package entry points
 
-| Entry | Contents | Loads WASM? |
-| --- | --- | --- |
-| `.` | desktop store (`bun:sqlite`), overlay, session, store core | no |
-| `./web` | main-thread proxy, election, RPC protocol, wasm driver | no |
-| `./web/worker` | `startKhalaSyncStorageWorker` (storage worker entry) | **yes** |
+| Entry          | Contents                                                    | Loads WASM? |
+| -------------- | ----------------------------------------------------------- | ----------- |
+| `.`            | desktop store (`node:sqlite`), overlay, session, store core | no          |
+| `./web`        | main-thread proxy, election, RPC protocol, wasm driver      | no          |
+| `./web/worker` | `startKhalaSyncStorageWorker` (storage worker entry)        | **yes**     |
 
 Desktop consumers import `.` only and never see `@sqlite.org/sqlite-wasm`.
 
@@ -237,7 +237,7 @@ Desktop consumers import `.` only and never see `@sqlite.org/sqlite-wasm`.
 
 ### Verification
 
-The full store semantics suite runs in bun against the complete web
+The full store semantics suite runs in Vitest against the complete web
 pipeline — proxy → typed RPC over a faked structured-clone port pair →
 worker runtime → RPC server → the shared SQL core — plus focused unit
 tests for the Web Locks election, the `oo1.DB` driver mapping, and the
@@ -256,55 +256,54 @@ first write.
 ## Optimistic overlay + rebase (`createOverlay`)
 
 ```ts
-import { Effect } from "effect"
-import {
-  type ClientMutator,
-  createOverlay,
-} from "@openagentsinc/khala-sync-client"
-import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client/sqlite-store"
-import { canonicalJson, MutatorName, SyncScope } from "@openagentsinc/khala-sync"
+import { Effect } from "effect";
+import { type ClientMutator, createOverlay } from "@openagentsinc/khala-sync-client";
+import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client/sqlite-store";
+import { canonicalJson, MutatorName, SyncScope } from "@openagentsinc/khala-sync";
 
 const setTitle: ClientMutator<{ scope: string; id: string; title: string }> = {
   name: MutatorName.make("task.setTitle"),
   // pure + replay-safe: re-executed on every rebase against the
   // then-current confirmed view; args round-trip through canonical JSON
-  apply: (args, view) => [{
-    kind: "upsert",
-    scope: SyncScope.make(args.scope),
-    entityType: "task",
-    entityId: args.id,
-    postImageJson: canonicalJson({ title: args.title }),
-  }],
-}
+  apply: (args, view) => [
+    {
+      kind: "upsert",
+      scope: SyncScope.make(args.scope),
+      entityType: "task",
+      entityId: args.id,
+      postImageJson: canonicalJson({ title: args.title }),
+    },
+  ],
+};
 
-const store = openKhalaSyncStore("/path/to/store.sqlite")
+const store = openKhalaSyncStore("/path/to/store.sqlite");
 // the mutator registry: every mutator ever mutated with must be here so
 // queued mutations replay on rebase and across restarts
-const overlay = await Effect.runPromise(createOverlay(store, [setTitle]))
+const overlay = await Effect.runPromise(createOverlay(store, [setTitle]));
 
-const view = await Effect.runPromise(overlay.read(scope)) // live view
-view.get("task", "t1") // postImageJson | undefined (confirmed ⊕ optimistic)
-view.list("task")      // ordered by entityId
+const view = await Effect.runPromise(overlay.read(scope)); // live view
+view.get("task", "t1"); // postImageJson | undefined (confirmed ⊕ optimistic)
+view.list("task"); // ordered by entityId
 
 // Optimistic write: durable intent on the FIFO queue + in-memory effects.
-await Effect.runPromise(overlay.mutate(setTitle, { scope, id: "t1", title: "hi" }))
+await Effect.runPromise(overlay.mutate(setTitle, { scope, id: "t1", title: "hi" }));
 
 // Confirmed delta → store.applyConfirmed, then the rebase: rewind to
 // confirmed, re-apply still-pending mutations in mutationId order,
 // reveal atomically (readers never see a half-rebased view).
-await Effect.runPromise(overlay.onConfirmed(scope, entries, cursor))
+await Effect.runPromise(overlay.onConfirmed(scope, entries, cursor));
 
 // Server ack (rejections ack too): drop those mutations' queue rows and
 // overlay contributions, rebuild, reveal atomically.
-await Effect.runPromise(overlay.onAck(lastMutationId))
+await Effect.runPromise(overlay.onAck(lastMutationId));
 
-const unsubscribe = overlay.subscribe((scope) => rerender(scope))
+const unsubscribe = overlay.subscribe((scope) => rerender(scope));
 ```
 
 ## The two hard invariants (SPEC §7)
 
 1. **Optimistic effects never touch the durable store** (invariant 2,
-   Linear's rule). `mutate` writes only the mutation *intent* to the
+   Linear's rule). `mutate` writes only the mutation _intent_ to the
    durable FIFO queue; its effects live exclusively in the in-memory
    overlay. The `entities`/`cursors` tables are written by the confirmed
    paths alone, so the local DB is always reconstructible from the server

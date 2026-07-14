@@ -1,7 +1,7 @@
 /**
  * Pure decision logic for Khala Mobile push notification registration
  * (MM-G1, #8485). Kept native-import-free so it stays unit-testable under
- * `bun test` — the native-touching wiring (expo-notifications,
+ * `pnpm exec vp test` — the native-touching wiring (expo-notifications,
  * expo-secure-store, fetch) lives in `push-notifications-client.ts`.
  */
 

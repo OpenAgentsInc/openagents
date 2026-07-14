@@ -8,7 +8,7 @@
 // reached `live` (or the run was an explicit clean SKIP), 1 on any finding.
 //
 // Usage:
-//   bun run src/khala-sync-once.ts [--target staging|prod|dev|selfhost]
+//   node --import tsx src/khala-sync-once.ts [--target staging|prod|dev|selfhost]
 //     [--url https://…]            # explicit base URL instead of the registry
 //     [--scope scope.user.<id>]    # explicit scope (default: scope.user.<owner>)
 //     [--public]                   # anonymous scope.public.tokens-served run

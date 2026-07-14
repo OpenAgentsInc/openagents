@@ -20,8 +20,8 @@ this first LG-1 website analyzer, are marked `not_applicable`.
 ## CLI
 
 ```sh
-bun packages/agent-readiness/src/cli.ts scan openagents.com --json
-bun packages/agent-readiness/src/cli.ts scan --batch domains.txt --json
+node --import tsx packages/agent-readiness/src/cli.ts scan openagents.com --json
+node --import tsx packages/agent-readiness/src/cli.ts scan --batch domains.txt --json
 ```
 
 The scanner accepts only public `http`/`https` URLs, rejects local/private
@@ -49,13 +49,13 @@ LG-5 turns an LG-1 report object into review and outreach fragments without
 persisting prospect report output in the repo:
 
 ```ts
-import { renderAgentReadinessReport } from "@openagentsinc/agent-readiness"
+import { renderAgentReadinessReport } from "@openagentsinc/agent-readiness";
 
 const rendered = renderAgentReadinessReport(report, {
   commercialContextByFindingRef: {
     [findingRef]: "This blocks agents evaluating your product catalog.",
   },
-})
+});
 ```
 
 The renderer returns:

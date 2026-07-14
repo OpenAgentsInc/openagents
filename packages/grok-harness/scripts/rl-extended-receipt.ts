@@ -3,8 +3,8 @@
  * Write the MH-4 extended RL matrix receipt (RL-3/5/6 policy + measured floors).
  *
  * Usage:
- *   bun packages/grok-harness/scripts/rl-extended-receipt.ts
- *   GROK_RL3_ACCOUNT_IDS=a,b bun packages/grok-harness/scripts/rl-extended-receipt.ts
+ *   node --import tsx packages/grok-harness/scripts/rl-extended-receipt.ts
+ *   GROK_RL3_ACCOUNT_IDS=a,b node --import tsx packages/grok-harness/scripts/rl-extended-receipt.ts
  */
 
 import { mkdir, writeFile } from "node:fs/promises"

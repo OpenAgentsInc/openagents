@@ -15,7 +15,7 @@
 //
 // Usage:
 //   KHALA_BASE_URL=... KHALA_AGENT_TOKEN=... \
-//   bun scripts/khala-demo/generate-northstar-artifact.mjs --out <artifact.html> \
+//   node --import tsx scripts/khala-demo/generate-northstar-artifact.mjs --out <artifact.html> \
 //     [--contract] [--prompt-file <path>]
 //
 //   --contract        append the executed-acceptance STATE CONTRACT to the prompt so

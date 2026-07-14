@@ -48,7 +48,7 @@ export const artanisOperationalGrounding = (): ReadonlyArray<ArtanisOperationalF
     topic: 'presence_heartbeat_capabilities',
   },
   {
-    fact: 'Executor-trace homework produces a public-safe executor-trace artifact carrying only public-safe refs. Paid settlement of an executor-trace run stays blocked until an operator-funded executor-trace closeout exists; the closeout/settlement requires a settlement/ledger ref. The local smoke is `bun run smoke:tassadar:executor-trace`.',
+    fact: 'Executor-trace homework produces a public-safe executor-trace artifact carrying only public-safe refs. Paid settlement of an executor-trace run stays blocked until an operator-funded executor-trace closeout exists; the closeout/settlement requires a settlement/ledger ref. The local smoke is `pnpm run smoke:tassadar:executor-trace`.',
     sourceRef: 'apps/openagents.com/docs/2026-06-10-tassadar-executor-trace-homework-internal.md',
     topic: 'executor_trace_settlement',
   },

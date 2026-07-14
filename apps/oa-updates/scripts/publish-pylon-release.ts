@@ -7,7 +7,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 // are NOT minted here — they come from the build's sign step (the pinned key).
 //
 // Usage:
-//   bun apps/oa-updates/scripts/publish-pylon-release.ts \
+//   node --import tsx apps/oa-updates/scripts/publish-pylon-release.ts \
 //     --build-dir apps/pylon/dist/rc/1.0.0-rc.1 \
 //     [--channel rc] [--rollout 100] [--min-version 1.0.0-rc.1] \
 //     [--out apps/oa-updates/pylon-dist]
@@ -141,7 +141,7 @@ function parseArgs(argv: string[]): Args {
 function usage(): string {
   return [
     "Usage:",
-    "  bun apps/oa-updates/scripts/publish-pylon-release.ts",
+    "  node --import tsx apps/oa-updates/scripts/publish-pylon-release.ts",
     "    --build-dir apps/pylon/dist/rc/1.0.0-rc.1",
     "    [--channel rc] [--rollout 100] [--min-version 1.0.0-rc.1]",
     "    [--out apps/oa-updates/pylon-dist]",

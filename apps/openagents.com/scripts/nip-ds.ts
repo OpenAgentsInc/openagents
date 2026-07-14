@@ -7,11 +7,11 @@
  * - Tell the agent what data to sell.
  * - Save the public-safe, redacted bundle to a local file.
  * - Run:
- *   bun apps/openagents.com/scripts/nip-ds.ts draft \
+ *   node --import tsx apps/openagents.com/scripts/nip-ds.ts draft \
  *     --file ./bundle.json --title "Redacted conversation bundle" \
  *     --d redacted-conversation-bundle --price-sats 50
  * - For integrated relay proof:
- *   bun apps/openagents.com/scripts/nip-ds.ts smoke \
+ *   node --import tsx apps/openagents.com/scripts/nip-ds.ts smoke \
  *     --relay https://openagents-market-relay.openagents.workers.dev
  *
  * This script builds protocol objects through @openagentsinc/nip90, which reuses
@@ -54,8 +54,8 @@ const sellerSecretKey = new Uint8Array(32).fill(1)
 const buyerSecretKey = new Uint8Array(32).fill(2)
 
 const usage = () => `Usage:
-  bun apps/openagents.com/scripts/nip-ds.ts draft --file PATH --title TITLE --d SLUG [--price-sats 50]
-  bun apps/openagents.com/scripts/nip-ds.ts smoke [--relay URL] [--file PATH]
+  node --import tsx apps/openagents.com/scripts/nip-ds.ts draft --file PATH --title TITLE --d SLUG [--price-sats 50]
+  node --import tsx apps/openagents.com/scripts/nip-ds.ts smoke [--relay URL] [--file PATH]
 
 Options:
   --access <mode>       open, paid, quote, targeted, subscription, or negotiated. Defaults to paid.

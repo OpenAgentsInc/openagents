@@ -2,7 +2,7 @@
  * CFG-9 (#8524): `ExecutionContext` for the Cloud Run monolith.
  *
  * `ctx.waitUntil` on Workers extends the invocation lifetime; on a long-lived
- * Bun server we instead track every background promise in a shared set so
+ * Node server we instead track every background promise in a shared set so
  * that (a) rejections are logged instead of crashing the process and (b) a
  * graceful shutdown can await the stragglers before exiting.
  */

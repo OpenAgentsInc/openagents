@@ -29,13 +29,13 @@ through the assignment API with public-safe refs. It has two legs.
 ## Leg 1 — CI-safe (no key, no network, no spend)
 
 ```sh
-bun run --cwd apps/pylon smoke:claude-agent-task
+pnpm --dir apps/pylon run smoke:claude-agent-task
 ```
 
 What it does: spins a local assignment-API harness, registers a
 heartbeat, serves one `claude_agent_task` lease (capability-gated in the
 payload), and drives the real worker loop — poll → admission → accept →
-execute (mock SDK runner applies the fix; the **real** `bun test`
+execute (mock SDK runner applies the fix; the **real** `pnpm test`
 verification runs in the workspace) → progress → artifacts → closeout —
 then scans every retained request and the closeout for redaction
 violations. Exit 0 requires: closeout `accepted`,
@@ -44,7 +44,7 @@ violations. Exit 0 requires: closeout `accepted`,
 `result.public.pylon.claude_agent_task.token_usage_reported`, no
 token-accounting blocker refs, and zero scan violations.
 
-The same leg runs inside `bun test` (`tests/claude-agent-task-smoke.test.ts`),
+The same leg runs inside `pnpm test` (`tests/claude-agent-task-smoke.test.ts`),
 so the release gate covers it on every run.
 
 ## Leg 2 — Live (operator-assisted; the promise's green evidence)
@@ -62,7 +62,7 @@ Prerequisites (operator):
    `apps/openagents.com/workers/api`:
 
    ```sh
-   OPENAGENTS_ADMIN_API_TOKEN=... bun run scripts/claude-agent-task-dispatch.ts \
+   OPENAGENTS_ADMIN_API_TOKEN=... node --import tsx scripts/claude-agent-task-dispatch.ts \
      --pylon <pylonRef>
    ```
 
@@ -75,7 +75,7 @@ Then, on the contributor machine:
 
 ```sh
 PYLON_AGENT_TOKEN=<registered agent token> \
-  bun scripts/claude-agent-task-smoke.ts --live [--base-url https://openagents.com]
+  node --import tsx scripts/claude-agent-task-smoke.ts --live [--base-url https://openagents.com]
 ```
 
 The live leg uses the real readiness probe and the real SDK runner: the

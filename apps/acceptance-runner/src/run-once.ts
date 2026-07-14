@@ -13,11 +13,11 @@
 //      standing up the lease loop.
 //
 // Usage:
-//   bun src/run-once.ts <artifact.html> [--request-id <id>] [--served-model <m>]
+//   node --import tsx src/run-once.ts <artifact.html> [--request-id <id>] [--served-model <m>]
 //                       [--worker <w>] [--callback-url <url>] [--json]
-//   ACCEPTANCE_VERDICT_CALLBACK_TOKEN=<tok> bun src/run-once.ts art.html --callback-url <url>
+//   ACCEPTANCE_VERDICT_CALLBACK_TOKEN=<tok> node --import tsx src/run-once.ts art.html --callback-url <url>
 //
-// Prereq: `bunx playwright install chromium`.
+// Prereq: `pnpm exec playwright install chromium`.
 
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
@@ -73,7 +73,7 @@ const main = async (): Promise<void> => {
   const args = parseArgs(process.argv.slice(2))
   if (args === undefined) {
     console.error(
-      'Usage: bun src/run-once.ts <artifact.html> [--request-id id] ' +
+      'Usage: node --import tsx src/run-once.ts <artifact.html> [--request-id id] ' +
         '[--served-model m] [--worker w] [--callback-url url] [--json]',
     )
     process.exit(2)

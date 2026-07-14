@@ -20,7 +20,7 @@ export type BehaviorContractState = "enforced" | "pending" | "retired"
 
 /**
  * Where the oracle runs. `test-sweep` means the normal per-package test run
- * (`bun test`, package `verify`, repo `test:*` chain) that gates pushes to
+ * (`pnpm exec vp test`, package `verify`, repo `test:*` chain) that gates pushes to
  * main. `smoke` is enforced by a named deploy/live smoke rather than the unit
  * sweep; `nightly` and `manual` are weaker tiers; `unenforced` is an explicit
  * admission that nothing runs.

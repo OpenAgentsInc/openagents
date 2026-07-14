@@ -17,7 +17,7 @@
  * authority routes (see the A5 lane doc and the live evidence doc).
  *
  * Usage:
- *   bun run scripts/cs336-a5-alignment-run.ts \
+ *   node --import tsx scripts/cs336-a5-alignment-run.ts \
  *     [--assignment <assignmentRef>] [--splits split_a,split_b] \
  *     [--stages rollout_batch,reward_grading]
  */

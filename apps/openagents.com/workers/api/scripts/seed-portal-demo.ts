@@ -6,7 +6,7 @@
 // agent-authored, professional tone, no client names (public repo).
 //
 // Usage (admin bearer required; never print the token):
-//   OPENAGENTS_ADMIN_API_TOKEN=... bun scripts/seed-portal-demo.ts \
+//   OPENAGENTS_ADMIN_API_TOKEN=... node --import tsx scripts/seed-portal-demo.ts \
 //     --base-url https://openagents.com \
 //     [--client-email client@example.com]   # bind a real client identity
 //     [--engagement <engagementId>]         # seed into an existing engagement

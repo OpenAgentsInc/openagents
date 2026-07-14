@@ -2351,13 +2351,13 @@ Usage:
   khala fleet connect --harness claude
   khala fleet link
   khala fleet status
-  khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
+  khala fleet run --repo owner/repo --issues 123,124 --verify "pnpm exec vp test" --dry-run
   khala fleet status --live
   khala auth codex
   khala codex status
   khala codex "read README.md"
   khala spawn --count 5 --objective "audit this workspace" --strategy local
-  khala spawn --strategy pylon --count 5 --objective "implement public issue #123" --repo OpenAgentsInc/openagents --commit <sha> --verify "bun test"
+  khala spawn --strategy pylon --count 5 --objective "implement public issue #123" --repo OpenAgentsInc/openagents --commit <sha> --verify "pnpm exec vp test"
   khala workers
   khala worker <workerRef>
   khala join <runRef>

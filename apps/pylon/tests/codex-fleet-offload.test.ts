@@ -94,7 +94,7 @@ describe("codex fleet offload planner", () => {
       expect(commands?.copy).toContain("scp")
       expect(commands?.launch).toContain("provider go-online --json")
       expect(commands?.launch).toContain("presence heartbeat --json")
-      expect(commands?.launch).toContain("bun apps/pylon/src/index.ts node")
+      expect(commands?.launch).toContain("node --import tsx apps/pylon/src/index.ts node")
       expect(JSON.stringify(plan)).toContain(home)
     })
   })

@@ -246,9 +246,9 @@ const ownerArmedCommandLines = (
   '# HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS="prebake.public.khala.glm_52_reap_504b.<owner-issued>"',
   '# HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE="pending"',
   '# HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF="quota_request.public.gcp.rtx_pro_6000.<owner-issued>"',
-  'bun run --cwd apps/openagents.com/workers/api deploy:safe',
+  'pnpm --dir apps/openagents.com/workers/api run deploy:safe',
   '# 2. Retain the public-safe durability bundle after the deployed projection updates.',
-  `bun run --cwd apps/openagents.com/workers/api glm-fleet:durability --readiness-url ${input.readinessUrl} --output-dir ${input.outputDir}`,
+  `pnpm --dir apps/openagents.com/workers/api run glm-fleet:durability --readiness-url ${input.readinessUrl} --output-dir ${input.outputDir}`,
 ]
 
 export const buildGlmFleetDurabilityOwnerArmedCommand = (

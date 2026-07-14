@@ -11,7 +11,7 @@
 //
 // Usage (owner / operator, with the admin bearer token; never commit it):
 //   OPENAGENTS_ADMIN_API_TOKEN=*** \
-//   bun apps/openagents.com/scripts/mirrorcode/ingest-phase0.mjs \
+//   node --import tsx apps/openagents.com/scripts/mirrorcode/ingest-phase0.mjs \
 //     [path/to/result.json] [--base https://openagents.com]
 //
 // Honesty: a `smoke` (Phase-0) run is always decisionGrade:false and is never

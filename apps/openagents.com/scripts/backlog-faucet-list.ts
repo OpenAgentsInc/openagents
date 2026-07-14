@@ -8,7 +8,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 // bodies; one channel per issue.
 //
 // Usage:
-//   OPENAGENTS_AGENT_TOKEN=... bun scripts/backlog-faucet-list.ts <issue#> [<issue#> ...] \
+//   OPENAGENTS_AGENT_TOKEN=... node --import tsx scripts/backlog-faucet-list.ts <issue#> [<issue#> ...] \
 //     [--budget <sats>] [--repo owner/name] [--verify <ref>] [--deadline <iso>] [--no-comment]
 
 import {

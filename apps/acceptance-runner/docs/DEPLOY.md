@@ -67,11 +67,11 @@ runner↔gateway channel: the lease GET, the ack POST, and the verdict POST.
 
 ## Host options (assessment)
 
-| Host | Fit | Notes |
-|------|-----|-------|
+| Host                                                             | Fit                               | Notes                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Our GCE (oa-codex-control + a Compute VM)** ✅ **recommended** | Best for an always-on PULL daemon | Matches the workspace rule "autonomous/unattended execution goes on OUR Google Cloud." A pull daemon has no inbound port, so it sidesteps Cloud Run's request/port model. chromium + system deps come free from the Playwright base image. One small VM runs the loop 24/7; restart via systemd. |
-| Cloud Run | Workable but awkward | Cloud Run wants an HTTP server + scales to zero; our daemon PULLS and has no inbound port. You'd add a dummy health server and a min-instance=1 (always-warm) to keep it polling, which is just a worse always-on VM. Use only if you specifically want Cloud Run ops. |
-| A Pylon node | Natural long-term home | A Pylon is already a programmatic chromium-capable environment and joins the verified-work revshare flywheel (workers run QC for pay). Good once the Pylon fleet is the execution substrate; for the FIRST live verdict, our GCE is the lowest-friction owner-operated box. |
+| Cloud Run                                                        | Workable but awkward              | Cloud Run wants an HTTP server + scales to zero; our daemon PULLS and has no inbound port. You'd add a dummy health server and a min-instance=1 (always-warm) to keep it polling, which is just a worse always-on VM. Use only if you specifically want Cloud Run ops.                           |
+| A Pylon node                                                     | Natural long-term home            | A Pylon is already a programmatic chromium-capable environment and joins the verified-work revshare flywheel (workers run QC for pay). Good once the Pylon fleet is the execution substrate; for the FIRST live verdict, our GCE is the lowest-friction owner-operated box.                      |
 
 **Recommendation: our GCE.** It is the workspace's canonical home for unattended
 execution, fits a no-inbound-port pull daemon cleanly, and gets chromium for free from the
@@ -135,14 +135,14 @@ only when the KHALA loop-arming flag AND the owner real-settlement gate are BOTH
 
 ## Local proof (already passing in this PR)
 
-- `bun apps/acceptance-runner/src/run-once.ts scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.html`
+- `node --import tsx apps/acceptance-runner/src/run-once.ts scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.html`
   → **6/6 verified**, exit 0 (runs the full job path: resolve → real headless suite →
   verdict payload).
-- `bun test apps/acceptance-runner/src/e2e-local-proof.test.ts` → runs the REAL headless
+- `pnpm test apps/acceptance-runner/src/e2e-local-proof.test.ts` → runs the REAL headless
   suite against the committed passing artifact, POSTs the verdict through the REAL
   `handleAcceptanceVerdictCallback` route (test token, in-memory store), and asserts the
   receipt backfills `verified:true` / `test_passed`.
-- `bun test apps/acceptance-runner/src/daemon.test.ts` → the poll-loop wiring
+- `pnpm test apps/acceptance-runner/src/daemon.test.ts` → the poll-loop wiring
   (lease→run→post→ack, idle/error backoff), browser-free.
 - Worker side: `vitest run src/inference/acceptance-job-queue.test.ts` (queue + lease
   routes) and the existing `acceptance-dispatch.test.ts` full-loop fixtures stay green.

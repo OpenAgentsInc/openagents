@@ -26,7 +26,7 @@ protocol. The live wire schema tag remains `openagents.pylon.control.v0.3`.)
 ## Test
 
 ```sh
-bun test
+pnpm test
 ```
 
 Roadmap: `docs/autopilot-coder/2026-06-13-autopilot-clients-roadmap.md` (CL-0).

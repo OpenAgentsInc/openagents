@@ -177,28 +177,28 @@ target account. Keep the binding names in `wrangler.jsonc` stable:
 Preflight:
 
 ```sh
-bun run typecheck:world-contract
-bun run test:world-contract
-bun run typecheck:world-client
-bun run test:world-client
-bun run typecheck:openagents-world
-bun run test:openagents-world
+pnpm run typecheck:world-contract
+pnpm run test:world-contract
+pnpm run typecheck:world-client
+pnpm run test:world-client
+pnpm run typecheck:openagents-world
+pnpm run test:openagents-world
 ```
 
 D1 migrations:
 
 ```sh
 cd apps/openagents-world
-bunx wrangler d1 migrations list openagents-world --remote
-bunx wrangler d1 migrations apply openagents-world --remote
+pnpm exec wrangler d1 migrations list openagents-world --remote
+pnpm exec wrangler d1 migrations apply openagents-world --remote
 ```
 
 For staging, use the staging database name and environment:
 
 ```sh
 cd apps/openagents-world
-bunx wrangler d1 migrations list openagents-world-staging --remote --env staging
-bunx wrangler d1 migrations apply openagents-world-staging --remote --env staging
+pnpm exec wrangler d1 migrations list openagents-world-staging --remote --env staging
+pnpm exec wrangler d1 migrations apply openagents-world-staging --remote --env staging
 ```
 
 The D1 migration files live in `migrations/`. Wrangler records applied D1
@@ -220,21 +220,21 @@ Deploy:
 
 ```sh
 cd apps/openagents-world
-bun run deploy
+pnpm run deploy
 ```
 
 Staging deploy:
 
 ```sh
 cd apps/openagents-world
-bunx wrangler deploy --env staging
+pnpm exec wrangler deploy --env staging
 ```
 
 Local scheduled-handler smoke:
 
 ```sh
 cd apps/openagents-world
-bunx wrangler dev --test-scheduled
+pnpm exec wrangler dev --test-scheduled
 curl -X POST 'http://localhost:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*'
 ```
 
@@ -246,7 +246,7 @@ Queue and alarm checks:
   queue marker is compact and public-safe.
 - DO TTL expiry uses Cloudflare alarms. Keep expiry logic deterministic through
   the `WorldClock` Effect service; validate it with
-  `bun test apps/openagents-world/src/expiry.test.ts` rather than sleeping in
+  `pnpm test apps/openagents-world/src/expiry.test.ts` rather than sleeping in
   tests.
 - Smoke the live Worker with `GET /health`, `GET /version`, `GET /connect`, one
   `POST /bridge/ingest` public-safe payload, and two WebSocket clients in the

@@ -7,7 +7,7 @@
  * file paths, or any owner-identifying string — so the receipt is safe to paste
  * into a public issue. Usage:
  *
- *   bun run scripts/claude-history-receipt.ts [projectsRoot]
+ *   node --import tsx scripts/claude-history-receipt.ts [projectsRoot]
  *
  * Defaults to $HOME/.claude/projects.
  */

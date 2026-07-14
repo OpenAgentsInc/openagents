@@ -72,7 +72,7 @@ export class ConversationBundleRefusal extends Error {
 }
 
 const usage = () => `Usage:
-  bun apps/openagents.com/scripts/conversation-bundle-redaction.ts build --input PATH [--input PATH] --out-dir PATH --title TITLE --d SLUG
+  node --import tsx apps/openagents.com/scripts/conversation-bundle-redaction.ts build --input PATH [--input PATH] --out-dir PATH --title TITLE --d SLUG
 
 Options:
   --generated-at ISO_TIME  Deterministic timestamp for tests/reproducible bundles.

@@ -187,7 +187,7 @@ const workRequestFromDraft = (draft: AutopilotWorkComposerDraft) => {
                 commitSha: '1111111111111111111111111111111111111111',
                 kind: 'git_checkout' as const,
                 verificationCommand: {
-                  args: args.length === 0 ? ['bun', 'test'] : args,
+                  args: args.length === 0 ? ['pnpm', 'exec', 'vp', 'test'] : args,
                   commandRef: `command.${cleanRefSegment(draft.verificationCommand)}`,
                 },
               },

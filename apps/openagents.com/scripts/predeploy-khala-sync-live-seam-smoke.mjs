@@ -115,7 +115,7 @@ const main = async () => {
     `→ khala-sync live-seam smoke: driving the real transport against ${baseUrl} with a cookie-less bearer (user ${credentials.userId}).`,
   )
 
-  const result = spawnSync('bun', ['test', 'src/live-seam-smoke.e2e.test.ts'], {
+  const result = spawnSync('pnpm', ['exec', 'vp', 'test', '--run', 'src/live-seam-smoke.e2e.test.ts'], {
     cwd: clientPackageDir,
     env: {
       ...process.env,

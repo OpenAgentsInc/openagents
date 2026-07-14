@@ -24,7 +24,7 @@
  *   - No secrets, tokens, or local paths are written into the manifest.
  *
  * Usage:
- *   bun scripts/khala-demo/run-head-to-head.mjs [options]
+ *   node --import tsx scripts/khala-demo/run-head-to-head.mjs [options]
  *
  * Options (all also read from env):
  *   --khala-base-url <url>      KHALA_BASE_URL      OpenAI-compatible base, e.g. https://openagents.com/v1

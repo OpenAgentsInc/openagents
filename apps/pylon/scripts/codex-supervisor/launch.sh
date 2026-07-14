@@ -36,15 +36,14 @@ PIDFILE="$SUP_STATE_DIR/supervisor.pid"
 FLEET_LIVENESS_TS="$REPO_ROOT/apps/pylon/src/blueprint-gates/fleet-liveness.ts"
 mkdir -p "$SUP_STATE_DIR"
 
-# bun must be on PATH for the liveness CLI and the detached supervisor.
-export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 alive() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; }
 
 # Run the tested liveness check; returns its exit code (0 healthy, 3 wedged,
 # 4 unknown) and prints the JSON verdict.
 wedge_check() {
-  SUP_STATE_DIR="$SUP_STATE_DIR" bun "$FLEET_LIVENESS_TS" --check
+  SUP_STATE_DIR="$SUP_STATE_DIR" node --import tsx "$FLEET_LIVENESS_TS" --check
 }
 
 case "${1:-start}" in

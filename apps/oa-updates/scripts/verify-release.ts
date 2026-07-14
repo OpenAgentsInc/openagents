@@ -4,7 +4,7 @@
 // signed by the PINNED OpenAgents public key. Exit 0 = valid; exit 1 = missing/
 // invalid/mismatched signature (FAIL CLOSED — never trust on TLS/host alone).
 //
-// Usage: bun verify-release.ts <file> <file.sig.json>
+// Usage: node --import tsx verify-release.ts <file> <file.sig.json>
 import { createPublicKey, verify as edVerify } from "node:crypto"
 import { readFileSync, existsSync } from "node:fs"
 import { createHash } from "node:crypto"

@@ -19,13 +19,13 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * digests, losses, norms, and refs only.
  *
  * Usage:
- *   bun scripts/cs336-a1-real-gradient.ts --mode init --out params0.json
- *   bun scripts/cs336-a1-real-gradient.ts --mode shard --step 0 --shard 1 \
+ *   node --import tsx scripts/cs336-a1-real-gradient.ts --mode init --out params0.json
+ *   node --import tsx scripts/cs336-a1-real-gradient.ts --mode shard --step 0 --shard 1 \
  *     --params-file params0.json --out grad-s0-sh1.json
- *   bun scripts/cs336-a1-real-gradient.ts --mode aggregate --step 0 \
+ *   node --import tsx scripts/cs336-a1-real-gradient.ts --mode aggregate --step 0 \
  *     --params-file params0.json --grad-files grad-s0-sh0.json,grad-s0-sh1.json \
  *     --out params1.json
- *   bun scripts/cs336-a1-real-gradient.ts --mode freivalds --state-digest <hex>
+ *   node --import tsx scripts/cs336-a1-real-gradient.ts --mode freivalds --state-digest <hex>
  */
 import { computeCs336A1TokenizerShard, computeCs336A1TrainingStepMatrix } from '../src/cs336-a1-homework-workload'
 import {

@@ -8,8 +8,8 @@ import {
 } from '../src/probe-gepa-stage0-live-campaign-smoke'
 
 const usage = `Usage:
-  bun scripts/probe-gepa-stage0-no-spend-campaign.ts --preflight [--base-url https://openagents.com] [--pylon-ref REF ...]
-  bun scripts/probe-gepa-stage0-no-spend-campaign.ts --bundle stage0-bundle.json [--preflight] [--base-url https://openagents.com] [--pylon-ref REF ...]
+  node --import tsx scripts/probe-gepa-stage0-no-spend-campaign.ts --preflight [--base-url https://openagents.com] [--pylon-ref REF ...]
+  node --import tsx scripts/probe-gepa-stage0-no-spend-campaign.ts --bundle stage0-bundle.json [--preflight] [--base-url https://openagents.com] [--pylon-ref REF ...]
 
 The bundle JSON shape is the input accepted by projectProbeGepaStage0NoSpendCampaign:
 { "campaignRef": "...", "coordinatorImports": [...], "probeCloseoutImportRefs": [...],

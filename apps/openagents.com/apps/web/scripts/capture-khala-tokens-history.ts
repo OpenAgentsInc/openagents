@@ -7,7 +7,7 @@
 // present so the capture proves real render output, not a blank frame.
 //
 // A tiny Vite dev server transforms the harness TS so the actual view module is
-// exercised. Run: `bun run scripts/capture-khala-tokens-history.ts`.
+// exercised. Run: `node --import tsx scripts/capture-khala-tokens-history.ts`.
 
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'

@@ -13,7 +13,7 @@
  * closeout, and settlement stay on the Worker authority routes.
  *
  * Usage:
- *   bun run scripts/cs336-a2-device-benchmark.ts \
+ *   node --import tsx scripts/cs336-a2-device-benchmark.ts \
  *     [--assignment <assignmentRef>] [--repetitions <n>]
  */
 import {

@@ -26,10 +26,12 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(typeof ignore === "function" && ignore("/node_modules/effect/index.js")).toBe(true)
     expect(config.makers).toHaveLength(2)
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }
-    expect(manifest.scripts["make:mac"]).toContain("prepare-macos-maker.ts")
-    const makerPreparation = readFileSync(path.join(root, "scripts", "prepare-macos-maker.ts"), "utf8")
-    expect(makerPreparation).toContain('"macos-alias"')
-    expect(makerPreparation).toContain('"fs-xattr"')
+    expect(manifest.scripts["make:mac"]).toBe(
+      "electron-forge make --platform=darwin --arch=arm64",
+    )
+    const workspace = readFileSync(path.join(root, "..", "..", "pnpm-workspace.yaml"), "utf8")
+    expect(workspace).toContain("macos-alias: true")
+    expect(workspace).toContain("fs-xattr: true")
   })
 
   test("packages the product-owned macOS icon instead of Electron's fallback", () => {

@@ -1,6 +1,6 @@
 # OSS quick-start — autonomous QA against YOUR site, with YOUR model
 
-> Issue #6191 / Rhys req #5: *"Must be OSS and runnable locally."*
+> Issue #6191 / Rhys req #5: _"Must be OSS and runnable locally."_
 
 This is the genuinely-OSS, local-first, runtime-agnostic path. You run an
 autonomous end-to-end check **on your own machine, against your own dev server,
@@ -20,7 +20,7 @@ It is MIT-licensed (`apps/qa-runner/LICENSE`).
 ## 0. The 10-second proof (no model key, no network, no login)
 
 ```sh
-bun run --cwd apps/qa-runner demo:byo
+pnpm --dir apps/qa-runner run demo:byo
 # == qa run (BYO-model, OSS, local-first) ==
 # MODE: --fake-model — deterministic, no network, NO OpenAgents login, NO model key.
 # ...
@@ -49,7 +49,7 @@ OpenAgents login**. The only runtime dependency that stays external is
 ```sh
 # from the published registry once this is on npm (see §5):
 npx  @openagentsinc/qa-runner run --fake-model --url https://example.test --out ./runs/qa
-bunx @openagentsinc/qa-runner run --fake-model --url https://example.test --out ./runs/qa
+pnpm exec @openagentsinc/qa-runner run --fake-model --url https://example.test --out ./runs/qa
 
 # one-time, for the real-browser path (the fake path above needs none of this):
 npx playwright install chromium
@@ -61,9 +61,9 @@ keeps a `#!/usr/bin/env node` shebang.
 ### From a local tarball (works today, before npm publish)
 
 ```sh
-git clone https://github.com/OpenAgentsInc/openagents && cd openagents && bun install
-bun run --cwd apps/qa-runner build          # produces apps/qa-runner/dist/qa.js
-cd apps/qa-runner && bun pm pack            # -> openagentsinc-qa-runner-0.1.0.tgz (runs prepack -> build)
+git clone https://github.com/OpenAgentsInc/openagents && cd openagents && pnpm install
+pnpm --dir apps/qa-runner run build          # produces apps/qa-runner/dist/qa.js
+cd apps/qa-runner && pnpm pack            # -> openagentsinc-qa-runner-0.1.0.tgz (runs prepack -> build)
 
 # now, in ANY clean dir OUTSIDE the monorepo, with no workspace:
 mkdir /tmp/my-ci && cd /tmp/my-ci && npm init -y
@@ -79,9 +79,9 @@ OpenAgents account.
 ### Dev (inside the monorepo, against source)
 
 ```sh
-git clone https://github.com/OpenAgentsInc/openagents && cd openagents && bun install
-bun run --cwd apps/qa-runner playwright:install     # one-time, real-browser path
-bun run --cwd apps/qa-runner qa run --url http://localhost:3000 ...
+git clone https://github.com/OpenAgentsInc/openagents && cd openagents && pnpm install
+pnpm --dir apps/qa-runner run playwright:install     # one-time, real-browser path
+pnpm --dir apps/qa-runner run qa run --url http://localhost:3000 ...
 ```
 
 ---
@@ -92,7 +92,7 @@ Bring any OpenAI-compatible endpoint — OpenAI, OpenRouter, a local `llama.cpp`
 `vLLM` / Ollama OpenAI shim, or `openagents/khala` if you happen to want it.
 
 ```sh
-bun run --cwd apps/qa-runner qa run \
+pnpm --dir apps/qa-runner run qa run \
   --url   http://localhost:3000 \
   --goal  "open /login, confirm the sign-in form renders, and confirm the URL stays at /login" \
   --model gpt-4o-mini \
@@ -107,7 +107,7 @@ Env equivalents (the de-facto OpenAI standard, so existing CI works unchanged):
 export OPENAI_BASE_URL=https://api.openai.com/v1
 export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL=gpt-4o-mini
-bun run --cwd apps/qa-runner qa run --url http://localhost:3000
+pnpm --dir apps/qa-runner run qa run --url http://localhost:3000
 ```
 
 Neutral `QA_*` names (`QA_MODEL`, `QA_BASE_URL`, `QA_API_KEY`) are also accepted
@@ -117,7 +117,7 @@ and take precedence over the `OPENAI_*` names. Flags win over env. The credentia
 ### Point it at a local, keyless model server
 
 ```sh
-bun run --cwd apps/qa-runner qa run \
+pnpm --dir apps/qa-runner run qa run \
   --url http://localhost:3000 \
   --model my-local-model \
   --base-url http://localhost:8080/v1 \
@@ -159,8 +159,8 @@ TARGET_URL=http://localhost:3000 pnpm exec vitest run ./generated/<slug>.e2e.tes
       --out ./runs/ci
   env:
     OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
-    OPENAI_API_KEY:  ${{ secrets.OPENAI_API_KEY }}
-    OPENAI_MODEL:    gpt-4o-mini
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    OPENAI_MODEL: gpt-4o-mini
 # upload ./runs/ci/* as build artifacts; commit ./generated/*.e2e.test.ts
 ```
 
@@ -202,8 +202,8 @@ typecheck.
 ### Proof (standalone, no workspace, no login)
 
 ```sh
-bun run --cwd apps/qa-runner build
-cd apps/qa-runner && bun pm pack
+pnpm --dir apps/qa-runner run build
+cd apps/qa-runner && pnpm pack
 cd /tmp && mkdir clean && cd clean && npm init -y
 npm install --ignore-scripts /path/to/openagentsinc-qa-runner-0.1.0.tgz
 # scrubbed env, no OPENAGENTS_*/OPENAI_*/QA_*, no workspace:
@@ -221,8 +221,8 @@ npmjs — pack first, then publish the tarball with npm (scope `@openagentsinc/`
 token in workspace `.secrets/npm-publish.env`):
 
 ```sh
-bun run --cwd apps/qa-runner build
-cd apps/qa-runner && bun pm pack
+pnpm --dir apps/qa-runner run build
+cd apps/qa-runner && pnpm pack
 npm publish ./openagentsinc-qa-runner-0.1.0.tgz --access public
 ```
 

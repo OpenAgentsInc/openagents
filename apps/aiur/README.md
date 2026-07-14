@@ -71,8 +71,8 @@ for the first build. The D1 credit ledger is owned by the MAIN
 `openagents.com` Worker, not Aiur:
 
 - **Server (main Worker)**: `apps/openagents.com/workers/api/src/
-  admin-credits-routes.ts` exposes `/api/admin/credits/{users,balance,
-  history,recent-grants,grant,clawback}`, gated by a NEW composition
+admin-credits-routes.ts` exposes `/api/admin/credits/{users,balance,
+history,recent-grants,grant,clawback}`, gated by a NEW composition
   (`requireAdminCreditsCaller` in that Worker's `index.ts`) of the existing
   mobile-bearer session boundary (`requireUserBearerSession`) plus the
   existing admin-email allowlist (`isOpenAgentsAdminEmail`) — never a new
@@ -97,28 +97,28 @@ for the first build. The D1 credit ledger is owned by the MAIN
 ## Commands
 
 ```sh
-bun install
-bun run --cwd apps/aiur typecheck
-bun run --cwd apps/aiur test
-bun run --cwd apps/aiur dev              # local dev server
-bun run --cwd apps/aiur deploy:cloudrun  # Cloud Run deploy (the production path, CFG-11)
-bun run --cwd apps/aiur deploy           # LEGACY wrangler deploy — only until the DNS cutover
+pnpm install
+pnpm --dir apps/aiur run typecheck
+pnpm --dir apps/aiur run test
+pnpm --dir apps/aiur run dev              # local dev server
+pnpm --dir apps/aiur run deploy:cloudrun  # Cloud Run deploy (the production path, CFG-11)
+pnpm --dir apps/aiur run deploy           # LEGACY wrangler deploy — only until the DNS cutover
 
 # The main Worker owns the credit ledger routes/migration:
-bun run --cwd apps/openagents.com/workers/api typecheck
-bun run --cwd apps/openagents.com/workers/api test
-bun run --cwd apps/openagents.com check:architecture
+pnpm --dir apps/openagents.com/workers/api run typecheck
+pnpm --dir apps/openagents.com/workers/api run test
+pnpm --dir apps/openagents.com run check:architecture
 ```
 
 ## Production
 
 Production runs on **Google Cloud Run** (CFG-11, #8526): service
 `openagents-aiur` in `openagentsgemini`/`us-central1`, deployed by
-`scripts/deploy-cloudrun.sh` (`bun run deploy:cloudrun`). The runtime is a
-thin Bun adapter (`src/cloudrun/server.ts`) over the same shared surface
+`scripts/deploy-cloudrun.sh` (`pnpm run deploy:cloudrun`). The runtime is a
+thin Node adapter (`src/cloudrun/server.ts`) over the same shared surface
 the Worker ran (`src/shared-surface.ts`): prerendered SPA shell
 (`vite.config.cloudrun.ts` SPA mode) + static assets + the owner-gated
-auth/proxy routes, with a Bun-native WebSocket bridge for
+auth/proxy routes, with a Node WebSocket bridge for
 `/api/sync/connect`. `AIUR_OWNER_USER_IDS` is mounted from GCP Secret
 Manager (`aiur-owner-user-ids`) — fail-closed when missing/empty, exactly
 as on Workers.
@@ -151,7 +151,7 @@ and is the executor/push/inference stack up" — without shelling into D1.
 Reachable at `/ops`, linked from the dashboard and the credits console.
 
 - **Server (main Worker)**: `apps/openagents.com/workers/api/src/
-  admin-ops-routes.ts` exposes `GET /api/admin/ops/{runs,health}`, gated by
+admin-ops-routes.ts` exposes `GET /api/admin/ops/{runs,health}`, gated by
   the exact same owner-caller composition as the credits routes. Users are
   served by the ALREADY-EXISTING `/api/admin/credits/users` route (extended
   in this change to also return `balanceUsdCents` per row via a single

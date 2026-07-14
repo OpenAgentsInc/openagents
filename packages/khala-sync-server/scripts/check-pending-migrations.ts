@@ -18,7 +18,7 @@
  * NON-ZERO if any migration is pending, naming the pending files.
  *
  * Usage:
- *   bun scripts/check-pending-migrations.ts [--database-url <url>]
+ *   node --import tsx scripts/check-pending-migrations.ts [--database-url <url>]
  *
  * The connection URL comes from --database-url or KHALA_SYNC_DATABASE_URL —
  * see docs/khala-sync/RUNBOOK.md's "Migrations runbook" for where the
@@ -65,7 +65,7 @@ export const decidePendingKhalaSyncMigrations = (
   }
 }
 
-const USAGE = `Usage: bun scripts/check-pending-migrations.ts [--database-url <url>]
+const USAGE = `Usage: node --import tsx scripts/check-pending-migrations.ts [--database-url <url>]
 
 Options:
   --database-url <url>  Direct Postgres URL (default: $KHALA_SYNC_DATABASE_URL).

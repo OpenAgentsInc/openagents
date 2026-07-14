@@ -141,5 +141,5 @@ numbers. It must not include:
 Run from `apps/pylon`:
 
 ```sh
-bun test tests/wallet.test.ts --max-concurrency=1
+pnpm test tests/wallet.test.ts --max-concurrency=1
 ```

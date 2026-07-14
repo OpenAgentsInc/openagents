@@ -35,7 +35,7 @@
 - **Do NOT use `npm pack`/`npm publish` directly from the package dir**:
   npm does not rewrite `workspace:*` / `catalog:` dependency protocols,
   so the published manifest would be uninstallable.
-- **The working recipe**: `bun pm pack` (which DOES rewrite
+- **The working recipe**: `pnpm pack` (which DOES rewrite
   `workspace:*` and `catalog:` to concrete resolved versions — verified
   by inspecting the packed package.json), then
   `npm publish <tarball> --access public`.
@@ -45,13 +45,13 @@
 Leaf dependencies first, then Pylon:
 
 ```sh
-cd packages/agent-runtime-schema   && bun pm pack && npm publish ./openagentsinc-agent-runtime-schema-<v>.tgz --access public && rm -f ./*.tgz
-cd ../provider-account-schema       && bun pm pack && npm publish ./openagentsinc-provider-account-schema-<v>.tgz --access public && rm -f ./*.tgz
-cd ../blueprint-contracts           && bun pm pack && npm publish ./openagentsinc-blueprint-contracts-<v>.tgz --access public && rm -f ./*.tgz
-cd ../nip90               && bun pm pack && npm publish ./openagentsinc-nip90-<v>.tgz --access public && rm -f ./*.tgz
-cd ../tassadar-executor   && bun pm pack && npm publish ./openagentsinc-tassadar-executor-<v>.tgz --access public && rm -f ./*.tgz
-cd ../../apps/pylon       && bun run release:gate   # must pass first
-bun pm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access public && rm -f ./*.tgz
+cd packages/agent-runtime-schema   && pnpm pack && npm publish ./openagentsinc-agent-runtime-schema-<v>.tgz --access public && rm -f ./*.tgz
+cd ../provider-account-schema       && pnpm pack && npm publish ./openagentsinc-provider-account-schema-<v>.tgz --access public && rm -f ./*.tgz
+cd ../blueprint-contracts           && pnpm pack && npm publish ./openagentsinc-blueprint-contracts-<v>.tgz --access public && rm -f ./*.tgz
+cd ../nip90               && pnpm pack && npm publish ./openagentsinc-nip90-<v>.tgz --access public && rm -f ./*.tgz
+cd ../tassadar-executor   && pnpm pack && npm publish ./openagentsinc-tassadar-executor-<v>.tgz --access public && rm -f ./*.tgz
+cd ../../apps/pylon       && pnpm run release:gate   # must pass first
+pnpm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access public && rm -f ./*.tgz
 ```
 
 - `@openagentsinc/provider-account-schema` and `@openagentsinc/blueprint-contracts`
@@ -59,7 +59,7 @@ bun pm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access publi
   `ProviderSecretRef` + the secret-safety predicates, and the `IsPrivateDataSafe`
   private-data-safety predicate). Pylon's bundled runtime imports them, so they
   are `workspace:*` deps of `@openagentsinc/pylon` and must be published as leaf
-  deps BEFORE Pylon (same pattern as `agent-runtime-schema`). `bun pm pack`
+  deps BEFORE Pylon (same pattern as `agent-runtime-schema`). `pnpm pack`
   rewrites the `workspace:*` deps to their concrete versions in the packed Pylon
   manifest.
 
@@ -76,14 +76,14 @@ bun pm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access publi
   **abbreviated/corgi manifest**
   (`Accept: application/vnd.npm.install-v1+json`) does — and bun
   installs use the corgi endpoint. A passing curl with no Accept header
-  does NOT mean `bun install` will resolve yet.
+  does NOT mean `pnpm install` will resolve yet.
 - `bun pm cache rm` does not fix this; it is registry-CDN-side. Wait
   and poll the corgi endpoint until 200 for every just-published
   package, then re-run the gate.
 
 ## Gates
 
-- `bun run release:gate` in apps/pylon runs unit/runtime tests, the
+- `pnpm run release:gate` in apps/pylon runs unit/runtime tests, the
   bootstrap/status/inventory/operator smokes, dashboard smoke, package
   dry-run, and `scripts/smoke-local-package-install.sh` (packs pylon +
   nip90 + tassadar-executor locally; resolves agent-runtime-schema from
@@ -106,7 +106,7 @@ dependency**. npm runs the git dep's `prepare` lifecycle script on consumer
 install (registry tarballs do not), so a bun-requiring `prepare` in any
 transitive git dep breaks plain `npx @openagentsinc/pylon` / `npm install`
 on a clean Node/npm box with `code 127 (git dep preparation failed)` — even
-though `bun install`/`bunx` work because bun blocks lifecycle scripts by
+though `pnpm install`/`pnpm exec` work because bun blocks lifecycle scripts by
 default. This was the 2026-06-18 launch bug (fixed: `nostr-effect`'s
 `prepare` is now a Node-only guard; `nip90` repins to
 `nostr-effect#4c52847`). Before publishing, run the **npm + no-bun** consumer

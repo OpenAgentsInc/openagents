@@ -26,14 +26,14 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  *     this tool only REPORTS the recoverable candidate set and opens zero PRs.
  *
  * Produce the D1 map (one object keyed by assignmentRef) with, per assignment:
- *   { "issue": 1234, "verify": ["bun","test","..."] }
+ *   { "issue": 1234, "verify": ["pnpm","exec","vp","test","..."] }
  * from e.g.:
  *   SELECT task_ref, ... FROM token_usage_events
  *     WHERE provider='pylon-codex-own-capacity' AND demand_source='khala_coding_delegation';
  *   -- join closeout/assignment rows to recover the originating issue number.
  *
  * Usage:
- *   bun apps/pylon/scripts/recover-assignment-prs.ts \
+ *   node --import tsx apps/pylon/scripts/recover-assignment-prs.ts \
  *     [--archive <dir>]   (default ~/pylon-cache-archive/codex-agent-tasks)
  *     [--state <file>]    (default ~/.pylon-fable/assignment-state.json)
  *     [--leases <dir>]    (default ~/.pylon-fable/cache/workspace-leases)

@@ -255,7 +255,7 @@ pick_unlocked_issue() {
 # Store contract: active run/claim state belongs to
 # apps/pylon/src/orchestration. This shell remains a process launcher and
 # GitHub/open-PR cache reader only; all live claim acquire/refresh/release calls
-# go through the Bun state entrypoint in SUP_ORCHESTRATION_STATE_BIN.
+# go through the Node state entrypoint in SUP_ORCHESTRATION_STATE_BIN.
 
 # Claim TTL: cover the full in-flight assignment so concurrent slots never grab
 # an issue another slot is actively working. Defaults to the dispatch timeout

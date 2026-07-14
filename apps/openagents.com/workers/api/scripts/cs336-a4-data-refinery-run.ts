@@ -15,7 +15,7 @@
  * routes (see the A4 payment-policy doc and the live evidence doc).
  *
  * Usage:
- *   bun run scripts/cs336-a4-data-refinery-run.ts \
+ *   node --import tsx scripts/cs336-a4-data-refinery-run.ts \
  *     [--assignment <assignmentRef>] [--stages pii_masking,minhash_dedup]
  */
 import { Cs336A4HomeworkStages } from '../src/cs336-a4-data-refinery'

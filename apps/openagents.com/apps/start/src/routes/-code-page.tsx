@@ -340,7 +340,7 @@ export function CodePage() {
               <CodeBlock
                 code={CODE_GREET_TS}
                 filename="src/greet.ts"
-                result={{ duration: '0.4s', status: 'passed', summary: 'bun test · 6 passed' }}
+                result={{ duration: '0.4s', status: 'passed', summary: 'pnpm exec vp test · 6 passed' }}
               />
             </AssistantTurn>
             <UserTurn markdown="Nice. Do the same for the Rust version." time="now" />

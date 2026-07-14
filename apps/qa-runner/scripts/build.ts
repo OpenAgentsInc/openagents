@@ -6,7 +6,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 // ---------------
 // `@openagentsinc/qa-runner` depends on the workspace package
 // `@openagentsinc/probe-runtime`, which is `private` and unpublished. A naive
-// `bunx @openagentsinc/qa-runner` therefore cannot resolve that dependency
+// `pnpm exec @openagentsinc/qa-runner` therefore cannot resolve that dependency
 // outside the monorepo — the standalone-install acceptance for #6191 would be a
 // lie. This build BUNDLES the BYO `qa` CLI (`src/byo.ts`) into a single
 // self-contained `dist/qa.js` so a standalone install needs NO workspace deps
@@ -26,7 +26,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 //      browser engine. `effect` is INLINED so no workspace catalog is needed.
 //
 // Bundling happens at the JS/module-graph level, so the pre-existing
-// `packages/probe` *typecheck* errors do NOT block it — bun build does not
+// `packages/probe` *typecheck* errors do NOT block it — the bundle does not
 // typecheck.
 //
 // Output: `dist/qa.js` — an ESM, node-targeted, executable (shebang) bundle.

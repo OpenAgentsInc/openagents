@@ -4,7 +4,7 @@
 // eligible release, downloads it, verifies sha256 + the ed25519 signature against
 // the PINNED OpenAgents release key (fail closed — host/TLS is never the trust
 // boundary), then atomically replaces the running binary and relaunches. The
-// compiled binary self-replaces; a `bun src/index.ts` dev run is a no-op target.
+// compiled binary self-replaces; a `node --import tsx src/index.ts` dev run is a no-op target.
 //
 // Feed contract: apps/oa-updates/src/pylon-release.ts (openagents.pylon.feed.v1).
 import { createHash, createPublicKey, verify as edVerify } from "node:crypto"
@@ -52,7 +52,7 @@ export type PylonFeed = {
 }
 
 // The path to overwrite on self-update: the compiled standalone binary. Returns
-// null for a dev run (`bun src/index.ts`) or when running under bun/node, so we
+// null for a dev run (`node --import tsx src/index.ts`) or when running under bun/node, so we
 // never clobber the interpreter — auto-update is a no-op there.
 export function resolveSelfBinaryPath(
   execPath: string = process.execPath,

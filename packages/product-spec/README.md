@@ -63,24 +63,29 @@ Per `docs/assurance/ASSURANCE_SPEC.md` §4:
 ## Usage
 
 ```ts
-import { parseDecisionTrace, validateProductSpec, parseProductSpec, stripToolMetadata } from "@openagentsinc/product-spec"
+import {
+  parseDecisionTrace,
+  validateProductSpec,
+  parseProductSpec,
+  stripToolMetadata,
+} from "@openagentsinc/product-spec";
 
-const result = validateProductSpec(markdown)
-if (result.valid) console.log(result.document.frontmatter.title)
+const result = validateProductSpec(markdown);
+if (result.valid) console.log(result.document.frontmatter.title);
 
-const upstream = validateProductSpec(markdown, { profile: "upstream" })
-const trace = parseDecisionTrace(decisionTraceJson)
+const upstream = validateProductSpec(markdown, { profile: "upstream" });
+const trace = parseDecisionTrace(decisionTraceJson);
 ```
 
 CLI:
 
 ```sh
-bun packages/product-spec/src/cli.ts validate specs/web/my-feature.product-spec.md
-bun packages/product-spec/src/cli.ts validate --specs-root specs
-bun packages/product-spec/src/cli.ts validate --profile upstream <file>
-bun packages/product-spec/src/cli.ts validate-trace <file.decision-trace.json>
-bun packages/product-spec/src/cli.ts digest <file>
-bun packages/product-spec/src/cli.ts init specs/<area>/<name>.product-spec.md --title "My Feature"
+node --import tsx packages/product-spec/src/cli.ts validate specs/web/my-feature.product-spec.md
+node --import tsx packages/product-spec/src/cli.ts validate --specs-root specs
+node --import tsx packages/product-spec/src/cli.ts validate --profile upstream <file>
+node --import tsx packages/product-spec/src/cli.ts validate-trace <file.decision-trace.json>
+node --import tsx packages/product-spec/src/cli.ts digest <file>
+node --import tsx packages/product-spec/src/cli.ts init specs/<area>/<name>.product-spec.md --title "My Feature"
 ```
 
 `init` scaffolds the OpenAgents custom sections (`custom-owner-gates`,

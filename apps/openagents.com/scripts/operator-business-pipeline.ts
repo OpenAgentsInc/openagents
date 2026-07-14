@@ -18,16 +18,16 @@ type CliArgs = Readonly<{
 }>
 
 const usage = `Usage:
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts metrics
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts create --pipeline-ref REF --vertical VERTICAL --source-ref REF --owner-role operator [--receipt-ref REF] [--quoted-min-usd-cents N] [--quoted-max-usd-cents N] [--quoted-band LABEL] [--partner-route true]
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts advance --pipeline-ref REF --stage STAGE --receipt-ref REF [--next-action-due-at YYYY-MM-DD]
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts partner-route --pipeline-ref REF --state candidate|offered|accepted|declined|none [--peer-ref REF] [--approval-receipt-ref REF] [--offer-ref REF] [--scope-summary-ref REF] [--due-window-ref REF] [--budget-range-ref REF] [--privacy-tier-ref REF]
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts render-outreach --pipeline-ref REF --subject-ref REF --audit-report-ref REF [--finding-refs ref1,ref2] [--observed-fact TEXT] [--template-version-ref REF] [--draft-ref REF] [--source-ref REF]
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts approve-outreach-template --template-version-ref REF --approval-receipt-ref REF --approved-by-ref REF [--source-ref REF]
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts suppress-outreach --subject-ref REF --reason existing_customer --source-ref REF [--suppression-ref REF]
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts record-outreach-send --pipeline-ref REF --draft-ref REF --mailbox-ref REF --source-ref REF [--approval-receipt-ref REF] [--daily-mailbox-send-cap 95] [--send-ref REF]
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts grant-credit --pipeline-ref REF --account-ref agent:REF [--amount-usd-cents 10000] [--grant-ref REF] [--window-ref REF] [--window-grant-cap 25] [--engagement-ref REF]
-  bun apps/openagents.com/scripts/operator-business-pipeline.ts link-credit-redemption --pipeline-ref REF --grant-ref REF --redemption-receipt-ref REF
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts metrics
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts create --pipeline-ref REF --vertical VERTICAL --source-ref REF --owner-role operator [--receipt-ref REF] [--quoted-min-usd-cents N] [--quoted-max-usd-cents N] [--quoted-band LABEL] [--partner-route true]
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts advance --pipeline-ref REF --stage STAGE --receipt-ref REF [--next-action-due-at YYYY-MM-DD]
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts partner-route --pipeline-ref REF --state candidate|offered|accepted|declined|none [--peer-ref REF] [--approval-receipt-ref REF] [--offer-ref REF] [--scope-summary-ref REF] [--due-window-ref REF] [--budget-range-ref REF] [--privacy-tier-ref REF]
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts render-outreach --pipeline-ref REF --subject-ref REF --audit-report-ref REF [--finding-refs ref1,ref2] [--observed-fact TEXT] [--template-version-ref REF] [--draft-ref REF] [--source-ref REF]
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts approve-outreach-template --template-version-ref REF --approval-receipt-ref REF --approved-by-ref REF [--source-ref REF]
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts suppress-outreach --subject-ref REF --reason existing_customer --source-ref REF [--suppression-ref REF]
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts record-outreach-send --pipeline-ref REF --draft-ref REF --mailbox-ref REF --source-ref REF [--approval-receipt-ref REF] [--daily-mailbox-send-cap 95] [--send-ref REF]
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts grant-credit --pipeline-ref REF --account-ref agent:REF [--amount-usd-cents 10000] [--grant-ref REF] [--window-ref REF] [--window-grant-cap 25] [--engagement-ref REF]
+  node --import tsx apps/openagents.com/scripts/operator-business-pipeline.ts link-credit-redemption --pipeline-ref REF --grant-ref REF --redemption-receipt-ref REF
 
 Env:
   OPENAGENTS_ADMIN_API_TOKEN is required.

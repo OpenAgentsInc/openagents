@@ -17,7 +17,7 @@
 // public surfaces only, role/text locators, NAMED steps that read as user
 // actions, OUTCOME assertions (no implementation detail), DETERMINISTIC waits
 // (no sleeps — wait on conditions, e.g. url-not-includes). The generated file is
-// a real, runnable `bun test` against the qa-runner runner.
+// a real, runnable `pnpm exec vp test` against the qa-runner runner.
 //
 // Acceptance bar (spec §D.2) is enforced by `assessCandidate`: replayable,
 // typed (no `any`), honestly-graded verification class, public-safe, asserts
@@ -76,7 +76,7 @@ export interface E2eScenarioCandidate {
   readonly slug: string;
   /** The human scenario name. */
   readonly scenarioName: string;
-  /** The full generated TypeScript source (a runnable bun test). */
+  /** The full generated TypeScript source (a runnable pnpm exec vp test). */
   readonly source: string;
   /** Number of outcome assertions (must be >= 1 for the acceptance bar). */
   readonly assertionCount: number;

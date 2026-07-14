@@ -1,7 +1,7 @@
 // Optional real-provider smoke for the Fireworks adapter (EPIC #5474, #5479).
 //
 // This is NOT part of the unit suite — it makes a real network call to
-// Fireworks and is GATED on a key being present, so `bun run test` /
+// Fireworks and is GATED on a key being present, so `pnpm run test` /
 // `check:deploy` never require it. It exercises the same adapter the Worker
 // registers, against the public `openagents/khala` model alias mapped internally
 // to Fireworks DeepSeek V4 Flash, and
@@ -9,7 +9,7 @@
 // NEVER prints the key.
 //
 // Usage:
-//   bun run apps/openagents.com/workers/api/scripts/fireworks-smoke.ts
+//   node --import tsx apps/openagents.com/workers/api/scripts/fireworks-smoke.ts
 //
 // Key resolution (first hit wins):
 //   1. FIREWORKS_API_KEY in the environment

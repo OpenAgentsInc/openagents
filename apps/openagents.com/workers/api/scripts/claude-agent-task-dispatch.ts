@@ -12,7 +12,7 @@
  * Pylon-side admission enforces it too, not just operator dispatch.
  *
  * Usage:
- *   OPENAGENTS_ADMIN_API_TOKEN=... bun run scripts/claude-agent-task-dispatch.ts \
+ *   OPENAGENTS_ADMIN_API_TOKEN=... node --import tsx scripts/claude-agent-task-dispatch.ts \
  *     --pylon <pylonRef> [--base-url https://openagents.com] \
  *     [--assignment-ref <ref>]
  */
@@ -36,7 +36,7 @@ const assignmentRef =
 
 if (token === undefined || pylonRef === undefined) {
   console.error(
-    'usage: OPENAGENTS_ADMIN_API_TOKEN=... bun run scripts/claude-agent-task-dispatch.ts --pylon <pylonRef>',
+    'usage: OPENAGENTS_ADMIN_API_TOKEN=... node --import tsx scripts/claude-agent-task-dispatch.ts --pylon <pylonRef>',
   )
   process.exit(2)
 }

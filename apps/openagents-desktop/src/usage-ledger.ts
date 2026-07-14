@@ -4,7 +4,7 @@
  * typed Fable/Codex-child completion events; read through the snapshot
  * channel and pushed through the event channel (see usage-ledger-contract).
  *
- * This module never imports `electron` (unit-testable under `bun test`).
+ * This module never imports `electron` (unit-testable under `pnpm exec vp test`).
  */
 import {
   emptyUsageLedgerSnapshot,

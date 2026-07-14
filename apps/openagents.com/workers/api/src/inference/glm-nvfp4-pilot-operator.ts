@@ -159,7 +159,7 @@ const ownerArmedCommandLines = (
   'KHALA_GLM_NVFP4_QUALITY_PARITY=passed \\',
   'KHALA_GLM_NVFP4_QUALITY_EVIDENCE_REF="evidence.public.khala.glm_nvfp4.quality_parity.<owner-issued>" \\',
   'KHALA_GLM_NVFP4_MODEL="nvidia/GLM-5.2-NVFP4" \\',
-  `bun run --cwd apps/openagents.com/workers/api pilot:glm-nvfp4 --arm --samples ${input.samples} --output-dir ${input.outputDir}`,
+  `pnpm --dir apps/openagents.com/workers/api run pilot:glm-nvfp4 --arm --samples ${input.samples} --output-dir ${input.outputDir}`,
 ]
 
 export const buildGlmNvfp4PilotOwnerArmedCommand = (

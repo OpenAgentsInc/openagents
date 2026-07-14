@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Predeploy guard: refuse to deploy unless the local checkout is EXACTLY origin/main.
 //
-// `bun run deploy` builds and uploads from the local working tree, so a checkout
+// `pnpm run deploy` builds and uploads from the local working tree, so a checkout
 // that is behind (or diverged from) origin/main silently ships STALE code — even
 // though the intended commit is already pushed. This bit us repeatedly (the
 // counter/history routes 404'd in prod because the deploy ran from a behind

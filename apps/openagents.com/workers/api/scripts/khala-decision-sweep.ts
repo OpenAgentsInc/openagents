@@ -2,7 +2,7 @@
 // suite / #6307).
 //
 // This is NOT part of the unit suite — it makes real network calls and is GATED on
-// credentials, so `bun run test` / `check:deploy` never require it. It drives the
+// credentials, so `pnpm run test` / `check:deploy` never require it. It drives the
 // already-tested sweep harness (`real-sweep-runner.ts`) against live providers and
 // emits the public-safe `decisionGrade` report.
 //
@@ -22,7 +22,7 @@
 //   3. SKIP — no agent token: prints the NEEDS-OWNER arm instructions and exits 0.
 //
 // Usage:
-//   bun run apps/openagents.com/workers/api/scripts/khala-decision-sweep.ts
+//   node --import tsx apps/openagents.com/workers/api/scripts/khala-decision-sweep.ts
 //
 // It NEVER prints a key/token. Report output is the public-safe report JSON only.
 import { readFileSync } from 'node:fs'

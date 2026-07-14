@@ -73,7 +73,7 @@ const plans: Record<GeneratorKind, readonly TemplatePlan[]> = {
 const [, , rawKind, rawName] = process.argv
 
 if (!isGeneratorKind(rawKind) || rawName === undefined) {
-  fail("Usage: bun run scripts/generate.ts <screen|component|api-core> <Name>")
+  fail("Usage: node --import tsx scripts/generate.ts <screen|component|api-core> <Name>")
 }
 
 const context = namesFor(rawName)

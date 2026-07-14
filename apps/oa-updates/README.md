@@ -10,8 +10,8 @@ signed release feeds. It is an active release boundary, not archival code.
 From this directory:
 
 ```sh
-bun run typecheck
-bun run test
+pnpm run typecheck
+pnpm run test
 ```
 
 The strict, no-emit test project covers production source and mechanically

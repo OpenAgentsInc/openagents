@@ -1,6 +1,6 @@
 // Single source of truth for the Pylon release version.
 //
-// The `bun --compile` binary does NOT bundle package.json, so the compiled
+// The compiled Node binary does NOT bundle package.json, so the compiled
 // Pylon reports THIS constant from `status --json` and the OTA self-updater
 // compares against it. Keep package.json's "version" in sync, but treat this as
 // authoritative for the running binary.

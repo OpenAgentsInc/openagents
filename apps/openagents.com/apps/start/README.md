@@ -27,11 +27,11 @@ This package is configured for shadcn/ui on Tailwind 4:
 ## Verify
 
 ```sh
-bun run --cwd packages/effect-start test
-bun run --cwd apps/openagents.com/apps/start build
-bun run --cwd apps/openagents.com/apps/start test
-bun run --cwd apps/openagents.com/apps/start typecheck
-bun run --cwd apps/openagents.com/apps/start budget
+pnpm --dir packages/effect-start run test
+pnpm --dir apps/openagents.com/apps/start run build
+pnpm --dir apps/openagents.com/apps/start run test
+pnpm --dir apps/openagents.com/apps/start run typecheck
+pnpm --dir apps/openagents.com/apps/start run budget
 ```
 
 ## Deploy
@@ -39,7 +39,7 @@ bun run --cwd apps/openagents.com/apps/start budget
 This app deploys to its own Worker:
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start deploy
+pnpm --dir apps/openagents.com/apps/start run deploy
 ```
 
 The Wrangler name is `openagents-com-start-staging`. Do not deploy it through

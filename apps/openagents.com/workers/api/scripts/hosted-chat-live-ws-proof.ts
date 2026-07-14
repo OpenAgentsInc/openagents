@@ -23,7 +23,7 @@
  *   KHALA_MAESTRO_TOKEN, KHALA_MAESTRO_THREAD_ID
  *
  * Usage:
- *   CURSOR=72 bun apps/openagents.com/workers/api/scripts/hosted-chat-live-ws-proof.ts
+ *   CURSOR=72 node --import tsx apps/openagents.com/workers/api/scripts/hosted-chat-live-ws-proof.ts
  */
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'

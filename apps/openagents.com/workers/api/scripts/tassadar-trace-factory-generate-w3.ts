@@ -19,7 +19,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  *     digest pinned in the manifest)
  *   corpus/tassadar-trace-corpus.v0_2.w3_100m/verdicts.jsonl  (untracked)
  *
- * Run: bun scripts/tassadar-trace-factory-generate-w3.ts
+ * Run: node --import tsx scripts/tassadar-trace-factory-generate-w3.ts
  */
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'

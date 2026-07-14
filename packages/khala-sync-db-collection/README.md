@@ -14,10 +14,10 @@ stay in the Khala Sync overlay, and TanStack DB receives snapshots through
 import {
   createKhalaSyncMutationTracker,
   khalaSyncCollectionOptions,
-} from "@openagentsinc/khala-sync-db-collection"
-import { createCollection } from "@tanstack/db"
+} from "@openagentsinc/khala-sync-db-collection";
+import { createCollection } from "@tanstack/db";
 
-const mutationTracker = createKhalaSyncMutationTracker()
+const mutationTracker = createKhalaSyncMutationTracker();
 
 // Pass mutationTracker.onRejection into createKhalaSyncSession({ onRejection }).
 
@@ -28,9 +28,9 @@ const collection = createCollection(
     session,
     overlay,
     mutationTracker,
-    getKey: row => row.runId,
+    getKey: (row) => row.runId,
     mutators: {
-      update: mutation => ({
+      update: (mutation) => ({
         mutator: fleetSetDesiredSlotsClientMutator,
         args: {
           runId: mutation.key,
@@ -39,7 +39,7 @@ const collection = createCollection(
       }),
     },
   }),
-)
+);
 ```
 
 `awaitMutation(session, mutationId, { tracker })` waits for the Khala Sync
@@ -85,6 +85,6 @@ tie-breaker.
 ## Verification
 
 ```sh
-bun run --cwd packages/khala-sync-db-collection test
-bun run --cwd packages/khala-sync-db-collection typecheck
+pnpm --dir packages/khala-sync-db-collection run test
+pnpm --dir packages/khala-sync-db-collection run typecheck
 ```

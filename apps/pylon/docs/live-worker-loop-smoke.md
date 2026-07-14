@@ -9,7 +9,7 @@ Run it from `apps/pylon` with an active registered OpenAgents agent token:
 
 ```sh
 OPENAGENTS_AGENT_TOKEN="oa_agent_..." \
-bun run smoke:live-worker-loop
+pnpm run smoke:live-worker-loop
 ```
 
 By default the smoke posts to `https://openagents.com`, creates a fresh
@@ -22,7 +22,7 @@ artifact/proof refs, and closes the assignment through the operator route:
 ```sh
 OPENAGENTS_AGENT_TOKEN="oa_agent_..." \
 OPENAGENTS_ADMIN_API_TOKEN="..." \
-bun run smoke:live-worker-loop
+pnpm run smoke:live-worker-loop
 ```
 
 Optional inputs:

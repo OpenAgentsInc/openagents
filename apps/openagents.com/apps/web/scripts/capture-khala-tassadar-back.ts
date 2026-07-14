@@ -2,7 +2,7 @@
 // on /khala and /tassadar. Boots a Vite dev server (transforms the real app
 // modules), navigates the real SPA to each route, asserts the back button is
 // present, screenshots both, then clicks the /khala back button and asserts the
-// SPA navigates home (/). Run: bun run scripts/capture-khala-tassadar-back.ts
+// SPA navigates home (/). Run: node --import tsx scripts/capture-khala-tassadar-back.ts
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

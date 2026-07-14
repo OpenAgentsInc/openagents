@@ -7,10 +7,10 @@ The implementation is intentionally re-exported from the `nostr-effect`
 package:
 
 ```ts
-export * from "nostr-effect/nip90"
-export * from "./lbr.js"
-export * from "./lbr-bond.js"
-export * from "./lbr-closeout.js"
+export * from "nostr-effect/nip90";
+export * from "./lbr.js";
+export * from "./lbr-bond.js";
+export * from "./lbr-closeout.js";
 ```
 
 Do not rebuild Nostr event, tag, kind, or validation primitives in this package.
@@ -75,7 +75,7 @@ Use the script when an agent needs to turn a public-safe redacted bundle into a
 dataset listing and offer:
 
 ```bash
-bun apps/openagents.com/scripts/nip-ds.ts draft \
+node --import tsx apps/openagents.com/scripts/nip-ds.ts draft \
   --file ./bundle.json \
   --title "Redacted conversation bundle" \
   --d redacted-conversation-bundle \
@@ -85,7 +85,7 @@ bun apps/openagents.com/scripts/nip-ds.ts draft \
 For the integrated scoped-relay proof:
 
 ```bash
-bun apps/openagents.com/scripts/nip-ds.ts smoke \
+node --import tsx apps/openagents.com/scripts/nip-ds.ts smoke \
   --relay https://relay.openagents.com
 ```
 
@@ -101,12 +101,12 @@ closeout receipt, and re-derives the digest to prove the receipt dereferences:
 
 ```bash
 # Offline (default): build + sign + bind + dereference, no network.
-bun packages/nip90/scripts/lbr-closeout-proof.ts
+node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts
 
 # Relay smoke (optional): also publish the four events to a scoped market relay
 # and read them back, proving the lifecycle is dippable before the closeout
 # binds it.
-bun packages/nip90/scripts/lbr-closeout-proof.ts --relay https://relay.openagents.com
+node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts --relay https://relay.openagents.com
 ```
 
 It signs a `5934` request, two `7000` feedback events (quote + acceptance), and
@@ -117,9 +117,9 @@ live paid labor run is the owner gate.
 ## Verification
 
 ```bash
-bun run --cwd packages/nip90 typecheck
-bun run --cwd packages/nip90 test
-bun run --cwd apps/nostr-relay test
-bun test apps/pylon/tests/nip90-import.test.ts
-cd apps/openagents.com/workers/api && bunx vitest run src/nip90-import.test.ts
+pnpm --dir packages/nip90 run typecheck
+pnpm --dir packages/nip90 run test
+pnpm --dir apps/nostr-relay run test
+pnpm test apps/pylon/tests/nip90-import.test.ts
+cd apps/openagents.com/workers/api && pnpm exec vitest run src/nip90-import.test.ts
 ```

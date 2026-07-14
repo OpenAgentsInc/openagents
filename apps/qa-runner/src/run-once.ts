@@ -6,7 +6,7 @@
 // code is honest: 0 on pass, 1 on fail.
 //
 // Usage:
-//   bun run src/run-once.ts --url https://openagents.com --out ./runs/manual
+//   node --import tsx src/run-once.ts --url https://openagents.com --out ./runs/manual
 //     [--headed]
 //
 // By default it runs the same /login regression scenario the demo uses, so

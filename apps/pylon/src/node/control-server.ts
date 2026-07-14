@@ -242,7 +242,7 @@ function unauthorized(): Response {
 }
 
 // Starts the control server inside the caller's Scope: the SSE fan-out fiber
-// and the Bun server are torn down when the Scope closes.
+// and the Node server are torn down when the Scope closes.
 export const startControlServer = (
   runtime: PylonNodeRuntime,
   options: ControlServerOptions,

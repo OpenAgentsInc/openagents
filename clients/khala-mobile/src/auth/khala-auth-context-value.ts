@@ -9,7 +9,7 @@ import type { KhalaAuthMachineStatus } from "./khala-auth-state-machine"
  * `demoMode`) do not transitively pull the provider's heavy native
  * dependencies (`expo-web-browser`, `expo-auth-session`, `expo-secure-store`).
  * That transitive pull broke pure unit tests of the sync hook (native module
- * load failures in the bun test environment); keeping the context object here
+ * load failures in the pnpm exec vp test environment); keeping the context object here
  * — with no Expo imports — avoids it.
  */
 export type KhalaAuthStatus = KhalaAuthMachineStatus

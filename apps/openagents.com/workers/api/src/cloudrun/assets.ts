@@ -154,7 +154,7 @@ export const makeAssetsFetcher = (distDirInput: string): AssetsFetcher => {
 export const assertAssetsDirExists = (distDir: string): void => {
   if (!existsSync(path.join(distDir, 'index.html'))) {
     throw new Error(
-      `CFG-9: web assets not found at ${distDir} (expected apps/web/dist with index.html). Run \`bun run build:web\` first.`,
+      `CFG-9: web assets not found at ${distDir} (expected apps/web/dist with index.html). Run \`pnpm run build:web\` first.`,
     )
   }
 }

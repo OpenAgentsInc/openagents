@@ -13,7 +13,7 @@
  * connection (never Hyperdrive).
  *
  * Usage:
- *   bun scripts/compact.ts [--dry-run] [--database-url <url>]
+ *   node --import tsx scripts/compact.ts [--dry-run] [--database-url <url>]
  *     [--max-retained-entries <n>] [--max-retained-age-ms <ms>]
  *
  * The connection URL comes from --database-url or KHALA_SYNC_DATABASE_URL.
@@ -23,7 +23,7 @@ import { compactAll, type CompactScopeResult } from "../src/compaction.js"
 
 const DEFAULT_MAX_RETAINED_ENTRIES = 10_000
 
-const USAGE = `Usage: bun scripts/compact.ts [--dry-run] [--database-url <url>] [--max-retained-entries <n>] [--max-retained-age-ms <ms>]
+const USAGE = `Usage: node --import tsx scripts/compact.ts [--dry-run] [--database-url <url>] [--max-retained-entries <n>] [--max-retained-age-ms <ms>]
 
 Options:
   --dry-run                   Print the per-scope compaction plan without writing.

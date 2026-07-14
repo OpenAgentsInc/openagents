@@ -8,8 +8,8 @@ import {
 } from '../src/qwen-remote-pylon-live-training-smoke'
 
 const usage = `Usage:
-  bun scripts/qwen-remote-pylon-live-training.ts --preflight [--base-url https://openagents.com] [--pylon-ref REF ...]
-  bun scripts/qwen-remote-pylon-live-training.ts --bundle qwen-training-bundle.json [--no-preflight] [--base-url https://openagents.com] [--pylon-ref REF ...]
+  node --import tsx scripts/qwen-remote-pylon-live-training.ts --preflight [--base-url https://openagents.com] [--pylon-ref REF ...]
+  node --import tsx scripts/qwen-remote-pylon-live-training.ts --bundle qwen-training-bundle.json [--no-preflight] [--base-url https://openagents.com] [--pylon-ref REF ...]
 
 The bundle JSON shape is the input accepted by projectQwenRemotePylonFineTuneGate:
 { "runRef": "...", "modelRef": "...", "trainingMode": "sampled_projection_lora",

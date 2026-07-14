@@ -24,12 +24,12 @@ Cloudflare Queues.
 
 Topics (`src/topics.ts`) mirror the retired queue names and batch sizes:
 
-| topic                                        | batch | delivery  |
-| -------------------------------------------- | ----- | --------- |
-| `openagents-adjutant-enrichment-jobs`         | 1     | http      |
-| `openagents-event-ledger-ingest`              | 1     | http      |
-| `openagents-pylon-codex-raw-event-metadata`   | 25    | http      |
-| `oa-queue-worker-smoke`                       | 10    | ack-local |
+| topic                                       | batch | delivery  |
+| ------------------------------------------- | ----- | --------- |
+| `openagents-adjutant-enrichment-jobs`       | 1     | http      |
+| `openagents-event-ledger-ingest`            | 1     | http      |
+| `openagents-pylon-codex-raw-event-metadata` | 25    | http      |
+| `oa-queue-worker-smoke`                     | 10    | ack-local |
 
 The retired `openagents-autopilot-runner-events` queue had no producers and
 no consumer; the lane was deleted, not ported. The `oa-queue-worker-smoke`
@@ -39,18 +39,18 @@ INSERT and zero app dependency.
 ## Run / test
 
 ```sh
-bun run --cwd apps/oa-queue-worker test
-bun run --cwd apps/oa-queue-worker typecheck
+pnpm --dir apps/oa-queue-worker run test
+pnpm --dir apps/oa-queue-worker run typecheck
 
 OA_INFRA_DATABASE_URL=postgres://... \
 OA_QUEUE_DELIVERY_TOKEN=... \
-bun run --cwd apps/oa-queue-worker serve
+pnpm --dir apps/oa-queue-worker run serve
 ```
 
 ## Deploy
 
 ```sh
-bun run --cwd apps/oa-queue-worker deploy   # scripts/deploy-cloudrun.sh
+pnpm --dir apps/oa-queue-worker run deploy   # scripts/deploy-cloudrun.sh
 ```
 
 Cloud Run service `oa-queue-worker`, project `openagentsgemini`, region
@@ -60,6 +60,6 @@ Secrets ride GCP Secret Manager (`oa-queue-worker-database-url`,
 
 The jobs table ships with oa-infra: apply
 `packages/oa-infra/migrations/` with
-`bun packages/oa-infra/scripts/migrate.ts --database-url <direct-url>`
+`node --import tsx packages/oa-infra/scripts/migrate.ts --database-url <direct-url>`
 (its own `oa_infra_migrations` ledger, deliberately separate from
 `khala_sync_migrations`).

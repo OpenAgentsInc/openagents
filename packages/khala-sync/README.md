@@ -118,6 +118,6 @@ Spec: `docs/khala-sync/SPEC.md`. Design rationale:
 `docs/fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md`.
 
 ```sh
-bun test packages/khala-sync
-bun run --cwd packages/khala-sync typecheck
+pnpm test packages/khala-sync
+pnpm --dir packages/khala-sync run typecheck
 ```

@@ -23,7 +23,8 @@
     "deploy:openagents-world": "pnpm --dir apps/openagents-world run deploy",
     "smoke:nostr-relay": "pnpm --dir apps/nostr-relay run smoke",
     "check": "pnpm run fmt:check && vp lint --quiet",
-    "check:fast": "vp lint --quiet && node scripts/vp1-retired-money-surface-guard.mjs .",
+    "check:fast": "vp lint --quiet && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs .",
+    "check:zero-supported-bun": "node scripts/zero-supported-bun-guard.mjs .",
     "test": "vp test --run",
     "test:openagents.com": "pnpm --dir apps/openagents.com run test",
     "test:aiur": "pnpm --dir apps/aiur run test",
@@ -178,7 +179,6 @@
   "packageManager": "pnpm@11.10.0",
   "trustedDependencies": [
     "electron",
-    "electrobun",
     "@shopify/react-native-skia"
   ]
 }

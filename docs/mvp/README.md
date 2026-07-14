@@ -58,9 +58,9 @@ direction. It remains a normal `.product-spec.md` file and is validated by the
 repository ProductSpec test sweep alongside `specs/**/*.product-spec.md`.
 
 ```sh
-bun packages/product-spec/src/cli.ts validate \
+node --import tsx packages/product-spec/src/cli.ts validate \
   docs/mvp/openagents-codex-workroom-mvp.product-spec.md
-bun test packages/product-spec/test/product-spec.test.ts
+pnpm test packages/product-spec/test/product-spec.test.ts
 ```
 
 Do not create a second copy under `specs/`; links, issues, dispatch prompts, and
@@ -110,7 +110,7 @@ The reusable tooling is also publicly distributable: npm `latest` resolves to
 `@openagentsinc/assurance-spec@0.1.1`. The
 [`public registry receipt`](../../assurance/assurance-spec-public-registry-receipt.json)
 records exact integrity fields, publish-time parity tests, and the no-auth
-clean-checkout `bunx` proof. Publication distributes the proof tooling; it does
+clean-checkout `pnpm exec` proof. Publication distributes the proof tooling; it does
 not publish RC9 or grant release/public-claim authority.
 
 The target subject is currently ProductSpec format `0.1`, `spec_revision: 6`,
@@ -144,7 +144,7 @@ package (#8758):
   its approval state.
 - [`openagents-codex-workroom-mvp.id-map.json`](./openagents-codex-workroom-mvp.id-map.json)
   — the machine-readable old→new ID map, digest-pinned to both revisions.
-  `bun test packages/product-spec` enforces that the map, revision 6, and
+  `pnpm test packages/product-spec` enforces that the map, revision 6, and
   revision 7 agree exactly.
 - [`openagents-codex-workroom-mvp.rev7-proposed.decision-trace.json`](./openagents-codex-workroom-mvp.rev7-proposed.decision-trace.json)
   — the portable Decision Trace v0.1 companion for the proposed identity

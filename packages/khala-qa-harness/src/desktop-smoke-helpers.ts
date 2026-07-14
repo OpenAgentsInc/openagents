@@ -115,7 +115,8 @@ export const startKhalaQaViteServer = (
 ): KhalaQaViteServer => {
   const proc = Runtime.spawn(
     [
-      "bunx",
+      "pnpm",
+      "exec",
       "vite",
       "--host",
       "127.0.0.1",

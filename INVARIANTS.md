@@ -16,11 +16,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   CLI, test, and repository-tooling code targets the owner-selected Node 24 LTS
   destination; browser, Electron-renderer, React Native/Hermes, and native
   hosts keep their explicit runtime boundaries.
-- Bun is migration-only under the
-  [`Node/pnpm/Vite Plus conversion contract`](docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
-  Do not add a new `Bun.*`, `bun:*`, `bun:test`, Bun shebang, Bun container, or
-  Bun-only package path. Existing allowlisted uses remain factual until their
-  claimed phase ports or deletes them; the final supported path has none.
+- The [`Node/pnpm/Vite Plus conversion contract`](docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md)
+  is complete. No supported runtime, build, test, package, hook, release,
+  deploy, container, or operator path may require the retired runtime.
+  Historical evidence, negative guard fixtures, and detection of third-party
+  installation layouts are the only reviewed textual exceptions.
 - External boundaries must be modeled with typed data structures or Effect
   Schema. Do not add ad hoc keyword routing for user intent, CRM/database
   query routing, retrieval routing, or tool selection.
@@ -152,8 +152,6 @@ More specific invariant ledgers apply inside imported apps and packages.
 - `apps/pylon/` owns contributor-node UX, CLI, and local runtime orchestration.
   It owns no wallet, payout, settlement, or paid-capacity authority.
 - `packages/probe/` owns Probe runtime code and evidence submission helpers.
-
-
 
 ## OpenAgents Cloud (in-repo)
 
@@ -520,7 +518,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `GET /v1/agent-definitions/:id/runs` must first read the definition for the
   authenticated owner, then list only that owner+definition's rows with status,
   trigger, and opaque receipt/evidence refs. `POST
-  /v1/agent-definitions/:id/run-now` may dispatch only through a definition's
+/v1/agent-definitions/:id/run-now` may dispatch only through a definition's
   explicit `manual` trigger and must reuse the same dispatch, budget, lane,
   toolset, Pylon, Forge, and exact-accounting gates as any other trigger.
   Manual run-now must not become an owner-scope bypass or a second dispatch
@@ -1346,7 +1344,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   Activation alone accepts no fabricated work. The private continuation route
   requires exactly one unique turn for the canonical root and every child, an
   installed stage-planned provider lease, and one real bounded `oa-workroomd
-  codex session` execution per agent. Only agent/turn refs, monotonic thread
+codex session` execution per agent. Only agent/turn refs, monotonic thread
   cursors, evidence refs, and material exclusion may enter host or guest
   journals; same-operation replay cannot execute a second turn. Focused
   enforcement lives in `apps/pylon/tests/portable-session-control.test.ts` and

@@ -197,7 +197,7 @@ function normalizedExt(path: string): string {
 function usage(): string {
   return [
     "Usage:",
-    "  bun apps/oa-updates/scripts/publish-desktop-release.ts",
+    "  node --import tsx apps/oa-updates/scripts/publish-desktop-release.ts",
     "    --product autopilot-desktop --channel stable --version 1.2.0 --artifact ./AutopilotDesktop.zip",
     "    [--previous-version 1.1.0 --previous-artifact ./AutopilotDesktop-1.1.0.zip]",
     "    [--out apps/oa-updates/desktop-dist]",

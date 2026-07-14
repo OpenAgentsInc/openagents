@@ -105,4 +105,4 @@ echo "==> running ${FLOW_NAME} on ${SIM_UDID} (captures -> ${CAND})"
   "${FLOW}" )
 
 echo "==> ${VERIFY:-bless} captures into the baseline engine"
-( cd "$REPO_ROOT" && bun packages/khala-qa-harness/src/bless-ios-mobile-visual-baselines.ts "$CAND" "$REPORT" ${VERIFY} )
+( cd "$REPO_ROOT" && node --import tsx packages/khala-qa-harness/src/bless-ios-mobile-visual-baselines.ts "$CAND" "$REPORT" ${VERIFY} )

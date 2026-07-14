@@ -147,8 +147,9 @@ PYLON_SERVING_REAL_GPU_ENDPOINT=http://127.0.0.1:8000/v1/chat/completions \
 PYLON_SERVING_ADMITTED_PYLON_REF=gcloud.gswarm508-clean2-20260325044551-contrib \
 PYLON_SERVING_FABRIC_TRANSPORT_READY=1 \
 PYLON_SERVING_ENGINE_VERSION=vllm@0.10.2+torch2.8.0-cu128 \
-bun apps/pylon/scripts/real-serving-preflight.ts
+node --import tsx apps/pylon/scripts/real-serving-preflight.ts
 ```
+
 - The repurposed L4 host had stale Psion startup metadata and a
   kernel/module mismatch after boot. The setup path now has
   `--clear-startup-script` and existing-VM tag assurance; the live host was
@@ -301,7 +302,7 @@ PYLON_PSIONIC_PROXY_SERVED_MODEL=model.psionic.qwen35.0_8b.q8_0 \
 PYLON_PSIONIC_PROXY_UPSTREAM_MODEL=model.psionic.qwen35.0_8b.q8_0 \
 PYLON_PSIONIC_PROXY_UPSTREAM_URL=http://127.0.0.1:8000/v1/chat/completions \
 PYLON_PSIONIC_PROXY_PORT=8011 \
-bun apps/pylon/scripts/psionic-vllm-proxy.ts
+node --import tsx apps/pylon/scripts/psionic-vllm-proxy.ts
 ```
 
 Use the model id returned by the local vLLM `/v1/models` endpoint for

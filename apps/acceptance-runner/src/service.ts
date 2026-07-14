@@ -14,7 +14,7 @@
 // Optional: ACCEPTANCE_POLL_INTERVAL_MS, ACCEPTANCE_IDLE_BACKOFF_MS,
 //   ACCEPTANCE_NAV_TIMEOUT_MS.
 //
-// Prereq on the host: `bunx playwright install --with-deps chromium`.
+// Prereq on the host: `pnpm exec playwright install --with-deps chromium`.
 
 import process from 'node:process'
 

@@ -8,7 +8,7 @@
  * if an applied file's hash changed on disk.
  *
  * Usage:
- *   bun scripts/migrate.ts [--dry-run] [--database-url <url>]
+ *   node --import tsx scripts/migrate.ts [--dry-run] [--database-url <url>]
  *
  * The connection URL comes from --database-url or KHALA_SYNC_DATABASE_URL.
  * See the README "Migrations runbook" section.
@@ -19,7 +19,7 @@ import {
   runMigrations,
 } from "../src/migrate.js"
 
-const USAGE = `Usage: bun scripts/migrate.ts [--dry-run] [--database-url <url>]
+const USAGE = `Usage: node --import tsx scripts/migrate.ts [--dry-run] [--database-url <url>]
 
 Options:
   --dry-run             Print the migration plan without applying anything.

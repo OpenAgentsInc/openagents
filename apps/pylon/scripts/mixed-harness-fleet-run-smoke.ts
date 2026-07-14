@@ -7,7 +7,7 @@
  * under one claim registry, and prints the receipt proving claim uniqueness
  * under mixed kinds and both closeouts receipted.
  *
- *   bun run --cwd apps/pylon smoke:mixed-harness-fleet-run
+ *   pnpm --dir apps/pylon run smoke:mixed-harness-fleet-run
  *
  * CI-safe by construction (real executors + real in-memory claim registry, mock
  * SDK runners, no key/network/spend).

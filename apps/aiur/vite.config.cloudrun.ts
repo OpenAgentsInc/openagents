@@ -2,7 +2,7 @@
  * Cloud Run build config (CFG-11, #8526). Identical app build to
  * `vite.config.ts` minus the Cloudflare Worker plugin, plus TanStack Start
  * SPA mode so the build prerenders a static shell (`dist/client/_shell/`)
- * that the Bun server (`src/cloudrun/server.ts`) serves for page routes.
+ * that the Node server (`src/cloudrun/server.ts`) serves for page routes.
  * Aiur has no server functions — every page decides what to render from
  * `/api/aiur/access` client-side, so shipping the shell statically keeps
  * the Cloud Run runtime a thin static + proxy server.

@@ -20,7 +20,7 @@
 //      timeline into a black-box scenario committed to the repo.
 //
 // Usage:
-//   bun run src/demo-login.ts [--out ./runs/login] [--headed] [--wrong]
+//   node --import tsx src/demo-login.ts [--out ./runs/login] [--headed] [--wrong]
 //     [--url https://openagents.com]
 //   --wrong points the same scenario at a deliberately-wrong assertion to prove
 //   the runner FAILS honestly.

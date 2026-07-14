@@ -557,7 +557,7 @@ export function loadManifest(path) {
 if (import.meta.main) {
   const manifestPath = process.argv[2];
   if (manifestPath === undefined) {
-    console.error("usage: bun scripts/khala-demo/reduce-head-to-head.mjs <manifest.json>");
+    console.error("usage: node --import tsx scripts/khala-demo/reduce-head-to-head.mjs <manifest.json>");
     process.exit(2);
   }
   const manifest = loadManifest(manifestPath);

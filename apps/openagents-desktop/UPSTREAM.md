@@ -44,7 +44,7 @@ template.
 - Electron Forge + Vite build/packaging pipeline, makers, and the fuse plugin
   (this exit bundles with Bun and runs unpackaged via `electron .`).
 - Vitest/Playwright scaffolding — replaced by the monorepo-standard
-  `bun test` sweep for unit/build oracles; Playwright-driven packaged-app
+  `pnpm test` sweep for unit/build oracles; Playwright-driven packaged-app
   E2E arrives with the packaging/signing exit (#8574 scope 7).
 - Signed/notarized builds, clean-machine first-run smoke, rollback, and the
   updates feed (scope 7), all pending the owner identity freeze (scope 1).

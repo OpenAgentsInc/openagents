@@ -102,12 +102,16 @@ export interface CommandSourceVerifiedResult {
  */
 export function parseCommandFlags(
   commandString: string,
+  scriptPath?: string,
 ): ReadonlyArray<string> {
   if (typeof commandString !== "string" || commandString.trim().length === 0) {
     return []
   }
+  const tokens = commandString.trim().split(/\s+/)
+  const scriptIndex = scriptPath === undefined ? -1 : tokens.indexOf(scriptPath)
+  const commandTokens = scriptIndex === -1 ? tokens : tokens.slice(scriptIndex + 1)
   const flags: Array<string> = []
-  for (const rawToken of commandString.trim().split(/\s+/)) {
+  for (const rawToken of commandTokens) {
     // `--` is end-of-options: everything after it is positional, not a flag.
     if (rawToken === "--") {
       break
@@ -145,7 +149,7 @@ export function evaluateCommandSourceVerified(
 ): CommandSourceVerifiedResult {
   const satisfied: Array<CommandSourceVerifiedEvidenceRef> = []
   const proposedFlags = uniqueFlags(
-    parseCommandFlags(inputs.commandString),
+    parseCommandFlags(inputs.commandString, inputs.scriptPath),
     inputs.expectedFlags ?? [],
   )
   const identity = {

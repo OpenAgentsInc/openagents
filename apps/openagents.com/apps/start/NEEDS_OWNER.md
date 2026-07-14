@@ -4,7 +4,7 @@
 - Staging URL: https://openagents-com-start-staging.openagents.workers.dev
 - Worker name: `openagents-com-start-staging`
 - Current version ID: `01014344-715c-46f2-a71d-6b6ff5db7587`
-- Deploy command: `bun run --cwd apps/openagents.com/apps/start deploy`
+- Deploy command: `pnpm --dir apps/openagents.com/apps/start run deploy`
 - Owner review routes: `/business`, `/docs`, `/docs/api`, `/blog`,
   `/blog/introducing-khala-code`, `/code/download`, `/autopilot`,
   `/autopilot/legal`.

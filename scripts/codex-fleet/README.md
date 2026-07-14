@@ -19,12 +19,12 @@ just subscription quota.
 - **PR-per-agent only.** Workers push `codex-fleet/<promise>` branches and open
   PRs via `gh`. They **never** push to `main`.
 - **No green flips.** The task brief forbids editing the product-promise registry
-  or changing any promise state. Agents build the missing *piece*.
-- **check:deploy is the merge gate.** Each worker runs `bun run check:deploy` and
+  or changing any promise state. Agents build the missing _piece_.
+- **check:deploy is the merge gate.** Each worker runs `pnpm run check:deploy` and
   records pass/fail on the PR. A failing check is reported, not hidden.
 - **No secrets printed or committed.** The auth blob, OAuth tokens, account ids,
   the admin token, and the agent token are never printed. Only public refs,
-  lengths, booleans, statuses, and env-var *names* appear.
+  lengths, booleans, statuses, and env-var _names_ appear.
 - **Per-promise isolation.** Each worker gets its own `CODEX_HOME` and leases one
   subscription account, released after the run, so concurrent workers never
   share or overwrite auth material.
@@ -35,13 +35,13 @@ just subscription quota.
 
 ## Components
 
-| File | What it does |
-|------|--------------|
-| `assign.mjs` | Fetches the public product-promise registry (`https://openagents.com/api/public/product-promises`, browser UA), selects N non-green promises with **buildable, non-owner-gated** blockers, and emits one task brief each. `--priority business` front-loads business-fulfillment promises. Open-PR dedup matches the `codex-fleet/<promise>` branch prefix. |
-| `fetch-codex-auth.mjs` | **The auth crux.** Pulls a Codex OAuth blob from the central device-flow provider-account store and materializes a codex-native `auth.json` under an isolated `CODEX_HOME`. Subcommands: `lease`, `release`, `sanity-all`. |
-| `install-rg-guard.mjs` | Installs the per-run `rg` wrapper used by `worker.sh` so agent searches respect ignore files and cannot traverse heavy generated directories. |
-| `worker.sh` | Given one assignment: `git worktree add` from `origin/main`, `bun install`, fetch central Codex auth into a per-promise `CODEX_HOME`, run `codex exec "<brief>" -m gpt-5.5 -c model_reasoning_effort=xhigh --dangerously-bypass-approvals-and-sandbox --json`, release the lease, run `check:deploy`, commit to branch `codex-fleet/<promise>`, push, open a PR. Emits a one-line JSON result (incl. token usage). |
-| `run.sh` | Orchestrator. Runs a few workers (sequential by default; `--parallel` opt-in), then prints PR URLs + per-worker `check:deploy` status + total tokens. |
+| File                   | What it does                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assign.mjs`           | Fetches the public product-promise registry (`https://openagents.com/api/public/product-promises`, browser UA), selects N non-green promises with **buildable, non-owner-gated** blockers, and emits one task brief each. `--priority business` front-loads business-fulfillment promises. Open-PR dedup matches the `codex-fleet/<promise>` branch prefix.                                                         |
+| `fetch-codex-auth.mjs` | **The auth crux.** Pulls a Codex OAuth blob from the central device-flow provider-account store and materializes a codex-native `auth.json` under an isolated `CODEX_HOME`. Subcommands: `lease`, `release`, `sanity-all`.                                                                                                                                                                                          |
+| `install-rg-guard.mjs` | Installs the per-run `rg` wrapper used by `worker.sh` so agent searches respect ignore files and cannot traverse heavy generated directories.                                                                                                                                                                                                                                                                       |
+| `worker.sh`            | Given one assignment: `git worktree add` from `origin/main`, `pnpm install`, fetch central Codex auth into a per-promise `CODEX_HOME`, run `codex exec "<brief>" -m gpt-5.5 -c model_reasoning_effort=xhigh --dangerously-bypass-approvals-and-sandbox --json`, release the lease, run `check:deploy`, commit to branch `codex-fleet/<promise>`, push, open a PR. Emits a one-line JSON result (incl. token usage). |
+| `run.sh`               | Orchestrator. Runs a few workers (sequential by default; `--parallel` opt-in), then prints PR URLs + per-worker `check:deploy` status + total tokens.                                                                                                                                                                                                                                                               |
 
 ## Usage
 
@@ -109,8 +109,8 @@ Two server tokens, two stages, then a local translation:
 4. **Local translation** into the codex-CLI-native shape and write to
    `CODEX_HOME/auth.json` (0600):
    `{ auth_mode: "chatgpt", OPENAI_API_KEY: null,
-      tokens: { id_token, access_token, refresh_token, account_id },
-      last_refresh }`.
+   tokens: { id_token, access_token, refresh_token, account_id },
+   last_refresh }`.
    (This mirrors the server's own `codexOAuthAuthFromAuthMaterial` extraction in
    `operator-provider-account-routes.ts`.)
 

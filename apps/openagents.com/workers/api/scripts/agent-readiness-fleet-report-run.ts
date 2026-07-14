@@ -17,7 +17,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 // explicitly out-of-repo step.
 //
 // Usage:
-//   bun run scripts/agent-readiness-fleet-report-run.ts \
+//   node --import tsx scripts/agent-readiness-fleet-report-run.ts \
 //     --domain-map ./prospect-domains.local.json \
 //     --api-base https://openagents.com \
 //     --admin-token "$OPENAGENTS_ADMIN_API_TOKEN" \
@@ -71,7 +71,7 @@ const flag = (name: string): boolean => args.includes(name)
 
 const help = (): string =>
   [
-    'Usage: bun run scripts/agent-readiness-fleet-report-run.ts [options]',
+    'Usage: node --import tsx scripts/agent-readiness-fleet-report-run.ts [options]',
     '',
     'OB-3 (#8560) fleet lane: scans each pipelineRef->domain pair with the',
     'real LG-1 agent-readiness prober, renders the OB-3 15-step assessment,',

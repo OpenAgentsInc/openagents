@@ -13,7 +13,7 @@
 // signal that blooms on black; it does not prove the exact on-device GPU look.
 //
 // A tiny Vite dev server transforms the scene TS so we exercise the actual
-// module, not a re-implementation. Run: `bun run scripts/capture-landing.ts`.
+// module, not a re-implementation. Run: `node --import tsx scripts/capture-landing.ts`.
 
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'

@@ -4,9 +4,9 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * Bounded local-Codex real-task smoke (issue #4790, epic #4793). See
  * docs/codex-agent-task-smoke.md for the runbook.
  *
- * Live (default):    PYLON_AGENT_TOKEN=... bun run smoke:codex-agent-task
+ * Live (default):    PYLON_AGENT_TOKEN=... pnpm run smoke:codex-agent-task
  *                      [--base-url https://openagents.com]
- * CI-safe (opt-out): bun run smoke:codex-agent-task -- --ci-safe
+ * CI-safe (opt-out): pnpm run smoke:codex-agent-task -- --ci-safe
  */
 import {
   runCodexAgentTaskCiSmoke,

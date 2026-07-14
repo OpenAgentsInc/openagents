@@ -2,7 +2,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 // End-to-end local proof of the OpenAgents Updates server: stand up the server,
 // publish an update (content-addressed assets), then over REAL HTTP fetch the
 // Expo-Updates manifest and an asset — proving the protocol works on our own
-// infra with no Expo cloud. Run: `bun run apps/oa-updates/scripts/e2e-local.ts`
+// infra with no Expo cloud. Run: `node --import tsx apps/oa-updates/scripts/e2e-local.ts`
 import { buildUpdateFromExport } from "../src/publish-builder.ts"
 import { createUpdatesServer } from "../src/server.ts"
 

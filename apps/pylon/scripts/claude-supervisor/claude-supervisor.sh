@@ -123,8 +123,8 @@ SUP_SELFHEAL_CHECK_SECS="${SUP_SELFHEAL_CHECK_SECS:-30}"
 # unsupported-request ledger and linked open GitHub issues.
 SUP_TASK_POOL_FALLBACK_ISSUES="${SUP_TASK_POOL_FALLBACK_ISSUES:-${SUP_ISSUES:-6310 6311 6320 6354 6355 6358}}"
 
-PYLON=(bun "$REPO_ROOT/apps/pylon/src/index.ts")
-SUP_ORCHESTRATION_STATE_BIN="${SUP_ORCHESTRATION_STATE_BIN:-bun $REPO_ROOT/apps/pylon/src/orchestration/supervisor-state.ts --supervisor claude-supervisor --kind claude --pylon-home $PYLON_HOME}"
+PYLON=(node --import tsx "$REPO_ROOT/apps/pylon/src/index.ts")
+SUP_ORCHESTRATION_STATE_BIN="${SUP_ORCHESTRATION_STATE_BIN:-node --import tsx $REPO_ROOT/apps/pylon/src/orchestration/supervisor-state.ts --supervisor claude-supervisor --kind claude --pylon-home $PYLON_HOME}"
 export SUP_ORCHESTRATION_STATE_BIN
 mkdir -p "$SUP_STATE_DIR"
 

@@ -200,9 +200,9 @@ export async function createCodexFleetOffloadPlan(
         `mkdir -p ${target.remoteHome}/accounts/codex`,
         `tar -C ${target.remoteHome}/accounts/codex -xzf ${remoteArchive}`,
         `cd ${target.remoteRepo}`,
-        `PYLON_HOME=${target.remoteHome} CODEX_HOME=${remoteAccountDir} OPENAGENTS_PYLON_CODEX_CONCURRENCY=1 bun apps/pylon/src/index.ts provider go-online --json`,
-        `PYLON_HOME=${target.remoteHome} CODEX_HOME=${remoteAccountDir} OPENAGENTS_PYLON_CODEX_CONCURRENCY=1 bun apps/pylon/src/index.ts presence heartbeat --json`,
-        `PYLON_HOME=${target.remoteHome} CODEX_HOME=${remoteAccountDir} OPENAGENTS_PYLON_CODEX_CONCURRENCY=1 bun apps/pylon/src/index.ts node`,
+        `PYLON_HOME=${target.remoteHome} CODEX_HOME=${remoteAccountDir} OPENAGENTS_PYLON_CODEX_CONCURRENCY=1 node --import tsx apps/pylon/src/index.ts provider go-online --json`,
+        `PYLON_HOME=${target.remoteHome} CODEX_HOME=${remoteAccountDir} OPENAGENTS_PYLON_CODEX_CONCURRENCY=1 node --import tsx apps/pylon/src/index.ts presence heartbeat --json`,
+        `PYLON_HOME=${target.remoteHome} CODEX_HOME=${remoteAccountDir} OPENAGENTS_PYLON_CODEX_CONCURRENCY=1 node --import tsx apps/pylon/src/index.ts node`,
       ].join(" && ")),
     ].join(" ")
     return {

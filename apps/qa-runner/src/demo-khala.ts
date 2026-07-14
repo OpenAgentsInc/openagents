@@ -18,7 +18,7 @@
 // OpenAI-compatible PROBE_OPENAI_API_KEY fallback (clearly labeled, loop-proof only).
 //
 // Usage:
-//   bun run src/demo-khala.ts [--goal "..."] [--url https://openagents.com]
+//   node --import tsx src/demo-khala.ts [--goal "..."] [--url https://openagents.com]
 //     [--out ./runs/khala] [--headed] [--max-turns 16] [--emit generated/<name>.e2e.ts]
 //     [--no-fallback]
 
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
     `${result.emitters.skill.moduleKind} (tier ${result.emitters.skill.ladderTier}, ${result.emitters.skill.governance.live ? "LIVE" : "candidate/gated"}, releaseGate=${result.emitters.skill.governance.releaseGateRef})`,
   );
 
-  // ".e2e.test.ts": executor-style ".e2e" marker + ".test" so `bun test` and CI
+  // ".e2e.test.ts": executor-style ".e2e" marker + ".test" so `pnpm exec vp test` and CI
   // discover it without an explicit path.
   const outFile = resolve(emitPath ?? join("generated", `${result.emitters.e2e.slug}.e2e.test.ts`));
   mkdirSync(dirname(outFile), { recursive: true });

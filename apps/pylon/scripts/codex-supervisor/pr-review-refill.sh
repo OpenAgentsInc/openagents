@@ -24,7 +24,7 @@
 : "${SUP_PR_REVIEW_PYLON_HOME:=$HOME/.pylon-fable}"
 : "${SUP_PR_REVIEW_BASE_URL:=https://openagents.com}"
 : "${SUP_PR_REVIEW_WORKFLOW:=codex_agent_task}"
-: "${SUP_PR_REVIEW_VERIFY:=bun scripts/check-conflict-markers.mjs}"
+: "${SUP_PR_REVIEW_VERIFY:=node scripts/check-conflict-markers.mjs}"
 : "${SUP_PR_REVIEW_BRANCH:=main}"
 : "${SUP_GH_BIN:=gh}"
 
@@ -340,7 +340,7 @@ sup_pr_review_launch() {
       env \
         PYLON_HOME="$SUP_PR_REVIEW_PYLON_HOME" \
         PYLON_OPENAGENTS_BASE_URL="$SUP_PR_REVIEW_BASE_URL" \
-      bun apps/pylon/src/index.ts khala request \
+      node --import tsx apps/pylon/src/index.ts khala request \
         --account "$account" \
         --prompt "$prompt" \
         --workflow "$SUP_PR_REVIEW_WORKFLOW" \

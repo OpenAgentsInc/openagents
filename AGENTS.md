@@ -2,9 +2,9 @@
 
 ## Scope
 
-This repository is the OpenAgents Effect monorepo. Its owner-selected
-destination is Node + pnpm + Vite Plus; the checked-in implementation remains
-partly Bun-backed until the phased conversion contract lands.
+This repository is the OpenAgents Effect monorepo on Node 24, pnpm, and Vite
+Plus. The conversion contract is complete; supported paths must remain on that
+toolchain.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
@@ -172,17 +172,17 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 Use this when an outside/community user wants to connect their own Codex
 account(s) to Khala so a per-user Artanis can burn down a backlog across their
 fleet ("Artanis as a Service"). It is intentionally DEAD SIMPLE — one short
-command, no long-string pasting, no `PYLON_HOME`/`bun`/repo-path knowledge.
+command, no long-string pasting, no `PYLON_HOME` or repo-path knowledge.
 
 Walk the user through exactly this:
 
 ```sh
-npm install -g @openagentsinc/khala     # Node 20+ or Bun; npm works for everyone
+npm install -g @openagentsinc/khala     # Node 20+
 khala fleet connect                     # connect a Codex account (paste-free device login)
 khala fleet status                      # see your fleet
 ```
 
-Zero-install front door (#8784): `npx @openagentsinc/khala up` (or `bunx`)
+Zero-install front door (#8784): `npx @openagentsinc/khala up`
 needs no install and no account — it initializes/migrates the device-local
 store, starts the local runtime on 127.0.0.1 only, and prints a single-use,
 short-lived pairing URL with the token in the URL fragment
@@ -201,7 +201,7 @@ a friendly install hint.
 - **More accounts = more throughput.** Each `khala fleet connect` auto-assigns
   the next ref (`codex`, then `codex-2`, `codex-3`, …); pass `--account <ref>`
   to name one. Distinct ChatGPT accounts have distinct rate budgets, so each new
-  *distinct* account is real added concurrency.
+  _distinct_ account is real added concurrency.
 - **`khala fleet status`** (alias `khala fleet list`) prints a table of
   connected accounts with readiness (`ready` / `credentials-missing`) and email.
 - **Automatic dispatch uses the connected-account pool.** When Pylon has ready
@@ -253,11 +253,11 @@ Prerequisites:
 - The local Codex login exists, normally `~/.codex/auth.json`. Treat it as
   private local credential material.
 - The Pylon command may be either installed `pylon` or, from this repo,
-  `bun apps/pylon/src/index.ts`. Examples below use `$PYLON` for either form:
+  `node --import tsx apps/pylon/src/index.ts`. Examples below use `$PYLON` for either form:
 
 ```sh
 export PYLON_OPENAGENTS_BASE_URL="https://openagents.com"
-export PYLON="bun apps/pylon/src/index.ts"
+export PYLON="node --import tsx apps/pylon/src/index.ts"
 ```
 
 Run `$PYLON` from a clean worktree at current `origin/main`. If the normal
@@ -368,7 +368,7 @@ $PYLON khala request \
   --repo OpenAgentsInc/openagents \
   --branch main \
   --commit "<current origin/main sha>" \
-  --verify "bun run --cwd apps/openagents.com/workers/api test -- src/path.test.ts" \
+  --verify "pnpm --dir apps/openagents.com/workers/api test -- src/path.test.ts" \
   --json
 ```
 
@@ -574,7 +574,7 @@ Known public-safe steering gaps to keep visible:
   routing test to pooled, third-party, marketplace, or settlement-bearing
   capacity while validating this own-capacity path.
 - The typed coding request path must remain explicit. If `--workflow
-  codex_agent_task` or the equivalent typed MCP/tool field is missing, assume the
+codex_agent_task` or the equivalent typed MCP/tool field is missing, assume the
   request may fall back to normal model routing and stop before running spendful
   work.
 - Counted capacity refs are part of steering correctness, not display-only
@@ -653,7 +653,7 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
 
 - Read `INVARIANTS.md` before changing authority, routing, payment,
   projection, or public-claim surfaces.
-- **One completion gate:** `bun run check` is the repository definition of
+- **One completion gate:** `pnpm run check` is the repository definition of
   green for humans, agents, and owned CI. Run it before considering a task
   complete. Root `test`, `typecheck`, `lint`, and `fmt` commands are components
   of the same workspace-discovered runner; the pre-push hook invokes its
@@ -664,7 +664,7 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   touch an area and find pre-existing breakage (failing tests, lint, type errors,
   doc-coverage/OpenAPI/AGENTS.md drift, stale refs, dead code), **fix it even if you did
   not cause it** rather than stepping around it or deferring. Nothing accumulates: every
-  phase, branch, and PR lands with `bun run check` green — not "green except
+  phase, branch, and PR lands with `pnpm run check` green — not "green except
   the pre-existing reds." If a pre-existing failure is genuinely
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
@@ -730,10 +730,9 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   desktop/mobile binaries (do not 410 it).
 - Keep new TypeScript implementation work on Effect and Effect Schema, and
   target Node for retained server, CLI, test, and repository-tooling code. Do
-  not add new Bun APIs or Bun-only surfaces. Follow
-  `docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`; current Bun
-  commands remain factual until its atomic pnpm/Vite Plus cutover, so do not
-  mechanically rewrite commands ahead of the claimed migration phase.
+  not add runtime-specific APIs or surfaces outside the Node 24 host contract.
+  The `docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`
+  conversion is complete; use pnpm and Vite Plus for supported commands.
   **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
   React+Tailwind clause): the entire repo converts to Effect Native, ASAP**
   — one typed Effect-Schema component set with typed intents, an Effect v4
@@ -804,7 +803,7 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   `apps/oa-updates/scripts/publish-ota.sh` (fingerprint → `expo export` →
   seed → deploy), fully off Expo's CDN.** JS/OTA updates ship through that
   server — never `eas update`. **Builds are local for now** (`expo
-  prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
+prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
   the owner explicitly changes that. Note: `publish-ota.sh` currently
   points at the retired `AutopilotRemoteControl` path and must be
   repointed to the new Expo app when it lands (TS-8).
@@ -852,10 +851,10 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
 - Before publishing ANY npm package from this repo, read
   `apps/pylon/docs/npm-publishing-runbook.md`. The scope is
   `@openagentsinc/` (never `@openagents/`), the auth token lives in
-  workspace `.secrets/npm-publish.env`, `bun publish` is broken against
-  npmjs (use `bun pm pack` + `npm publish <tarball>`), Pylon pre-stable
+  workspace `.secrets/npm-publish.env`; use `pnpm pack` plus
+  `npm publish <tarball>`. Pylon pre-stable
   releases publish under `--tag rc` only, and registry-CDN propagation
-  makes fresh publishes look 404 to bun for minutes — the runbook covers
+  makes fresh publishes look 404 to registry clients for minutes — the runbook covers
   all of it.
 - Keep Git operations scoped to this repository when working here.
 - Do not put individual people’s names in commit messages, commit trailers, or
@@ -863,21 +862,20 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   historically required attribution. Use neutral product, team, source,
   operator, or role wording instead.
 
-
 ## OpenAgents Cloud crates (in-repo)
 
 Managed Cloud infrastructure is **in this monorepo**, not the private
 `OpenAgentsInc/cloud` repo (historical only after #8591).
 
-| Path | Role |
-| --- | --- |
-| `crates/openagents-cloud-contract` | Contract validators + fixture conformance |
-| `crates/oa-codex-control` | Placement / GCE capacity / Cloud-VM control plane |
-| `crates/oa-node` | Managed node daemon |
-| `crates/oa-workroomd` | Workroom sidecar |
-| `crates/oa-cloud-run-bridge` | Historical Cloud Run bridge — not new prod paths |
-| `docs/cloud/` | Contracts, operator docs, invariants, migration receipt |
-| `fixtures/cloud/` | Public-safe Cloud contract fixtures |
+| Path                               | Role                                                    |
+| ---------------------------------- | ------------------------------------------------------- |
+| `crates/openagents-cloud-contract` | Contract validators + fixture conformance               |
+| `crates/oa-codex-control`          | Placement / GCE capacity / Cloud-VM control plane       |
+| `crates/oa-node`                   | Managed node daemon                                     |
+| `crates/oa-workroomd`              | Workroom sidecar                                        |
+| `crates/oa-cloud-run-bridge`       | Historical Cloud Run bridge — not new prod paths        |
+| `docs/cloud/`                      | Contracts, operator docs, invariants, migration receipt |
+| `fixtures/cloud/`                  | Public-safe Cloud contract fixtures                     |
 
 Start with `docs/cloud/README.md` and `docs/cloud/MIGRATION.md` before changing
 Cloud crate behavior. Read `docs/cloud/INVARIANTS.md` before node/workroom/
@@ -902,9 +900,9 @@ and is included in the ProductSpec test sweep; do not create a mirror under
 `specs/`.
 
 - Validate general specs with
-  `bun packages/product-spec/src/cli.ts validate --specs-root specs` and the MVP
+  `node --import tsx packages/product-spec/src/cli.ts validate --specs-root specs` and the MVP
   with `... validate docs/mvp/openagents-codex-workroom-mvp.product-spec.md`
-  (both enforced by `bun test packages/product-spec` in the normal sweep);
+  (both enforced by `pnpm run test:product-spec` in the normal sweep);
   scaffold with `... init specs/<area>/<name>.product-spec.md`.
 - Specs declare and index: link behavior-contract IDs, Eval Suite names,
   promise IDs, and approved durable evidence refs without duplicating their
@@ -914,7 +912,6 @@ and is included in the ProductSpec test sweep; do not create a mirror under
   accidental behavior never silently becomes intent.
 - `tool_metadata` is stripped on public export; no secrets, customer data, or
   private pricing in this tree (private engagement specs live in private repos).
-
 
 ## Sarah — REMOVED (owner direction 2026-07-10, epic #8610)
 

@@ -50,7 +50,7 @@ export interface SmokeTestResult {
 export interface MergeDeployGateInputs {
   readonly prNumbers: ReadonlyArray<number>
   readonly mergeCommitHashes: ReadonlyArray<string>
-  /** Captured exit code of `bun run check:deploy` against main-after-merge. */
+  /** Captured exit code of `pnpm run check:deploy` against main-after-merge. */
   readonly checkDeployExitCode: number
   /** Full stdout of the check:deploy run (scanned for `EXIT=<n>` markers). */
   readonly checkDeployStdout: string

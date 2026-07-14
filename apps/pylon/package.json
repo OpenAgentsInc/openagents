@@ -2,7 +2,7 @@
   "name": "@openagentsinc/pylon",
   "version": "1.0.5",
   "private": false,
-  "description": "Headless, CLI-only Pylon contributor node built on Bun and Effect",
+  "description": "Headless, CLI-only Pylon contributor node built on Node and Effect",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/OpenAgentsInc/pylon.git"

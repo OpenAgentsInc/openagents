@@ -507,8 +507,8 @@ export const khalaCodeInstall = {
   sourceBuildCommands:
     'git clone --depth 1 https://github.com/OpenAgentsInc/openagents\n' +
     'cd openagents\n' +
-    'bun install\n' +
-    'bun run dev:khala-code-desktop',
+    'pnpm install\n' +
+    'pnpm run dev:khala-code-desktop',
 } as const
 
 export const legalVerifiedStats = [

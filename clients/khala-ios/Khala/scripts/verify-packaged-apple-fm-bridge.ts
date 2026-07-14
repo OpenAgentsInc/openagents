@@ -3,7 +3,7 @@
  * Pre-notarization gate for Khala macOS Apple FM support.
  *
  * Usage:
- *   bun scripts/verify-packaged-apple-fm-bridge.ts /path/to/Khala.app
+ *   node --import tsx scripts/verify-packaged-apple-fm-bridge.ts /path/to/Khala.app
  *
  * Exit 0 only when the built app contains a non-empty executable
  * `Contents/Resources/app/apple-fm-bridge/foundation-bridge` helper. Set
@@ -21,7 +21,7 @@ import {
 const bundleDir = process.argv[2]
 
 if (bundleDir === undefined || bundleDir.trim() === "") {
-  console.error("Usage: bun scripts/verify-packaged-apple-fm-bridge.ts /path/to/Khala.app")
+  console.error("Usage: node --import tsx scripts/verify-packaged-apple-fm-bridge.ts /path/to/Khala.app")
   process.exit(2)
 }
 

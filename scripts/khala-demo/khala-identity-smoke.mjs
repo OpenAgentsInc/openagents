@@ -4,7 +4,7 @@
 // the CODE is correct; this proves the DEPLOYED endpoint is. Run AFTER every
 // gateway deploy + periodically against prod. Exit non-zero on any provider leak.
 //
-//   OPENAGENTS_AGENT_TOKEN=... bun scripts/khala-demo/khala-identity-smoke.mjs [baseUrl]
+//   OPENAGENTS_AGENT_TOKEN=... node --import tsx scripts/khala-demo/khala-identity-smoke.mjs [baseUrl]
 //
 const SELFTEST = process.argv.includes('--selftest')
 const BASE = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'https://openagents.com'

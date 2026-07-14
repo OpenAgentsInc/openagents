@@ -19,13 +19,13 @@
  *
  * Offline (default) — composes and dereferences the receipt with no network:
  *
- *   bun packages/nip90/scripts/lbr-closeout-proof.ts
+ *   node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts
  *
  * Relay smoke (optional) — also publishes the four events to a scoped market
  * relay and reads them back, proving the lifecycle is dippable on the relay
  * before the closeout binds it:
  *
- *   bun packages/nip90/scripts/lbr-closeout-proof.ts --relay https://relay.openagents.com
+ *   node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts --relay https://relay.openagents.com
  */
 
 import {

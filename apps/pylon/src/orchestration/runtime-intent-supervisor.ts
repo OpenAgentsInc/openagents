@@ -47,7 +47,7 @@ import { runtimeSiblingAccountDiscoveryEnv } from "./runtime-account-discovery.j
  * Run it directly:
  *
  *   OPENAGENTS_ADMIN_API_TOKEN=... OPENAGENTS_AGENT_TOKEN=... \
- *     bun apps/pylon/src/orchestration/runtime-intent-supervisor.ts \
+ *     node --import tsx apps/pylon/src/orchestration/runtime-intent-supervisor.ts \
  *     --pylon-home ~/.pylon --owner-user-id <linked-user-id>
  *
  * Stop it with SIGINT/SIGTERM (Ctrl-C) — the loop checks a `stopping` flag

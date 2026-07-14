@@ -148,7 +148,7 @@ export const loadTraceFixtureFromFile = (
 
 const usage = (): string =>
   [
-    "Usage: bun run src/trace-fixture.ts <atif-trajectory.json> [--out fixture.json] [--ref evidence-ref]",
+    "Usage: node --import tsx src/trace-fixture.ts <atif-trajectory.json> [--out fixture.json] [--ref evidence-ref]",
     "",
     "Reads a public-safe ATIF trajectory and writes a redacted reproduction fixture.",
   ].join("\n");

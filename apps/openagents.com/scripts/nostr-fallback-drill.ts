@@ -29,8 +29,8 @@
  * NOSTR_SECRET_KEY env var -- never on argv. No secret is ever emitted or logged.
  *
  * Usage:
- *   bun apps/openagents.com/scripts/nostr-fallback-drill.ts smoke [--relay URL]
- *   bun apps/openagents.com/scripts/nostr-fallback-drill.ts plan   (offline; builds + prints events, no relay)
+ *   node --import tsx apps/openagents.com/scripts/nostr-fallback-drill.ts smoke [--relay URL]
+ *   node --import tsx apps/openagents.com/scripts/nostr-fallback-drill.ts plan   (offline; builds + prints events, no relay)
  */
 
 import {
@@ -77,8 +77,8 @@ const KIND_CONTACTS = 3
 const KIND_RELAY_LIST = 10002
 
 const usage = () => `Usage:
-  bun apps/openagents.com/scripts/nostr-fallback-drill.ts smoke [--relay URL]
-  bun apps/openagents.com/scripts/nostr-fallback-drill.ts plan
+  node --import tsx apps/openagents.com/scripts/nostr-fallback-drill.ts smoke [--relay URL]
+  node --import tsx apps/openagents.com/scripts/nostr-fallback-drill.ts plan
 
 Options:
   --relay <url>   Public relay to publish/read against. Defaults to ${defaultRelay}.

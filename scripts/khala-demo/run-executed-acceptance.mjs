@@ -17,11 +17,11 @@
 //      EXECUTED khala-code verdict (executed:true, verification, scalarReward).
 //   5. Prints both verdicts as JSON and exits non-zero when not verified.
 //
-// Prereq: `bunx playwright install chromium`.
+// Prereq: `pnpm exec playwright install chromium`.
 //
 // Usage:
-//   bun scripts/khala-demo/run-executed-acceptance.mjs [artifact.html] [--json]
-//   cat artifact.html | bun scripts/khala-demo/run-executed-acceptance.mjs -
+//   node --import tsx scripts/khala-demo/run-executed-acceptance.mjs [artifact.html] [--json]
+//   cat artifact.html | node --import tsx scripts/khala-demo/run-executed-acceptance.mjs -
 
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'

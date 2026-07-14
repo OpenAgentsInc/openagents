@@ -19,7 +19,7 @@
 // tests gating Landing as a live tokens-served surface).
 //
 // A tiny Vite dev server transforms the app TS so we exercise the actual
-// modules. Run: `bun run scripts/capture-khala-tokens-pill.ts`.
+// modules. Run: `node --import tsx scripts/capture-khala-tokens-pill.ts`.
 
 import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

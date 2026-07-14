@@ -20,7 +20,7 @@ exports[`AS-L2 deterministic compiler > identical admitted inputs produce byte-i
   },
   "do_not_edit": true,
   "environment": {
-    "digest": "sha256:69d90d8fa7632614fb448953d5417fd7f1d74a2f57b9dcd8586136c8742aa193",
+    "digest": "sha256:defbda740047df6200ab796d9d1e4f32b98f65e552f58f42a39d373904e5cfec",
     "profile_id": "ENV-OA-LOCAL-NODE-1",
     "revision": 1
   },

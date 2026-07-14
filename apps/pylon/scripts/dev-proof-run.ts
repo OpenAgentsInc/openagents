@@ -15,7 +15,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * ids, prompts, credentials, and local absolute paths never reach the file.
  *
  * Usage:
- *   bun apps/pylon/scripts/dev-proof-run.ts \
+ *   node --import tsx apps/pylon/scripts/dev-proof-run.ts \
  *     --adapter codex|claude_agent \
  *     --objective "<public objective summary>" \
  *     [--prompt-file <path>] [--issue <ref>]... [--timeout-seconds <n>] \

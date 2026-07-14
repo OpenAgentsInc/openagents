@@ -45,7 +45,7 @@ export const forgeAutomations: ReadonlyArray<ForgeAutomation> = [
     repositoryFullName: 'OpenAgentsInc/openagents',
     stageKey: 'signal',
     stageName: 'Signal',
-    verificationCommand: 'bun run check:deploy',
+    verificationCommand: 'pnpm run check:deploy',
   },
   {
     branch: 'main',
@@ -64,7 +64,7 @@ export const forgeAutomations: ReadonlyArray<ForgeAutomation> = [
     repositoryFullName: 'OpenAgentsInc/openagents',
     stageKey: 'triage',
     stageName: 'Triage',
-    verificationCommand: 'bun run check:deploy',
+    verificationCommand: 'pnpm run check:deploy',
   },
   {
     branch: 'main',
@@ -83,7 +83,7 @@ export const forgeAutomations: ReadonlyArray<ForgeAutomation> = [
     repositoryFullName: 'OpenAgentsInc/openagents',
     stageKey: 'codegen',
     stageName: 'Code Gen',
-    verificationCommand: 'bun run check:deploy',
+    verificationCommand: 'pnpm run check:deploy',
   },
   {
     branch: 'main',
@@ -102,7 +102,7 @@ export const forgeAutomations: ReadonlyArray<ForgeAutomation> = [
     repositoryFullName: 'OpenAgentsInc/openagents',
     stageKey: 'validate',
     stageName: 'Validate',
-    verificationCommand: 'bun run check:deploy',
+    verificationCommand: 'pnpm run check:deploy',
   },
   {
     branch: 'main',
@@ -121,7 +121,7 @@ export const forgeAutomations: ReadonlyArray<ForgeAutomation> = [
     repositoryFullName: 'OpenAgentsInc/openagents',
     stageKey: 'release',
     stageName: 'Release',
-    verificationCommand: 'bun run check:deploy',
+    verificationCommand: 'pnpm run check:deploy',
   },
   {
     branch: 'main',
@@ -140,7 +140,7 @@ export const forgeAutomations: ReadonlyArray<ForgeAutomation> = [
     repositoryFullName: 'OpenAgentsInc/openagents',
     stageKey: 'document',
     stageName: 'Document',
-    verificationCommand: 'bun run check:deploy',
+    verificationCommand: 'pnpm run check:deploy',
   },
   {
     branch: 'main',
@@ -159,7 +159,7 @@ export const forgeAutomations: ReadonlyArray<ForgeAutomation> = [
     repositoryFullName: 'OpenAgentsInc/openagents',
     stageKey: 'monitor',
     stageName: 'Monitor',
-    verificationCommand: 'bun run check:deploy',
+    verificationCommand: 'pnpm run check:deploy',
   },
   {
     branch: 'main',
@@ -178,7 +178,7 @@ export const forgeAutomations: ReadonlyArray<ForgeAutomation> = [
     repositoryFullName: 'OpenAgentsInc/openagents',
     stageKey: 'deploy',
     stageName: 'Deploy',
-    verificationCommand: 'bun run check:deploy',
+    verificationCommand: 'pnpm run check:deploy',
   },
 ]
 

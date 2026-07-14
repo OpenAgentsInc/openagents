@@ -140,7 +140,7 @@ if [[ -f /etc/openagents-codex-supervisor.env ]]; then
   set +a
 fi
 
-export PATH="$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 export PYLON_HOME="${PYLON_HOME:-/var/lib/openagents-pylon}"
 export PYLON_OPENAGENTS_BASE_URL="${PYLON_OPENAGENTS_BASE_URL:-$BASE_URL}"
 export PYLON_DISABLE_DAEMON_ROUTING="${PYLON_DISABLE_DAEMON_ROUTING:-1}"
@@ -158,7 +158,7 @@ fi
 
 if [[ -z "${SUP_PYLON_REF:-}" ]]; then
   live_ref="$(
-    bun "$REPO_ROOT/apps/pylon/src/index.ts" provider go-online --json 2>/dev/null \
+    node "$REPO_ROOT/apps/pylon/dist/index.mjs" provider go-online --json 2>/dev/null \
       | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('pylonRef') or d.get('pylon',{}).get('ref') or '')" 2>/dev/null \
       || true
   )"
@@ -201,5 +201,5 @@ Installed ${service_name}.
 Next checks:
   systemctl status ${service_name} --no-pager
   journalctl -u ${service_name} -f
-  sudo -u ${service_user} env PYLON_HOME=${pylon_home} bun ${install_dir}/apps/pylon/src/index.ts codex accounts list --json
+  sudo -u ${service_user} env PYLON_HOME=${pylon_home} node ${install_dir}/apps/pylon/dist/index.mjs codex accounts list --json
 EOF

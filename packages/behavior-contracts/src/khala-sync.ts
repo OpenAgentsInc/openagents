@@ -59,7 +59,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "Acceptance is synchronous with the transaction; validation failures ack the mutation and report the error in-band — they never 4xx/block the queue.",
       surface: "openagents.com-worker",
       verification:
-        "KS-3.3 is enforced by the push-engine integration suite in packages/khala-sync-server (executePush against real local Postgres) in that package's normal bun test sweep; the route-level never-4xx mapping is exercised by the openagents.com Worker push route tests.",
+        "KS-3.3 is enforced by the push-engine integration suite in packages/khala-sync-server (executePush against real local Postgres) in that package's normal pnpm exec vp test sweep; the route-level never-4xx mapping is exercised by the openagents.com Worker push route tests.",
     },
     {
       authorityBoundary:
@@ -95,7 +95,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "Offline pushes queue honestly: mutations made while the transport is failing are durably queued and visibly pending — never shown as confirmed — they drain on recovery in the order they were made, and a terminal rejection is retracted and surfaced honestly instead of being silently dropped or presented as success.",
       surface: "khala-sync-client",
       verification:
-        "bun test src/session.test.ts inside packages/khala-sync-client (fake transport, injected time); runs in that package's normal bun test sweep before pushes to main. The session's pending() exposure is the UI-facing pending-vs-confirmed primitive consuming surfaces must use.",
+        "pnpm exec vp test src/session.test.ts inside packages/khala-sync-client (fake transport, injected time); runs in that package's normal pnpm exec vp test sweep before pushes to main. The session's pending() exposure is the UI-facing pending-vs-confirmed primitive consuming surfaces must use.",
     },
     {
       authorityBoundary:
@@ -133,7 +133,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "Synced staleness is never fabricated: any surface consuming Khala Sync derives freshness from the session's real phase plus its last-delta time, never from a fake 'live' default.",
       surface: "khala-sync-client",
       verification:
-        "bun test src/session.test.ts inside packages/khala-sync-client (fake transport, injected clock) enforces the primitives; the desktop Fleet indicator's consumption of the phase primitive is enforced by the DOM oracle of khala_code.fleet.khala_sync_indicator_truthful.v1 in clients/khala-code-desktop/tests/ux-contracts.test.ts (KS-6.2, #8303). Both run in their packages' normal test sweeps before pushes to main.",
+        "pnpm exec vp test src/session.test.ts inside packages/khala-sync-client (fake transport, injected clock) enforces the primitives; the desktop Fleet indicator's consumption of the phase primitive is enforced by the DOM oracle of khala_code.fleet.khala_sync_indicator_truthful.v1 in clients/khala-code-desktop/tests/ux-contracts.test.ts (KS-6.2, #8303). Both run in their packages' normal test sweeps before pushes to main.",
     },
     {
       authorityBoundary:
@@ -253,7 +253,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "Access revocation clears synced state: once access is revoked or native sign-out is proven, the client stops receiving hosted scopes, refuses new mutation, burns queued hosted commands, and clears locally synced hosted state rather than leaving it readable or replayable; the session parks denied or closed instead of silently retrying.",
       surface: "khala-sync-client",
       verification:
-        "The full-stack oracle is the KS-7.1 revocation e2e in apps/openagents.com/workers/api (vitest; real Postgres via local-postgres, skips only on machines without initdb/pg_ctl) and the client-side clearing oracles run in the packages/khala-sync-client bun test sweep. Both suites run in their packages' normal test sweeps before pushes to main; SPEC §7 invariant 7 registration with honest limits lives in apps/openagents.com/INVARIANTS.md.",
+        "The full-stack oracle is the KS-7.1 revocation e2e in apps/openagents.com/workers/api (vitest; real Postgres via local-postgres, skips only on machines without initdb/pg_ctl) and the client-side clearing oracles run in the packages/khala-sync-client pnpm exec vp test sweep. Both suites run in their packages' normal test sweeps before pushes to main; SPEC §7 invariant 7 registration with honest limits lives in apps/openagents.com/INVARIANTS.md.",
     },
     {
       authorityBoundary:
@@ -325,7 +325,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "Sending a message yields an assistant reply: a hosted_khala chat turn a user sends is answered server-side — the send->response loop actually produces a real assistant reply, and when inference cannot answer the turn settles as a terminal error instead of silently hanging forever.",
       surface: "openagents.com-worker",
       verification:
-        "Enforced by the deterministic end-to-end guard apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.e2e.test.ts (runs in the workers/api vitest sweep, `bun run --cwd apps/openagents.com test:api`), which drives runHostedRuntimeTurnDispatch through its injectable seams and asserts a real assistant reply is produced — fail-closed on an empty reply or an errored turn. It would have caught all three shipped regressions (client-group collision, double-encoded intent_json, inference-error orphan); each is a dedicated case that goes red when its fix is reverted. The live counterpart apps/openagents.com/workers/api/scripts/hosted-chat-e2e-smoke.ts does the real API-level send->poll-for-reply against a configurable base URL (gated on ~/work/.secrets/khala-maestro.env creds; opt-in nightly step in docs/qa/khala-code-nightly-matrix.md).",
+        "Enforced by the deterministic end-to-end guard apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.e2e.test.ts (runs in the workers/api vitest sweep, `pnpm --dir apps/openagents.com run test:api`), which drives runHostedRuntimeTurnDispatch through its injectable seams and asserts a real assistant reply is produced — fail-closed on an empty reply or an errored turn. It would have caught all three shipped regressions (client-group collision, double-encoded intent_json, inference-error orphan); each is a dedicated case that goes red when its fix is reverted. The live counterpart apps/openagents.com/workers/api/scripts/hosted-chat-e2e-smoke.ts does the real API-level send->poll-for-reply against a configurable base URL (gated on ~/work/.secrets/khala-maestro.env creds; opt-in nightly step in docs/qa/khala-code-nightly-matrix.md).",
     },
     {
       authorityBoundary:
@@ -366,7 +366,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "A credit_balance change is delivered live over Khala Sync: when the balance projection changes, the new balance is fanned out to an already-subscribed client on the user's personal scope as a DeltaFrame — not merely written to the changelog.",
       surface: "khala-live-hub",
       verification:
-        "bun test src/credit-balance-live-delivery.test.ts inside apps/khala-live-hub drives the real producer → real Postgres changelog → real capture pass → real LiveHub /append → real ScopeHub fan-out to a structural subscriber attached through the same ScopeHub.attachSocket call server.ts uses for a live WebSocket. It runs in that app's normal bun test sweep before pushes to main and skips only on machines without local Postgres binaries (initdb/pg_ctl).",
+        "pnpm exec vp test src/credit-balance-live-delivery.test.ts inside apps/khala-live-hub drives the real producer → real Postgres changelog → real capture pass → real LiveHub /append → real ScopeHub fan-out to a structural subscriber attached through the same ScopeHub.attachSocket call server.ts uses for a live WebSocket. It runs in that app's normal pnpm exec vp test sweep before pushes to main and skips only on machines without local Postgres binaries (initdb/pg_ctl).",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,

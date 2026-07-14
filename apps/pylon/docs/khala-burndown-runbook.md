@@ -44,7 +44,7 @@ pylon khala burndown \
   --roadmap docs/khala/2026-06-26-khala-open-issues-master-roadmap.md \
   --repo OpenAgentsInc/openagents \
   --commit <40-char-origin-main-sha> \
-  --verify "bun run --cwd apps/pylon test" \
+  --verify "pnpm --dir apps/pylon run test" \
   --max-parallel 3 \
   --iterations 1 \
   --json
@@ -62,7 +62,7 @@ pylon khala burndown \
   --issues 6356,6357,6358 \
   --repo OpenAgentsInc/openagents \
   --commit <40-char-origin-main-sha> \
-  --verify "bun run --cwd apps/pylon test" \
+  --verify "pnpm --dir apps/pylon run test" \
   --max-parallel 3 \
   --iterations 1 \
   --execute \
@@ -97,7 +97,7 @@ For each successful slot:
 If an OpenAgents Worker surface changed, deploy through the repo-safe path only:
 
 ```sh
-bun run --cwd apps/openagents.com/workers/api deploy:safe
+pnpm --dir apps/openagents.com/workers/api run deploy:safe
 ```
 
 Never use raw `wrangler deploy` for the openagents.com Worker.

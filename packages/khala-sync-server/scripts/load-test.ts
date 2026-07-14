@@ -8,13 +8,13 @@
  * or staging Cloud SQL over TLS) or the deployed Worker routes.
  *
  * Usage:
- *   bun scripts/load-test.ts --mode substrate --database-url <url> \
+ *   node --import tsx scripts/load-test.ts --mode substrate --database-url <url> \
  *     [--workers 40] [--pushes-per-second 2] [--batch 2] [--readers 10] \
  *     [--read-interval-ms 1000] [--duration-sec 300] [--pool 16] \
  *     [--ssl require|verify|disable] [--run-id <id>] [--no-cleanup] \
  *     [--json-out <file>]
  *
- *   KHALA_LOAD_TOKEN=<agent bearer> bun scripts/load-test.ts --mode http \
+ *   KHALA_LOAD_TOKEN=<agent bearer> node --import tsx scripts/load-test.ts --mode http \
  *     --base-url https://openagents-staging.openagents.workers.dev \
  *     [--database-url <url>]   # optional: enables post-run cleanup
  *
@@ -41,8 +41,8 @@ import {
 import type { SyncSql } from "../src/sql.js"
 
 const USAGE = `Usage:
-  bun scripts/load-test.ts --mode substrate --database-url <url> [options]
-  KHALA_LOAD_TOKEN=<bearer> bun scripts/load-test.ts --mode http --base-url <origin> [options]
+  node --import tsx scripts/load-test.ts --mode substrate --database-url <url> [options]
+  KHALA_LOAD_TOKEN=<bearer> node --import tsx scripts/load-test.ts --mode http --base-url <origin> [options]
 
 Options:
   --mode substrate|http     Direct engine against Postgres, or deployed Worker routes.

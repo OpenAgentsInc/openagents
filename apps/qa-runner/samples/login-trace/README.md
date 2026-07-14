@@ -29,5 +29,5 @@ public-safe (no secrets/tokens/raw provider ids).
 Regenerate from a run dir:
 
 ```
-bun run src/atif-emit.ts --run ./runs/<run> --out ./samples/<name> --session-id <id>
+node --import tsx src/atif-emit.ts --run ./runs/<run> --out ./samples/<name> --session-id <id>
 ```

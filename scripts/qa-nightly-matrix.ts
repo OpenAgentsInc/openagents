@@ -1441,7 +1441,7 @@ The full fixture QA matrix should pass: harness suite, desktop verify, visual sm
 ### Reproduction steps
 
 1. Check out the repository commit used by the owned runner.
-2. Run \`bun run qa:nightly\`.
+2. Run \`pnpm run qa:nightly\`.
 3. Inspect \`${report.reportMarkdownPath}\` and the step logs referenced above.
 
 ### Public-safe evidence
@@ -1490,7 +1490,7 @@ The explorer should eventually exercise each manifest coverage class, or the mis
 ### Reproduction steps
 
 1. Check out the repository commit used by the owned runner.
-2. Run \`bun run qa:nightly\`.
+2. Run \`pnpm run qa:nightly\`.
 3. Inspect \`${report.coverageFrontierReportPath}\` and \`${report.coverageSteeringInputPath}\`.
 
 ### Public-safe evidence
@@ -1550,7 +1550,7 @@ Each budget should stay flat or improve, or a child optimization issue should be
 ### Reproduction steps
 
 1. Check out the repository commit used by the owned runner.
-2. Run \`bun run qa:nightly\`.
+2. Run \`pnpm run qa:nightly\`.
 3. Inspect \`${report.statusSurfaceJsonPath}\` and the \`latencyBudgets.trends\` rows.
 
 ### Sample evidence
@@ -1614,7 +1614,7 @@ Every enforced behavior contract should pass its registry, oracle-coverage, and 
 ### Reproduction steps
 
 1. Check out the repository commit used by the owned runner.
-2. Run \`bun run qa:nightly\`.
+2. Run \`pnpm run qa:nightly\`.
 3. Inspect \`${report.behaviorContractReceiptPath}\` and the failed checks listed below.
 
 ### Failing checks
@@ -1663,7 +1663,7 @@ The first attempt should pass deterministically. A pass-after-fail must remain t
 ### Reproduction steps
 
 1. Check out the repository commit used by the owned runner.
-2. Run \`bun run qa:nightly\`.
+2. Run \`pnpm run qa:nightly\`.
 3. Inspect \`${report.quarantineLedgerPath}\` and the first-attempt/retry logs listed above.
 
 ### Public-safe evidence

@@ -701,52 +701,52 @@ The replacement/disposal and correlation oracles are
 From the repository root:
 
 ```sh
-bun install
-bun test apps/openagents-desktop
-bun run --cwd apps/openagents-desktop typecheck
-OPENAGENTS_DESKTOP_SMOKE=1 bun run --cwd apps/openagents-desktop smoke
+pnpm install
+pnpm test apps/openagents-desktop
+pnpm --dir apps/openagents-desktop run typecheck
+OPENAGENTS_DESKTOP_SMOKE=1 pnpm --dir apps/openagents-desktop run smoke
 ```
 
 The focused Codex-history oracle is:
 
 ```sh
-bun test apps/openagents-desktop/tests/codex-history.e2e.test.ts
+pnpm test apps/openagents-desktop/tests/codex-history.e2e.test.ts
 ```
 
 The Runtime Gateway seam oracle is:
 
 ```sh
-bun test apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts
+pnpm test apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts
 ```
 
 The host persistence oracle is:
 
 ```sh
-bun test apps/openagents-desktop/tests/desktop-sync-host.test.ts
+pnpm test apps/openagents-desktop/tests/desktop-sync-host.test.ts
 ```
 
 The native-session custody oracle is:
 
 ```sh
-bun test apps/openagents-desktop/tests/desktop-session-vault.test.ts
+pnpm test apps/openagents-desktop/tests/desktop-session-vault.test.ts
 ```
 
 The recovered-session oracle is:
 
 ```sh
-bun test apps/openagents-desktop/tests/desktop-session-recovery.test.ts
+pnpm test apps/openagents-desktop/tests/desktop-session-recovery.test.ts
 ```
 
 The loopback PKCE entry/exit oracle is:
 
 ```sh
-bun test apps/openagents-desktop/tests/desktop-session-pkce.test.ts
+pnpm test apps/openagents-desktop/tests/desktop-session-pkce.test.ts
 ```
 
 The turn-checkpoint oracle is:
 
 ```sh
-bun test apps/openagents-desktop/tests/turn-checkpoints.test.ts
+pnpm test apps/openagents-desktop/tests/turn-checkpoints.test.ts
 ```
 
 ## Release artifact and update-safety guarantees (#8786)

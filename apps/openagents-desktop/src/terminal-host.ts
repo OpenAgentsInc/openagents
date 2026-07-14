@@ -11,12 +11,12 @@
  * process group (`detached: true`), which gives us a real child-process TREE we
  * can kill as a unit (`kill(-pgid)`), real stdin steering, real stdout/stderr,
  * and a real exit code — with ZERO native dependencies, so it runs identically
- * under `bun test` (the verify runtime) and in Electron main.
+ * under `pnpm exec vp test` (the verify runtime) and in Electron main.
  *
  * NODE-PTY (documented, deferred). `node-pty` is the standard pseudo-TTY and is
  * the intended enhanced backend (line editing / colors / `isatty`). It is NOT
  * wired as the default here for two receipted reasons: (1) under Bun — the
- * runtime `bun test` uses — `node-pty` loads its native addon but its
+ * runtime `pnpm exec vp test` uses — `node-pty` loads its native addon but its
  * fork-helper spawn fails (`posix_spawnp failed`), so it cannot back the
  * adversarial suite or the built-host receipt; (2) its shipped prebuilds do not
  * match this environment's Node/Electron ABI, so an Electron backend needs an

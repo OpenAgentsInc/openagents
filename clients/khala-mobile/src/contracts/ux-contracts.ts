@@ -101,7 +101,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Signed-out Khala Mobile users see exactly one primary action: Sign in with GitHub. The app must not probe Tailnet or require a desktop before showing that action.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts tests/khala-auth-state-machine.test.ts tests/mobile-openauth.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/ux-contracts.test.ts tests/khala-auth-state-machine.test.ts tests/mobile-openauth.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -135,7 +135,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "A stored/leftover credential (e.g. from a prior auth model, or a revoked session that Keychain data otherwise carries across a TestFlight build update) must never silently skip the sign-in screen. Every app launch re-validates a stored credential against the server before treating the app as signed in, exactly like a fresh sign-in does; an invalid one is cleared so the user sees the real GitHub sign-in screen. Filed after a real TestFlight build carried forward a stale pre-pivot session and skipped straight to old signed-in UI.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/khala-auth-resume-verify-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/khala-auth-resume-verify-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -168,7 +168,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "A credential predating the current auth model is force-cleared on the next launch, regardless of whether it would still authenticate against the server. Filed after a TestFlight build shipping the server-revalidation fix still skipped the GitHub sign-in screen and landed on a stale identity's UI — the leftover token was technically still valid server-side, so revalidation alone let it through.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/khala-auth-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/khala-auth-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -201,7 +201,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "A thread-list (or any scope-entities read) that gets stuck in the sync session's must_refetch phase is never shown as an eternal, unexplained loading spinner. It surfaces as a real error with a restart hint, and the hook makes one bounded automatic retry attempt before giving up. Filed after a fresh GitHub sign-in landed on the Khala nav with a permanent 'Loading threads' spinner and no way to tell anything had gone wrong.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/resolve-scope-entities-status.test.ts tests/use-khala-sync-scope-entities.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/resolve-scope-entities-status.test.ts tests/use-khala-sync-scope-entities.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -235,7 +235,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "An OTA reload never fires while the local Khala Sync SQLite runtime still has an open connection that hasn't been given a chance to close first. Filed after a confirmed, reproducible native crash (EXC_BAD_ACCESS/SIGSEGV inside expo-sqlite's AsyncQueue, three occurrences in a row on build 11, 2026-07-06) that hit right around Updates.reloadAsync() — a known expo-sqlite race between an in-flight database request and the JS context being torn down.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/khala-mobile-sync-runtime-registry.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/khala-mobile-sync-runtime-registry.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -268,7 +268,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Loading threads (or any scope-entities read) never spins forever, even when the underlying sync phase genuinely hangs rather than rejecting or reaching the session's must_refetch give-up phase. Filed after build 13 still landed on a permanent 'Loading threads' spinner despite the earlier must_refetch fix — that fix only covers the session's own bounded-retries-exhausted phase, not a request that never settles at all.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/use-khala-sync-scope-entities-watchdog.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/use-khala-sync-scope-entities-watchdog.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -312,7 +312,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Push-to-talk dictation never attempts a native recognition call the availability probe already predicted would fail, and a finished dictation always merges into (never replaces) whatever the user had already typed.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -347,7 +347,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "A running turn's provider (Codex vs Claude) is fixed. Steering a follow-up or queuing behind it must always target that turn's own lane, never whatever the idle composer's lane picker happens to show.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -391,7 +391,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "After a phone interrupt or turn failure, the composer exposes first-class Resume and Retry controls that requeue the same turn on its original lane, rather than forcing the user to start an unrelated new turn.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/ux-contracts.test.ts tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -427,7 +427,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "A coding-delegation prompt built from the mobile app must never carry local paths, Codex auth material, bearer/API tokens, provider secrets, mnemonics/passwords, emails, or high-entropy strings into a typed codex_agent_task request.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -462,7 +462,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The Android build must not regress the 2026-07-05 Kotlin reified-generic fix that unblocked a total clean-build failure in the push-to-talk STT module.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real build evidence: `bun run build:android:local` -> BUILD SUCCESSFUL, recorded in clients/khala-mobile/README.md and the 2026-07-05 audit doc.",
+        "pnpm exec vp test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real build evidence: `pnpm run build:android:local` -> BUILD SUCCESSFUL, recorded in clients/khala-mobile/README.md and the 2026-07-05 audit doc.",
     },
     {
       authorityBoundary:
@@ -487,7 +487,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Fleet account rows in Settings are always ordered by readiness (ready first) rather than raw feed/insertion order, so the most actionable accounts are never buried.",
       surface: "khala-mobile",
       verification:
-        "RETIRED 2026-07-05 (#8487): Settings no longer renders a Fleet section at all. Historical verification: bun test tests/ux-contracts.test.ts.",
+        "RETIRED 2026-07-05 (#8487): Settings no longer renders a Fleet section at all. Historical verification: pnpm exec vp test tests/ux-contracts.test.ts.",
     },
     {
       authorityBoundary:
@@ -537,7 +537,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Settings contains nothing that requires a desktop. Credits and model selection are shown honestly as coming soon until their own issues land, never as fabricated live data.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -573,7 +573,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "OTA updates for Khala Mobile are served exclusively from the self-hosted OpenAgents Updates server, never Expo's hosted EAS Update service.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -600,7 +600,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The desktop-connectivity status dot must resolve promptly on both simulator and device, without the wait time growing linearly with the number of candidate Tailnet hosts.",
       surface: "khala-mobile",
       verification:
-        "RETIRED 2026-07-05 (#8489): the status dot is no longer rendered in AppHeader. Historical verification: bun test tests/ux-contracts.test.ts; the underlying probe function itself remains covered by tests/khala-code-connectivity.test.ts.",
+        "RETIRED 2026-07-05 (#8489): the status dot is no longer rendered in AppHeader. Historical verification: pnpm exec vp test tests/ux-contracts.test.ts; the underlying probe function itself remains covered by tests/khala-code-connectivity.test.ts.",
     },
     {
       authorityBoundary:
@@ -635,7 +635,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "API keys and bearer material are stored only through the secure-store/keychain adapter, never persisted in SQLite, AsyncStorage, source files, or bundled config.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -765,7 +765,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "ChatComposer's Steer/Queue picker, Stop button, and idle lane picker actually render the correct visible state and respond to real presses when mounted as a live React Native component tree, not just via their pure intent-builder functions.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting is enabled by the bun test React Native harness in tests/support/rn-test-environment.ts (see that file's header for how react-native itself becomes importable, and which native-bridge-touching leaves are stubbed).",
+        "pnpm exec vp test tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting is enabled by the pnpm exec vp test React Native harness in tests/support/rn-test-environment.ts (see that file's header for how react-native itself becomes importable, and which native-bridge-touching leaves are stubbed).",
     },
     {
       authorityBoundary:
@@ -824,7 +824,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "RepoPickerScreen's loading, search-filter, repo-select, and error states actually render and respond correctly when mounted as a live React Native component tree — extending the same real-component-mount coverage ChatComposer proved out to the mobile-only MVP straight line's repo-pick step.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/repo-picker-screen.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Extends tests/support/rn-test-environment.ts with a FlatList leaf stub (data.map(renderItem) inside a plain View, no virtualization) — the first contract to need it beyond ChatComposer's original primitives.",
+        "pnpm exec vp test tests/repo-picker-screen.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Extends tests/support/rn-test-environment.ts with a FlatList leaf stub (data.map(renderItem) inside a plain View, no virtualization) — the first contract to need it beyond ChatComposer's original primitives.",
     },
     {
       authorityBoundary:
@@ -919,7 +919,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Permission prompt at the right moment (first task dispatched, not first launch): the OS push-notification permission prompt only ever fires the first time a user dispatches a task (starts a brand-new turn), never on app launch, and never more than once automatically.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/push-registration-core.test.ts tests/push-device-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/push-registration-core.test.ts tests/push-device-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -956,7 +956,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "A new user reaches a running first task in under a minute of active interaction, with honest states at every fork: sign in with GitHub, land with the $10 grant visible, guided repo pick (or skip), a suggested first task (or a custom one), then watch the turn stream — never blocked by a fork the app can't honestly resolve.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/onboarding-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/onboarding-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -993,7 +993,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Push-on-completion is not just a notification that fires (MM-G2, #8486) — tapping it must take the user straight to the thread it's about, reusing the app's own khala://thread/:threadId deep-link scheme.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/push-notify-deep-link-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/push-notify-deep-link-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1058,7 +1058,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Everything uses credits — there is no free execution path. The app's own copy must never imply otherwise (no \"unlimited\", \"free forever\", or \"no cost\" language), even informally.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1179,7 +1179,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "There must be an obvious one-tap way to start a new thread from the thread view. Filed after the owner's report: \"loads but sucks ... also no way to start a new thread.\" The thread header always shows a New thread action that creates a fresh thread and navigates to it.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/khala-thread-header.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/khala-thread-header.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1224,7 +1224,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "A queued or running turn must never trap the user. Filed after the owner's report: \"just the one message and button shows stop, cant do anything.\" Stop cancels the turn and returns the composer to an editable state, and the user can always open the drawer menu or start a new thread even with a turn in flight.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/khala-thread-header.test.tsx tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/khala-thread-header.test.tsx tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1268,7 +1268,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The chat/thread header's left button is a hamburger that opens the drawer flyout menu — not a back button (the old back chevron did not work). Filed after the owner's report that the chat header back button didn't work and should open the drawer nav instead.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/khala-thread-header.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/khala-thread-header.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1313,7 +1313,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "When a user sends a message it must appear in the transcript immediately (optimistic) and persist. Filed after the owner's report that typing a message and hitting send did nothing — the message vanished from the input and never showed in the list.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/use-khala-sync-scope-entities.test.ts tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/use-khala-sync-scope-entities.test.ts tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1347,7 +1347,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Signing out fully ends the web auth session so the next sign-in can choose a different account. Filed after the owner could not switch to a test account: after Sign out, 'Log in with GitHub' silently re-authenticated the same account because the persistent Safari/issuer cookies were reused.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/auth-ephemeral-session.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/auth-ephemeral-session.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1381,7 +1381,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The app's primary background is a very dark navy blue across every screen — dark and clearly navy, not the old warm brown and not pure black.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/theme-colors.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/theme-colors.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1430,7 +1430,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The onboarding welcome heading greets the signed-in user by their GitHub username (`Welcome, <username>`), falling back to a warm generic greeting only when the username is genuinely unavailable.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/onboarding-core.test.ts tests/mobile-openauth.test.ts tests/khala-auth-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. The server side (githubLogin in the /api/mobile/session response) is covered by apps/openagents.com/workers/api/src/auth/mobile-session.test.ts and needs a monolith redeploy before the greeting personalizes on-device.",
+        "pnpm exec vp test tests/onboarding-core.test.ts tests/mobile-openauth.test.ts tests/khala-auth-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. The server side (githubLogin in the /api/mobile/session response) is covered by apps/openagents.com/workers/api/src/auth/mobile-session.test.ts and needs a monolith redeploy before the greeting personalizes on-device.",
     },
     {
       authorityBoundary:
@@ -1466,7 +1466,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The onboarding 'Get started' button is a real, obviously-tappable filled CTA (high-contrast cyan pill with a dark bold label), never an invisible no-fill control — the fill lives on an inner View so it paints under the New Architecture (Fabric), matching the login button fix.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/onboarding-welcome-cta.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the bun test React Native harness in tests/support/rn-test-environment.ts (extended here with a ScrollView leaf stub).",
+        "pnpm exec vp test tests/onboarding-welcome-cta.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the pnpm exec vp test React Native harness in tests/support/rn-test-environment.ts (extended here with a ScrollView leaf stub).",
     },
     {
       authorityBoundary:
@@ -1511,7 +1511,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The Settings 'Sign out' button is a real, clearly-visible tappable control (a neutral outlined pill with a legible label on the dark-navy background), never invisible near-dark text — the fill lives on an inner View so it paints under the New Architecture (Fabric), matching the login and 'Get started' button fixes. It is styled as a secondary/neutral action, not as loud as a primary CTA.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/settings-sign-out-button.test.tsx tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the bun test React Native harness in tests/support/rn-test-environment.ts.",
+        "pnpm exec vp test tests/settings-sign-out-button.test.tsx tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the pnpm exec vp test React Native harness in tests/support/rn-test-environment.ts.",
     },
     {
       authorityBoundary:
@@ -1545,7 +1545,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Delete account is a destructive action isolated in its own section at the very bottom of Settings (below About & diagnostics), never placed directly under Sign out, so a mistap near Sign out cannot land on irreversible account deletion. It stays clearly marked destructive (red), just out of the way.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "pnpm exec vp test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1580,7 +1580,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The Khala Mobile nightly row is defined as owned-runner-only launchd work: iOS Maestro, seeded device monkey, QAM-4 visual capture, named mobile perf budgets, and seam probes all report through typed QA receipts/projection metadata, never hosted CI/EAS; exit remains blocked until seven consecutive passed real nightly receipts exist.",
       surface: "khala-mobile",
       verification:
-        "bun test src/mobile-nightly.test.ts inside apps/qa-runner plus the Khala mobile UX-contract sweep; real nightly execution remains blocked/pending under #8540 until owned-runner receipts exist.",
+        "pnpm exec vp test src/mobile-nightly.test.ts inside apps/qa-runner plus the Khala mobile UX-contract sweep; real nightly execution remains blocked/pending under #8540 until owned-runner receipts exist.",
     },
     {
       authorityBoundary:
@@ -1625,7 +1625,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The Khala Mobile Android lane has a local owned-runner emulator harness and QAM-5 nightly row entries for boot proof, shared Maestro launch/sign-in flow parity, and adb screencap visual-capture parity; #8541 remains open until those flows are green in the nightly row with Android-keyed baseline receipts.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/maestro-policy.test.ts inside clients/khala-mobile plus bun test src/mobile-nightly.test.ts inside apps/qa-runner; real Android emulator execution remains the #8541 exit proof.",
+        "pnpm exec vp test tests/maestro-policy.test.ts inside clients/khala-mobile plus pnpm exec vp test src/mobile-nightly.test.ts inside apps/qa-runner; real Android emulator execution remains the #8541 exit proof.",
     },
     {
       authorityBoundary:
@@ -1660,7 +1660,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Every named post-MVP planned feature suite is authored fixture-first before implementation: Sarah SR-1..3, IAP/minerals, push E2E, Codex connect CX-2, and Agents panel AE-2 all have expected fixture refs, named blocker refs, and honest red/waived cases that future implementation PRs must turn green.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/planned-feature-eval-suites.test.ts inside clients/khala-mobile; runs in the package test glob and the qa:mobile:gate sweep before pushes to main.",
+        "pnpm exec vp test tests/planned-feature-eval-suites.test.ts inside clients/khala-mobile; runs in the package test glob and the qa:mobile:gate sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1691,7 +1691,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "P0.8 launch readiness must stay honest: Khala Mobile is not launch-ready until the owner-gated seed account exists, the full straight-line E2E is receipted on both iOS simulator and Android emulator, and launch promises/copy are reviewed against those receipts.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/launch-readiness.test.ts inside clients/khala-mobile asserts the pending launch-readiness receipt and owner gate stay honest. The contract itself remains pending until #8543's device-only launch truth has real iOS and Android full straight-line receipts.",
+        "pnpm exec vp test tests/launch-readiness.test.ts inside clients/khala-mobile asserts the pending launch-readiness receipt and owner gate stay honest. The contract itself remains pending until #8543's device-only launch truth has real iOS and Android full straight-line receipts.",
     },
     {
       authorityBoundary:
@@ -1729,7 +1729,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The unattended straight-line E2E targets the owner-approved seeded account (AgentFlampy) and its fork (AgentFlampy/openagents) for the repo-pick step, runs every leg that is genuinely runnable headlessly, and records the repo-bind, credits, and push/writeback legs as typed BLOCKED skips — with the writeback leg pending on CX-3's in-VM lane (#8547) — never as fake passes.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/straight-line-e2e.test.ts inside clients/khala-mobile guards the leg registry, flow hygiene, and runner coverage in the normal sweep. The heavy runnable-leg proof is scripts/straight-line-e2e-run.sh on the seeded iOS simulator build (scripts/build-seeded-ios.sh), receipted in docs/khala-mobile/2026-07-09-straight-line-e2e-agentflampy-receipt.md. The contract stays pending until the mobile-user-session gate and CX-3 (#8547) open and the blocked legs earn real receipts.",
+        "pnpm exec vp test tests/straight-line-e2e.test.ts inside clients/khala-mobile guards the leg registry, flow hygiene, and runner coverage in the normal sweep. The heavy runnable-leg proof is scripts/straight-line-e2e-run.sh on the seeded iOS simulator build (scripts/build-seeded-ios.sh), receipted in docs/khala-mobile/2026-07-09-straight-line-e2e-agentflampy-receipt.md. The contract stays pending until the mobile-user-session gate and CX-3 (#8547) open and the blocked legs earn real receipts.",
     },
     {
       authorityBoundary:
@@ -1762,7 +1762,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "P0.9 store submission evidence must stay honest: Khala Mobile P0 is not exited until App Store Connect and Play Console both have real submission IDs and in-review states recorded as registry evidence.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/store-submissions.test.ts inside clients/khala-mobile asserts the not-submitted receipt and owner-console action list stay explicit. The contract remains pending until real App Store Connect and Play Console submission receipts exist.",
+        "pnpm exec vp test tests/store-submissions.test.ts inside clients/khala-mobile asserts the not-submitted receipt and owner-console action list stay explicit. The contract remains pending until real App Store Connect and Play Console submission receipts exist.",
     },
     {
       authorityBoundary:
@@ -1806,7 +1806,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "long-press the Sign in with GitHub button → demo login with example data",
       surface: "khala-mobile",
       verification:
-        "bun test tests/demo-login-mode.test.ts inside clients/khala-mobile asserts the sign-in button wires onLongPress to demo mode, the auth state machine's demo_sign_in_started event lands a signed-in reviewer session, and the credits/repos/model-preference clients plus the sync scope-entity gate all serve hardcoded example fixtures with no network for the demo sentinel token.",
+        "pnpm exec vp test tests/demo-login-mode.test.ts inside clients/khala-mobile asserts the sign-in button wires onLongPress to demo mode, the auth state machine's demo_sign_in_started event lands a signed-in reviewer session, and the credits/repos/model-preference clients plus the sync scope-entity gate all serve hardcoded example fixtures with no network for the demo sentinel token.",
     },
     {
       authorityBoundary:
@@ -1856,7 +1856,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Owner report (2026-07-09): \"i have a ton of stale old ones, disconnect is just like reordering the list not really removing any. this whole thing is super fucked up and needs auditing.\" Disconnecting a Codex account removes it from the visible accounts list immediately and permanently; stale/dead accounts (disconnected, denied, expired, or unhealthy) are never displayed as connected.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/khala-mobile-codex-accounts-core.test.ts tests/khala-mobile-codex-accounts-api.test.ts inside clients/khala-mobile (mobile-core projection filter + disconnect round-trip); server side bun run --cwd apps/openagents.com/workers/api test -- src/provider-accounts.test.ts src/provider-account-mobile-routes.test.ts (disconnect soft-deletes the row so listProviderAccountsForUser no longer returns it, and filterMobileVisibleProviderAccountBundle drops dead residue). All run in the package/repo test sweeps before pushes to main.",
+        "pnpm exec vp test tests/khala-mobile-codex-accounts-core.test.ts tests/khala-mobile-codex-accounts-api.test.ts inside clients/khala-mobile (mobile-core projection filter + disconnect round-trip); server side pnpm --dir apps/openagents.com/workers/api run test -- src/provider-accounts.test.ts src/provider-account-mobile-routes.test.ts (disconnect soft-deletes the row so listProviderAccountsForUser no longer returns it, and filterMobileVisibleProviderAccountBundle drops dead residue). All run in the package/repo test sweeps before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1901,7 +1901,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "Khala Mobile presents the confirmed canonical agent graph as one accessible parent/subagent hierarchy. Status, attention, current action, elapsed time, session/worktree facts, and terminal reason remain typed; tapping an agent selects the same inspect target; historical imports are labeled and never gain live controls; large graphs disclose their deterministic presentation bound.",
       surface: "khala-mobile",
       verification:
-        "bun test src/live-agent-graph-presentation.test.ts in packages/khala-sync-client plus bun test tests/live-agent-graph-panel.test.tsx tests/thread-messages-screen.test.tsx tests/ux-contracts.test.ts in clients/khala-mobile; both package typechecks are run with the known unrelated mobile SQLite-store interface failure recorded separately.",
+        "pnpm exec vp test src/live-agent-graph-presentation.test.ts in packages/khala-sync-client plus pnpm exec vp test tests/live-agent-graph-panel.test.tsx tests/thread-messages-screen.test.tsx tests/ux-contracts.test.ts in clients/khala-mobile; both package typechecks are run with the known unrelated mobile SQLite-store interface failure recorded separately.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,

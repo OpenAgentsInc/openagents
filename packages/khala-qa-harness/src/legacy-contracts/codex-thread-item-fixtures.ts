@@ -57,7 +57,7 @@ export const KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES: readonly KhalaCodeCodexThrea
   {
     item: {
       aggregatedOutput: "pass",
-      command: "bun test",
+      command: "pnpm exec vp test",
       commandActions: [],
       cwd: "/workspace",
       durationMs: 42,

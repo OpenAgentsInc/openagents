@@ -19,11 +19,11 @@ kind proves five capabilities:
 
 ## Status
 
-| Harness | State | Owner |
-| --- | --- | --- |
-| `codex` | GREEN (real fixture) | MH-1 |
-| `claude_code` | GREEN (real fixture) | MH-1 |
-| `grok_cli` | RED by design (`test.todo`, pending) | Grok MH-3/MH-4 |
+| Harness       | State                                | Owner          |
+| ------------- | ------------------------------------ | -------------- |
+| `codex`       | GREEN (real fixture)                 | MH-1           |
+| `claude_code` | GREEN (real fixture)                 | MH-1           |
+| `grok_cli`    | RED by design (`test.todo`, pending) | Grok MH-3/MH-4 |
 
 The codex/claude fixtures are backed by real runtime surfaces: the desktop
 `KhalaCodeDesktopChatTurnEvent` schema (chat), and the pylon
@@ -38,7 +38,7 @@ failures).
    `typecheck` until it is both classified and registered.
 2. **Run-time.** Proven kinds run the full five-capability suite (green);
    pending kinds emit `test.todo` (visible red) and are checked against a
-   known-pending allowlist, so an *unexpected* pending coding kind fails the
+   known-pending allowlist, so an _unexpected_ pending coding kind fails the
    coverage gate.
 
 ## Filling fixtures for a new harness (e.g. `grok_cli`)
@@ -47,7 +47,7 @@ failures).
 2. Flip the registry entry in `src/registry.ts` from `pending` to
    `{ status: "proven", fixture }` and drop the kind from
    `knownPendingHarnessKinds`.
-3. Run `bun run --cwd packages/harness-conformance test`.
+3. Run `pnpm --dir packages/harness-conformance run test`.
 
-Runs in the normal `bun test` / typecheck sweep via `test:harness-conformance`
+Runs in the normal `pnpm test` / typecheck sweep via `test:harness-conformance`
 and `typecheck:harness-conformance`. Not wired into CI/GitHub Actions.

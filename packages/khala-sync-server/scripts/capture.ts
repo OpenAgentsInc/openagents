@@ -10,7 +10,7 @@
  * version).
  *
  * Usage:
- *   bun scripts/capture.ts [--once] [--database-url <url>]
+ *   node --import tsx scripts/capture.ts [--once] [--database-url <url>]
  *     [--hub-append-url <url>] [--poll-interval-ms <n>] [--batch-versions <n>]
  *
  * Env (flags override): KHALA_SYNC_DATABASE_URL, KHALA_SYNC_HUB_APPEND_URL,
@@ -34,7 +34,7 @@ import {
   startCaptureDaemon,
 } from "../src/capture.js"
 
-const USAGE = `Usage: bun scripts/capture.ts [--once] [--database-url <url>]
+const USAGE = `Usage: node --import tsx scripts/capture.ts [--once] [--database-url <url>]
   [--hub-append-url <url>] [--poll-interval-ms <n>] [--batch-versions <n>]
 
 Options:

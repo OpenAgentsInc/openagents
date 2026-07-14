@@ -71,10 +71,10 @@ const codeSnippet = `export const summarizeTool = (name: string) => {
   return "Tool call"
 }`
 
-const terminalOutput = `$ bun run --cwd clients/khala-mobile typecheck
+const terminalOutput = `$ pnpm --dir clients/khala-mobile run typecheck
 $ tsc -p tsconfig.json --noEmit
 
-$ bun run --cwd clients/khala-mobile storybook-generate
+$ pnpm --dir clients/khala-mobile run storybook-generate
 $ sb-rn-get-stories`
 
 const toolOutput = `cwd: /Users/christopherdavid/work/openagents
@@ -223,7 +223,7 @@ export const ApprovalDiagnosticsAndTodos: Story = {
           { label: "Push to main", status: "pending" },
         ]}
       />
-      <KhalaApprovalPrompt body="Allow `bun run typecheck` and `expo export` for this worktree." title="Command permission" />
+      <KhalaApprovalPrompt body="Allow `pnpm run typecheck` and `expo export` for this worktree." title="Command permission" />
       <KhalaDiagnosticCard body="One story imports an app-only native module." title="Storybook runtime error" tone="danger" />
     </View>
   ),

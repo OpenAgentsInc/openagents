@@ -5,10 +5,9 @@
 The owner-selected destination is the repository-wide Node + pnpm + Vite Plus
 conversion in
 [`docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`](../../docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
-Do not add new Bun-only code or new payment, wallet, tip, payout, checkout,
-market, or settlement paths. Current Bun commands and payment invariants below
-remain factual and binding for safe maintenance until a claimed phase lands;
-they do not authorize porting those money paths to Node. The payment phase must
+The Node conversion is complete. Do not add runtime-specific code outside the
+shared Node contracts or new payment, wallet, tip, payout, checkout, market, or
+settlement paths. The payment invariants below remain factual and binding; the payment phase must
 stop new money, reconcile outstanding value, preserve historical receipts and
 applied migrations, withdraw promises, and revoke authority before deletion.
 
@@ -99,18 +98,18 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
 - When the user asks to deploy `openagents.com`, the sanctioned production path
   is the Google Cloud Run monolith script:
   `CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config bash workers/api/scripts/deploy-cloudrun.sh production`.
-  The script builds the web assets, bundles the Bun Cloud Run entrypoint, renders
+  The script builds the web assets, bundles the Node Cloud Run entrypoint, renders
   non-secret env vars, mounts Secret Manager secrets, attaches the Cloud SQL
   instance, and deploys `openagents-monolith` in `us-central1`. Use the
   automation service-account config from the workspace `AGENTS.md`; do not fall
   back to interactive `gcloud`.
 - The old Wrangler/Cloudflare Worker deploy path is legacy for this app. Do not
   report an `openagents.com` production deploy as complete because a Worker or
-  `workers.dev` target deployed. Never use raw `bunx wrangler deploy` /
+  `workers.dev` target deployed. Never use raw `pnpm exec wrangler deploy` /
   `npx wrangler deploy` for `openagents.com` production.
 - Never report deployment success until live smoke checks prove both the document
   and JS asset are reachable on the public domain: `curl -fsSI
-  https://openagents.com/` and the concrete `/assets/index-*.js` URL referenced
+https://openagents.com/` and the concrete `/assets/index-*.js` URL referenced
   by the served HTML must both return 200. For route-specific requests, also
   smoke that route directly, for example `curl -fsSI https://openagents.com/new`.
 - Before changing Worker route/service boundaries, sync/runtime/config code,
@@ -134,7 +133,7 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
   `iconView` or `IconService`; do not add ad hoc SVG paths, Unicode/text icon
   stand-ins, image icon URLs, icon fonts, lucide/react-icons, Iconify, or new
   icon dependencies. If a needed icon is missing, update the upstream Fireball
-  catalog first, then run `bun run sync:icons` and keep `apps/web/src/icon*.test.ts`
+  catalog first, then run `pnpm run sync:icons` and keep `apps/web/src/icon*.test.ts`
   passing.
 - Training and proof replay visual surfaces must use the existing
   `@openagentsinc/three-effect` renderer vocabulary and the visual taxonomy
@@ -201,16 +200,16 @@ settlement, moderation) in the process. Regression coverage lives in
 `init` and `update` both return `[Model, ReadonlyArray<Command<Message>>]`:
 
 ```ts
-type UpdateReturn = readonly [Model, ReadonlyArray<Command<Message>>]
-const withUpdateReturn = M.withReturnType<UpdateReturn>()
+type UpdateReturn = readonly [Model, ReadonlyArray<Command<Message>>];
+const withUpdateReturn = M.withReturnType<UpdateReturn>();
 
 const update = (model: Model, message: Message): UpdateReturn =>
   M.value(message).pipe(
     withUpdateReturn,
     M.tagsExhaustive({
-      ClickedIncrement: () => [evo(model, { count: count => count + 1 }), []],
+      ClickedIncrement: () => [evo(model, { count: (count) => count + 1 }), []],
     }),
-  )
+  );
 ```
 
 Use `evo()` from `foldkit/struct` for immutable model updates. Never spread or `Object.assign`.
@@ -231,8 +230,7 @@ For DOM operations (focus, scroll, modals, scroll lock), Foldkit ships a `Dom` m
 
 ### File Organization
 
-This directory is currently inside the Bun workspace until the atomic
-pnpm/Vite Plus cutover; these are present-tense paths, not the destination:
+This directory is part of the pnpm workspace and uses the Vite Plus toolchain:
 
 - `apps/web/` is the Foldkit/Vite browser app.
 - `workers/api/` is the Cloudflare Worker API and Durable Object surface.
@@ -270,11 +268,11 @@ Test update functions with `foldkit/test`. Since update is pure, tests run witho
 Group all `m()` declarations together with no blank lines between them, then put `S.Union([...])` and `type Message = typeof Message.Type` on adjacent lines:
 
 ```ts
-const ClickedSubmit = m('ClickedSubmit')
-const UpdatedEmail = m('UpdatedEmail', { value: S.String })
+const ClickedSubmit = m("ClickedSubmit");
+const UpdatedEmail = m("UpdatedEmail", { value: S.String });
 
-const Message = S.Union([ClickedSubmit, UpdatedEmail])
-type Message = typeof Message.Type
+const Message = S.Union([ClickedSubmit, UpdatedEmail]);
+type Message = typeof Message.Type;
 ```
 
 Messages are verb-first past-tense. Common prefixes: `Clicked*`, `Updated*` (input changes and external state updates), `Submitted*`, `Pressed*`, `Selected*`, `Succeeded*` / `Failed*` (paired async results), `Completed*` (fire-and-forget), `Got*` (child OutMessage in the Submodel pattern).

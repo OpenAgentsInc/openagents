@@ -21,7 +21,7 @@
  * reconstructed limb-exactly on the Rust side; the corpus tokens are
  * exactly the output-row limbs of the verified records.
  *
- * Run: bun scripts/tassadar-w3-student-prep.ts
+ * Run: node --import tsx scripts/tassadar-w3-student-prep.ts
  */
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'

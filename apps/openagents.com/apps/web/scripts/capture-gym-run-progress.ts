@@ -9,7 +9,7 @@
 // leaks, then writes a screenshot to apps/web/docs/gym/ (mirroring the
 // /trace capture under apps/web/docs/traces/). No app auth / no network.
 //
-// Run: `bun run scripts/capture-gym-run-progress.ts`
+// Run: `node --import tsx scripts/capture-gym-run-progress.ts`
 
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'

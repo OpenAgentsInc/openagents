@@ -55,11 +55,11 @@ device.
 ## Local Development
 
 ```sh
-bun install
-bun run --cwd clients/khala-mobile dev
-bun run --cwd clients/khala-mobile test
-bun run --cwd clients/khala-mobile typecheck
-bun run --cwd clients/khala-mobile architecture:check
+pnpm install
+pnpm --dir clients/khala-mobile run dev
+pnpm --dir clients/khala-mobile run test
+pnpm --dir clients/khala-mobile run typecheck
+pnpm --dir clients/khala-mobile run architecture:check
 ```
 
 ## Local Storybook
@@ -69,9 +69,9 @@ fixtures. It is enabled only through Metro's `STORYBOOK_ENABLED=true` entry
 swap, so normal app bundles do not include Storybook.
 
 ```sh
-bun run --cwd clients/khala-mobile storybook
-bun run --cwd clients/khala-mobile storybook:ios
-bun run --cwd clients/khala-mobile storybook:android
+pnpm --dir clients/khala-mobile run storybook
+pnpm --dir clients/khala-mobile run storybook:ios
+pnpm --dir clients/khala-mobile run storybook:android
 ```
 
 Stories live beside component sources as `*.stories.tsx`, and the generated
@@ -79,7 +79,7 @@ Storybook index lives under `.rnstorybook/storybook.requires.ts`. After adding
 or moving stories, run:
 
 ```sh
-bun run --cwd clients/khala-mobile storybook-generate
+pnpm --dir clients/khala-mobile run storybook-generate
 ```
 
 Keep stories to static, public-safe UI fixtures. Do not connect them to real
@@ -91,7 +91,7 @@ logs.
 Khala Mobile has a package-local Dependency Cruiser check inspired by Ignite:
 
 ```sh
-bun run --cwd clients/khala-mobile architecture:check
+pnpm --dir clients/khala-mobile run architecture:check
 ```
 
 The config lives at `clients/khala-mobile/.dependency-cruiser.cjs`. It checks
@@ -103,8 +103,8 @@ graph (zero cycles across `index.tsx`, `src`, and `tests`), so `no-circular`
 was tightened from warn to error in #8454 and any new cycle now fails
 `architecture:check`.
 
-Documented exceptions are intentionally narrow: Bun's built-in test/plugin
-module is allowed for test support, and type-only native package imports are
+Documented exceptions are intentionally narrow: test-support modules and
+type-only native package imports are
 allowed in pure native helpers while runtime native access remains centralized.
 
 Local Ignite-style scaffolds live under
@@ -153,11 +153,11 @@ public-safe seeded owner/token/thread precondition.
 Build and submit locally only.
 
 ```sh
-bun run --cwd clients/khala-mobile prebuild:ios
-bun run --cwd clients/khala-mobile build:ios:local
+pnpm --dir clients/khala-mobile run prebuild:ios
+pnpm --dir clients/khala-mobile run build:ios:local
 
-bun run --cwd clients/khala-mobile prebuild:android
-bun run --cwd clients/khala-mobile build:android:local
+pnpm --dir clients/khala-mobile run prebuild:android
+pnpm --dir clients/khala-mobile run build:android:local
 ```
 
 For TestFlight, use the native Apple lane after the Xcode archive/export step:
@@ -172,13 +172,13 @@ Team: `HQWSG26L43`.
 
 2026-07-05 receipt: both platforms build clean from zero on this Mac. iOS —
 `expo prebuild --platform ios` into a directory that did not previously exist,
-then `bun run build:ios:local` → `** BUILD SUCCEEDED **`. Android — the
+then `pnpm run build:ios:local` → `** BUILD SUCCEEDED **`. Android — the
 earlier "Java is not installed" blocker was a `JAVA_HOME`/toolchain gap, not a
 missing capability: with `JAVA_HOME` pointed at a JDK 17 install (Android's
 Gradle/AGP/jlink toolchain rejects a bare JDK 26) and `ANDROID_SDK_ROOT` set to
 an installed `android-commandlinetools` SDK (Gradle auto-installs the matching
 NDK/build-tools/platform on first run), `expo prebuild --platform android`
-then `bun run build:android:local` → `BUILD SUCCESSFUL`, producing
+then `pnpm run build:android:local` → `BUILD SUCCESSFUL`, producing
 `android/app/build/outputs/apk/debug/app-debug.apk`. Getting there also
 surfaced and fixed a real bug: `khala-push-to-talk-stt`'s
 `startRecognitionAsync` always threw, so Kotlin inferred its `AsyncFunction`
@@ -201,7 +201,7 @@ natively — the app has no code path that reads that URL. Fixed by dropping
 the flag (`"dev": "expo start"`); the deep link is not needed and should not
 be used. **Verified working end to end** on a booted `iPhone 17 Pro`
 simulator (iOS 26.5) from a completely fresh worktree/build: `expo prebuild
---platform ios` → `bun run build:ios:local` → `** BUILD SUCCEEDED **` →
+--platform ios` → `pnpm run build:ios:local` → `** BUILD SUCCEEDED **` →
 `xcrun simctl install` → plain `expo start --port 8081` → `xcrun simctl
 launch` → Metro bundled cleanly at the then-current Expo Router entry
 (`iOS Bundled 3742ms ...expo-router/entry.js (2454 modules)`) → the app rendered its real Tailnet auto-auth fallback
@@ -220,12 +220,12 @@ build number `8` and Android versionCode `2`; run local prebuild/build again
 and publish a fresh self-hosted OTA baseline for this runtime fingerprint before
 shipping the native build.
 
-2026-07-05 #8470 verification receipt: iOS `bun run --cwd
-clients/khala-mobile prebuild:ios` then `bun run --cwd clients/khala-mobile
-build:ios:local` completed with `** BUILD SUCCEEDED **`. Android `bun run
+2026-07-05 #8470 verification receipt: iOS `pnpm run --cwd
+clients/khala-mobile prebuild:ios` then `pnpm run --cwd clients/khala-mobile
+build:ios:local` completed with `** BUILD SUCCEEDED **`. Android `pnpm run
 --cwd clients/khala-mobile prebuild:android` then
 `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-ANDROID_HOME=/opt/homebrew/share/android-commandlinetools bun run --cwd
+ANDROID_HOME=/opt/homebrew/share/android-commandlinetools pnpm run --cwd
 clients/khala-mobile build:android:local` completed with `BUILD SUCCESSFUL`.
 Runtime smoke on the iPhone 17 iOS 26.5 simulator used a fresh uninstall +
 install of the local Debug build, then plain `expo start`/Metro on
@@ -285,7 +285,7 @@ Regenerate local app icon/adaptive icon/splash assets from the checked-in
 source icon:
 
 ```sh
-bun run --cwd clients/khala-mobile assets:generate
+pnpm --dir clients/khala-mobile run assets:generate
 ```
 
 The script uses macOS `sips` locally and writes

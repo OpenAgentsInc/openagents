@@ -126,7 +126,7 @@ const plan: ArtanisDispatchPlanInput = {
   objective: 'Burn down public issue work per the roadmap.',
   prompt: 'Implement public issue #6320. Burn down public issue work.',
   verify:
-    'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-dispatch-execution.test.ts',
+    'pnpm --dir apps/openagents.com/workers/api run test -- src/artanis-operator-dispatch-execution.test.ts',
 }
 
 let idCounter = 0

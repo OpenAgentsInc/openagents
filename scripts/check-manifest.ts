@@ -13,6 +13,7 @@ export const rootTestTargets: readonly CheckTarget[] = [
   { name: "workspace-check", command: ["pnpm", "exec", "vp", "test", "--run", "scripts/check-workspace.test.ts"] },
   { name: "lint-baseline", command: ["pnpm", "exec", "vp", "test", "--run", "scripts/lint-baseline.test.ts"] },
   { name: "node-vp-inventory", command: ["node", "--test", "scripts/node-vp-cutover-inventory.test.mjs"] },
+  { name: "zero-supported-bun", command: ["node", "--test", "scripts/zero-supported-bun-guard.test.mjs"] },
   { name: "sol-docs", command: ["pnpm", "exec", "vp", "test", "--run", "scripts/check-sol-docs.test.ts"] },
   { name: "qa-pre-push-smoke", command: ["pnpm", "exec", "vp", "test", "--run", "scripts/qa-pre-push-smoke.test.ts"] },
   { name: "qa-async-gce-trigger", command: ["pnpm", "exec", "vp", "test", "--run", "scripts/qa-async-gce-trigger.test.ts"] },
@@ -39,6 +40,7 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   { name: "sol-docs", command: ["pnpm", "run", "check:sol-docs"] },
   { name: "sol-doc-tests", command: ["pnpm", "run", "test:sol-docs"] },
   { name: "node-vp-freeze", command: ["node", "scripts/node-vp-cutover-inventory.mjs", "--check"] },
+  { name: "zero-supported-bun", command: ["node", "scripts/zero-supported-bun-guard.mjs", "."] },
   {
     name: "vp1-retirement",
     command: ["node", "scripts/vp1-retired-money-surface-guard.mjs", "."],

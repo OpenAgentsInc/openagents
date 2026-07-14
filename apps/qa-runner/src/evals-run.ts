@@ -7,7 +7,7 @@
 // no-network/no-spend demo via `--fixtures`.
 //
 // Usage:
-//   bun run src/evals-run.ts --url https://openagents.com --out ./runs/eval
+//   node --import tsx src/evals-run.ts --url https://openagents.com --out ./runs/eval
 //     [--id login-compare] [--reps 1] [--fixtures] [--md]
 //
 // Variants here are illustrative agent configs expressed through the existing

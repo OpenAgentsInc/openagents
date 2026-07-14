@@ -1,6 +1,6 @@
 # OpenAgents Autopilot
 
-A Bun workspace for the Cloudflare-only OpenAgents replacement stack.
+A Node 24 and pnpm workspace for the OpenAgents application stack.
 
 - Web: Foldkit, Vite, Effect
 - API: Cloudflare Workers, Durable Objects, D1, R2, Queues
@@ -27,23 +27,23 @@ Foldkit reference source must stay outside this repo. Use
 ## Getting Started
 
 ```bash
-bun install
-bun run dev:web
+pnpm install
+pnpm run dev:web
 ```
 
 Worker dev:
 
 ```bash
-bun run dev:api
+pnpm run dev:api
 ```
 
 Validation:
 
 ```bash
-bun run typecheck
-bun run test
-bun run lint
-bun run build
+pnpm run typecheck
+pnpm run test
+pnpm run lint
+pnpm run build
 ```
 
 ## Learn More

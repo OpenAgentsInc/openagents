@@ -38,7 +38,7 @@
  *   web_search → tool_use/tool_result cards; reasoning → reasoning lines;
  *   turn.completed usage → turn_completed (exact split, cached separate).
  *
- * This module never imports `electron` (unit-testable under `bun test`).
+ * This module never imports `electron` (unit-testable under `pnpm exec vp test`).
  */
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"

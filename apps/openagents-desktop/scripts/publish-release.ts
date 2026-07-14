@@ -4,7 +4,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * Scripted desktop release publish flow (CUT-26, #8706).
  *
  * Takes one packaged artifact (the notarized `.dmg` or `.zip` from
- * `bun run make:mac`), produces the signed
+ * `pnpm run make:mac`), produces the signed
  * `openagents.desktop.update_manifest.v1` + detached ed25519 signature, and
  * stages them into the dist-dir shape the deployed `apps/oa-updates`
  * serving seam consumes (`openagents-desktop-release.json` descriptor +
@@ -69,7 +69,7 @@ const DEFAULT_ARTIFACT_BASE_URL =
 const usage = (): string =>
   [
     "Usage:",
-    "  bun apps/openagents-desktop/scripts/publish-release.ts",
+    "  node --import tsx apps/openagents-desktop/scripts/publish-release.ts",
     "    --channel <stable|rc> --version <X.Y.Z[-rc.N]> --artifact <path/to/OpenAgents.dmg|.zip>",
     "    [--dist-dir <dir>] [--artifact-url <https-url> | --artifact-base-url <https-base>]",
     "    [--notes-ref <public-safe-ref>] [--released-at <ISO-8601 Z>] [--dry-run]",

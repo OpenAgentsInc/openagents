@@ -150,8 +150,8 @@ SUP_STANDING_TASK_CHECK_SECS="${SUP_STANDING_TASK_CHECK_SECS:-300}"
 # unsupported-request ledger and linked open GitHub issues.
 SUP_TASK_POOL_FALLBACK_ISSUES="${SUP_TASK_POOL_FALLBACK_ISSUES:-${SUP_ISSUES:-6987 6958 6902 6637 6822 6824 6831 6656 6695 6963}}"
 
-PYLON=(bun "$REPO_ROOT/apps/pylon/src/index.ts")
-SUP_ORCHESTRATION_STATE_BIN="${SUP_ORCHESTRATION_STATE_BIN:-bun $REPO_ROOT/apps/pylon/src/orchestration/supervisor-state.ts --supervisor codex-supervisor --kind codex --pylon-home $PYLON_HOME}"
+PYLON=(node --import tsx "$REPO_ROOT/apps/pylon/src/index.ts")
+SUP_ORCHESTRATION_STATE_BIN="${SUP_ORCHESTRATION_STATE_BIN:-node --import tsx $REPO_ROOT/apps/pylon/src/orchestration/supervisor-state.ts --supervisor codex-supervisor --kind codex --pylon-home $PYLON_HOME}"
 export SUP_ORCHESTRATION_STATE_BIN
 mkdir -p "$SUP_STATE_DIR"
 # Wedge telemetry (#6646): epoch-ms timestamp of the most recent dispatch

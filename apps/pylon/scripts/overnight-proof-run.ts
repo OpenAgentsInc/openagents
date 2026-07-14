@@ -32,7 +32,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  *  - m10-overnight-summary.json            final run summary
  *
  * Usage:
- *   bun apps/pylon/scripts/overnight-proof-run.ts \
+ *   node --import tsx apps/pylon/scripts/overnight-proof-run.ts \
  *     --task-repo <scratch git repo> --proofs-dir <dir> --pylon-home <dir> \
  *     [--cycles <n>] [--sleep-seconds <n>] [--deadline-minutes <n>] \
  *     [--run-id <id>]

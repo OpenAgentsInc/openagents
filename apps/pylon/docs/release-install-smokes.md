@@ -10,7 +10,7 @@ The first operator platforms are macOS and Linux only.
 Run from the repo root:
 
 ```sh
-bun run smoke:install:local
+pnpm run smoke:install:local
 ```
 
 This packs the current repo, installs the tarball into a clean temporary Bun
@@ -29,10 +29,10 @@ manually (or by an agent) before any release-bearing change:
 
 ```sh
 # from apps/pylon, on macOS and on Linux
-bun install --frozen-lockfile
-bun run test
-bun pm pack --dry-run
-bun run smoke:install:local
+pnpm install --frozen-lockfile
+pnpm run test
+pnpm pack --dry-run
+pnpm run smoke:install:local
 ```
 
 Run the sequence on both platforms before tagging a release; keep the
@@ -43,7 +43,7 @@ launcher or deprecated OpenAgents Rust Pylon implementation homes.
 The fuller local release gate is still:
 
 ```sh
-bun run release:gate
+pnpm run release:gate
 ```
 
 That local gate runs unit/runtime tests, bootstrap/status/inventory/operator
@@ -65,9 +65,9 @@ npm error code 127   (git dep preparation failed)
 Root cause: `@openagentsinc/nip90` depends on `nostr-effect` as a **git
 dependency** (`github:OpenAgentsInc/nostr-effect#<sha>`). npm runs the
 `prepare` lifecycle script for git deps on consumer install (it does NOT for
-registry tarballs). `nostr-effect`'s old `prepare` ran `bun run setup:hooks`,
+registry tarballs). `nostr-effect`'s old `prepare` ran `pnpm run setup:hooks`,
 which hard-required bun. The working path the tester found was: install bun,
-then `bunx @openagentsinc/pylon` (bun blocks the offending script).
+then `pnpm exec @openagentsinc/pylon` (bun blocks the offending script).
 
 Fixed 2026-06-18 by guarding `nostr-effect`'s `prepare`
 (`scripts/prepare.mjs`, Node-only) so it no-ops on consumer/git-dep installs

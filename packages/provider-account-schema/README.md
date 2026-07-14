@@ -39,5 +39,5 @@ identical everywhere.
 Published under the `@openagentsinc` scope, `effect` resolved via `catalog:`.
 Pylon (`@openagentsinc/pylon-runtime`) takes this as a `workspace:*` dependency
 — the same pattern Pylon already uses for `@openagentsinc/agent-runtime-schema`
-— so `bun pm pack` rewrites it to the concrete version on publish. See
+— so `pnpm pack` rewrites it to the concrete version on publish. See
 `apps/pylon/docs/npm-publishing-runbook.md`.

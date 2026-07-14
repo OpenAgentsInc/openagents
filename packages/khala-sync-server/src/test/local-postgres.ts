@@ -54,7 +54,7 @@ const isExecutable = (file: string): boolean => {
 
 /**
  * Resolve `binary` from PATH (runtime-agnostic `which`: this helper runs
- * under BOTH `bun test` in this package and vitest/Node in the
+ * under BOTH `pnpm exec vp test` in this package and vitest/Node in the
  * `openagents.com` Worker's stitch-seam suite, so no `Bun.*` APIs here).
  */
 const whichOnPath = (binary: string): string | null => {

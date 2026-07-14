@@ -59,5 +59,5 @@ locally after the command returns a
 Run from the repo root:
 
 ```sh
-bun test apps/pylon/tests/wallet.test.ts
+pnpm test apps/pylon/tests/wallet.test.ts
 ```

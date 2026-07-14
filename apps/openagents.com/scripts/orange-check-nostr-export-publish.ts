@@ -27,9 +27,9 @@
  * never on argv. The secret is used to sign locally and is never sent or logged.
  *
  * Usage:
- *   bun apps/openagents.com/scripts/orange-check-nostr-export-publish.ts publish \
+ *   node --import tsx apps/openagents.com/scripts/orange-check-nostr-export-publish.ts publish \
  *     [--relay wss://relay.openagents.com] [--recipient <64-hex>]
- *   bun apps/openagents.com/scripts/orange-check-nostr-export-publish.ts plan
+ *   node --import tsx apps/openagents.com/scripts/orange-check-nostr-export-publish.ts plan
  *     (offline: builds + prints the attestation, no relay)
  */
 
@@ -53,8 +53,8 @@ type RelayMessage = ReadonlyArray<unknown>
 const defaultRelay = 'wss://relay.openagents.com'
 
 const usage = () => `Usage:
-  bun apps/openagents.com/scripts/orange-check-nostr-export-publish.ts publish [--relay URL] [--recipient 64-hex]
-  bun apps/openagents.com/scripts/orange-check-nostr-export-publish.ts plan
+  node --import tsx apps/openagents.com/scripts/orange-check-nostr-export-publish.ts publish [--relay URL] [--recipient 64-hex]
+  node --import tsx apps/openagents.com/scripts/orange-check-nostr-export-publish.ts plan
 
 Options:
   --relay <url>        Relay to publish/read against. Defaults to ${defaultRelay}.

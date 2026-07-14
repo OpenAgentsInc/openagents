@@ -3,7 +3,7 @@ import { createHash } from "node:crypto"
 import type { AssetStore } from "./asset-store.ts"
 
 // Pylon OTA feed. Unlike the desktop (Electrobun) feed, Pylon releases are
-// per-platform `bun --compile` binaries and each release carries the ed25519
+// per-platform Node SEA binaries and each release carries the ed25519
 // release signature + sha256 + kid so the self-updater (#5042) verifies against
 // the PINNED public key and fails closed — host/TLS is never the trust boundary.
 // Channel is `rc` until owner GA; rollout/yank/minVersion gate staged delivery.

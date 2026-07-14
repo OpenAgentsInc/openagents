@@ -141,7 +141,7 @@ cd "$WORKTREE" || { emit "$(result_json error "" skipped null "cd_worktree_faile
 BASE_SHA="$(git rev-parse HEAD)"
 log "base pinned: ${BASE_SHA}"
 
-# Install deps so check:deploy can run. Reuse bun's global cache (fast).
+# Install dependencies so check:deploy can run. Reuse pnpm's shared store.
 log "installing deps (pnpm install)..."
 pnpm install --frozen-lockfile >>"$AGENT_LOG" 2>&1 || log "WARN: pnpm install returned nonzero (continuing)"
 

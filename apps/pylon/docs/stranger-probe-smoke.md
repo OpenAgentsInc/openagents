@@ -21,8 +21,8 @@ Two platform fixes gate this smoke and are live:
 ## What it does
 
 ```
-bun run smoke:stranger-probe              # no-spend, canonical relay
-bun scripts/stranger-probe-smoke.ts --out docs/proofs/<date>-stranger-probe.json
+pnpm run smoke:stranger-probe              # no-spend, canonical relay
+node --import tsx scripts/stranger-probe-smoke.ts --out docs/proofs/<date>-stranger-probe.json
 ```
 
 One run, bounded end to end:
@@ -39,7 +39,7 @@ One run, bounded end to end:
    (default 30 s) over a dedicated bounded subscription.
 5. Classifies every responder as `registered` (its pubkey maps to a
    `/api/pylons` entry) or `unregistered`, recording status, amount, and
-   bolt11 *presence* (never the invoice string).
+   bolt11 _presence_ (never the invoice string).
 6. Emits the typed `openagents.pylon.stranger_probe_smoke.v0.1` artifact:
    request event id, registered-capacity snapshot, responder records with
    mapping verdicts, paid-leg record, and caller-clocked timestamps. The
@@ -49,19 +49,19 @@ One run, bounded end to end:
 
 Exit code 0 means the probe ran cleanly — including the honest
 zero-responder baseline (`verdict.zeroRegisteredResponders: true`), which is
-a *passed* run, not a failure. Exit 2 means a blocker (for example the relay
+a _passed_ run, not a failure. Exit 2 means a blocker (for example the relay
 rejected the request); exit 1 means the harness itself failed.
 
 ### Flags and environment
 
-| Surface | Default | Override |
-| --- | --- | --- |
-| Relay | `wss://relay.openagents.com` | `--relay`, `PYLON_STRANGER_PROBE_RELAY` |
-| Platform base URL | `https://openagents.com` | `--base-url`, `OPENAGENTS_BASE_URL` |
-| Bid | 21 000 msats | `--bid-msats`, `PYLON_STRANGER_PROBE_BID_MSATS` |
-| Collection budget | 30 000 ms | `--budget-ms`, `PYLON_STRANGER_PROBE_BUDGET_MS` |
-| Artifact file | stdout only | `--out <path>` |
-| Paid leg | refused | `--paid` AND `PYLON_STRANGER_PROBE_ALLOW_SPEND=1` |
+| Surface           | Default                      | Override                                          |
+| ----------------- | ---------------------------- | ------------------------------------------------- |
+| Relay             | `wss://relay.openagents.com` | `--relay`, `PYLON_STRANGER_PROBE_RELAY`           |
+| Platform base URL | `https://openagents.com`     | `--base-url`, `OPENAGENTS_BASE_URL`               |
+| Bid               | 21 000 msats                 | `--bid-msats`, `PYLON_STRANGER_PROBE_BID_MSATS`   |
+| Collection budget | 30 000 ms                    | `--budget-ms`, `PYLON_STRANGER_PROBE_BUDGET_MS`   |
+| Artifact file     | stdout only                  | `--out <path>`                                    |
+| Paid leg          | refused                      | `--paid` AND `PYLON_STRANGER_PROBE_ALLOW_SPEND=1` |
 
 ## No-spend default, operator-gated paid leg
 

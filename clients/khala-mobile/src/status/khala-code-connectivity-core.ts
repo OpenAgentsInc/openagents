@@ -1,6 +1,6 @@
 /**
  * MC-5: pure connectivity-resolution logic, free of any native/expo import
- * so it stays unit-testable under `bun test` (expo-device transitively
+ * so it stays unit-testable under `pnpm exec vp test` (expo-device transitively
  * pulls in react-native's Flow-typed entry point, which bun's plain
  * TS/JS parser cannot load). The native-touching wrapper is
  * `./khala-code-connectivity.ts`.

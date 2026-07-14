@@ -181,7 +181,7 @@ export interface ServeOptions {
 
 /**
  * Build a QaControl + verifier from env and start a Bun HTTP server. Returns the
- * Bun server handle. The daemon (daemon.ts) calls this in API mode.
+ * Node server handle. The daemon (daemon.ts) calls this in API mode.
  *
  * Env:
  *   QA_CONTROL_PORT       (default 8787)

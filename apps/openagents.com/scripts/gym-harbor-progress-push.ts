@@ -21,7 +21,7 @@
  * environment and NEVER printed.
  *
  * Usage:
- *   bun scripts/gym-harbor-progress-push.ts \
+ *   node --import tsx scripts/gym-harbor-progress-push.ts \
  *     --result <path/to/result.json> \
  *     --run-ref run.gym.terminal_bench.<id> \
  *     --job-ref job.gym.harbor_terminal_bench.<id> \
@@ -461,7 +461,7 @@ export const projectHarborResultToSnapshot = (
 // ---------------------------------------------------------------------------
 
 const usage = () => `Usage:
-  bun scripts/gym-harbor-progress-push.ts --result <path> --run-ref <ref> \\
+  node --import tsx scripts/gym-harbor-progress-push.ts --result <path> --run-ref <ref> \\
     --job-ref <ref> --config-id <id> --profile-ref <ref> --agent <agent> \\
     [--official-denominator 89] [--publication local_only|web_authorized] \\
     [--phase queued|running|completed|cancelled|errored] [--poll-seconds 15] \\

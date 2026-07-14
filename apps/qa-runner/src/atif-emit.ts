@@ -10,7 +10,7 @@
 // session.mp4 + *.png alongside the emitted files for an in-place viewer.
 //
 // Usage:
-//   bun run src/atif-emit.ts --run ./runs/login --out ./samples/login-trace \
+//   node --import tsx src/atif-emit.ts --run ./runs/login --out ./samples/login-trace \
 //     [--session-id login-trace] [--title "..."]
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const runDir = args.run;
   if (!runDir) {
-    console.error("usage: bun run src/atif-emit.ts --run <runDir> [--out <outDir>] [--session-id <id>] [--title <t>]");
+    console.error("usage: node --import tsx src/atif-emit.ts --run <runDir> [--out <outDir>] [--session-id <id>] [--title <t>]");
     process.exit(2);
   }
   const outDir = args.out ?? runDir;

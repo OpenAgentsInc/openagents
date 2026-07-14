@@ -69,7 +69,7 @@ export const buildDesktop = async (): Promise<string> => {
       // docs/fable/2026-07-11-desktop-startup-speed-audit.md). The renderer
       // (~3.6 MB unminified IIFE) and preload sit on the first-paint critical
       // path, and the main bundle's parse precedes app.whenReady — smaller
-      // bytes parse faster. Measured with `bun run startup-bench`.
+      // bytes parse faster. Measured with `pnpm run startup-bench`.
       minify: BUILD_MINIFY,
       // The Claude Agent SDK must stay external: it resolves its bundled
       // native `claude` executable relative to its own installed package

@@ -2893,7 +2893,7 @@ const createWindow = (): BrowserWindow => {
 }
 
 /**
- * Smoke mode (`bun run smoke`): proves the Effect Native intent loop runs
+ * Smoke mode (`pnpm run smoke`): proves the Effect Native intent loop runs
  * inside the real Electron renderer — types into the catalog-rendered
  * composer, submits, and asserts the message row appended AND the composer
  * cleared (the v29 clear-on-submit contract, effect-native#72). When

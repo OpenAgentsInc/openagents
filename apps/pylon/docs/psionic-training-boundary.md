@@ -50,5 +50,5 @@ claim live Qwen training on contributor devices.
 Run from `apps/pylon`:
 
 ```sh
-bun test tests/psionic-training-boundary.test.ts tests/launch-gates.test.ts --max-concurrency=1
+pnpm test tests/psionic-training-boundary.test.ts tests/launch-gates.test.ts --max-concurrency=1
 ```

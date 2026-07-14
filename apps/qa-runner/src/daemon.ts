@@ -9,7 +9,7 @@
 //      existing runner/evals engine IN-PROCESS (the runner drives a real Chrome
 //      via Playwright, which cannot run inside a Cloudflare Worker — so this
 //      lives on a machine WITH Chrome). Enable with `--api` or
-//      QA_CONTROL_MODE=api. See `bun run api`.
+//      QA_CONTROL_MODE=api. See `pnpm run api`.
 //
 //   2) Lease-loop mode (default) — a pull loop that leases a QA task, runs it
 //      through `runQaSession`, and (later) posts the result receipt back. It is
@@ -49,8 +49,8 @@ function main(): void {
       JSON.stringify({
         kind: "inert",
         message:
-          "qa-runner daemon is inert: no QA_JOB_LEASE_URL configured. Use `bun run run-once` " +
-          "or `bun run demo:login` for local runs. The hosted lease loop + receipt callback " +
+          "qa-runner daemon is inert: no QA_JOB_LEASE_URL configured. Use `pnpm run run-once` " +
+          "or `pnpm run demo:login` for local runs. The hosted lease loop + receipt callback " +
           "are owner-gated follow-ups.",
       }),
     );

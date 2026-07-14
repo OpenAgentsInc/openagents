@@ -2,8 +2,8 @@
  * Main-process-only provider-neutral accounts host adapter (#8712 Fleet
  * overview). Read-only over the pylon CLI from the repo root:
  *
- *   bun apps/pylon/src/index.ts accounts list --json
- *   bun apps/pylon/src/index.ts accounts usage --account <ref> --refresh --json
+ *   node --import tsx apps/pylon/src/index.ts accounts list --json
+ *   node --import tsx apps/pylon/src/index.ts accounts usage --account <ref> --refresh --json
  *
  * SAFETY (repo law, same as ./codex-connect.ts): this service NEVER sets or
  * touches CODEX_HOME or any default provider home. It spawns the read-only

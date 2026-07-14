@@ -23,7 +23,7 @@
  * a Markdown/JSON table.
  *
  * Usage:
- *   bun scripts/khala-demo/emit-metric-table.mjs <manifest.json> [--json]
+ *   node --import tsx scripts/khala-demo/emit-metric-table.mjs <manifest.json> [--json]
  */
 
 import { loadManifest, reduceKhalaHeadToHeadManifest } from "./reduce-head-to-head.mjs";
@@ -209,7 +209,7 @@ if (import.meta.main) {
   const json = args.includes("--json");
   const manifestPath = args.find((arg) => !arg.startsWith("--"));
   if (manifestPath === undefined) {
-    console.error("usage: bun scripts/khala-demo/emit-metric-table.mjs <manifest.json> [--json]");
+    console.error("usage: node --import tsx scripts/khala-demo/emit-metric-table.mjs <manifest.json> [--json]");
     process.exit(2);
   }
   const manifest = loadManifest(manifestPath);

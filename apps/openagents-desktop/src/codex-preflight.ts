@@ -33,7 +33,7 @@
  * completion, and lazily (ensureProbed) before the FIRST dispatch this
  * session if unprobed. Probes run concurrently across accounts.
  *
- * This module never imports `electron` (unit-testable under `bun test`).
+ * This module never imports `electron` (unit-testable under `pnpm exec vp test`).
  */
 import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"

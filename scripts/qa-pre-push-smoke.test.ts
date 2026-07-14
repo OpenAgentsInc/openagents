@@ -60,7 +60,7 @@ describe("qa pre-push smoke command", () => {
     expect(command).toContain("--max-turns")
     expect(command).toContain("8")
     expect(command).toContain("/tmp/qa-pre-push")
-    expect(command.join(" ")).toContain("apps/qa-runner qa run")
+    expect(command.join(" ")).toContain("--dir apps/qa-runner run qa -- run")
   })
 
   test("uses a positive timeout env override only", () => {

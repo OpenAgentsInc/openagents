@@ -32,7 +32,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * (see the workspace NEEDS_OWNER ledger). This script never reads `.secrets`.
  *
  * Usage:
- *   bun scripts/release-preflight.ts [--channel stable|rc] [--latest-released X.Y.Z]
+ *   node --import tsx scripts/release-preflight.ts [--channel stable|rc] [--latest-released X.Y.Z]
  *     [--dmg <path/to/OpenAgents.dmg>] [--app <path/to/OpenAgents.app>]
  *     [--allow-unsigned-dev] [--json]
  */

@@ -32,11 +32,11 @@ without pretending that local UI has authority to create a FleetRun.
 From the monorepo root:
 
 ```bash
-bun install
-bun run dev:openagents-desktop   # builds dist/ and launches Electron
+pnpm install
+pnpm run dev:openagents-desktop   # builds dist/ and launches Electron
 ```
 
-Or from this directory: `bun run dev`.
+Or from this directory: `pnpm run dev`.
 
 What you should see: a neutral chat workspace with a chat rail, an owner
 composer, and **Open Fleet** in the titlebar. A submitted message renders the
@@ -51,7 +51,7 @@ the Pylon contract.
 ## Verify it
 
 ```bash
-bun run --cwd apps/openagents-desktop verify
+pnpm --dir apps/openagents-desktop run verify
 ```
 
 `verify` is the canonical clean-tree gate: typecheck, the complete package test
@@ -112,7 +112,7 @@ build plus Electron teardown receipt.
   - `boot.ts` — `SubscriptionRef` + `makeViewProgramFromState` +
     `makeIntentRegistry` + `makeDomRenderer().mount(...)`, the same
     consumer pattern shared by the OpenAgents Effect Native surfaces.
-- `scripts/build.ts` — Bun bundles main (ESM), preload (CJS, sandboxed),
+- `scripts/build.ts` — Vite Plus bundles main (ESM), preload (CJS, sandboxed),
   and renderer into `dist/`.
 
 Target evolution preserves this boundary rather than widening the preload one

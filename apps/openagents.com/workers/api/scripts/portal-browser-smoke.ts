@@ -28,16 +28,16 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 //       polled until it prints the one-time code, e.g. a Gmail CLI read)
 //
 // Usage:
-//   bun scripts/portal-browser-smoke.ts --base-url https://openagents.com \
+//   node --import tsx scripts/portal-browser-smoke.ts --base-url https://openagents.com \
 //     --out-dir /tmp/portal-smoke --state logged-out
 //   PORTAL_SMOKE_COOKIE='oa_access=...; oa_refresh=...' \
-//     bun scripts/portal-browser-smoke.ts --state logged-in --expect empty
-//   bun scripts/portal-browser-smoke.ts --state logged-in --expect engagement \
+//     node --import tsx scripts/portal-browser-smoke.ts --state logged-in --expect empty
+//   node --import tsx scripts/portal-browser-smoke.ts --state logged-in --expect engagement \
 //     --login-email chris@openagents.com \
 //     --otp-command 'bash scripts/read-signin-code.sh'
 //
 // Requires playwright's chromium once per machine:
-//   bunx playwright install chromium
+//   pnpm exec playwright install chromium
 
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'

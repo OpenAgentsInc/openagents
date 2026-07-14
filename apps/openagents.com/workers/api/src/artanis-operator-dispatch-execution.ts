@@ -68,15 +68,15 @@ const ARTANIS_DISPATCH_EVIDENCE_REF =
 
 const verifyCommandAuthorized = (verify: string): boolean => {
   const isApiTestCommand =
-    /^bun\s+run\s+--cwd\s+apps\/openagents\.com\/workers\/api\s+test(?:\s|$)/.test(
+    /^pnpm\s+--dir\s+apps\/openagents\.com\/workers\/api\s+run\s+test(?:\s|$)/.test(
       verify,
     )
   const decision = authorizeCommandProposal(
     evaluateCommandSourceVerified({
       commandString: verify,
-      declaredFlags: isApiTestCommand ? ['--cwd'] : [],
+      declaredFlags: isApiTestCommand ? ['--dir'] : [],
       dryRunExitCode: isApiTestCommand ? 0 : null,
-      expectedFlags: ['--cwd'],
+      expectedFlags: ['--dir'],
       scriptPath: isApiTestCommand
         ? 'apps/openagents.com/workers/api/package.json'
         : 'unknown',

@@ -7,7 +7,7 @@ const enforced = (contractId: string, statement: string, ref: string): BehaviorC
   evidenceRefs: ["packages/audio-contract/README.md", "github:OpenAgentsInc/openagents#8734"],
   oracles: [{ description: "Executable bounded audio contract/model regression.", id: `${contractId}.model`, kind: "bun-test", mode: "unit", ref }],
   productArea: "persistent voice", source, state: "enforced", statement,
-  surface: "openagents-desktop", verification: "bun run test:audio-contract runs the canonical Effect Schema and lifecycle model regressions; Rust consumes the same media accept/reject corpus.",
+  surface: "openagents-desktop", verification: "pnpm run test:audio-contract runs the canonical Effect Schema and lifecycle model regressions; Rust consumes the same media accept/reject corpus.",
 })
 const pending = (contractId: string, statement: string, issue: number): BehaviorContract => ({
   authorityBoundary: authority, blockerRefs: [`github:OpenAgentsInc/openagents#${issue}`], contractId, enforcementTier: "unenforced",

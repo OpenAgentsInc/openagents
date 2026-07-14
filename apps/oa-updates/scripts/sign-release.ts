@@ -12,7 +12,7 @@
 //      needs no local file)
 // The key is NEVER printed. Output is a detached signature JSON.
 //
-// Usage:  bun sign-release.ts <file-to-sign>  > <file>.sig.json
+// Usage:  node --import tsx sign-release.ts <file-to-sign>  > <file>.sig.json
 import { createPrivateKey, createPublicKey, sign as edSign } from "node:crypto"
 import { readFileSync, existsSync } from "node:fs"
 import { execSync } from "node:child_process"

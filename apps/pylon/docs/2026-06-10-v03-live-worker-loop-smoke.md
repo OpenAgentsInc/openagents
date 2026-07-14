@@ -10,7 +10,7 @@ Registry version during run: `2026-06-10.4`
 
 ```bash
 cd apps/pylon
-PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false bun run smoke:live-worker-loop
+PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false pnpm run smoke:live-worker-loop
 ```
 
 ## Result
@@ -76,7 +76,7 @@ Command:
 
 ```bash
 cd apps/pylon
-PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false bun run smoke:live-worker-loop
+PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false pnpm run smoke:live-worker-loop
 ```
 
 Result:
@@ -120,7 +120,7 @@ Command:
 
 ```bash
 cd apps/pylon
-PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=true bun run smoke:live-worker-loop
+PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=true pnpm run smoke:live-worker-loop
 ```
 
 Result:
@@ -169,7 +169,7 @@ Command:
 
 ```bash
 cd apps/pylon
-PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false bun run smoke:live-worker-loop
+PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false pnpm run smoke:live-worker-loop
 ```
 
 Result:
@@ -212,7 +212,7 @@ Command:
 
 ```bash
 cd apps/pylon
-PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false bun run smoke:live-worker-loop
+PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false pnpm run smoke:live-worker-loop
 ```
 
 Result:

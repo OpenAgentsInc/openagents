@@ -2,6 +2,10 @@
 
 Date: 2026-06-19
 
+> Historical evidence only. The funded-loop smoke and its executable operator
+> harness were retired with the payment surface. Commands below document the
+> 2026-06-19 procedure and must not be used as current OpenAgents operations.
+
 This is the runbook for an external **agent-tester** to exercise the full
 Episode 239 "Let's Make Money" loop end-to-end against the **isolated
 `openagents-staging` Worker** with TEST data. Hammer staging freely — it is
@@ -310,7 +314,7 @@ The smoke keeps `referral_accrual_and_test_settlement` `UNPROVEN` unless the
 public receipt resolves as a settled referral payout receipt on the staging
 Worker. Route-gating checks alone (unknown referral 404 + dashboard 401) are
 not enough for #5520 completion.
-  is admin-gated AND owner-armed; it stays inert. Do not attempt to settle.
+is admin-gated AND owner-armed; it stays inert. Do not attempt to settle.
 
 Because the full referral chain (create source → capture → claim → paid event →
 dashboard) is browser-session-driven, an external agent-tester can confirm the

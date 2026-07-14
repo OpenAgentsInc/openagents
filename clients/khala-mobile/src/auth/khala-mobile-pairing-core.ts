@@ -8,7 +8,7 @@
  *
  * This mirrors the shape of `../status/khala-code-connectivity-core.ts`
  * (MC-5): pure, dependency-injected, free of any native/expo import so it
- * stays unit-testable under `bun test`. The native-touching wrapper is
+ * stays unit-testable under `pnpm exec vp test`. The native-touching wrapper is
  * `./khala-mobile-pairing.ts`.
  *
  * The desktop endpoint this probes, when a diagnostic harness calls it, is

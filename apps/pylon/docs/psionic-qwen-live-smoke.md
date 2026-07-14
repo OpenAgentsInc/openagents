@@ -19,7 +19,7 @@ Use an explicit base URL or set `PYLON_PSIONIC_BASE_URL`. The default remains
 `http://127.0.0.1:8080`.
 
 ```sh
-bun run smoke:psionic-qwen -- --base-url http://127.0.0.1:8080
+pnpm run smoke:psionic-qwen -- --base-url http://127.0.0.1:8080
 ```
 
 The smoke performs:

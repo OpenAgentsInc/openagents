@@ -3251,15 +3251,15 @@ const commandProposalGateForVerify = (
   verify: string,
 ) => {
   const isApiTestCommand =
-    /^bun\s+run\s+--cwd\s+apps\/openagents\.com\/workers\/api\s+test(?:\s|$)/.test(
+    /^pnpm\s+--dir\s+apps\/openagents\.com\/workers\/api\s+run\s+test(?:\s|$)/.test(
       verify,
     )
   return authorizeCommandProposal(
     evaluateCommandSourceVerified({
       commandString: verify,
-      declaredFlags: isApiTestCommand ? ['--cwd'] : [],
+      declaredFlags: isApiTestCommand ? ['--dir'] : [],
       dryRunExitCode: isApiTestCommand ? 0 : null,
-      expectedFlags: ['--cwd'],
+      expectedFlags: ['--dir'],
       scriptPath: isApiTestCommand
         ? 'apps/openagents.com/workers/api/package.json'
         : 'unknown',
@@ -3521,7 +3521,7 @@ export const makeArtanisDispatchCodexTaskTool = (
           },
           verify: {
             description:
-              'Public verification command the Pylon/Codex runner must pass, e.g. "bun run --cwd apps/openagents.com/workers/api test -- src/foo.test.ts".',
+              'Public verification command the Pylon/Codex runner must pass, e.g. "pnpm --dir apps/openagents.com/workers/api run test -- src/foo.test.ts".',
             type: 'string',
           },
         },

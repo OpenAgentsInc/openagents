@@ -52,7 +52,7 @@ export SUP_STATE_DIR="$WORK/state"
 export SUP_LOCKOUT_CACHE_DIR="$WORK/cache"
 export SUP_LOCKOUT_TTL_SECS=90
 export SUP_CLAIM_TTL_SECS=3600
-export SUP_ORCHESTRATION_STATE_BIN="bun $REPO_ROOT/apps/pylon/src/orchestration/supervisor-state.ts --supervisor claim-dispatch-test --kind codex --pylon-home $PYLON_HOME"
+export SUP_ORCHESTRATION_STATE_BIN="node --import tsx $REPO_ROOT/apps/pylon/src/orchestration/supervisor-state.ts --supervisor claim-dispatch-test --kind codex --pylon-home $PYLON_HOME"
 mkdir -p "$PYLON_HOME" "$SUP_STATE_DIR" "$SUP_LOCKOUT_CACHE_DIR"
 
 for n in $(seq 700 720); do printf 'OPEN' > "$STUB_DIR/state.$n"; done
@@ -63,7 +63,7 @@ source "$SCRIPT_DIR/lockout.sh"
 
 # --- shell command expansion regression ------------------------------------
 # SUP_ORCHESTRATION_STATE_BIN is intentionally a multi-word command. Quoting it
-# makes the shell look for one executable named "bun .../supervisor-state.ts",
+# makes the shell look for one executable named "node .../supervisor-state.ts",
 # causing every claim to fail before it reaches the store.
 if sup_try_claim_issue 700 shell-regression; then ok "multi-word SUP_ORCHESTRATION_STATE_BIN claim succeeds"; else bad "multi-word SUP_ORCHESTRATION_STATE_BIN claim should succeed"; fi
 if sup_claim_is_active 700; then ok "#700 reports active claim through store"; else bad "#700 should report active claim through store"; fi

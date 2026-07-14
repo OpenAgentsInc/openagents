@@ -2,7 +2,7 @@
  * Pure Khala Sync wire-protocol helpers, generic over entity type — shared
  * by the mobile thread list (chat_thread entities in scope.user.<owner>)
  * and the message view (chat_message entities in scope.thread.<id>). No
- * native/RN imports so this stays unit-testable under `bun test`.
+ * native/RN imports so this stays unit-testable under `pnpm exec vp test`.
  */
 
 export type BootstrapEntityRow = Readonly<{

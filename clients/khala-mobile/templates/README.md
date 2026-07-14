@@ -3,7 +3,7 @@
 Small local scaffolds inspired by Ignite templates. They are intentionally
 plain `.ejs` files so the app does not depend on the Ignite CLI at runtime.
 
-Use `bun run generate <screen|component|api-core> <Name>` when adding mobile
+Use `pnpm run generate <screen|component|api-core> <Name>` when adding mobile
 surfaces. Generated screens are expected to keep their whole bundle: screen,
 four-state mount test, stories, pending contract stub, Maestro flow stub, and
 visual-baseline registration. The QAM-3 conformance test fails the release gate

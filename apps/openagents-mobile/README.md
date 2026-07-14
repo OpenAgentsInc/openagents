@@ -70,14 +70,14 @@ From the repo root (installs the vendored `@effect-native/*` workspace
 packages):
 
 ```sh
-bun install
+pnpm install
 ```
 
 ### Development (custom development build / simulator)
 
 ```sh
 cd apps/openagents-mobile
-bun run dev          # expo start — press i for iOS simulator or a for Android
+pnpm run dev          # expo start — press i for iOS simulator or a for Android
 ```
 
 The app tree is Effect Native. On iOS 26+, `@effect-native/render-rn` lowers
@@ -90,7 +90,7 @@ development or TestFlight build rather than Expo Go.
 
 ```sh
 cd apps/openagents-mobile
-bun test             # or from the root: bun run test:openagents-mobile
+pnpm test             # or from the root: pnpm run test:openagents-mobile
 ```
 
 The tests drive the REAL `@effect-native/render-rn` renderer against a
@@ -103,11 +103,11 @@ simulator.
 
 ```sh
 cd apps/openagents-mobile
-bun run prebuild:ios       # expo prebuild --platform ios
+pnpm run prebuild:ios       # expo prebuild --platform ios
 open ios/OpenAgents.xcworkspace
 # build/run from Xcode (Apple Team HQWSG26L43), or:
 #   xcodebuild -workspace ios/OpenAgents.xcworkspace -scheme OpenAgents ...
-bun run prebuild:android   # expo prebuild --platform android
+pnpm run prebuild:android   # expo prebuild --platform android
 ./android/gradlew -p android :app:assembleDebug
 ```
 
@@ -123,7 +123,7 @@ legacy khala/AutopilotRemoteControl feed):
 
 ```sh
 cd apps/openagents-mobile
-bun run publish:ota        # = apps/oa-updates/scripts/publish-ota.sh
+pnpm run publish:ota        # = apps/oa-updates/scripts/publish-ota.sh
 # fingerprint -> expo export -> seed -> Cloud Run deploy; verify with the curl
 # line the script prints (signed manifest for this build's runtime fingerprint)
 ```

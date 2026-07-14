@@ -4,7 +4,7 @@
  * Domain code imports this object instead of reaching into Bun globals. The
  * surface intentionally mirrors only the process/file/server primitives the
  * retained applications use. It is implemented entirely with stock Node 24
- * built-ins plus `ws`; no Bun runtime or source-TypeScript loader is needed in
+ * built-ins plus `ws`; no legacy runtime or source-TypeScript loader is needed in
  * a compiled artifact.
  */
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_process"

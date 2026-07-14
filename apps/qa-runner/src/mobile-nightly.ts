@@ -220,7 +220,7 @@ export const renderKhalaMobileNightlyLaunchdPlist = (input: Readonly<{
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>cd ${input.openagentsCheckout} &amp;&amp; OA_QA_NIGHTLY_INCLUDE_MOBILE=1 bun scripts/qa-nightly-matrix.ts</string>
+    <string>cd ${input.openagentsCheckout} &amp;&amp; OA_QA_NIGHTLY_INCLUDE_MOBILE=1 node --import tsx scripts/qa-nightly-matrix.ts</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>

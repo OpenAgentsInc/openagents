@@ -111,13 +111,13 @@ messages.
 ## Commands
 
 ```sh
-bun install
-bun run --cwd apps/nostr-relay typecheck
-bun run --cwd apps/nostr-relay test
-bun run --cwd apps/nostr-relay dev
-bun run --cwd apps/nostr-relay smoke ws://127.0.0.1:8787
-bun run --cwd apps/nostr-relay deploy
-bun run --cwd apps/nostr-relay smoke https://openagents-market-relay.openagents.workers.dev
+pnpm install
+pnpm --dir apps/nostr-relay run typecheck
+pnpm --dir apps/nostr-relay run test
+pnpm --dir apps/nostr-relay run dev
+pnpm --dir apps/nostr-relay run smoke ws://127.0.0.1:8787
+pnpm --dir apps/nostr-relay run deploy
+pnpm --dir apps/nostr-relay run smoke https://openagents-market-relay.openagents.workers.dev
 ```
 
 ## Current Deployment

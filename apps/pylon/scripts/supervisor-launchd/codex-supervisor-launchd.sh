@@ -13,11 +13,9 @@ set -uo pipefail
 
 REPO_ROOT="${SUP_REPO_ROOT:-__REPO_ROOT__}"
 
-# launchd's GUI-domain agents get a minimal PATH (no bun, no Homebrew) — add
-# the common install locations so `bun` resolves without needing an absolute
-# path baked in (verified needed against the sibling runtime-supervisor job:
-# `exec: bun: not found` before this was added).
-export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+# launchd's GUI-domain agents get a minimal PATH, so include the common Node
+# and package-manager install locations.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 # Owner-linked (Artanis) agent token — the supervisor FIRES khala requests, so
 # it must be owner-linked (never the fable token). Read from .secrets; the file
@@ -36,7 +34,7 @@ export PYLON_OPENAGENTS_BASE_URL="${PYLON_OPENAGENTS_BASE_URL:-https://openagent
 # Resolve the LIVE pylon ref unless one is pinned (the supervisor's hardcoded
 # default is stale). Best-effort; the supervisor still runs if this fails.
 if [ -z "${SUP_PYLON_REF:-}" ]; then
-  live_ref=$(cd "$REPO_ROOT" && bun apps/pylon/src/index.ts provider go-online --json 2>/dev/null \
+  live_ref=$(cd "$REPO_ROOT" && node --import tsx apps/pylon/src/index.ts provider go-online --json 2>/dev/null \
     | sed -n 's/.*"pylonRef" *: *"\([^"]*\)".*/\1/p' | head -1)
   [ -n "$live_ref" ] && export SUP_PYLON_REF="$live_ref"
 fi

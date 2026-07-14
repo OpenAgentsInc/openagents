@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build signed, portable Node Pylon launchers. The same Vite Plus/tsdown-built
-# ESM artifact runs on every supported Node 24 host; Bun native executables are
+# The ESM artifact runs on every supported Node 24 host; platform-native executables are
 # intentionally no longer produced.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."

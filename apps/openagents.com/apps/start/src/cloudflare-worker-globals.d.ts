@@ -1,6 +1,6 @@
 // Minimal ambient bridge for Cloudflare Worker runtime globals.
 //
-// The Start app is a Cloud Run / Bun server and deliberately does NOT depend on
+// The Start app is a Cloud Run / Node server and deliberately does NOT depend on
 // the `@cloudflare/workers-types` package (removed from this app's tsconfig
 // `types` during the GCP evacuation — see CLAUDE.md "Cloudflare exit → GCP
 // evacuation"). However, Start's server entry transitively imports shared

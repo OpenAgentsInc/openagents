@@ -170,7 +170,7 @@ export function renderKhalaHeadToHeadPublication(metrics) {
 if (import.meta.main) {
   const manifestPath = process.argv[2];
   if (manifestPath === undefined) {
-    console.error("usage: bun scripts/khala-demo/render-publication.mjs <manifest.json>");
+    console.error("usage: node --import tsx scripts/khala-demo/render-publication.mjs <manifest.json>");
     process.exit(2);
   }
   const manifest = loadManifest(manifestPath);

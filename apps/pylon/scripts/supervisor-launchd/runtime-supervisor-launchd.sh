@@ -22,11 +22,9 @@ set -uo pipefail
 
 REPO_ROOT="${SUP_REPO_ROOT:-__REPO_ROOT__}"
 
-# launchd's GUI-domain agents get a minimal PATH (no bun, no Homebrew) — add
-# the common install locations so `bun` resolves without needing an absolute
-# path baked in (verified needed: `caffeinate -i ... .sh` execed with
-# `exec: bun: not found` before this was added).
-export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+# launchd's GUI-domain agents get a minimal PATH, so include the common Node
+# and package-manager install locations.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 # This process pushes `runtime.recordEvent` and Pylon-authored follow-up
 # `runtime.startTurn` mutations INTO THE OWNER'S OWN Khala Sync thread scope
@@ -92,6 +90,6 @@ cd "$REPO_ROOT" || exit 1
 # `{"code":"unauthorized_scope","messageSafe":"This client group is bound to
 # a different user."}` even with the correct token. Pinning a fresh ref here
 # avoids that poisoned default permanently.
-exec bun "$REPO_ROOT/apps/pylon/src/orchestration/runtime-intent-supervisor.ts" \
+exec node --import tsx "$REPO_ROOT/apps/pylon/src/orchestration/runtime-intent-supervisor.ts" \
   --pylon-home "$PYLON_HOME" \
   --pylon-ref "${SUP_RUNTIME_PYLON_REF:-pylon.runtime_supervisor.fable.v2}"

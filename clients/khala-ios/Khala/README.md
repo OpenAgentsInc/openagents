@@ -82,7 +82,7 @@ clients/khala-ios/Khala/
 The cross-device dogfood evidence format is validated by:
 
 ```sh
-bun scripts/validate-khala-sync-cross-device-evidence.ts \
+node --import tsx scripts/validate-khala-sync-cross-device-evidence.ts \
   docs/khala-sync/receipts/2026-07-04-cross-device-chat-dogfood.pending.json
 ```
 
@@ -145,7 +145,7 @@ bash ../../../apps/pylon/swift/foundation-bridge/build.sh
 Before signing/notarization, run:
 
 ```sh
-bun scripts/verify-packaged-apple-fm-bridge.ts /path/to/Khala.app
+node --import tsx scripts/verify-packaged-apple-fm-bridge.ts /path/to/Khala.app
 ```
 
 The verifier fails if the helper is missing, empty, or not executable. To ship an

@@ -9,9 +9,9 @@ reference under `projects/repos/durable-streams/`).
 This is the owned substrate for:
 
 - **Rank-1** resumable Khala inference (durable proxy: persist upstream tokens →
-  durable read URL → resume by offset). *Deferred — issue #6058, gated behind the
-  in-flight `workers/api` lane.*
-- **Rank-2** Verse-world bounded delta-replay buffer. *Deferred — issue #6059.*
+  durable read URL → resume by offset). _Deferred — issue #6058, gated behind the
+  in-flight `workers/api` lane._
+- **Rank-2** Verse-world bounded delta-replay buffer. _Deferred — issue #6059._
 
 See the roadmap: `docs/research/2026-06-23-durable-stream-integration-roadmap.md`
 and the audit `docs/research/2026-06-23-effect-durable-streams-on-do-audit.md`.
@@ -34,18 +34,18 @@ EPIC: #6056. Core primitive: #6057.
 
 ## Layout
 
-| File | Role |
-|------|------|
-| `src/offset.ts` | offset codec (branded Effect Schema; lexicographic) |
-| `src/protocol.ts` | wire header/param constants + helpers |
-| `src/core.ts` | transport-agnostic state machine (pure; Bun-testable) |
-| `src/store.ts` | `StreamStore` port + in-memory impl |
-| `src/http.ts` | Web `Request`/`Response` adapter (+ SSE) |
-| `src/durable-object.ts` | Cloudflare DO + SQLite adapter |
-| `src/test-server.ts` | Bun-hostable test server (same core/http paths) |
+| File                    | Role                                                     |
+| ----------------------- | -------------------------------------------------------- |
+| `src/offset.ts`         | offset codec (branded Effect Schema; lexicographic)      |
+| `src/protocol.ts`       | wire header/param constants + helpers                    |
+| `src/core.ts`           | transport-agnostic state machine (pure; Vitest-testable) |
+| `src/store.ts`          | `StreamStore` port + in-memory impl                      |
+| `src/http.ts`           | Web `Request`/`Response` adapter (+ SSE)                 |
+| `src/durable-object.ts` | Cloudflare DO + SQLite adapter                           |
+| `src/test-server.ts`    | Node-hostable test server (same core/http paths)         |
 
 The core has **no Cloudflare import** — the DO adapter is isolated, so the whole
-protocol state machine is unit-testable under Bun with `MemoryStreamStore`. The
+protocol state machine is unit-testable under Node with `MemoryStreamStore`. The
 DO adapter (`SqliteStreamStore` / `handleDurableStreamFetch`) wires the same core
 to `ctx.storage.sql` and DO alarms (TTL/expiry).
 
@@ -55,15 +55,15 @@ harness).
 ## Tests / conformance oracle
 
 ```
-bun test          # 54 owned conformance + unit tests, all green
-bun run typecheck # tsc --noEmit, clean
+pnpm test          # 54 owned conformance + unit tests, all green
+pnpm run typecheck # tsc --noEmit, clean
 ```
 
 The owned tests in `src/*.test.ts` **replicate the upstream conformance YAML
 cases** (`projects/repos/durable-streams/packages/client-conformance-tests/test-cases/`)
-as Bun tests driving raw `fetch` against the local test server. This is the
+as Vitest tests driving raw `fetch` against the local test server. This is the
 "conformance suite as oracle" loop; the task explicitly permits replicating the
-YAML cases as Bun/Effect tests.
+YAML cases as Node/Effect tests.
 
 ### Honest conformance coverage
 
@@ -78,9 +78,9 @@ tests)** covering the four-part contract. Status by bucket:
 - `producer/append-data` + `sequence-ordering` — concatenation, 404, empty-body
   400, content-type 409, `Stream-Seq` monotonic regression 409.
 - `producer/idempotent/{sequence-validation,epoch-management,multi-producer,error-handling}`
-  + idempotent close — dedup 204, gap 409 (expected/received), new-epoch accept,
-  bad-new-epoch 400, zombie fence 403 (current epoch), independent producers,
-  partial/non-integer header 400, duplicate closing-append 204.
+  - idempotent close — dedup 204, gap 409 (expected/received), new-epoch accept,
+    bad-new-epoch 400, zombie fence 403 (current epoch), independent producers,
+    partial/non-integer header 400, duplicate closing-append 204.
 - `consumer/read-catchup` + `offset-handling` + `offset-resumption` +
   `message-ordering` — empty read, single/multi chunk, exact-suffix resume from
   offset, ordering, unicode, `offset=now`, `offset=-1`, malformed-offset 400.
@@ -105,18 +105,18 @@ tests)** covering the four-part contract. Status by bucket:
   (`producer/batching`, `idempotent-json-batching`, `json-parsing-errors`).
 - **Held-connection live waiting** — the core is synchronous, so long-poll/SSE
   return the currently-available suffix immediately rather than blocking for new
-  data. The required 204/closed shapes and SSE framing are covered; the *waiting*
+  data. The required 204/closed shapes and SSE framing are covered; the _waiting_
   semantics (`fault-injection`, `retry-resilience`, `read-auto` reconnection,
   full `read-sse` 26-case streaming) are an adapter concern not exercised here.
 - **Retention/compaction** (`410 Gone` before earliest retained), `304
-  Not-Modified` via `If-None-Match`, full `error-context`/`dynamic-headers`
+Not-Modified` via `If-None-Match`, full `error-context`/`dynamic-headers`
   buckets.
 
 We do **not** claim full conformance. The external upstream
 `@durable-streams/server-conformance-tests --run` harness was **not executed**,
 because running it requires `pnpm install` inside the read-only reference clone
 (pulling `@durable-streams/client` + vitest), which the workspace read-only-
-reference rule forbids. The owned Bun tests are the in-package oracle and gate CI.
+reference rule forbids. The owned Vitest tests are the in-package oracle and gate CI.
 
 ## Not wired into any app
 

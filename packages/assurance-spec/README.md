@@ -34,21 +34,21 @@ not proof.
 ## CLI
 
 ```bash
-bun packages/assurance-spec/src/cli.ts propose \
+node --import tsx packages/assurance-spec/src/cli.ts propose \
   docs/mvp/openagents-codex-workroom-mvp.product-spec.md \
   --repo . \
   --out docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md \
   --force
 
-bun packages/assurance-spec/src/cli.ts validate \
+node --import tsx packages/assurance-spec/src/cli.ts validate \
   docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md
 
-bun packages/assurance-spec/src/cli.ts coverage \
+node --import tsx packages/assurance-spec/src/cli.ts coverage \
   docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md
 
 # Provider-free boundary smoke. accepted-subject.json is an explicit identity
 # pin, not an identity derived or accepted by this command.
-bun packages/assurance-spec/src/cli.ts observer propose \
+node --import tsx packages/assurance-spec/src/cli.ts observer propose \
   docs/mvp/openagents-codex-workroom-mvp.product-spec.md \
   --accepted-subject accepted-subject.json \
   --planner fixture \
@@ -71,23 +71,23 @@ The CLI also ships the deterministic agent surface designed in
 
 ```bash
 # Stateless dual-digest sessions (the full pin is returned to the caller)
-bun packages/assurance-spec/src/cli.ts session begin <file.assurance-spec.md> [--root <dir>] [--json]
-bun packages/assurance-spec/src/cli.ts session check <file.assurance-spec.md> \
+node --import tsx packages/assurance-spec/src/cli.ts session begin <file.assurance-spec.md> [--root <dir>] [--json]
+node --import tsx packages/assurance-spec/src/cli.ts session check <file.assurance-spec.md> \
   (--against <session.json> | --spec-digest <hex> --subject-digest <hex>) [--root <dir>] [--json]
 
 # Read-only reports (never a verdict, never a blended score)
-bun packages/assurance-spec/src/cli.ts obligations <file> [--criterion <id>] [--status ready|needs_design] [--technique <t>] [--json]
-bun packages/assurance-spec/src/cli.ts obligation <file> <obligation-id> [--json]
-bun packages/assurance-spec/src/cli.ts ledgers <file> [--json]
-bun packages/assurance-spec/src/cli.ts checklist <file> [--criterion <id>] [--json]
-bun packages/assurance-spec/src/cli.ts claim <file> [--claim "<text>"] [--json]
-bun packages/assurance-spec/src/cli.ts inventory <repo-dir> [--out <file.json>] [--json]
+node --import tsx packages/assurance-spec/src/cli.ts obligations <file> [--criterion <id>] [--status ready|needs_design] [--technique <t>] [--json]
+node --import tsx packages/assurance-spec/src/cli.ts obligation <file> <obligation-id> [--json]
+node --import tsx packages/assurance-spec/src/cli.ts ledgers <file> [--json]
+node --import tsx packages/assurance-spec/src/cli.ts checklist <file> [--criterion <id>] [--json]
+node --import tsx packages/assurance-spec/src/cli.ts claim <file> [--claim "<text>"] [--json]
+node --import tsx packages/assurance-spec/src/cli.ts inventory <repo-dir> [--out <file.json>] [--json]
 
 # Agent Run 0.1 interop: cross-checked, but only self-reported evidence
-bun packages/assurance-spec/src/cli.ts agent-run ingest <file.agent-run.json> [--root <dir>] [--json]
+node --import tsx packages/assurance-spec/src/cli.ts agent-run ingest <file.agent-run.json> [--root <dir>] [--json]
 
 # Read-only stdio MCP server (JSON-RPC 2.0, protocol 2024-11-05), confined to --root
-bun packages/assurance-spec/src/cli.ts mcp --root .
+node --import tsx packages/assurance-spec/src/cli.ts mcp --root .
 ```
 
 Exit codes are the API: **0** success, **1** operation failure, **2** usage
@@ -190,7 +190,7 @@ import {
   proposeAssuranceSpec,
   validateAssuranceReviewAnnotation,
   validateAssuranceSpec,
-} from "@openagentsinc/assurance-spec"
+} from "@openagentsinc/assurance-spec";
 ```
 
 `proposeAssuranceSpec` is pure. Filesystem and Git access remain isolated in
@@ -229,8 +229,8 @@ workflow is shipped because the OpenAgents repository forbids hosted CI.
 Distribution readiness is independently reproducible:
 
 ```sh
-bun run --cwd packages/assurance-spec pack:public -- --out /tmp/assurance-pack
-bun run --cwd packages/assurance-spec verify:distribution
+pnpm --dir packages/assurance-spec run pack:public -- --out /tmp/assurance-pack
+pnpm --dir packages/assurance-spec run verify:distribution
 ```
 
 The packager rewrites monorepo-only dependency protocols to concrete versions,

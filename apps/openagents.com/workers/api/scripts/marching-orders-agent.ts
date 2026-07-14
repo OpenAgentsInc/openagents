@@ -4,10 +4,10 @@
  * numbers to the Autopilot work API.
  *
  * Dry-run proposal:
- *   bun run scripts/marching-orders-agent.ts --repo OpenAgentsInc/openagents
+ *   node --import tsx scripts/marching-orders-agent.ts --repo OpenAgentsInc/openagents
  *
  * Human-gated submission:
- *   OPENAGENTS_AGENT_TOKEN=... bun run scripts/marching-orders-agent.ts \
+ *   OPENAGENTS_AGENT_TOKEN=... node --import tsx scripts/marching-orders-agent.ts \
  *     --submit --approved-issues 4758,4759,4760 \
  *     --commit $(git rev-parse HEAD) \
  *     --verification-command bun,test \

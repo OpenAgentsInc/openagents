@@ -3,7 +3,7 @@
  * RL-4: concurrent Grok workers with worktree-ish cwd isolation and a
  * tool-using (always-approve) prompt — harder than RL-1 tiny plain chat.
  *
- *   bun packages/grok-harness/scripts/rl4-worktree-probe.ts --concurrency 1,2,4,8
+ *   node --import tsx packages/grok-harness/scripts/rl4-worktree-probe.ts --concurrency 1,2,4,8
  */
 
 import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises"

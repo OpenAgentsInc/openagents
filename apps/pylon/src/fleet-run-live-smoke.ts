@@ -561,7 +561,9 @@ export async function readPylonKhalaCloseoutEvidence(
 ): Promise<FleetRunSmokeCloseoutEvidence> {
   const env = cleanEnv(plan.managerEnv)
   const proc = Runtime.spawn([
-    resolveBunExecutable(plan.managerEnv),
+    process.execPath,
+    "--import",
+    "tsx",
     "src/index.ts",
     "khala",
     "closeout",
@@ -1039,10 +1041,6 @@ function reconcilePublicCounter(
     state: "checked",
     url,
   }
-}
-
-function resolveBunExecutable(env: FleetRunSmokeEnv): string {
-  return firstTrimmed([env.OPENAGENTS_BUN_PATH, process.execPath, "bun"])
 }
 
 function pylonAppDir(): string {

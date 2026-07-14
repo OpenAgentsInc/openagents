@@ -21,7 +21,7 @@
  * reconciliation culture). Exits non-zero on ANY mismatch.
  *
  * Usage (from packages/khala-sync-server/):
- *   bun scripts/backfill-artanis.ts \
+ *   node --import tsx scripts/backfill-artanis.ts \
  *     [--database-url <postgres-url>]   # default $KHALA_SYNC_DATABASE_URL
  *     [--d1-database <name>]            # default openagents-autopilot
  *     [--wrangler-cwd <dir>]            # default ../../apps/openagents.com/workers/api
@@ -76,7 +76,7 @@ const TABLES: ReadonlyArray<ArtanisBackfillTable> = [
   "artanis_messages",
 ]
 
-const USAGE = `Usage: bun scripts/backfill-artanis.ts [options]   (see file header)`
+const USAGE = `Usage: node --import tsx scripts/backfill-artanis.ts [options]   (see file header)`
 
 type Options = {
   batchSize: number
@@ -167,7 +167,7 @@ const d1Query = (
     "--command",
     command,
   ]
-  const result = spawnSync("bunx", args, {
+  const result = spawnSync("pnpm", ["exec", ...args], {
     cwd: options.wranglerCwd,
     encoding: "utf8",
     maxBuffer: 256 * 1024 * 1024,

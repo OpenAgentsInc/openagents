@@ -14,8 +14,8 @@ React edition:
   buttons, panels, nav, cards, form fields, and code blocks for funnel pages.
 - `openAgentsNativeWindTokens` exports literal StarCraft-blue token values for
   NativeWind so TS-8 can consume the same palette without CSS variables.
-- `ReactEditionSmokeFixture` is covered by `bun run --cwd packages/ui
-  visual-smoke` as the Storybook-less fixture lane.
+- `ReactEditionSmokeFixture` is covered by `pnpm run --cwd packages/ui
+visual-smoke` as the Storybook-less fixture lane.
 - The package intentionally stays dark-only. Do not add theme toggles or
   `dark:`/`light:` variants here; use the existing `scheme-only-dark` root.
 

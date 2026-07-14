@@ -9,14 +9,14 @@ users: `QA-RUNNER.md` + `https://openagents.com/docs/autonomous-qa`.)
 
 ```sh
 cd apps/qa-runner
-bun install
-bunx playwright install chromium   # the real browser the runner drives
+pnpm install
+pnpm exec playwright install chromium   # the real browser the runner drives
 ```
 
 ## 1. Run a verification against prod (the dogfood)
 
 ```sh
-bun run src/demo-login.ts --url https://openagents.com --out ./runs/login
+node --import tsx src/demo-login.ts --url https://openagents.com --out ./runs/login
 #   --headed   watch the browser
 #   --wrong    point at a deliberately-wrong assertion to prove it FAILS honestly
 ```
@@ -58,17 +58,17 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
 - **Khala dogfood / any target:** mint a free key with
   `curl -X POST https://openagents.com/api/keys/free`, export
   `QA_API_KEY` from `.credential.token`, then run
-  `bun run src/byo.ts run --url <url> --out ./runs/x`. The default model/base
+  `node --import tsx src/byo.ts run --url <url> --out ./runs/x`. The default model/base
   are `openagents/khala` and `https://openagents.com/api/v1`; the runner sends
   public-safe `internal` / `qa-runner` attribution headers only to the
   OpenAgents endpoint so served-token analytics can split first-party QA
   dogfood from external demand.
-- **BYO override / any target:** `bun run src/byo.ts run --url <url> --model <id> --base-url <url> --api-key <key> --out ./runs/x`
+- **BYO override / any target:** `node --import tsx src/byo.ts run --url <url> --model <id> --base-url <url> --api-key <key> --out ./runs/x`
   (bring-your-own model, no OpenAgents login).
-- **Compare configs ("chill-eval"):** `bun run src/pr-comment-run.ts --changed "<paths>" --out ./runs/pr-eval`
+- **Compare configs ("chill-eval"):** `node --import tsx src/pr-comment-run.ts --changed "<paths>" --out ./runs/pr-eval`
   → comparison table + a `/trace/compare` link. **Agent-triggered** (no GitHub Actions — per the no-GHA invariant): an agent runs this and posts the PR comment itself, e.g. PR #6224.
 - **Import an existing Claude Code / Codex session → trace:**
-  `bun run src/trace-import.ts <session.jsonl>` (detect → convert → redact → publish).
+  `node --import tsx src/trace-import.ts <session.jsonl>` (detect → convert → redact → publish).
 - **Distill a session → e2e candidate:** the distiller (`src/distiller.ts`)
   lowers a recorded session into a re-runnable `*.e2e.test.ts` review artifact.
   `src/discovery-regression-lifecycle.ts` validates and reruns observed
@@ -76,12 +76,12 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
   injected. It is `landed` coverage only after exact reviewed merge evidence.
 - **Packaged Khala Code native AX smoke:** build the Electrobun app, arm
   `QA_NATIVE_DESKTOP=1`, then run
-  `bun run --cwd apps/qa-runner khala:packaged-native-smoke -- --out ../../var/qa-8023/packaged-native`.
+  `pnpm --dir apps/qa-runner run khala:packaged-native-smoke -- --out ../../var/qa-8023/packaged-native`.
   Full build, selector, artifact, and failure-mode notes live in
   [`docs/qa/khala-code-packaged-native-ax-runbook.md`](../../docs/qa/khala-code-packaged-native-ax-runbook.md).
 - **Flagship Khala Code seeded-bug demo:** after the packaged build, arm
   `QA_NATIVE_DESKTOP=1`, then run
-  `bun run --cwd apps/qa-runner khala:flagship-demo -- --out ../../var/qa-8026/flagship-demo --seeded-bug-text "<public AX marker>"`.
+  `pnpm --dir apps/qa-runner run khala:flagship-demo -- --out ../../var/qa-8026/flagship-demo --seeded-bug-text "<public AX marker>"`.
   It writes the headed native evidence report, distiller trace, and committed
   regression `generated/khala-code-packaged-seeded-bug.e2e.test.ts`; see
   [`docs/qa/khala-code-flagship-demo.md`](../../docs/qa/khala-code-flagship-demo.md).

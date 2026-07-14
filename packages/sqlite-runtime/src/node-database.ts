@@ -9,7 +9,7 @@ import {
 /**
  * `node:sqlite` client for the dual-runtime seam (BUN-1, openagents#8779) —
  * the Node-side counterpart of `bun-database.ts`, modeled on T3 Code's
- * `NodeSqliteClient.ts` (a port of the Bun client onto the native
+ * `NodeSqliteClient.ts` (a port of the legacy runtime client onto the native
  * `node:sqlite` bindings; reference clone `projects/repos/t3code`).
  *
  * `node:sqlite` is resolved lazily via `createRequire`, so this module also

@@ -10,7 +10,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * the public objective and hashed account refs through dev-proof-run.
  *
  * Usage:
- *   bun apps/pylon/scripts/multi-session-run.ts \
+ *   node --import tsx apps/pylon/scripts/multi-session-run.ts \
  *     --plan plan.json --proofs-dir .pylon-proofs --pylon-home .pylon \
  *     [--concurrency 2] [--run-id run.local]
  */
@@ -461,7 +461,9 @@ async function workspaceForSession(input: {
 async function defaultProofChildRunner(input: ProofChildInput): Promise<ProofChildResult> {
   const script = resolve(dirname(fileURLToPath(import.meta.url)), "dev-proof-run.ts")
   const args = [
-    "bun",
+    process.execPath,
+    "--import",
+    "tsx",
     script,
     "--adapter",
     input.adapter,

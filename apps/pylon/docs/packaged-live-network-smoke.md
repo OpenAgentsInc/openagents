@@ -9,7 +9,7 @@ OpenAgents agent token:
 
 ```sh
 OPENAGENTS_AGENT_TOKEN="oa_agent_..." \
-bun run smoke:packaged-network
+pnpm run smoke:packaged-network
 ```
 
 Optional inputs:
@@ -23,23 +23,23 @@ Optional inputs:
 
 The smoke performs these steps through the freshly installed package:
 
-1. `bun pm pack` builds the local release tarball.
-2. `bun pm pack` builds the local `@openagentsinc/nip90` protocol tarball so the
+1. `pnpm pack` builds the local release tarball.
+2. `pnpm pack` builds the local `@openagentsinc/nip90` protocol tarball so the
    smoke uses the same `nostr-effect`-backed NIP-90 package as the workspace.
-3. `bun pm pack` builds the local `@openagentsinc/tassadar-executor` tarball so
+3. `pnpm pack` builds the local `@openagentsinc/tassadar-executor` tarball so
    the installed artifact carries the same exact-replay executor as the
    workspace.
 4. A temporary project installs the Pylon tarball with local
    `@openagentsinc/nip90` and `@openagentsinc/tassadar-executor` overrides.
-5. `bunx pylon bootstrap --json` creates isolated `PYLON_HOME` state.
-6. `bunx pylon presence register` registers the Pylon against OpenAgents.
-7. `bunx pylon presence heartbeat` sends a fresh heartbeat.
-8. `bunx pylon wallet report-readiness` classifies the local MDK wallet and
+5. `pnpm exec pylon bootstrap --json` creates isolated `PYLON_HOME` state.
+6. `pnpm exec pylon presence register` registers the Pylon against OpenAgents.
+7. `pnpm exec pylon presence heartbeat` sends a fresh heartbeat.
+8. `pnpm exec pylon wallet report-readiness` classifies the local MDK wallet and
    reports only public-safe readiness refs.
-9. `bunx pylon wallet request-payout-target-admission` requests admission for a
+9. `pnpm exec pylon wallet request-payout-target-admission` requests admission for a
    redacted payout-target ref.
 10. The wrapper reads `GET /api/public/pylon-stats` and
-   `GET /api/public/pylon-capacity-funnel` to capture projection evidence.
+    `GET /api/public/pylon-capacity-funnel` to capture projection evidence.
 11. The installed package replays
     `@openagentsinc/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json` and
     requires a verified exact-replay verdict.
@@ -62,7 +62,7 @@ provider credentials.
 
 Production run on 2026-06-10:
 
-- Command: `bun run smoke:packaged-network` from `apps/pylon` with
+- Command: `pnpm run smoke:packaged-network` from `apps/pylon` with
   `OPENAGENTS_AGENT_TOKEN` sourced from the local ignored agent env file.
 - Status: `passed`, with `blockerRefs: []`.
 - Public stats summary: `pylonsOnlineNow: 2`, `pylonsWalletReadyNow: 2`,

@@ -10,7 +10,7 @@ rotated. **The signed artifacts publish only to our Google Cloud infra**
 
 ## The key (ed25519)
 
-- **kid:** `2dbe811d19f67528`  ·  **alg:** ed25519  ·  created 2026-06-15.
+- **kid:** `2dbe811d19f67528` · **alg:** ed25519 · created 2026-06-15.
 - **Public key (pinned by clients):** `apps/oa-updates/keys/release-pubkey.json`
   — committed, public, safe. Clients embed this and reject anything not signed by
   it. (Public `x`: `P9steasTKRx6gr9QQlbah4kXm17aAh2wLHLAL-Txwak`.)
@@ -35,16 +35,17 @@ rotated. **The signed artifacts publish only to our Google Cloud infra**
     --project=openagentsgemini --data-file=~/work/.secrets/openagents-release-signing.env
   ```
 - **On device COMPROMISE:** the local key is burned — **rotate** (below). Backup
-  recovers from *loss*; rotation answers *theft*.
+  recovers from _loss_; rotation answers _theft_.
 
 ## Sign a deploy
 
 ```sh
 # loads the key from env -> .secrets -> GCP Secret Manager (in that order)
-bun apps/oa-updates/scripts/sign-release.ts <artifact-or-manifest>  > <artifact>.sig.json
+node --import tsx apps/oa-updates/scripts/sign-release.ts <artifact-or-manifest>  > <artifact>.sig.json
 # verify (the reference fail-closed check clients embed)
-bun apps/oa-updates/scripts/verify-release.ts <artifact> <artifact>.sig.json   # exit 0 ok / 1 reject
+node --import tsx apps/oa-updates/scripts/verify-release.ts <artifact> <artifact>.sig.json   # exit 0 ok / 1 reject
 ```
+
 - In **our GCP infra** (Cloud Run / CI), the signer needs no local file: mount the
   Secret Manager secret as `OPENAGENTS_RELEASE_SIGNING_PRIVATE_JWK_D` (+ `_KID`)
   and `sign-release.ts` uses it. Verified working both ways (local file + env).
@@ -114,10 +115,12 @@ use the ed25519 release key; headless Pylon needs no Apple signing.
 
 Canonical backup is **GCP Secret Manager** (project `openagentsgemini`),
 hash-verified equal to the local `.p12`:
+
 - `developer-id-application-p12` — base64 of the `.p12`
 - `developer-id-application-p12-password` — the passphrase
 
 Recover on a fresh Mac:
+
 ```sh
 mkdir -p ~/work/.secrets/developer-id && chmod 700 ~/work/.secrets/developer-id
 gcloud secrets versions access latest --secret=developer-id-application-p12 \
@@ -129,11 +132,12 @@ security import ~/work/.secrets/developer-id/developerID_application.p12 \
   -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign
 security find-identity -v -p codesigning | grep HQWSG26L43   # confirm
 ```
+
 On device **compromise**: revoke the cert in the Apple Developer portal, issue a
 new one from a fresh CSR, re-import, and rotate the GCP secret versions.
 
 > The `.p12` was built with `openssl pkcs12 -export -legacy -certpbe
-> PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1` — openssl 3 defaults produce
+PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1` — openssl 3 defaults produce
 > a `.p12` the macOS Security framework can't import ("MAC verification failed").
 
 ## Custody note

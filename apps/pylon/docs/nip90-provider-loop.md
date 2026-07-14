@@ -13,8 +13,8 @@ parsing or event construction locally.
 pylon provider go-online
 pylon provider once
 pylon provider go-offline
-bun run smoke:nip90-provider
-bun run provider:serve
+pnpm run smoke:nip90-provider
+pnpm run provider:serve
 ```
 
 `go-online` persists lifecycle `online` and adds
@@ -26,7 +26,7 @@ runtime lifecycle is `online` or `assignment-ready`.
 info and subscribes once to the configured relays. If the persisted lifecycle is
 offline, it exits with a public-safe `provider_not_online` reason.
 
-`bun run provider:serve` (`scripts/nip90-provider-serve.ts`) is the
+`pnpm run provider:serve` (`scripts/nip90-provider-serve.ts`) is the
 long-running headless serve entrypoint: it runs the persistent loop against
 the configured relays with the real Pylon home, the default local Apple FM
 runtime, and the MDK agent wallet for payment-required quotes
@@ -34,7 +34,7 @@ runtime, and the MDK agent wallet for payment-required quotes
 can actually create invoices). It only ever issues receive invoices; it
 never pays.
 
-`bun run smoke:nip90-provider` uses a temporary Pylon home and the scoped market
+`pnpm run smoke:nip90-provider` uses a temporary Pylon home and the scoped market
 relay to prove subscribe, NIP-89 advertise, targeted kind `5050` intake, local
 runtime execution, kind `7000` feedback, kind `6050` result publication, and
 redacted local earnings state. It uses fake local runtime/wallet adapters and

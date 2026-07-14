@@ -1,7 +1,7 @@
 import type { KhalaSpeechAvailability } from "khala-push-to-talk-stt"
 
 /** Composer mic-button phase. Pure state machine, decoupled from the native
- * module so it is fully testable under `bun test` with zero React Native
+ * module so it is fully testable under `pnpm exec vp test` with zero React Native
  * runtime. See `../legacy-screens/settings.tsx` for the pre-existing
  * (unwired) use of `KhalaSpeechAvailability` this ports forward — this file
  * adds the actual button-press state machine that legacy screen never had,

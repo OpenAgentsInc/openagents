@@ -1,8 +1,8 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
 // Real-bundle e2e: feed an actual `expo export` dist through readExportedUpdate
 // into the server, then fetch the manifest + the real Hermes bundle over HTTP.
-// Usage: bunx expo export --platform ios --output-dir /tmp/oa-export
-//        bun run apps/oa-updates/scripts/e2e-real-export.ts /tmp/oa-export
+// Usage: pnpm exec expo export --platform ios --output-dir /tmp/oa-export
+//        node --import tsx apps/oa-updates/scripts/e2e-real-export.ts /tmp/oa-export
 import { createUpdatesServer } from "../src/server.ts"
 import { readExportedUpdate } from "../src/export-reader.ts"
 import type { AssetStore } from "../src/asset-store.ts"

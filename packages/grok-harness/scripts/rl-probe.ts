@@ -3,9 +3,9 @@
  * Live RL-1 probe: measure max concurrent free-CLI Grok workers.
  *
  * Usage:
- *   bun packages/grok-harness/scripts/rl-probe.ts
- *   bun packages/grok-harness/scripts/rl-probe.ts --concurrency 1,2,4,8,12
- *   bun packages/grok-harness/scripts/rl-probe.ts --out docs/grok/receipts/rl.json
+ *   node --import tsx packages/grok-harness/scripts/rl-probe.ts
+ *   node --import tsx packages/grok-harness/scripts/rl-probe.ts --concurrency 1,2,4,8,12
+ *   node --import tsx packages/grok-harness/scripts/rl-probe.ts --out docs/grok/receipts/rl.json
  */
 
 import { resolve } from "node:path"

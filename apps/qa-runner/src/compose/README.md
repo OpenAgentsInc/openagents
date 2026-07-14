@@ -6,8 +6,8 @@ run directory (raw `session.mp4` + `00-*.png` screenshots + `result.json` +
 step/keystroke labels, brand framing, and an optional **before/after
 side-by-side** of two runs.
 
-The raw `recordVideo` clip stays the *evidence* artifact; this is the
-*shareable* layer (Rhys, PRs, social).
+The raw `recordVideo` clip stays the _evidence_ artifact; this is the
+_shareable_ layer (Rhys, PRs, social).
 
 ## Design
 
@@ -46,14 +46,14 @@ ffmpeg.
 
 ```sh
 # single run
-bun run --cwd apps/qa-runner compose -- --run runs/khala-zeratul-demo --out /tmp/demo.mp4
+pnpm --dir apps/qa-runner run compose -- --run runs/khala-zeratul-demo --out /tmp/demo.mp4
 
 # before/after side-by-side
-bun run --cwd apps/qa-runner compose -- \
+pnpm --dir apps/qa-runner run compose -- \
   --before runs/before-dir --after runs/after-dir --out /tmp/ba.mp4
 
 # inspect the resolved plan without rendering
-bun run --cwd apps/qa-runner compose -- --run runs/khala-zeratul-demo --plan-only
+pnpm --dir apps/qa-runner run compose -- --run runs/khala-zeratul-demo --plan-only
 ```
 
 Flags: `--run`, `--before`/`--after`, `--out`, `--brand`, `--plan-only`.

@@ -7,7 +7,7 @@
 // target-matrix.json. Exit code is honest: 0 iff every target passed.
 //
 // Usage:
-//   bun run src/run-targets.ts --targets dev,prod --out ./runs/matrix
+//   node --import tsx src/run-targets.ts --targets dev,prod --out ./runs/matrix
 //     [--headed]
 //   # base URLs come from the registry / env: QA_DEV_URL, QA_PROD_URL, ...
 //   # selfhost requires QA_SELFHOST_URL.

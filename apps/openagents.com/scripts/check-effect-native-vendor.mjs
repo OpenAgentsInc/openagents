@@ -161,7 +161,7 @@ export const checkVendorConsistency = ({
   return findings
 }
 
-// Allow running directly as a fast gate too: `bun scripts/check-effect-native-vendor.mjs`
+// Allow running directly as a fast gate too: `node --import tsx scripts/check-effect-native-vendor.mjs`
 if (import.meta.main) {
   const findings = checkVendorConsistency()
   if (findings.length > 0) {

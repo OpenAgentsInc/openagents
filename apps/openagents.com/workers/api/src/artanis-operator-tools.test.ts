@@ -473,7 +473,7 @@ describe('#6366 dispatch_codex_task (gated; plan-only without a seam)', () => {
         issue: 6320,
         objective: 'Improve serving throughput per the roadmap.',
         verify:
-          'bun run --cwd apps/openagents.com/workers/api test -- src/foo.test.ts',
+          'pnpm --dir apps/openagents.com/workers/api run test -- src/foo.test.ts',
       }),
     )
     expect(result.outcome).toBe('deferred')
@@ -550,7 +550,7 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
       tool.run({
         objective: 'Burn down public issue work per the roadmap.',
         verify:
-          'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-tools.test.ts',
+          'pnpm --dir apps/openagents.com/workers/api run test -- src/artanis-operator-tools.test.ts',
       }),
     )
     expect(result.outcome).toBe('executed')
@@ -600,7 +600,7 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
       tool.run({
         objective: 'Burn down public issue work per the roadmap.',
         verify:
-          'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-tools.test.ts',
+          'pnpm --dir apps/openagents.com/workers/api run test -- src/artanis-operator-tools.test.ts',
       }),
     )
     expect(result.outcome).toBe('deferred')
@@ -627,7 +627,7 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
       tool.run({
         objective: 'Burn down public issue work per the roadmap.',
         verify:
-          'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-tools.test.ts',
+          'pnpm --dir apps/openagents.com/workers/api run test -- src/artanis-operator-tools.test.ts',
       }),
     )
     expect(result.outcome).toBe('deferred')

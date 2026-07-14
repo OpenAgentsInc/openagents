@@ -5,7 +5,7 @@ Issue: [OpenAgentsInc/openagents#8792](https://github.com/OpenAgentsInc/openagen
 
 ## Result
 
-`bun run typecheck` in `apps/pylon` now runs both the existing production
+`pnpm run typecheck` in `apps/pylon` now runs both the existing production
 `NodeNext` typecheck and a strict, no-emit test program. The test program uses
 bundler module resolution because the Bun test suite intentionally imports
 extensionless TypeScript modules and `.ts` modules directly; production source
@@ -26,7 +26,7 @@ exact file, location, TypeScript code, and message in
 
 This is a shrink-only baseline:
 
-- a new diagnostic fails `bun run typecheck`;
+- a new diagnostic fails `pnpm run typecheck`;
 - a resolved diagnostic also fails until its stale baseline entry is removed;
 - the updater refuses to add a diagnostic to an existing baseline;
 - deleting a test file fails until the test-file count change is explicitly
@@ -34,7 +34,7 @@ This is a shrink-only baseline:
 - adding a test file fails until the count is reviewed, and the new test is
   compiled before any baseline update can pass.
 
-Use `bun run typecheck:tests:update-baseline` only after fixing existing
+Use `pnpm run typecheck:tests:update-baseline` only after fixing existing
 diagnostics. It can rewrite the baseline when the diagnostic set shrinks; it
 cannot bless new debt.
 
@@ -50,11 +50,11 @@ A TypeScript-config root-input audit covered top-level `apps/*` and
 `packages/*` projects with TypeScript test files. Apart from Pylon, it found
 three uncovered groups:
 
-| Surface | TypeScript tests | Disposition |
-| --- | ---: | --- |
-| `packages/probe` | 74 | No TypeScript project currently covers the tests; tracked by [#8801](https://github.com/OpenAgentsInc/openagents/issues/8801). |
-| `apps/oa-updates` | 21 | No TypeScript project currently covers the tests; tracked by [#8802](https://github.com/OpenAgentsInc/openagents/issues/8802). |
-| `apps/qa-runner/generated` | 4 | Generated E2E cases are outside the app's source config; retain as an explicit generated exception. |
+| Surface                    | TypeScript tests | Disposition                                                                                                                    |
+| -------------------------- | ---------------: | ------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/probe`           |               74 | No TypeScript project currently covers the tests; tracked by [#8801](https://github.com/OpenAgentsInc/openagents/issues/8801). |
+| `apps/oa-updates`          |               21 | No TypeScript project currently covers the tests; tracked by [#8802](https://github.com/OpenAgentsInc/openagents/issues/8802). |
+| `apps/qa-runner/generated` |                4 | Generated E2E cases are outside the app's source config; retain as an explicit generated exception.                            |
 
 All other audited app/package test files were root inputs to at least one local
 TypeScript config. This audit is about config inclusion, not a claim that every
@@ -63,9 +63,9 @@ project's current diagnostics are green.
 ## Verification
 
 ```sh
-bun run --cwd apps/pylon typecheck
+pnpm --dir apps/pylon run typecheck
 node --test apps/pylon/scripts/typecheck-tests.test.mjs
-bun run --cwd apps/pylon test
+pnpm --dir apps/pylon run test
 ```
 
 Final local receipt: the typecheck compiled all 317 TypeScript test files with

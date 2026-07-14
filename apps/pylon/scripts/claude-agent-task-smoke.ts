@@ -4,9 +4,9 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * Bounded local-Claude real-task smoke (issue #4720). See
  * docs/claude-agent-task-smoke.md for the runbook.
  *
- * Live (default):    PYLON_AGENT_TOKEN=... bun run smoke:claude-agent-task
+ * Live (default):    PYLON_AGENT_TOKEN=... pnpm run smoke:claude-agent-task
  *                      [--base-url https://openagents.com]
- * CI-safe (opt-out): bun run smoke:claude-agent-task -- --ci-safe
+ * CI-safe (opt-out): pnpm run smoke:claude-agent-task -- --ci-safe
  */
 import {
   runClaudeAgentTaskCiSmoke,

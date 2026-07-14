@@ -3,13 +3,13 @@
  * oa-infra migration CLI (CFG-2, issue #8517).
  *
  * Usage:
- *   bun scripts/migrate.ts [--dry-run] [--database-url <url>]
+ *   node --import tsx scripts/migrate.ts [--dry-run] [--database-url <url>]
  *
  * The connection URL comes from --database-url or OA_INFRA_DATABASE_URL.
  */
 import { runOaInfraMigrations } from "../src/migrate.ts"
 
-const USAGE = `Usage: bun scripts/migrate.ts [--dry-run] [--database-url <url>]
+const USAGE = `Usage: node --import tsx scripts/migrate.ts [--dry-run] [--database-url <url>]
 
 Options:
   --dry-run             Print the migration plan without applying anything.

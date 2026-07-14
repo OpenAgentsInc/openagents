@@ -245,7 +245,7 @@ admitted launch model.
 Live evidence captured on June 9, 2026:
 
 - command:
-  `PYLON_PSIONIC_BASE_URL=http://127.0.0.1:18080 bun src/index.ts psionic smoke --json`;
+  `PYLON_PSIONIC_BASE_URL=http://127.0.0.1:18080 node --import tsx src/index.ts psionic smoke --json`;
 - Psionic server:
   `psionic-openai-server` with `execution_engine = psionic`, Metal backend, and
   `Qwen_Qwen3.5-0.8B-Q4_K_M.gguf`;
@@ -273,10 +273,10 @@ the Psionic backend should lower that menu into OpenAI-compatible tool schemas.
 
 Pylon should admit these two rows in the first pass:
 
-| Model ref | Role | Required proof before advertisement |
-| --- | --- | --- |
+| Model ref                        | Role                                | Required proof before advertisement                                                                                  |
+| -------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `model.psionic.qwen35.0_8b.q8_0` | lowest-footprint smoke/fallback row | `/health`, `/v1/models`, artifact digest match or model manifest ref, chat completion smoke, one required-tool smoke |
-| `model.psionic.qwen35.2b.q8_0` | coding-agent/tool-loop row | all 0.8B checks plus multi-turn tool-loop smoke, same-turn parallel tool-call smoke, and transcript receipt |
+| `model.psionic.qwen35.2b.q8_0`   | coding-agent/tool-loop row          | all 0.8B checks plus multi-turn tool-loop smoke, same-turn parallel tool-call smoke, and transcript receipt          |
 
 Implemented model-row gate:
 

@@ -4,7 +4,7 @@
 
 ## Tech stack
 
-- [Bun](https://bun.sh)
+- [Node.js 24](https://nodejs.org/)
 - [Effect](https://effect.website/)
 - [OpenTUI](https://github.com/anomalyco/opentui)
 
@@ -15,7 +15,7 @@
 guards both).
 
 **The default published Pylon is now `@openagentsinc/pylon@1.0.5`** — the
-`latest` dist-tag. A fresh `npx @openagentsinc/pylon` installs the Bun/Effect
+`latest` dist-tag. A fresh `npx @openagentsinc/pylon` installs the Node/Effect
 earning-capable node directly from npm. The old `0.2.5` GitHub-asset launcher
 (previously `latest`) is superseded; it predated the Tassadar earning path and
 could no longer resolve a runnable release asset on a clean machine (Launch
@@ -35,15 +35,15 @@ The npm package and the signed standalone auto-update feed are separate
 release surfaces. The `1.0.5` npm publish does NOT update
 `updates.openagents.com/pylon/.../feed.json`; that feed only moves when the
 signed binary flow in `apps/pylon/scripts/build-rc-binaries.sh` and the
-`oa-updates` publish path are run. The npm package ships the Bun/Effect source
+`oa-updates` publish path are run. The npm package ships the Node/Effect source
 that runs directly, so the npm publish alone fixes `npx`.
 
 ### Running v1.0 from source (testing only)
 
 ```sh
 git clone https://github.com/OpenAgentsInc/openagents
-cd openagents && bun install
-bun run --cwd apps/pylon start     # equivalently: bun apps/pylon/src/index.ts
+cd openagents && pnpm install
+pnpm --dir apps/pylon run start     # equivalently: node --import tsx apps/pylon/src/index.ts
 ```
 
 ### Agent smoke path
@@ -106,17 +106,11 @@ preflight readiness or blockers, lease ref if claimed, trace-submit result,
 validator auto result, and any blocker refs. A lease or readiness result is not
 an earning or settlement claim; only a dereferenceable settlement receipt is.
 
-### Owner install pin (source-checkout daily driver, #4858)
+### Owner source-checkout development
 
-For owner dogfood that should track the source checkout rather than any
-published artifact (rc included), `scripts/owner-install-pin.sh` installs a
-`pylon-dev` launcher into `~/.local/bin` pinned to this source checkout and
-writes an inspectable pin manifest (checkout path, pinned commit, dirty
-state, installedAt) to `~/.config/openagents/pylon-pin.json`. Re-run the
-script after pulling to refresh the recorded commit. This is owner-only
-dogfood convenience; it does **not** satisfy the
-`pylon.local_claude_agent_bridge.v1` packaged-binary blocker, which requires
-the published stable binary (#4859).
+Run source-checkout commands with the repository-pinned Node runtime and
+`node --import tsx apps/pylon/src/index.ts`. Published artifacts remain the
+only release evidence; a source checkout is development evidence only.
 
 **Non-readiness warnings — read before running:**
 
@@ -131,7 +125,7 @@ the published stable binary (#4859).
   understands it is pre-release software with wallet-adjacent surfaces.
   Wallet operations always end in an explicit confirmation dialog, but the
   posture is: test with sats you can afford to lose, or with none.
-- The local gate (`bun run release:gate`) is the bar the RC has to pass;
+- The local gate (`pnpm run release:gate`) is the bar the RC has to pass;
   if you run the RC and find a gate the suite misses, that report is more
   valuable than the testing itself - file it or post it on the Forum.
 
@@ -151,7 +145,7 @@ pylon backend gemini complete --prompt "Summarize the current task."
 pylon backend psionic doctor --json
 pylon psionic doctor --json
 pylon psionic smoke --json
-bun run smoke:psionic-qwen -- --base-url http://127.0.0.1:8080
+pnpm run smoke:psionic-qwen -- --base-url http://127.0.0.1:8080
 pylon psionic install --channel rc --manifest-url <release-manifest-url> --yes
 pylon psionic models install qwen35-0_8b-q8_0 --manifest-url <model-manifest-url> --yes
 pylon apple-fm status
@@ -360,7 +354,7 @@ payout target`) run from the palette and always end in an explicit
 
 `src/tui/harness.tsx` mounts the real dashboard headlessly (no TTY) via
 `@opentui/solid`'s `testRender`: inject keys programmatically, capture
-character frames, snapshot them with `bun:test`, and drive the real
+character frames, snapshot them with Vitest, and drive the real
 runtime/bridge with fake `PylonEvent` streams. See
 `tests/tui-render-harness.test.ts`; the harness is importable by the
 runtime package's renderer tests as well.
@@ -444,7 +438,7 @@ Assignment worker commands are available for signed fake-server and live API
 smokes:
 
 ```sh
-pylon work submit "fix a public failing test" --commit <40-char-sha> --adapter codex --repo OpenAgentsInc/openagents --verify "bun test"
+pylon work submit "fix a public failing test" --commit <40-char-sha> --adapter codex --repo OpenAgentsInc/openagents --verify "pnpm test"
 pylon work status <autopilot-work-order-ref> --events
 pylon work review <autopilot-work-order-ref> --action request_changes
 pylon assignment poll --base-url https://openagents.com
@@ -520,7 +514,7 @@ token-counter evidence. The command reports `mergePolicy:
 proof. See `docs/khala-burndown-runbook.md`.
 
 The FleetRun live smoke scripts are skip-safe by default and exist for owner
-or release-operator proof runs, not CI. `bun run --cwd apps/pylon
+or release-operator proof runs, not CI. `pnpm run --cwd apps/pylon
 smoke:fleet-run-live` runs only when `PYLON_FLEET_RUN_LIVE_ARM=1` is present
 with `PYLON_FLEET_RUN_LIVE_PYLON_REF`, exactly two distinct
 `PYLON_FLEET_RUN_LIVE_ISSUES`, `PYLON_FLEET_RUN_LIVE_REPO`,
@@ -549,7 +543,7 @@ public-safe ref projection returns; the closeout checklist accepts the capped
 ref projection only when trace count, final-trace readiness, and owner-only
 visibility are still present.
 Assignment workers execute from the Pylon app path, so app-local verification
-paths such as `bun test tests/fleet-run-live-smoke.test.ts` are preferred over
+paths such as `pnpm test tests/fleet-run-live-smoke.test.ts` are preferred over
 repo-root-prefixed paths.
 
 The standing Sarah FleetRun intake loop is operator-visible without exposing
@@ -570,7 +564,7 @@ daemon exits after the server commits a claim but before canonical local
 import, there is no false immediate-restart guarantee: the fixed 60-second
 server intake lease expires, then the standing poll reclaims the pending run.
 
-`bun run --cwd apps/pylon smoke:fleet-run-sustained` uses the same evidence
+`pnpm --dir apps/pylon run smoke:fleet-run-sustained` uses the same evidence
 chain behind `PYLON_FLEET_RUN_SUSTAINED_ARM=1`. Defaults are target 5,
 duration 30 minutes, minimum 2 refills, and at least 7 distinct issue numbers
 (`target + minRefills`). Optional knobs are
@@ -626,14 +620,14 @@ path-safe `multi-session-summary.json`.
       "accountRef": "codex-a",
       "worktreePath": "../task-worktrees/codex-a",
       "objective": "Fix the focused failing test and keep edits scoped.",
-      "verify": ["bun", "test", "apps/pylon/tests/multi-session-run.test.ts"]
+      "verify": ["pnpm", "test", "apps/pylon/tests/multi-session-run.test.ts"]
     }
   ]
 }
 ```
 
 ```sh
-bun apps/pylon/scripts/multi-session-run.ts \
+node --import tsx apps/pylon/scripts/multi-session-run.ts \
   --plan multi-session-plan.json \
   --proofs-dir .pylon-proofs/multi-session \
   --pylon-home .pylon \
@@ -650,7 +644,7 @@ pylon provider go-online
 pylon provider approve-labor --approved-by-ref operator.public.<ref> --job-type code_task
 pylon provider once
 pylon provider go-offline
-bun run smoke:nip90-provider
+pnpm run smoke:nip90-provider
 ```
 
 `go-online` marks the local runtime online, adds
@@ -792,7 +786,7 @@ Typed per-harness maintenance for the local coding harnesses (Codex CLI,
 Claude Code, OpenCode), sharing one engine with the Desktop Settings
 one-click update (`@openagentsinc/pylon-core/custody/harness-maintenance`):
 
-- Status projects installed version, install channel (npm/bun/pnpm global,
+- Status projects installed version, install channel (npm/pnpm global,
   Homebrew, or the harness's native installer), the latest published version,
   and a `current`/`behind_latest`/`unknown` advisory per harness.
 - `--update` runs detect → pin → update → **re-probe** → receipt. The pin
@@ -844,7 +838,7 @@ the repo root.
 ## Release Gate
 
 ```sh
-bun run release:gate
+pnpm run release:gate
 ```
 
 The local release gate runs tests, JSON smokes, dashboard startup smoke, package

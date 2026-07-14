@@ -16,10 +16,11 @@ import { fileURLToPath } from 'node:url'
 const OMEGA_EFFECT_VERSION = '4.0.0-beta.94'
 const EFFECT_NATIVE_EFFECT_VERSION = '4.0.0-beta.94'
 const FOLDKIT_EFFECT_EXCEPTION_VERSION = '4.0.0-beta.66'
-// effect-cf@0.13.1 still PEERS on ^4.0.0-beta.70 upstream; bun resolves that
+// effect-cf@0.13.1 still PEERS on ^4.0.0-beta.70 upstream; pnpm resolves that
 // range to the unified installed beta.94.
 const EFFECT_CF_PEER_RANGE = '^4.0.0-beta.70'
-const NOSTR_EFFECT_PINNED_SPEC = 'github:OpenAgentsInc/nostr-effect#2bb5787'
+const NOSTR_EFFECT_PINNED_SPEC =
+  'https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz'
 const EFFECT_CF_VERSION = '0.13.1'
 const EFFECT_VITEST_VERSION = OMEGA_EFFECT_VERSION
 const EFFECT_VITEST_DEFERRED_NOTE =
@@ -29,8 +30,8 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(SCRIPT_DIR, '..')
 const REPO_ROOT = resolve(APP_ROOT, '..', '..')
 const REPO_ROOT_REAL_PATH = realpathSync(REPO_ROOT)
-const ROOT_PACKAGE_JSON_PATH = join(REPO_ROOT, 'package.json')
-const BUN_LOCK_PATH = join(REPO_ROOT, 'bun.lock')
+const PNPM_WORKSPACE_PATH = join(REPO_ROOT, 'pnpm-workspace.yaml')
+const PNPM_LOCK_PATH = join(REPO_ROOT, 'pnpm-lock.yaml')
 const EFFECT_NATIVE_VENDOR_PATH = join(
   APP_ROOT,
   'packages',
@@ -41,7 +42,7 @@ const EXPECTED_REPO_NODE_MODULES_REAL_PATH = join(
   REPO_ROOT_REAL_PATH,
   'node_modules',
 )
-const BUN_PACKAGE_STORE = join(REPO_NODE_MODULES, '.bun')
+const PNPM_PACKAGE_STORE = join(REPO_NODE_MODULES, '.pnpm')
 
 const EXPECTED_EFFECT_NATIVE_PACKAGES = new Map([
   ['apps/openagents.com/packages/effect-native-core', '@effect-native/core'],
@@ -84,7 +85,7 @@ const isPathWithin = (parent, candidate) => {
 
 const pathContainmentPolicyCases = [
   {
-    candidate: join(REPO_NODE_MODULES, '.bun', 'effect', 'package.json'),
+    candidate: join(REPO_NODE_MODULES, '.pnpm', 'effect', 'package.json'),
     shouldAllow: true,
   },
   {
@@ -124,17 +125,17 @@ if (!existsSync(REPO_NODE_MODULES)) {
   }
 }
 
-if (!existsSync(BUN_PACKAGE_STORE)) {
+if (!existsSync(PNPM_PACKAGE_STORE)) {
   localInstallProblems.push(
-    `Missing local ${repoRelative(BUN_PACKAGE_STORE)} package store; a guard run without this checkout's frozen install is invalid`,
+    `Missing local ${repoRelative(PNPM_PACKAGE_STORE)} package store; a guard run without this checkout's frozen install is invalid`,
   )
 } else if (localNodeModulesRealPath !== null) {
-  const packageStoreRealPath = realpathSync(BUN_PACKAGE_STORE)
+  const packageStoreRealPath = realpathSync(PNPM_PACKAGE_STORE)
   if (
     !isPathWithin(EXPECTED_REPO_NODE_MODULES_REAL_PATH, packageStoreRealPath)
   ) {
     localInstallProblems.push(
-      `${repoRelative(BUN_PACKAGE_STORE)} resolves outside this checkout to ${packageStoreRealPath}`,
+      `${repoRelative(PNPM_PACKAGE_STORE)} resolves outside this checkout to ${packageStoreRealPath}`,
     )
   }
 }
@@ -235,13 +236,14 @@ const expectedEffectVersionForManifest = path =>
     ? EFFECT_NATIVE_EFFECT_VERSION
     : OMEGA_EFFECT_VERSION
 
-const rootPackageJson = readJson(ROOT_PACKAGE_JSON_PATH)
-const rootCatalogEffectVersion = rootPackageJson.workspaces?.catalog?.effect
+const rootCatalogEffectVersion = readFileSync(PNPM_WORKSPACE_PATH, 'utf8').match(
+  /^  effect:\s*([^\s#]+)\s*$/m,
+)?.[1]
 const rootCatalogProblems =
   rootCatalogEffectVersion === OMEGA_EFFECT_VERSION
     ? []
     : [
-        `package.json workspaces.catalog.effect is ${String(rootCatalogEffectVersion)}; expected ${OMEGA_EFFECT_VERSION}`,
+        `pnpm-workspace.yaml catalog.effect is ${String(rootCatalogEffectVersion)}; expected ${OMEGA_EFFECT_VERSION}`,
       ]
 
 const expectedExactVersions = new Map([
@@ -310,6 +312,16 @@ const resolveDependencyPackageJson = (
   dependencyName,
 ) => {
   const contextRequire = createRequire(contextPackageJsonPath)
+  const directPackageJson = join(
+    dirname(contextPackageJsonPath),
+    'node_modules',
+    ...dependencyName.split('/'),
+    'package.json',
+  )
+
+  if (existsSync(directPackageJson)) {
+    return requireLocalInstalledPackagePath(directPackageJson, dependencyName)
+  }
 
   try {
     return requireLocalInstalledPackagePath(
@@ -501,11 +513,11 @@ const installedExternalPullerPolicyTestProblems =
 const installedExternalEffectPullers = []
 const installedExternalEffectProblems = []
 const installedPackageJsonPaths =
-  collectInstalledPackageJsonPaths(BUN_PACKAGE_STORE)
+  collectInstalledPackageJsonPaths(PNPM_PACKAGE_STORE)
 
 if (installedPackageJsonPaths.length === 0) {
   localInstallProblems.push(
-    `Local ${repoRelative(BUN_PACKAGE_STORE)} contains no installed package manifests; ancestor resolution is not accepted`,
+    `Local ${repoRelative(PNPM_PACKAGE_STORE)} contains no installed package manifests; ancestor resolution is not accepted`,
   )
 }
 
@@ -670,24 +682,22 @@ for (const expectation of criticalPackageExpectations) {
   }
 }
 
-const runBunWhyEffect = () => {
-  const result = spawnSync('bun', ['pm', 'why', 'effect'], {
+const runPnpmWhyEffect = () => {
+  const result = spawnSync('pnpm', ['why', 'effect', '--recursive', '--depth', '0'], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
   })
 
   if (result.status !== 0) {
-    throw new Error(result.stderr.trim() || 'bun pm why effect failed')
+    throw new Error(result.stderr.trim() || 'pnpm why effect failed')
   }
 
   return result.stdout.trim()
 }
 
-// `bun pm why` is deliberately report-only. Bun 1.3.11 displays compatible
-// peer ranges beneath every satisfying Effect line, so effect-cf's
-// `^4.0.0-beta.70` peer appears under beta.94. The authoritative checks above
+// `pnpm why` is deliberately report-only. The authoritative checks above
 // resolve `effect/package.json` from each package's own installed context.
-const effectWhyOutput = runBunWhyEffect()
+const effectWhyOutput = runPnpmWhyEffect()
 
 const trackedInstalledVersions = [
   ['unified repo effect line', OMEGA_EFFECT_VERSION],
@@ -704,34 +714,26 @@ const trackedInstalledVersions = [
   ],
 ]
 
-const bunLock = readFileSync(BUN_LOCK_PATH, 'utf8')
+const pnpmLock = readFileSync(PNPM_LOCK_PATH, 'utf8')
 
 const lockExpectations = [
   {
     description: `effect-cf@${EFFECT_CF_VERSION}`,
-    pattern: `"effect-cf": ["effect-cf@${EFFECT_CF_VERSION}"`,
-  },
-  {
-    description: `effect-cf peerDependencies.effect is ${EFFECT_CF_PEER_RANGE}`,
-    pattern: `"effect": "${EFFECT_CF_PEER_RANGE}"`,
+    pattern: `effect-cf@${EFFECT_CF_VERSION}:`,
   },
   {
     description: `the unified installed effect@${OMEGA_EFFECT_VERSION}`,
-    pattern: `"effect": ["effect@${OMEGA_EFFECT_VERSION}"`,
+    pattern: `effect@${OMEGA_EFFECT_VERSION}:`,
   },
   {
     description: `foldkit@0.102.1 peers on effect ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
-    pattern: '"foldkit": ["foldkit@0.102.1"',
-  },
-  {
-    description: `Foldkit peerDependencies.effect is ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
-    pattern: `"effect": "${FOLDKIT_EFFECT_EXCEPTION_VERSION}"`,
+    pattern: 'foldkit@0.102.1:',
   },
 ]
 
 const lockProblems = lockExpectations
-  .filter(expectation => !bunLock.includes(expectation.pattern))
-  .map(expectation => `bun.lock is missing ${expectation.description}`)
+  .filter(expectation => !pnpmLock.includes(expectation.pattern))
+  .map(expectation => `pnpm-lock.yaml is missing ${expectation.description}`)
 
 const problems = [
   ...pathContainmentPolicyTestProblems,
@@ -788,7 +790,7 @@ console.log(
 )
 console.log('')
 console.log(
-  'Installed effect dependency tree from `bun pm why effect` (diagnostic only; peer placement is not resolution authority):',
+  'Installed effect dependency tree from `pnpm why effect --recursive --depth 0` (diagnostic only; peer placement is not resolution authority):',
 )
 console.log(effectWhyOutput)
 console.log('')

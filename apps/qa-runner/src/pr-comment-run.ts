@@ -13,7 +13,7 @@
 // post. The workflow owns posting (so secrets/tokens stay in CI, not here).
 //
 // Usage:
-//   bun run src/pr-comment-run.ts \
+//   node --import tsx src/pr-comment-run.ts \
 //     --changed "apps/openagents.com/...,packages/..." \
 //     --out ./runs/pr-eval --comment-out ./pr-comment.md \
 //     [--pro-base-url https://openagents.com] [--repo OpenAgentsInc/openagents]

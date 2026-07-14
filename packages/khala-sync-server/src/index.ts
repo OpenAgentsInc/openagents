@@ -141,7 +141,7 @@ export interface KhalaSyncScopeAuth {
 // the Bun-side `@openagentsinc/khala-sync-server/capture` subpath
 // (KHALA_SYNC_NOTIFY_CHANNEL, KhalaSyncCaptureCheckpoint, runCapturePass,
 // startCaptureDaemon, …). It is a long-lived Bun daemon (`import { SQL }
-// from "bun"` as a VALUE), so it must never ride the root export the
+// from a runtime-specific module as a VALUE), so it must never ride the root export the
 // workers-typechecked openagents.com Worker consumes — same isolation rule
 // as ./hub. CLI: scripts/capture.ts.
 // ---------------------------------------------------------------------------

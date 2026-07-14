@@ -7221,7 +7221,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
       maxSpendCents: '0',
       objective: '',
       repositoryFullName: 'OpenAgentsInc/openagents',
-      verificationCommand: 'bun test',
+      verificationCommand: 'pnpm exec vp test',
     },
     autopilotWorkReview: AutopilotWorkReviewIdle(),
     autopilotDecisions: AutopilotDecisionsIdle(),

@@ -21,7 +21,7 @@ runtime installed.
 1. Installs Bun if not already present.
 2. Clones the public `openagents` repo at a pinned ref (default `main`,
    overridable via the `openagents-pin-ref` instance metadata attribute).
-3. Runs `bun install` at the workspace root.
+3. Runs `pnpm install` at the workspace root.
 4. Starts `apps/pylon/src/orchestration/runtime-intent-supervisor.ts` with
    **no** `--owner-user-id`, which selects `org_cloud` executor mode (see that
    file's own `executorMode` default) — the same mode the org-cloud runtime

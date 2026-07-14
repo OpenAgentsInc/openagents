@@ -780,7 +780,7 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
           commitSha: '1745cd4b54b8a12a50922f80b5d345314c91d70d',
           kind: 'git_checkout',
           verificationCommand: {
-            args: ['bun', 'test'],
+      args: ['pnpm', 'exec', 'vp', 'test'],
             commandRef: 'command.public.autopilot_coder.bun_test',
           },
         },
@@ -843,7 +843,7 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
           commitSha: '2222222222222222222222222222222222222222',
           kind: 'git_checkout',
           verificationCommand: {
-            args: ['bun', 'test'],
+      args: ['pnpm', 'exec', 'vp', 'test'],
             commandRef: 'command.public.autopilot_coder.bun_test',
           },
         },

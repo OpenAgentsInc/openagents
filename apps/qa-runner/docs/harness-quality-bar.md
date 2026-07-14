@@ -95,15 +95,15 @@ mid-step (SIGINT) must still leave behind the evidence:
 - [ ] Timeout + retry + continuation paths each have a test.
 - [ ] An artifact-flush-on-crash AND an artifact-flush-on-interrupt test exist.
 - [ ] A parallel-beats-serial benchmark exists and asserts the margin.
-- [ ] `bun run typecheck` adds no new errors in `apps/qa-runner/src`.
+- [ ] `pnpm run typecheck` adds no new errors in `apps/qa-runner/src`.
 
 ## Where each guarantee lives
 
-| Guarantee | Code | Test |
-| --- | --- | --- |
-| Per-step timeout | `timeouts.ts` `withDeadline` | `timeouts.test.ts`, `runner-hardening.test.ts` |
-| Bounded opt-in retry (visible flake) | `timeouts.ts` `runStepWithPolicy` | `timeouts.test.ts`, `runner-hardening.test.ts` |
-| Partial-failure continuation | `runner.ts` `driveSession` | `runner-hardening.test.ts` |
-| Flush on crash / interrupt | `runner.ts` `Effect.ensuring` + `withBrowserSurface` release | `runner-hardening.test.ts` |
-| Parallel sharding | `shard.ts` `runShards` | `shard.test.ts` |
-| Public-safe result | `result.ts` `assertPublicSafeResult` | `public-safety.test.ts` |
+| Guarantee                            | Code                                                         | Test                                           |
+| ------------------------------------ | ------------------------------------------------------------ | ---------------------------------------------- |
+| Per-step timeout                     | `timeouts.ts` `withDeadline`                                 | `timeouts.test.ts`, `runner-hardening.test.ts` |
+| Bounded opt-in retry (visible flake) | `timeouts.ts` `runStepWithPolicy`                            | `timeouts.test.ts`, `runner-hardening.test.ts` |
+| Partial-failure continuation         | `runner.ts` `driveSession`                                   | `runner-hardening.test.ts`                     |
+| Flush on crash / interrupt           | `runner.ts` `Effect.ensuring` + `withBrowserSurface` release | `runner-hardening.test.ts`                     |
+| Parallel sharding                    | `shard.ts` `runShards`                                       | `shard.test.ts`                                |
+| Public-safe result                   | `result.ts` `assertPublicSafeResult`                         | `public-safety.test.ts`                        |

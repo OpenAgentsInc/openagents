@@ -50,8 +50,8 @@ Exports:
 Smoke:
 
 ```sh
-bun run --cwd packages/reactor-contracts smoke:install
-bun run --cwd packages/reactor-contracts smoke:dogfood
+pnpm --dir packages/reactor-contracts run smoke:install
+pnpm --dir packages/reactor-contracts run smoke:dogfood
 ```
 
 The smoke creates a clean temporary Reactor node directory, signs a fixture

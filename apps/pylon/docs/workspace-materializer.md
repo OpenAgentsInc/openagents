@@ -96,7 +96,7 @@ admin state; that cache is not a long-lived SCM credential.
   assignments for the same repository get separate refs and directories.
   Measured against the live B2 fixture repository: cold materialization
   ~0.7s, warm cross-adapter materialization ~70ms. The cross-process gate is
-  `bun apps/pylon/scripts/concurrent-checkout-proof.ts --workers 12`, which
+  `node --import tsx apps/pylon/scripts/concurrent-checkout-proof.ts --workers 12`, which
   asserts zero `workspace_checkout_failed` outcomes for many workers sharing
   one bare cache.
 - **`detached_checkout`.** The original B2-proven full detached checkout

@@ -270,7 +270,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "Portable coding sessions use owner-minted host-independent identity, a canonical nested graph with independent cursors, graph-wide generation fencing, secret-free content-addressed checkpoints, provider-neutral targets, target-scoped capability refs, shared typed movement commands, detail-independent first paint, and identical pointer/tap/key action semantics.",
       surface: "openagents-mobile-desktop-pylon-cloud",
       verification:
-        "bun test --cwd packages/portable-session-contract and bun test --cwd packages/behavior-contracts run the executable PORT-00 contract/model and registry coverage oracles.",
+        "pnpm exec vp test --cwd packages/portable-session-contract and pnpm exec vp test --cwd packages/behavior-contracts run the executable PORT-00 contract/model and registry coverage oracles.",
     },
     {
       authorityBoundary:
@@ -421,7 +421,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "OpenAgents mobile owns one private Expo SQLite cache through the shared Khala Sync store core and, only after native-session verification, composes the shared production transport on exactly the server-derived owner's personal scope. It re-reads rotated access custody host-side and closes session-before-store on OTA reload/unmount.",
       surface: "openagents-mobile",
       verification:
-        "bun test apps/openagents-mobile/tests/mobile-sync-host.test.ts plus the khala-sync-client Expo adapter suite prove the authenticated host/storage boundary; mobile OTA and Home tests prove close-before-reload ordering without credential projection.",
+        "pnpm exec vp test apps/openagents-mobile/tests/mobile-sync-host.test.ts plus the khala-sync-client Expo adapter suite prove the authenticated host/storage boundary; mobile OTA and Home tests prove close-before-reload ordering without credential projection.",
     },
     {
       authorityBoundary:
@@ -654,7 +654,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "The Buy Minerals Liquid Glass sheet auto-dismisses when the background reply video ends/loops. Wrong. The sheet must stay open until the USER dismisses it (selecting a price pack or Not now).",
       surface: "openagents-mobile",
       verification:
-        "bun test apps/openagents-mobile/tests/home-shell-core.test.ts proves the sheet survives video-ended and video-tap-dismiss events and closes only on the user's pack-selection or Not-now intents; the simulator pixel proof on #8648 shows the sheet still open past the video loop boundary.",
+        "pnpm exec vp test apps/openagents-mobile/tests/home-shell-core.test.ts proves the sheet survives video-ended and video-tap-dismiss events and closes only on the user's pack-selection or Not-now intents; the simulator pixel proof on #8648 shows the sheet still open past the video loop boundary.",
     },
     {
       authorityBoundary:
@@ -688,7 +688,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "The owner wants Sarah consumable in OpenAgents mobile with the native glass shell as soon as possible. V1 is the text availability floor over the same /sarah contracts as web: prospect/authenticated session, bounded SSE transcript, composer turns, and typed cards inside the GL-2 shell.",
       surface: "openagents-mobile",
       verification:
-        "bun test apps/openagents-mobile/tests/sarah-surface.test.ts proves the view-program contract; the #8649 receipt carries the production pixel proof (real prospect session + live Sarah reply in the shell) and the restart-persistence + reconnect evidence.",
+        "pnpm exec vp test apps/openagents-mobile/tests/sarah-surface.test.ts proves the view-program contract; the #8649 receipt carries the production pixel proof (real prospect session + live Sarah reply in the shell) and the restart-persistence + reconnect evidence.",
     },
     {
       authorityBoundary:
@@ -730,7 +730,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "Clients see only their own engagement. Owner-scoped fail-closed: a client can NEVER read another engagement.",
       surface: "openagents-web",
       verification:
-        "bun run --cwd apps/openagents.com/workers/api test -- src/portal-routes.test.ts proves cross-client isolation against the real migration schema; bun run --cwd apps/openagents.com/apps/start test -- src/routes/-portal.test.tsx proves the login gate and own-engagement-only surface.",
+        "pnpm --dir apps/openagents.com/workers/api run test -- src/portal-routes.test.ts proves cross-client isolation against the real migration schema; pnpm --dir apps/openagents.com/apps/start run test -- src/routes/-portal.test.tsx proves the login gate and own-engagement-only surface.",
     },
     {
       authorityBoundary:
@@ -770,7 +770,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       statement: "Decisions always produce receipts.",
       surface: "openagents-web",
       verification:
-        "bun run --cwd apps/openagents.com/workers/api test -- src/portal-routes.test.ts proves receipt minting, idempotency, and immutability; bun run --cwd apps/openagents.com/apps/start test -- src/routes/-portal.test.tsx proves the rendered receipt ref and optimistic rollback.",
+        "pnpm --dir apps/openagents.com/workers/api run test -- src/portal-routes.test.ts proves receipt minting, idempotency, and immutability; pnpm --dir apps/openagents.com/apps/start run test -- src/routes/-portal.test.tsx proves the rendered receipt ref and optimistic rollback.",
     },
     {
       authorityBoundary:
@@ -803,7 +803,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "Owner, 2026-07-10, after seeing only 'Your setup is being prepared' on /portal while logged in with no engagement, no account context, and no way to log in or switch: \"it will [go out] when it actually works... theres something horribly missing about your QA process that you would put this in front of me as ready for testing.\" The authenticated empty state must always show WHICH account/email the caller is signed in as, say that an engagement set up under a different email is the likely cause, and offer a sign-out/switch-account affordance.",
       surface: "openagents-web",
       verification:
-        "bun run --cwd apps/openagents.com/apps/start test -- src/routes/-portal.test.tsx proves the signed-in identity line, the fallback chain, the different-email guidance, and the /logout affordance on the empty state; the #8652 reopen receipts carry the deployed browser screenshots (logged out, logged in without engagement, logged in with engagement).",
+        "pnpm --dir apps/openagents.com/apps/start run test -- src/routes/-portal.test.tsx proves the signed-in identity line, the fallback chain, the different-email guidance, and the /logout affordance on the empty state; the #8652 reopen receipts carry the deployed browser screenshots (logged out, logged in without engagement, logged in with engagement).",
     },
     {
       authorityBoundary:
@@ -848,7 +848,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "Owner, 2026-07-11, after seeing the mobile app stuck on the local 'Message Khala' Khala surface with a 'Link OpenAgents account' button while the OpenAgents status surface already read 'Sync live': the visible conversation authority must re-evaluate when the verified personal scope reaches the live phase — upgrading the Khala surface from the pre-live local fallback to the confirmed sync conversation (title 'OpenAgents', 'Continue conversation' composer) exactly once and without inventing or duplicating a conversation — while a scope that never becomes live stays local; and the OpenAgents account control must read 'Sign out' for every confirmed post-authentication phase (session_ready, bootstrapping, catching_up, live, must_refetch, stale) and read 'Link OpenAgents account' only for genuinely unauthenticated phases.",
       surface: "openagents-mobile",
       verification:
-        "bun test --cwd apps/openagents-mobile runs the reconciler and account-control oracles in the normal mobile sweep; mobile typecheck plus behavior-contract coverage guard the phase-to-authority and phase-to-account-control boundaries.",
+        "pnpm exec vp test --cwd apps/openagents-mobile runs the reconciler and account-control oracles in the normal mobile sweep; mobile typecheck plus behavior-contract coverage guard the phase-to-authority and phase-to-account-control boundaries.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,

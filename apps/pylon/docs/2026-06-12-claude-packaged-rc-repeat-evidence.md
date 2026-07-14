@@ -30,7 +30,7 @@ exactly the scope the claude-agent-task smoke defines) was repeated from the
 - Outcome: one real SDK session (hashed ref
   `session.pylon.claude_agent.294b4ccba7b9be010ffbb2b8`, hash verified
   against the operator-local session store), 1 file edit, the packaged
-  executor's real `bun test sum.test.ts` verification passed, closeout
+  executor's real `pnpm test sum.test.ts` verification passed, closeout
   `accepted` with `settlementState: not_applicable` and
   `payoutClaimAllowed: false`. The smoke-level scan over all 6 retained
   harness requests plus the closeout, and the 8-pattern scan over the

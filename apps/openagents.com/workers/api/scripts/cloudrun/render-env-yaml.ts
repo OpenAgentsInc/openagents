@@ -4,7 +4,7 @@
  * from wrangler.jsonc, so the committed wrangler `vars` blocks stay the
  * single source of truth for non-secret configuration.
  *
- * Usage: bun scripts/cloudrun/render-env-yaml.ts (production|staging) [out]
+ * Usage: node --import tsx scripts/cloudrun/render-env-yaml.ts (production|staging) [out]
  *
  * Adds the monolith-specific overrides on top (LiveHub URL, cron/env
  * markers); SECRETS ARE NEVER RENDERED HERE — they ride --set-secrets in

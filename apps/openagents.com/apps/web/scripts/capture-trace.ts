@@ -8,7 +8,7 @@
 // renders an honest 404), and writes screenshots to docs/traces/. Mirrors
 // scripts/capture-pro.ts. No app auth / no network.
 //
-// Run: `bun run scripts/capture-trace.ts`
+// Run: `node --import tsx scripts/capture-trace.ts`
 
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'

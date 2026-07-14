@@ -43,7 +43,7 @@ const options = (name: string): ReadonlyArray<string> =>
 const flag = (name: string): boolean => args.includes(name)
 
 const help = (): string => [
-  'Usage: bun run scripts/khala-glm-nvfp4-pilot.ts [options]',
+  'Usage: node --import tsx scripts/khala-glm-nvfp4-pilot.ts [options]',
   '',
   'Owner-armed #6323 pilot runner for nvidia/GLM-5.2-NVFP4.',
   'Without owner arm, endpoint, and public refs it emits a public-safe no_go result and exits 2.',

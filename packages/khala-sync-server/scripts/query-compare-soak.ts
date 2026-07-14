@@ -33,7 +33,7 @@
  *
  * Usage (from packages/khala-sync-server/):
  *   CLOUDFLARE_API_TOKEN=<token> CLOUDFLARE_ACCOUNT_ID=<id> \
- *     bun scripts/query-compare-soak.ts [--hours <n>] [--dataset <name>] \
+ *     node --import tsx scripts/query-compare-soak.ts [--hours <n>] [--dataset <name>] \
  *       [--domains <comma,separated,list>] [--json]
  *
  * Options:
@@ -283,7 +283,7 @@ export const renderCompareSoakReportTable = (report: CompareSoakQueryReport): st
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `Usage: bun scripts/query-compare-soak.ts [options]
+const USAGE = `Usage: node --import tsx scripts/query-compare-soak.ts [options]
 
 Options:
   --hours <n>          Lookback window in hours (default 6).

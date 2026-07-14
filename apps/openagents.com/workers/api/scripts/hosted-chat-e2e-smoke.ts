@@ -27,10 +27,10 @@
  * NEVER printed.
  *
  * Usage:
- *   bun apps/openagents.com/workers/api/scripts/hosted-chat-e2e-smoke.ts
- *   OPENAGENTS_BASE_URL=https://staging.openagents.com bun .../hosted-chat-e2e-smoke.ts
+ *   node --import tsx apps/openagents.com/workers/api/scripts/hosted-chat-e2e-smoke.ts
+ *   OPENAGENTS_BASE_URL=https://staging.openagents.com node --import tsx .../hosted-chat-e2e-smoke.ts
  *   HOSTED_CHAT_SMOKE_PROMPT="What is the capital of France? One word." \
- *     HOSTED_CHAT_SMOKE_EXPECT=Paris bun .../hosted-chat-e2e-smoke.ts
+ *     HOSTED_CHAT_SMOKE_EXPECT=Paris node --import tsx .../hosted-chat-e2e-smoke.ts
  */
 
 import { createHash } from 'node:crypto'

@@ -15,7 +15,7 @@
  * a validator Pylon performs after claiming a validation assignment.
  *
  * Usage:
- *   bun run scripts/training-validator-live-verify.ts \
+ *   node --import tsx scripts/training-validator-live-verify.ts \
  *     --validator-pylon <pylonRef> \
  *     --contribution <contributionRef> \
  *     [--class freivalds_merkle|deterministic_recompute] \
@@ -52,7 +52,7 @@ const windowRef = flag('--window', 'training.window.cs336_a1.demo.20260611.w1')!
 
 if (validatorPylonRef === undefined || contributionRef === undefined) {
   console.error(
-    'usage: bun run scripts/training-validator-live-verify.ts --validator-pylon <pylonRef> --contribution <contributionRef>',
+    'usage: node --import tsx scripts/training-validator-live-verify.ts --validator-pylon <pylonRef> --contribution <contributionRef>',
   )
   process.exit(2)
 }

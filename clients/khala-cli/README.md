@@ -44,7 +44,7 @@ printf 'Say OK only.' | pnpm run khala -- --headless --json
 
 The published npm package is `@openagentsinc/khala`; it exposes the `khala`
 command through a Node shebang and is bundled for Node, so a global
-`npm install -g @openagentsinc/khala` works with either Node 20+ or Bun on
+`npm install -g @openagentsinc/khala` works with Node 24 on
 `PATH`. The local Codex delegation features additionally need the optional
 `@openai/codex-sdk` dependency (installed with the package) plus a connected
 Codex account.

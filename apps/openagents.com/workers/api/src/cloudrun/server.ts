@@ -14,7 +14,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * - `ctx.waitUntil` work is tracked and drained on SIGTERM
  *
  * Run with the cloudflare:workers stub preloaded:
- *   bun --preload ./src/cloudrun/preload.ts ./src/cloudrun/server.ts
+ *   node --import tsx --import ./src/cloudrun/preload.ts ./src/cloudrun/server.ts
  */
 
 import worker from '../index'

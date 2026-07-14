@@ -46,7 +46,7 @@ const run = (command, commandArgs) => {
   return result.stdout
 }
 
-const secretsJson = run('bunx', ['wrangler', 'secret', 'list', '--format=json'])
+const secretsJson = run('pnpm exec', ['wrangler', 'secret', 'list', '--format=json'])
 const secrets = JSON.parse(secretsJson)
 const secretNames = new Set(
   Array.isArray(secrets)
@@ -73,7 +73,7 @@ const hasApiKey = secretNames.has('RESEND_API_KEY')
 const hasFromEmail = configuredName('RESEND_FROM_EMAIL')
 const configStatus = hasApiKey && hasFromEmail ? 'present' : 'missing'
 const safeSqlKey = idempotencyKey.replaceAll("'", "''")
-const ledgerJson = run('bunx', [
+const ledgerJson = run('pnpm exec', [
   'wrangler',
   'd1',
   'execute',

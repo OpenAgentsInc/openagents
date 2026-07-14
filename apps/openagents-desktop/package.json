@@ -9,7 +9,7 @@
   "scripts": {
     "build": "node --import tsx scripts/build.ts",
     "package:mac": "electron-forge package --platform=darwin --arch=arm64",
-    "make:mac": "node --import tsx scripts/prepare-macos-maker.ts && electron-forge make --platform=darwin --arch=arm64",
+    "make:mac": "electron-forge make --platform=darwin --arch=arm64",
     "dev": "node --import tsx scripts/build.ts && electron .",
     "live-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-live-proof.ts",
     "mvp-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-mvp-proof.ts",

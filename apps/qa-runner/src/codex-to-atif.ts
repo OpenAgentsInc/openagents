@@ -565,7 +565,7 @@ export function convertCodexRolloutTextToAtif(jsonl: string, options: CodexToAti
 export const serializeCodexTrajectory = (t: AtifTrajectory): string => `${JSON.stringify(t, null, 2)}\n`;
 
 // ---------------------------------------------------------------------------
-// CLI: `bun run src/codex-to-atif.ts --in <rollout.jsonl> [--out <file>] ...`
+// CLI: `node --import tsx src/codex-to-atif.ts --in <rollout.jsonl> [--out <file>] ...`
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv: ReadonlyArray<string>): Record<string, string> {
@@ -590,7 +590,7 @@ async function main(): Promise<void> {
   const inPath = args.in;
   if (!inPath) {
     console.error(
-      "usage: bun run src/codex-to-atif.ts --in <rollout.jsonl> [--out <file>] " +
+      "usage: node --import tsx src/codex-to-atif.ts --in <rollout.jsonl> [--out <file>] " +
         "[--session-id <id>] [--model <name>]",
     );
     process.exit(2);

@@ -7,7 +7,7 @@
  * product packaging is finished.
  * 
  * Usage:
- *   bun run scripts/issue-business-quick-win-receipt.ts \
+ *   node --import tsx scripts/issue-business-quick-win-receipt.ts \
  *     --signup-id <id> \
  *     --offering-id <promiseId> \
  *     --summary "..." \

@@ -1673,11 +1673,11 @@ export const buildAppDeployAssignment = (
     service: 'openagents-autopilot',
     repository: input.repository,
     commands: {
-      install: 'bun install --frozen-lockfile',
-      typecheck: 'bun run typecheck',
-      test: 'bun run test',
-      build: 'bun run build',
-      smoke: 'bun run smoke:shc',
+      install: 'pnpm install --frozen-lockfile',
+      typecheck: 'pnpm run typecheck',
+      test: 'pnpm run test',
+      build: 'pnpm run build',
+      smoke: 'pnpm run smoke:shc',
     },
     callback: {
       url: callbackUrl(

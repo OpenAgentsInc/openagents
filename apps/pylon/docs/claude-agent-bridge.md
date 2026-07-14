@@ -186,7 +186,7 @@ and posted public-safe closeout ref
 The #4756 proof boundary is also receipt-backed: production work order
 `autopilot_work_order.46dc8c38-04c5-4f1c-9814-f35bfc00e7c3` carried
 `claude_agent_task` plus `git_checkout` through API submission, own-Pylon
-placement, local Claude Agent execution, independent `bun test` verification,
+placement, local Claude Agent execution, independent `pnpm test` verification,
 and public-safe delivered closeout
 `assignment.closeout.2dc83bdc0d8481ebba14621e` against public repo
 `AtlantisPleb/openagents-b2-git-checkout-fixture-20260611144040` at pinned

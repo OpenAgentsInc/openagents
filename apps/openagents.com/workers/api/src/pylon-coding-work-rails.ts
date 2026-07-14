@@ -21,7 +21,7 @@
  *    verified), active (live accepted closeout). The projection helper
  *    lets the funnel ladder block render coding-capability rungs.
  * 3. ADMISSION GATES (#4852) — a seeded definition-only gate set for
- *    the coding host shape (Node/Bun runtime present, workspace-write
+ *    the coding host shape (Node/legacy runtime present, workspace-write
  *    sandbox supported, host-RAM headroom for an SDK session), reusing
  *    the existing `DeviceAdmissionGateDefinition` machinery and its
  *    `definitionsOnly` / `liveAdmissionClaim: false` posture.
@@ -454,7 +454,7 @@ export const CODING_WORK_DEVICE_ADMISSION_GATE_SET: ReadonlyArray<DeviceAdmissio
         'device_admission.public.excluded_node_or_bun_runtime_missing',
       gateRef: 'gate.device_admission.coding.node_or_bun_runtime_present.v1',
       rationale:
-        'both coding adapters load their SDKs lazily inside the Pylon host process, so a host without a working Node or Bun runtime cannot start any coding SDK session; runtime presence is measured, not assumed.',
+        'both coding adapters load their SDKs lazily inside the Pylon host process, so a host without a working Node or legacy runtime cannot start any coding SDK session; runtime presence is measured, not assumed.',
       requirement: {
         comparison: 'at_least',
         measurementKind: 'node_or_bun_runtime_present',

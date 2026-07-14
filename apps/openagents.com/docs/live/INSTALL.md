@@ -7,10 +7,10 @@ command here disagrees with an older doc or video, the install guides win.
 
 Quick map:
 
-| Product | What it is | Fastest path |
-| --- | --- | --- |
-| **Khala Code** | The desktop coding app (the main product) | Build from source — section A |
-| **Pylon** | Headless contributor node (the agent path) | `npx @openagentsinc/pylon` — section B |
+| Product        | What it is                                 | Fastest path                           |
+| -------------- | ------------------------------------------ | -------------------------------------- |
+| **Khala Code** | The desktop coding app (the main product)  | Build from source — section A          |
+| **Pylon**      | Headless contributor node (the agent path) | `npx @openagentsinc/pylon` — section B |
 
 > Honest scope: installing or running any of this is a **capability, not an
 > automatic earning path** — paid work and settlement stay behind their own
@@ -24,7 +24,7 @@ Quick map:
 Khala Code wraps your own local Codex install and adds fleet/swarm
 coordination on top. **No public installer yet — build from source** (tracked
 honestly in the `khala_code.*` product promises). macOS is the primary
-target. Prerequisites: [Bun](https://bun.sh) 1.3+, Node 20+, and the Codex
+target. Prerequisites: Node 24.13.1, pnpm 11.10.0, and the Codex
 CLI logged in.
 
 ```sh
@@ -34,15 +34,15 @@ npm install -g @openai/codex && codex login   # skip login if already signed in
 # need; a --depth 1 clone's .git is ~40 MB)
 git clone --depth 1 https://github.com/OpenAgentsInc/openagents
 cd openagents
-bun install                        # at the repo ROOT (Bun workspace)
-bun run dev:khala-code-desktop     # builds the UI and opens the app
+pnpm install                        # at the repo root (pnpm workspace)
+pnpm run dev:khala-code-desktop     # builds the UI and opens the app
 ```
 
 Agent notes: never sparse-checkout (the `workspace:*` graph breaks
-`bun install`), and **never run `codex login` against an existing live
+`pnpm install`), and **never run `codex login` against an existing live
 `~/.codex` session** unless the owner asks — the flow wipes the stored Codex
 login at flow-start and breaks active work. Update with
-`git pull && bun install`.
+`git pull && pnpm install`.
 
 Your fleet, from the terminal:
 
@@ -71,13 +71,13 @@ Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
    from source instead:
    ```sh
    git clone --depth 1 https://github.com/OpenAgentsInc/openagents
-   cd openagents/apps/pylon && bun install        # agent SDKs are optional deps; not needed
-   bun run build:rc-binaries 1.0.5                # signs all 4 platforms into dist/rc/
+   cd openagents/apps/pylon && pnpm install        # agent SDKs are optional deps; not needed
+   pnpm run build:rc-binaries 1.0.5                # signs all 4 platforms into dist/rc/
    ```
 2. **Verify it's genuinely ours** (signed with the OpenAgents ed25519 release
    key, kid `2dbe811d19f67528` — fail closed on mismatch):
    ```sh
-   bun apps/oa-updates/scripts/verify-release.ts \
+   node --import tsx apps/oa-updates/scripts/verify-release.ts \
      apps/pylon/dist/rc/<version>/pylon-<platform> \
      apps/pylon/dist/rc/<version>/pylon-<platform>.sig.json
    # expect: OK: signed by OpenAgents (kid 2dbe811d19f67528)

@@ -1,6 +1,6 @@
 # openagents-audio
 
-Private Bun/Effect Cloud Run gateway for persistent voice. It accepts authenticated AUDIO-1 binary WebSocket frames at `/v1/stream`, validates exact owner/device/thread/session/generation and sequence, and bridges bounded LINEAR16 chunks to Google Speech-to-Text V2 `StreamingRecognize` with `chirp_3`.
+Private Node/Effect Cloud Run gateway for persistent voice. It accepts authenticated AUDIO-1 binary WebSocket frames at `/v1/stream`, validates exact owner/device/thread/session/generation and sequence, and bridges bounded LINEAR16 chunks to Google Speech-to-Text V2 `StreamingRecognize` with `chirp_3`.
 
 Canonical assistant text enters through the separately grant-bound
 `POST /v1/speak` seam and streams through Google Chirp 3 HD bidirectional TTS.
@@ -22,9 +22,9 @@ The Google adapter uses ADC/workload identity. Credentials, raw audio, and trans
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents-audio test
-bun run --cwd apps/openagents-audio typecheck
-bun run --cwd apps/openagents-audio build:cloudrun
+pnpm --dir apps/openagents-audio run test
+pnpm --dir apps/openagents-audio run typecheck
+pnpm --dir apps/openagents-audio run build:cloudrun
 ```
 
 The live smoke is intentionally gated because it incurs Google STT use. Deploy with the repository automation gcloud configuration, mint a short-lived test grant through the application authority, then send a consented non-sensitive PCM fixture. Never put a token, transcript, or audio bytes in logs or issue comments.
@@ -48,5 +48,5 @@ create/get/delete/list. Cloud SQL backups retain manifests and audit receipts,
 not media objects.
 Neither this service nor its SQL schema produces a public or signed URL.
 
-Run `bun run test` and `bun run typecheck`. The gated GCS/Cloud SQL smoke is
+Run `pnpm run test` and `pnpm run typecheck`. The gated GCS/Cloud SQL smoke is
 documented in `docs/deploy/openagents-audio-retention.md`.

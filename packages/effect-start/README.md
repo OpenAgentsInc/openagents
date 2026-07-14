@@ -11,6 +11,6 @@ helpers here instead of creating new app-local Effect/Start bridges.
 ## Verify
 
 ```sh
-bun run --cwd packages/effect-start test
-bun run --cwd packages/effect-start typecheck
+pnpm --dir packages/effect-start run test
+pnpm --dir packages/effect-start run typecheck
 ```

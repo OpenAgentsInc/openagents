@@ -43,7 +43,7 @@ treated as complete.
 Tracked files should stay minimal until the new architecture lands:
 
 - `README.md` explains the reset and target direction.
-- `package.json` defines a Bun workspace/catalog layout modeled after the
+- `package.json` defines a pnpm workspace/catalog layout modeled after the
   OpenCode workspace style while pinning the Effect line used by OpenAgents product surface.
 - `packages/runtime/src/contracts/provider-account.ts` defines the first
   Probe/OpenAgents product surface ChatGPT/Codex account contract.

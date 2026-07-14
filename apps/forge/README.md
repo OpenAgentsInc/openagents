@@ -52,7 +52,7 @@ Forge as the coordination source of truth for that lane:
 2. Require the SU-5 receipt `receipt.forge.su7.su5-check-deploy` from:
 
    ```sh
-   bun run --cwd apps/openagents.com check:deploy
+   pnpm --dir apps/openagents.com run check:deploy
    ```
 
 3. Promote only after SU-4 Blueprint gates write
@@ -67,10 +67,10 @@ rows as audit evidence. Do not delete the Forge evidence refs when escaping.
 ## Commands
 
 ```sh
-bun run --cwd apps/forge typecheck
-bun run --cwd apps/forge test
-bun run --cwd apps/forge dev
-bun run --cwd apps/forge deploy
+pnpm --dir apps/forge run typecheck
+pnpm --dir apps/forge run test
+pnpm --dir apps/forge run dev
+pnpm --dir apps/forge run deploy
 ```
 
 ## Production

@@ -8,7 +8,7 @@ Issue: #4662 (stable 0.3.0 release)
 - Current package version: `0.3.0-rc2` (tagged, agent-economy sprint).
 - Full release gate run on macOS at rc2 on 2026-06-11 ~02:40 UTC:
   **passed** — unit/runtime tests, bootstrap/status/inventory/operator JSON
-  smokes, dashboard startup smoke, `bun pm pack --dry-run`, and the local
+  smokes, dashboard startup smoke, `pnpm pack --dry-run`, and the local
   package install smoke (which installs the packed tarball with
   `@openagentsinc/nip90` and `@openagentsinc/tassadar-executor` tarball overrides).
   Output: `release gate passed`.

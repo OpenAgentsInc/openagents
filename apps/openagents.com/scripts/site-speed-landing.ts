@@ -5,7 +5,7 @@
 // only visitor-shaped GETs; blocking experiments abort requests client-side.
 //
 // Usage:
-//   bun apps/openagents.com/scripts/site-speed-landing.ts \
+//   node --import tsx apps/openagents.com/scripts/site-speed-landing.ts \
 //     [--origin https://openagents.com] [--route-set landing|funnel|all] [--runs 3] [--settle-ms 9000] \
 //     [--profiles desktop-fast,mobile-mid] [--variants baseline,block-counter,block-thirdparty] \
 //     [--out var/site-speed] [--fail-on-budget]

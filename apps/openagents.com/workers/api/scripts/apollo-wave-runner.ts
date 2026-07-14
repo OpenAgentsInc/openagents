@@ -11,9 +11,9 @@
  * tests). print-fixture / live use Node strip-types on the pure fixture.
  *
  * Usage:
- *   bun run apollo-wave:dry-run -- --count 100
- *   bun run apollo-wave:print-fixture -- --segment agencies_seo
- *   bun run apollo-wave:live -- --body ./wave.local.json
+ *   pnpm run apollo-wave:dry-run -- --count 100
+ *   pnpm run apollo-wave:print-fixture -- --segment agencies_seo
+ *   pnpm run apollo-wave:live -- --body ./wave.local.json
  *
  * Env (live only):
  *   OPENAGENTS_ADMIN_API_TOKEN (required)
@@ -37,10 +37,10 @@ const here = dirname(fileURLToPath(import.meta.url))
 const packageRoot = join(here, '..')
 
 const usage = `Usage:
-  bun run apollo-wave:dry-run -- [--count 100]
-  bun run apollo-wave:print-fixture -- --segment agencies_seo [--count 100] [--wave-id fixture]
-  bun run apollo-wave:live -- --body ./wave.local.json
-  bun run apollo-wave:live -- --segment agencies_seo --wave-id 20260709a --count 100 --allow-synthetic
+  pnpm run apollo-wave:dry-run -- [--count 100]
+  pnpm run apollo-wave:print-fixture -- --segment agencies_seo [--count 100] [--wave-id fixture]
+  pnpm run apollo-wave:live -- --body ./wave.local.json
+  pnpm run apollo-wave:live -- --segment agencies_seo --wave-id 20260709a --count 100 --allow-synthetic
 
 Segments: ${Object.keys(OB2_APOLLO_WAVE_SEGMENTS).join(', ')}
 Live exit-gate pair: ${OB2_LIVE_WAVE_SEGMENT_PAIR.join(' + ')}

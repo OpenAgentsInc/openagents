@@ -53,7 +53,7 @@ is listening you get `{ "ok": false, "code": "no_node" }`. Both exit nonzero.
 ```
 pylon sessions list
 pylon sessions spawn --adapter codex|claude_agent --objective "<text>" \
-  [--verify "bun test"] [--worktree <path>]
+  [--verify "pnpm test"] [--worktree <path>]
 pylon sessions cancel --session-ref <ref>
 ```
 
@@ -112,16 +112,16 @@ pylon training status    --base-url <url>                                # publi
 
 ## 8. GUI surface → CLI parity map
 
-| Autopilot GUI surface | Headless CLI |
-| --- | --- |
-| Node status / online | `pylon status --json` |
-| Wallet balance | `pylon balance`, `pylon wallet status` |
-| Sessions (list/spawn/cancel) | `pylon sessions list|spawn|cancel` |
-| Decisions / approvals | `pylon approvals list|approve|deny` |
-| Assignments | `pylon assignment poll|accept|progress|closeout` |
-| Accepted work / closeouts | `pylon work submit|status|review|request|offers|accept` |
-| Deploy | `pylon deploy cloud|status` |
-| Training lane | `pylon training plan|activate|claim|admit|reconcile|closeout|status` |
-| Tips / earnings | `pylon tip`, `pylon sweep-status`, `pylon tip-prefs` |
-| Accounts | `pylon accounts list|usage` |
-| Discover everything | `pylon help --json`, `pylon <cmd> --help` |
+| Autopilot GUI surface        | Headless CLI                                         |
+| ---------------------------- | ---------------------------------------------------- | -------- | -------- | --------- | --------- | -------- | ------- |
+| Node status / online         | `pylon status --json`                                |
+| Wallet balance               | `pylon balance`, `pylon wallet status`               |
+| Sessions (list/spawn/cancel) | `pylon sessions list                                 | spawn    | cancel`  |
+| Decisions / approvals        | `pylon approvals list                                | approve  | deny`    |
+| Assignments                  | `pylon assignment poll                               | accept   | progress | closeout` |
+| Accepted work / closeouts    | `pylon work submit                                   | status   | review   | request   | offers    | accept`  |
+| Deploy                       | `pylon deploy cloud                                  | status`  |
+| Training lane                | `pylon training plan                                 | activate | claim    | admit     | reconcile | closeout | status` |
+| Tips / earnings              | `pylon tip`, `pylon sweep-status`, `pylon tip-prefs` |
+| Accounts                     | `pylon accounts list                                 | usage`   |
+| Discover everything          | `pylon help --json`, `pylon <cmd> --help`            |

@@ -23,4 +23,4 @@ export PYLON_NODE_REF="${PYLON_NODE_REF:-$(hostname -s)}"
 # OA_DISCOVERY_PUBLIC_URL should be the tailscale-serve HTTPS endpoint, e.g.
 # https://<host>.<tailnet>.ts.net — required for remote (cellular) phone connect.
 
-exec bun apps/pylon/src/index.ts node
+exec node --import tsx apps/pylon/src/index.ts node

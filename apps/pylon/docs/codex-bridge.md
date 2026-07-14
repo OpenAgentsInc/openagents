@@ -60,7 +60,7 @@ Gate, not this subscription-account prohibition.
 
 **Scope boundary flagged for future review:** this lane is owner-jobs,
 no-spend first (your machine, your credentials, your job). Serving
-*other people's* jobs (Lane C, P6 #4782) on subscription-login auth
+_other people's_ jobs (Lane C, P6 #4782) on subscription-login auth
 raises resale questions this review does not clear; a paid Lane C leg
 on `codex_cli_login` auth requires its own ToS review before it runs.
 API-key sources are the safe default for provider-mode work.
@@ -130,7 +130,7 @@ Optional `codex` section in the Pylon config file
   only.
 - `dev.accounts[].openAgentsProviderAccountRef` is an internal linkage ref
   written by `pylon auth codex` / `pylon accounts connect codex
-  --openagents-link`. Keep it in the local config; never place raw provider
+--openagents-link`. Keep it in the local config; never place raw provider
   auth values, bearer tokens, or `OPENCODE_AUTH_CONTENT` in the config file.
 
 Optional local-only dev composer override:
@@ -227,7 +227,7 @@ that does not carry the `codex_sdk` work class. When it does run:
 
 - Wire format: `jobKind: "codex_agent_task"` with
   `codingAssignment.codex` (`schema:
-  openagents.pylon.codex_agent_task.v0.3`, `agentKind: "codex_sdk"`,
+openagents.pylon.codex_agent_task.v0.3`, `agentKind: "codex_sdk"`,
   `fixtureRef`, optional `sandboxMode`/`timeoutSeconds`) — the
   structural peer of `codingAssignment.claudeAgent`, inside the same
   normalized assignment payload. `requiredCapabilityRefs` travels
@@ -237,7 +237,7 @@ that does not carry the `codex_sdk` work class. When it does run:
   `apps/openagents.com/workers/api/scripts/codex-task-dispatch.ts`
   (twin of `claude-agent-task-dispatch.ts`), `unpaid_smoke` only,
   ref-only payload, no instruction text on the wire.
-- Smokes: `bun run smoke:codex-agent-task` (CI-safe: local harness,
+- Smokes: `pnpm run smoke:codex-agent-task` (CI-safe: local harness,
   mock runner, full worker-loop lifecycle, redaction scan) and the
   `--live` leg for CX4. Runbook: `codex-agent-task-smoke.md`.
 
@@ -310,7 +310,7 @@ the real Codex SDK against the public fixture repo
 `AtlantisPleb/openagents-b2-git-checkout-fixture-20260611144040` at
 pinned commit `1745cd4b54b8a12a50922f80b5d345314c91d70d` via the
 shared `git_checkout` workspace contract, verified by an independent
-`bun test`, and closed out as accepted
+`pnpm test`, and closed out as accepted
 (`assignment.closeout.b6d31228033e1009fe773326`,
 `result.public.pylon.codex_agent_task.git_checkout_verified_passed`)
 with the no-spend boundary and redaction scan intact. The full CX

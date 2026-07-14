@@ -2078,7 +2078,7 @@ async function main() {
             }
           }
         }
-        const verify = verifies.length === 0 ? ['bun', '--version'] : ['sh', '-c', verifies.join(' && ')]
+        const verify = verifies.length === 0 ? ['node', '--version'] : ['sh', '-c', verifies.join(' && ')]
         const concurrency = positiveIntegerOption(options, 'concurrency', 'sessions batch --concurrency') ?? 2
         const timeoutSeconds = positiveIntegerOption(options, 'timeout-seconds', 'sessions batch --timeout-seconds')
         const worktree = optionString(options, 'worktree')
@@ -2162,9 +2162,9 @@ async function main() {
         }
         // The control session takes ONE verify argv. Run the verify command(s)
         // shell-parsed via `sh -c`. With multiple `--verify` commands, chain
-        // them with `&&` so all must pass. Default to `bun --version` when none
+        // them with `&&` so all must pass. Default to `node --version` when none
         // given so the session still produces a verify outcome.
-        const verify = verifies.length === 0 ? ['bun', '--version'] : ['sh', '-c', verifies.join(' && ')]
+        const verify = verifies.length === 0 ? ['node', '--version'] : ['sh', '-c', verifies.join(' && ')]
         const worktree = optionString(options, 'worktree')
         // W-3 (#5379): `--on-approval` gains `auto`, the BOUNDED auto-approve
         // policy. `--approval-policy <name>` is an explicit alias for the same
@@ -3127,7 +3127,7 @@ async function main() {
         const budgetCents = Number(options['budget-cents'] ?? options.budget ?? 0)
         if (!objective || objective.startsWith('--') || !Number.isInteger(budgetCents) || budgetCents < 0) {
           throw new Error(
-            'usage: pylon work submit "<objective>" --commit <40-char-sha> [--adapter codex|claude_agent|fable] [--budget-cents <cents>] [--repo owner/repo] [--branch main] [--verify "bun test"]',
+            'usage: pylon work submit "<objective>" --commit <40-char-sha> [--adapter codex|claude_agent|fable] [--budget-cents <cents>] [--repo owner/repo] [--branch main] [--verify "pnpm exec vp test"]',
           )
         }
         const adapter = options.adapter

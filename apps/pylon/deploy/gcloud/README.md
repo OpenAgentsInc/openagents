@@ -180,7 +180,7 @@ gcloud compute ssh oa-codex-codex-1 \
   --project openagentsgemini \
   --zone us-central1-a \
   --tunnel-through-iap \
-  --command 'sudo systemctl --no-pager --full status openagents-pylon openagents-codex-supervisor && sudo -u pylon env PYLON_HOME=/var/lib/openagents-pylon bun /opt/openagents-pylon/apps/pylon/src/index.ts codex accounts list --json'
+  --command 'sudo systemctl --no-pager --full status openagents-pylon openagents-codex-supervisor && sudo -u pylon env PYLON_HOME=/var/lib/openagents-pylon node --import tsx /opt/openagents-pylon/apps/pylon/src/index.ts codex accounts list --json'
 ```
 
 Expected: the copied account reports `readiness.state: "ready"`, the service is

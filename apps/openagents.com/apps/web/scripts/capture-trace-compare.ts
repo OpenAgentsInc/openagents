@@ -9,7 +9,7 @@
 // empty state), and writes screenshots to docs/traces/. Mirrors
 // scripts/capture-trace.ts. No app auth / no network.
 //
-// Run: `bun run scripts/capture-trace-compare.ts`
+// Run: `node --import tsx scripts/capture-trace-compare.ts`
 
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'

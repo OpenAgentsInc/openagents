@@ -2,7 +2,7 @@
 /**
  * Live ACP smoke (env-armed). Requires `grok login` or XAI_API_KEY.
  *
- *   GROK_ACP_LIVE=1 bun packages/grok-harness/scripts/live-acp-smoke.ts
+ *   GROK_ACP_LIVE=1 node --import tsx packages/grok-harness/scripts/live-acp-smoke.ts
  */
 
 import {

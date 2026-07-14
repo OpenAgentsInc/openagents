@@ -49,7 +49,7 @@ const booleanFlags = new Set(['dry-run', 'help', 'h', 'json'])
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,239}$/
 
 export const usage = () => `Usage:
-  bun scripts/gym-harbor-full-trace-archive.ts \\
+  node --import tsx scripts/gym-harbor-full-trace-archive.ts \\
     --job-dir /tmp/khala-tb/khala-tb-1782410587 \\
     --run-ref run.gym.terminal_bench.khala-live \\
     --job-ref job.gym.harbor_terminal_bench.khala-tb-1782410587

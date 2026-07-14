@@ -278,7 +278,7 @@ This is the invariant ledger for `openagents`.
   app source must not.
 - Regression coverage for this policy lives in
   `apps/web/src/navigation-policy.test.ts`, which is included in
-  `bun run check:deploy`.
+  `pnpm run check:deploy`.
 
 ## Generated Icon Catalog
 
@@ -289,10 +289,10 @@ This is the invariant ledger for `openagents`.
   stand-ins, image icon URLs, icon fonts, lucide/react-icons, Iconify, or new
   icon dependencies.
 - If the product surface needs a missing product icon, update the upstream Fireball catalog
-  first, regenerate with `bun run sync:icons`, and keep the icon tests
+  first, regenerate with `pnpm run sync:icons`, and keep the icon tests
   passing.
 - Regression coverage for this policy lives in `apps/web/src/icon.test.ts` and
-  `apps/web/src/icon-policy.test.ts`, both included in `bun run check:deploy`.
+  `apps/web/src/icon-policy.test.ts`, both included in `pnpm run check:deploy`.
 
 ## Three-Effect Proof Replay Visual Ownership
 
@@ -3020,7 +3020,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `workers/api/src/public-launch-dashboard.test.ts`, and
   `workers/api/src/openagents-agent-sheet-route-coverage.test.ts`; critical
   onboarding link coverage lives in `scripts/check-live-agent-doc-links.mjs`
-  via `bun run check:agent-doc-links`.
+  via `pnpm run check:agent-doc-links`.
 
 ## Artanis Probe GEPA Production Smoke
 
@@ -3142,7 +3142,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `workers/api/src/tassadar-trace-factory/projection-rebuild.ts`); do not
   invent a second staleness vocabulary.
 - New public projections must ship compliant. The zero-debt architecture check
-  (`scripts/check-zero-debt-architecture.mjs`, run by `bun run
+  (`scripts/check-zero-debt-architecture.mjs`, run by `pnpm run
 check:architecture` inside `check:deploy`) discovers `/api/public/...`
   route literals, fails any route missing from its projection-surface ledger,
   greps `staleness_declared` modules for the shared contract, and enforces the

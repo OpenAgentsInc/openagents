@@ -35,7 +35,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const srcRoot = join(packageRoot, 'src')
 
 /**
- * Modules that CANNOT be imported by a bun test, with the reason on record.
+ * Modules that CANNOT be imported by a pnpm exec vp test, with the reason on record.
  * Keep this list justified and short — every entry is an untested-network-
  * boundary risk until proven otherwise.
  */
@@ -43,7 +43,7 @@ const ALLOWLIST = new Map([
   [
     'web/sqlite-wasm-worker.ts',
     'storage-worker entrypoint: the only module that imports the ' +
-      '@sqlite.org/sqlite-wasm bundle; importing it under bun test would ' +
+      '@sqlite.org/sqlite-wasm bundle; importing it under pnpm exec vp test would ' +
       'pull the WASM runtime outside a worker. Its composition parts ' +
       '(wasm-driver, worker-runtime, worker-server) are all test-imported.',
   ],

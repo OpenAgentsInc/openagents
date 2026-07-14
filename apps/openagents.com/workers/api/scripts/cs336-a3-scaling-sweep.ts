@@ -13,7 +13,7 @@
  * closeout, and settlement stay on the Worker authority routes.
  *
  * Usage:
- *   bun run scripts/cs336-a3-scaling-sweep.ts \
+ *   node --import tsx scripts/cs336-a3-scaling-sweep.ts \
  *     [--assignment <assignmentRef>] [--cells <i,j,k>] (1-based grid indexes)
  */
 import {

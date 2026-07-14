@@ -3,7 +3,7 @@
  * KS-8.13 (#8324): Khala Code product-state backfill CLI — D1 → Postgres.
  *
  * Usage (from packages/khala-sync-server/):
- *   bun scripts/backfill-khala-code-product-state.ts \
+ *   node --import tsx scripts/backfill-khala-code-product-state.ts \
  *     [--database-url <postgres-url>]   # default $KHALA_SYNC_DATABASE_URL
  *     [--d1-database <name>]            # default openagents-autopilot
  *     [--wrangler-cwd <dir>]            # default ../../apps/openagents.com/workers/api
@@ -102,7 +102,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     else if (arg === "--verify") options.verify = true
     else if (arg === "--verify-newest") options.verifyNewest = Number(next())
     else if (arg === "--help" || arg === "-h") {
-      console.log("Usage: bun scripts/backfill-khala-code-product-state.ts [options]")
+      console.log("Usage: node --import tsx scripts/backfill-khala-code-product-state.ts [options]")
       return undefined
     } else {
       console.error(`error: unknown argument ${JSON.stringify(arg)}`)
@@ -134,8 +134,9 @@ const d1Query = (
   command: string,
 ): Array<Record<string, unknown>> => {
   const result = spawnSync(
-    "bunx",
+    "pnpm",
     [
+      "exec",
       "wrangler",
       "d1",
       "execute",

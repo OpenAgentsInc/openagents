@@ -1,7 +1,7 @@
 /**
  * Replay CLI for the Tassadar PoC: re-executes a committed fixture and
  * verdicts the claimed trace digest. Usage:
- *   bun run src/replay-cli.ts <fixture.json> --claimed-digest <hex> \
+ *   node --import tsx src/replay-cli.ts <fixture.json> --claimed-digest <hex> \
  *     --validator-device <ref> [--tamper-step <n>]
  */
 import { readFileSync } from "node:fs"

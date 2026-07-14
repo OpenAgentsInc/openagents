@@ -273,12 +273,15 @@ elif [[ ! -f /root/openagents-pylon.env ]]; then
   exit 1
 fi
 sudo -n apt-get update
-sudo -n apt-get install -y ca-certificates curl git unzip
-if ! command -v bun >/dev/null 2>&1; then
-  sudo -n mkdir -p /opt/bun
-  curl -fsSL https://bun.sh/install | sudo -n BUN_INSTALL=/opt/bun bash
-  sudo -n ln -sf /opt/bun/bin/bun /usr/local/bin/bun
+sudo -n apt-get install -y ca-certificates curl git unzip xz-utils
+if ! command -v node >/dev/null 2>&1 || [[ "$(node --version)" != "v24.13.1" ]]; then
+  archive=/tmp/node-v24.13.1-linux-x64.tar.xz
+  curl -fsSL -o "$archive" https://nodejs.org/dist/v24.13.1/node-v24.13.1-linux-x64.tar.xz
+  echo "30215f90ea3cd04dfbc06e762c021393fa173a1d392974298bbc871a8e461089  $archive" | sha256sum -c - >/dev/null
+  sudo -n tar -xJf "$archive" -C /usr/local --strip-components=1
 fi
+sudo -n corepack enable
+sudo -n corepack prepare pnpm@11.10.0 --activate
 if [[ ! -d /opt/openagents-pylon/.git ]]; then
   sudo -n git clone --depth 1 https://github.com/OpenAgentsInc/openagents /opt/openagents-pylon
 else
@@ -295,7 +298,7 @@ run_with_retries gcloud compute ssh "$instance" "${ssh_common[@]}" --command "$r
 remote_verify='
 set -euo pipefail
 sudo -n systemctl is-active --quiet openagents-pylon
-sudo -n -u pylon env PYLON_HOME=/var/lib/openagents-pylon PYLON_OPENAGENTS_BASE_URL=https://openagents.com bun /opt/openagents-pylon/apps/pylon/src/index.ts status --json
+sudo -n -u pylon env PYLON_HOME=/var/lib/openagents-pylon PYLON_OPENAGENTS_BASE_URL=https://openagents.com node /opt/openagents-pylon/apps/pylon/dist/index.mjs status --json
 '
 
 run_with_retries gcloud compute ssh "$instance" "${ssh_common[@]}" --command "$remote_verify" --quiet

@@ -6,7 +6,7 @@
  *
  * Nothing in here may import `@tanstack/react-start/server-entry` (a
  * Vite-build-only virtual module) or any Workers-runtime-specific API — the
- * Bun server imports this file directly (bundled with `bun build`), so it
+ * Node server imports this file directly (bundled with `vp build`), so it
  * must stay pure fetch/Request/Response code.
  */
 

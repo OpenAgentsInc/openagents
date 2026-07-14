@@ -52,7 +52,7 @@ The top-level assignment also carries the controlled-dispatch refs required by
 ```
 
 The packaged runner recognizes only that runtime gate. It creates a bounded
-workspace under local Pylon cache state, repairs the fixture, runs `bun test`,
+workspace under local Pylon cache state, repairs the fixture, runs `pnpm test`,
 and reports only stable public refs:
 
 - `artifact.pylon.runtime_gate.fixture_patch.*`
@@ -75,7 +75,7 @@ operator assignment creation when an admin token is present, then
 ```sh
 OPENAGENTS_AGENT_TOKEN="<redacted>" \
 OPENAGENTS_ADMIN_API_TOKEN="<redacted optional, creates the assignment>" \
-bun run smoke:packaged-runtime-task
+pnpm run smoke:packaged-runtime-task
 ```
 
 The wrapper packs both local packages used by the installed smoke:
@@ -121,16 +121,16 @@ credentials, wallet material, invoices, payment hashes, or preimages.
    export PYLON_HOME="$tmpdir/pylon-home"
    export PYLON_OPENAGENTS_BASE_URL="https://openagents.com"
    export OPENAGENTS_AGENT_TOKEN="<redacted>"
-   bunx pylon bootstrap --json \
+   pnpm exec pylon bootstrap --json \
      --pylon-ref "pylon.public.runtime_gate.example" \
      --display-name "Pylon packaged runtime task smoke" \
      --capability-ref "cap.gepa.retained.v1" \
      --capability-ref "capability.public.packaged_binary" \
      --capability-ref "capability.public.pylon_runtime_gate"
-   bunx pylon provider go-online
-   bunx pylon presence register --base-url "$PYLON_OPENAGENTS_BASE_URL"
-   bunx pylon presence heartbeat --base-url "$PYLON_OPENAGENTS_BASE_URL"
-   bunx pylon wallet report-readiness --base-url "$PYLON_OPENAGENTS_BASE_URL"
+   pnpm exec pylon provider go-online
+   pnpm exec pylon presence register --base-url "$PYLON_OPENAGENTS_BASE_URL"
+   pnpm exec pylon presence heartbeat --base-url "$PYLON_OPENAGENTS_BASE_URL"
+   pnpm exec pylon wallet report-readiness --base-url "$PYLON_OPENAGENTS_BASE_URL"
    ```
 
 3. Have an operator create the no-spend validation assignment above for the
@@ -139,7 +139,7 @@ credentials, wallet material, invoices, payment hashes, or preimages.
 4. Run the installed binary worker-loop command.
 
    ```sh
-   bunx pylon assignment run-no-spend --base-url "$OPENAGENTS_BASE_URL"
+   pnpm exec pylon assignment run-no-spend --base-url "$OPENAGENTS_BASE_URL"
    ```
 
 5. Verify the assignment lifecycle contains accept, progress, artifact
@@ -149,7 +149,7 @@ credentials, wallet material, invoices, payment hashes, or preimages.
 
 ## Current Caveat
 
-`bun run smoke:live-worker-loop` can create a compatible runtime-gate assignment,
+`pnpm run smoke:live-worker-loop` can create a compatible runtime-gate assignment,
 but it still drives the lifecycle directly and is not enough to close #4661.
 The closing evidence must come from the packaged `pylon assignment run-no-spend`
 path above.

@@ -139,7 +139,7 @@ export const makeMemoryAuthKvStore = (): AuthKvStore =>
  * oa-infra KvStore over the khala-sync postgres.js client path, acquiring a
  * fresh transaction-mode-safe client PER OPERATION and always ending it —
  * the same client lifecycle discipline as every other KS-8 Worker store
- * (workerd cannot hold connections across requests; CFG-9's Bun runtime can
+ * (workerd cannot hold connections across requests; CFG-9's legacy runtime can
  * swap this for oa-infra's pooled `layerPostgres` with zero schema change).
  */
 export const makePerOperationPostgresKvStore = (

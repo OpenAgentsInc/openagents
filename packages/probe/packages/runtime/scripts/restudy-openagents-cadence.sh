@@ -42,13 +42,13 @@ cd "$RUNTIME_DIR"
 
 case "$MODE" in
   verdict)
-    exec bun "$CLI" --freshness --root "$REPO_ROOT"
+    exec node --import tsx "$CLI" --freshness --root "$REPO_ROOT"
     ;;
   refresh)
-    exec bun "$CLI" --refresh-if-stale --root "$REPO_ROOT"
+    exec node --import tsx "$CLI" --refresh-if-stale --root "$REPO_ROOT"
     ;;
   ci)
-    bun "$CLI" --refresh-if-stale --root "$REPO_ROOT"
+    node --import tsx "$CLI" --refresh-if-stale --root "$REPO_ROOT"
 
     if git -C "$REPO_ROOT" diff --quiet -- "$INDEX_PATH"; then
       echo "study-packet index already fresh; no re-study commit needed."

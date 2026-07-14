@@ -185,7 +185,7 @@ const configuredLocation = (secretNames, workerVarNames, name) =>
 
 const collectEmailConfig = (runCommand, readTextFile, redactValues) => {
   const secretsJson = runCommand(
-    'bunx',
+    'pnpm exec',
     ['wrangler', 'secret', 'list', '--format=json'],
     { cwd: WORKER_CWD, redactValues },
   )
@@ -231,7 +231,7 @@ const d1Rows = (parsed, runCommand, sql, redactValues) => {
   const database = flagText(parsed, 'd1-database') ?? DEFAULT_D1_DATABASE
   const mode = hasFlag(parsed, 'remote') ? '--remote' : '--local'
   const stdout = runCommand(
-    'bunx',
+    'pnpm exec',
     ['wrangler', 'd1', 'execute', database, mode, '--json', '--command', sql],
     { cwd: WORKER_CWD, redactValues },
   )

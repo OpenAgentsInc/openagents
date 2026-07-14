@@ -318,7 +318,7 @@ const projectedTimelineEvent = (item: CodexHistoryItem, result?: CodexHistoryIte
   // blob — in the default card body; raw input stays in the item inspector).
   const argsText = item.kind === "tool_call" ? item.summary || historyField(item, "input") || "" : ""
   const humanized = item.kind === "tool_call" ? humanizeToolInvocation(item.label, argsText) : null
-  // Plain-text tool inputs (already human, e.g. "bun test") pass through
+  // Plain-text tool inputs (already human, e.g. "pnpm exec vp test") pass through
   // bounded; JSON-shaped inputs never render raw.
   const plainArgs = argsText.trimStart().startsWith("{") || argsText.trimStart().startsWith("[") ? "" : argsText
   const detail = humanized !== null

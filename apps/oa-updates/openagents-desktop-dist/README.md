@@ -7,7 +7,7 @@ routes fail closed with `404`.
 Populate it ONLY with the scripted publish flow (CUT-26, openagents#8706):
 
 ```sh
-bun apps/openagents-desktop/scripts/publish-release.ts \
+node --import tsx apps/openagents-desktop/scripts/publish-release.ts \
   --channel <stable|rc> --version <X.Y.Z[-rc.N]> --artifact <OpenAgents.dmg|.zip>
 ```
 

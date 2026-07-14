@@ -38,7 +38,7 @@
  * The thread workspace is derived from threadRef, so a follow-up turn sees
  * the files an earlier turn wrote.
  *
- * This module never imports `electron` (unit-testable under `bun test`); the
+ * This module never imports `electron` (unit-testable under `pnpm exec vp test`); the
  * IPC wiring lives in main.ts.
  */
 import { createHash } from "node:crypto"

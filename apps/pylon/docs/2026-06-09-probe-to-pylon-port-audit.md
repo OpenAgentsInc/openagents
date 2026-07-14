@@ -42,10 +42,10 @@ telemetry, and runner identity should land in Pylon.
 
 The port keeps Probe's coverage live inside Pylon:
 
-- `bun test`
-- `bun run --cwd packages/runtime test`
+- `pnpm test`
+- `pnpm --dir packages/runtime run test`
 - CLI dispatch smoke:
-  `bun src/index.ts runtime apple-fm status --base-url http://127.0.0.1:9`
+  `node --import tsx src/index.ts runtime apple-fm status --base-url http://127.0.0.1:9`
 
 The full local test suite currently passes with 195 tests and 3 live-provider
 tests skipped. The skipped tests are intentionally gated on live Gemini
@@ -84,7 +84,7 @@ credentials or live provider availability.
   provider/local-session truth by hashed account ref, exposes
   `pylon accounts list --json` and `pylon accounts usage --json`, and includes
   an optional usage summary in `pylon dev doctor --json` / `pylon context
-  --json`.
+--json`.
 - The local Codex source check found that the current TypeScript SDK event
   surface exposes token usage on `turn.completed`; richer rate-limit state is
   represented in Codex core/app-server `TokenCount` /
@@ -98,5 +98,5 @@ credentials or live provider availability.
 - The local dogfood run exposed a targeting papercut: unnamed default homes
   were listed but could not be selected by a human-friendly ref. The CLI now
   accepts provider/default selectors such as `--account codex`, `--account
-  chatgpt`, `--provider codex`, and `--provider claude` while preserving
+chatgpt`, `--provider codex`, and `--provider claude` while preserving
   registered account refs.

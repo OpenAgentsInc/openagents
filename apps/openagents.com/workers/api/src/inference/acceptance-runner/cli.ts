@@ -6,10 +6,10 @@
 // non-zero when not verified — so a coder worker / CI loop can gate on it.
 //
 // Usage:
-//   bun src/inference/acceptance-runner/cli.ts <artifact.html>
-//   cat artifact.html | bun src/inference/acceptance-runner/cli.ts -
+//   node --import tsx src/inference/acceptance-runner/cli.ts <artifact.html>
+//   cat artifact.html | node --import tsx src/inference/acceptance-runner/cli.ts -
 //
-// Prereq: `bunx playwright install chromium` (chromium must be installed).
+// Prereq: `pnpm exec playwright install chromium` (chromium must be installed).
 
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
@@ -32,7 +32,7 @@ const main = async (): Promise<void> => {
   const path = process.argv[2]
   if (path === undefined) {
     console.error(
-      'Usage: bun acceptance-runner/cli.ts <artifact.html|->\n' +
+      'Usage: node --import tsx acceptance-runner/cli.ts <artifact.html|->\n' +
         'Reads a single-file HTML artifact and runs the crossy-road acceptance suite.',
     )
     process.exit(2)
