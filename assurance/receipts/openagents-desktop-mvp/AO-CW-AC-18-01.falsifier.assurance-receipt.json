@@ -1,8 +1,8 @@
 {
-  "adapter_ref": "openagents.bun_test.v1",
-  "admission_digest": "sha256:4db81a5ebc6288f3be85d3c427883517afd27dfa2b9e92c254b3f86e0bf1debd",
+  "adapter_ref": "openagents.vite_plus_test.v1",
+  "admission_digest": "sha256:c37581d434a07fa8ae80a458ea076c73235be86079f31b6aa47ea3fd92118927",
   "assurance_receipt_format_version": "0.1",
-  "assurance_spec_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09",
+  "assurance_spec_digest": "sha256:66e1b49d3089b141a9bd5fb6221d002a0d364259ab719a46a254a507fb0dee72",
   "axes": {
     "admission": "admitted",
     "disposition": "accepted",
@@ -13,14 +13,14 @@
     "readiness": "executable",
     "stability": "stable"
   },
-  "command_digest": "sha256:beb15576a32709689e3727c5e1aec604f2d9a9dc31773d30f5d4d697d6535757",
+  "command_digest": "sha256:9ffe7ab9d5b58a87c8e573c007b2486a70cae38960f9ec251449466bc6a17f41",
   "criterion_refs": [
     "CW-AC-18"
   ],
-  "environment_ref": "ENV-OA-DESKTOP-MVP-BUN-1",
+  "environment_ref": "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
   "execution_unit_ref": "unit.ao-cw-ac-18-01.falsifier",
-  "manifest_digest": "sha256:6a2f7fe9e6284ad90b5a040cedc946c72f46c8e511497780b6abe58e2538d366",
-  "native_report_digest": "sha256:3cc0f5e920792d9bd80d9ea3aef6d176b4c0324d11535df9fcfa74c29e9da487",
+  "manifest_digest": "sha256:a7a1ed90247a62ca61fa3fd36eda4e2a39d5071de8aad6bc7ab259b704af0985",
+  "native_report_digest": "sha256:d19f8753a3c5c1bdb85e68d4765768d3530907bf8fd51555f0bfa9770c0cd7c6",
   "native_report_ref": "var/assurance/openagents-desktop-mvp/AO-CW-AC-18-01/falsifier.junit.xml",
   "obligation_id": "AO-CW-AC-18-01",
   "producer_ref": "runner.openagents.local.20260713",
@@ -29,7 +29,7 @@
     "classification": "reviewed_public_safe",
     "contains_raw_output": false
   },
-  "receipt_ref": "assurance.receipt.e6609a4b7f42556c509eccd659bd88d83c08e0009236aa4e9c10a7b787662066",
+  "receipt_ref": "assurance.receipt.e2e3b80cc5b86d8a22cf52c1204a177af72b98e1ccc9897fca62f39f18268adc",
   "reviewer_ref": "reviewer.codex.assurance.20260713",
-  "source_digest": "sha256:24ade88f79fde9ea96314efe5f1f0828fc3352e9671fc9cbadb64d200a706457"
+  "source_digest": "sha256:ed3d9b06863642b4239867e7b992a9276045f4070ac27a87a739d554f16365fd"
 }

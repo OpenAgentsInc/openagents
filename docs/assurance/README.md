@@ -100,7 +100,7 @@ committed-repository inventory; its frozen bytes remain in the conformance
 corpus. The live revision 2 is reviewed and admitted. All 18 obligations have
 candidate, falsifier, and sensitivity receipts, and the full Desktop gate is
 green. The deterministic compiler, digest-bound Environment Profile and
-adapter lock, narrow Bun-test adapter, receipt normalizer, and Desktop workroom
+adapter lock, narrow Vite Plus test adapter, receipt normalizer, and Desktop workroom
 receipt bridge are implemented. That evidence does not grant release or
 public-claim authority, and broader browser/device/formal adapters remain
 separate future work.
@@ -146,7 +146,7 @@ release prerequisite, or change a public promise.
 | ProductSpec-to-AssuranceSpec proposal | Implemented deterministic coverage skeleton plus a typed, injected Observer semantic-planner boundary; every result remains a separately reviewed `proposed` AssuranceSpec and the deterministic tool never infers proof semantics |
 | Environment Profile and adapter lock | Implemented and digest-bound in the admitted MVP manifest |
 | Deterministic Assurance Manifest compiler | Implemented with golden-byte and binding tests |
-| Native Bun test adapter and normalized receipt | Implemented; native output remains private and reviewed projections are digest-bound |
+| Native Vite Plus test adapter and normalized receipt | Implemented; native output remains private and reviewed projections are digest-bound |
 | Typed Assurance Receipt resolver/registration in the Desktop workroom | Implemented through the immutable bridge and exercised by `AO-CW-AC-04-01` |
 | ProductSpec Related Artifact publication | Parser, package planner/apply primitives, Desktop proposal-only agent tool, and separate owner-confirmation path implemented; portable item-level publication for the live legacy r6 identity waits for PSEL-3 rebinding |
 | QA Swarm manifest consumption | Evidence-only six-lane orchestration is implemented for the current Desktop target; real/spend/native execution remains explicitly armed, and its receipts require separate review/admission |

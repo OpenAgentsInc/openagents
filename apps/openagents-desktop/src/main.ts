@@ -1806,6 +1806,10 @@ const codexAppServerConfig = {
     })
     return { skillRoot: installed.skillRoot, skillPath: installed.skillPath }
   },
+  // ProductSpec is intentionally absent from the MVP UI. Re-enable this only
+  // with a typed per-turn admitted-context binding; workspace selection alone
+  // is not ProductSpec authority.
+  productSpecEnabled: () => false,
   productSpecDynamicTools: ProductSpecDynamicTools,
   onProductSpecToolCall: async (request: import("./codex-app-server-client.ts").CodexAppServerRequest) => {
     const authority = currentProductSpecWorkroom()
@@ -5055,7 +5059,7 @@ void app.whenReady().then(async () => {
     return
   }
   if (mvpProof.enabled && (mvpProof.conflict || !isolatedAppProofMode)) {
-    console.error("[openagents-desktop mvp-proof] the MVP proof requires an isolated temp profile, an isolated workspace, a safe ProductSpec path, and no other driver mode")
+    console.error("[openagents-desktop mvp-proof] the MVP proof requires an isolated temp profile, an isolated workspace, and no other driver mode")
     app.exit(1)
     return
   }
@@ -5072,7 +5076,6 @@ void app.whenReady().then(async () => {
     const workspaceRoot = isolatedAppProofWorkspaceRoot({ enabled: isolatedAppProofMode, env: process.env })
     runMvpProof(window, {
       outDir: mvpProof.outDir,
-      specPath: mvpProof.specPath,
       phase: process.env.OPENAGENTS_DESKTOP_MVP_PROOF_PHASE === "restart" ? "restart" : "initial",
       verifyArtifact: packet => {
         if (workspaceRoot === null) return { ok: false, receiptRef: `receipt.mvp-proof.${packet}.unavailable` }

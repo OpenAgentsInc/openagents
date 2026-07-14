@@ -1,7 +1,7 @@
 {
   "build": "passed",
-  "command": "bun run --cwd apps/openagents-desktop verify",
-  "command_digest": "sha256:bd62499ae137ed5702641185cb508628cf694bb0dadc17ddf3de09a41b023da8",
+  "command": "pnpm --dir apps/openagents-desktop run verify",
+  "command_digest": "sha256:63e1e1d2295e16364487b609ae4bafd7921c96226f28fa7bd70db1137d5c221a",
   "electron_smoke": "passed",
   "exit_code": 0,
   "full_desktop_gate_receipt_format_version": "0.1",
@@ -9,15 +9,15 @@
     "path": "var/assurance/openagents-desktop-mvp/full-desktop-gate.log",
     "visibility": "private"
   },
-  "output_digest": "sha256:852e9380fce49ea6f0d9978576455fa20b9c87bfd8e0f582748a621c498e565b",
+  "output_digest": "sha256:84c4a28af1e00520674127f26d970aae2fa03ba4ffe41cd9582711b826b9701f",
   "public_safety": {
     "classification": "reviewed_public_safe",
     "contains_raw_output": false
   },
-  "source_digest": "sha256:b8a7a46b064f65beaacce0e5c2cc0c9472231a7d5ca304932f981af9b8b3819f",
+  "source_digest": "sha256:42ff958bb7a95a6f24332ea0ec57c17452d703a2cc05058fc41aa0756fdff13c",
   "tests": {
     "failed": 0,
-    "passed": 1205,
+    "passed": 1309,
     "skipped_retired": 39
   },
   "typecheck": "passed",

@@ -27,7 +27,7 @@ const profilePayload = {
   owner: "first_party" as const,
   target_class: "local" as const,
   mutability: "isolated_write" as const,
-  platform: { os: "macos", architecture: "arm64", runtime: "Node 25", framework: "Effect" },
+  platform: { os: "macos", architecture: "arm64", runtime: "Node 24.13.1", framework: "Effect" },
   capabilities: ["vite_plus_test", "junit", "isolated_run_artifacts"],
   authentication_strategy: "none" as const,
   isolation: { fresh_identity: true, reset_between_runs: true, restart_supported: true },

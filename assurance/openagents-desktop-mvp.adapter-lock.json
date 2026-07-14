@@ -2,13 +2,13 @@
   "adapter_lock_format_version": "0.1",
   "adapters": [
     {
-      "adapter_ref": "openagents.bun_test.v1",
+      "adapter_ref": "openagents.vite_plus_test.v1",
       "capabilities": [
-        "bun_test",
+        "vite_plus_test",
         "junit",
         "normalized_receipt"
       ],
-      "content_digest": "sha256:054a0c71f6bcff7ab37898086c7c7c0124581c017627b47b642e4e38a429fb5b",
+      "content_digest": "sha256:53c6ee84bf745546c92d27eeb3755206313923ba8bf8a7f0df270838d53faf7e",
       "techniques": [
         "criterion_contract_with_sensitivity"
       ],

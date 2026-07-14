@@ -406,7 +406,8 @@ manifests, environments, oracle sensitivity, or status axes.
 honest sequencing is already written down (AS-2 → AS-3 in ASSURANCE_SPEC.md
 §16; AS-MVP-0…7 in MVP_FIRST_ASSURANCESPEC.md): compile exactly one admitted
 obligation (`AO-CW-AC-04-01`) against one Environment Profile
-(`ENV-OA-LOCAL-BUN-1`) through one adapter (`openagents.bun_test.v1`) and land
+(`ENV-OA-DESKTOP-MVP-VITE-PLUS-1`) through one adapter
+(`openagents.vite_plus_test.v1`) and land
 one receipt through the workroom bridge. Every generalization before that
 single vertical slice runs is speculative shelf-building — the Observer plan
 names this risk itself ("building a universal taxonomy before one useful

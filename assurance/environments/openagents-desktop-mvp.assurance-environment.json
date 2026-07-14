@@ -1,15 +1,15 @@
 {
   "authentication_strategy": "none",
   "capabilities": [
-    "bun_test",
+    "vite_plus_test",
     "junit",
     "isolated_run_artifacts",
     "reviewed_installed_release_receipt"
   ],
   "data_classification": "private_local",
   "dependency_lock": {
-    "digest": "sha256:b9cbc17f17a885cab9665410cd3b470cf6e430a1c15c7f6a04467f12a9741017",
-    "path": "bun.lock"
+    "digest": "sha256:b5eacae097487bef349ae55bf123a809cf1ba1e0fa440aa3869cfc50b16cf94d",
+    "path": "package.json"
   },
   "environment_format_version": "0.1",
   "evidence_visibility": "reviewed_public_safe",
@@ -29,20 +29,20 @@
   "owner": "first_party",
   "permitted_actions": [
     "read_repository",
-    "run_bun_tests",
+    "run_vite_plus_tests",
     "write_isolated_artifacts"
   ],
   "platform": {
     "architecture": "arm64",
     "framework": "Effect Native / Electron",
     "os": "macos",
-    "runtime": "Bun 1.3.11"
+    "runtime": "Node 24.13.1"
   },
-  "profile_digest": "sha256:9ad4e93af55ee64e6977506796051e7e8687865bd6f00bf8a60114473ce32306",
-  "profile_id": "ENV-OA-DESKTOP-MVP-BUN-1",
+  "profile_digest": "sha256:ead359767763a4f19c22363a09f9eba6be43e26abe4ea37a7d8cdf6ca8012eae",
+  "profile_id": "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
   "redaction_policy": "No raw output, hostname, absolute path, credential, prompt, transcript, or repository content in public projections.",
   "required_commands": [
-    "bun"
+    "vp"
   ],
   "retention": "Private native JUnit under var/; reviewed normalized receipts committed by digest.",
   "revision": 1,

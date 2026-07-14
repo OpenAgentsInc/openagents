@@ -22,6 +22,7 @@ import {
   type AssuranceReviewAnnotation,
   type AssuranceSpecDocument,
 } from "../src/index.ts"
+import { parseVitePlusTestSummary } from "../src/full-gate.ts"
 
 const root = resolve(import.meta.dirname, "../../..")
 const relative = {
@@ -79,14 +80,14 @@ const designDocument = (): AssuranceSpecDocument => {
     },
     environments: {
       ...proposal.environments,
-      profiles: [{ id: "ENV-OA-DESKTOP-MVP-BUN-1", status: "admitted" }],
+      profiles: [{ id: "ENV-OA-DESKTOP-MVP-VITE-PLUS-1", status: "admitted" }],
     },
     obligations: proposal.obligations.map((obligation) => ({
       ...obligation,
       candidate_artifact_refs: [testPath, "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"],
       domains: ["desktop_workroom", "release_artifact"],
       technique: "criterion_contract_with_sensitivity",
-      environment_refs: ["ENV-OA-DESKTOP-MVP-BUN-1"],
+      environment_refs: ["ENV-OA-DESKTOP-MVP-VITE-PLUS-1"],
       oracle: {
         statement: `The exact ${obligation.criterion_refs[0]} implementation/release anchors remain present and the criterion-local candidate test passes.`,
         evaluator_ref: testPath,
@@ -141,7 +142,7 @@ const profilePayload = {
   owner: "first_party" as const,
   target_class: "release_artifact" as const,
   mutability: "isolated_write" as const,
-  platform: { os: "macos", architecture: "arm64", runtime: "Node 25", framework: "Effect Native / Electron" },
+  platform: { os: "macos", architecture: "arm64", runtime: "Node 24.13.1", framework: "Effect Native / Electron" },
   capabilities: ["vite_plus_test", "junit", "isolated_run_artifacts", "reviewed_installed_release_receipt"],
   authentication_strategy: "none" as const,
   isolation: { fresh_identity: true, reset_between_runs: true, restart_supported: true },
@@ -306,7 +307,7 @@ for (const obligation of document.obligations) {
   })
 }
 
-const fullGate = spawnSync(process.execPath, ["run", "--cwd", "apps/openagents-desktop", "verify"], {
+const fullGate = spawnSync("pnpm", ["--dir", "apps/openagents-desktop", "run", "verify"], {
   cwd: root,
   encoding: "utf8",
   env: { ...process.env, NO_COLOR: "1", CI: "1" },
@@ -315,19 +316,13 @@ const fullGate = spawnSync(process.execPath, ["run", "--cwd", "apps/openagents-d
 })
 const fullGateOutput = `${fullGate.stdout ?? ""}${fullGate.stderr ?? ""}`
 write(`${relative.runRoot}/full-desktop-gate.log`, fullGateOutput)
-if (fullGate.status !== 0 || !fullGateOutput.includes("0 fail") || !fullGateOutput.includes("[openagents-desktop smoke] OK")) {
+const fullGateSummary = parseVitePlusTestSummary(fullGateOutput)
+if (fullGate.status !== 0 || fullGateSummary === null || fullGateSummary.failed !== 0 || !fullGateOutput.includes("[openagents-desktop smoke] OK")) {
   throw new Error(`Full Desktop gate failed with exit ${String(fullGate.status)}.`)
 }
-const lastCount = (label: "pass" | "skip" | "fail"): number => {
-  const matches = [...fullGateOutput.matchAll(new RegExp(`(\\d+) ${label}`, "g"))]
-  const value = matches.at(-1)?.[1]
-  if (value === undefined) throw new Error(`Full Desktop gate output omitted ${label} totals.`)
-  return Number(value)
-}
-const passCount = lastCount("pass")
-const skipCount = lastCount("skip")
-const failCount = lastCount("fail")
-if (failCount !== 0) throw new Error(`Full Desktop gate reported ${failCount} failures.`)
+const passCount = fullGateSummary.passed
+const skipCount = fullGateSummary.skipped
+const failCount = fullGateSummary.failed
 const fullGateReceipt = canonicalArtifact({
   full_desktop_gate_receipt_format_version: "0.1",
   command: "pnpm --dir apps/openagents-desktop run verify",

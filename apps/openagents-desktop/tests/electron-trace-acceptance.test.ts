@@ -52,4 +52,9 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
   test("does not refetch the already-selected agent before clicking its tool row", () => {
     expect(traceAcceptanceJourney).toContain("agentButton?.getAttribute('aria-selected') !== 'true'")
   })
+
+  test("modifier hints target a rendered Codex root, never an arbitrary merged-provider root", () => {
+    expect(traceAcceptanceJourney).toContain("visibleRoots[0].threadRef")
+    expect(traceAcceptanceJourney).not.toContain("roots[0].threadRef")
+  })
 })

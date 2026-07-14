@@ -41,5 +41,12 @@ The deterministic contract tests use injected adapters and spend no tokens or
 native authority:
 
 ```sh
-bun test apps/qa-runner/src/assurance-swarm.test.ts
+pnpm --dir apps/qa-runner exec vp test --run src/assurance-swarm.test.ts
 ```
+
+This command proves the coordinator contract with injected deterministic
+adapters. It is not a real six-substrate Desktop execution. The repository does
+not yet provide a CLI or production composition that binds the installed app to
+all six adapters; until that composition and its adapter lock are separately
+reviewed and admitted, a request for a real six-lane run is `INCONCLUSIVE`, not
+green.

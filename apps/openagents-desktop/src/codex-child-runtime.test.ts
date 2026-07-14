@@ -149,7 +149,14 @@ describe("makeCodexChildRuntime.runChild", () => {
     const captured: SpawnCapture[] = []
     const runtime = makeCodexChildRuntime({
       scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-current-")),
-      env: { HOME: "/owner", CODEX_HOME: "/stale/pylon-home", PATH: "/usr/bin" },
+      env: {
+        HOME: "/owner",
+        CODEX_HOME: "/stale/pylon-home",
+        PATH: "/usr/bin",
+        OPENAGENTS_DESKTOP_MVP_PROOF: "1",
+        OPENAGENTS_DESKTOP_SMOKE_SHOTS: "/tmp/shots",
+        OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: "/tmp/workspace",
+      },
       spawnImpl: makeFixtureCodexChildSpawn(
         [{ stdout: fixtureCodexSuccessStdout(), exitCode: 0 }],
         input => captured.push(input),
@@ -167,6 +174,9 @@ describe("makeCodexChildRuntime.runChild", () => {
     expect(result.accountRef).toBe("codex-current")
     expect(captured[0]!.env.HOME).toBe("/owner")
     expect(captured[0]!.env.CODEX_HOME).toBeUndefined()
+    expect(captured[0]!.env.OPENAGENTS_DESKTOP_MVP_PROOF).toBeUndefined()
+    expect(captured[0]!.env.OPENAGENTS_DESKTOP_SMOKE_SHOTS).toBeUndefined()
+    expect(captured[0]!.env.OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT).toBeUndefined()
   })
 
   test("single child success carries exact usage totals from turn.completed (total = input+output+reasoning)", async () => {

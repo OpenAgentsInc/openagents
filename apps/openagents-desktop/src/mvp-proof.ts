@@ -25,14 +25,12 @@ export const mvpProofEnvironmentFromArgv = (
   const userData = proofArgValue(argv, "--openagents-mvp-proof-user-data")
   const workspace = proofArgValue(argv, "--openagents-mvp-proof-workspace")
   const receipts = proofArgValue(argv, "--openagents-mvp-proof-receipts")
-  const specPath = proofArgValue(argv, "--openagents-mvp-proof-spec")
   const phase = proofArgValue(argv, "--openagents-mvp-proof-phase")
-  if (userData === null || workspace === null || receipts === null || specPath === null ||
+  if (userData === null || workspace === null || receipts === null ||
       (phase !== "initial" && phase !== "restart")) return null
   return {
     OPENAGENTS_DESKTOP_MVP_PROOF: "1",
     OPENAGENTS_DESKTOP_MVP_PROOF_DIR: receipts,
-    OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: specPath,
     OPENAGENTS_DESKTOP_MVP_PROOF_PHASE: phase,
     OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
     OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: workspace,
@@ -43,30 +41,24 @@ export const mvpProofEnvironmentFromArgv = (
 export type MvpProofStepName =
   | "shell"
   | "codex-ready"
-  | "product-spec-open"
-  | "plan-accepted"
-  | "root-packet-turn"
-  | "root-packet-verified"
-  | "child-packet-turn"
+  | "root-coding-turn"
+  | "root-artifact-verified"
+  | "child-coding-turn"
   | "child-transcript"
-  | "child-packet-verified"
+  | "child-artifact-verified"
   | "renderer-reload-restored"
   | "app-restart-restored"
-  | "owner-gate-pending"
 
 export const mvpProofRequiredSteps: ReadonlyArray<MvpProofStepName> = [
   "shell",
   "codex-ready",
-  "product-spec-open",
-  "plan-accepted",
-  "root-packet-turn",
-  "root-packet-verified",
-  "child-packet-turn",
+  "root-coding-turn",
+  "root-artifact-verified",
+  "child-coding-turn",
   "child-transcript",
-  "child-packet-verified",
+  "child-artifact-verified",
   "renderer-reload-restored",
   "app-restart-restored",
-  "owner-gate-pending",
 ]
 
 export type MvpProofJournalEntry = Readonly<{
@@ -79,7 +71,6 @@ export type MvpProofConfig = Readonly<{
   enabled: boolean
   conflict: boolean
   outDir: string
-  specPath: string
 }>
 
 export const resolveMvpProofCommand = (
@@ -92,27 +83,20 @@ export const resolveMvpProofCommand = (
     : [path.resolve(installed)]
 }
 
-const validRelativeSpecPath = (value: string): boolean =>
-  value.endsWith(".product-spec.md") && !path.isAbsolute(value) &&
-  value.split(/[\\/]/).every(part => part !== "" && part !== "." && part !== "..")
-
 export const resolveMvpProofConfig = (
   env: Readonly<Record<string, string | undefined>>,
   userDataDir: string,
 ): MvpProofConfig => {
   const enabled = env[MvpProofEnvironment] === "1"
-  const requestedPath = env["OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH"]?.trim() ?? ""
   const requestedDir = env["OPENAGENTS_DESKTOP_MVP_PROOF_DIR"]?.trim() ?? ""
   return {
     enabled,
     conflict: enabled && (
       env["OPENAGENTS_DESKTOP_SMOKE"] === "1" ||
       env["OPENAGENTS_DESKTOP_LIVE_PROOF"] === "1" ||
-      env["OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF"] !== "1" ||
-      !validRelativeSpecPath(requestedPath)
+      env["OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF"] !== "1"
     ),
     outDir: requestedDir === "" ? path.join(userDataDir, "mvp-proof") : path.resolve(requestedDir),
-    specPath: validRelativeSpecPath(requestedPath) ? requestedPath : "",
   }
 }
 
@@ -140,17 +124,6 @@ const setField = (key: string, value: string): string => `(() => {
   field.dispatchEvent(new Event('change', { bubbles: true }))
   return { changed: field.value === ${JSON.stringify(value)} }
 })()`
-
-const productSpecProbe = `(() => ({
-  mounted: document.querySelector('[data-en-key="product-spec-workspace"]') !== null,
-  executable: document.querySelector('[data-en-key="product-spec-ready-badge"]') !== null,
-  invalid: document.querySelector('[data-en-key="product-spec-invalid-badge"]') !== null,
-  planAccepted: document.querySelector('[data-en-key="product-spec-plan-state"]')?.textContent?.trim() === 'accepted',
-  packetStates: Array.from(document.querySelectorAll('[data-en-key^="product-spec-packet-state-"]')).map(node => ({
-    key: node.getAttribute('data-en-key'), value: node.textContent?.trim() ?? ''
-  })),
-  ownerPending: document.querySelectorAll('[data-en-key^="product-spec-packet-owner-pending-"]').length,
-}))()`
 
 const turnProbe = `(() => {
   const transcript = document.querySelector('[data-en-key="shell-transcript"]')
@@ -181,7 +154,6 @@ export const mvpCodexReadyProbe = `(() => {
 
 export type MvpProofRunOptions = Readonly<{
   outDir: string
-  specPath: string
   phase: "initial" | "restart"
   verifyArtifact: (packet: "root" | "child") => Readonly<{ ok: boolean; receiptRef: string }>
   exit: (code: number) => void
@@ -241,28 +213,11 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
     const result = asRec(await evaluate(setField(key, value)))
     if (result["changed"] !== true) throw new Error(`field unavailable: ${key}`)
   }
-  const verifyPacket = async (packet: "root" | "child", packetRef: string): Promise<void> => {
+  const verifyArtifact = async (packet: "root" | "child"): Promise<void> => {
     const artifact = options.verifyArtifact(packet)
     if (!artifact.ok) throw new Error(`${packet} artifact verification failed`)
-    await requireClick("workspace-product-spec")
-    await poll(productSpecProbe, value => value["mounted"] === true, 30_000)
-    await requireClick("product-spec-refresh")
-    const evidence = await poll(productSpecProbe, value =>
-      (value["packetStates"] as Array<Rec> | undefined)?.some(row =>
-        row["key"] === `product-spec-packet-state-${packetRef}` &&
-        String(row["value"] ?? "").trim().toLowerCase().replace(/\s+/g, "_") === "evidence_present") === true,
-    30_000)
-    if (!evidence.ok) throw new Error(`${packet} packet did not retain agent-produced evidence`)
-    await requireField("product-spec-verifier-ref", "verifier.mvp-proof.host")
-    await requireField("product-spec-verification-output-ref", `${artifact.receiptRef}.verified`)
-    await requireClick(`product-spec-verify-${packetRef}`)
-    const verified = await poll(productSpecProbe, value =>
-      (value["packetStates"] as Array<Rec> | undefined)?.some(row =>
-        row["key"] === `product-spec-packet-state-${packetRef}` && row["value"] === "verified") === true,
-    30_000)
-    if (!verified.ok) throw new Error(`${packet} packet did not reach verified`)
-    await capture(`${packet}-packet-verified`)
-    record(`${packet}-packet-verified`, true, { packetRef, receiptRef: artifact.receiptRef })
+    await capture(`${packet}-artifact-verified`)
+    record(`${packet}-artifact-verified`, true, { receiptRef: artifact.receiptRef })
   }
 
   void (async () => {
@@ -274,18 +229,11 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
       const shell = await poll(`(() => ({ ready: document.querySelector('[data-en-key="shell-root"]') !== null }))()`, value => value["ready"] === true, 30_000)
       if (!shell.ok) throw new Error("shell did not mount")
       if (options.phase === "restart") {
-        await requireClick("workspace-product-spec")
-        if (!(await poll(productSpecProbe, value => value["mounted"] === true, 30_000)).ok) throw new Error("ProductSpec workspace did not remount after app restart")
-        await requireField("product-spec-path", options.specPath)
-        await requireClick("product-spec-open")
-        const restored = await poll(productSpecProbe, value =>
-          value["planAccepted"] === true && Number(value["ownerPending"]) === 2 &&
-          (value["packetStates"] as Array<Rec> | undefined)?.filter(row => row["value"] === "verified").length === 2,
-        30_000)
-        if (!restored.ok) throw new Error("accepted ProductSpec run did not restore after app restart")
+        await verifyArtifact("root")
+        await verifyArtifact("child")
         await capture("app-restart-restored")
-        record("app-restart-restored", true, "accepted plan, two verified packets, and owner gates restored in a second app process")
-        record("summary", true, { requiredSteps: mvpProofRequiredSteps.length, ownerAcceptanceFabricated: false })
+        record("app-restart-restored", true, "both exact coding artifacts remained independently readable in a second app process")
+        record("summary", true, { requiredSteps: mvpProofRequiredSteps.length, hiddenSpecToolingUsed: false, ownerAcceptanceFabricated: false })
         clearTimeout(overall)
         options.exit(0)
         return
@@ -298,33 +246,22 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
       if (!codexReady.ok) throw new Error(`logged-in Codex session unavailable: ${String(codexReady.value["reason"] ?? "unknown")}`)
       record("codex-ready", true, "ordinary logged-in Codex session selected after host preflight")
 
-      await requireClick("workspace-product-spec")
-      if (!(await poll(productSpecProbe, value => value["mounted"] === true, 30_000)).ok) throw new Error("ProductSpec workspace did not mount")
-      await requireField("product-spec-path", options.specPath)
-      await requireClick("product-spec-open")
-      const opened = await poll(productSpecProbe, value => value["executable"] === true || value["invalid"] === true, 30_000)
-      if (!opened.ok || opened.value["executable"] !== true) throw new Error("ProductSpec did not validate as executable")
-      await capture("product-spec-open")
-      record("product-spec-open", true, "validator-clean ProductSpec opened through the workroom")
-
-      await requireClick("product-spec-propose-plan")
-      await requireClick("product-spec-accept-plan")
-      const accepted = await poll(productSpecProbe, value => value["planAccepted"] === true, 30_000)
-      if (!accepted.ok) throw new Error("plan was not accepted")
-      record("plan-accepted", true, { packetCount: (accepted.value["packetStates"] as unknown[] | undefined)?.length ?? 0 })
-
-      await requireClick("product-spec-admit-packet.fx-ac-01")
+      const rootPrompt = "Installed OpenAgents MVP coding proof. Work only in the current workspace. Create mvp-proof/root-output.txt containing exactly root packet complete followed by one newline. Run a shell assertion over the exact bytes, then report completion."
+      await requireField("shell-input", rootPrompt)
+      await requireClick("shell-note")
       const rootTurn = await poll(turnProbe, value => value["pending"] === false && Number(value["assistantCount"]) > 0 && Number(value["toolCount"]) > 0, 300_000)
-      if (!rootTurn.ok) throw new Error("root packet real Codex turn did not terminalize with a non-text item")
-      await capture("root-packet-turn")
-      record("root-packet-turn", true, rootTurn.value)
-      await verifyPacket("root", "packet.fx-ac-01")
+      if (!rootTurn.ok) throw new Error("root coding turn did not terminalize with tool evidence")
+      await capture("root-coding-turn")
+      record("root-coding-turn", true, rootTurn.value)
+      await verifyArtifact("root")
 
-      await requireClick("product-spec-admit-packet.fx-ac-02")
+      const childPrompt = "Installed OpenAgents MVP coding proof. Use the native Codex child-agent tool to delegate creation of mvp-proof/child-output.txt containing exactly child packet complete followed by one newline. Inspect the child result, run a shell assertion over the exact bytes, then report completion."
+      await requireField("shell-input", childPrompt)
+      await requireClick("shell-note")
       const childTurn = await poll(turnProbe, value => value["pending"] === false && Number(value["assistantCount"]) > 0 && Number(value["childCount"]) > 0, 300_000)
       if (!childTurn.ok) throw new Error("child-allocated Codex turn did not retain a child card")
-      await capture("child-packet-turn")
-      record("child-packet-turn", true, childTurn.value)
+      await capture("child-coding-turn")
+      record("child-coding-turn", true, childTurn.value)
       const childOpen = asRec(await evaluate(`(() => {
         const node = document.querySelector('[data-en-key^="child-open-"]')
         if (node === null) return { clicked: false }
@@ -334,28 +271,16 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
       if (childOpen["clicked"] !== true) throw new Error("child transcript control was unavailable")
       await capture("child-transcript")
       record("child-transcript", true, "causal child card opened its independent transcript")
-      await verifyPacket("child", "packet.fx-ac-02")
+      await verifyArtifact("child")
 
       window.webContents.reload()
       if (!(await poll(`(() => ({ ready: document.querySelector('[data-en-key="shell-root"]') !== null }))()`, value => value["ready"] === true, 30_000)).ok) {
         throw new Error("shell did not restore after renderer reload")
       }
-      await requireClick("workspace-product-spec")
-      if (!(await poll(productSpecProbe, value => value["mounted"] === true, 30_000)).ok) throw new Error("ProductSpec workspace did not remount after renderer reload")
-      await requireField("product-spec-path", options.specPath)
-      await requireClick("product-spec-open")
-      const reloadRestored = await poll(productSpecProbe, value =>
-        value["planAccepted"] === true && Number(value["ownerPending"]) === 2 &&
-        (value["packetStates"] as Array<Rec> | undefined)?.filter(row => row["value"] === "verified").length === 2,
-      30_000)
-      if (!reloadRestored.ok) throw new Error("accepted ProductSpec run did not restore after renderer reload")
+      await verifyArtifact("root")
+      await verifyArtifact("child")
       await capture("renderer-reload-restored")
-      record("renderer-reload-restored", true, "accepted plan, two verified packets, and owner gates restored after renderer reload")
-
-      const pending = await poll(productSpecProbe, value => Number(value["ownerPending"]) === 2, 30_000)
-      if (!pending.ok) throw new Error("owner dispositions were not retained as separate pending gates")
-      await capture("owner-gates-pending")
-      record("owner-gate-pending", true, "two verified packets await explicit owner disposition")
+      record("renderer-reload-restored", true, "both exact coding artifacts remained independently readable after renderer reload")
       clearTimeout(overall)
       options.exit(75)
     } catch (error) {

@@ -39,7 +39,7 @@ const environmentPayload = {
   platform: {
     os: "macos",
     architecture: "arm64",
-    runtime: "Node 25",
+    runtime: "Node 24.13.1",
     framework: "Effect",
   },
   capabilities: ["vite_plus_test", "junit", "isolated_run_artifacts"],

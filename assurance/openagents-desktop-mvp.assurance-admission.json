@@ -5,7 +5,7 @@
     "GATE-MVP-FULL-ASSURANCE"
   ],
   "assurance_spec": {
-    "document_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09",
+    "document_digest": "sha256:66e1b49d3089b141a9bd5fb6221d002a0d364259ab719a46a254a507fb0dee72",
     "id": "assurance.openagents.desktop.codex.workroom.mvp",
     "revision": 2
   },
@@ -18,5 +18,5 @@
   },
   "recognized_actor_ref": "owner.christopherdavid",
   "recognized_role": "openagents.owner",
-  "review_set_digest": "sha256:ebc0c3a7f14c70b8d779e37313441f9de8c7f04fd458e463573742a5d63e4a0e"
+  "review_set_digest": "sha256:8a018a9dc2e5cc55d706965c74a491df2ece7a48030e93b069dae8e7d5d8b816"
 }

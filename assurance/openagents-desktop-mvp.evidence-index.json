@@ -35,23 +35,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:03bca2f26a99f114bae41e4f721368595e46257472e4f8199b693b8796589254",
+        "digest": "sha256:3623d56979ccaef1400b1c5d032f4383c37b589e64fe2a127d66daa22f2e19ee",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-01-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.24dfeb00c5e6f763ae51f45a15fddc86129dce4c18a1f8baa249f422110fd110"
+        "ref": "assurance.receipt.ae2348a140dcb0acea37612b30f39827118e817ae4b70c31a5c7371279fe1e77"
       },
       "criterion_refs": [
         "CW-AC-01"
       ],
       "falsifier": {
-        "digest": "sha256:d0d7eae7e8b0d6656640ddf720ee43da5dd77f75cee357e4f0cf494762bfc92f",
+        "digest": "sha256:8b1d7615c1888a7a5b534d50e3d410073af4a682793885318ee5677e417919fb",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-01-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.3cb14ecef19274f307fdf8ec880e7d08d8edc881b6c35752c42dbd8bcb8efb71"
+        "ref": "assurance.receipt.9c7edd9a735a1b3f4a5b9ad4015262fe3f6e689544291e3dfae5311419b3d87e"
       },
       "obligation_id": "AO-CW-AC-01-01",
       "sensitivity": {
-        "digest": "sha256:3d6f0f5b49ee468f583b9cb19bce36b90303dc05d9817de0a6dd17ddb64f928c",
+        "digest": "sha256:315d3c68c6af8b997369e086bbedf9d3c5727daf355ab7862f01f1c8b836810a",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-01-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.63329f35dd3594800fb2502c1360cba74a302896586bce11cfa979ae352e531e"
+        "ref": "oracle.sensitivity.ef80c0d0f0585467199e1c51aed9603a35b163e847e1d4d09ec810128e3e073a"
       }
     },
     {
@@ -66,23 +66,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:f00dbbbd839c0b6b9167ec8960b40329a9b4f282dc43edd996c09228fd799e75",
+        "digest": "sha256:8a2eab9847b398444f268ecaa049212ae3e1b387716fdfaea525743df9f3b5af",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-02-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.1203db184f75dad4df64a8418f2b58ce151d0ae285221126a7c8d6397383dc44"
+        "ref": "assurance.receipt.7a8203d1879dab228190840572461b6e43834211a7e43f8817f976f7851a67cb"
       },
       "criterion_refs": [
         "CW-AC-02"
       ],
       "falsifier": {
-        "digest": "sha256:b95f6666c9a82a03916c9dd0d3048c12c510ea0020ff28507f4cff22943d6bea",
+        "digest": "sha256:109c0db7a2d1ce9e8e0bde160bfee7d22d35c3ce08b7fd9538e4eb90fdc79edd",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-02-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.d817ece608235f87d87c052346d6666a538ac8c2420591eb477fe38bef330499"
+        "ref": "assurance.receipt.2302665b234996e1d11c4214e2b3276edfae66bf2caabcc3ac975db911efb2f8"
       },
       "obligation_id": "AO-CW-AC-02-01",
       "sensitivity": {
-        "digest": "sha256:f79466e4ce7a6ee8066abe05a405f81bbcb798a95a2882335cbbb5f590432965",
+        "digest": "sha256:4b03d3219fcbbd8ecdbbc2a1652034cfc8ce93b35b33172e7113d38d42fb7452",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-02-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.c8287b2ae5e82095fc80e7b0cbac9aea563402375429e935edafbbb60a6ec912"
+        "ref": "oracle.sensitivity.3a79a0c2d2313b2b2e38a37221f94e89068f649b38c68e9c7abbf41cbb2326ca"
       }
     },
     {
@@ -97,23 +97,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:971506487ce7a84db29d8e5ef59f43a10711f0709a81d8eb62d11a81838b9703",
+        "digest": "sha256:32244f530b15b690bb30c2b24b7ca97436e3e9efa395f1365c59ee5f44ae5635",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-03-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.9af50c648771a500d98dc48938df4052d3f41cf4b1d9d70742e03c804dda4b7f"
+        "ref": "assurance.receipt.8f0fd0884df36c618aebb5c59bf4f631e201f772cc9cd5680307db96b24f056b"
       },
       "criterion_refs": [
         "CW-AC-03"
       ],
       "falsifier": {
-        "digest": "sha256:9310fbee431220112fcf214f936981ce248ed6b04d98456475011716e5b87b15",
+        "digest": "sha256:89bea235ca3e87a1d5d15b9a75de80e5065578ea90352462d6e92d932bfee2af",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-03-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.7e00d0c75b1fcbde15addfd51ea8905de7d3b48c5f30d3f0bd95ae4b15071206"
+        "ref": "assurance.receipt.a8e3ec7043c32d5ed4ae6fa907c3a2eee0ed2b2201a2d29d3bd58ac87228a22d"
       },
       "obligation_id": "AO-CW-AC-03-01",
       "sensitivity": {
-        "digest": "sha256:c742916790232eb18993f2ded11e03bad65358aff3ceddbb9a30446c26e3b96a",
+        "digest": "sha256:b3abc2cecc338e76aa510e86586a7660e511064edd83afde6feee9b63ae93e1e",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-03-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.235d09eefb7609819fb1cb9bfa5fb19947f5fb69d6f8311decd72dd0de397dbc"
+        "ref": "oracle.sensitivity.486bab5cababd3d7b8b8e17df202ee8efe40bcb25ce61afce226832ead0fbd23"
       }
     },
     {
@@ -128,23 +128,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:4799783fd1e42c5ed4fdad2bdbb1ee27fe6e08f17b5b4cf122c792a368296653",
+        "digest": "sha256:1bff198c49c48a3745929c6315fa1ca12c2e6ef9e050224f34cdcecff51ccf11",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-04-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.5bb1083a7a096efca73112fa7baae665dd6effdc255c58ab5e6accb466781b7c"
+        "ref": "assurance.receipt.7b3a4facfe593e5a24edba4744f78e5b223510168fa16c71d97ebbc3b6dbd950"
       },
       "criterion_refs": [
         "CW-AC-04"
       ],
       "falsifier": {
-        "digest": "sha256:77a4215a5556e58b9a86f1570b91ec262115575064e80619bc77977bb8fd102d",
+        "digest": "sha256:5c6b15efa7766d965521dc0ae503b4d7c4745292557fef0e898a08e7fbd98b22",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-04-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.3b71b0f15b85eccb6ac3109349f334934f6b9fc2bbea1af514ea57b7b8587bbe"
+        "ref": "assurance.receipt.4514acd66bec3081623f5d5983371c0ad1181bfae92a8033959cdac86584e5c1"
       },
       "obligation_id": "AO-CW-AC-04-01",
       "sensitivity": {
-        "digest": "sha256:8fe9a43d7b7e3e5f1f4c3cc5bcc9c53c2c9c29fdd74ab3e41208ea274b406e89",
+        "digest": "sha256:dba34cb7ee562647cb9e6b1f693ff505cce6a92f820216583395c36eb7e12aab",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-04-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.19b04cc30b306635a684d5eaac6dd0fa6010aaba7a4eeee0ff860b95b2cb8847"
+        "ref": "oracle.sensitivity.7f2834a0c2302239be1eed043d1de66df2483beb589fd1ab71232e6476c10843"
       }
     },
     {
@@ -159,23 +159,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:21e94f316559a86188dfdc90a2a4a58bf0a973793eea4d5056602443573c767b",
+        "digest": "sha256:1c216ff3e10331499813ec0556a4455e998f6486e1fd5517df2f7bd34603510d",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-05-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.faaa2143820e2708bf12fbdd3657c22a4c6581845a24375ea8c02b866a60ad5d"
+        "ref": "assurance.receipt.49ce12516a725acdca5eb44784cfe032e0602b3adc26a0fdfbe9b234958ace37"
       },
       "criterion_refs": [
         "CW-AC-05"
       ],
       "falsifier": {
-        "digest": "sha256:2a567ce2640b1f0c0d879d7895c4b7c9bd9c3d487107b0c87b85bfc05c737563",
+        "digest": "sha256:f93b7edafa4f92e383a587a160f866bbe19ed56f8104cd6400e8256db07f1543",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-05-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.2050defeed5938aafaafa9e2208b3286cb3b4ef2599c2f146fbf48cf850479e5"
+        "ref": "assurance.receipt.be63b0a95faef754e4d6d3ff30ad203e3533b535a1a434432ebb3f9bb26fa3a4"
       },
       "obligation_id": "AO-CW-AC-05-01",
       "sensitivity": {
-        "digest": "sha256:eea51bd385b38cf78d52f4dcab8cf1fe16d9dd86225d1f63fee527d857132eb7",
+        "digest": "sha256:5f0c8bd3ca6bf1697039d476a3348a9a468eb569c67c04899caf825e94232870",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-05-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.2886aabe289162983d21b14fbd4678cd0cd52d0f8c48f703a2a7b6df3281343f"
+        "ref": "oracle.sensitivity.8b5161f0743d21547e440b0b722b6e0c6d1bbe0d94201d3c1eae227a094180ac"
       }
     },
     {
@@ -190,23 +190,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:7208e62c6f648bba483c9678552977112ed0524ca838c962a56f4bb637cf12df",
+        "digest": "sha256:ea3380d223e5f544000438608a85568e127fba83719fcce0ac52d17c5bd00a60",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-06-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.91348ebfbe8217d46f60ca9e664b86dbd0be683e9673080027636c8ad36b61e2"
+        "ref": "assurance.receipt.6b63088009e610699719cc64bdc72f9cdd2378c8d5c8d7e2c784b5635c78c0dd"
       },
       "criterion_refs": [
         "CW-AC-06"
       ],
       "falsifier": {
-        "digest": "sha256:6d4b6beba971eb29d2b2c50ef0855248f744eaa88f6f967bfbc640f38d95535e",
+        "digest": "sha256:4dab51ad55625f78985682df332b5dcdcd352140c05045049f6d2f8afdd2a134",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-06-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.9f74e6290b3b01baa5c7d00707dd560e34c77b62f10c8cf6944a9492fa48658b"
+        "ref": "assurance.receipt.22e8bc29618e4b1e0b4c2de20cffb1d4e53691a6609c99f459f9327c1c8b1d38"
       },
       "obligation_id": "AO-CW-AC-06-01",
       "sensitivity": {
-        "digest": "sha256:631fec2c92f510227e558bb46bbf50f7840334b7a69afdf2ab24c4bb11ad68ff",
+        "digest": "sha256:746cee675988e222e78dc8a30ccb2f82fef2b489cc1363ff76b9584ca3dd80c6",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-06-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.750f20221c59df7f6ea335d55ae42b59753280d31ef26095ed4342f6e8d05e6d"
+        "ref": "oracle.sensitivity.f771265005d1aff072867dbee1c366d0fa81920255df3825e861a7cb9147ca04"
       }
     },
     {
@@ -221,23 +221,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:d9398d8d658c65241012c9bd4743479b2dc03cacc54319b79a99b21cdea3c4c0",
+        "digest": "sha256:6c064a7d9112260b508c16ce7eff6aee475401f72ec9ed32e09fa777a8ed2215",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-07-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.88d50c291a3403f6eaad261cd2eb53da6a287561d67aeed46e6e71810d21dfdd"
+        "ref": "assurance.receipt.1349d5738e70ac7d2996dbfc82ab0967c6955401bb73ab4e5dccc76fd5dc39ab"
       },
       "criterion_refs": [
         "CW-AC-07"
       ],
       "falsifier": {
-        "digest": "sha256:d632c6704de27cf926e8594e939c1395b733172496fc2f6f0f6277779ae484ac",
+        "digest": "sha256:6d23ab246fe4fd319127ef663b5c829dc1122f0da9f5be34b49ae17bdf5005fb",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-07-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.3727bcfd4f9a2b60c8bf582adb831067f0416a96533996befeaf1345a1131248"
+        "ref": "assurance.receipt.38e9fa75eb9b9400d5de2a70ce208e44721dcc75f3a005c5bc780a0c607bb21e"
       },
       "obligation_id": "AO-CW-AC-07-01",
       "sensitivity": {
-        "digest": "sha256:708c410b58c936741301dec3ddd211d57be989e953636c1250a720d8efc57548",
+        "digest": "sha256:f10c7a09236f5909f3b497cde71a1f03534ef816947ce086f96279615fea8731",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-07-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.5fe9511e91950998a4428418df496230e2fc21c158ad100ea6765e9a4c0bc76a"
+        "ref": "oracle.sensitivity.2cca058d05cbfdb2a3191d27511cfbbcd7265988954328882f5d98121aa346c5"
       }
     },
     {
@@ -252,23 +252,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:bc8500013a1455732c6e76ab3656b95f5e5e4c94b372d0ef31064f6c00d48255",
+        "digest": "sha256:cc3683690c4613300bef4647405cfc6c6833e73bae5a202fbf19d9803f67f3a7",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-08-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.6cf2c13851ab4060e2a5ca0b3d9ed49394aa11ce6a233c1a16eeb2c3fcdbca99"
+        "ref": "assurance.receipt.9b2ff9e25877d01372b6ab64cc9ade89cb954ef1d90af380a28e4a6a0ef0ff00"
       },
       "criterion_refs": [
         "CW-AC-08"
       ],
       "falsifier": {
-        "digest": "sha256:265ca529f43424e32498b2ff9b11e34d6c798baf581fcdc62573d85b7086c977",
+        "digest": "sha256:03fbababd6606bc276b988a8d6e39cd69015ccdad30ed754df11d6b94a86f285",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-08-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.71065d14316b1c24a2b90cda3aca4f866ad83eb5eedd55c93a37cee5ed54f404"
+        "ref": "assurance.receipt.79f8dd83899cf15269720193999f868f2752db917449f6b32792dc06d8adb4bc"
       },
       "obligation_id": "AO-CW-AC-08-01",
       "sensitivity": {
-        "digest": "sha256:7abc83cc758bfbf3c008fa56b313325653b3e6f25d25be6deb89d28ab2dcfb85",
+        "digest": "sha256:0457582c87858b6099eca78ca48868d2719b205da301e1e365385bde51c9d50b",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-08-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.0b47750ed6b96e52fae6e54b5f1b8acfabfd6e193e7d6beed0643f56995437c3"
+        "ref": "oracle.sensitivity.ab6939b0fe8b408b1187946e35ba6f558b557ad5e50b0e29a0d09eb65bcc0f81"
       }
     },
     {
@@ -283,23 +283,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:f81f11c30d645102650332adba149a8ae54bedad57372834bd4e4312b823c7f7",
+        "digest": "sha256:6c47d53284106f41d46c7f8c7002a9f6fcc5130901efb0a92f52d68fb30673fd",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-09-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.2f50de8ae5bdc501d7db492cd147f80117abe133995caf3b1108c68433b520cc"
+        "ref": "assurance.receipt.e53db30e9f917e7f13d229232d416fd71fa061babbd0e80f253438f89c0b72c0"
       },
       "criterion_refs": [
         "CW-AC-09"
       ],
       "falsifier": {
-        "digest": "sha256:01ff9474662f2a0aed56e6920161c212f96b4dbf2630ff5814d86ad8586cc8dc",
+        "digest": "sha256:22c403924432f70699aac6b2241d5a3966ae6744d38e32b0091f3d96b1cc38ae",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-09-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.bf743307a66b30773da67ab8ad0169c6d4ab5ac75f4b39f04037a86adde61367"
+        "ref": "assurance.receipt.85417833a6711647675112a69d8ba0fead46d6dc1a085462966cd9074c1f536b"
       },
       "obligation_id": "AO-CW-AC-09-01",
       "sensitivity": {
-        "digest": "sha256:58a32201d6496caa06698fb55b7373cc2cfd015fab69217c09efa2569140ae7d",
+        "digest": "sha256:6ea9a700af0d9d3ecfc0eaf402d6d494405bec9c4b4459c07ba5c1f403480a4d",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-09-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.c5f5e257c4d76ac114bead37eb374d08ce226e91806aa01da5429f72a50d3812"
+        "ref": "oracle.sensitivity.044a2c3c27d4e17da9427d39c21c9d1f19df60eae04a72182228adbcb71a2a7e"
       }
     },
     {
@@ -314,23 +314,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:87283f05e1c6bc86d06a6b51f4d8abb5370af2ee88ad7ba8ef28959eeed7f858",
+        "digest": "sha256:f96c06eae3fdecb9334971195058c7ba940fc1d4510749afad525a9fa6635331",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-10-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.91d533a15bb3c80b1dfadb0723377cb09de7610eb23ffdde2fa4dc2dfed6895f"
+        "ref": "assurance.receipt.1c99e794050ddf732048f4b1cb765adbc9294907ba7cbaa46d9503b1466a7da4"
       },
       "criterion_refs": [
         "CW-AC-10"
       ],
       "falsifier": {
-        "digest": "sha256:caaf6259a6ce57667dc8bd5a02d7ed52675ab432079500029b9db1cedf632953",
+        "digest": "sha256:e93ff9ab21503c0e35be71fc18d77bfad00ff6ed644c55635ab5911eaba81aef",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-10-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.ce6f93452d60aa5055679d6b462be833fb684980645b2349d3e0a5c758c86b1d"
+        "ref": "assurance.receipt.626ef7797fc7bd3d987c4c59e5b58e003f7c69f1dbb890a3068770c16f5747d4"
       },
       "obligation_id": "AO-CW-AC-10-01",
       "sensitivity": {
-        "digest": "sha256:bd62a594d6b5fad10ad75378386a65d4800405ce97e573b5f0b8f86bc81b3bce",
+        "digest": "sha256:62b5645a8f953df7c418e7e22daaada7e1b3c788178704689a50f9d9a9c6d1ae",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-10-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.58ed5f065df14053012f4f718f743355d59f5a1f3018b6b7632b033e73b72967"
+        "ref": "oracle.sensitivity.58a221a173ad7bdc0d42218eb65c73a5304f0800e7f9b7ae69e47ee7bfb13eee"
       }
     },
     {
@@ -345,23 +345,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:bdc471aa08ac55c974ee15aa8b58c9ed4233fd518e7dc9b67b156e4a0cd7f5ed",
+        "digest": "sha256:ca34c491816829aa671d816c0ca5511cef52edba4c65d7bdd2ac6dac057887a2",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-11-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.bbfb72594c66683757490c4a1118a7b44996978b300a75a9a1da9e48d52e3792"
+        "ref": "assurance.receipt.15387c475e07a9174aab2c699e0938c2aaf8f3fad4c5d3aa8dba2c08da5a86f7"
       },
       "criterion_refs": [
         "CW-AC-11"
       ],
       "falsifier": {
-        "digest": "sha256:07a2e2f8b1ecc2e8d7684b53669bf7b5b3d7e36eaf95ee521d87e196127e93d2",
+        "digest": "sha256:aedf4bde5eb2cc3775919d263794db0193857c55b320d6cf49bf51806a53f77a",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-11-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.5546576520ef488499bf3512c37ea729f59fca7a1b5eebb30ef52a56b5ad894a"
+        "ref": "assurance.receipt.8186c47eb182251524f21985eb07a3508a568ff2ed7f4ece68fe2d91254d1e1f"
       },
       "obligation_id": "AO-CW-AC-11-01",
       "sensitivity": {
-        "digest": "sha256:ddc38ec7690c91621e6dea7bcd71a1f9b885cd581efb92873a693aa1a548b193",
+        "digest": "sha256:025fe55bde91bee859e17fab9aefcd9049a4a30b92d73c20325c94a874a7fd28",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-11-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.acefd7dea38496b32e39736601e5d099a08e26b68ad8f076b8962cb4a507fba4"
+        "ref": "oracle.sensitivity.f8e6a37044d6ea72a1278b6071770db34a2d3e61ae4762f4bee91698ed71bdae"
       }
     },
     {
@@ -376,23 +376,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:b7e546b01f2096b439ad9fc4ebb4fd22e7cd380b85dda9a4c437896bd29ad8d4",
+        "digest": "sha256:97ee525dba70aa542a1f94dcd09c0ac51d0114d3cfff98d04a21f862fb12edf3",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-12-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.5a68a62451fd1f7ad4263c3b767a16841f29bf473cc2413c62e493a89dfaad61"
+        "ref": "assurance.receipt.d9e4c6d1a060520295bc320678382d73d91f53bfaa0052c2401c1d8764045607"
       },
       "criterion_refs": [
         "CW-AC-12"
       ],
       "falsifier": {
-        "digest": "sha256:93bf819139d9825953c87374d725cd9f5ed4cec59615c8396fc20a80380b66f2",
+        "digest": "sha256:a9969d2e033e42a4f8aa4c58971737b328ff9a07deebd82321be5d4b18b4f1f1",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-12-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.31da00f64b827d2925fc9d980f863c0e33650ce6bd7c7fe300eed3c5d09ef547"
+        "ref": "assurance.receipt.c16ade31eefb086b44524767ff0cf72934c1862e5d5530bf47a2ca86ff403763"
       },
       "obligation_id": "AO-CW-AC-12-01",
       "sensitivity": {
-        "digest": "sha256:0818084286601e2a8d4a34317f8792fe5f8a24623cefacec13bd3ab4ed8f6a09",
+        "digest": "sha256:fcc27eeb2370ff4ecb11d506a80040e750db9942063cdc9e4ff6ccd58c1f8768",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-12-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.107cd2d42ccdf14ab8b70e7f85f9a57592b89c872ca1b8a360618a421e0c433b"
+        "ref": "oracle.sensitivity.f44a7f4fec42101790671c328d682eca4175c67c5df3c21e428561b2ee4e178b"
       }
     },
     {
@@ -407,23 +407,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:9e03352ebb5fe531de91da66f137e71e9f89d7bfc159e28238c03f7057f96731",
+        "digest": "sha256:6c5cc152e228f90fa275d8ed6ccc9dd474896e44ab877d5d2d7c619056a38cb1",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-13-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.7f656a8e3886c15e57ecaaa13784bb40fe325c93c434a22441855a323c5d4145"
+        "ref": "assurance.receipt.26be4708a59fa44e6cf439142414febaf7a2a60c2a8245f5bc743a22d02286f3"
       },
       "criterion_refs": [
         "CW-AC-13"
       ],
       "falsifier": {
-        "digest": "sha256:50d1f1d5f06601654c5fa24ccf081c50ee3127e77f6c046060dcded279cd1f43",
+        "digest": "sha256:39edb8b661b2bdcab0dcec1309c343e19aa7ad9a81489ca0ffcfb980aba3491f",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-13-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.b5f720d5aff926d3491f7366997da91d847787cf9b2806c1b27ce75db0929dce"
+        "ref": "assurance.receipt.eb443ac4c02ab3fe2f68c89e18ebea7cdf251179cc4a37c66492dc6666b7efee"
       },
       "obligation_id": "AO-CW-AC-13-01",
       "sensitivity": {
-        "digest": "sha256:f97de2d1bea5dca918be97de779da0637719fb7bb341e95cfb83e11f929c7d31",
+        "digest": "sha256:3ddc1c46ebd3541eac98f12348a836db4a0a119aa2b74dfa03ed41ee994fd086",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-13-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.6f1b90f2883e87569bee9d565af968a1cec3f63821d57ca6412f1ef4c91023aa"
+        "ref": "oracle.sensitivity.d6b9be70d64701b0d6861e2b35391046da05a4edb1301053b2d59247d25cbe0c"
       }
     },
     {
@@ -438,23 +438,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:c060871eeab20a17df371acdc4f17900d1393b0049f5ad8950c1e290b6013cd5",
+        "digest": "sha256:096dce6d330d4fdf9df76c7a996f7b5b7c530d408db3945b0c0915d7479fcfff",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-14-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.e9d2f9c8befeaacd3aa7c74d483de70e311a546104d5b20fe988ba8c180bb179"
+        "ref": "assurance.receipt.f5119bd718081e68b19b3400e03dbf18066ccc7a934fed4bf685f95d7b9c9448"
       },
       "criterion_refs": [
         "CW-AC-14"
       ],
       "falsifier": {
-        "digest": "sha256:7f21f6fa96584a787529cd58b361ea124c652721166fa15c447e732a0f5f37f5",
+        "digest": "sha256:561d4ac8be0377f5173e3f0e02af6b4665f96a4184e6583c19df609a88ebda7e",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-14-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.2a2526dc8fc6082cfa30a4da118a2513c1c947ac45206e53f8f9a41356794fb8"
+        "ref": "assurance.receipt.07ce12fe1ba4226a54dbb503589a4b6fc9ba1177b1d5b2d38ad706210361eb42"
       },
       "obligation_id": "AO-CW-AC-14-01",
       "sensitivity": {
-        "digest": "sha256:8605f3c79968976684df20269e8c2c132c7ae3833fe542db09cc059fd6658b08",
+        "digest": "sha256:c22392a7b62b12e8f2808779283329fc0b79db01d1f3bc04897c196e79ef1c2e",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-14-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.3e803a2a2e748928f231ef6d7e986348d1d5eb74d1383d89112884438508ba10"
+        "ref": "oracle.sensitivity.5b19e32ed140a74937a1066486d6c69ea2957b6ac3d76404464c38582f3778fb"
       }
     },
     {
@@ -469,23 +469,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:0645779d5afb00b31b2859ef6feee4573f8cc8085e1ccc49868ac9c8dbc91e2e",
+        "digest": "sha256:af3240384d75305f76809c2a120ac9c69c4d58127b6b1105e5c72d20f8cbe7bd",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-15-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.c480eb496a511fb3d3c1fd8f75929ee5828234abb3d7231dbbe0c40090e0fd0b"
+        "ref": "assurance.receipt.d6b8e0bb56c00a9221fbb4f61eea187b8ee6bbc5290e472f4706e526ef63c405"
       },
       "criterion_refs": [
         "CW-AC-15"
       ],
       "falsifier": {
-        "digest": "sha256:64b276c2b1b6844c5cfa826101d59b850c27e3449af07db979bf731445e1f448",
+        "digest": "sha256:fdd4c682d4f4aaa647485fb6c473f49b587e8d3fa521a543d4281e9aedecc71d",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-15-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.a665635aae83309162e45cdea8acae321a4e74c1581007beb79237c5b0b71109"
+        "ref": "assurance.receipt.939ed923fff0b07d20144a86227c6fd506da50c090a20a11daaff81fca2dacc4"
       },
       "obligation_id": "AO-CW-AC-15-01",
       "sensitivity": {
-        "digest": "sha256:ce20f29ef5a76c60f79f826c415249a5db042e50784ea85af759b8a36cd87b03",
+        "digest": "sha256:3463b55c64c30892b1262655406a83176c092f13210dbc7d8c0cb70b6ecf5809",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-15-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.de5ca9d50922e689696fe1adadeb7fa5e260bb0fa7aa6d6368b46b823148dd3b"
+        "ref": "oracle.sensitivity.1c34c2940908e1a7fe95a07aa7f2081849c3e5a25056af8a2e0dde52b9ce4528"
       }
     },
     {
@@ -500,23 +500,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:4c7a8341640428149b5e136b2b3039417b0c229a6debd7d8a0b7948a51344da6",
+        "digest": "sha256:40b638243e76a8067f212374d02049cd02ad31f0c3e47a6bf56607f34a9273b0",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-16-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.112d8f6062ed6d6bebb10ee3b9ddd24842da1b08d82ba8cf2c190c8dd10126d2"
+        "ref": "assurance.receipt.8238c794e0a87e168b273686d91905b30c820874ded1379e88978005c56e8e86"
       },
       "criterion_refs": [
         "CW-AC-16"
       ],
       "falsifier": {
-        "digest": "sha256:117cc1d90cdb7bbe6cc366fc859a54977b210925c69091926e20cc2374b66979",
+        "digest": "sha256:f64f5fcc95706ff0c38268747a4298d8b7a2b50c8d845288ff33717bf4c06ec8",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-16-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.20a36e8fe63a406bb90d703d442d4d89f9b2eb9d7bdd0080d50b10fc4e286e7d"
+        "ref": "assurance.receipt.d278a8563b08f7694c85a8e2cd4452fdc9f6d34ee77091effc7a286f8564a40e"
       },
       "obligation_id": "AO-CW-AC-16-01",
       "sensitivity": {
-        "digest": "sha256:e0c0b7dfb028423af4a3fe1a86dda7dcd4e3e48a937bbf81ecd18d9ca9a3b93f",
+        "digest": "sha256:a3c9f245fd064d2bc006de8181f7904367bc61126269377f69c4cfd5487fb6e8",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-16-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.b55b9f21951180c946a96f0cc763699a89229d1d217be214b2df49ff3e9b2362"
+        "ref": "oracle.sensitivity.d5d618e1eb8f854390d33a9c9f63acc5ac3e3883f537af79a1a732eeea483280"
       }
     },
     {
@@ -531,23 +531,23 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:bca58891ee63b5265179933bb0a39735c627dae576b62f1c1824f7e0435a88e3",
+        "digest": "sha256:0142bf75c55abf9b88b039145bd5b0b8b0d27b197377c2cb750d2d60e2bc005a",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-17-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.abac3671bb706ad478efd0e21d2247f844a58c3b0946b5e7f5a88465f4625829"
+        "ref": "assurance.receipt.9326f9062b11e0322c3e21a1067dc2dff290de0128e01fd4ade0e5af7b45582f"
       },
       "criterion_refs": [
         "CW-AC-17"
       ],
       "falsifier": {
-        "digest": "sha256:accbdd666ea81967ada93b4412ace783853e141689f582a711fc129088d9d13c",
+        "digest": "sha256:2c387bd158dd0de36b2ffc3c6cf3daacf59f51a2e9d7b310e6c5bd13f5593614",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-17-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.395f21e0d9ed5b1f615970e8e7b760f28d373f344cb729d9c1dec3edc9506208"
+        "ref": "assurance.receipt.f17e0bad7c38591f0127ea155f077f6dac455ab1c628f7bf20f7fd405452e7e3"
       },
       "obligation_id": "AO-CW-AC-17-01",
       "sensitivity": {
-        "digest": "sha256:c72d41cecc0745e31a57f3d0ffbbb9dd4746d11eda02c2ead5023eece3a7831d",
+        "digest": "sha256:398e765218450ead557348b2fa605b04c729a546814c1850ca0bf08368276e39",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-17-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.14a166c8d0e1f581e2ec0159ded1d2310507354999017869513f1731893d46c0"
+        "ref": "oracle.sensitivity.55ebf7189d91455c5003d35bf428b4aa12aa812724defb9da7ba269f3cb690a3"
       }
     },
     {
@@ -562,30 +562,30 @@
         "stability": "stable"
       },
       "candidate": {
-        "digest": "sha256:a8b2c16d570db4f2bf79fda16b5d86796ca611b13a8ddfcca0e7abd192559e68",
+        "digest": "sha256:e7366f04d06b6ef7613b68645d486fa01be1c47d12e31bf1270b9fb6fa7558d6",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-18-01.candidate.assurance-receipt.json",
-        "ref": "assurance.receipt.77daae5b21404c56fcad17e68dd4e04c7bd45acf57933aef4a8f73a177978d0e"
+        "ref": "assurance.receipt.4035ddf8833c0658ed2b18be4f5c6028bb9061629f8139363b5f95cd60ab35ac"
       },
       "criterion_refs": [
         "CW-AC-18"
       ],
       "falsifier": {
-        "digest": "sha256:1b42ad49a6f9dfafd489fdd1b502376fb0c01e27548abe609be246a24d176f1b",
+        "digest": "sha256:4198e653a6b4eb67fac1559f27b97c338f6a295440a1744f141fa1140614e99a",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-18-01.falsifier.assurance-receipt.json",
-        "ref": "assurance.receipt.e6609a4b7f42556c509eccd659bd88d83c08e0009236aa4e9c10a7b787662066"
+        "ref": "assurance.receipt.e2e3b80cc5b86d8a22cf52c1204a177af72b98e1ccc9897fca62f39f18268adc"
       },
       "obligation_id": "AO-CW-AC-18-01",
       "sensitivity": {
-        "digest": "sha256:865e5ebe2956339c945ab0f47eed06f3d1c91c7271598bbc5218ba62135642fe",
+        "digest": "sha256:8b425ab164562dfc831fc24ddbe3aea28509494a2ef7cd8a667cf47162427285",
         "path": "assurance/receipts/openagents-desktop-mvp/AO-CW-AC-18-01.oracle-sensitivity-receipt.json",
-        "ref": "oracle.sensitivity.7abbcdda4cea7f53b0f6401028a1e88e380aa43588ec604cb9a758623e0cde43"
+        "ref": "oracle.sensitivity.4e20c9be3f66e04d5640f7477f8b2f4cd917c93f48443d1258d9e68b08e8c416"
       }
     }
   ],
   "subject": {
-    "admission_digest": "sha256:4db81a5ebc6288f3be85d3c427883517afd27dfa2b9e92c254b3f86e0bf1debd",
-    "assurance_spec_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09",
-    "manifest_digest": "sha256:6a2f7fe9e6284ad90b5a040cedc946c72f46c8e511497780b6abe58e2538d366",
+    "admission_digest": "sha256:c37581d434a07fa8ae80a458ea076c73235be86079f31b6aa47ea3fd92118927",
+    "assurance_spec_digest": "sha256:66e1b49d3089b141a9bd5fb6221d002a0d364259ab719a46a254a507fb0dee72",
+    "manifest_digest": "sha256:a7a1ed90247a62ca61fa3fd36eda4e2a39d5071de8aad6bc7ab259b704af0985",
     "product_spec_digest": "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1"
   }
 }

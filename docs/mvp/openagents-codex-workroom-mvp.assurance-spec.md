@@ -83,13 +83,13 @@ Every executable ProductSpec criterion is required and has exactly one obligatio
 
 ## Environments
 
-Execution uses the admitted first-party macOS ARM64 Bun environment with network and credential access forbidden. Native JUnit remains private; normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.
+Execution uses the admitted first-party macOS ARM64 Node/Vite Plus environment with network and credential access forbidden. Native JUnit remains private; normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.
 
 ```assurancespec-environments
 {
   "profiles": [
     {
-      "id": "ENV-OA-DESKTOP-MVP-BUN-1",
+      "id": "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
       "status": "admitted"
     }
   ],
@@ -3534,7 +3534,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3579,7 +3579,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3624,7 +3624,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3669,7 +3669,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3714,7 +3714,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3759,7 +3759,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3804,7 +3804,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3849,7 +3849,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3894,7 +3894,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3939,7 +3939,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -3984,7 +3984,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -4029,7 +4029,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -4074,7 +4074,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -4119,7 +4119,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -4164,7 +4164,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -4209,7 +4209,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -4254,7 +4254,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",
@@ -4299,7 +4299,7 @@ Each obligation binds one criterion to a criterion-local contract oracle and a d
       "release_artifact"
     ],
     "environment_refs": [
-      "ENV-OA-DESKTOP-MVP-BUN-1"
+      "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
     ],
     "evidence": {
       "proof_rung": "reviewed_release_plus_current_regression",

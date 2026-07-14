@@ -24,6 +24,7 @@ export default defineConfig({
   fmt: {
     ignorePatterns: [
       ".pylon-local/**",
+      ".claude/worktrees/**",
       ".worktrees/**",
       "apps/openagents-mobile/android/**",
       "apps/openagents-mobile/ios/**",
@@ -48,6 +49,7 @@ export default defineConfig({
   lint: {
     ignorePatterns: [
       ".pylon-local/**",
+      ".claude/worktrees/**",
       ".worktrees/**",
       "apps/openagents-mobile/android/**",
       "apps/openagents-mobile/ios/**",
@@ -113,6 +115,8 @@ export default defineConfig({
           include: ["**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}", "**/*.node-suite.ts"],
           exclude: [
             "**/node_modules/**",
+            "**/.claude/worktrees/**",
+            "**/.worktrees/**",
             "**/dist/**",
             "**/dist-electron/**",
             "**/.{git,cache,output,temp}/**",

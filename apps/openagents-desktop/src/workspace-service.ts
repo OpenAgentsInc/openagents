@@ -870,6 +870,7 @@ const gitState = (root: string): DesktopWorkspaceSnapshot["git"] => {
       encoding: "utf8",
       env: workspaceGitEnvironment(),
       timeout: 2_000,
+      stdio: ["ignore", "pipe", "pipe"],
     }).trim() === "" ? "clean" : "changed"
   } catch { return "unavailable" }
 }
@@ -882,6 +883,7 @@ const gitOutput = (root: string, args: ReadonlyArray<string>): string | null => 
       env: workspaceGitEnvironment(),
       timeout: 2_000,
       maxBuffer: maxGitDiffBytes + 1,
+      stdio: ["ignore", "pipe", "pipe"],
     })
   } catch {
     return null

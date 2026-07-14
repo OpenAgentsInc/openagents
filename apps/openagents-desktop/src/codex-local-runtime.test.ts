@@ -114,6 +114,52 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(result).toMatchObject({ ok: false, reason: "incompatible_workflow" })
   })
 
+  test("ordinary app-server chat does not advertise ProductSpec skills or dynamic tools", async () => {
+    const fake = appServerFixture()
+    const root = scratch()
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: () => root,
+      workspaceRoot: () => root,
+      discoverImpl: async () => [{ ref: "ambient", home: "/owner/.codex", source: "current_session" }],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["ambient"]),
+      appServer: {
+        binary: () => "/packaged/codex",
+        installProductSpecSkill: account => ({
+          skillRoot: `${account.home}/skills`,
+          skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
+        }),
+        productSpecDynamicTools: [{ name: "get_run" }],
+        spawnImpl: fake.spawn,
+      },
+    })
+    const running = runtime.runTurn({
+      turnRef: "turn-ordinary",
+      threadRef: "thread-ordinary",
+      history: [],
+      message: "Create the requested file",
+      emit: () => {},
+    })
+    await waitFor(fake.messages, 1); fake.respond(1, {})
+    await waitFor(fake.messages, 3)
+    expect(fake.messages[2]).toMatchObject({
+      method: "thread/start",
+      params: { cwd: root },
+    })
+    expect(JSON.stringify(fake.messages)).not.toContain("skills/list")
+    expect(JSON.stringify(fake.messages)).not.toContain("get_run")
+    fake.respond(2, { thread: { id: "ordinary-thread" } })
+    await waitFor(fake.messages, 4)
+    expect(fake.messages[3]).toMatchObject({
+      method: "turn/start",
+      params: { input: [{ type: "text", text: "Create the requested file" }] },
+    })
+    fake.respond(3, { turn: { id: "ordinary-turn" } })
+    fake.notify("item/agentMessage/delta", { threadId: "ordinary-thread", turnId: "ordinary-turn", delta: "Done." })
+    fake.notify("turn/completed", { threadId: "ordinary-thread", turn: { id: "ordinary-turn", status: "completed", error: null } })
+    await expect(running).resolves.toMatchObject({ ok: true, text: "Done." })
+  })
+
   test("production app-server path uses only the logged-in Codex session and completes a native question round-trip", async () => {
     const fake = appServerFixture()
     const sink = collect()
@@ -128,6 +174,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       preflight: verifiedPreflight(["ambient", "codex"]),
       appServer: {
         binary: () => "/packaged/codex",
+        productSpecEnabled: () => true,
         installProductSpecSkill: account => ({
           skillRoot: `${account.home}/skills`,
           skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
@@ -253,7 +300,14 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     const captured: SpawnCapture[] = []
     const runtime = makeCodexLocalRuntime({
       scratchRoot: scratch,
-      env: { HOME: "/owner", CODEX_HOME: "/stale/pylon-home", PATH: "/usr/bin" },
+      env: {
+        HOME: "/owner",
+        CODEX_HOME: "/stale/pylon-home",
+        PATH: "/usr/bin",
+        OPENAGENTS_DESKTOP_MVP_PROOF: "1",
+        OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
+        OPENAGENTS_DESKTOP_USER_DATA: "/tmp/proof-profile",
+      },
       spawnImpl: makeFixtureCodexChildSpawn(
         [{ stdout: fixtureCodexLocalTurnStdout(), exitCode: 0 }],
         input => captured.push(input),
@@ -276,6 +330,9 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(result.accountRef).toBe("codex-current")
     expect(captured[0]!.env.HOME).toBe("/owner")
     expect(captured[0]!.env.CODEX_HOME).toBeUndefined()
+    expect(captured[0]!.env.OPENAGENTS_DESKTOP_MVP_PROOF).toBeUndefined()
+    expect(captured[0]!.env.OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF).toBeUndefined()
+    expect(captured[0]!.env.OPENAGENTS_DESKTOP_USER_DATA).toBeUndefined()
   })
 
   test("fresh turn spawns the receipted chat recipe with the owner-selected model and reasoning effort", async () => {

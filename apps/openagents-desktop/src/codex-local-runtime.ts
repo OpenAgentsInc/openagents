@@ -61,6 +61,7 @@ import {
 } from "./codex-child-contract.ts"
 import {
   defaultSpawnCodex,
+  codexProviderEnvironment,
   discoverRegisteredCodexAccounts,
   makeCodexJsonLineConsumer,
   redactChildText,
@@ -169,6 +170,8 @@ export type CodexLocalRuntimeOptions = Readonly<{
     }>
     spawnImpl?: CodexAppServerSpawn
     onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>
+    /** ProductSpec capability is advertised only while the host owns admitted work context. */
+    productSpecEnabled?: () => boolean
     productSpecDynamicTools?: ReadonlyArray<Readonly<Record<string, unknown>>>
     onProductSpecToolCall?: (request: CodexAppServerRequest) => Promise<unknown | null>
   }>
@@ -546,12 +549,9 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         })
       }
       const appServerEnv = input.account.source === "current_session"
-        ? (() => {
-            const current = { ...env }
-            delete current.CODEX_HOME
-            return current
-          })()
-        : pylonAccountEnvironment(env, selection)
+        ? codexProviderEnvironment(env, { clearCodexHome: true })
+        : pylonAccountEnvironment(codexProviderEnvironment(env), selection)
+      const productSpecEnabled = options.appServer.productSpecEnabled?.() === true
       return runCodexAppServerTurn({
         binary,
         env: appServerEnv,
@@ -565,8 +565,13 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         model: input.model,
         reasoningEffort: input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT,
         productSpecSkill: skill,
-        ...(options.appServer.productSpecDynamicTools === undefined ? {} : { productSpecDynamicTools: options.appServer.productSpecDynamicTools }),
-        ...(options.appServer.onProductSpecToolCall === undefined ? {} : { onProductSpecToolCall: options.appServer.onProductSpecToolCall }),
+        includeProductSpecSkill: productSpecEnabled,
+        ...(productSpecEnabled && options.appServer.productSpecDynamicTools !== undefined
+          ? { productSpecDynamicTools: options.appServer.productSpecDynamicTools }
+          : {}),
+        ...(productSpecEnabled && options.appServer.onProductSpecToolCall !== undefined
+          ? { onProductSpecToolCall: options.appServer.onProductSpecToolCall }
+          : {}),
         control: input.control as CodexAppServerTurnControl,
         emit: input.emit,
         ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
@@ -637,12 +642,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       const child = spawnCodex({
         args,
         env: input.account.source === "current_session"
-          ? (() => {
-              const current = { ...env }
-              delete current.CODEX_HOME
-              return current
-            })()
-          : pylonAccountEnvironment(env, selection),
+          ? codexProviderEnvironment(env, { clearCodexHome: true })
+          : pylonAccountEnvironment(codexProviderEnvironment(env), selection),
         cwd: input.workspace,
       })
       if (child === null) {

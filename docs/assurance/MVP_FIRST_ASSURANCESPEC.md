@@ -20,7 +20,7 @@ The first vertical slice is successful when:
 3. an external review/admission artifact binds its exact revision/digest;
 4. a deterministic compiler emits byte-identical Manifest bytes for identical
    inputs;
-5. one existing `CW-AC-04` oracle runs through a pinned local Bun adapter;
+5. one existing `CW-AC-04` oracle runs through the pinned local Vite Plus adapter;
 6. one duplicate-ID falsifier is rejected through the same adapter;
 7. normalized receipts keep all other criteria visibly uncovered;
 8. changing the ProductSpec revision or bytes makes the Assurance Spec and
@@ -83,10 +83,10 @@ criterion_refs:
   - "CW-AC-04"
 domains:
   - "contract"
-technique: "bun_test"
+technique: "vite_plus_test"
 environment_refs:
-  - "ENV-OA-LOCAL-BUN-1"
-adapter_ref: "openagents.bun_test.v1"
+  - "ENV-OA-DESKTOP-MVP-VITE-PLUS-1"
+adapter_ref: "openagents.vite_plus_test.v1"
 oracle:
   statement: >-
     The exact MVP ProductSpec is standard-valid, executable, revision-pinned,
@@ -150,27 +150,27 @@ Their receipts must say `local_fixture` or the exact tier they actually run.
 
 ### Current-main MVP proof driver
 
-Current `main` also contains a stronger ProductSpec-native Desktop proof path:
+Current `main` also contains a real-Codex Desktop coding proof path:
 
 ```text
 apps/openagents-desktop/src/mvp-proof.ts
 apps/openagents-desktop/src/mvp-proof.test.ts
 apps/openagents-desktop/scripts/run-mvp-proof.ts
-bun run --cwd apps/openagents-desktop mvp-proof
+pnpm --dir apps/openagents-desktop run mvp-proof
 ```
 
 It is double-gated, requires an isolated temporary profile/workspace plus
-Codex-ready capacity, and records shell, ProductSpec open, plan acceptance,
-root/child real turns, independent artifact verification, child-transcript,
-and pending owner-gate steps with screenshots and a journal. That makes it a
-high-value later packaged/real-Codex adapter candidate.
+Codex-ready capacity, and records shell readiness, root and delegated-child
+real coding turns, independent exact-byte artifact verification, the child
+transcript, renderer reload, and a second app process with screenshots and a
+journal. It does not expose or use the ProductSpec capability hidden from the
+MVP UI, and it does not fabricate owner acceptance. That makes it a high-value
+packaged/real-Codex adapter candidate.
 
-It does **not** replace `AO-CW-AC-04-01`. The current script authors its own
-two-criterion `FX-AC-01`/`FX-AC-02` ProductSpec fixture and therefore does not
-bind or prove the canonical revision-6 `CW-AC-01…18` subject. Assurance must
-record that distinction. The first slice establishes exact subject identity;
-a later obligation may bind the proof driver to the specific MVP claims it
-actually exercises, without projecting its fixture success onto all criteria.
+It does **not** replace `AO-CW-AC-04-01` or prove the canonical revision-6
+`CW-AC-01…18` subject. It proves only the coding spine named by its nine-step
+driver contract. A later obligation may bind those observations to reviewed
+MVP claims without projecting this journey onto unrelated criteria.
 
 ## Evidence Loop composition
 
@@ -220,18 +220,18 @@ assurance/environments/openagents-local-bun.assurance-environment.json
 assurance/adapters.lock.json
 ```
 
-`ENV-OA-LOCAL-BUN-1` initially pins:
+`ENV-OA-DESKTOP-MVP-VITE-PLUS-1` pins:
 
-- Bun `1.3.11`;
-- `bun.lock` SHA-256
-  `f8c5503aeade351f47e8ba2f5267c44df56667e8292edfdd86fb791ef5202e40`;
+- Node `24.13.1` and Vite Plus `0.2.4`;
+- `pnpm-lock.yaml` SHA-256
+  `cbea63dc023fb7c876a5ad0f7977ce538e913180f9fd3c755518a64c00f9bd87`;
 - repository-relative commands only;
 - no credentials, external network, production target, or mutable customer
   state;
 - isolated run-artifact writes only;
 - dependency bootstrap must complete before the environment is `ready`.
 
-The adapter lock pins `openagents.bun_test.v1` by version and content digest.
+The adapter lock pins `openagents.vite_plus_test.v1` by version and content digest.
 No dependency name or filename heuristic may select it implicitly.
 
 ### Generated and ephemeral
@@ -333,13 +333,13 @@ exact source artifacts.
 ### AS-MVP-3 — Environment Profile and adapter lock
 
 - implement the public-safe Environment Profile schema;
-- create `ENV-OA-LOCAL-BUN-1` with explicit capabilities and forbidden actions;
-- pin the exact Bun adapter and lock digest;
+- create `ENV-OA-DESKTOP-MVP-VITE-PLUS-1` with explicit capabilities and forbidden actions;
+- pin the exact Vite Plus adapter and lock digest;
 - return `infrastructure: unavailable` if dependencies are absent;
 - never turn missing dependencies into `REFUTED` or an implicit skip.
 
 Exit: environment and adapter validation pass in a dependency-bootstrapped clean
-worktree and fail precisely when Bun, lock digest, or required capability
+worktree and fail precisely when Node 24.13.1, Vite Plus, lock digest, or required capability
 differs.
 
 ### AS-MVP-4 — deterministic compiler
@@ -360,9 +360,9 @@ digests create new output and stale the prior evidence.
 Exit: identical inputs produce byte-identical Manifest bytes and every drift
 fixture refuses or changes the expected digest.
 
-### AS-MVP-5 — thin Bun-test adapter
+### AS-MVP-5 — thin Vite Plus test adapter
 
-Add a narrow `openagents.bun_test.v1` adapter. It may live behind QA Runner once
+Add a narrow `openagents.vite_plus_test.v1` adapter. It may live behind QA Runner once
 the contract is stable, but must consume the Assurance Manifest rather than
 reinterpret ProductSpec prose.
 
@@ -370,7 +370,7 @@ Requirements:
 
 - spawn explicit argv without a shell;
 - run a dependency-bootstrapped clean worktree;
-- use Bun's JUnit reporter rather than parsing console prose;
+- use Vite Plus's JUnit reporter rather than parsing console prose;
 - select and assert the exact named test case;
 - treat zero selected tests as infrastructure/adapter failure, never green;
 - record exit status plus JUnit, stdout/stderr, source, command, and toolchain
@@ -382,15 +382,14 @@ Requirements:
 Candidate command shape:
 
 ```text
-bun test packages/product-spec/test/product-spec.test.ts
-  --test-name-pattern "the MVP spec is executable with unique author-visible criteria"
-  --reporter=junit
-  --reporter-outfile <run-relative-candidate-path>
+vp test packages/product-spec/test/product-spec.test.ts
+  --testNamePattern "the MVP spec is executable with unique author-visible criteria"
+  --run --reporter=junit --outputFile <run-relative-candidate-path>
 ```
 
 The falsifier unit selects the duplicate-ID test and requires the expected
-typed error. Exact CLI spelling must be confirmed against the pinned Bun
-version during implementation rather than assumed from this plan.
+typed error. The adapter admits only the explicit pinned `vp test` command
+shape and runs under Node 24.13.1.
 
 Exit: candidate and falsifier each run exactly one named test and produce
 normalized evidence.
@@ -562,7 +561,7 @@ evidence-chain diagnostics only in their proper layers, including
 After bootstrapping the pinned workspace lockfile,
 
 ```text
-bun test packages/assurance-spec
+pnpm --dir packages/assurance-spec test
 ```
 
 passes the proposal, round-trip, invalid-criterion, structural/adequacy split,
@@ -592,9 +591,9 @@ admitted `ENV-OA-LOCAL-BUN-1` Assurance run and not product evidence.
 2. Add `CW-AC-05` exact digest/revision and reconciliation obligations.
 3. Complete PSEL-MVP-1 so item-level Related Artifacts and intent/document
    digest separation are real rather than prose.
-4. Enroll the existing `mvp-proof` driver as an explicitly fixture-subject,
-   Codex-ready Desktop execution adapter; do not map it to canonical criteria
-   until each exercised claim is reviewed.
+4. Enroll the existing nine-step `mvp-proof` driver as a Codex-ready Desktop
+   execution adapter; do not map it to canonical criteria until each exercised
+   claim is reviewed.
 5. Add one real host/renderer or ProductSpec/work-packet seam obligation.
 6. Add a packaged OpenAgents Desktop environment and release-artifact receipt.
 7. Work outward by product risk, not criterion number, preserving uncovered

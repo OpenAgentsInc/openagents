@@ -86,6 +86,43 @@ export type CodexChildAccount = Readonly<{
   source?: "current_session" | "pylon"
 }>
 
+const DESKTOP_DRIVER_ENV_PREFIXES = [
+  "OPENAGENTS_DESKTOP_MVP_PROOF",
+  "OPENAGENTS_DESKTOP_SMOKE",
+  "OPENAGENTS_DESKTOP_STARTUP_",
+] as const
+
+const DESKTOP_DRIVER_ENV_KEYS = new Set([
+  "OPENAGENTS_DESKTOP_CLAUDE_PROJECTS",
+  "OPENAGENTS_DESKTOP_CODEX_SESSIONS",
+  "OPENAGENTS_DESKTOP_HEADED",
+  "OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF",
+  "OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT",
+  "OPENAGENTS_DESKTOP_LIVE_PROOF",
+  "OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE",
+  "OPENAGENTS_DESKTOP_USER_DATA",
+])
+
+/**
+ * Desktop test/proof controls belong to the host process. Letting them reach a
+ * provider subprocess can alter model-visible workflow selection and makes the
+ * proof exercise a different environment from an ordinary user turn.
+ */
+export const codexProviderEnvironment = (
+  source: Record<string, string | undefined>,
+  options: Readonly<{ clearCodexHome?: boolean }> = {},
+): Record<string, string | undefined> => {
+  const sanitized = { ...source }
+  if (options.clearCodexHome === true) delete sanitized.CODEX_HOME
+  for (const key of Object.keys(sanitized)) {
+    if (
+      DESKTOP_DRIVER_ENV_KEYS.has(key) ||
+      DESKTOP_DRIVER_ENV_PREFIXES.some(prefix => key.startsWith(prefix))
+    ) delete sanitized[key]
+  }
+  return sanitized
+}
+
 // ---------------------------------------------------------------------------
 // In-process account health memory (EP250 rotation fix). Module-level =
 // main-process lifetime: the delegate runtime is constructed once in main.ts,
@@ -350,12 +387,8 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
           input.prompt,
         ],
         env: input.account.source === "current_session"
-          ? (() => {
-              const current = { ...env }
-              delete current.CODEX_HOME
-              return current
-            })()
-          : pylonAccountEnvironment(env, selection),
+          ? codexProviderEnvironment(env, { clearCodexHome: true })
+          : pylonAccountEnvironment(codexProviderEnvironment(env), selection),
         cwd: input.workspace,
       })
       if (child === null) {

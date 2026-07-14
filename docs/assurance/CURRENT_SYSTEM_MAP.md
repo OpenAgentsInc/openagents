@@ -185,9 +185,10 @@ admit, execute, verify, release, or change a public promise.
 
 OpenAgents Desktop now also has a real-Codex `mvp-proof` driver. It is a useful
 future execution adapter and receipt source, not AssuranceSpec authority. Its
-current script creates a separate two-criterion `FX-AC-*` fixture; it must not
-be presented as proof for the canonical MVP ProductSpec's `CW-AC-*` criteria
-until exact claim mappings are reviewed and admitted.
+nine-step contract checks root and delegated-child coding artifacts, the child
+transcript, renderer reload, and app restart without using hidden ProductSpec
+tooling. It must not be presented as proof for the canonical MVP ProductSpec's
+`CW-AC-*` criteria until exact claim mappings are reviewed and admitted.
 
 ## Existing `docs/qa` collection
 
@@ -230,7 +231,7 @@ secrets. Adapters expose typed `describe`, `validate`, `compile`, `execute`,
 `normalize`, and public-projection operations. No adapter interprets ProductSpec
 prose or broadens environment authority.
 
-The first dogfood uses one local deterministic Bun profile and one Bun-test
+The first dogfood uses one local deterministic Node 24.13.1 profile and one Vite Plus test
 adapter. Effect Native, browser, packaged native, device, staging, and live
 adapters remain later obligations, not implied support.
 

@@ -4,50 +4,37 @@ import path from "node:path"
 
 import { mvpCodexReadyProbe, mvpProofEnvironmentFromArgv, mvpProofRequiredSteps, resolveMvpProofCommand, resolveMvpProofConfig } from "./mvp-proof.ts"
 
-describe("ProductSpec-native MVP proof contract", () => {
-  test("requires the exact execution, child, verification, and owner-gate journey", () => {
+describe("installed MVP coding proof contract", () => {
+  test("requires exact root and child coding artifacts across reload and restart", () => {
     expect(mvpProofRequiredSteps).toEqual([
       "shell",
       "codex-ready",
-      "product-spec-open",
-      "plan-accepted",
-      "root-packet-turn",
-      "root-packet-verified",
-      "child-packet-turn",
+      "root-coding-turn",
+      "root-artifact-verified",
+      "child-coding-turn",
       "child-transcript",
-      "child-packet-verified",
+      "child-artifact-verified",
       "renderer-reload-restored",
       "app-restart-restored",
-      "owner-gate-pending",
     ])
   })
 
-  test("is double-gated, mutually exclusive, and refuses unsafe spec paths", () => {
+  test("is double-gated and mutually exclusive with other drivers", () => {
     const userData = "/tmp/openagents-mvp-user-data"
     expect(resolveMvpProofConfig({}, userData).enabled).toBe(false)
     const valid = resolveMvpProofConfig({
       OPENAGENTS_DESKTOP_MVP_PROOF: "1",
       OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
-      OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: "specs/mvp.product-spec.md",
     }, userData)
     expect(valid).toEqual({
       enabled: true,
       conflict: false,
       outDir: path.join(userData, "mvp-proof"),
-      specPath: "specs/mvp.product-spec.md",
     })
-    for (const specPath of ["", "../escape.product-spec.md", "/tmp/x.product-spec.md", "specs/not-a-spec.md"]) {
-      expect(resolveMvpProofConfig({
-        OPENAGENTS_DESKTOP_MVP_PROOF: "1",
-        OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
-        OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: specPath,
-      }, userData).conflict).toBe(true)
-    }
     expect(resolveMvpProofConfig({
       OPENAGENTS_DESKTOP_MVP_PROOF: "1",
       OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
       OPENAGENTS_DESKTOP_SMOKE: "1",
-      OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: "specs/mvp.product-spec.md",
     }, userData).conflict).toBe(true)
   })
 
@@ -77,12 +64,10 @@ describe("ProductSpec-native MVP proof contract", () => {
       "--openagents-mvp-proof-user-data=/tmp/oa proof/user-data",
       "--openagents-mvp-proof-workspace=/tmp/oa proof/workspace",
       "--openagents-mvp-proof-receipts=/tmp/oa proof/receipts",
-      "--openagents-mvp-proof-spec=specs/mvp.product-spec.md",
       "--openagents-mvp-proof-phase=initial",
     ])).toEqual({
       OPENAGENTS_DESKTOP_MVP_PROOF: "1",
       OPENAGENTS_DESKTOP_MVP_PROOF_DIR: "/tmp/oa proof/receipts",
-      OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: "specs/mvp.product-spec.md",
       OPENAGENTS_DESKTOP_MVP_PROOF_PHASE: "initial",
       OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
       OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: "/tmp/oa proof/workspace",
@@ -98,10 +83,13 @@ describe("ProductSpec-native MVP proof contract", () => {
     expect(source).not.toContain('asRec(await evaluate(click(key)))')
   })
 
-  test("requires agent-produced evidence before independent host verification", () => {
+  test("uses current visible chat controls without restoring hidden spec tooling", () => {
     const source = readFileSync(new URL("./mvp-proof.ts", import.meta.url), "utf8")
-    expect(source).toContain('.replace(/\\s+/g, "_") === "evidence_present"')
-    expect(source).toContain("packet did not retain agent-produced evidence")
-    expect(source).not.toContain('requireClick(`product-spec-evidence-${packetRef}`)')
+    expect(source).toContain('requireField("shell-input", rootPrompt)')
+    expect(source).toContain('requireClick("shell-note")')
+    expect(source).toContain('verifyArtifact("root")')
+    expect(source).toContain('verifyArtifact("child")')
+    expect(source).not.toContain("proof for ${options.specPath}")
+    expect(source).not.toContain('requireClick("workspace-product-spec")')
   })
 })

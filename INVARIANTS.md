@@ -1035,7 +1035,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   The Codex composer MVP uses only the ordinary authenticated local Codex
   session and exposes no named-Pylon linking, rotation, or isolated-home
   fallback. Current-session launches must clear an inherited `CODEX_HOME` so
-  stale Pylon selection cannot override `~/.codex`. Delegated Fleet children
+  stale Pylon selection cannot override `~/.codex`. Desktop smoke, proof,
+  fixture-path, startup-trace, and isolated-profile environment controls are
+  host-only and must be removed from every Codex provider subprocess; a proof
+  turn must see the same provider environment as an ordinary user turn.
+  ProductSpec skills and dynamic tools are advertised to Codex only while the
+  host owns an admitted ProductSpec work context; an ordinary coding chat must
+  not inherit proposal workflow instructions or tools.
+  Delegated Fleet children
   may retain explicit named-account custody under their separate fleet
   contracts, but that authority cannot enter the local workroom lane.
   A delegated child is a conversation, not merely graph metadata: its bounded
