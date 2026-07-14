@@ -1,5 +1,0 @@
-# CL-53: preload a minimal window/requestAnimationFrame shim before tests so the
-# Foldkit module graph (snabbdom) can import in bun's node-like test env. The
-# desktop tests are pure (helpers + reducer); they never render a real DOM.
-[test]
-preload = ["./tests/preload.ts"]

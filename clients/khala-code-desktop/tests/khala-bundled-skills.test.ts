@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
 
 import { khalaCodeDesktopBundledSkillContents } from "../src/bun/khala-bundled-skill-content.generated"
 import {
@@ -10,8 +10,6 @@ import {
   khalaCodeDesktopBundledSkillsEnabled,
   khalaCodeDesktopUserSkillsRoot,
 } from "../src/bun/khala-bundled-skills"
-
-const repoRoot = resolve(import.meta.dir, "../../..")
 
 const khalaFleetSkill = khalaCodeDesktopBundledSkillContents.find(
   skill => skill.name === "khala-fleet",
@@ -25,13 +23,13 @@ describe("bundled skill content", () => {
     expect(khalaFleetSkill).toBeDefined()
   })
 
-  test("generated content matches the canonical checked-in SKILL.md", async () => {
-    for (const skill of khalaCodeDesktopBundledSkillContents) {
-      const canonicalPath = resolve(repoRoot, ".agents/skills", skill.name, "SKILL.md")
-      const canonical = await readFile(canonicalPath, "utf8")
-      expect(skill.markdown).toBe(canonical)
-    }
-  })
+  // The canonical .agents/skills/khala-fleet/SKILL.md was removed at owner
+  // direction 2026-07-14 (OpenAgents Desktop supersedes the Khala Code
+  // bundling claim). The generated embedded copy in
+  // src/bun/khala-bundled-skill-content.generated is now the frozen
+  // historical source; the byte-for-byte canonical-file comparison test that
+  // lived here was removed with it. Recover the canonical file with
+  // `git show c7044f5a2870110b331c5a7288caceb85488290a:.agents/skills/khala-fleet/SKILL.md`.
 
   test("every bundled skill carries frontmatter name/description and the managed marker", () => {
     for (const skill of khalaCodeDesktopBundledSkillContents) {
