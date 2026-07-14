@@ -15,9 +15,9 @@ corresponding tests, models, or smoke checks.
   Secret Manager material, placement credentials, and internal settlement
   secrets stay in runtime env / Secret Manager — never in tracked fixtures,
   logs, or docs.
-- The Worker (`apps/openagents.com`) owns admission, billing, public projection,
-  and credit authority. Cloud daemons execute and emit receipts; they do not
-  own user credit ledgers or wallet/payout authority.
+- The Worker (`apps/openagents.com`) owns non-money admission and public
+  projection. Billing, credit, wallet, payout, payment, and settlement
+  authority are retired under VP-1; Cloud daemons must not recreate them.
 
 ### 2026-07-11 authority-wording boundary
 
@@ -30,13 +30,14 @@ design context only.
 
 ## Wallet And Settlement
 
-- Payments and settlement are outside the accepted MVP and are selected for
-  orderly retirement under the
+- Payments, billing credits, markets, Sites, wallets, payouts, and settlement
+  are outside the accepted MVP and retired under the
   [`Node/pnpm/Vite Plus conversion contract`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
-  Disable paid/credit-backed admission when its owning rail retires; never
-  reinterpret removal as free managed compute. Historical redacted receipts
-  may remain read-only, while the no-wallet workroom boundary below remains
-  permanent.
+  Paid/credit-backed admission is disabled and must never be reinterpreted as
+  free managed compute. Historical redacted receipts and private recovery
+  archives may remain read-only; they carry no execution authority. Any
+  revival requires a fresh owner-approved invariant and proof program, while
+  the no-wallet workroom boundary below remains permanent.
 - Contributor-wallet mode is not the default for managed cloud nodes.
 - Workrooms do not receive wallet authority by default.
 - Workrooms may receive settlement metadata through scoped local gateways, but

@@ -43,7 +43,7 @@ its own copies with a different state prefix.
 | Resource | Address |
 | --- | --- |
 | Cloud SQL `khala-sync-pg` (PG17, HA, PITR) + 4 users | `module.khala_sync_pg` |
-| Cloud SQL `l402-aperture-db` (PG15) + 3 users | `module.l402_aperture_db` |
+| Cloud SQL `l402-aperture-db` (PG15) + 3 users, VP-1 cold recovery evidence (`activation_policy=NEVER`) | `module.l402_aperture_db` |
 | Cloud SQL `autopilot4-pg` (PG16) + 2 users | `module.autopilot4_pg` |
 | Cloud SQL `oa-convex-nonprod-pg` (PG16) + 2 users | `module.oa_convex_nonprod_pg` |
 | Cloud Run `oa-updates` (shell) | `module.oa_updates` |
@@ -84,9 +84,10 @@ was a **no-op** against live as of import day; there are no accepted diffs.
   `khala-sync-pg` (the API reports a top-level secondary zone but the
   location preference is unset); no `versioning` block emitted for
   non-versioned buckets.
-- The `0.0.0.0/0` authorized network on `khala-sync-pg` / `l402-aperture-db`
-  is the **live** setting, mirrored as-is. Tightening it is a deliberate
-  future change to be made *through* Terraform, not silently during import.
+- The `0.0.0.0/0` authorized network on `khala-sync-pg` is the imported live
+  setting. `l402-aperture-db` retains its imported network metadata only as a
+  stopped VP-1 recovery copy; `activation_policy=NEVER` is load-bearing and an
+  unrelated apply must not restart it.
 
 ## Workflow
 

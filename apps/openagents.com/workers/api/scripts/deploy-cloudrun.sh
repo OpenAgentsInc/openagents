@@ -24,7 +24,6 @@ set -euo pipefail
 #   openagents-gemini-api-key / openagents-openrouter-api-key /
 #   openagents-fireworks-api-key / openagents-exa-api-key /
 #   openagents-resend-api-key / openagents-vertex-sa-key
-#   openagents-stripe-api-key-<test|live>
 #   openagents-github-client-secret          (production only; NEEDS-OWNER
 #                                            until re-supplied — see #8524)
 #
@@ -44,11 +43,9 @@ REGION="${OPENAGENTS_GCP_REGION:-us-central1}"
 if [[ "$TARGET" == "production" ]]; then
   SERVICE="openagents-monolith"
   ENV_SUFFIX="prod"
-  STRIPE_SECRET="openagents-stripe-api-key-live"
 else
   SERVICE="openagents-monolith-staging"
   ENV_SUFFIX="staging"
-  STRIPE_SECRET="openagents-stripe-api-key-test"
 fi
 
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -104,7 +101,6 @@ SET_SECRETS=(
   "EXA_API_KEY=openagents-exa-api-key:latest"
   "RESEND_API_KEY=openagents-resend-api-key:latest"
   "VERTEX_SA_KEY=openagents-vertex-sa-key:latest"
-  "STRIPE_API_KEY=${STRIPE_SECRET}:latest"
   # Cloud coding sessions control-plane bearer (oa-cloud-run-bridge).
   "OA_CLOUD_CONTROL_TOKEN=oa-cloud-run-bridge-control-token:latest"
   # CFG-8 GCS artifacts (bucket name is a committed wrangler var).
@@ -133,12 +129,6 @@ if [[ "$TARGET" == "production" ]]; then
     # OPENROUTER_API_KEY was dropped here (owner decision 2026-07-09) — OpenRouter
     # is no longer a platform Khala lane on prod OR staging. See the common block
     # above. The BYOK caller-key path does not need this platform secret.
-    # CFG-15: service tokens the monolith presents to the Cloud Run MDK
-    # money-path daemons (x-treasury-service-token / x-tips-buffer-service-token).
-    # The matching run.app URLs are committed wrangler vars. Sidecar token is
-    # omitted until the sidecar cutover lands.
-    "MDK_TREASURY_SERVICE_TOKEN=mdk-treasury-service-token:latest"
-    "MDK_TIPS_BUFFER_SERVICE_TOKEN=mdk-tips-buffer-service-token:latest"
     "GITHUB_CLIENT_SECRET=openagents-github-client-secret:latest"
     # SHC live dispatch (config validation requires the bearer when
     # SHC_DISPATCH_MODE=live).

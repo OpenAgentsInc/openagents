@@ -4340,7 +4340,8 @@ const schemaComponents = (): JsonSchema => ({
       },
       approvedByRef: {
         type: 'string',
-        description: 'Public-safe owner/operator ref that approved the template.',
+        description:
+          'Public-safe owner/operator ref that approved the template.',
       },
       sourceRef: {
         type: 'string',
@@ -4349,7 +4350,8 @@ const schemaComponents = (): JsonSchema => ({
       },
       templateVersionRef: {
         type: 'string',
-        description: 'Public-safe outreach template version ref being approved.',
+        description:
+          'Public-safe outreach template version ref being approved.',
       },
     },
   },
@@ -7310,9 +7312,7 @@ const requestSchemas = (): JsonSchema => ({
       authorityReceiptRefs: pylonWorkerCloseoutRefArray(
         'Public-safe authority and execution receipt refs.',
       ),
-      blockerRefs: pylonWorkerCloseoutRefArray(
-        'Public-safe blocker refs.',
-      ),
+      blockerRefs: pylonWorkerCloseoutRefArray('Public-safe blocker refs.'),
       buildRefs: pylonWorkerCloseoutRefArray('Public-safe build refs.'),
       changeCaptureRefs: pylonWorkerCloseoutRefArray(
         'Public-safe change-capture refs.',
@@ -7349,9 +7349,7 @@ const requestSchemas = (): JsonSchema => ({
         ],
       },
       paymentMode: { type: 'string', enum: ['no-spend', 'paid'] },
-      previewRefs: pylonWorkerCloseoutRefArray(
-        'Public-safe preview refs.',
-      ),
+      previewRefs: pylonWorkerCloseoutRefArray('Public-safe preview refs.'),
       payoutClaimAllowed: { type: 'boolean' },
       proofRefs: pylonWorkerCloseoutRefArray('Public-safe proof refs.'),
       removedLineCount: { type: 'integer', minimum: 0 },
@@ -7361,18 +7359,10 @@ const requestSchemas = (): JsonSchema => ({
       ),
       settlementState: {
         type: 'string',
-        enum: [
-          'not_applicable',
-          'pending',
-          'recorded',
-          'blocked',
-          'settled',
-        ],
+        enum: ['not_applicable', 'pending', 'recorded', 'blocked', 'settled'],
       },
       status: { type: 'string', minLength: 1, maxLength: 80 },
-      summaryRefs: pylonWorkerCloseoutRefArray(
-        'Public-safe summary refs.',
-      ),
+      summaryRefs: pylonWorkerCloseoutRefArray('Public-safe summary refs.'),
       testRefs: pylonWorkerCloseoutRefArray('Public-safe test refs.'),
       verificationRefs: pylonWorkerCloseoutRefArray(
         'Public-safe verification refs.',
@@ -7394,11 +7384,7 @@ const requestSchemas = (): JsonSchema => ({
         },
       },
       {
-        required: [
-          'paymentMode',
-          'payoutClaimAllowed',
-          'settlementState',
-        ],
+        required: ['paymentMode', 'payoutClaimAllowed', 'settlementState'],
         allOf: [
           {
             if: {
@@ -15848,7 +15834,9 @@ const paths = (): JsonSchema => ({
       parameters: [
         pathParam('pipelineRef', 'Public-safe business pipeline ref.'),
       ],
-      requestBody: jsonContent('#/components/schemas/BusinessOutreachSendRequest'),
+      requestBody: jsonContent(
+        '#/components/schemas/BusinessOutreachSendRequest',
+      ),
       responses: {
         '201': okJson(
           'Recorded outreach send and pipeline receipt refs.',
@@ -16022,7 +16010,10 @@ const paths = (): JsonSchema => ({
       tags: ['Portal'],
       security: [{ browserSession: [] }],
       parameters: [
-        pathParam('itemId', 'Portal content item id within the caller\'s own engagement.'),
+        pathParam(
+          'itemId',
+          "Portal content item id within the caller's own engagement.",
+        ),
       ],
       requestBody: jsonContent('#/components/schemas/PortalDecisionRequest'),
       responses: {
@@ -17578,6 +17569,24 @@ const paths = (): JsonSchema => ({
   },
 })
 
+// VP-1: payment, marketplace, and Sites compatibility routes remain owned by
+// the runtime retirement layer, but they are deliberately absent from active
+// discovery.  Keeping this filter at the document boundary prevents a stale
+// path definition from re-advertising retired capability while the underlying
+// 410 tombstones remain stable for old clients.
+const retiredDiscoveryPathPattern =
+  /(?:^|[\/-])(?:balances?|billing|checkout|credits?|earnings?|labor(?:-earnings)?|marketplace|markets?|payments?|payouts?|revenue|rewards?|settlements?|sites?|spend|tips?|treasury|wallets?)(?:[\/-]|$)|paid-privacy|l402/i
+
+const activeOpenApiPaths = (): JsonSchema =>
+  Object.fromEntries(
+    Object.entries(paths()).filter(([path, pathItem]) => {
+      if (retiredDiscoveryPathPattern.test(path)) return false
+
+      const serialized = JSON.stringify(pathItem)
+      return !/"Sites"/.test(serialized)
+    }),
+  )
+
 export const openAgentsOpenApiDocument = (): Effect.Effect<
   OpenAgentsOpenApiDocument,
   OpenAgentsOpenApiUnsafe
@@ -17591,7 +17600,7 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
       // projection-freshness invariant #5056). Do not hand-edit this literal.
       version: PublicProductPromisesVersion,
       summary:
-        'Public-safe discovery and core browser-session APIs for software-order fulfillment, Autopilot Sites, Adjutant assignments, receipts, and proof projections.',
+        'Public-safe discovery and core browser-session APIs for Codex workrooms, Adjutant assignments, receipts, and proof projections. Money and Sites surfaces are retired and intentionally omitted.',
     },
     servers: [{ url: 'https://openagents.com' }],
     tags: [
@@ -17600,17 +17609,15 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
       { name: 'Business' },
       { name: 'Agents' },
       { name: 'Search' },
-      { name: 'Payments' },
       { name: 'Forum' },
       { name: 'Pylon' },
       { name: 'Customer Orders' },
       { name: 'Autopilot Work' },
-      { name: 'Sites' },
       { name: 'Adjutant' },
       { name: 'Email' },
       { name: 'Forge' },
     ],
-    paths: paths(),
+    paths: activeOpenApiPaths(),
     components: components(),
   }
 

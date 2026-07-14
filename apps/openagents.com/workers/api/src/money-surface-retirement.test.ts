@@ -30,8 +30,9 @@ describe('VP-1 money-surface ingress retirement', () => {
     ['POST', '/api/billing/stripe/webhook'],
     ['POST', '/api/forum/paid-actions/mdk/webhooks'],
     ['POST', '/api/sites/site-1/commerce/mdk/webhooks'],
-  ])('temporarily retains terminal callback intake for %s %s', (method, pathname) => {
-    expect(isRetiredMoneySurfaceRequest(method, pathname)).toBe(false)
+    ['GET', '/treasury'],
+  ])('retires terminal callbacks and the treasury UI after the recovery archive: %s %s', (method, pathname) => {
+    expect(isRetiredMoneySurfaceRequest(method, pathname)).toBe(true)
   })
 
   test.each([

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import type { TipsNetworkOptions } from "./tips.js"
+import type { PylonNetworkOptions } from "./network-options.js"
 import { assertPublicSafe } from "./work-requester.js"
 
 export const KHALA_REQUEST_MODEL = "openagents/khala"
@@ -321,7 +321,7 @@ const codexAssignmentProofPath = "/api/pylon/codex/proof"
 const codexAssignmentTraceStatusPath = "/api/pylon/codex/trace-status"
 const publicSafeDiagnosticRefPattern = /^[A-Za-z0-9_.:/=-]{1,200}$/
 
-function requireAgentToken(options: TipsNetworkOptions): string {
+function requireAgentToken(options: PylonNetworkOptions): string {
   const token = options.agentToken ?? process.env.OPENAGENTS_AGENT_TOKEN
   if (!token) {
     throw new Error("OPENAGENTS_AGENT_TOKEN or --agent-token is required for Khala requests")
@@ -1167,7 +1167,7 @@ function streamProjection(input: {
 }
 
 async function khalaApiRequest(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: {
     body?: Record<string, unknown>
     method: "GET" | "POST"
@@ -1192,7 +1192,7 @@ async function khalaApiRequest(
 }
 
 export async function issuePylonKhalaRequest(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: PylonKhalaRequestInput,
 ): Promise<PylonKhalaRequestResult> {
   const body = buildPylonKhalaChatRequestBody(input)
@@ -1228,7 +1228,7 @@ export async function issuePylonKhalaRequest(
 }
 
 export async function resumePylonKhalaRequest(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: PylonKhalaResumeInput,
 ): Promise<PylonKhalaResumeResult> {
   assertPublicSafe(input.durableRequestId, "khala durable request id")
@@ -1254,7 +1254,7 @@ export async function resumePylonKhalaRequest(
 }
 
 export async function readPylonKhalaStatus(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   durableRequestId: string,
 ): Promise<PylonKhalaStatusResult> {
   const resumed = await resumePylonKhalaRequest(options, {
@@ -1273,7 +1273,7 @@ export async function readPylonKhalaStatus(
 }
 
 export async function readPylonKhalaAssignmentTraceStatus(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   assignmentRefInput: string,
 ): Promise<PylonKhalaAssignmentTraceStatusResult> {
   const assignmentRef = cleanAssignmentRef(assignmentRefInput)
@@ -1293,7 +1293,7 @@ export async function readPylonKhalaAssignmentTraceStatus(
 }
 
 export async function readPylonKhalaProof(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   assignmentRefInput: string,
 ): Promise<PylonKhalaProofResult> {
   const assignmentRef = cleanAssignmentRef(assignmentRefInput)
@@ -1317,7 +1317,7 @@ export async function readPylonKhalaProof(
 }
 
 export async function readPylonKhalaCloseout(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   assignmentRefInput: string,
 ): Promise<PylonKhalaCloseoutResult> {
   const assignmentRef = cleanAssignmentRef(assignmentRefInput)
@@ -1338,7 +1338,7 @@ export async function readPylonKhalaCloseout(
 }
 
 export async function readPylonKhalaCloseoutUntilReady(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   assignmentRefInput: string,
   retry: Readonly<{
     maxAttempts?: number

@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "openagents.com Sales Landing"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-08T00:00:00Z"
-updated_at: "2026-07-08T00:00:00Z"
+updated_at: "2026-07-14T00:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -35,8 +35,8 @@ so every marketing and outbound win leaks at the last step.
 
 ## Hypothesis
 
-If the landing becomes a sales-focused site — live proof counters, credit-tier
-pricing, and two direct calls to action (business intake and "Talk to Sarah")
+If the landing becomes a workroom-focused surface — live proof counters and a
+direct call to enter the Codex Workroom
 — then a meaningfully larger share of visitors will start an intake or a Sarah
 conversation, because the page finally gives a motivated visitor a next step
 that matches buying intent instead of product archaeology.
@@ -48,8 +48,8 @@ in:
   - launch-ui section kit ported to TanStack Start (hero, navbar, pricing, stats, logos, faq, cta, footer)
   - one Protoss-blue theme (next-themes/mode-toggle dropped)
   - stats section wired to the live public counters
-  - pricing wired to the shipped credit tiers
-  - CTAs to business intake and Talk to Sarah
+  - explicit notice that money and Sites capabilities are retired
+  - CTA to the Codex Workroom
   - production serving on our own cloud with root cutover and rollback notes
 out:
   - product routes (absorbed route-by-route later per ONE-UI; the current worker keeps serving them)
@@ -72,8 +72,8 @@ production surface is the openagents.com root after owner-approved cutover.
   Protoss-blue theme; no `next/*` imports remain.
 - The stats section reads the live public counters — never hardcoded numbers
   (exact-only law; counters are projections of receipted rows).
-- Pricing shows the shipped credit tiers; every CTA resolves: intake posts to
-  the business pipeline, Talk to Sarah reaches the Sarah surface.
+- No pricing, checkout, credits, wallet, market, payout, settlement, or Sites
+  CTA is rendered. Retired paid capacity is not presented as free capacity.
 - All landing copy passes the promise-registry copy gates with owner sign-off
   recorded before the root flip; no claim appears that the registry cannot
   back.

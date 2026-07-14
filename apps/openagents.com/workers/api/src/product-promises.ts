@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-14.1'
+export const PublicProductPromisesVersion = '2026-07-14.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 const tassadarPsionicBackroomArchiveRef =
@@ -150,8 +150,7 @@ const basePromiseFields = {
 
 const retiredAppPromiseSuccessors: Readonly<Record<string, string>> = {
   'autopilot.desktop_gui_client.v1': 'promise:openagents.desktop_app.v1',
-  'khala_code.desktop_codex_wrapper.v1':
-    'promise:openagents.desktop_app.v1',
+  'khala_code.desktop_codex_wrapper.v1': 'promise:openagents.desktop_app.v1',
   'khala_code.forum_hotbar.v1': 'promise:openagents.desktop_app.v1',
   'khala_code.mobile_mvp.v1': 'promise:openagents.mobile_app.v1',
   'mobile.autopilot_remote_control.v1': 'promise:openagents.mobile_app.v1',
@@ -166,19 +165,57 @@ const retiredAppPromiseSuccessors: Readonly<Record<string, string>> = {
 // in the same change; deleted evidence paths remain recoverable from git
 // history at the pre-removal main commit recorded in
 // docs/promises/2026-07-14-owner-supersession-removals.md.
-const ownerSupersededPromiseSuccessors20260714: Readonly<Record<string, string>> = {
-  'autopilot.agent_character_creation.v1':
-    'promise:openagents.desktop_app.v1',
+const ownerSupersededPromiseSuccessors20260714: Readonly<
+  Record<string, string>
+> = {
+  'autopilot.agent_character_creation.v1': 'promise:openagents.desktop_app.v1',
   'autopilot.agent_world_scene.v1': 'promise:openagents.desktop_app.v1',
   'autopilot.bitcoin_payment_visualization.v1':
     'promise:openagents.desktop_app.v1',
   'autopilot.builtin_compute_agent.v1': 'promise:openagents.desktop_app.v1',
-  'autopilot.local_apple_fm_tool_chat.v1':
-    'promise:openagents.desktop_app.v1',
+  'autopilot.local_apple_fm_tool_chat.v1': 'promise:openagents.desktop_app.v1',
   'autopilot.pylon_growth_visualization.v1':
     'promise:openagents.desktop_app.v1',
   'khala_code.bundled_fleet_skill.v1': 'promise:openagents.desktop_app.v1',
 }
+
+// VP-1 retires the non-MVP money, market, and Sites graph without deleting its
+// stable public IDs or historical evidence.  These records are compatibility
+// tombstones only; none has a successor that implies paid capacity became free.
+const vp1RetiredPromiseIds = new Set([
+  'agents.cursor_forum_wallet.v1',
+  'autopilot.cloud_credits_ui.v1',
+  'autopilot.control_center_fanout_marketplace.v1',
+  'autopilot_sites.custom_tenant_hostnames.v1',
+  'autopilot_sites.native_email_sequences.v1',
+  'autopilot_sites.partner_payout_ledger.v1',
+  'autopilot_sites.site_build_and_host.v1',
+  'claims.world_first_ai_training_paid_bitcoin.v1',
+  'forum.content_tipping.v1',
+  'inference.gateway_credits_business.v1',
+  'khala_code.free_paid_plans.v1',
+  'khala_code.paid_to_free_revenue_share.v1',
+  'khala_code.plugin_backend_revenue_share.v1',
+  'labor.forum_work_requests.v1',
+  'labor.nostr_negotiation_market.v1',
+  'marketplace.agentic_npm_module_registry.v1',
+  'marketplace.compose_and_list_products.v1',
+  'marketplace.monetize_any_layer_with_referral.v1',
+  'marketplace.signature_monetization.v1',
+  'marketplace.wasm_plugins.v1',
+  'markets.open_protocol_markets.v1',
+  'payments.accepted_outcome_economics.v1',
+  'payments.autopilot_credits_purchase.v1',
+  'payments.money_dev_kit.v1',
+  'payments.offline_receive_spark_fallback.v1',
+  'payments.reliable_tips_sweepable_balances.v1',
+  'privacy.khala_paid_capture_optout.v1',
+  'pylon.compute_revenue_modes.v1',
+  'pylon.data_trace_revenue.v1',
+  'pylon.five_bitcoin_revenue_streams.v1',
+  'pylon.v0_3_multi_earning_node.v1',
+  'sites.referral_bitcoin_stream.v1',
+])
 
 const khalaCodeCapabilityDisposition: Readonly<
   Record<
@@ -3199,9 +3236,7 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/4988',
           'https://github.com/OpenAgentsInc/openagents/issues/4989',
         ],
-        blockerRefs: [
-          'blocker.product_promises.sites_wfp_program_retired',
-        ],
+        blockerRefs: ['blocker.product_promises.sites_wfp_program_retired'],
         verification:
           'Registry 2026-07-06.2 records the CFG-13 retirement: the /api/tenant/hostnames self-serve routes, site-runtime serving pipeline, Cloudflare custom-hostname client, and hostname provisioning core are deleted from the worker; the sites.openagents.com route and SITES_DISPATCH dispatch-namespace binding are removed from wrangler.jsonc. Re-verification happens when the redesigned Sites program lands (consolidation audit Phase 4).',
         authorityBoundary:
@@ -5627,15 +5662,38 @@ export const publicProductPromisesDocument = () => {
   }
 
   const promises = document.promises.map(promise => {
+    if (vp1RetiredPromiseIds.has(promise.promiseId)) {
+      const preservesPrivacyProtection =
+        promise.promiseId === 'privacy.khala_paid_capture_optout.v1'
+
+      return {
+        ...promise,
+        authorityBoundary:
+          'This stable record is historical evidence only. It grants no payment, billing, credit, wallet, checkout, market, Sites, spend, payout, settlement, or public-availability authority. Paid or credit-gated capacity is disabled and must never be reinterpreted as free capacity.',
+        blockerRefs: ['blocker.product_promises.money_and_sites_graph_retired'],
+        claim: `Withdrawn on 2026-07-14 under VP-1: ${promise.claim}`,
+        evidenceRefs: [
+          ...promise.evidenceRefs,
+          'issue:OpenAgentsInc/openagents#8795',
+        ],
+        safeCopy: preservesPrivacyProtection
+          ? 'This stable ID is withdrawn because the paid product is retired. Its privacy protection remains binding for historical data and compatibility reads: no retained private trace may be exposed, repurposed, or treated as consent merely because the purchase surface is gone.'
+          : 'This stable ID is withdrawn. Historical receipts and evidence refs remain dereferenceable, but the money, market, or Sites capability is not available. No retired paid or credit-gated capacity becomes free capacity.',
+        state: 'withdrawn' as const,
+        unsafeCopy:
+          'Do not advertise, re-arm, route to, or infer availability from this historical record. Do not treat removal of pricing, checkout, credit, wallet, or settlement code as permission to provide the formerly paid capacity for free.',
+        verification:
+          'Compatibility check: the stable ID and public-safe historical evidence remain readable; active UI, OpenAPI, capability, agent-sheet, and SDK discovery omit the retired surface; all former mutation routes fail closed through the shared typed retirement contract.',
+      }
+    }
+
     const retiredSuccessor = retiredAppPromiseSuccessors[promise.promiseId]
     if (retiredSuccessor !== undefined) {
       return {
         ...promise,
         authorityBoundary:
           'A withdrawn app/product record grants no install, release, update, credential, dispatch, approval, spend, payout, settlement, or public-availability authority. Historical IDs, receipts, and evidence routes remain stable for integrity only.',
-        blockerRefs: [
-          'blocker.product_promises.legacy_product_app_withdrawn',
-        ],
+        blockerRefs: ['blocker.product_promises.legacy_product_app_withdrawn'],
         claim: `Withdrawn on 2026-07-09: ${promise.claim}`,
         evidenceRefs: [
           ...promise.evidenceRefs,
@@ -5643,13 +5701,10 @@ export const publicProductPromisesDocument = () => {
           'docs/sol/2026-07-09-greenfield-mobile-desktop-decision.md',
           retiredSuccessor,
         ],
-        safeCopy:
-          `This stable promise ID is historical. The legacy app/product surface was withdrawn by owner direction on 2026-07-09; its evidence and public-safe receipt/read routes remain dereferenceable, but it is not installable or releasable and receives no new product work. Route current app direction to ${retiredSuccessor}.`,
+        safeCopy: `This stable promise ID is historical. The legacy app/product surface was withdrawn by owner direction on 2026-07-09; its evidence and public-safe receipt/read routes remain dereferenceable, but it is not installable or releasable and receives no new product work. Route current app direction to ${retiredSuccessor}.`,
         state: 'withdrawn' as const,
-        unsafeCopy:
-          `Do not use ${promise.promiseId} as current product copy, revive its legacy app or release lane, or treat preserved evidence APIs as availability. Route new app claims to ${retiredSuccessor}.`,
-        verification:
-          `Compatibility check: the registry still serves ${promise.promiseId} as withdrawn, retains its historical evidence/receipt refs, and points consumers to ${retiredSuccessor}; active install/release copy and routes must not advertise the legacy app.`,
+        unsafeCopy: `Do not use ${promise.promiseId} as current product copy, revive its legacy app or release lane, or treat preserved evidence APIs as availability. Route new app claims to ${retiredSuccessor}.`,
+        verification: `Compatibility check: the registry still serves ${promise.promiseId} as withdrawn, retains its historical evidence/receipt refs, and points consumers to ${retiredSuccessor}; active install/release copy and routes must not advertise the legacy app.`,
       }
     }
 
@@ -5660,22 +5715,17 @@ export const publicProductPromisesDocument = () => {
         ...promise,
         authorityBoundary:
           'A withdrawn app/product record grants no install, release, update, credential, dispatch, approval, spend, payout, settlement, or public-availability authority. Historical IDs, receipts, and evidence routes remain stable for integrity only.',
-        blockerRefs: [
-          'blocker.product_promises.legacy_product_app_withdrawn',
-        ],
+        blockerRefs: ['blocker.product_promises.legacy_product_app_withdrawn'],
         claim: `Withdrawn on 2026-07-14: ${promise.claim}`,
         evidenceRefs: [
           ...promise.evidenceRefs,
           'docs/promises/2026-07-14-owner-supersession-removals.md',
           ownerSupersededSuccessor,
         ],
-        safeCopy:
-          `This stable promise ID is historical. The legacy surface behind it was superseded by owner direction on 2026-07-14 (OpenAgents Desktop supersedes the deprecated desktop clients); its implementation tree was removed from the working tree and stays recoverable from git history per docs/promises/2026-07-14-owner-supersession-removals.md. Route current app direction to ${ownerSupersededSuccessor}.`,
+        safeCopy: `This stable promise ID is historical. The legacy surface behind it was superseded by owner direction on 2026-07-14 (OpenAgents Desktop supersedes the deprecated desktop clients); its implementation tree was removed from the working tree and stays recoverable from git history per docs/promises/2026-07-14-owner-supersession-removals.md. Route current app direction to ${ownerSupersededSuccessor}.`,
         state: 'withdrawn' as const,
-        unsafeCopy:
-          `Do not use ${promise.promiseId} as current product copy, revive its removed implementation tree or release lane, or treat preserved evidence refs as availability. Route new app claims to ${ownerSupersededSuccessor}.`,
-        verification:
-          `Compatibility check: the registry still serves ${promise.promiseId} as withdrawn, retains its historical evidence refs (deleted paths dereference through git history at the pre-removal commit recorded in docs/promises/2026-07-14-owner-supersession-removals.md), and points consumers to ${ownerSupersededSuccessor}; active install/release copy and routes must not advertise the removed surface.`,
+        unsafeCopy: `Do not use ${promise.promiseId} as current product copy, revive its removed implementation tree or release lane, or treat preserved evidence refs as availability. Route new app claims to ${ownerSupersededSuccessor}.`,
+        verification: `Compatibility check: the registry still serves ${promise.promiseId} as withdrawn, retains its historical evidence refs (deleted paths dereference through git history at the pre-removal commit recorded in docs/promises/2026-07-14-owner-supersession-removals.md), and points consumers to ${ownerSupersededSuccessor}; active install/release copy and routes must not advertise the removed surface.`,
       }
     }
 
@@ -5698,13 +5748,16 @@ export const publicProductPromisesDocument = () => {
       safeCopy: disposition.safeCopy,
       state: disposition.state ?? promise.state,
       unsafeCopy: disposition.unsafeCopy,
-      verification:
-        `${promise.verification} Greenfield carry-forward also requires an explicit capability disposition and a real successor-app oracle under #8574/#8597; legacy app evidence cannot satisfy that gate by itself.`,
+      verification: `${promise.verification} Greenfield carry-forward also requires an explicit capability disposition and a real successor-app oracle under #8574/#8597; legacy app evidence cannot satisfy that gate by itself.`,
     }
   })
 
   return {
     ...document,
+    notes: [
+      'Registry 2026-07-14.2 is the VP-1 money, market, and Sites retirement pass. Stable promise IDs and public-safe historical evidence remain, but active discovery and product copy are withdrawn. No paid or credit-gated capacity becomes free capacity.',
+      ...document.notes,
+    ],
     promises,
     verificationSummary: summarizePromiseVerification(promises),
   }

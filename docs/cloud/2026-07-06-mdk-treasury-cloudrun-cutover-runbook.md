@@ -1,6 +1,13 @@
 # MDK Treasury / Sidecar / Tips-Buffer → Cloud Run Cutover Runbook (CFG-15)
 
-**Status:** EXECUTION ATTEMPTED 2026-07-06 after owner GO — **flip blocked**:
+**Status:** **SUPERSEDED BY VP-1 RETIREMENT ON 2026-07-14.** All three MDK
+service trees and their Cloud Run/Cloudflare runtime authority are removed.
+This document is retained only for custody history and the single-writer safety
+constraint. Future recovery uses
+[`VP-1 treasury wallet recovery runbook`](../ops/2026-07-14-vp1-treasury-wallet-recovery-runbook.md),
+not this deployment procedure.
+
+Historical status: EXECUTION ATTEMPTED 2026-07-06 after owner GO — **flip blocked**:
 the deployed production Worker predates the endpoint seam and no code deploy
 can ship (free-plan 3 MiB cap, error 10027). CF containers left RUNNING (live
 payments intact); the live flip is now COUPLED to the CFG-9 monolith cutover.

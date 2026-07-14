@@ -2,21 +2,24 @@
 
 This is the invariant ledger for `openagents`.
 
-## 2026-07-14 payment-retirement transition
+## 2026-07-14 payment, markets, and Sites retirement
 
-- The accepted MVP excludes payments, markets, wallets, tipping, payout, and
-  settlement. The owner-selected
+- The accepted MVP excludes payments, billing credits, markets, Sites,
+  wallets, tipping, payout, and settlement. The owner-selected
   [`Node/pnpm/Vite Plus conversion`](../../docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md)
   decommissions and deletes their executable paths instead of porting them.
-- Until a claimed retirement phase lands, every positive rail invariant below
-  remains binding for safe current operation and shutdown; none authorizes new
-  payment work. Stop new money, reconcile outstanding value, retain applied
-  migrations and historical receipts read-only, withdraw active promises, and
-  revoke authority before deleting code or secrets.
+- VP-1 supersedes every positive money, market, Sites, wallet, credit, payout,
+  and settlement invariant below. Those sections are retained only as
+  historical design and recovery constraints; they do not authorize a route,
+  job, daemon, binding, UI claim, or product promise. Former mutations return
+  typed `money_surface_retired`, and paid capacity fails closed rather than
+  becoming free.
 - Removal must not strand or zero balances, rewrite history, break stable
   redacted receipts, or silently convert paid/credit-gated external capacity to
   free admission. A future payment revival requires fresh owner-approved
-  product, custody, ledger, threat-model, invariant, and proof authority.
+  product, custody, ledger, threat-model, invariant, and proof authority. The
+  private VP-1 archive and recovery-only wallet secrets are evidence, not a
+  supported service.
 
 ## Payment Rail Separation — Spark for agent payments, MDK for checkouts only
 

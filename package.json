@@ -145,6 +145,7 @@
     "check:sol-doc-manifest": "bun scripts/generate-sol-doc-manifest.ts --check",
     "check:sol-docs": "bun scripts/check-sol-docs.ts",
     "check:node-vp-freeze": "node scripts/node-vp-cutover-inventory.mjs --check",
+    "check:vp1-retirement": "node scripts/vp1-retired-money-surface-guard.mjs .",
     "check:deploy": "bun run check:sol-docs && bun run test:sol-docs && bun run --cwd apps/openagents.com check:deploy",
     "typecheck": "bun scripts/check.ts typecheck",
     "lint": "bun scripts/check.ts lint",

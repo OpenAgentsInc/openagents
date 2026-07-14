@@ -52,10 +52,8 @@
     "runtime:test": "bun run --cwd packages/runtime test",
     "smoke:default-start": "rm -f /tmp/pylon-default-start.log; perl -e 'alarm 3; $ENV{PYLON_DISABLE_OPENCODE_STARTUP}=1; exec @ARGV' bun src/index.ts > /tmp/pylon-default-start.log 2>&1; code=$?; if [ \"$code\" -ne 142 ] && [ \"$code\" -ne 0 ]; then cat /tmp/pylon-default-start.log; exit \"$code\"; fi; if rg -n 'TypeError|Effect\\.(fork|catchAll)|is not a function|\\[ERROR\\]' /tmp/pylon-default-start.log; then exit 1; fi; printf 'default startup reached persistent mode without startup API errors\\n'",
     "smoke:live-worker-loop": "bun scripts/live-worker-loop-smoke.ts",
-    "smoke:nip90-provider": "bun scripts/nip90-provider-loop-smoke.ts",
-    "provider:serve": "bun scripts/nip90-provider-serve.ts",
-    "smoke:stranger-probe": "bun scripts/stranger-probe-smoke.ts",
-    "smoke:wallet": "npx --yes @moneydevkit/agent-wallet@latest balance | bun -e 'const input = await new Response(Bun.stdin.stream()).text(); const json = JSON.parse(input); if (typeof json.balance_sats !== \"number\") { console.error(input.trim()); process.exit(1); } console.log(`wallet balance: ${json.balance_sats} sats`);'",
+    "smoke:fleet-run-live": "bun scripts/fleet-run-live-smoke.ts",
+    "smoke:fleet-run-sustained": "bun scripts/fleet-run-sustained-smoke.ts",
     "smoke:install:local": "bash scripts/smoke-local-package-install.sh",
     "smoke:packaged-network": "bun scripts/packaged-live-network-smoke.ts",
     "smoke:packaged-runtime-task": "bun scripts/packaged-runtime-task-smoke.ts",
@@ -72,8 +70,6 @@
     "build:rc-binaries": "bash scripts/build-rc-binaries.sh"
   },
   "dependencies": {
-    "@noble/curves": "1.8.1",
-    "@noble/hashes": "1.7.1",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/blueprint-contracts": "workspace:*",
@@ -89,16 +85,12 @@
     "@openagentsinc/portable-session-contract": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
-    "@scure/base": "1.2.4",
-    "@scure/bip32": "1.6.2",
-    "@scure/bip39": "1.5.4",
     "diff": "^9.0.0",
     "effect": "catalog:",
     "marked": "^18.0.5"
   },
   "optionalDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.172",
-    "@breeztech/breez-sdk-spark": "^0.15.1",
     "@openai/codex-sdk": "^0.144.1",
     "mysql2": "^3.11.0"
   },

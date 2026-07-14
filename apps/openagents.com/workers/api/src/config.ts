@@ -375,8 +375,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED?: string | undefined
   HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES?: string | undefined
   HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED?:
-    | string
-    | undefined
+    string | undefined
   HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE?: string | undefined
   // Optional comma-separated pool names. When absent, the five legacy GLM
   // fields above are treated as the `primary` replica. When present, each
@@ -421,37 +420,6 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   GITHUB_CLIENT_ID?: string | undefined
   GITHUB_CLIENT_SECRET?: string | undefined
   ARTANIS_GITHUB_ISSUE_TOKEN?: string | undefined
-  MDK_ACCESS_TOKEN?: string | undefined
-  MDK_CHECKOUT_CONFIG_REF?: string | undefined
-  MDK_CHECKOUT_CREDENTIAL_BINDING_REF?: string | undefined
-  MDK_CHECKOUT_ENVIRONMENT?: string | undefined
-  MDK_CHECKOUT_PATH_BASE?: string | undefined
-  MDK_CHECKOUT_PROVIDER_REF?: string | undefined
-  MDK_CHECKOUT_ROUTE_KIND?: string | undefined
-  MDK_CHECKOUT_ROUTE_SECRET?: string | undefined
-  MDK_CHECKOUT_ROUTE_URL?: string | undefined
-  MDK_CHECKOUT_WEBHOOK_BINDING_REF?: string | undefined
-  MDK_CHECKOUT_WEBHOOK_SECRET?: string | undefined
-  MDK_CHECKOUT_WEBHOOK_SOURCE?: string | undefined
-  MDK_WEBHOOK_SECRET?: string | undefined
-  MDK_MNEMONIC?: string | undefined
-  // CFG-15 (EPIC #8515): off-Workers (Cloud Run) HTTP endpoints for the MDK
-  // money-path daemons. When one of the *_SERVICE_URL vars is set, the Worker
-  // calls that daemon over HTTPS instead of the Cloudflare Container Durable
-  // Object. Flipping the treasury URL in production is owner-gated; see
-  // docs/cloud/2026-07-06-mdk-treasury-cloudrun-cutover-runbook.md.
-  MDK_SIDECAR_SERVICE_TOKEN?: string | undefined
-  MDK_SIDECAR_SERVICE_URL?: string | undefined
-  MDK_TIPS_BUFFER_ACCESS_TOKEN?: string | undefined
-  MDK_TIPS_BUFFER_MNEMONIC?: string | undefined
-  MDK_TIPS_BUFFER_SERVICE_TOKEN?: string | undefined
-  MDK_TIPS_BUFFER_SERVICE_URL?: string | undefined
-  MDK_TREASURY_ACCESS_TOKEN?: string | undefined
-  MDK_TREASURY_MNEMONIC?: string | undefined
-  MDK_TREASURY_SERVICE_TOKEN?: string | undefined
-  MDK_TREASURY_SERVICE_URL?: string | undefined
-  MDK_WALLET_MNEMONIC?: string | undefined
-  OPENAGENTS_SPARK_API_KEY?: string | undefined
   OPENAGENTS_ADMIN_API_TOKEN?: string | undefined
   OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN?: string | undefined
   OPENAGENTS_FORGE_GITHUB_MIRROR_TOKEN?: string | undefined
@@ -487,17 +455,6 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   SHC_CONTROL_API_URL?: string | undefined
   SHC_DISPATCH_MODE?: string | undefined
   SHC_RUNNER_CALLBACK_TOKEN?: string | undefined
-  SPARK_TREASURY_API_KEY?: string | undefined
-  SPARK_TREASURY_MNEMONIC?: string | undefined
-  SPARK_TREASURY_NETWORK?: string | undefined
-  SPARK_TREASURY_STORAGE_DIR?: string | undefined
-  SPARK_TREASURY_TIMEOUT_MS?: string | undefined
-  TREASURY_DISPATCH_DAILY_SATS_CAP?: string | undefined
-  TREASURY_DISPATCH_ENABLED?: string | undefined
-  TREASURY_DISPATCH_LIQUIDITY_BUFFER_SATS?: string | undefined
-  TREASURY_DISPATCH_PAYMENT_TIMEOUT_SECS?: string | undefined
-  TREASURY_DISPATCH_PER_RUN_REWARD_CAP?: string | undefined
-  WITHDRAWAL_DESTINATION?: string | undefined
 }>
 
 export const OpenAgentsAppUrl = S.String.pipe(S.brand('OpenAgentsAppUrl'))
@@ -541,12 +498,7 @@ export type RunnerBackendPolicy =
 export type RunnerWorkloadTrust = 'low' | 'medium' | 'sensitive'
 
 export type CloudflareContainerInstanceType =
-  | 'basic'
-  | 'lite'
-  | 'standard-1'
-  | 'standard-2'
-  | 'standard-3'
-  | 'standard-4'
+  'basic' | 'lite' | 'standard-1' | 'standard-2' | 'standard-3' | 'standard-4'
 
 export type ResendEmailConfig = Readonly<{
   apiKey: Redacted.Redacted<WorkerSecret>
@@ -569,9 +521,7 @@ export type MdkWorkerConfig = Readonly<{
     webhookBindingRef: string | null
     webhookSecret?: Redacted.Redacted<WorkerSecret> | undefined
     webhookSource:
-      | 'daemon_invoice_hmac'
-      | 'dashboard_standard_webhooks'
-      | 'sdk_node_control'
+      'daemon_invoice_hmac' | 'dashboard_standard_webhooks' | 'sdk_node_control'
   }>
   configured: boolean
   mnemonic?: Redacted.Redacted<WorkerSecret> | undefined
@@ -579,20 +529,13 @@ export type MdkWorkerConfig = Readonly<{
 }>
 
 export type MdkCheckoutRouteKind =
-  | 'fake_provider'
-  | 'hosted_platform'
-  | 'self_hosted_mdkd_sidecar'
+  'fake_provider' | 'hosted_platform' | 'self_hosted_mdkd_sidecar'
 
 export const ExaBaseUrl = S.String.pipe(S.brand('ExaBaseUrl'))
 export type ExaBaseUrl = typeof ExaBaseUrl.Type
 
 export type ExaSearchType =
-  | 'auto'
-  | 'deep'
-  | 'deep-lite'
-  | 'deep-reasoning'
-  | 'fast'
-  | 'instant'
+  'auto' | 'deep' | 'deep-lite' | 'deep-reasoning' | 'fast' | 'instant'
 
 export type ExaConfig = Readonly<{
   apiKey?: Redacted.Redacted<WorkerSecret> | undefined
@@ -1232,103 +1175,28 @@ const crmResendReplyToEmailConfig = (
     return EmailAddress.make(replyToEmail)
   })
 
-const mdkCheckoutRouteKind = (
-  env: OpenAgentsWorkerConfigEnv,
-  routeUrl: string | undefined,
-): Effect.Effect<MdkCheckoutRouteKind, OpenAgentsWorkerConfigError> => {
-  const value = optionalString(env, 'MDK_CHECKOUT_ROUTE_KIND')
-
-  if (value === undefined) {
-    return Effect.succeed(
-      routeUrl === undefined ? 'fake_provider' : 'hosted_platform',
-    )
-  }
-
-  if (
-    value === 'fake_provider' ||
-    value === 'hosted_platform' ||
-    value === 'self_hosted_mdkd_sidecar'
-  ) {
-    return Effect.succeed(value)
-  }
-
-  return Effect.fail(
-    new OpenAgentsWorkerConfigError({
-      field: 'MDK_CHECKOUT_ROUTE_KIND',
-      reason:
-        'Expected fake_provider, hosted_platform, or self_hosted_mdkd_sidecar.',
-    }),
-  )
-}
-
 const mdkConfig = (
-  env: OpenAgentsWorkerConfigEnv,
+  _env: OpenAgentsWorkerConfigEnv,
 ): Effect.Effect<MdkWorkerConfig, OpenAgentsWorkerConfigError> =>
-  Effect.gen(function* () {
-    const accessToken = optionalRedacted(env, 'MDK_ACCESS_TOKEN')
-    const checkoutRouteSecret =
-      optionalRedacted(env, 'MDK_CHECKOUT_ROUTE_SECRET') ?? accessToken
-    const checkoutRouteUrl = optionalString(env, 'MDK_CHECKOUT_ROUTE_URL')
-    const routeKind = yield* mdkCheckoutRouteKind(env, checkoutRouteUrl)
-    const checkoutWebhookSecret =
-      optionalRedacted(env, 'MDK_CHECKOUT_WEBHOOK_SECRET') ??
-      optionalRedacted(env, 'MDK_WEBHOOK_SECRET')
-    const mnemonic = optionalRedacted(env, 'MDK_MNEMONIC')
-    const walletMnemonic = optionalRedacted(env, 'MDK_WALLET_MNEMONIC')
-    const checkoutEnvironment =
-      optionalString(env, 'MDK_CHECKOUT_ENVIRONMENT') === 'production'
-        ? 'production'
-        : 'sandbox'
-    const checkoutWebhookSourceInput = optionalString(
-      env,
-      'MDK_CHECKOUT_WEBHOOK_SOURCE',
-    )
-    const checkoutWebhookSource =
-      checkoutWebhookSourceInput === 'daemon_invoice_hmac' ||
-      checkoutWebhookSourceInput === 'sdk_node_control'
-        ? checkoutWebhookSourceInput
-        : 'dashboard_standard_webhooks'
-
-    return {
-      accessToken,
-      checkout: {
-        checkoutPathBase:
-          optionalString(env, 'MDK_CHECKOUT_PATH_BASE') ?? '/checkout',
-        configRef:
-          optionalString(env, 'MDK_CHECKOUT_CONFIG_REF') ??
-          'config.openagents.hosted_mdk.route',
-        configured:
-          checkoutRouteSecret !== undefined && checkoutRouteUrl !== undefined,
-        credentialBindingRef:
-          optionalString(env, 'MDK_CHECKOUT_CREDENTIAL_BINDING_REF') ??
-          (checkoutRouteSecret === undefined
-            ? null
-            : 'credential_binding.openagents.hosted_mdk.route_binding'),
-        environment: checkoutEnvironment,
-        providerRef:
-          optionalString(env, 'MDK_CHECKOUT_PROVIDER_REF') ??
-          'provider.openagents.hosted_mdk.route',
-        routeKind,
-        routeSecret: checkoutRouteSecret,
-        routeUrl: checkoutRouteUrl,
-        webhookBindingRef:
-          optionalString(env, 'MDK_CHECKOUT_WEBHOOK_BINDING_REF') ??
-          (checkoutWebhookSecret === undefined
-            ? null
-            : `webhook_binding.openagents.hosted_mdk.${checkoutWebhookSource}`),
-        webhookSecret: checkoutWebhookSecret,
-        webhookSource: checkoutWebhookSource,
-      },
-      configured:
-        accessToken !== undefined ||
-        checkoutRouteSecret !== undefined ||
-        checkoutRouteUrl !== undefined ||
-        checkoutWebhookSecret !== undefined ||
-        mnemonic !== undefined ||
-        walletMnemonic !== undefined,
-      mnemonic,
-      walletMnemonic,
-    }
+  Effect.succeed({
+    accessToken: undefined,
+    checkout: {
+      checkoutPathBase: '/checkout',
+      configRef: 'config.openagents.money_retired',
+      configured: false,
+      credentialBindingRef: null,
+      environment: 'sandbox',
+      providerRef: 'provider.openagents.money_retired',
+      routeKind: 'fake_provider',
+      routeSecret: undefined,
+      routeUrl: undefined,
+      webhookBindingRef: null,
+      webhookSecret: undefined,
+      webhookSource: 'dashboard_standard_webhooks',
+    },
+    configured: false,
+    mnemonic: undefined,
+    walletMnemonic: undefined,
   })
 
 const validateLiveShc = (

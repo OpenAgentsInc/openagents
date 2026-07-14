@@ -8,7 +8,7 @@ import type { BootstrapSummary } from "./bootstrap.js"
 import type { AssignmentClientOptions, AssignmentRunLifecycleEvent } from "./assignment.js"
 import { runNoSpendAssignment } from "./assignment.js"
 import type { PylonAccountsListProjection } from "./account-usage.js"
-import type { TipsNetworkOptions } from "./tips.js"
+import type { PylonNetworkOptions } from "./network-options.js"
 import {
   issuePylonKhalaRequest,
   isPylonKhalaExactOwnCapacityTokenUsage,
@@ -185,14 +185,14 @@ export type PylonKhalaSpawnAssignmentRunResult = {
 export type PylonKhalaSpawnRunDeps<Slot extends PylonKhalaSpawnSlotLike = PylonKhalaSpawnSlot> = {
   onWorkerLifecycle?: (event: PylonKhalaSpawnWorkerEvent, slot: Slot) => void | Promise<void>
   readProof?: (
-    network: TipsNetworkOptions,
+    network: PylonNetworkOptions,
     assignmentRef: string,
     slot: Slot,
   ) => Promise<PylonKhalaProofResult>
-  readTokensServed?: (network: TipsNetworkOptions) => Promise<number | null>
+  readTokensServed?: (network: PylonNetworkOptions) => Promise<number | null>
   sleep?: (ms: number) => Promise<void>
   requestAssignment?: (
-    network: TipsNetworkOptions,
+    network: PylonNetworkOptions,
     input: PylonKhalaRequestInput,
     slot: Slot,
   ) => Promise<PylonKhalaRequestResult>
@@ -489,7 +489,7 @@ export function weightedKhalaAccountPool<Account extends { accountRefHash: strin
   return pool.length === 0 ? selected : pool
 }
 
-export async function readPublicKhalaTokensServed(network: TipsNetworkOptions): Promise<number | null> {
+export async function readPublicKhalaTokensServed(network: PylonNetworkOptions): Promise<number | null> {
   const fetcher = network.fetch ?? fetch
   const response = await fetcher(new URL("/api/public/khala-tokens-served", network.baseUrl))
   if (!response.ok) return null
@@ -600,7 +600,7 @@ async function requestAssignmentWith409Retry<Slot extends PylonKhalaSpawnSlotLik
     message: string,
     patch?: Partial<PylonKhalaSpawnWorkerEvent>,
   ) => Promise<void>
-  network: TipsNetworkOptions
+  network: PylonNetworkOptions
   requestAssignment: NonNullable<PylonKhalaSpawnRunDeps<Slot>["requestAssignment"]>
   sleep: (ms: number) => Promise<void>
   slot: Slot
@@ -634,7 +634,7 @@ async function requestAssignmentWith409Retry<Slot extends PylonKhalaSpawnSlotLik
 
 async function readProofWithRetry<Slot extends PylonKhalaSpawnSlotLike>(input: {
   delaysMs?: readonly number[]
-  network: TipsNetworkOptions
+  network: PylonNetworkOptions
   readProof: NonNullable<PylonKhalaSpawnRunDeps<Slot>["readProof"]>
   sleep: (ms: number) => Promise<void>
   slot: Slot
@@ -658,7 +658,7 @@ async function readProofWithRetry<Slot extends PylonKhalaSpawnSlotLike>(input: {
 async function backfillMissingProofs<Slot extends PylonKhalaSpawnSlotLike>(input: {
   deps: PylonKhalaSpawnRunDeps<Slot> | undefined
   namespace: string
-  network: TipsNetworkOptions
+  network: PylonNetworkOptions
   readProof: NonNullable<PylonKhalaSpawnRunDeps<Slot>["readProof"]>
   results: readonly PylonKhalaSpawnSlotResult[]
   sleep: (ms: number) => Promise<void>
@@ -726,7 +726,7 @@ async function backfillMissingProofs<Slot extends PylonKhalaSpawnSlotLike>(input
 export async function runPylonKhalaSpawnPlan<Slot extends PylonKhalaSpawnSlotLike>(input: {
   blockerNamespace?: string
   deps?: PylonKhalaSpawnRunDeps<Slot>
-  network: TipsNetworkOptions
+  network: PylonNetworkOptions
   plan: PylonKhalaSpawnPlanLike<Slot>
   summary: BootstrapSummary
 }): Promise<PylonKhalaSpawnRunResultForPlan<Slot>> {
@@ -818,7 +818,7 @@ export async function runPylonKhalaSpawnPlan<Slot extends PylonKhalaSpawnSlotLik
 async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(input: {
   deps: PylonKhalaSpawnRunDeps<Slot> | undefined
   namespace: string
-  network: TipsNetworkOptions
+  network: PylonNetworkOptions
   readProof: NonNullable<PylonKhalaSpawnRunDeps<Slot>["readProof"]>
   requestAssignment: NonNullable<PylonKhalaSpawnRunDeps<Slot>["requestAssignment"]>
   runAssignment: NonNullable<PylonKhalaSpawnRunDeps<Slot>["runAssignment"]>

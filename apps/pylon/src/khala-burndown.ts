@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import type { BootstrapSummary } from "./bootstrap.js"
-import type { TipsNetworkOptions } from "./tips.js"
+import type { PylonNetworkOptions } from "./network-options.js"
 import {
   buildPylonKhalaGitCheckoutWorkspace,
   issuePylonKhalaRequest,
@@ -132,16 +132,16 @@ export type PylonKhalaBurndownRunResult = {
 
 type PylonKhalaBurndownRunDeps = {
   issueRequest?: (
-    network: TipsNetworkOptions,
+    network: PylonNetworkOptions,
     input: PylonKhalaRequestInput,
     slot: PylonKhalaBurndownSlot,
   ) => Promise<PylonKhalaRequestResult>
   readProof?: (
-    network: TipsNetworkOptions,
+    network: PylonNetworkOptions,
     assignmentRef: string,
     slot: PylonKhalaBurndownSlot,
   ) => Promise<PylonKhalaProofResult>
-  readTokensServed?: (network: TipsNetworkOptions) => Promise<number | null>
+  readTokensServed?: (network: PylonNetworkOptions) => Promise<number | null>
   runAssignment?: (
     summary: BootstrapSummary,
     options: AssignmentClientOptions,
@@ -360,7 +360,7 @@ export function buildPylonKhalaBurndownPlan(input: {
 }
 
 export async function runPylonKhalaBurndownPlan(input: {
-  network: TipsNetworkOptions
+  network: PylonNetworkOptions
   plan: PylonKhalaBurndownPlan
   summary: BootstrapSummary
   deps?: PylonKhalaBurndownRunDeps

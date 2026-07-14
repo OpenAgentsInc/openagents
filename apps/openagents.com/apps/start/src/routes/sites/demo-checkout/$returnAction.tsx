@@ -5,7 +5,9 @@ import { SiteCheckoutDemoPage } from '../../-site-checkout-demo-page'
 export const Route = createFileRoute('/sites/demo-checkout/$returnAction')({
   component: DemoCheckoutReturnRoute,
   head: ({ params }) => ({
-    meta: [{ title: `Demo checkout ${params.returnAction} - OpenAgents` }],
+    meta: [
+      { title: `Retired capability (${params.returnAction}) - OpenAgents` },
+    ],
   }),
 })
 

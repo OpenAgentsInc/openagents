@@ -31,7 +31,6 @@ describe('Omni API SDK seed', () => {
     expect(seed.schemaCatalog.map(entry => entry.surface)).toEqual(
       expect.arrayContaining([
         'accepted_outcomes',
-        'billing',
         'proof_bundles',
         'program_runs',
         'receipts',
@@ -76,12 +75,6 @@ describe('Omni API SDK seed', () => {
           status: 'available',
         }),
         expect.objectContaining({
-          accessKind: 'browser_session',
-          operationId: 'getBillingSummary',
-          path: '/api/billing/summary',
-          status: 'available',
-        }),
-        expect.objectContaining({
           accessKind: 'contract_only',
           operationId: 'createProgramRunReceiptWebhookSubscription',
           status: 'planned',
@@ -94,12 +87,18 @@ describe('Omni API SDK seed', () => {
     expect(JSON.stringify(seed.routeCatalog)).toContain(
       'not available to public agents without a matching owner authority path',
     )
+    expect(JSON.stringify(seed)).not.toMatch(
+      /\/api\/(?:billing|sites)|BuyerPayment|BillingSummary/u,
+    )
+    expect(seed.guidance.join(' ')).toContain(
+      'No paid or credit-gated capacity becomes free capacity',
+    )
   })
 
   test('serves the seed as no-store public JSON and rejects unsafe methods', async () => {
     const response = await runRoute()
     const methodResponse = await runRoute('POST')
-    const body = await response.json() as OmniApiSdkSeed
+    const body = (await response.json()) as OmniApiSdkSeed
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')

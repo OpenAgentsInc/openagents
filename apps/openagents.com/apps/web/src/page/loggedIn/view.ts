@@ -6,11 +6,11 @@ import { html } from 'foldkit/html'
 import { notFoundView } from '../../notFoundView'
 import { browserRouteIsEnabled } from '../../product-policy'
 import {
-  adminRouter,
   activityRouter,
-  artanisTraceTreeRouter,
+  adminRouter,
   artanisAccountsRouter,
   artanisGymRouter,
+  artanisTraceTreeRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
   billingRouter,
@@ -33,18 +33,16 @@ import {
   loginRouter,
   mulletRouter,
   onboardingRouter,
+  operatorDashboardRouter,
   orderDetailRouter,
   orderRouter,
-  operatorDashboardRouter,
   personalFileRouter,
   proRouter,
   publicAgentRouter,
-  pylonCodexAssignmentStatusRouter,
-  qaSwarmRouter,
-  traceRouter,
-  traceCompareRouter,
   publicTrainingRunRouter,
   publicTrainingRunsRouter,
+  pylonCodexAssignmentStatusRouter,
+  qaSwarmRouter,
   runRouter,
   settingsRouter,
   siteCheckoutDemoReturnRouter,
@@ -57,6 +55,8 @@ import {
   teamFilesRouter,
   teamProjectChatRouter,
   threadRouter,
+  traceCompareRouter,
+  traceRouter,
   usageRouter,
   workroomRouter,
   workroomTabRouter,
@@ -66,15 +66,15 @@ import * as Ui from '../../ui'
 import * as Activity from '../activity'
 import * as ArtanisAccounts from '../artanisAccounts'
 import * as Forum from '../forum'
-import * as SiteCheckoutDemo from '../siteCheckoutDemo'
-import { ClickedLogout, ClickedNewChat, Message } from './message'
 import type { PublicHeaderViewer } from '../publicHeader'
+import * as SiteCheckoutDemo from '../siteCheckoutDemo'
+import * as ArtanisDashboard from './artanis-dashboard/view'
+import { ClickedLogout, ClickedNewChat, Message } from './message'
 import { type Model, type SidebarModel, teamRouteRef } from './model'
 import * as Mullet from './mullet/view'
 import { notificationsPanel } from './notifications/view'
 import * as Admin from './page/admin'
 import * as ArtanisGym from './page/artanisGym'
-import * as ArtanisDashboard from './artanis-dashboard/view'
 import * as AutopilotWork from './page/autopilot-work'
 import * as Billing from './page/billing'
 import * as Chat from './page/chat'
@@ -291,7 +291,6 @@ const settingsNavSections = (
         label: 'Organization',
       },
       { href: Settings.settingsSectionHref('members'), label: 'Members' },
-      { href: billingRouter(), label: 'Billing' },
       { href: usageRouter(), label: 'Usage' },
     ].map(item => ({
       ...item,
@@ -311,7 +310,6 @@ const accountMenuItems = (): ReadonlyArray<
   Ui.WorkroomAccountMenuItem<Message>
 > => [
   { href: settingsRouter(), label: 'Settings' },
-  { href: billingRouter(), label: 'Billing' },
   { href: usageRouter(), label: 'Usage' },
   {
     attrs: [html<Message>().OnClick(ClickedLogout())],
@@ -541,11 +539,17 @@ const routeView = (model: Model): Html => {
             ]),
           SiteCheckoutDemo: route =>
             Ui.workroomScrollableRoute<Message>([
-              SiteCheckoutDemo.view(route, loggedInPublicHeaderAuthState(model)),
+              SiteCheckoutDemo.view(
+                route,
+                loggedInPublicHeaderAuthState(model),
+              ),
             ]),
           SiteCheckoutDemoReturn: route =>
             Ui.workroomScrollableRoute<Message>([
-              SiteCheckoutDemo.view(route, loggedInPublicHeaderAuthState(model)),
+              SiteCheckoutDemo.view(
+                route,
+                loggedInPublicHeaderAuthState(model),
+              ),
             ]),
           Business: () =>
             Ui.workroomScrollableRoute<Message>([
@@ -613,7 +617,11 @@ const routeView = (model: Model): Html => {
             ]),
           ArtanisTraceTree: () =>
             Ui.workroomScrollableRoute<Message>([
-              notFoundView(artanisTraceTreeRouter(), chatRouter(), 'Go to Chat'),
+              notFoundView(
+                artanisTraceTreeRouter(),
+                chatRouter(),
+                'Go to Chat',
+              ),
             ]),
           // /trace/{uuid} is a public route resolved by the top-level
           // `publicRouteBody` in view.ts before the logged-in submodel; this
@@ -634,7 +642,11 @@ const routeView = (model: Model): Html => {
             ]),
           QaSwarm: ({ runRef }) =>
             Ui.workroomScrollableRoute<Message>([
-              notFoundView(qaSwarmRouter({ runRef }), chatRouter(), 'Go to Chat'),
+              notFoundView(
+                qaSwarmRouter({ runRef }),
+                chatRouter(),
+                'Go to Chat',
+              ),
             ]),
           // /pylon/codex/assignments/{assignmentRef} is resolved by the
           // top-level `publicRouteBody` in view.ts; this branch is unreachable
@@ -670,12 +682,9 @@ const routeView = (model: Model): Html => {
           // /pro renders as a top-level page in the `view` function below
           // (its own top-strip + register + pane), so this workroom-shell case
           // is a defensive fallback only and never normally reached.
-          Pro: () =>
-            Ui.workroomScrollableRoute<Message>([Pro.view(model)]),
+          Pro: () => Ui.workroomScrollableRoute<Message>([Pro.view(model)]),
           OperatorDashboard: () =>
-            Ui.workroomScrollableRoute<Message>([
-              ArtanisDashboard.view(model),
-            ]),
+            Ui.workroomScrollableRoute<Message>([ArtanisDashboard.view(model)]),
           Billing: () =>
             Ui.workroomScrollableRoute<Message>([Billing.view(model)]),
           Usage: () => Ui.workroomScrollableRoute<Message>([Usage.view(model)]),

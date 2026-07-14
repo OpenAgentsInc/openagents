@@ -60,6 +60,10 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   — reproducible classified cutover inventory, selected destination pins,
   clean-source performance/failure baseline, and VP-1 through VP-6 claim
   ledger. It is evidence, not a current dispatch queue.
+- [`2026-07-14-node-pnpm-vite-plus-vp1-reconciliation-decommission-receipt.md`](./2026-07-14-node-pnpm-vite-plus-vp1-reconciliation-decommission-receipt.md)
+  — aggregate-only production reconciliation, immutable private-archive
+  digests, service/Cloud SQL shutdown evidence, and the recovery boundary for
+  the retired money, markets, and Sites graph.
 
 ## Evidence and historical baselines
 

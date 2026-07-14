@@ -62,8 +62,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   consume shared `@openagentsinc/ui` primitives/tokens and Forge API contracts,
   but it does not own runtime promotion, settlement, payout, accepted-work
   authority, or the main `openagents.com` logged-in route tree.
-- `apps/pylon/` owns contributor-node UX, CLI, local runtime orchestration, and
-  contributor-facing payment evidence.
+- `apps/pylon/` owns contributor-node UX, CLI, and local runtime orchestration.
+  It owns no wallet, payout, settlement, or paid-capacity authority.
 - `packages/probe/` owns Probe runtime code and evidence submission helpers.
 
 
@@ -78,10 +78,10 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Agent Computer, Cloud-VM, GCE capacity, workroom, capability, and receipt
   code builds from public openagents source. Live secrets, topology, and host
   paths remain runtime/Secret Manager only.
-- Cloud daemons execute and emit redacted receipts. They do not own user
-  credit ledgers, public claim promotion, or wallet/payout authority — those
-  stay on the `openagents.com` Worker and MDK/Nexus payout bridge as currently
-  active.
+- Cloud daemons execute and emit redacted non-money receipts. They do not own
+  user credit ledgers, public claim promotion, wallet, payout, payment, or
+  settlement authority. The former Worker and MDK/Nexus money authority is
+  retired under VP-1; preserved records are recovery evidence only.
 - Fake GCE and fake Cloud-VM provisioners are the default. Live Firecracker
   and live GCE lanes are explicit env-gated owner modes.
 - Detailed Cloud invariants live in `docs/cloud/INVARIANTS.md`.
@@ -90,18 +90,18 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 - Public UI does not own settlement, payout, runtime promotion, or accepted
   outcome authority.
-- Payments, markets, tipping, wallet custody, payout, and settlement are not
-  part of the accepted MVP and are selected for orderly decommission and code
-  deletion, not Node porting. Until a claimed removal phase lands, every
-  existing money invariant below remains in force. Removal must first stop new
-  money, reconcile outstanding value, preserve applied migrations and
-  historical receipts read-only, withdraw active promises, and revoke runtime
-  authority; it must never strand value, erase history, or turn paid external
-  cost into free admission.
+- Payments, markets, Sites, tipping, wallet custody, payout, billing credits,
+  and settlement are not part of the accepted MVP. VP-1 retires rather than
+  ports them: mutation surfaces return typed `money_surface_retired`, runtime
+  authority stays at zero, and paid external capacity must fail closed rather
+  than become free. Applied migrations, redacted receipt refs, private recovery
+  archives, and deliberately frozen obligations remain evidence, never active
+  product authority. Any revival requires a fresh owner-approved design,
+  custody model, invariant change, and proof program.
 - Probe evidence does not authorize deployment, spend, provider mutation, or
   public claim promotion without a separate approved authority path.
-- Pylon payment, assignment, and earning claims must remain receipt-backed and
-  explicit about unsettled, rejected, unpaid, credited, and settled states.
+- Retained Pylon history may describe old payment states, but active assignment
+  admission supports no paid mode and exposes no earning or payout claim.
 - Pylon local supervised danger modes (Codex `danger-full-access`, Claude
   `bypassPermissions`) are explicit owner-local opt-ins only: local composer
   and authenticated loopback control sessions may honor the local dev overlay.

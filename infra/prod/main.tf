@@ -43,14 +43,17 @@ module "khala_sync_pg" {
   users = ["khala_app", "khala_capture", "khala_migrate", "postgres"]
 }
 
-# L402 Aperture + openagents.com web Postgres.
+# VP-1 retained cold evidence only. All L402 services are deleted, three
+# database exports are retention-locked, and Terraform must never restart this
+# instance during an unrelated apply.
 module "l402_aperture_db" {
   source = "../modules/cloud-sql-postgres"
 
-  project          = var.project_id
-  name             = "l402-aperture-db"
-  region           = var.region
-  database_version = "POSTGRES_15"
+  project           = var.project_id
+  name              = "l402-aperture-db"
+  region            = var.region
+  database_version  = "POSTGRES_15"
+  activation_policy = "NEVER"
 
   tier              = "db-f1-micro"
   availability_type = "ZONAL"

@@ -13,7 +13,7 @@ import {
   type PylonKhalaWorkflow,
   issuePylonKhalaRequest,
 } from "./khala-requester.js"
-import type { TipsNetworkOptions } from "./tips.js"
+import type { PylonNetworkOptions } from "./network-options.js"
 
 export const PYLON_KHALA_MCP_PROTOCOL_VERSION = "2025-06-18"
 
@@ -58,7 +58,7 @@ type PylonKhalaMcpRequest = Readonly<{
 }>
 
 export type PylonKhalaMcpDeps = Readonly<{
-  network: TipsNetworkOptions
+  network: PylonNetworkOptions
 }>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -214,7 +214,7 @@ const workflowArg = (
   )
 }
 
-const requireAgentToken = (network: TipsNetworkOptions): string => {
+const requireAgentToken = (network: PylonNetworkOptions): string => {
   const token = network.agentToken ?? process.env.OPENAGENTS_AGENT_TOKEN
   if (token === undefined || token.trim() === "") {
     throw new Error("OPENAGENTS_AGENT_TOKEN or --agent-token is required for Khala MCP calls")
@@ -223,7 +223,7 @@ const requireAgentToken = (network: TipsNetworkOptions): string => {
 }
 
 async function callRemoteKhalaMcpTool(
-  network: TipsNetworkOptions,
+  network: PylonNetworkOptions,
   name: "khala.resume" | "khala.spawn" | "khala.spawnStatus" | "khala.status",
   args: Record<string, unknown>,
 ): Promise<McpToolCallResult> {

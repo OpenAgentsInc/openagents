@@ -35,6 +35,17 @@ variable "availability_type" {
   default     = "ZONAL"
 }
 
+variable "activation_policy" {
+  description = "ALWAYS for active instances or NEVER for retained cold evidence"
+  type        = string
+  default     = "ALWAYS"
+
+  validation {
+    condition     = contains(["ALWAYS", "NEVER"], var.activation_policy)
+    error_message = "activation_policy must be ALWAYS or NEVER."
+  }
+}
+
 variable "zone" {
   description = "Preferred primary zone"
   type        = string

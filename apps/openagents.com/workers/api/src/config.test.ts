@@ -45,7 +45,7 @@ describe('OpenAgentsWorkerConfig', () => {
       configured: false,
       credentialBindingRef: null,
       environment: 'sandbox',
-      providerRef: 'provider.openagents.hosted_mdk.route',
+      providerRef: 'provider.openagents.money_retired',
       routeKind: 'fake_provider',
       routeUrl: undefined,
       webhookBindingRef: null,
@@ -89,22 +89,6 @@ describe('OpenAgentsWorkerConfig', () => {
         EXA_RATE_LIMIT_BACKOFF_MS: '250',
         EXA_REQUEST_TIMEOUT_MS: '10000',
         EXA_RETRY_LIMIT: '1',
-        MDK_ACCESS_TOKEN: 'mdk-access-token',
-        MDK_CHECKOUT_CONFIG_REF: 'config.mdk.checkout.route',
-        MDK_CHECKOUT_CREDENTIAL_BINDING_REF:
-          'credential_binding.mdk.checkout.route_binding',
-        MDK_CHECKOUT_ENVIRONMENT: 'production',
-        MDK_CHECKOUT_PATH_BASE: '/checkout/mdk',
-        MDK_CHECKOUT_PROVIDER_REF: 'provider.mdk.checkout.route',
-        MDK_CHECKOUT_ROUTE_KIND: 'self_hosted_mdkd_sidecar',
-        MDK_CHECKOUT_ROUTE_SECRET: 'mdk-checkout-route-secret',
-        MDK_CHECKOUT_ROUTE_URL: 'https://mdk-sidecar.openagents.com/api/mdk',
-        MDK_CHECKOUT_WEBHOOK_BINDING_REF:
-          'webhook_binding.mdk.checkout.standard_webhooks',
-        MDK_CHECKOUT_WEBHOOK_SECRET: 'mdk-checkout-webhook-secret',
-        MDK_CHECKOUT_WEBHOOK_SOURCE: 'daemon_invoice_hmac',
-        MDK_MNEMONIC: 'mdk-mnemonic',
-        MDK_WALLET_MNEMONIC: 'mdk-wallet-mnemonic',
         OPENAGENTS_ADMIN_API_TOKEN: 'admin-token',
         RESEND_API_KEY: 're_test',
         RESEND_FROM_EMAIL: 'OpenAgents <billing@openagents.com>',
@@ -159,28 +143,17 @@ describe('OpenAgentsWorkerConfig', () => {
     expect(config.email.resend?.replyToEmail).toBe('support@openagents.com')
     expect(config.email.crmResendFromEmail).toBe('Sarah <sarah@openagents.com>')
     expect(config.email.crmResendReplyToEmail).toBe('sarah@openagents.com')
-    expect(config.mdk.configured).toBe(true)
-    expect(redactedValue(config.mdk.accessToken)).toBe('mdk-access-token')
+    expect(config.mdk.configured).toBe(false)
+    expect(config.mdk.accessToken).toBeUndefined()
     expect(config.mdk.checkout).toMatchObject({
-      checkoutPathBase: '/checkout/mdk',
-      configRef: 'config.mdk.checkout.route',
-      configured: true,
-      credentialBindingRef: 'credential_binding.mdk.checkout.route_binding',
-      environment: 'production',
-      providerRef: 'provider.mdk.checkout.route',
-      routeKind: 'self_hosted_mdkd_sidecar',
-      routeUrl: 'https://mdk-sidecar.openagents.com/api/mdk',
-      webhookBindingRef: 'webhook_binding.mdk.checkout.standard_webhooks',
-      webhookSource: 'daemon_invoice_hmac',
+      configured: false,
+      providerRef: 'provider.openagents.money_retired',
+      routeKind: 'fake_provider',
     })
-    expect(redactedValue(config.mdk.checkout.routeSecret)).toBe(
-      'mdk-checkout-route-secret',
-    )
-    expect(redactedValue(config.mdk.checkout.webhookSecret)).toBe(
-      'mdk-checkout-webhook-secret',
-    )
-    expect(redactedValue(config.mdk.mnemonic)).toBe('mdk-mnemonic')
-    expect(redactedValue(config.mdk.walletMnemonic)).toBe('mdk-wallet-mnemonic')
+    expect(config.mdk.checkout.routeSecret).toBeUndefined()
+    expect(config.mdk.checkout.webhookSecret).toBeUndefined()
+    expect(config.mdk.mnemonic).toBeUndefined()
+    expect(config.mdk.walletMnemonic).toBeUndefined()
     expect(config.runnerBackends).toEqual({
       automaticFailoverEnabled: false,
       cloudflareContainer: {

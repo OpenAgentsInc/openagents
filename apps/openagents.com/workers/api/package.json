@@ -43,7 +43,6 @@
     "@effect/sql-d1": "4.0.0-beta.94",
     "@effect/sql-sqlite-do": "4.0.0-beta.94",
     "@liquid-js/qrcode-generator": "1.1.6",
-    "@moneydevkit/api-contract": "0.1.36",
     "@openagentsinc/agent-readiness": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/atif": "workspace:*",
@@ -75,8 +74,7 @@
     "nostr-effect": "github:OpenAgentsInc/nostr-effect#2bb5787",
     "postgres": "3.4.9",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "stripe": "^22.2.0"
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260609.1",

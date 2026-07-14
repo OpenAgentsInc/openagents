@@ -21,7 +21,7 @@ resource "google_sql_database_instance" "this" {
     disk_type                   = var.disk_type
     disk_autoresize             = true
     disk_autoresize_limit       = 0
-    activation_policy           = "ALWAYS"
+    activation_policy           = var.activation_policy
     pricing_plan                = "PER_USE"
     deletion_protection_enabled = var.gcp_deletion_protection
     enable_dataplex_integration = var.enable_dataplex_integration

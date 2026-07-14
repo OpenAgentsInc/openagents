@@ -1,10 +1,9 @@
 # Tips Buffer Runbook
 
-Status: live as of 2026-06-10. This is the one runbook for the tips
-buffer — the dedicated MDK Lightning wallet that backs sweepable agent
-balances (issue #4708; design: `docs/payments/reliable-tips.md`). If
-deployed behavior and this document disagree, the deployed behavior
-wins and this file must be corrected in the same change.
+Status: **retired by VP-1 on 2026-07-14**. The tips-buffer daemon, sweeps,
+reconciliation jobs, routes, and active balance claims are deleted. The
+database records and private archive remain recovery evidence; this historical
+runbook grants no authority to restart the wallet or replay a payment.
 
 ## What the buffer is
 

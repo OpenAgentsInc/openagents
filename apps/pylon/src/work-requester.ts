@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import type { TipsNetworkOptions } from "./tips.js"
+import type { PylonNetworkOptions } from "./network-options.js"
 
 export type PylonWorkRequestInput = {
   objective: string
@@ -210,7 +210,7 @@ export function buildPylonAutopilotWorkRequestBody(input: PylonAutopilotWorkInpu
 }
 
 async function assertResolvablePublicGitHubCommit(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: Readonly<{ commitSha: string; fullName: string }>,
 ): Promise<void> {
   const [owner, repo] = input.fullName.split("/")
@@ -265,7 +265,7 @@ export function buildPylonWorkRequestBody(input: PylonWorkRequestInput): PylonWo
 }
 
 async function workApiRequest(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: {
     path: string
     method: "GET" | "POST"
@@ -296,7 +296,7 @@ async function workApiRequest(
 }
 
 export async function createPylonWorkRequest(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: PylonWorkRequestInput,
 ): Promise<Record<string, unknown>> {
   const body = buildPylonWorkRequestBody(input)
@@ -310,7 +310,7 @@ export async function createPylonWorkRequest(
 }
 
 export async function submitPylonAutopilotWork(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: PylonAutopilotWorkInput,
 ): Promise<Record<string, unknown>> {
   const body = buildPylonAutopilotWorkRequestBody(input)
@@ -341,7 +341,7 @@ export async function submitPylonAutopilotWork(
 }
 
 export async function readPylonAutopilotWorkStatus(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   workOrderRef: string,
 ): Promise<Record<string, unknown>> {
   assertPublicSafe(workOrderRef, "autopilot work order ref")
@@ -352,7 +352,7 @@ export async function readPylonAutopilotWorkStatus(
 }
 
 export async function readPylonAutopilotWorkEvents(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   workOrderRef: string,
 ): Promise<Record<string, unknown>> {
   assertPublicSafe(workOrderRef, "autopilot work order ref")
@@ -363,7 +363,7 @@ export async function readPylonAutopilotWorkEvents(
 }
 
 export async function reviewPylonAutopilotWork(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: { action: "accept" | "reject" | "request_changes"; workOrderRef: string },
 ): Promise<Record<string, unknown>> {
   assertPublicSafe(input, "autopilot work review input")
@@ -385,7 +385,7 @@ export async function reviewPylonAutopilotWork(
 }
 
 export async function listPylonWorkOffers(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   requestRef: string,
 ): Promise<Record<string, unknown>> {
   assertPublicSafe(requestRef, "work request ref")
@@ -396,7 +396,7 @@ export async function listPylonWorkOffers(
 }
 
 export async function acceptPylonWorkOffer(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: { requestRef: string; quoteRef: string },
 ): Promise<Record<string, unknown>> {
   assertPublicSafe(input, "work acceptance input")
@@ -410,7 +410,7 @@ export async function acceptPylonWorkOffer(
 }
 
 export async function readPylonWorkStatus(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   requestRef: string,
 ): Promise<Record<string, unknown>> {
   assertPublicSafe(requestRef, "work request ref")

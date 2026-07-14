@@ -6,11 +6,11 @@ export const Route = createFileRoute('/sites/demo-checkout')({
   component: SiteCheckoutDemoPage,
   head: () => ({
     meta: [
-      { title: 'Demo checkout - OpenAgents' },
+      { title: 'Retired capability - OpenAgents' },
       {
         name: 'description',
         content:
-          'Start a demo checkout for an Omega Site product and inspect the clean return status.',
+          'Sites and money capabilities are retired from the Codex Workroom MVP.',
       },
     ],
   }),

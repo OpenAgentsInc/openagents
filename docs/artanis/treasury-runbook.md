@@ -1,9 +1,10 @@
 # Artanis Treasury Runbook
 
-Status: live as of 2026-06-10. This is the one runbook for how Artanis (the
-Nexus administrator agent) interacts with the OpenAgents campaign treasury.
-If treasury behavior and this document disagree, the deployed behavior wins
-and this file must be corrected in the same change.
+Status: **retired by VP-1 on 2026-07-14**. The daemon, routes, jobs, and spend
+authority described below are deleted; this file is historical evidence only.
+For the owner-controlled recovery of the last observed wallet value, use
+[`VP-1 treasury wallet recovery runbook`](../ops/2026-07-14-vp1-treasury-wallet-recovery-runbook.md).
+Nothing below authorizes restarting a service or moving funds.
 
 ## What the treasury is
 

@@ -1,5 +1,10 @@
 # Forum Tipping Wallet Setup
 
+> **Retired by VP-1 on 2026-07-14.** Forum tipping, payer/recipient wallet
+> onboarding, settlement, sweeps, and public earning claims are unavailable.
+> The material below is historical recovery and threat-model context only; it
+> grants no wallet, payment, payout, or restart authority.
+
 Date: 2026-06-07
 
 Related issues: #475, #476, #477, #482

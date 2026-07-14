@@ -35,7 +35,7 @@ import {
   issueClaudeOwnerLocalPermissionAuthority,
   type ClaudeOwnerLocalPermissionControl,
 } from "../claude-agent-executor.js"
-import type { TipsNetworkOptions } from "../tips.js"
+import type { PylonNetworkOptions } from "../network-options.js"
 import { assertPublicSafe } from "../work-requester.js"
 import type {
   FleetRunSupervisorActiveAssignment,
@@ -764,7 +764,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     assignmentRef,
     [...lifecycle, failureLifecycle({ assignmentRef, blockerRef, now: safeNow() })],
   )
-  const network: TipsNetworkOptions = {
+  const network: PylonNetworkOptions = {
     baseUrl: input.baseUrl,
     ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
     ...(input.fetch === undefined ? {} : { fetch: input.fetch }),

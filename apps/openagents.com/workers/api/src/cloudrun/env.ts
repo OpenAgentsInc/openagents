@@ -30,7 +30,6 @@
  * - DO/containers with no replacement: typed-unavailable namespaces
  * - EMAIL/BROWSER/ARTIFACTS: absent — each has an existing absence degrade
  */
-
 import path from 'node:path'
 
 import type { OpenAgentsWorkerEnv } from '../bindings'
@@ -50,7 +49,9 @@ export type CloudRunRuntime = Readonly<{
 const passthroughFetcher = (): Fetcher =>
   ({
     connect: () => {
-      throw new Error('Fetcher.connect is not supported on the Cloud Run monolith')
+      throw new Error(
+        'Fetcher.connect is not supported on the Cloud Run monolith',
+      )
     },
     fetch: (input: RequestInfo | URL, init?: RequestInit) =>
       fetch(input as Request, init),
@@ -100,7 +101,6 @@ export const buildCloudRunRuntime = (
     // KHALA_SYNC_LIVE_HUB_URL/_TOKEN); the /connect WS leg is bridged by
     // server.ts because Bun fetch cannot carry a WebSocket upgrade.
     SYNC_ROOM: makeUnavailableDurableObjectNamespace('SYNC_ROOM'),
-    MDK_SIDECAR: makeUnavailableDurableObjectNamespace('MDK_SIDECAR'),
     AGENT_DEFINITION_SCHEDULER: makeUnavailableDurableObjectNamespace(
       'AGENT_DEFINITION_SCHEDULER',
     ),

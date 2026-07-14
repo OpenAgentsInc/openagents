@@ -30,12 +30,10 @@ export const OpenAgentsCapabilityManifest = S.Struct({
   docs: S.Struct({
     website: S.String,
     roadmap: S.String,
-    sitesPlan: S.String,
     productPromises: S.String,
     productPromisesApi: S.String,
     activityEvidence: S.String,
     sourceCode: S.String,
-    liveSiteSource: S.String,
     workerSource: S.String,
     webSource: S.String,
     publicDocsSource: S.String,
@@ -113,6 +111,16 @@ export class OpenAgentsCapabilityManifestUnsafe extends S.TaggedErrorClass<OpenA
   },
 ) {}
 
+const retiredCapabilityEntryPattern =
+  /(?:^|[._/-])(?:billing|checkout|commerce|credits?|labor|marketplace|markets|payments?|payouts?|settlements?|sites?|tips?|treasury|wallets?)(?:[._/-]|$)|paid|l402/i
+
+const advertisesRetiredCapability = (entry: {
+  readonly href: string
+  readonly id: string
+}): boolean =>
+  retiredCapabilityEntryPattern.test(entry.id) ||
+  retiredCapabilityEntryPattern.test(new URL(entry.href).pathname)
+
 export const openAgentsCapabilityManifest = (): Effect.Effect<
   OpenAgentsCapabilityManifest,
   OpenAgentsCapabilityManifestUnsafe
@@ -123,21 +131,17 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       name: 'OpenAgents Autopilot',
       canonicalUrl: 'https://openagents.com',
       description:
-        'Agent-friendly software-order fulfillment, Autopilot Sites, public proof, and operator-supervised workrooms.',
+        'Agent-friendly Codex workrooms, public proof, and operator-supervised software fulfillment. Money and Sites capabilities are retired.',
     },
     docs: {
       website: 'https://openagents.com',
       roadmap:
         'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md',
-      sitesPlan:
-        'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/sites-plan.md',
       productPromises: 'https://openagents.com/docs/product-promises',
       productPromisesApi: 'https://openagents.com/api/public/product-promises',
       activityEvidence:
         'https://github.com/OpenAgentsInc/openagents/blob/main/docs/launch/2026-06-18-agent-activity-endpoint-guide.md',
       sourceCode: 'https://github.com/OpenAgentsInc/openagents',
-      liveSiteSource:
-        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com',
       workerSource:
         'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/workers/api',
       webSource:
@@ -1667,12 +1671,43 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
     },
   }
 
-  return containsProviderSecretMaterial(JSON.stringify(manifest))
+  const activeManifest: OpenAgentsCapabilityManifest = {
+    ...manifest,
+    actions: manifest.actions.filter(
+      entry => !advertisesRetiredCapability(entry),
+    ),
+    caveats: [
+      'This manifest is a discovery document, not an authorization grant.',
+      'Money and Sites capabilities are retired and intentionally absent from active discovery.',
+      'No retired paid or credit-gated capacity becomes free capacity. Workroom surfaces grant no payment, wallet, spend, payout, or settlement authority.',
+      'Private runner payloads, provider account refs, auth grants, callback tokens, payment material, wallet material, and secrets are intentionally omitted.',
+      'Use OpenAPI for exact request and response schemas, and treat omitted routes as unsupported.',
+    ],
+    rateLimits: {
+      public: {
+        ...manifest.rateLimits.public,
+        recovery: manifest.rateLimits.public.recovery.filter(
+          recovery => !retiredCapabilityEntryPattern.test(recovery),
+        ),
+      },
+      authenticated: {
+        ...manifest.rateLimits.authenticated,
+        recovery: manifest.rateLimits.authenticated.recovery.filter(
+          recovery => !retiredCapabilityEntryPattern.test(recovery),
+        ),
+      },
+    },
+    resources: manifest.resources.filter(
+      entry => !advertisesRetiredCapability(entry),
+    ),
+  }
+
+  return containsProviderSecretMaterial(JSON.stringify(activeManifest))
     ? Effect.fail(
         new OpenAgentsCapabilityManifestUnsafe({
           reason:
             'OpenAgents capability manifest contains secret-shaped material.',
         }),
       )
-    : Effect.succeed(manifest)
+    : Effect.succeed(activeManifest)
 }

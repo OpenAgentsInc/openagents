@@ -2,11 +2,6 @@ export const MONEY_SURFACE_RETIREMENT_SCHEMA_VERSION =
   'openagents.money_surface_retired.v1' as const
 export const MONEY_SURFACE_RETIRED_AT = '2026-07-14' as const
 
-const retainedTerminalCallbackPaths = new Set([
-  '/api/billing/stripe/webhook',
-  '/api/forum/paid-actions/mdk/webhooks',
-])
-
 const retiredExactPaths = new Set([
   '/api/operator/artanis/spend-decision',
   '/api/operator/buy-mode/results/settle',
@@ -15,6 +10,7 @@ const retiredExactPaths = new Set([
   '/api/public/treasury/launch-status',
   '/api/treasury/donate',
   '/api/sites',
+  '/treasury',
   '/treasury/donate',
 ])
 
@@ -47,21 +43,10 @@ const forumMoneyPath =
 const pylonMoneyPath =
   /^\/api\/pylons\/[^/]+\/(?:wallet-readiness|payout-target-admission|spark-payout-target|assignments\/[^/]+\/(?:payment-receipts|settlement-status))$/
 
-const siteTerminalCallbackPath =
-  /^\/api\/sites\/[^/]+\/commerce\/mdk\/webhooks(?:\/|$)/
-
 export const isRetiredMoneySurfaceRequest = (
-  method: string,
+  _method: string,
   pathname: string,
 ): boolean => {
-  if (
-    method === 'POST' &&
-    (retainedTerminalCallbackPaths.has(pathname) ||
-      siteTerminalCallbackPath.test(pathname))
-  ) {
-    return false
-  }
-
   return (
     retiredExactPaths.has(pathname) ||
     retiredPrefixes.some(prefix => pathname.startsWith(prefix)) ||

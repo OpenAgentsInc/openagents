@@ -39,6 +39,10 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   { name: "sol-docs", command: ["bun", "run", "check:sol-docs"] },
   { name: "sol-doc-tests", command: ["bun", "run", "test:sol-docs"] },
   { name: "node-vp-freeze", command: ["node", "scripts/node-vp-cutover-inventory.mjs", "--check"] },
+  {
+    name: "vp1-retirement",
+    command: ["node", "scripts/vp1-retired-money-surface-guard.mjs", "."],
+  },
 ]
 
 export const completionTargets: readonly CheckTarget[] = [

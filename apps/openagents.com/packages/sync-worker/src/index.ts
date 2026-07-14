@@ -21,8 +21,6 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export type WorkerBindings = Readonly<{
   OPENAGENTS_DB: D1Database
   SYNC_ROOM: DurableObjectNamespace
-  MDK_SIDECAR: DurableObjectNamespace
-  MDK_TREASURY?: DurableObjectNamespace
   // NOTE: the former INFERENCE_DURABLE_STREAM DO binding (#6058) was deleted
   // in CFG-6 (#8521): durable inference streams are Postgres-backed via the
   // KHALA_SYNC_DB Hyperdrive binding below.
@@ -870,17 +868,16 @@ export const makeD1SyncOutboxStore = (
 
   const readRequiredSnapshot = Effect.fn(
     'SyncOutboxStore.readRequiredSnapshot',
-  )(
-    (scope: string): Effect.Effect<SyncSnapshot, SyncOutboxError> =>
-      Effect.gen(function* () {
-        const snapshot = yield* readSnapshot(scope)
+  )((scope: string): Effect.Effect<SyncSnapshot, SyncOutboxError> =>
+    Effect.gen(function* () {
+      const snapshot = yield* readSnapshot(scope)
 
-        if (snapshot.cursor === 0) {
-          return yield* new SyncSnapshotMissing({ scope })
-        }
+      if (snapshot.cursor === 0) {
+        return yield* new SyncSnapshotMissing({ scope })
+      }
 
-        return snapshot
-      }),
+      return snapshot
+    }),
   )
 
   const acceptMutationForScope = Effect.fn(

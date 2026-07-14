@@ -361,7 +361,9 @@ describe('public product promises document', () => {
     expect(leadGen?.safeCopy).toContain('Ora-style public-URL')
     expect(leadGen?.safeCopy).toContain('model-custody segment')
     expect(leadGen?.safeCopy).toContain('public-only model-custody analyzer')
-    expect(leadGen?.safeCopy).toContain('route-level client-engagement/approval evidence only')
+    expect(leadGen?.safeCopy).toContain(
+      'route-level client-engagement/approval evidence only',
+    )
     expect(leadGen?.safeCopy).toContain('portal_content_decision:*')
     expect(leadGen?.safeCopy).toContain('operator LG-4 send-approval receipt')
     expect(leadGen?.safeCopy).toContain('LG-4 route anchors')
@@ -371,9 +373,13 @@ describe('public product promises document', () => {
     expect(leadGen?.safeCopy).toContain(
       'POST /api/operator/business/pipeline/{pipelineRef}/outreach-sends',
     )
-    expect(leadGen?.unsafeCopy).toContain('without a separate LG-4 approval receipt')
+    expect(leadGen?.unsafeCopy).toContain(
+      'without a separate LG-4 approval receipt',
+    )
     expect(leadGen?.unsafeCopy).toContain('Portal approval routes')
-    expect(leadGen?.unsafeCopy).toContain('client `portal_content_decision:*` receipt')
+    expect(leadGen?.unsafeCopy).toContain(
+      'client `portal_content_decision:*` receipt',
+    )
     expect(leadGen?.verification).toContain('portal_content_decision:*')
     expect(leadGen?.verification).toContain('operator LG-4 send-approval')
     expect(leadGen?.verification).toContain(
@@ -381,9 +387,7 @@ describe('public product promises document', () => {
     )
     expect(leadGen?.authorityBoundary).toContain('grant no Apollo credential')
     expect(leadGen?.authorityBoundary).toContain('Portal route refs')
-    expect(leadGen?.authorityBoundary).toContain(
-      'operator outreach route refs',
-    )
+    expect(leadGen?.authorityBoundary).toContain('operator outreach route refs')
     expect(leadGen?.authorityBoundary).toContain(
       'client content-decision receipt does not grant operator send approval',
     )
@@ -442,11 +446,11 @@ describe('public product promises document', () => {
       'khala_code.bundled_fleet_skill.v1': 'withdrawn',
       'khala_code.desktop_codex_wrapper.v1': 'withdrawn',
       'khala_code.forum_hotbar.v1': 'withdrawn',
-      'khala_code.free_paid_plans.v1': 'planned',
+      'khala_code.free_paid_plans.v1': 'withdrawn',
       'khala_code.free_plan_trace_capture.v1': 'planned',
       'khala_code.mobile_mvp.v1': 'withdrawn',
-      'khala_code.paid_to_free_revenue_share.v1': 'planned',
-      'khala_code.plugin_backend_revenue_share.v1': 'planned',
+      'khala_code.paid_to_free_revenue_share.v1': 'withdrawn',
+      'khala_code.plugin_backend_revenue_share.v1': 'withdrawn',
       'khala_code.trace_derived_plugins.v1': 'planned',
       'khala_code.ux_behavior_contracts.v1': 'yellow',
     })
@@ -482,11 +486,11 @@ describe('public product promises document', () => {
     // khala_code.bundled_fleet_skill.v1) flip to withdrawn; green 34 -> 33
     // (autopilot.agent_world_scene.v1 was the one green), planned 78 -> 72.
     expect(stateCounts).toEqual({
-      green: 33,
-      planned: 72,
-      red: 6,
-      withdrawn: 14,
-      yellow: 20,
+      green: 26,
+      planned: 54,
+      red: 2,
+      withdrawn: 46,
+      yellow: 17,
     })
   })
 
@@ -501,9 +505,7 @@ describe('public product promises document', () => {
 
     expect(khalaCode).toMatchObject({
       state: 'withdrawn',
-      blockerRefs: [
-        'blocker.product_promises.legacy_product_app_withdrawn',
-      ],
+      blockerRefs: ['blocker.product_promises.legacy_product_app_withdrawn'],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/apps/web/src/page/khalaCodeDownload.ts',
         'apps/openagents.com/apps/web/src/khala-code-download-route.test.ts',
@@ -531,7 +533,7 @@ describe('public product promises document', () => {
     expect(decoded.notes.join('\n')).toContain('Registry 2026-07-09.1')
   })
 
-  test('keeps Khala Code trace plugin revenue-share precedent planned until a live receipt exists', () => {
+  test('keeps trace-plugin evidence while withdrawing the revenue-share product', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -584,35 +586,23 @@ describe('public product promises document', () => {
     )
 
     expect(revenueShare).toBeDefined()
-    expect(revenueShare?.state).toBe('planned')
+    expect(revenueShare?.state).toBe('withdrawn')
     expect(revenueRefs.evidenceRefs).toEqual(
       expect.arrayContaining([
         'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts',
         'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.test.ts',
         'route:/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
         'promise:khala_code.trace_derived_plugins.v1',
-        'docs/promises/2026-07-09-khala-code-app-retirement-and-openagents-successors.md',
-        'promise:openagents.desktop_app.v1',
       ]),
     )
-    expect(revenueRefs.blockerRefs).toEqual(
-      expect.arrayContaining([
-        'blocker.product_promises.plugin_revenue_share_precedent_receipt_missing',
-        'blocker.product_promises.plugin_revenue_settlement_not_armed',
-        'blocker.owner.khala_code_trace_plugin_revenue_share_live_receipt_missing',
-        'blocker.product_promises.openagents_greenfield_capability_port_missing',
-      ]),
-    )
-    // Disposition rewrite keeps the historical "moves no sats" boundary in
-    // claim language via unsafeCopy/authorityBoundary; safeCopy is the
-    // greenfield planned-economics framing.
-    expect(revenueShare?.safeCopy).toContain('Planned engine/economics idea')
-    expect(revenueShare?.safeCopy).toContain('moves no sats itself')
-    expect(revenueShare?.unsafeCopy).toContain(
-      'Do not claim anyone has been paid',
-    )
+    expect(revenueRefs.blockerRefs).toEqual([
+      'blocker.product_promises.money_and_sites_graph_retired',
+    ])
+    expect(revenueShare?.safeCopy).toContain('No retired paid')
+    expect(revenueShare?.unsafeCopy).toContain('Do not advertise')
+    expect(revenueShare?.verification).toContain('active UI')
     expect(revenueShare?.authorityBoundary).toContain(
-      'does not accept payout destinations',
+      'historical evidence only',
     )
     expect(decoded.notes.join('\n')).toContain('Registry 2026-07-04.4')
     expect(decoded.notes.join('\n')).toContain('does not move sats')
@@ -683,8 +673,12 @@ describe('public product promises document', () => {
       'blocker.product_promises.reactor_exact_metering_receipt_missing',
     )
     expect(privateDeployment?.safeCopy).toContain('not an available product')
-    expect(privateDeployment?.safeCopy).toContain('lane-neutral serving skeleton')
-    expect(privateDeployment?.safeCopy).toContain('exact local metering receipts')
+    expect(privateDeployment?.safeCopy).toContain(
+      'lane-neutral serving skeleton',
+    )
+    expect(privateDeployment?.safeCopy).toContain(
+      'exact local metering receipts',
+    )
     expect(privateDeployment?.safeCopy).toContain(
       'initial catalog-cited task-class eval receipts',
     )
@@ -701,9 +695,13 @@ describe('public product promises document', () => {
     expect(privateDeployment?.safeCopy).toContain('improvement-ladder')
     expect(privateDeployment?.safeCopy).toContain('customer flywheel training')
     expect(privateDeployment?.safeCopy).toContain('NEEDS_OWNER.md')
-    expect(privateDeployment?.unsafeCopy).toContain('Do not claim Reactor is available')
+    expect(privateDeployment?.unsafeCopy).toContain(
+      'Do not claim Reactor is available',
+    )
     expect(privateDeployment?.unsafeCopy).toContain('priced publicly')
-    expect(privateDeployment?.authorityBoundary).toContain('grants no external serving')
+    expect(privateDeployment?.authorityBoundary).toContain(
+      'grants no external serving',
+    )
 
     expect(provenance).toBeDefined()
     expect(provenance?.state).toBe('planned')
@@ -794,7 +792,9 @@ describe('public product promises document', () => {
     expect(policy?.safeCopy).toContain('receipt-shaped decisions')
     expect(policy?.safeCopy).toContain('refuses nonconforming models')
     expect(policy?.safeCopy).toContain('before OpenAI-compatible routing')
-    expect(policy?.safeCopy).toContain('internal OpenAgents dogfood run receipt')
+    expect(policy?.safeCopy).toContain(
+      'internal OpenAgents dogfood run receipt',
+    )
     expect(policy?.safeCopy).toContain('Qwen refresh refused')
     expect(policy?.verification).toContain('signed air-gap bundle manifests')
     expect(policy?.verification).toContain('clean-temp install smoke')
@@ -844,25 +844,39 @@ describe('public product promises document', () => {
     ].join('\n')
     expect(publicReactorBoundary).toContain('green stays exactly 34')
     expect(publicReactorBoundary).toContain('RX-2 Reactor contracts pass')
-    expect(publicReactorBoundary).toContain('RX-3 Reactor serving-skeleton pass')
+    expect(publicReactorBoundary).toContain(
+      'RX-3 Reactor serving-skeleton pass',
+    )
     expect(publicReactorBoundary).toContain('RX-4 Reactor eval-receipts pass')
     expect(publicReactorBoundary).toContain('RX-5 Reactor install/air-gap pass')
     expect(publicReactorBoundary).toContain('RX-6 Reactor dogfood pass')
-    expect(publicReactorBoundary).toContain('RX-9 Reactor need-to-know access pass')
-    expect(publicReactorBoundary).toContain('RX-10 Reactor Data Liberation pipeline pass')
-    expect(publicReactorBoundary).toContain('RX-11 Reactor improvement-ladder pass')
+    expect(publicReactorBoundary).toContain(
+      'RX-9 Reactor need-to-know access pass',
+    )
+    expect(publicReactorBoundary).toContain(
+      'RX-10 Reactor Data Liberation pipeline pass',
+    )
+    expect(publicReactorBoundary).toContain(
+      'RX-11 Reactor improvement-ladder pass',
+    )
     expect(publicReactorBoundary).toContain('hard-rule denial')
     expect(publicReactorBoundary).toContain('broken allow-all rule fixture')
     expect(publicReactorBoundary).toContain('Salesforce-contact-shaped export')
-    expect(publicReactorBoundary).toContain('fixture-level adapter/verification blocker')
+    expect(publicReactorBoundary).toContain(
+      'fixture-level adapter/verification blocker',
+    )
     expect(publicReactorBoundary).toContain('deliverable-landing harness delta')
     expect(publicReactorBoundary).toContain('route swap still unauthorized')
     expect(publicReactorBoundary).toContain('full-eval-coverage blocker')
     expect(publicReactorBoundary).toContain('internal dogfood-proof blocker')
-    expect(publicReactorBoundary).toContain('fixture-level need-to-know access blocker')
+    expect(publicReactorBoundary).toContain(
+      'fixture-level need-to-know access blocker',
+    )
     expect(publicReactorBoundary).toContain('external-customer-pilot')
     expect(publicReactorBoundary).toContain('planned only')
-    expect(publicReactorBoundary).not.toMatch(/\$2,500|\$7,500|\$10,000|\$25,000/)
+    expect(publicReactorBoundary).not.toMatch(
+      /\$2,500|\$7,500|\$10,000|\$25,000/,
+    )
     expect(publicReactorBoundary).not.toContain('Reactor is available')
     expect(publicReactorBoundary).not.toContain('HIPAA-ready')
     expect(publicReactorBoundary).not.toContain('US-origin-only enforced')
@@ -881,9 +895,7 @@ describe('public product promises document', () => {
 
     expect(desktop).toMatchObject({
       state: 'withdrawn',
-      blockerRefs: [
-        'blocker.product_promises.legacy_product_app_withdrawn',
-      ],
+      blockerRefs: ['blocker.product_promises.legacy_product_app_withdrawn'],
       evidenceRefs: expect.arrayContaining([
         'docs/launch/JUNE19_ROADMAP.md',
         'docs/launch/artifacts/ao6-20260619T010148/dmg-sha256.txt',
@@ -903,9 +915,7 @@ describe('public product promises document', () => {
       // 2026-07-14.1 owner-directed supersession withdrawal (apps/autopilot-desktop
       // removed; OpenAgents Desktop supersedes it).
       state: 'withdrawn',
-      blockerRefs: [
-        'blocker.product_promises.legacy_product_app_withdrawn',
-      ],
+      blockerRefs: ['blocker.product_promises.legacy_product_app_withdrawn'],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/workers/api/src/builtin-compute-agent-metering-smoke.ts',
         'apps/openagents.com/workers/api/src/builtin-compute-agent-metering-smoke.test.ts',
@@ -1255,7 +1265,7 @@ describe('public product promises document', () => {
     // OpenAgents Desktop supersedes it), so green is now exactly 33.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(33)
+    ).toBe(26)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -1311,53 +1321,31 @@ describe('public product promises document', () => {
     const openMarketsPromise = decoded.promises.find(
       promise => promise.promiseId === 'markets.open_protocol_markets.v1',
     )
-    expect(openMarketsPromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.open_markets_unified_surface_missing',
-    )
-    expect(openMarketsPromise?.safeCopy).toContain(
-      'GET /api/public/markets/open-markets',
-    )
-    expect(openMarketsPromise?.verification).toContain(
-      'green still requires real market transactions plus settlement receipts for all six markets',
-    )
+    expect(openMarketsPromise?.state).toBe('withdrawn')
+    expect(openMarketsPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.money_and_sites_graph_retired',
+    ])
+    expect(openMarketsPromise?.safeCopy).toContain('No retired paid')
     const composeAndListPromise = decoded.promises.find(
       promise =>
         promise.promiseId === 'marketplace.compose_and_list_products.v1',
     )
-    expect(composeAndListPromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.marketplace_listing_lifecycle_unbuilt',
-    )
-    expect(composeAndListPromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-    )
-    expect(composeAndListPromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
-    )
-    expect(composeAndListPromise?.blockerRefs).toEqual(
-      expect.arrayContaining([
-        'blocker.product_promises.marketplace_paid_listing_runtime_missing',
-        'blocker.product_promises.marketplace_billing_settlement_missing',
-      ]),
-    )
+    expect(composeAndListPromise?.state).toBe('withdrawn')
+    expect(composeAndListPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.money_and_sites_graph_retired',
+    ])
     expect(composeAndListPromise?.evidenceRefs).toContain(
       'route:/api/public/marketplace/composed-products',
     )
-    expect(composeAndListPromise?.safeCopy).toContain(
-      'no-spend assemble/list/install-use lifecycle receipts',
-    )
+    expect(composeAndListPromise?.safeCopy).toContain('No retired paid')
     const agenticNpmPromise = decoded.promises.find(
       promise =>
         promise.promiseId === 'marketplace.agentic_npm_module_registry.v1',
     )
-    expect(agenticNpmPromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.agentic_npm_module_composition_runtime_missing',
-    )
-    expect(agenticNpmPromise?.blockerRefs).toEqual(
-      expect.arrayContaining([
-        'blocker.product_promises.agentic_npm_billing_settlement_missing',
-        'blocker.product_promises.agentic_npm_paid_public_marketplace_missing',
-      ]),
-    )
+    expect(agenticNpmPromise?.state).toBe('withdrawn')
+    expect(agenticNpmPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.money_and_sites_graph_retired',
+    ])
     expect(agenticNpmPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.ts',
@@ -1382,15 +1370,14 @@ describe('public product promises document', () => {
     const paidCaptureOptoutPromise = decoded.promises.find(
       promise => promise.promiseId === 'privacy.khala_paid_capture_optout.v1',
     )
-    expect(paidCaptureOptoutPromise?.blockerRefs).toEqual(
-      expect.arrayContaining([
-        'blocker.product_promises.paid_privacy_owner_signoff_pending',
-        'blocker.product_promises.paid_khala_business_loop_not_green',
-      ]),
+    expect(paidCaptureOptoutPromise?.state).toBe('withdrawn')
+    expect(paidCaptureOptoutPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.money_and_sites_graph_retired',
+    ])
+    expect(paidCaptureOptoutPromise?.safeCopy).toContain(
+      'privacy protection remains binding',
     )
-    expect(agenticNpmPromise?.safeCopy).toContain(
-      'bounded source-level registry + install/use runtime core exists',
-    )
+    expect(agenticNpmPromise?.safeCopy).toContain('No retired paid')
     const repeatedAgentCharacterCreationPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
@@ -1488,10 +1475,11 @@ describe('public product promises document', () => {
     const inferenceGatewayPromise = decoded.promises.find(
       promise => promise.promiseId === 'inference.gateway_credits_business.v1',
     )
-    expect(inferenceGatewayPromise?.state).toBe('red')
-    expect(inferenceGatewayPromise?.safeCopy).toContain(
-      'GLM own-capacity failover alerting',
-    )
+    expect(inferenceGatewayPromise?.state).toBe('withdrawn')
+    expect(inferenceGatewayPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.money_and_sites_graph_retired',
+    ])
+    expect(inferenceGatewayPromise?.safeCopy).toContain('No retired paid')
     expect(inferenceGatewayPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'apps/openagents.com/workers/api/src/inference/model-router.ts',
@@ -1512,749 +1500,752 @@ describe('public product promises document', () => {
       ]),
     )
     expect(khalaCliPromise?.authorityBoundary).toContain('fleet visibility')
-    expect(decoded.promises).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          promiseId: 'autopilot.mission_briefing.v1',
-          // 2026-07-04.8 owner-directed revenue-refocus demotion
-          state: 'planned',
-        }),
-        expect.objectContaining({
-          promiseId: 'autopilot.decision_queue.v1',
-          state: 'planned',
-        }),
-        expect.objectContaining({
-          promiseId: 'workrooms.source_authorized_business_objects.v1',
-          state: 'yellow',
-        }),
-        expect.objectContaining({
-          promiseId: 'identity.orange_check_forum_signal.v1',
-          state: 'yellow',
-          blockerRefs: [
-            'blocker.product_promises.orange_check_production_purchase_receipt_missing',
-            'blocker.product_promises.orange_check_buyer_badge_visibility_proof_missing',
-            'blocker.product_promises.orange_check_owner_signed_green_transition_missing',
-          ],
-          evidenceRefs: expect.arrayContaining([
-            'nostr_event:83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da@wss://relay.openagents.com',
-          ]),
-          verification: expect.stringContaining(
-            'owner-signed yellow->green transition receipt',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'mobile.voice_approval_companion.v1',
-          // 2026-07-04.8 owner-directed revenue-refocus demotion
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
-            'route:/api/mobile/workroom-approval-projection',
-          ]),
-          blockerRefs: expect.not.arrayContaining([
-            'blocker.product_promises.mobile_projection_missing',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'pylon.no_dark_capacity_accounting.v1',
-          state: 'green',
-          blockerRefs: [],
-          evidenceRefs: expect.arrayContaining([
-            'promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe',
-            'route:/api/public/pylon-capacity-funnel/history',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'payments.accepted_outcome_economics.v1',
-          state: 'red',
-          evidenceRefs: expect.arrayContaining([
-            'route:/api/public/accepted-outcome/settlement/{economicsId}',
-            'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-state-machine.ts',
-            'apps/openagents.com/workers/api/src/public-accepted-outcome-settlement-routes.test.ts',
-            'route:/api/public/payments/contributor-accrual-bundle',
-            'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle.ts',
-            'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-routes.test.ts',
-            'apps/openagents.com/workers/api/src/omni-gross-margin-receipt.ts',
-            'apps/openagents.com/workers/api/src/omni-contributor-accrual-ledger.ts',
-          ]),
-          blockerRefs: expect.not.arrayContaining([
-            'blocker.product_promises.settlement_state_machine_incomplete',
-            'blocker.product_promises.contributor_ledger_missing',
-            'blocker.product_promises.gross_margin_receipts_missing',
-          ]),
-          safeCopy: expect.stringContaining('contributor accrual ledger'),
-          verification: expect.stringContaining(
-            'pending_payout-to-ledger reconciliation',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'energy.flexible_load_proof.v1',
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'route:/api/public/energy/flexible-load-proof',
-            'apps/openagents.com/workers/api/src/ercot-lmp-ingestion.ts',
-            'apps/openagents.com/workers/api/src/pylon-flexible-load-profiles.ts',
-            'apps/openagents.com/workers/api/src/pylon-flexible-load-events.ts',
-            'apps/openagents.com/workers/api/src/energy-flexible-load-proof.ts',
-          ]),
-          blockerRefs: [
-            'blocker.product_promises.real_flexible_load_receipt_missing',
-            'blocker.product_promises.owner_signed_energy_green_transition_missing',
-          ],
-          safeCopy: expect.stringContaining(
-            '/api/public/energy/flexible-load-proof',
-          ),
-          verification: expect.stringContaining('greenGateSatisfied=false'),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.full_pipeline_program.v1',
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
-            'docs/training/2026-06-20-training-full-pipeline-program-status.md',
-            'route:/api/public/training/full-pipeline-program',
-            'apps/openagents.com/workers/api/src/training-full-pipeline-program.ts',
-            'apps/openagents.com/workers/api/src/training-full-pipeline-program.test.ts',
-          ]),
-          blockerRefs: [
-            'blocker.product_promises.training_pipeline_rails_incomplete',
-          ],
-          safeCopy: expect.stringContaining(
-            '/api/public/training/full-pipeline-program',
-          ),
-          verification: expect.stringContaining('greenGateSatisfied=false'),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.ablation_system.v1',
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'docs/training/2026-06-20-ablation-one-delta-harness.md',
-            'docs/training/2026-06-20-ablation-eval-reproduction-receipt.md',
-            'https://openagents.com/api/public/training/ablation-derisking-ledger',
-            'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
-            'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
-          ]),
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.seeded_ablation_replication_missing',
-            'blocker.product_promises.owner_signed_green_transition_missing',
-          ]),
-          safeCopy: expect.stringContaining(
-            '/api/public/training/ablation-derisking-ledger',
-          ),
-          verification: expect.stringContaining('one-delta manifest harness'),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.data_refinery_corpus.v1',
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
-            'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.ts',
-            'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.test.ts',
-            'apps/openagents.com/workers/api/src/cs336-a4-paid-refinery-shard-dispatch.ts',
-            'apps/openagents.com/workers/api/src/cs336-a4-paid-refinery-shard-dispatch.test.ts',
-            'apps/openagents.com/workers/api/src/cs336-a4-provenance.ts',
-            'apps/openagents.com/workers/api/src/cs336-a4-provenance.test.ts',
-            'apps/openagents.com/workers/api/src/training-data-refinery.ts',
-            'apps/openagents.com/workers/api/src/training-data-refinery.test.ts',
-            'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
-          ]),
-          blockerRefs: [
-            'blocker.product_promises.crawl_scale_corpus_missing',
-            'blocker.product_promises.corpus_provenance_receipts_missing',
-            'blocker.product_promises.eval_delta_payment_missing',
-          ],
-          safeCopy: expect.stringContaining('evalDeltaPaymentGate'),
-          verification: expect.stringContaining(
-            'paid-dispatch receipt builder',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.marathon_operations.v1',
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
-            'route:/api/public/training/marathon-operations',
-            'apps/openagents.com/workers/api/src/training-marathon-operations.ts',
-            'apps/openagents.com/workers/api/src/training-marathon-operations.test.ts',
-            'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
-            'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
-            'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
-            'apps/openagents.com/workers/api/src/training-standby-dispatch.ts',
-            'apps/openagents.com/workers/api/src/training-standby-dispatch.test.ts',
-            'apps/openagents.com/workers/api/src/training-curtailment-drill.ts',
-            'apps/openagents.com/workers/api/src/training-curtailment-drill.test.ts',
-            'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
-          ]),
-          blockerRefs: [
-            'blocker.product_promises.durable_checkpoint_seal_missing',
-            'blocker.product_promises.standby_dispatch_missing',
-            'blocker.product_promises.curtailment_drill_missing',
-          ],
-          safeCopy: expect.stringContaining(
-            '/api/public/training/marathon-operations',
-          ),
-          verification: expect.stringContaining(
-            'curtailmentSurface.predicateAvailable=true',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.device_capability_dataset.v1',
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
-            'apps/openagents.com/workers/api/src/training-device-capability.ts',
-            'apps/openagents.com/workers/api/src/training-device-capability.test.ts',
-            'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
-          ]),
-          blockerRefs: [
-            'blocker.product_promises.thermal_throttle_detection_missing',
-            'blocker.product_promises.same_host_replication_caveat',
-          ],
-          safeCopy: expect.stringContaining('sameClassReplicationStatus'),
-          verification: expect.stringContaining(
-            'legacy settled rows fail closed to same_host_only',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.post_training_arc.v1',
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
-            'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
-            'route:/api/public/training/post-training-arc/instruct-sft-lane',
-            'route:/api/public/training/post-training-arc/dpo-preference-workload',
-            'route:/api/public/training/post-training-arc/vibe-test-rubric',
-            'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.ts',
-            'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.test.ts',
-            'apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.ts',
-            'apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.test.ts',
-            'apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.ts',
-            'apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.test.ts',
-            'apps/openagents.com/workers/api/src/training-post-training-paid-dispatch.ts',
-            'apps/openagents.com/workers/api/src/training-post-training-paid-dispatch.test.ts',
-            'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.ts',
-            'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.test.ts',
-            'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.ts',
-            'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.test.ts',
-            'https://github.com/OpenAgentsInc/psionic/blob/main/scripts/check-psion-instruct-sft-lane.sh',
-            'https://github.com/OpenAgentsInc/psionic/pull/1132',
-          ]),
-          blockerRefs: [
-            'blocker.product_promises.instruct_sft_paid_dispatch_missing',
-            'blocker.product_promises.preference_rollout_work_missing',
-            'blocker.product_promises.vibe_test_artifact_missing',
-          ],
-          safeCopy: expect.stringContaining(
-            '/api/public/training/post-training-arc/dpo-preference-workload',
-          ),
-          verification: expect.stringContaining(
-            'paidPreferenceDispatchAvailable=false',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'artanis.tassadar_evolution_loop.v1',
-          state: 'green',
-          blockerRefs: [],
-          evidenceRefs: expect.arrayContaining([
-            'route:/api/public/artanis/tassadar-distillation-dataset',
-            'apps/openagents.com/workers/api/src/artanis-distillation-dataset-receipt.ts',
-            'apps/openagents.com/workers/api/src/artanis-distillation-dataset-receipt.test.ts',
-            'docs/training/2026-06-20-artanis-distillation-dataset-receipt.md',
-          ]),
-          safeCopy: expect.stringContaining(
-            '/api/public/artanis/tassadar-distillation-dataset',
-          ),
-          verification: expect.stringContaining(
-            'tassadar_distillation_dataset_receipt_missing are therefore cleared',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.model_ladder.v1',
-          state: 'planned',
-          blockerRefs: ['blocker.product_promises.r1_full_rehearsal_missing'],
-          evidenceRefs: expect.arrayContaining([
-            'docs/training/2026-06-19-model-ladder-rung-economics.md',
-            'route:/api/public/training/model-ladder-rungs',
-            'apps/openagents.com/workers/api/src/training-model-ladder-rungs.ts',
-            'apps/openagents.com/workers/api/src/training-model-ladder-rungs.test.ts',
-          ]),
-          safeCopy: expect.stringContaining(
-            'GET /api/public/training/model-ladder-rungs',
-          ),
-          verification: expect.stringContaining(
-            'rung_economics_gate_format_missing dimension is documented',
-          ),
-          unsafeCopy: expect.stringContaining(
-            'Do not claim any Psion rung above R0 is trained',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.public_distributed_training_run.v1',
-          state: 'planned',
-          blockerRefs: [
-            'blocker.product_promises.public_distributed_training_run_receipts_missing',
-          ],
-          evidenceRefs: expect.arrayContaining([
-            'docs/transcripts/236.md',
-            'docs/launch/vertex-fleet/training.public_distributed_training_run.v1.md',
-            'route:/api/public/training/public-distributed-run-scale',
-            'apps/openagents.com/workers/api/src/training-public-distributed-run-scale.ts',
-            'apps/openagents.com/workers/api/src/training-public-distributed-run-scale.test.ts',
-          ]),
-          safeCopy: expect.stringContaining(
-            'GET /api/public/training/public-distributed-run-scale',
-          ),
-          verification: expect.stringContaining(
-            'networkScaleThresholdMet=false',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'training.decentralized_training_launch.v1',
-          state: 'green',
-          blockerRefs: [],
-          evidenceRefs: expect.arrayContaining([
-            'receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2',
-            'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
-          ]),
-          safeCopy: expect.stringContaining('realBitcoinMoved:false'),
-          unsafeCopy: expect.stringContaining('realBitcoinMoved:true'),
-          verification: expect.stringContaining(
-            'must not be counted as real Bitcoin movement',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'pylon.largest_decentralized_training_claim.v1',
-          state: 'planned',
-          blockerRefs: [
-            'blocker.product_promises.public_training_contributor_receipts_missing',
-          ],
-          evidenceRefs: expect.arrayContaining([
-            'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
-            'docs/training/2026-06-19-comparable-decentralized-training-runs-research.md',
-            'docs/launch/vertex-fleet/pylon.largest_decentralized_training_claim.v1.md',
-            'route:/api/public/pylon/largest-decentralized-training-claim',
-            'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.ts',
-            'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.test.ts',
-          ]),
-          safeCopy: expect.stringContaining(
-            'GET /api/public/pylon/largest-decentralized-training-claim',
-          ),
-          verification: expect.stringContaining(
-            'transcriptTargetThresholdMet=false',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'claims.world_first_ai_training_paid_bitcoin.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.world_first_evidence_pack_missing',
-            'blocker.product_promises.world_first_owner_signed_upgrade_missing',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'docs/transcripts/238.md',
-            'docs/launch/2026-06-18-world-firsts-verification.md',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'claims.world_first_public_llm_computer_training_run.v1',
-          state: 'planned',
-          // The definition-missing blocker is cleared by
-          // docs/launch/2026-06-20-llm-computer-training-run-definition.md, and
-          // the evidence-pack-missing blocker is cleared by the focused
-          // docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md;
-          // only the owner-signed-upgrade blocker still stands.
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.world_first_owner_signed_upgrade_missing',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'promise:compute.tassadar_executor_poc.v1',
-            'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
-            'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md',
-            'apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'pylon.consumer_compute_earns_bitcoin_self_serve.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing',
-            'blocker.product_promises.windows_wsl_consumer_install_coverage_missing',
-            'blocker.product_promises.spark_helper_autostart_receipt_missing',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615/settlements',
-            'docs/launch/2026-06-19-autostream-settlement-visibility-capture.md',
-            'proof_replay_bundle.public_activity.73e66071',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'marketplace.agentic_npm_module_registry.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.agentic_npm_billing_settlement_missing',
-            'blocker.product_promises.agentic_npm_paid_public_marketplace_missing',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.ts',
-            'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'referral.refer_once_earn_forever.v1',
-          state: 'red',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.referral_first_real_payout_pending',
-            'blocker.product_promises.referral_purchase_to_payout_receipt_missing',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'docs/transcripts/239.md',
-            'apps/openagents.com/workers/api/src/referral-cross-category-accrual.ts',
-            'apps/openagents.com/workers/api/src/marketplace-monetize-any-layer-accrual.ts',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'autopilot.all_in_one_business_system.v1',
-          state: 'planned',
-        }),
-        expect.objectContaining({
-          promiseId: 'cloud.primitives_suite.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.cloud_fine_tuning_live_sellable_service_missing',
-            'blocker.product_promises.cloud_sandbox_compute_live_sellable_service_missing',
-            'blocker.product_promises.cloud_primitives_live_unified_balance_debit_receipt_missing',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'cloud.fine_tuning_service.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.cloud_fine_tuning_live_intake_disabled',
-            'blocker.product_promises.cloud_fine_tuning_live_pricing_missing',
-            'blocker.product_promises.cloud_fine_tuning_paid_receipt_missing',
-            'blocker.product_promises.cloud_fine_tuning_billing_settlement_missing',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'cloud.sandbox_compute_service.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.cloud_sandbox_live_rent_surface_disabled',
-            'blocker.product_promises.cloud_sandbox_live_pricing_missing',
-            // The D1 fixture runtime and receipt ARTIFACT now exist; remaining
-            // gates are live rent/pricing plus real renter + owner sign-off.
-            'blocker.product_promises.cloud_sandbox_real_renter_demand_provenance_and_owner_signoff_missing',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/workers/api/migrations/0257_cloud_sandbox_runtime.sql',
-          ]),
-          safeCopy: expect.stringContaining('bounded D1 fixture runtime'),
-        }),
-        expect.objectContaining({
-          promiseId: 'markets.open_protocol_markets.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.liquidity_market_unbuilt',
-            'blocker.product_promises.risk_market_unbuilt',
-            'blocker.product_promises.compute_data_markets_not_broadly_live',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/workers/api/src/open-markets-surface.ts',
-            'apps/openagents.com/workers/api/src/open-markets-routes.ts',
-            'apps/openagents.com/workers/api/src/open-markets-skeletons.ts',
-            'route:/api/public/markets/open-markets',
-            'route:/api/public/markets/liquidity/skeleton',
-            'route:/api/public/markets/risk/skeleton',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'marketplace.compose_and_list_products.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.marketplace_paid_listing_runtime_missing',
-            'blocker.product_promises.marketplace_billing_settlement_missing',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/workers/api/src/marketplace-product-composition.ts',
-            'apps/openagents.com/workers/api/src/marketplace-composition-routes.ts',
-            'route:/api/public/marketplace/composed-products',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'marketplace.monetize_any_layer_with_referral.v1',
-          state: 'planned',
-        }),
-        expect.objectContaining({
-          promiseId:
-            'claims.pursued_world_first_largest_agentic_sales_force.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'claims.pursued_world_first_largest_sales_force.v1',
-          state: 'planned',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.world_first_largest_sales_force_not_achieved',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'models.tasadar_percepta_executor.v1',
-          state: 'withdrawn',
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.misspelled_promise_id_withdrawn',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'models.tassadar_percepta_executor.v1',
-          state: 'planned',
-          evidenceRefs: expect.arrayContaining([
-            'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
-            'backroom:openagents-prune-20260708-tassadar-psionic@a56fd270',
-            'route:/api/public/models/tassadar-percepta-executor/architecture-receipts',
-            'route:/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts',
-            'apps/openagents.com/workers/api/src/tassadar-percepta-architecture-receipts.ts',
-            'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.ts',
-            'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.test.ts',
-            'receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1',
-          ]),
-          blockerRefs: [
-            'blocker.product_promises.tassadar_cpu_transform_real_settlement_missing',
-            'blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing',
-          ],
-          safeCopy: expect.stringContaining(
-            'one bounded Pylon v1.0 CPU computation-transform fixture receipt',
-          ),
-          verification: expect.stringContaining(
-            'cpuTransformTrainingReceiptAvailable=true',
-          ),
-        }),
-        expect.objectContaining({
-          promiseId: 'pylon.v0_3_multi_earning_node.v1',
-          state: 'planned',
-        }),
-        expect.objectContaining({
-          promiseId: 'training.verification_classes.v1',
-          state: 'green',
-          evidenceRefs: expect.arrayContaining([
-            'receipt.nexus_pylon.settlement.assignment_public_training_validator_recheck_20260611053500',
-            'promise_transition_0bfce0c5-e4dd-4d19-9221-4bc9504f2055',
-          ]),
-        }),
-        expect.objectContaining({
-          promiseId: 'proof.demand_provenance.v1',
-          state: 'green',
-          evidenceRefs: expect.arrayContaining([
-            'route:/api/public/demand-provenance',
-            'apps/openagents.com/workers/api/src/demand-provenance.ts',
-            'apps/openagents.com/workers/api/src/demand-provenance-routes.ts',
-            'apps/openagents.com/workers/api/src/demand-provenance.test.ts',
-            'route:/api/public/pylon-stats',
-            'route:/api/training/leaderboards/*',
-            'route:/api/public/training/runs/{trainingRunRef}',
-            'route:/api/public/training/model-ladder-rungs',
-          ]),
-          blockerRefs: [],
-        }),
-        expect.objectContaining({
-          promiseId: 'proof.claim_upgrade_receipts.v1',
-          state: 'green',
-        }),
-        expect.objectContaining({
-          promiseId: 'repo.open_source_code_map.v1',
-          state: 'green',
-          evidenceRefs: expect.arrayContaining([
-            'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/workers/api',
-            'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/apps/web',
-            'https://github.com/OpenAgentsInc/openagents/tree/main/apps/pylon',
-            'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
-          ]),
-          authorityBoundary: expect.stringContaining(
-            'does not grant write, deploy, spend',
-          ),
-        }),
-        expect.objectContaining({
-          audience: expect.arrayContaining(['agent', 'operator', 'developer']),
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.repo_studying_privacy_review_missing',
-            'blocker.product_promises.repo_studying_marketplace_metering_missing',
-            'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
-            'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
-            'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
-            'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
-            'promise:repo.open_source_code_map.v1',
-          ]),
-          promiseId: 'autopilot.repo_study_packets.v1',
-          safeCopy: expect.stringContaining('dogfooding'),
-          state: 'planned',
-        }),
-        expect.objectContaining({
-          blockerRefs: [],
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
-          ]),
-          promiseId: 'agents.cursor_forum_wallet.v1',
-          state: 'green',
-        }),
-        expect.objectContaining({
-          blockerRefs: [],
-          evidenceRefs: expect.arrayContaining([
-            'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
-            'route:/api/forum/paid-actions/mdk/webhooks',
-            'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
-            'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
-            'apps/openagents.com/docs/forum-tip-payout-smoke.md',
-            'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
-            'apps/openagents.com/docs/forum/2026-06-11-forum-tip-webhook-refund-live-smoke-evidence.md',
-            'transition:promise_transition_c106102b-e51b-4d2f-84ed-a588f1a26316',
-            'transition:promise_transition_feab90da-aead-49e1-9097-bd0b8bb5c11a',
-            'transition:promise_transition_e632649a-acfa-4e69-ad4b-269e92c963b3',
-            'transition:promise_transition_0cfba5d7-40ff-48bd-81a3-4b0758b0acd8',
-          ]),
-          promiseId: 'forum.content_tipping.v1',
-          state: 'green',
-        }),
-        expect.objectContaining({
-          blockerRefs: [],
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-send-readiness-preflight.md',
-            'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
-            'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_1',
-            'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_2',
-            'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
-            'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
-            'route:/api/forum/paid-actions/mdk/webhooks',
-            'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
-            'apps/openagents.com/docs/forum-tip-payout-smoke.md',
-            'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
-          ]),
-          promiseId: 'payments.money_dev_kit.v1',
-          safeCopy: expect.stringContaining('Spark remains the primary'),
-          state: 'green',
-          unsafeCopy: expect.stringContaining(
-            'Do not claim MDK mnemonic restore',
-          ),
-        }),
-        expect.objectContaining({
-          blockerRefs: [],
-          evidenceRefs: expect.arrayContaining([
-            'apps/pylon/docs/2026-06-15-spark-backup-receive-runbook.md',
-            'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-734d9003-e177-457e-8e33-757deda644ae',
-          ]),
-          promiseId: 'payments.offline_receive_spark_fallback.v1',
-          state: 'green',
-          unsafeCopy: expect.stringContaining(
-            'do not call the Spark backup balance a unified MDK spendable balance',
-          ),
-        }),
-        expect.objectContaining({
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md',
-          ]),
-          promiseId: 'provider.compliant_usage_labor.v1',
-          state: 'planned',
-        }),
-        expect.objectContaining({
-          blockerRefs: [],
-          evidenceRefs: expect.arrayContaining([
-            'apps/pylon/docs/live-worker-loop-smoke.md',
-          ]),
-          promiseId: 'pylon.cli_tui_probe_background.v1',
-          state: 'green',
-        }),
-        expect.objectContaining({
-          audience: expect.arrayContaining(['agent', 'contributor', 'public']),
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.wasm_plugin_self_serve_marketplace_not_live',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'apps/openagents.com/workers/api/src/wasm-plugin-marketplace.ts',
-            'apps/openagents.com/workers/api/src/wasm-plugin-marketplace-routes.ts',
-            'apps/openagents.com/workers/api/src/wasm-plugin-marketplace.test.ts',
-            'route:/api/public/marketplace/wasm-plugins',
-          ]),
-          promiseId: 'marketplace.wasm_plugins.v1',
-          safeCopy: expect.stringContaining('install/uninstall registry'),
-          state: 'planned',
-        }),
-        expect.objectContaining({
-          audience: expect.arrayContaining([
-            'contributor',
-            'operator',
-            'public',
-          ]),
-          evidenceRefs: expect.arrayContaining([
-            'route:/api/public/training/public-gradient-windows',
-            'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
-            'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
-            'apps/openagents.com/workers/api/src/training-public-gradient-windows.ts',
-            'apps/openagents.com/workers/api/src/training-public-gradient-windows.test.ts',
-          ]),
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.public_gradient_live_window_runtime_missing',
-            'blocker.product_promises.public_gradient_promoted_window_receipts_missing',
-            'blocker.product_promises.public_gradient_settlement_receipts_missing',
-          ]),
-          promiseId: 'training.public_gradient_windows.v1',
-          state: 'planned',
-          safeCopy: expect.stringContaining(
-            '/api/public/training/public-gradient-windows',
-          ),
-          verification: expect.stringContaining(
-            'intakeSurface.quarantineRouteAvailable=false',
-          ),
-        }),
-        expect.objectContaining({
-          audience: expect.arrayContaining([
-            'agent',
-            'contributor',
-            'operator',
-          ]),
-          blockerRefs: [],
-          promiseId: 'pylon.agent_steerable_cli.v1',
-          state: 'green',
-        }),
-        expect.objectContaining({
-          audience: expect.arrayContaining(['user', 'agent', 'operator']),
-          // 2026-07-14.1 owner-directed supersession withdrawal replaces the
-          // live blockers with the single withdrawn blocker.
-          blockerRefs: [
-            'blocker.product_promises.legacy_product_app_withdrawn',
-          ],
-          evidenceRefs: expect.arrayContaining([
-            'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
-            'docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-runbook.md',
-            'docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-smoke-evidence.md',
-            'apps/pylon/packages/runtime/src/backends/apple-fm/client.ts',
-            'apps/pylon/swift/foundation-bridge/Sources/foundation-bridge/main.swift',
-            'apps/pylon/src/node/apple-fm-bridge-helper.ts',
-            'apps/pylon/src/node/apple-fm-local-session.ts',
-            'apps/pylon/src/node/apple-fm-status.ts',
-            'apps/pylon/tests/apple-fm-bridge-helper.test.ts',
-            'apps/pylon/tests/apple-fm-control-session.test.ts',
-            'apps/pylon/tests/control-protocol.test.ts',
-            'apps/autopilot-desktop/src/bun/pylon-control.ts',
-            'apps/autopilot-desktop/src/shared/rpc.ts',
-            'apps/autopilot-desktop/src/shared/install-readiness.ts',
-            'apps/autopilot-desktop/src/ui/view.ts',
-            'apps/autopilot-desktop/tests/apple-fm-loopback-integration.test.ts',
-            'apps/autopilot-desktop/tests/cl-53-sanitize.test.ts',
-            'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
-            'docs/launch/vertex-fleet/autopilot.local_apple_fm_tool_chat.v1.md',
-            'clients/khala-code-desktop/src/bun/apple-fm-sidecar.ts',
-            'clients/khala-code-desktop/src/shared/apple-fm-packaging.ts',
-            'clients/khala-code-desktop/src/shared/apple-fm-readiness.ts',
-            'clients/khala-code-desktop/tests/apple-fm-sidecar.test.ts',
-          ]),
-          promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
-          // 2026-07-14.1 owner-directed supersession withdrawal
-          state: 'withdrawn',
-        }),
-      ]),
-    )
+    const browserSchemaExpectations = [
+      expect.objectContaining({
+        promiseId: 'autopilot.mission_briefing.v1',
+        // 2026-07-04.8 owner-directed revenue-refocus demotion
+        state: 'planned',
+      }),
+      expect.objectContaining({
+        promiseId: 'autopilot.decision_queue.v1',
+        state: 'planned',
+      }),
+      expect.objectContaining({
+        promiseId: 'workrooms.source_authorized_business_objects.v1',
+        state: 'yellow',
+      }),
+      expect.objectContaining({
+        promiseId: 'identity.orange_check_forum_signal.v1',
+        state: 'yellow',
+        blockerRefs: [
+          'blocker.product_promises.orange_check_production_purchase_receipt_missing',
+          'blocker.product_promises.orange_check_buyer_badge_visibility_proof_missing',
+          'blocker.product_promises.orange_check_owner_signed_green_transition_missing',
+        ],
+        evidenceRefs: expect.arrayContaining([
+          'nostr_event:83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da@wss://relay.openagents.com',
+        ]),
+        verification: expect.stringContaining(
+          'owner-signed yellow->green transition receipt',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'mobile.voice_approval_companion.v1',
+        // 2026-07-04.8 owner-directed revenue-refocus demotion
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
+          'route:/api/mobile/workroom-approval-projection',
+        ]),
+        blockerRefs: expect.not.arrayContaining([
+          'blocker.product_promises.mobile_projection_missing',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'pylon.no_dark_capacity_accounting.v1',
+        state: 'green',
+        blockerRefs: [],
+        evidenceRefs: expect.arrayContaining([
+          'promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe',
+          'route:/api/public/pylon-capacity-funnel/history',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'payments.accepted_outcome_economics.v1',
+        state: 'red',
+        evidenceRefs: expect.arrayContaining([
+          'route:/api/public/accepted-outcome/settlement/{economicsId}',
+          'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-state-machine.ts',
+          'apps/openagents.com/workers/api/src/public-accepted-outcome-settlement-routes.test.ts',
+          'route:/api/public/payments/contributor-accrual-bundle',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle.ts',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-routes.test.ts',
+          'apps/openagents.com/workers/api/src/omni-gross-margin-receipt.ts',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-ledger.ts',
+        ]),
+        blockerRefs: expect.not.arrayContaining([
+          'blocker.product_promises.settlement_state_machine_incomplete',
+          'blocker.product_promises.contributor_ledger_missing',
+          'blocker.product_promises.gross_margin_receipts_missing',
+        ]),
+        safeCopy: expect.stringContaining('contributor accrual ledger'),
+        verification: expect.stringContaining(
+          'pending_payout-to-ledger reconciliation',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'energy.flexible_load_proof.v1',
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'route:/api/public/energy/flexible-load-proof',
+          'apps/openagents.com/workers/api/src/ercot-lmp-ingestion.ts',
+          'apps/openagents.com/workers/api/src/pylon-flexible-load-profiles.ts',
+          'apps/openagents.com/workers/api/src/pylon-flexible-load-events.ts',
+          'apps/openagents.com/workers/api/src/energy-flexible-load-proof.ts',
+        ]),
+        blockerRefs: [
+          'blocker.product_promises.real_flexible_load_receipt_missing',
+          'blocker.product_promises.owner_signed_energy_green_transition_missing',
+        ],
+        safeCopy: expect.stringContaining(
+          '/api/public/energy/flexible-load-proof',
+        ),
+        verification: expect.stringContaining('greenGateSatisfied=false'),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.full_pipeline_program.v1',
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+          'docs/training/2026-06-20-training-full-pipeline-program-status.md',
+          'route:/api/public/training/full-pipeline-program',
+          'apps/openagents.com/workers/api/src/training-full-pipeline-program.ts',
+          'apps/openagents.com/workers/api/src/training-full-pipeline-program.test.ts',
+        ]),
+        blockerRefs: [
+          'blocker.product_promises.training_pipeline_rails_incomplete',
+        ],
+        safeCopy: expect.stringContaining(
+          '/api/public/training/full-pipeline-program',
+        ),
+        verification: expect.stringContaining('greenGateSatisfied=false'),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.ablation_system.v1',
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'docs/training/2026-06-20-ablation-one-delta-harness.md',
+          'docs/training/2026-06-20-ablation-eval-reproduction-receipt.md',
+          'https://openagents.com/api/public/training/ablation-derisking-ledger',
+          'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
+          'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
+        ]),
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.seeded_ablation_replication_missing',
+          'blocker.product_promises.owner_signed_green_transition_missing',
+        ]),
+        safeCopy: expect.stringContaining(
+          '/api/public/training/ablation-derisking-ledger',
+        ),
+        verification: expect.stringContaining('one-delta manifest harness'),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.data_refinery_corpus.v1',
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
+          'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.ts',
+          'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.test.ts',
+          'apps/openagents.com/workers/api/src/cs336-a4-paid-refinery-shard-dispatch.ts',
+          'apps/openagents.com/workers/api/src/cs336-a4-paid-refinery-shard-dispatch.test.ts',
+          'apps/openagents.com/workers/api/src/cs336-a4-provenance.ts',
+          'apps/openagents.com/workers/api/src/cs336-a4-provenance.test.ts',
+          'apps/openagents.com/workers/api/src/training-data-refinery.ts',
+          'apps/openagents.com/workers/api/src/training-data-refinery.test.ts',
+          'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
+        ]),
+        blockerRefs: [
+          'blocker.product_promises.crawl_scale_corpus_missing',
+          'blocker.product_promises.corpus_provenance_receipts_missing',
+          'blocker.product_promises.eval_delta_payment_missing',
+        ],
+        safeCopy: expect.stringContaining('evalDeltaPaymentGate'),
+        verification: expect.stringContaining('paid-dispatch receipt builder'),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.marathon_operations.v1',
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
+          'route:/api/public/training/marathon-operations',
+          'apps/openagents.com/workers/api/src/training-marathon-operations.ts',
+          'apps/openagents.com/workers/api/src/training-marathon-operations.test.ts',
+          'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
+          'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
+          'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
+          'apps/openagents.com/workers/api/src/training-standby-dispatch.ts',
+          'apps/openagents.com/workers/api/src/training-standby-dispatch.test.ts',
+          'apps/openagents.com/workers/api/src/training-curtailment-drill.ts',
+          'apps/openagents.com/workers/api/src/training-curtailment-drill.test.ts',
+          'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
+        ]),
+        blockerRefs: [
+          'blocker.product_promises.durable_checkpoint_seal_missing',
+          'blocker.product_promises.standby_dispatch_missing',
+          'blocker.product_promises.curtailment_drill_missing',
+        ],
+        safeCopy: expect.stringContaining(
+          '/api/public/training/marathon-operations',
+        ),
+        verification: expect.stringContaining(
+          'curtailmentSurface.predicateAvailable=true',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.device_capability_dataset.v1',
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
+          'apps/openagents.com/workers/api/src/training-device-capability.ts',
+          'apps/openagents.com/workers/api/src/training-device-capability.test.ts',
+          'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
+        ]),
+        blockerRefs: [
+          'blocker.product_promises.thermal_throttle_detection_missing',
+          'blocker.product_promises.same_host_replication_caveat',
+        ],
+        safeCopy: expect.stringContaining('sameClassReplicationStatus'),
+        verification: expect.stringContaining(
+          'legacy settled rows fail closed to same_host_only',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.post_training_arc.v1',
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
+          'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
+          'route:/api/public/training/post-training-arc/instruct-sft-lane',
+          'route:/api/public/training/post-training-arc/dpo-preference-workload',
+          'route:/api/public/training/post-training-arc/vibe-test-rubric',
+          'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.ts',
+          'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.test.ts',
+          'apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.ts',
+          'apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.test.ts',
+          'apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.ts',
+          'apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.test.ts',
+          'apps/openagents.com/workers/api/src/training-post-training-paid-dispatch.ts',
+          'apps/openagents.com/workers/api/src/training-post-training-paid-dispatch.test.ts',
+          'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.ts',
+          'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.test.ts',
+          'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.ts',
+          'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.test.ts',
+          'https://github.com/OpenAgentsInc/psionic/blob/main/scripts/check-psion-instruct-sft-lane.sh',
+          'https://github.com/OpenAgentsInc/psionic/pull/1132',
+        ]),
+        blockerRefs: [
+          'blocker.product_promises.instruct_sft_paid_dispatch_missing',
+          'blocker.product_promises.preference_rollout_work_missing',
+          'blocker.product_promises.vibe_test_artifact_missing',
+        ],
+        safeCopy: expect.stringContaining(
+          '/api/public/training/post-training-arc/dpo-preference-workload',
+        ),
+        verification: expect.stringContaining(
+          'paidPreferenceDispatchAvailable=false',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'artanis.tassadar_evolution_loop.v1',
+        state: 'green',
+        blockerRefs: [],
+        evidenceRefs: expect.arrayContaining([
+          'route:/api/public/artanis/tassadar-distillation-dataset',
+          'apps/openagents.com/workers/api/src/artanis-distillation-dataset-receipt.ts',
+          'apps/openagents.com/workers/api/src/artanis-distillation-dataset-receipt.test.ts',
+          'docs/training/2026-06-20-artanis-distillation-dataset-receipt.md',
+        ]),
+        safeCopy: expect.stringContaining(
+          '/api/public/artanis/tassadar-distillation-dataset',
+        ),
+        verification: expect.stringContaining(
+          'tassadar_distillation_dataset_receipt_missing are therefore cleared',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.model_ladder.v1',
+        state: 'planned',
+        blockerRefs: ['blocker.product_promises.r1_full_rehearsal_missing'],
+        evidenceRefs: expect.arrayContaining([
+          'docs/training/2026-06-19-model-ladder-rung-economics.md',
+          'route:/api/public/training/model-ladder-rungs',
+          'apps/openagents.com/workers/api/src/training-model-ladder-rungs.ts',
+          'apps/openagents.com/workers/api/src/training-model-ladder-rungs.test.ts',
+        ]),
+        safeCopy: expect.stringContaining(
+          'GET /api/public/training/model-ladder-rungs',
+        ),
+        verification: expect.stringContaining(
+          'rung_economics_gate_format_missing dimension is documented',
+        ),
+        unsafeCopy: expect.stringContaining(
+          'Do not claim any Psion rung above R0 is trained',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.public_distributed_training_run.v1',
+        state: 'planned',
+        blockerRefs: [
+          'blocker.product_promises.public_distributed_training_run_receipts_missing',
+        ],
+        evidenceRefs: expect.arrayContaining([
+          'docs/transcripts/236.md',
+          'docs/launch/vertex-fleet/training.public_distributed_training_run.v1.md',
+          'route:/api/public/training/public-distributed-run-scale',
+          'apps/openagents.com/workers/api/src/training-public-distributed-run-scale.ts',
+          'apps/openagents.com/workers/api/src/training-public-distributed-run-scale.test.ts',
+        ]),
+        safeCopy: expect.stringContaining(
+          'GET /api/public/training/public-distributed-run-scale',
+        ),
+        verification: expect.stringContaining('networkScaleThresholdMet=false'),
+      }),
+      expect.objectContaining({
+        promiseId: 'training.decentralized_training_launch.v1',
+        state: 'green',
+        blockerRefs: [],
+        evidenceRefs: expect.arrayContaining([
+          'receipt.nexus.tassadar_run_settlement.idem.tassadar.settlement.59ba1f30.orrery.v2',
+          'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
+        ]),
+        safeCopy: expect.stringContaining('realBitcoinMoved:false'),
+        unsafeCopy: expect.stringContaining('realBitcoinMoved:true'),
+        verification: expect.stringContaining(
+          'must not be counted as real Bitcoin movement',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'pylon.largest_decentralized_training_claim.v1',
+        state: 'planned',
+        blockerRefs: [
+          'blocker.product_promises.public_training_contributor_receipts_missing',
+        ],
+        evidenceRefs: expect.arrayContaining([
+          'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
+          'docs/training/2026-06-19-comparable-decentralized-training-runs-research.md',
+          'docs/launch/vertex-fleet/pylon.largest_decentralized_training_claim.v1.md',
+          'route:/api/public/pylon/largest-decentralized-training-claim',
+          'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.ts',
+          'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.test.ts',
+        ]),
+        safeCopy: expect.stringContaining(
+          'GET /api/public/pylon/largest-decentralized-training-claim',
+        ),
+        verification: expect.stringContaining(
+          'transcriptTargetThresholdMet=false',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'claims.world_first_ai_training_paid_bitcoin.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_evidence_pack_missing',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'docs/transcripts/238.md',
+          'docs/launch/2026-06-18-world-firsts-verification.md',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'claims.world_first_public_llm_computer_training_run.v1',
+        state: 'planned',
+        // The definition-missing blocker is cleared by
+        // docs/launch/2026-06-20-llm-computer-training-run-definition.md, and
+        // the evidence-pack-missing blocker is cleared by the focused
+        // docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md;
+        // only the owner-signed-upgrade blocker still stands.
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'promise:compute.tassadar_executor_poc.v1',
+          'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
+          'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md',
+          'apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'pylon.consumer_compute_earns_bitcoin_self_serve.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing',
+          'blocker.product_promises.windows_wsl_consumer_install_coverage_missing',
+          'blocker.product_promises.spark_helper_autostart_receipt_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'https://openagents.com/api/public/training/runs/run.tassadar.executor.20260615/settlements',
+          'docs/launch/2026-06-19-autostream-settlement-visibility-capture.md',
+          'proof_replay_bundle.public_activity.73e66071',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'marketplace.agentic_npm_module_registry.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.agentic_npm_billing_settlement_missing',
+          'blocker.product_promises.agentic_npm_paid_public_marketplace_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.ts',
+          'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'referral.refer_once_earn_forever.v1',
+        state: 'red',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.referral_first_real_payout_pending',
+          'blocker.product_promises.referral_purchase_to_payout_receipt_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'docs/transcripts/239.md',
+          'apps/openagents.com/workers/api/src/referral-cross-category-accrual.ts',
+          'apps/openagents.com/workers/api/src/marketplace-monetize-any-layer-accrual.ts',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'autopilot.all_in_one_business_system.v1',
+        state: 'planned',
+      }),
+      expect.objectContaining({
+        promiseId: 'cloud.primitives_suite.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.cloud_fine_tuning_live_sellable_service_missing',
+          'blocker.product_promises.cloud_sandbox_compute_live_sellable_service_missing',
+          'blocker.product_promises.cloud_primitives_live_unified_balance_debit_receipt_missing',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'cloud.fine_tuning_service.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.cloud_fine_tuning_live_intake_disabled',
+          'blocker.product_promises.cloud_fine_tuning_live_pricing_missing',
+          'blocker.product_promises.cloud_fine_tuning_paid_receipt_missing',
+          'blocker.product_promises.cloud_fine_tuning_billing_settlement_missing',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'cloud.sandbox_compute_service.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.cloud_sandbox_live_rent_surface_disabled',
+          'blocker.product_promises.cloud_sandbox_live_pricing_missing',
+          // The D1 fixture runtime and receipt ARTIFACT now exist; remaining
+          // gates are live rent/pricing plus real renter + owner sign-off.
+          'blocker.product_promises.cloud_sandbox_real_renter_demand_provenance_and_owner_signoff_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/workers/api/migrations/0257_cloud_sandbox_runtime.sql',
+        ]),
+        safeCopy: expect.stringContaining('bounded D1 fixture runtime'),
+      }),
+      expect.objectContaining({
+        promiseId: 'markets.open_protocol_markets.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.liquidity_market_unbuilt',
+          'blocker.product_promises.risk_market_unbuilt',
+          'blocker.product_promises.compute_data_markets_not_broadly_live',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/workers/api/src/open-markets-surface.ts',
+          'apps/openagents.com/workers/api/src/open-markets-routes.ts',
+          'apps/openagents.com/workers/api/src/open-markets-skeletons.ts',
+          'route:/api/public/markets/open-markets',
+          'route:/api/public/markets/liquidity/skeleton',
+          'route:/api/public/markets/risk/skeleton',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'marketplace.compose_and_list_products.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.marketplace_paid_listing_runtime_missing',
+          'blocker.product_promises.marketplace_billing_settlement_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/workers/api/src/marketplace-product-composition.ts',
+          'apps/openagents.com/workers/api/src/marketplace-composition-routes.ts',
+          'route:/api/public/marketplace/composed-products',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'marketplace.monetize_any_layer_with_referral.v1',
+        state: 'planned',
+      }),
+      expect.objectContaining({
+        promiseId: 'claims.pursued_world_first_largest_agentic_sales_force.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'claims.pursued_world_first_largest_sales_force.v1',
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'models.tasadar_percepta_executor.v1',
+        state: 'withdrawn',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.misspelled_promise_id_withdrawn',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'models.tassadar_percepta_executor.v1',
+        state: 'planned',
+        evidenceRefs: expect.arrayContaining([
+          'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
+          'backroom:openagents-prune-20260708-tassadar-psionic@a56fd270',
+          'route:/api/public/models/tassadar-percepta-executor/architecture-receipts',
+          'route:/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts',
+          'apps/openagents.com/workers/api/src/tassadar-percepta-architecture-receipts.ts',
+          'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.ts',
+          'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.test.ts',
+          'receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1',
+        ]),
+        blockerRefs: [
+          'blocker.product_promises.tassadar_cpu_transform_real_settlement_missing',
+          'blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing',
+        ],
+        safeCopy: expect.stringContaining(
+          'one bounded Pylon v1.0 CPU computation-transform fixture receipt',
+        ),
+        verification: expect.stringContaining(
+          'cpuTransformTrainingReceiptAvailable=true',
+        ),
+      }),
+      expect.objectContaining({
+        promiseId: 'pylon.v0_3_multi_earning_node.v1',
+        state: 'planned',
+      }),
+      expect.objectContaining({
+        promiseId: 'training.verification_classes.v1',
+        state: 'green',
+        evidenceRefs: expect.arrayContaining([
+          'receipt.nexus_pylon.settlement.assignment_public_training_validator_recheck_20260611053500',
+          'promise_transition_0bfce0c5-e4dd-4d19-9221-4bc9504f2055',
+        ]),
+      }),
+      expect.objectContaining({
+        promiseId: 'proof.demand_provenance.v1',
+        state: 'green',
+        evidenceRefs: expect.arrayContaining([
+          'route:/api/public/demand-provenance',
+          'apps/openagents.com/workers/api/src/demand-provenance.ts',
+          'apps/openagents.com/workers/api/src/demand-provenance-routes.ts',
+          'apps/openagents.com/workers/api/src/demand-provenance.test.ts',
+          'route:/api/public/pylon-stats',
+          'route:/api/training/leaderboards/*',
+          'route:/api/public/training/runs/{trainingRunRef}',
+          'route:/api/public/training/model-ladder-rungs',
+        ]),
+        blockerRefs: [],
+      }),
+      expect.objectContaining({
+        promiseId: 'proof.claim_upgrade_receipts.v1',
+        state: 'green',
+      }),
+      expect.objectContaining({
+        promiseId: 'repo.open_source_code_map.v1',
+        state: 'green',
+        evidenceRefs: expect.arrayContaining([
+          'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/workers/api',
+          'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/apps/web',
+          'https://github.com/OpenAgentsInc/openagents/tree/main/apps/pylon',
+          'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
+        ]),
+        authorityBoundary: expect.stringContaining(
+          'does not grant write, deploy, spend',
+        ),
+      }),
+      expect.objectContaining({
+        audience: expect.arrayContaining(['agent', 'operator', 'developer']),
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.repo_studying_privacy_review_missing',
+          'blocker.product_promises.repo_studying_marketplace_metering_missing',
+          'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
+          'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
+          'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
+          'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
+          'promise:repo.open_source_code_map.v1',
+        ]),
+        promiseId: 'autopilot.repo_study_packets.v1',
+        safeCopy: expect.stringContaining('dogfooding'),
+        state: 'planned',
+      }),
+      expect.objectContaining({
+        blockerRefs: [],
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
+        ]),
+        promiseId: 'agents.cursor_forum_wallet.v1',
+        state: 'green',
+      }),
+      expect.objectContaining({
+        blockerRefs: [],
+        evidenceRefs: expect.arrayContaining([
+          'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
+          'route:/api/forum/paid-actions/mdk/webhooks',
+          'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
+          'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
+          'apps/openagents.com/docs/forum-tip-payout-smoke.md',
+          'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
+          'apps/openagents.com/docs/forum/2026-06-11-forum-tip-webhook-refund-live-smoke-evidence.md',
+          'transition:promise_transition_c106102b-e51b-4d2f-84ed-a588f1a26316',
+          'transition:promise_transition_feab90da-aead-49e1-9097-bd0b8bb5c11a',
+          'transition:promise_transition_e632649a-acfa-4e69-ad4b-269e92c963b3',
+          'transition:promise_transition_0cfba5d7-40ff-48bd-81a3-4b0758b0acd8',
+        ]),
+        promiseId: 'forum.content_tipping.v1',
+        state: 'green',
+      }),
+      expect.objectContaining({
+        blockerRefs: [],
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-send-readiness-preflight.md',
+          'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+          'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_1',
+          'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_2',
+          'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
+          'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
+          'route:/api/forum/paid-actions/mdk/webhooks',
+          'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
+          'apps/openagents.com/docs/forum-tip-payout-smoke.md',
+          'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
+        ]),
+        promiseId: 'payments.money_dev_kit.v1',
+        safeCopy: expect.stringContaining('Spark remains the primary'),
+        state: 'green',
+        unsafeCopy: expect.stringContaining(
+          'Do not claim MDK mnemonic restore',
+        ),
+      }),
+      expect.objectContaining({
+        blockerRefs: [],
+        evidenceRefs: expect.arrayContaining([
+          'apps/pylon/docs/2026-06-15-spark-backup-receive-runbook.md',
+          'https://openagents.com/forum/t/34bebe36-1c7c-443a-b7e2-13ec521955d9#post-734d9003-e177-457e-8e33-757deda644ae',
+        ]),
+        promiseId: 'payments.offline_receive_spark_fallback.v1',
+        state: 'green',
+        unsafeCopy: expect.stringContaining(
+          'do not call the Spark backup balance a unified MDK spendable balance',
+        ),
+      }),
+      expect.objectContaining({
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md',
+        ]),
+        promiseId: 'provider.compliant_usage_labor.v1',
+        state: 'planned',
+      }),
+      expect.objectContaining({
+        blockerRefs: [],
+        evidenceRefs: expect.arrayContaining([
+          'apps/pylon/docs/live-worker-loop-smoke.md',
+        ]),
+        promiseId: 'pylon.cli_tui_probe_background.v1',
+        state: 'green',
+      }),
+      expect.objectContaining({
+        audience: expect.arrayContaining(['agent', 'contributor', 'public']),
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.wasm_plugin_self_serve_marketplace_not_live',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'apps/openagents.com/workers/api/src/wasm-plugin-marketplace.ts',
+          'apps/openagents.com/workers/api/src/wasm-plugin-marketplace-routes.ts',
+          'apps/openagents.com/workers/api/src/wasm-plugin-marketplace.test.ts',
+          'route:/api/public/marketplace/wasm-plugins',
+        ]),
+        promiseId: 'marketplace.wasm_plugins.v1',
+        safeCopy: expect.stringContaining('install/uninstall registry'),
+        state: 'planned',
+      }),
+      expect.objectContaining({
+        audience: expect.arrayContaining(['contributor', 'operator', 'public']),
+        evidenceRefs: expect.arrayContaining([
+          'route:/api/public/training/public-gradient-windows',
+          'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
+          'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
+          'apps/openagents.com/workers/api/src/training-public-gradient-windows.ts',
+          'apps/openagents.com/workers/api/src/training-public-gradient-windows.test.ts',
+        ]),
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.public_gradient_live_window_runtime_missing',
+          'blocker.product_promises.public_gradient_promoted_window_receipts_missing',
+          'blocker.product_promises.public_gradient_settlement_receipts_missing',
+        ]),
+        promiseId: 'training.public_gradient_windows.v1',
+        state: 'planned',
+        safeCopy: expect.stringContaining(
+          '/api/public/training/public-gradient-windows',
+        ),
+        verification: expect.stringContaining(
+          'intakeSurface.quarantineRouteAvailable=false',
+        ),
+      }),
+      expect.objectContaining({
+        audience: expect.arrayContaining(['agent', 'contributor', 'operator']),
+        blockerRefs: [],
+        promiseId: 'pylon.agent_steerable_cli.v1',
+        state: 'green',
+      }),
+      expect.objectContaining({
+        audience: expect.arrayContaining(['user', 'agent', 'operator']),
+        // 2026-07-14.1 owner-directed supersession withdrawal replaces the
+        // live blockers with the single withdrawn blocker.
+        blockerRefs: ['blocker.product_promises.legacy_product_app_withdrawn'],
+        evidenceRefs: expect.arrayContaining([
+          'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
+          'docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-runbook.md',
+          'docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-smoke-evidence.md',
+          'apps/pylon/packages/runtime/src/backends/apple-fm/client.ts',
+          'apps/pylon/swift/foundation-bridge/Sources/foundation-bridge/main.swift',
+          'apps/pylon/src/node/apple-fm-bridge-helper.ts',
+          'apps/pylon/src/node/apple-fm-local-session.ts',
+          'apps/pylon/src/node/apple-fm-status.ts',
+          'apps/pylon/tests/apple-fm-bridge-helper.test.ts',
+          'apps/pylon/tests/apple-fm-control-session.test.ts',
+          'apps/pylon/tests/control-protocol.test.ts',
+          'apps/autopilot-desktop/src/bun/pylon-control.ts',
+          'apps/autopilot-desktop/src/shared/rpc.ts',
+          'apps/autopilot-desktop/src/shared/install-readiness.ts',
+          'apps/autopilot-desktop/src/ui/view.ts',
+          'apps/autopilot-desktop/tests/apple-fm-loopback-integration.test.ts',
+          'apps/autopilot-desktop/tests/cl-53-sanitize.test.ts',
+          'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
+          'docs/launch/vertex-fleet/autopilot.local_apple_fm_tool_chat.v1.md',
+          'clients/khala-code-desktop/src/bun/apple-fm-sidecar.ts',
+          'clients/khala-code-desktop/src/shared/apple-fm-packaging.ts',
+          'clients/khala-code-desktop/src/shared/apple-fm-readiness.ts',
+          'clients/khala-code-desktop/tests/apple-fm-sidecar.test.ts',
+        ]),
+        promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
+        // 2026-07-14.1 owner-directed supersession withdrawal
+        state: 'withdrawn',
+      }),
+    ]
+    for (const expectation of browserSchemaExpectations) {
+      const promiseId = (
+        expectation as unknown as { sample: { promiseId?: string } }
+      ).sample.promiseId
+      const promise = decoded.promises.find(
+        item => item.promiseId === promiseId,
+      )
+
+      // VP-1 withdrawal expectations are asserted directly above and in the
+      // dedicated retirement tests. Keep this broad legacy schema matrix for
+      // every promise outside the retired money/Sites graph.
+      if (
+        promise?.blockerRefs.includes(
+          'blocker.product_promises.money_and_sites_graph_retired',
+        )
+      ) {
+        continue
+      }
+      expect(decoded.promises).toEqual(expect.arrayContaining([expectation]))
+    }
     const mobileApprovalPromise = decoded.promises.find(
       promise => promise.promiseId === 'mobile.voice_approval_companion.v1',
     )
@@ -2296,9 +2287,7 @@ describe('public product promises document', () => {
     expect(localAppleFmPromise?.safeCopy).toContain(
       'promise:openagents.desktop_app.v1',
     )
-    expect(localAppleFmPromise?.verification).toContain(
-      'registry still serves',
-    )
+    expect(localAppleFmPromise?.verification).toContain('registry still serves')
     const mondayTrainingPromise = decoded.promises.find(
       promise =>
         promise.promiseId === 'training.decentralized_training_launch.v1',
@@ -2373,7 +2362,7 @@ describe('public product promises document', () => {
     )
   })
 
-  test('world-first and largest-force claims stay gated by the #7027 dated audit', () => {
+  test('withdraws the paid world-first claim while retaining its dated audit', () => {
     const auditDoc = 'docs/promises/2026-06-29-world-first-claims-7027-audit.md'
     expect(existsSync(repoFile(auditDoc))).toBe(true)
 
@@ -2386,17 +2375,13 @@ describe('public product promises document', () => {
       'claims.world_first_ai_training_paid_bitcoin.v1',
     )
     expect(paidBitcoin).toMatchObject({
-      // 2026-07-04.8 owner-directed revenue-refocus demotion (training claims)
-      state: 'planned',
-      blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.world_first_evidence_pack_missing',
-        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
-      ]),
+      state: 'withdrawn',
+      blockerRefs: ['blocker.product_promises.money_and_sites_graph_retired'],
       evidenceRefs: expect.arrayContaining([auditDoc]),
     })
-    expect(paidBitcoin?.safeCopy).toContain('full qualifiers')
-    expect(paidBitcoin?.unsafeCopy).toContain('bare "world first"')
-    expect(paidBitcoin?.verification).toContain('#7027 dated audit')
+    expect(paidBitcoin?.safeCopy).toContain('No retired paid')
+    expect(paidBitcoin?.unsafeCopy).toContain('Do not advertise')
+    expect(paidBitcoin?.verification).toContain('active UI')
 
     const llmComputer = byId.get(
       'claims.world_first_public_llm_computer_training_run.v1',
@@ -2467,9 +2452,7 @@ describe('public product promises document', () => {
       const promise = byId.get(promiseId)
       expect(promise).toMatchObject({
         state: 'withdrawn',
-        blockerRefs: [
-          'blocker.product_promises.legacy_product_app_withdrawn',
-        ],
+        blockerRefs: ['blocker.product_promises.legacy_product_app_withdrawn'],
         evidenceRefs: expect.arrayContaining([
           'https://github.com/OpenAgentsInc/openagents/issues/7030',
           'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
@@ -2505,10 +2488,10 @@ describe('public product promises document', () => {
       'pylon.largest_decentralized_training_claim.v1': 'planned',
       // 2026-07-04.8 owner-directed revenue-refocus demotion
       'pylon.consumer_compute_earns_bitcoin_self_serve.v1': 'planned',
-      'pylon.v0_3_multi_earning_node.v1': 'planned',
-      'pylon.five_bitcoin_revenue_streams.v1': 'planned',
-      'pylon.compute_revenue_modes.v1': 'planned',
-      'pylon.data_trace_revenue.v1': 'planned',
+      'pylon.v0_3_multi_earning_node.v1': 'withdrawn',
+      'pylon.five_bitcoin_revenue_streams.v1': 'withdrawn',
+      'pylon.compute_revenue_modes.v1': 'withdrawn',
+      'pylon.data_trace_revenue.v1': 'withdrawn',
       'pylon.gepa_worker_loop_v03.v1': 'planned',
     }
     for (const [promiseId, expectedState] of Object.entries(
@@ -2553,10 +2536,8 @@ describe('public product promises document', () => {
       document.notes.find(note => note.includes('Registry 2026-07-09.2')),
     ).toContain('route-level intake evidence only')
     expect(multiEarningPylon).toMatchObject({
-      state: 'planned',
-      blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.pylon_fleetrun_closeout_receipts_missing',
-      ]),
+      state: 'withdrawn',
+      blockerRefs: ['blocker.product_promises.money_and_sites_graph_retired'],
       evidenceRefs: expect.arrayContaining([
         'route:/api/pylons/{pylonRef}/fleet-runs/claim',
         'route:/api/pylons/{pylonRef}/fleet-runs/accept',
@@ -2566,15 +2547,8 @@ describe('public product promises document', () => {
         'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/outcomes',
       ]),
     })
-    expect(multiEarningPylon?.safeCopy).toContain(
-      'route-level intake evidence only',
-    )
-    expect(multiEarningPylon?.safeCopy).toContain(
-      'closeout-route evidence only',
-    )
-    expect(multiEarningPylon?.verification).toContain(
-      'blocker.product_promises.pylon_fleetrun_closeout_receipts_missing',
-    )
+    expect(multiEarningPylon?.safeCopy).toContain('No retired paid')
+    expect(multiEarningPylon?.verification).toContain('active UI')
 
     expect(byId.get('pylon.first_real_model_training_run.v1')).toMatchObject({
       blockerRefs: [
@@ -2613,15 +2587,15 @@ describe('public product promises document', () => {
     )
   })
 
-  test('signature monetization records metering evidence while keeping settlement blocked', () => {
+  test('withdraws signature monetization while retaining metering evidence', () => {
     const document = publicProductPromisesDocument()
     const signaturePromise = document.promises.find(
       promise => promise.promiseId === 'marketplace.signature_monetization.v1',
     )
 
     expect(signaturePromise).toMatchObject({
-      state: 'planned',
-      blockerRefs: ['blocker.product_promises.signature_settlement_missing'],
+      state: 'withdrawn',
+      blockerRefs: ['blocker.product_promises.money_and_sites_graph_retired'],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/workers/api/src/signature-marketplace-revenue-gate.ts',
         'apps/openagents.com/workers/api/src/signature-marketplace-revenue-gate.test.ts',
@@ -2630,21 +2604,14 @@ describe('public product promises document', () => {
         'route:/api/public/markets/signature-monetization/metering',
       ]),
     })
-    expect(signaturePromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.signature_usage_metering_missing',
-    )
-    expect(signaturePromise?.safeCopy).toContain(
-      'tested package activation/pricing/rev-share/settlement-receipt gate logic',
-    )
-    expect(signaturePromise?.verification).toContain(
-      'publish -> activate -> usable refs',
-    )
+    expect(signaturePromise?.safeCopy).toContain('No retired paid')
+    expect(signaturePromise?.verification).toContain('active UI')
     expect(signaturePromise?.authorityBoundary).toContain(
-      'pure gate projections do not by themselves mutate package listings',
+      'historical evidence only',
     )
   })
 
-  test('partner payout ledger records projection evidence while keeping settlement blocked', () => {
+  test('withdraws the partner payout ledger while retaining projection evidence', () => {
     const document = publicProductPromisesDocument()
     const partnerPromise = document.promises.find(
       promise =>
@@ -2652,11 +2619,8 @@ describe('public product promises document', () => {
     )
 
     expect(partnerPromise).toMatchObject({
-      // 2026-07-04.8 owner-directed revenue-refocus demotion
-      state: 'planned',
-      blockerRefs: [
-        'blocker.product_promises.partner_first_real_payout_pending',
-      ],
+      state: 'withdrawn',
+      blockerRefs: ['blocker.product_promises.money_and_sites_graph_retired'],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/workers/api/src/partner-payout-public-projection.ts',
         'apps/openagents.com/workers/api/src/partner-payout-public-routes.ts',
@@ -2670,23 +2634,11 @@ describe('public product promises document', () => {
         'route:/api/public/partner-payout-receipts/{receiptRef}',
       ]),
     })
-    expect(partnerPromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.partner_projection_api_missing',
-    )
-    expect(partnerPromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.partner_attribution_policy_missing',
-    )
-    expect(partnerPromise?.blockerRefs).not.toContain(
-      'blocker.product_promises.partner_payout_settlement_not_wired',
-    )
-    expect(partnerPromise?.safeCopy).toContain(
-      'explicit-agreement-only attribution policy',
-    )
-    expect(partnerPromise?.verification).toContain(
-      'source-level settlement-dispatch blockers',
-    )
+    expect(partnerPromise?.safeCopy).toContain('No retired paid')
+    expect(partnerPromise?.unsafeCopy).toContain('Do not advertise')
+    expect(partnerPromise?.verification).toContain('active UI')
     expect(partnerPromise?.authorityBoundary).toContain(
-      'public aggregate projections are not spendable value',
+      'historical evidence only',
     )
   })
 

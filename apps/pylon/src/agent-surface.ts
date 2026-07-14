@@ -9,13 +9,13 @@ import { existsSync } from "node:fs"
 import { appendFile, mkdir, readFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
-import type { TipsNetworkOptions } from "./tips.js"
+import type { PylonNetworkOptions } from "./network-options.js"
 
 // ---------------------------------------------------------------------------
 // Forum surface
 
 async function forumRequest(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: { path: string; method: "GET" | "POST"; body?: Record<string, unknown>; idempotencyKey?: string },
 ): Promise<Record<string, unknown>> {
   const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -40,7 +40,7 @@ async function forumRequest(
 }
 
 export async function forumPostTopic(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: { forumSlug: string; title: string; bodyText: string },
 ): Promise<Record<string, unknown>> {
   const now = options.now?.() ?? new Date()
@@ -53,7 +53,7 @@ export async function forumPostTopic(
 }
 
 export async function forumReply(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   input: { topicId: string; bodyText: string },
 ): Promise<Record<string, unknown>> {
   const now = options.now?.() ?? new Date()
@@ -66,7 +66,7 @@ export async function forumReply(
 }
 
 export async function forumReadTopic(
-  options: TipsNetworkOptions,
+  options: PylonNetworkOptions,
   topicId: string,
 ): Promise<Record<string, unknown>> {
   return forumRequest(options, {

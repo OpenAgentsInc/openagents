@@ -1,4 +1,3 @@
-import { Container, getContainer } from '@cloudflare/containers'
 import {
   FleetRunAuthorityError,
   type FleetRunAuthorityRepositoryShape,
@@ -111,7 +110,6 @@ import {
   timingSafeEqual,
 } from './agent-registration'
 import {
-  cancelActiveAgentRunsForBillingExhaustionForEnv,
   makeAgentDefinitionRunStoreForEnv,
   makeAgentDefinitionStoreForEnv,
   makeAgentDefinitionTriggerStoreForEnv,
@@ -123,7 +121,6 @@ import {
   makeD1AgentScopedGrantStore,
 } from './agent-scoped-grant-routes'
 import { makeAgentSearchRoutes } from './agent-search-routes'
-import { makeAgentSiteRoutes } from './agent-site-routes'
 import {
   AgenticLaborProductEndpoint,
   handleAgenticLaborProductApi,
@@ -166,10 +163,6 @@ import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { makeOperatorArtanisDashboardRoutes } from './artanis-operator-dashboard-routes'
 import {
-  isRetiredMoneySurfaceRequest,
-  moneySurfaceRetiredResponse,
-} from './money-surface-retirement'
-import {
   makeArtanisDispatchExecution,
   readEffectiveArtanisApproval,
   readEffectiveArtanisPylonDispatchApprovalForOwner,
@@ -202,7 +195,6 @@ import {
   readArtanisResponderSupport,
 } from './artanis-responder-provenance'
 import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
-import { runArtanisSpendDecision } from './artanis-spend'
 import {
   boundedTickMonitorLimit,
   readArtanisTickMonitor,
@@ -280,7 +272,6 @@ import {
 import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
 import {
   type AutopilotWorkOrderRecord,
-  dispatchDueScheduledAutopilotWork,
   makeAutopilotWorkRoutes,
   recordAutopilotWorkerCloseoutFromPylon,
   verifyAutopilotL402PaymentProofFromBuyerLedger,
@@ -291,18 +282,12 @@ import {
 } from './backend-incident-events'
 import {
   type BillingSummary,
-  markOutOfCreditsNotificationFailed,
-  markOutOfCreditsNotificationSent,
   readBillingSummary,
-  requireMinimumRunCredits,
-  reserveOutOfCreditsNotification,
-  suspendBillingAccountIfOutOfCredits,
   withBillingCreditPackages,
 } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
 import {
   billingDomainMirrorFromEnv,
-  billingRuntimeForEnv,
 } from './billing-store'
 import {
   OpenAgentsDatabase,
@@ -348,11 +333,6 @@ import {
   handleBusinessAgentGuide,
   handleBusinessNewPage,
 } from './business-new-routes'
-import {
-  OPENAGENTS_DESKTOP_MVP_OBSERVATORY_PATH,
-  handleObservatoryTracePage,
-} from './observatory-routes'
-import { handleObserverPage } from './observer-routes'
 import { makeD1BusinessOutreachStore } from './business-outreach'
 import {
   ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
@@ -373,7 +353,6 @@ import {
   withBuyerPaymentLedgerMirror,
 } from './buyer-payment-ledger'
 import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
-import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
 // "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
 // (default off). When enabled, launch defaults to the real cloud control-plane
@@ -475,7 +454,6 @@ import {
   buildOrderSitesTransactionalEmailIdempotencyKey,
   sendAutopilotDecisionEmailWithLedger,
   sendOrderSitesTransactionalEmailWithLedger,
-  sendOutOfCreditsEmailWithLedger,
   sendPrivateWorkspaceInviteEmailWithLedger,
 } from './email'
 import {
@@ -501,6 +479,10 @@ import { recordEventLedgerMessageWithOwnerMutex } from './event-ledger-owner-seq
 import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-routes'
 import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
 import {
+  authorizesManagedFleetUnitDispatch,
+  selectExactManagedFleetProviderAccount,
+} from './fleet-managed-dispatch-authority'
+import {
   authorizeForgeControlPlaneBearer,
   makeForgeControlPlaneRoutes,
 } from './forge-control-plane-routes'
@@ -517,7 +499,6 @@ import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { forumContentDatabaseForEnv } from './forum/forum-content-store'
-import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import { readForumTipRecipientReadinessForActor } from './forum/repository'
 import {
   GitHubScmAuthBrokerDependencyFailed,
@@ -558,18 +539,9 @@ import {
 import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
 import {
   makeMissingOpenAgentsHostedMdkClient,
-  makeOpenAgentsHostedMdkRouteClient,
 } from './hosted-mdk-client'
 import type { ContainerPathFetch } from './http/container-fetch'
 import { handleForumThreadDocument } from './http/forum-social-preview'
-import {
-  type DurableMdkPaymentOutcome,
-  durableMdkPaymentOutcomeResponse,
-  journalMdkResponseOutcome,
-  mdkPaymentIdFromStatusPath,
-  mdkPaymentOutcomeStorageKey,
-  mdkTerminalOutcomeFromPayload,
-} from './http/mdk-payment-outcome-journal'
 import { fetchAppShellWithPylonStatsBootPayload } from './http/pylon-stats-boot-payload'
 import {
   forbidden,
@@ -780,12 +752,6 @@ import {
   routeModelRetrieveRequest,
 } from './inference/models-routes'
 import { makeFallbackLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice'
-import {
-  MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
-  makeMdkLightningInvoiceIssuer,
-  normalizeMdkLightningRouteUrl,
-} from './inference/mpp/mpp-lightning-invoice-mdk'
-import { makeSparkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-spark'
 import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
 import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
 import {
@@ -872,10 +838,6 @@ import {
   mintCloudRuntimeExecutionToken,
   revokeCloudRuntimeExecutionToken,
 } from './khala-cloud-runtime-execution-token'
-import {
-  authorizesManagedFleetUnitDispatch,
-  selectExactManagedFleetProviderAccount,
-} from './fleet-managed-dispatch-authority'
 import {
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
@@ -1014,16 +976,7 @@ import {
   MarketplaceWorkClassCatalogEndpoint,
   handleMarketplaceWorkClassCatalogApi,
 } from './marketplace-work-class-catalog-routes'
-import {
-  mdkContainerEnvVars,
-  optionalMdkContainerSecret,
-} from './mdk-container-env'
 import { hostedMdkDirectPayoutDisabledGate } from './mdk-payout-mode-gate'
-import {
-  makeMdkServiceHttpPathFetch,
-  makeMdkSidecarHttpRequestForward,
-  mdkServiceHttpBaseUrl,
-} from './mdk-service-endpoints'
 import {
   MOBILE_ACCOUNT_PATH,
   handleMobileAccountDeletionRequest,
@@ -1039,6 +992,10 @@ import {
   handleMobileWorkroomApprovalProjectionApi,
   isMobileWorkroomApprovalProjectionEnabled,
 } from './mobile-workroom-approval-projection-routes'
+import {
+  isRetiredMoneySurfaceRequest,
+  moneySurfaceRetiredResponse,
+} from './money-surface-retirement'
 import { makeMulletRoutes } from './mullet/routes'
 import { makeNativeListsService } from './native-lists'
 import { makeNativeListsRoutes } from './native-lists-routes'
@@ -1061,8 +1018,12 @@ import {
   logWorkerRouteWarning,
   observedEffect,
   observedPromise,
-  unwrapEffectTryPromiseCause,
 } from './observability'
+import {
+  OPENAGENTS_DESKTOP_MVP_OBSERVATORY_PATH,
+  handleObservatoryTracePage,
+} from './observatory-routes'
+import { handleObserverPage } from './observer-routes'
 import { handleOmniApiSdkSeedApi } from './omni-api-sdk-seed-routes'
 import { makeOmniBundleRoutes } from './omni-bundle-routes'
 import {
@@ -1080,7 +1041,6 @@ import {
   type AgentRunBundle,
   type AgentRunRecord,
   type OmniEventRecord,
-  cancelAgentRunOnShc,
 } from './omni-runs'
 import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
 import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
@@ -1364,7 +1324,6 @@ import {
 } from './supervision-longtail-domain-store'
 import {
   type SyncNotificationContext,
-  notifyAgentRunSyncScopes,
   notifySyncScopes,
   publishTeamChatMessageSync,
   publishTeamThreadFileSync,
@@ -1436,11 +1395,6 @@ import {
   listTeamThreadFiles,
   readThreadFileById,
 } from './thread-files'
-import {
-  type BufferPayFn,
-  checkTipsBufferBackingInvariant,
-  reconcileForwardingBufferPayments,
-} from './tips-sweep'
 import {
   type TokenLedgerRouteEnvSlice,
   directTokenLedgerRowFromIngestBody,
@@ -1523,26 +1477,9 @@ import {
 } from './training-verification'
 import { makeTrainingVerificationRoutes } from './training-verification-routes'
 import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
-import {
-  makeD1TreasuryTransactionStore,
-  makeTreasuryPageRoutes,
-} from './treasury-page-routes'
 import { makeTreasuryPaymentAuthority } from './treasury-payment-authority'
 import { makeHostedMdkPayoutAdapter } from './treasury-payment-hosted-mdk-payout-adapter'
 import { makeSparkTreasuryPayoutAdapter } from './treasury-payment-spark-payout-adapter'
-import {
-  TREASURY_SERVICE_TOKEN_HEADER,
-  handleOperatorSparkTreasuryFundingDestinationApi,
-  handleOperatorSparkTreasuryFundingInvoiceApi,
-  handleOperatorTreasuryFundingDestinationApi,
-  handleOperatorTreasuryPayoutApi,
-  handleOperatorTreasuryRecipientConfirmationApi,
-  handleOperatorTreasuryRecipientReportApi,
-  handleOperatorTreasuryStatusApi,
-  handleOperatorTreasuryTransactionReconcileApi,
-  handlePublicTreasuryLaunchStatusApi,
-  reconcilePendingTreasuryTransactions,
-} from './treasury-routes'
 import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
 import { handleVerticalFunnelRequest } from './vertical-funnel-routes'
 import {
@@ -1555,11 +1492,6 @@ import {
 } from './wasm-plugin-marketplace-routes'
 import { routeWellKnownAgentSurfaceRequest } from './well-known-agent-surfaces-routes'
 import { makeWorkerRouteRequest } from './worker-routes'
-import {
-  makeD1XClaimRewardTreasuryDispatchStore,
-  readXClaimRewardTreasuryDispatchConfig,
-  xClaimRewardDispatchDayStartIso,
-} from './x-claim-reward-treasury-dispatcher'
 
 export { EventLedgerOwnerDurableObject } from './event-ledger'
 
@@ -1586,8 +1518,6 @@ export {
 
 export const OPENAGENTS_ADMIN_EMAILS = ['chris@openagents.com'] as const
 const OPENAGENTS_CORE_TEAM_ID = 'team_openagents_core'
-const MDK_SIDECAR_INSTANCE_NAME = 'openagents-mdk-sidecar-20260611-5'
-const MDK_TREASURY_INSTANCE_NAME = 'openagents-mdk-treasury-20260610-4'
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const workerRuntime = {
   makeUuid: randomUuid,
@@ -1603,12 +1533,6 @@ const invalidAuthEmailOtpClaim = (email: string): CodeProviderError => ({
   value: email,
 })
 
-class MdkSidecarUnavailable extends S.TaggedErrorClass<MdkSidecarUnavailable>()(
-  'MdkSidecarUnavailable',
-  {
-    error: S.Defect(),
-  },
-) {}
 class UnsupportedAuthProvider extends S.TaggedErrorClass<UnsupportedAuthProvider>()(
   'UnsupportedAuthProvider',
   {
@@ -1643,254 +1567,9 @@ class ManagedFleetAuthorityError extends S.TaggedErrorClass<ManagedFleetAuthorit
     message: S.String,
   },
 ) {}
-
-export class MdkSidecarContainer extends Container<Env> {
-  override defaultPort = 8080
-  override sleepAfter = '30m'
-  override pingEndpoint = 'localhost:8080/healthz'
-
-  constructor(ctx: DurableObjectState<{}>, environment: Env) {
-    super(ctx, environment)
-    this.envVars = mdkContainerEnvVars(environment)
-    this.labels = {
-      service: 'openagents-mdk-sidecar',
-    }
-  }
-}
-
-class DurableMdkOutcomeContainer extends Container<Env> {
-  private async readPaymentOutcome(
-    paymentId: string,
-  ): Promise<DurableMdkPaymentOutcome | null> {
-    const value = await this.ctx.storage.get<DurableMdkPaymentOutcome>(
-      mdkPaymentOutcomeStorageKey(paymentId),
-    )
-
-    return value === undefined ? null : value
-  }
-
-  private async writePaymentOutcome(
-    paymentId: string,
-    outcome: DurableMdkPaymentOutcome,
-  ): Promise<void> {
-    await this.ctx.storage.put(mdkPaymentOutcomeStorageKey(paymentId), outcome)
-  }
-
-  override async fetch(request: Request) {
-    const url = new URL(request.url)
-
-    if (request.method === 'POST' && url.pathname === '/pay') {
-      const response = await this.containerFetch(request)
-      await journalMdkResponseOutcome(response, (paymentId, outcome) =>
-        this.writePaymentOutcome(paymentId, outcome),
-      )
-
-      return response
-    }
-
-    if (request.method === 'GET') {
-      const paymentId = mdkPaymentIdFromStatusPath(url.pathname)
-
-      if (paymentId !== null) {
-        try {
-          const response = await this.containerFetch(request)
-          const payload = await response
-            .clone()
-            .json()
-            .catch(() => null)
-          const outcome = mdkTerminalOutcomeFromPayload(
-            payload,
-            currentIsoTimestamp(),
-          )
-
-          if (outcome !== null) {
-            await this.writePaymentOutcome(paymentId, outcome)
-
-            return response
-          }
-
-          const stored = await this.readPaymentOutcome(paymentId)
-
-          return stored === null
-            ? response
-            : durableMdkPaymentOutcomeResponse(paymentId, stored)
-        } catch (error) {
-          const stored = await this.readPaymentOutcome(paymentId)
-
-          if (stored !== null) {
-            return durableMdkPaymentOutcomeResponse(paymentId, stored)
-          }
-
-          throw error
-        }
-      }
-    }
-
-    return this.containerFetch(request)
-  }
-}
-
-const mdkTreasuryContainerEnvVars = (
-  environment: OpenAgentsWorkerConfigEnv,
-): Record<string, string> => {
-  const accessToken = optionalMdkContainerSecret(
-    environment.MDK_TREASURY_ACCESS_TOKEN,
-  )
-  const mnemonic = optionalMdkContainerSecret(environment.MDK_TREASURY_MNEMONIC)
-  const serviceToken = optionalMdkContainerSecret(
-    environment.MDK_TREASURY_SERVICE_TOKEN,
-  )
-  const sparkApiKey = optionalMdkContainerSecret(
-    environment.SPARK_TREASURY_API_KEY ?? environment.OPENAGENTS_SPARK_API_KEY,
-  )
-  const sparkMnemonic = optionalMdkContainerSecret(
-    environment.SPARK_TREASURY_MNEMONIC ?? environment.MDK_TREASURY_MNEMONIC,
-  )
-  const sparkNetwork = optionalMdkContainerSecret(
-    environment.SPARK_TREASURY_NETWORK,
-  )
-  const sparkStorageDir = optionalMdkContainerSecret(
-    environment.SPARK_TREASURY_STORAGE_DIR,
-  )
-  const sparkTimeoutMs = optionalMdkContainerSecret(
-    environment.SPARK_TREASURY_TIMEOUT_MS,
-  )
-
-  return {
-    ...(accessToken === undefined
-      ? {}
-      : { MDK_TREASURY_ACCESS_TOKEN: accessToken }),
-    ...(mnemonic === undefined ? {} : { MDK_TREASURY_MNEMONIC: mnemonic }),
-    ...(serviceToken === undefined
-      ? {}
-      : { MDK_TREASURY_SERVICE_TOKEN: serviceToken }),
-    ...(sparkApiKey === undefined
-      ? {}
-      : { SPARK_TREASURY_API_KEY: sparkApiKey }),
-    ...(sparkMnemonic === undefined
-      ? {}
-      : { SPARK_TREASURY_MNEMONIC: sparkMnemonic }),
-    ...(sparkNetwork === undefined
-      ? {}
-      : { SPARK_TREASURY_NETWORK: sparkNetwork }),
-    ...(sparkStorageDir === undefined
-      ? {}
-      : { SPARK_TREASURY_STORAGE_DIR: sparkStorageDir }),
-    ...(sparkTimeoutMs === undefined
-      ? {}
-      : { SPARK_TREASURY_TIMEOUT_MS: sparkTimeoutMs }),
-  }
-}
-
-const MDK_TREASURY_CONTAINER_GENERATION_KEY =
-  'openagents.mdk_treasury.container_generation'
-const MDK_TREASURY_CONTAINER_GENERATION =
-  '2026-06-17.spark-treasury-funding-invoice'
-
-export class MdkTreasuryContainer extends DurableMdkOutcomeContainer {
-  override defaultPort = 8080
-  override sleepAfter = '30m'
-  override pingEndpoint = 'localhost:8080/healthz'
-
-  constructor(ctx: DurableObjectState<{}>, environment: Env) {
-    super(ctx, environment)
-    this.envVars = mdkTreasuryContainerEnvVars(environment)
-    this.labels = {
-      service: 'openagents-mdk-treasury',
-    }
-  }
-
-  private async ensureCurrentContainerGeneration(): Promise<void> {
-    const current = await this.ctx.storage.get<string>(
-      MDK_TREASURY_CONTAINER_GENERATION_KEY,
-    )
-
-    if (current === MDK_TREASURY_CONTAINER_GENERATION) {
-      return
-    }
-
-    const container = this.ctx.container
-    if (container?.running) {
-      await container.destroy('openagents-mdk-treasury-generation-bump')
-    }
-
-    await this.ctx.storage.put(
-      MDK_TREASURY_CONTAINER_GENERATION_KEY,
-      MDK_TREASURY_CONTAINER_GENERATION,
-    )
-  }
-
-  override async fetch(request: Request) {
-    await this.ensureCurrentContainerGeneration()
-
-    return super.fetch(request)
-  }
-}
-
 const fetchMdkTreasuryPath = (
-  environment: Env,
-): ContainerPathFetch | undefined => {
-  const serviceToken = optionalMdkContainerSecret(
-    environment.MDK_TREASURY_SERVICE_TOKEN,
-  )
-
-  // CFG-15 (EPIC #8515): config-driven HTTP endpoint. When
-  // MDK_TREASURY_SERVICE_URL is set, the treasury daemon runs off-Workers
-  // (Cloud Run) and the Worker reaches it over HTTPS with the same service
-  // token header — no Durable Object / Cloudflare Container on the path. The
-  // production flip of this var is owner-gated; see
-  // docs/cloud/2026-07-06-mdk-treasury-cloudrun-cutover-runbook.md.
-  const httpBaseUrl = mdkServiceHttpBaseUrl(
-    environment.MDK_TREASURY_SERVICE_URL,
-  )
-
-  if (httpBaseUrl !== undefined) {
-    return makeMdkServiceHttpPathFetch({
-      baseUrl: httpBaseUrl,
-      serviceToken,
-      serviceTokenHeader: TREASURY_SERVICE_TOKEN_HEADER,
-    })
-  }
-
-  const namespace = environment.MDK_TREASURY as
-    | DurableObjectNamespace<MdkTreasuryContainer>
-    | undefined
-
-  if (namespace === undefined) {
-    return undefined
-  }
-
-  return (path, init) =>
-    getContainer(namespace, MDK_TREASURY_INSTANCE_NAME).fetch(
-      new Request(`http://mdk-treasury${path}`, {
-        ...(init?.body === undefined ? {} : { body: init.body }),
-        headers: {
-          'content-type': 'application/json',
-          ...(serviceToken === undefined
-            ? {}
-            : { [TREASURY_SERVICE_TOKEN_HEADER]: serviceToken }),
-        },
-        method: init?.method ?? 'GET',
-        ...(init?.signal === undefined ? {} : { signal: init.signal }),
-      }),
-    )
-}
-
-// Build the accepted-outcome settlement sink (#6011, EPIC #6017) the verdict-callback
-// route fires when a VERIFIED + EXECUTED accepted outcome backfills for the first time.
-// REUSES the proven Spark dispatch core (`dispatchRealRunSettlementCore` +
-// `makeSparkTreasuryPayoutAdapter` + `resolveSparkPayoutDestination`) and the owner
-// real-settlement gate (`readTassadarRealSettlementGate`) — NO parallel money path.
-//
-// INERT BY DEFAULT, double-gated:
-//   - returns `undefined` (no settlement attempted at all) unless the KHALA loop-arming
-//     flag is armed (`readKhalaLoopArming`) — the FIRST default-OFF gate; and
-//   - even when armed, every per-party leg independently fail-closes on the owner
-//     real-settlement gate (default OFF), the per-payout cap, the daily budget, and a
-//     registered Spark destination — the SECOND gate stack, inside the engine.
-// So arming a real accepted-outcome payout requires BOTH the loop flag AND the owner
-// gate; with either OFF no sats move. The serving-run ref is derived from the
-// verification receipt ref so the gate allowlist enrolls a specific accepted outcome.
+  _environment: Env,
+): ContainerPathFetch | undefined => undefined
 const makeAcceptedOutcomeSettlementSink = (
   env: OpenAgentsWorkerEnv,
 ): AcceptedOutcomeSettlementSink | undefined => {
@@ -2021,100 +1700,6 @@ const makeAcceptedOutcomeSettlementSink = (
   }
 }
 
-const TIPS_BUFFER_SERVICE_TOKEN_HEADER = 'x-tips-buffer-service-token'
-const MDK_TIPS_BUFFER_INSTANCE_NAME = 'openagents-mdk-tips-buffer-20260610-1'
-
-const mdkTipsBufferContainerEnvVars = (
-  environment: OpenAgentsWorkerConfigEnv,
-): Record<string, string> => {
-  const accessToken = optionalMdkContainerSecret(
-    environment.MDK_TIPS_BUFFER_ACCESS_TOKEN,
-  )
-  const mnemonic = optionalMdkContainerSecret(
-    environment.MDK_TIPS_BUFFER_MNEMONIC,
-  )
-  const serviceToken = optionalMdkContainerSecret(
-    environment.MDK_TIPS_BUFFER_SERVICE_TOKEN,
-  )
-
-  return {
-    ...(accessToken === undefined
-      ? {}
-      : { MDK_TIPS_BUFFER_ACCESS_TOKEN: accessToken }),
-    ...(mnemonic === undefined ? {} : { MDK_TIPS_BUFFER_MNEMONIC: mnemonic }),
-    ...(serviceToken === undefined
-      ? {}
-      : { MDK_TIPS_BUFFER_SERVICE_TOKEN: serviceToken }),
-  }
-}
-
-export class MdkTipsBufferContainer extends DurableMdkOutcomeContainer {
-  override defaultPort = 8080
-  override sleepAfter = '30m'
-  override pingEndpoint = 'localhost:8080/healthz'
-
-  constructor(ctx: DurableObjectState<{}>, environment: Env) {
-    super(ctx, environment)
-    this.envVars = mdkTipsBufferContainerEnvVars(environment)
-    this.labels = {
-      service: 'openagents-mdk-tips-buffer',
-    }
-  }
-}
-
-const fetchMdkTipsBufferPath = (
-  environment: Env,
-): ContainerPathFetch | undefined => {
-  const serviceToken = optionalMdkContainerSecret(
-    environment.MDK_TIPS_BUFFER_SERVICE_TOKEN,
-  )
-
-  // CFG-15 (EPIC #8515): config-driven HTTP endpoint (Cloud Run tips-buffer
-  // daemon). In HTTP mode the mnemonic lives on the daemon, not the Worker,
-  // so the URL alone arms the client; the daemon itself answers 503 while it
-  // is unconfigured.
-  const httpBaseUrl = mdkServiceHttpBaseUrl(
-    environment.MDK_TIPS_BUFFER_SERVICE_URL,
-  )
-
-  if (httpBaseUrl !== undefined) {
-    return makeMdkServiceHttpPathFetch({
-      baseUrl: httpBaseUrl,
-      serviceToken,
-      serviceTokenHeader: TIPS_BUFFER_SERVICE_TOKEN_HEADER,
-    })
-  }
-
-  const namespace = (
-    environment as {
-      MDK_TIPS_BUFFER?: DurableObjectNamespace<MdkTipsBufferContainer>
-    }
-  ).MDK_TIPS_BUFFER
-
-  if (
-    namespace === undefined ||
-    optionalMdkContainerSecret(environment.MDK_TIPS_BUFFER_MNEMONIC) ===
-      undefined
-  ) {
-    return undefined
-  }
-
-  return (path, init) =>
-    getContainer(namespace, MDK_TIPS_BUFFER_INSTANCE_NAME).fetch(
-      new Request(`http://mdk-tips-buffer${path}`, {
-        ...(init?.body === undefined ? {} : { body: init.body }),
-        headers: {
-          'content-type': 'application/json',
-          ...(serviceToken === undefined
-            ? {}
-            : { [TIPS_BUFFER_SERVICE_TOKEN_HEADER]: serviceToken }),
-        },
-        method: init?.method ?? 'GET',
-        ...(init?.signal === undefined ? {} : { signal: init.signal }),
-      }),
-    )
-}
-
 const runArtanisForumRouteEffect = async (
   effect: ReturnType<typeof forumRoutes.routeForumRequest> | undefined,
 ) => (effect === undefined ? undefined : Effect.runPromise(effect))
@@ -2170,114 +1755,8 @@ const artanisComposerForumPostForEnv =
     }
   }
 
-const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
-  const fetchBuffer = fetchMdkTipsBufferPath(environment)
-
-  if (fetchBuffer === undefined) {
-    return null
-  }
-
-  return async ({ amountSat, destination }) => {
-    const attempt = async (destination: string) => {
-      const response = await fetchBuffer('/pay', {
-        body: JSON.stringify({ amountSat, destination }),
-        method: 'POST',
-      })
-      const result = (await response.json()) as {
-        error?: string
-        paymentId?: string
-        status?: string
-      }
-
-      if (response.ok && result.status === 'pending' && result.paymentId) {
-        return {
-          ok: false as const,
-          paymentId: String(result.paymentId),
-          pending: true as const,
-        }
-      }
-
-      if (!response.ok || result.status !== 'succeeded') {
-        return {
-          ok: false as const,
-          reason: String(result.error ?? result.status ?? response.status),
-        }
-      }
-
-      return {
-        ok: true as const,
-        paymentRef: `payment.tips_buffer.${String(result.paymentId ?? '').slice(0, 12)}`,
-      }
-    }
-
-    try {
-      return await attempt(destination)
-    } catch (error) {
-      return {
-        ok: false as const,
-        reason:
-          error instanceof Error ? error.message.slice(0, 80) : 'fetch_failed',
-      }
-    }
-  }
-}
-
-const fetchMdkSidecarRequest = async (request: Request, environment: Env) => {
-  // CFG-15 (EPIC #8515): config-driven HTTP endpoint (Cloud Run mdk-sidecar
-  // daemon). Forwards the whole checkout request over HTTPS with the sidecar
-  // service token so the off-Workers daemon can reject non-Worker callers.
-  const httpBaseUrl = mdkServiceHttpBaseUrl(environment.MDK_SIDECAR_SERVICE_URL)
-
-  if (httpBaseUrl !== undefined) {
-    try {
-      return await makeMdkSidecarHttpRequestForward({
-        baseUrl: httpBaseUrl,
-        serviceToken: optionalMdkContainerSecret(
-          environment.MDK_SIDECAR_SERVICE_TOKEN,
-        ),
-      })(request)
-    } catch {
-      return noStoreJsonResponse(
-        { error: 'mdk_sidecar_unavailable' },
-        { status: 503 },
-      )
-    }
-  }
-
-  if (environment.MDK_SIDECAR === undefined) {
-    return noStoreJsonResponse(
-      { error: 'mdk_sidecar_unconfigured' },
-      { status: 503 },
-    )
-  }
-
-  try {
-    return await getContainer(
-      environment.MDK_SIDECAR as DurableObjectNamespace<MdkSidecarContainer>,
-      MDK_SIDECAR_INSTANCE_NAME,
-    ).fetch(request)
-  } catch {
-    return noStoreJsonResponse(
-      { error: 'mdk_sidecar_unavailable' },
-      { status: 503 },
-    )
-  }
-}
-
-const routeMdkSidecarRequest = (request: Request, environment: Env) =>
-  Effect.tryPromise({
-    catch: error => new MdkSidecarUnavailable({ error }),
-    try: () => fetchMdkSidecarRequest(request, environment),
-  }).pipe(
-    Effect.catchTag('MdkSidecarUnavailable', () =>
-      Effect.succeed(
-        noStoreJsonResponse(
-          { error: 'mdk_sidecar_unavailable' },
-          { status: 503 },
-        ),
-      ),
-    ),
-  )
+const routeMdkSidecarRequest = (_request: Request, _environment: Env) =>
+  Effect.succeed(moneySurfaceRetiredResponse())
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
 const EmailString = NonEmptyTrimmedString.check(
@@ -6223,32 +5702,6 @@ const shcDispatchConfig = (env: OpenAgentsWorkerEnv) => {
   }
 }
 
-const cleanupCanceledAgentRunOnShc = async (
-  env: OpenAgentsWorkerEnv,
-  run: AgentRunRecord,
-): Promise<void> => {
-  try {
-    const result = await cancelAgentRunOnShc(run, {
-      ...shcDispatchConfig(env),
-      reason: 'Credits exhausted; OpenAgents stopped the run.',
-    })
-
-    if (!result.ok) {
-      logWorkerRouteWarning('shc_billing_cleanup_not_acknowledged', {
-        error: result.error,
-        runId: run.id,
-        status: result.status,
-        targetPath: result.targetPath,
-      })
-    }
-  } catch (error) {
-    logWorkerRouteWarning('shc_billing_cleanup_request_failed', {
-      error: errorMessage(error),
-      runId: run.id,
-    })
-  }
-}
-
 const sendAutopilotDecisionRequiredEmailOnce = async (
   env: OpenAgentsWorkerEnv,
   record: AutopilotWorkOrderRecord,
@@ -6317,83 +5770,6 @@ const sendAutopilotDecisionRequiredEmailOnce = async (
       workOrderRef: record.workOrderRef,
     })
   }
-}
-
-const sendOutOfCreditsNotificationOnce = async (
-  env: OpenAgentsWorkerEnv,
-  input: Readonly<{
-    balanceCents: number
-    balanceFormatted: string
-    userId: string
-  }>,
-): Promise<void> => {
-  const reservation = await reserveOutOfCreditsNotification(
-    openAgentsDatabase(env),
-    identityDbForEnv(env),
-    input,
-    billingRuntimeForEnv(env),
-  )
-
-  if (!reservation.ok) {
-    return
-  }
-
-  const resend = getOpenAgentsWorkerConfig(env).email.resend
-  const delivery =
-    resend === undefined
-      ? {
-          errorMessage: 'Resend email configuration is not set.',
-          errorName: 'resend_config_missing',
-          ok: false as const,
-        }
-      : await observedEffect(
-          'Email.sendOutOfCreditsEmailWithLedger',
-          sendOutOfCreditsEmailWithLedger(
-            openAgentsDatabase(env),
-            resend,
-            {
-              appOrigin: getAppOrigin(env),
-              balanceFormatted: input.balanceFormatted,
-              displayName: reservation.displayName,
-              idempotencyKey: reservation.idempotencyKey,
-              to: reservation.email,
-            },
-            {
-              metadata: {
-                balanceCents: input.balanceCents,
-                existingReservationTable: 'billing_credit_notifications',
-              },
-              sourceAuthorityRef: 'system.billing_out_of_credits.v1',
-              targetUserId: input.userId,
-            },
-          ),
-        )
-
-  if (delivery.ok) {
-    await markOutOfCreditsNotificationSent(
-      openAgentsDatabase(env),
-      {
-        resendEmailId: delivery.id,
-        userId: input.userId,
-      },
-      billingRuntimeForEnv(env),
-    )
-
-    return
-  }
-
-  await markOutOfCreditsNotificationFailed(
-    openAgentsDatabase(env),
-    {
-      errorMessage: delivery.errorMessage,
-      userId: input.userId,
-    },
-    billingRuntimeForEnv(env),
-  )
-  logWorkerRouteWarning('out_of_credits_email_failed', {
-    error: delivery.errorMessage,
-    userId: input.userId,
-  })
 }
 
 const handleEmailResendWebhookApi = async (
@@ -7133,88 +6509,10 @@ const sendPendingReviewReadyArtifactNotifications = async (
   )
 }
 
-const notifyCanceledAgentRunSyncScopesEffect = (
-  env: OpenAgentsWorkerEnv,
-  runId: string,
-): Effect.Effect<void> =>
-  Effect.tryPromise(() => notifyAgentRunSyncScopes(env, runId)).pipe(
-    Effect.catch(error => {
-      logWorkerRouteWarning('canceled_agent_run_sync_scope_notify_failed', {
-        error: errorMessage(unwrapEffectTryPromiseCause(error)),
-        runId,
-      })
-
-      return Effect.void
-    }),
-  )
-
-const enforceOutOfCreditsPolicy = async (
-  env: OpenAgentsWorkerEnv,
-  ctx: ExecutionContext | undefined,
-  userId: string,
-): Promise<void> => {
-  const billing = await suspendBillingAccountIfOutOfCredits(
-    openAgentsDatabase(env),
-    userId,
-    billingRuntimeForEnv(env),
-  )
-
-  if (!billing.exhausted) {
-    return
-  }
-
-  const canceledRuns = await cancelActiveAgentRunsForBillingExhaustionForEnv(
-    env,
-    userId,
-    {
-      balanceCents: billing.balanceCents,
-      balanceFormatted: billing.balanceFormatted,
-    },
-  )
-
-  // Isolate the best-effort sync-scope notify fan-out from the two actions
-  // that MUST still happen for every canceled run regardless of notify
-  // outcome: the SHC compute-cleanup dispatch and the out-of-credits email.
-  // Each run's notify failure is caught and logged individually (Effect
-  // structured concurrency) instead of sharing fate in one `Promise.all`,
-  // whose rejection on any single run would previously have skipped BOTH
-  // `cleanup` and `notify` below for the entire batch.
-  await Effect.runPromise(
-    Effect.forEach(
-      canceledRuns,
-      item => notifyCanceledAgentRunSyncScopesEffect(env, item.run.id),
-      { concurrency: 'unbounded' },
-    ),
-  )
-
-  const cleanup = Promise.all(
-    canceledRuns.map(item => cleanupCanceledAgentRunOnShc(env, item.run)),
-  ).then(() => undefined)
-  const notify = sendOutOfCreditsNotificationOnce(env, {
-    balanceCents: billing.balanceCents,
-    balanceFormatted: billing.balanceFormatted,
-    userId,
-  })
-
-  if (ctx === undefined) {
-    await Promise.all([cleanup, notify])
-
-    return
-  }
-
-  scheduleBackgroundWork(ctx, cleanup)
-  scheduleBackgroundWork(ctx, notify)
-}
-
 const makeBillingAwareOmniRunStore = (
   env: OpenAgentsWorkerEnv,
-  ctx?: ExecutionContext,
-) =>
-  makeOmniRunStoreForEnv(env, {
-    afterAgentRunMetered: run =>
-      enforceOutOfCreditsPolicy(env, ctx, run.userId),
-    billingRuntime: billingRuntimeForEnv(env),
-  })
+  _ctx?: ExecutionContext,
+) => makeOmniRunStoreForEnv(env)
 
 const tokenUsageLeaderboardsLayer = (env: OpenAgentsWorkerEnv) =>
   TokenUsageLeaderboards.effectCfLayer(identityDbForEnv(env)).pipe(
@@ -8303,18 +7601,6 @@ const threadFileRoutes = makeThreadFileRoutes({
   requireBrowserSession,
 })
 
-const agentSiteRoutes = makeAgentSiteRoutes({
-  agentStoreForEnv: env => makeAgentRegistrationStoreForEnv(env),
-  appendRefreshedSessionCookies,
-  artifactsForEnv: env => artifactsBucketForEnv(env),
-  // KS-8.12 (#8323): agent site routes (builder sessions, site library,
-  // saved versions) ride the sites dual-write mirror seam.
-  dbForEnv: env => sitesContentDatabaseForEnv(env),
-  identityDbForEnv: env => identityDbForEnv(env),
-  isAdminEmail: isOpenAgentsAdminEmail,
-  requireBrowserSession,
-})
-
 // Trace store + ingest/read API (openagents #6208/#6212, epic #6206): the
 // shareable `/trace/{uuid}` surface. Agent-bearer ingest, visibility-gated read.
 const traceStoreRoutes = makeTraceStoreRoutes({
@@ -8839,49 +8125,8 @@ const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
 })
 
 const hostedMdkClientForEnv = (
-  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) => {
-  const checkout = getOpenAgentsWorkerConfig(env).mdk.checkout
-  const routeSecret = redactedValue(checkout.routeSecret)
-
-  if (
-    !checkout.configured ||
-    checkout.routeUrl === undefined ||
-    routeSecret === undefined
-  ) {
-    return makeMissingOpenAgentsHostedMdkClient(checkout.providerRef)
-  }
-
-  return makeOpenAgentsHostedMdkRouteClient(
-    {
-      configRef: checkout.configRef,
-      credentialBindingRef: checkout.credentialBindingRef,
-      environment: checkout.environment,
-      providerRef: checkout.providerRef,
-      webhookBindingRef: checkout.webhookBindingRef,
-    },
-    {
-      checkoutPathBase: checkout.checkoutPathBase,
-      ...(checkout.routeKind === 'self_hosted_mdkd_sidecar'
-        ? {
-            // Cast keeps this assignable under both the Workers and Bun
-            // ambient fetch types (tsconfig.cloudrun.json, CFG-9 #8524).
-            fetch: ((
-              input: Parameters<typeof fetch>[0],
-              init?: Parameters<typeof fetch>[1],
-            ) => {
-              const request =
-                input instanceof Request ? input : new Request(input, init)
-
-              return fetchMdkSidecarRequest(request, env)
-            }) as typeof fetch,
-          }
-        : {}),
-      routeSecret,
-      routeUrl: checkout.routeUrl,
-    },
-  )
-}
+  _env: WorkerBindings & OpenAgentsWorkerConfigEnv,
+) => makeMissingOpenAgentsHostedMdkClient('provider.retired.vp1')
 
 // The PRIMARY Spark-backed BOLT11 invoice issuer for Khala Code Lightning
 // purchases. Owner directive: Spark is the primary rail for agent payments
@@ -8893,26 +8138,8 @@ const hostedMdkClientForEnv = (
 // RAW bolt11 + decoded paymentHash. Both are public (they go into the 402
 // challenge); the preimage is never seen here (verified LOCALLY in the Worker).
 const sparkLightningInvoiceIssuerForEnv = (
-  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) => {
-  const fetchTreasury = fetchMdkTreasuryPath(env)
-  if (fetchTreasury === undefined) {
-    return undefined
-  }
-
-  const post = async (
-    body: Readonly<Record<string, unknown>>,
-  ): Promise<Readonly<{ ok: boolean; status: number; payload: unknown }>> => {
-    const response = await fetchTreasury('/spark/funding-invoice', {
-      body: JSON.stringify(body),
-      method: 'POST',
-    })
-    const payload = await response.json().catch(() => ({}))
-    return { ok: response.ok, payload, status: response.status }
-  }
-
-  return makeSparkLightningInvoiceIssuer(post)
-}
+  _env: WorkerBindings & OpenAgentsWorkerConfigEnv,
+) => undefined
 
 // The FALLBACK MDK-backed BOLT11 invoice issuer for Khala Code Lightning
 // purchases. MDK is permitted ONLY as an explicit fallback Lightning issuer
@@ -8923,49 +8150,8 @@ const sparkLightningInvoiceIssuerForEnv = (
 // paymentHash. Uses the tighter FALLBACK mint timeout so a Spark primary timeout
 // plus this MDK attempt together stay under the route's per-rail guard (#6149).
 const mdkLightningInvoiceIssuerForEnv = (
-  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) => {
-  const checkout = getOpenAgentsWorkerConfig(env).mdk.checkout
-  const routeSecret = redactedValue(checkout.routeSecret)
-
-  if (
-    !checkout.configured ||
-    checkout.routeUrl === undefined ||
-    routeSecret === undefined
-  ) {
-    return undefined
-  }
-
-  const isSidecar = checkout.routeKind === 'self_hosted_mdkd_sidecar'
-  const routeUrl = normalizeMdkLightningRouteUrl(checkout.routeUrl, {
-    sidecar: isSidecar,
-  })
-
-  const post = async (
-    body: Readonly<Record<string, unknown>>,
-    options?: Readonly<{ signal?: AbortSignal | undefined }>,
-  ): Promise<Readonly<{ ok: boolean; status: number; payload: unknown }>> => {
-    const request = new Request(routeUrl, {
-      body: JSON.stringify(body),
-      headers: {
-        'content-type': 'application/json',
-        'x-moneydevkit-webhook-secret': routeSecret,
-      },
-      method: 'POST',
-      ...(options?.signal === undefined ? {} : { signal: options.signal }),
-    })
-    const response = isSidecar
-      ? await fetchMdkSidecarRequest(request, env)
-      : await fetch(request)
-    const payload = await response.json().catch(() => ({}))
-    return { ok: response.ok, payload, status: response.status }
-  }
-
-  return makeMdkLightningInvoiceIssuer(
-    post,
-    MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
-  )
-}
+  _env: WorkerBindings & OpenAgentsWorkerConfigEnv,
+) => undefined
 
 // The Khala Code Lightning invoice issuer for this env: SPARK PRIMARY, MDK
 // FALLBACK (owner directive). Tries Spark first; if Spark is
@@ -9595,10 +8781,6 @@ const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>(
     },
   },
 )
-
-const checkoutPageRoutes = makeCheckoutPageRoutes<WorkerBindings>({
-  hostedMdkClient: env => hostedMdkClientForEnv(env),
-})
 
 const agentOwnerClaimRoutes = makeAgentOwnerClaimRoutes({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
@@ -11214,11 +10396,15 @@ const listManagedFleetCapacityForEnv = async (
       account.publicStatus === 'connected' &&
       account.health === 'healthy',
   )
-  const accountRefHashes = [...new Set(await Promise.all(
-    eligible.map(account =>
-      managedFleetProviderAccountRefHash(account.providerAccountRef),
+  const accountRefHashes = [
+    ...new Set(
+      await Promise.all(
+        eligible.map(account =>
+          managedFleetProviderAccountRefHash(account.providerAccountRef),
+        ),
+      ),
     ),
-  ))].slice(0, 64)
+  ].slice(0, 64)
   return {
     schema: 'openagents.pylon.managed_cloud_fleet_capacity.v1',
     accountRefHashes,
@@ -11254,9 +10440,7 @@ const dispatchManagedFleetUnitForEnv = async (
   if (
     !/^[0-9a-f]{64}$/u.test(input.body.fingerprint) ||
     !/^[0-9a-f]{40}$/u.test(input.body.repository.commit) ||
-    !/^account\.pylon\.codex\.[a-f0-9]{24}$/u.test(
-      input.body.workerAccountRef,
-    )
+    !/^account\.pylon\.codex\.[a-f0-9]{24}$/u.test(input.body.workerAccountRef)
   ) {
     throw new ManagedFleetAuthorityError({ message: 'managed_fleet_tuple_invalid' })
   }
@@ -11277,18 +10461,16 @@ const dispatchManagedFleetUnitForEnv = async (
   if (expectedFingerprint !== input.body.fingerprint) {
     throw new ManagedFleetAuthorityError({ message: 'managed_fleet_tuple_fingerprint_invalid' })
   }
-  const expectedAssignmentRef =
-    `assignment.pylon.managed_cloud.${(
-      await sha256Hex(input.body.fingerprint)
-    ).slice(0, 24)}`
+  const expectedAssignmentRef = `assignment.pylon.managed_cloud.${(
+    await sha256Hex(input.body.fingerprint)
+  ).slice(0, 24)}`
   if (input.body.assignmentRef !== expectedAssignmentRef) {
     throw new ManagedFleetAuthorityError({ message: 'managed_fleet_assignment_invalid' })
   }
 
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   let minted:
-    | Awaited<ReturnType<typeof mintCloudRuntimeExecutionToken>>
-    | undefined
+    Awaited<ReturnType<typeof mintCloudRuntimeExecutionToken>> | undefined
   try {
     const rows: Array<{
       authorized: boolean
@@ -11485,27 +10667,26 @@ const dispatchManagedFleetUnitForEnv = async (
       throw new ManagedFleetAuthorityError({ message: 'managed_fleet_terminal_receipts_incomplete' })
     }
     const terminalBindingDigest = (
-      await sha256Hex(JSON.stringify({
-        accountRefHash,
-        agentComputerRef: session.agentComputerRef,
-        artifactRef: session.artifactRef,
-        assignmentRef: input.body.assignmentRef,
-        claimRef: input.body.claimRef,
-        lifecycleReceiptRefs: session.lifecycleReceiptRefs,
-        placementRef: session.placementRef,
-        resourceUsageReceiptRefs: session.resourceUsageReceiptRefs,
-        runRef: input.runRef,
-        sessionId,
-        workUnitRef: input.body.workUnitRef,
-      }))
+      await sha256Hex(
+        JSON.stringify({
+          accountRefHash,
+          agentComputerRef: session.agentComputerRef,
+          artifactRef: session.artifactRef,
+          assignmentRef: input.body.assignmentRef,
+          claimRef: input.body.claimRef,
+          lifecycleReceiptRefs: session.lifecycleReceiptRefs,
+          placementRef: session.placementRef,
+          resourceUsageReceiptRefs: session.resourceUsageReceiptRefs,
+          runRef: input.runRef,
+          sessionId,
+          workUnitRef: input.body.workUnitRef,
+        }),
+      )
     ).slice(0, 24)
-    const terminalReceiptRef =
-      `receipt.agent_computer.execution.${terminalBindingDigest}`
+    const terminalReceiptRef = `receipt.agent_computer.execution.${terminalBindingDigest}`
     const artifactRef = session.artifactRef
-    const closeoutRef =
-      `closeout.agent_computer.execution.${terminalBindingDigest}`
-    const noMeasurementCaveatRef =
-      `caveat.agent_computer.token_usage_not_measured.${terminalBindingDigest}`
+    const closeoutRef = `closeout.agent_computer.execution.${terminalBindingDigest}`
+    const noMeasurementCaveatRef = `caveat.agent_computer.token_usage_not_measured.${terminalBindingDigest}`
     const createdAt = currentIsoTimestamp()
     await client.sql`
       INSERT INTO sarah_managed_fleet_unit_receipts (
@@ -12510,8 +11691,7 @@ const registerHydraliskAdapter = (
 }
 
 let latestHydraliskGlm52RouteAdmission:
-  | HydraliskPoolRouteAdmissionSnapshot
-  | undefined
+  HydraliskPoolRouteAdmissionSnapshot | undefined
 
 const hydraliskGlm52RouteAdmissionForEnv = (
   env: HydraliskServeEnv,
@@ -15049,310 +14229,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) => handlePublicLaunchDashboardApi(request, env),
   },
   {
-    path: '/api/public/treasury/launch-status',
-    handler: (request, env) =>
-      handlePublicTreasuryLaunchStatusApi(request, {
-        fetchTreasury: fetchMdkTreasuryPath(env),
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-      }),
-  },
-  {
-    path: '/api/operator/treasury/status',
-    handler: (request, env) =>
-      handleOperatorTreasuryStatusApi(request, {
-        fetchTreasury: fetchMdkTreasuryPath(env),
-        readRewardDispatchStats: () => {
-          const nowIso = currentIsoTimestamp()
-          const dispatchConfig = readXClaimRewardTreasuryDispatchConfig(
-            env,
-            nowIso,
-          )
-
-          return makeD1XClaimRewardTreasuryDispatchStore(
-            openAgentsDatabase(env),
-          ).readDispatchStats(
-            xClaimRewardDispatchDayStartIso(nowIso),
-            dispatchConfig,
-          )
-        },
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-      }),
-  },
-  {
-    path: '/api/operator/treasury/funding-destination',
-    handler: (request, env) =>
-      handleOperatorTreasuryFundingDestinationApi(request, {
-        fetchTreasury: fetchMdkTreasuryPath(env),
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-      }),
-  },
-  {
-    path: '/api/operator/treasury/spark-funding-destination',
-    handler: (request, env) =>
-      handleOperatorSparkTreasuryFundingDestinationApi(request, {
-        fetchSparkTreasury: fetchMdkTreasuryPath(env),
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-      }),
-  },
-  {
-    path: '/api/operator/treasury/spark-funding-invoice',
-    handler: (request, env) =>
-      handleOperatorSparkTreasuryFundingInvoiceApi(request, {
-        fetchSparkTreasury: fetchMdkTreasuryPath(env),
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-      }),
-  },
-  {
-    path: '/api/operator/treasury/transactions/reconcile',
-    handler: (request, env) =>
-      handleOperatorTreasuryTransactionReconcileApi(request, {
-        fetchTipsBuffer: fetchMdkTipsBufferPath(env),
-        fetchTreasury: fetchMdkTreasuryPath(env),
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        transactionStore: makeD1TreasuryTransactionStore(
-          makeTreasuryDatabaseForEnv(env),
-        ),
-      }),
-  },
-  {
-    path: '/api/operator/treasury/recipient-report',
-    handler: (request, env) =>
-      handleOperatorTreasuryRecipientReportApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        transactionStore: makeD1TreasuryTransactionStore(
-          makeTreasuryDatabaseForEnv(env),
-        ),
-      }),
-  },
-  {
-    path: '/api/operator/treasury/recipient-confirmations',
-    handler: (request, env) =>
-      handleOperatorTreasuryRecipientConfirmationApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        transactionStore: makeD1TreasuryTransactionStore(
-          makeTreasuryDatabaseForEnv(env),
-        ),
-      }),
-  },
-  {
-    path: '/api/operator/tips-buffer/status',
-    handler: (request, env) =>
-      handleOperatorTreasuryStatusApi(request, {
-        fetchTreasury: fetchMdkTipsBufferPath(env),
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        serviceLabel: 'mdk_tips_buffer',
-      }),
-  },
-  {
-    path: '/api/operator/tips-buffer/funding-destination',
-    handler: (request, env) =>
-      handleOperatorTreasuryFundingDestinationApi(request, {
-        fetchTreasury: fetchMdkTipsBufferPath(env),
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        serviceLabel: 'mdk_tips_buffer',
-      }),
-  },
-  {
-    path: '/api/operator/artanis/spend-decision',
-    handler: (request, env) =>
-      Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return noStoreJsonResponse(
-            { error: 'method_not_allowed' },
-            { status: 405 },
-          )
-        }
-        const authorized = yield* Effect.promise(() =>
-          requireAdminApiToken(request, env),
-        )
-        if (!authorized) {
-          return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
-        }
-        const body = yield* Effect.promise(async () => {
-          try {
-            return (await request.json()) as {
-              recipientActorRef?: string
-              context?: string
-              suggestedMaxSat?: number
-            }
-          } catch {
-            return {}
-          }
-        })
-        if (
-          typeof body.recipientActorRef !== 'string' ||
-          typeof body.context !== 'string' ||
-          typeof body.suggestedMaxSat !== 'number'
-        ) {
-          return noStoreJsonResponse({ error: 'bad_request' }, { status: 400 })
-        }
-        // Registered destinations only: the recipient's tip-recipient
-        // wallet claim is the public-safe source of the offer.
-        const wallet = yield* Effect.promise(
-          async () =>
-            (await openAgentsDatabase(env)
-              .prepare(
-                `SELECT wallet_ref, bolt12_offer, lightning_address FROM forum_tip_recipient_wallets
-               WHERE actor_ref = ? AND state = 'ready' AND archived_at IS NULL
-                 AND (lightning_address IS NOT NULL OR bolt12_offer IS NOT NULL)`,
-              )
-              .bind(body.recipientActorRef)
-              .first()) as {
-              wallet_ref: string
-              bolt12_offer: string | null
-              lightning_address: string | null
-            } | null,
-        )
-        if (wallet === null) {
-          return noStoreJsonResponse(
-            { error: 'recipient_destination_not_registered' },
-            { status: 409 },
-          )
-        }
-        const outcome = yield* Effect.promise(() =>
-          runArtanisSpendDecision(makeArtanisDatabaseForEnv(env), {
-            candidate: {
-              destination: wallet.lightning_address ?? wallet.bolt12_offer!,
-              context: body.context!,
-              destinationSourceRef: wallet.wallet_ref,
-              recipientRef: body.recipientActorRef!,
-              suggestedMaxSat: Math.floor(body.suggestedMaxSat!),
-            },
-            gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
-            geminiApiKey:
-              (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
-            nowIso: currentIsoTimestamp(),
-            treasury: {
-              fetchSparkTreasury: fetchMdkTreasuryPath(env),
-              fetchTreasury: fetchMdkTreasuryPath(env),
-              recordPayoutTransaction: async input => {
-                await makeD1TreasuryTransactionStore(
-                  makeTreasuryDatabaseForEnv(env),
-                ).insert({
-                  amountSat: input.amountSat,
-                  bolt11: null,
-                  createdAt: currentIsoTimestamp(),
-                  direction: 'out',
-                  expiresAt: null,
-                  failureReasonRef: input.failureReasonRef ?? null,
-                  id: randomUuid(),
-                  owedRef: input.owedRef ?? null,
-                  owedSat: input.owedSat ?? null,
-                  paymentRef: input.paymentRef,
-                  recipientConfirmationRef: null,
-                  recipientConfirmationState: 'unconfirmed',
-                  recipientConfirmedAt: null,
-                  recipientRef: input.recipientRef ?? null,
-                  redactedDestinationRef: input.redactedDestinationRef ?? null,
-                  settledAt: input.settled ? currentIsoTimestamp() : null,
-                  state:
-                    input.failureReasonRef !== undefined &&
-                    input.failureReasonRef !== null
-                      ? 'failed'
-                      : input.settled
-                        ? 'settled'
-                        : 'pending',
-                })
-              },
-              requireAdminApiToken: async () => true,
-            },
-          }),
-        )
-        return noStoreJsonResponse({ outcome })
-      }),
-  },
-  {
-    path: '/api/operator/treasury/payout',
-    handler: (request, env) =>
-      handleOperatorTreasuryPayoutApi(request, {
-        fetchSparkTreasury: fetchMdkTreasuryPath(env),
-        fetchTreasury: fetchMdkTreasuryPath(env),
-        recordPayoutTransaction: async input => {
-          await makeD1TreasuryTransactionStore(
-            makeTreasuryDatabaseForEnv(env),
-          ).insert({
-            amountSat: input.amountSat,
-            bolt11: null,
-            createdAt: currentIsoTimestamp(),
-            direction: 'out',
-            expiresAt: null,
-            failureReasonRef: input.failureReasonRef ?? null,
-            id: `treasury_payout_${randomUuid()}`,
-            owedRef: input.owedRef ?? null,
-            owedSat: input.owedSat ?? null,
-            paymentRef: input.paymentRef,
-            recipientConfirmationRef: null,
-            recipientConfirmationState: 'unconfirmed',
-            recipientConfirmedAt: null,
-            recipientRef: input.recipientRef ?? null,
-            redactedDestinationRef: input.redactedDestinationRef ?? null,
-            settledAt: input.settled ? currentIsoTimestamp() : null,
-            state:
-              input.failureReasonRef !== undefined &&
-              input.failureReasonRef !== null
-                ? 'failed'
-                : input.settled
-                  ? 'settled'
-                  : 'pending',
-          })
-        },
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-      }),
-  },
-  {
-    // Operator payout from the tips-buffer wallet (mirrors the treasury payout
-    // against the tips-buffer MDK wallet). Used to pay BOLT12 offers from the
-    // buffer directly — e.g. operator-directed recognition rewards — without the
-    // tip-ladder's per-sender ledger-balance requirement.
-    path: '/api/operator/tips-buffer/payout',
-    handler: (request, env) =>
-      handleOperatorTreasuryPayoutApi(request, {
-        fetchTreasury: fetchMdkTipsBufferPath(env),
-        recordPayoutTransaction: async input => {
-          await makeD1TreasuryTransactionStore(
-            makeTreasuryDatabaseForEnv(env),
-          ).insert({
-            amountSat: input.amountSat,
-            bolt11: null,
-            createdAt: currentIsoTimestamp(),
-            direction: 'out',
-            expiresAt: null,
-            failureReasonRef: input.failureReasonRef ?? null,
-            id: `tips_buffer_payout_${randomUuid()}`,
-            owedRef: input.owedRef ?? null,
-            owedSat: input.owedSat ?? null,
-            paymentRef: input.paymentRef,
-            recipientConfirmationRef: null,
-            recipientConfirmationState: 'unconfirmed',
-            recipientConfirmedAt: null,
-            recipientRef: input.recipientRef ?? null,
-            redactedDestinationRef: input.redactedDestinationRef ?? null,
-            settledAt: input.settled ? currentIsoTimestamp() : null,
-            state:
-              input.failureReasonRef !== undefined &&
-              input.failureReasonRef !== null
-                ? 'failed'
-                : input.settled
-                  ? 'settled'
-                  : 'pending',
-          })
-        },
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-      }),
-  },
-  {
     path: '/api/public/artanis/report',
     handler: (request, env) => handlePublicArtanisReportApi(request, env),
   },
@@ -17055,34 +15931,20 @@ const routeRequest = makeWorkerRouteRequest({
     khalaChatRoutes.routeKhalaChatRequest(request, env),
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
-  routeCheckoutPageRequest: (request, env) =>
-    checkoutPageRoutes.routeCheckoutPageRequest(request, env),
-  routeTreasuryPageRequest: (request, env) =>
-    makeTreasuryPageRoutes({
-      fetchTreasury: fetchMdkTreasuryPath(env),
-      makeUuid: randomUuid,
-      nowIso: currentIsoTimestamp,
-      store: makeD1TreasuryTransactionStore(makeTreasuryDatabaseForEnv(env)),
-    }).routeTreasuryPageRequest(request),
+  routeCheckoutPageRequest: () => undefined,
+  routeTreasuryPageRequest: () => undefined,
   routeAgentProposalRequest: agentProposalRoutes.routeAgentProposalRequest,
   routeAgentSearchRequest: agentSearchRoutes.routeAgentSearchRequest,
   routeAgentScopedGrantRequest:
     agentScopedGrantRoutes.routeAgentScopedGrantRequest,
-  routeAgentSiteRequest: agentSiteRoutes.routeAgentSiteRequest,
+  routeAgentSiteRequest: () => undefined,
   routeForumRequest: (request, env, ctx) =>
     // KS-8.10 (#8321): the forum content dual-write seam — scoped forum
     // table writes read-back-mirror into Postgres (fail-soft).
     forumRoutes.routeForumRequest(request, forumContentDatabaseForEnv(env), {
-      // CFG-4 (#8519): the Postgres-only credits/escrow ledger for forum
-      // tips + labor escrow paths (no D1 fallback).
-      ledgerDb: paymentsLedgerDbForEnv(env),
       // CFG-4 Domain 2 (#8519): the Postgres-only users/auth_identities
       // authority for agent-profile paths (no D1 fallback).
       identityDb: identityDbForEnv(env),
-      // KS-8.8 (#8319): activates the fail-soft Postgres mirror on the forum
-      // MONEY half; content paths stay on the forum content dual-write seam.
-      treasuryDb: makeTreasuryDatabaseForEnv(env),
-      tipsBufferPay: tipsBufferPayFnForEnv(env),
       agentStore: makeAgentRegistrationStoreForEnv(env),
       // KS-8.9 (#8320): fire-safe Postgres dual-write mirror (orange check).
       entitlementsMirror: inferenceEntitlementsMirrorForEnv(env),
@@ -17101,9 +15963,6 @@ const routeRequest = makeWorkerRouteRequest({
           ? {}
           : { forumWorkRequestRelayPublisher }
       })(),
-      hostedMdkClient: hostedMdkClientForEnv(env),
-      l402SigningBoundary: () => forumL402SigningBoundaryForEnv(env),
-      mdkWebhookConfig: hostedMdkWebhookConfigForEnv(env),
       productPromisesUnsupportedRequestIngest: async input => {
         const db = openAgentsDatabase(env)
         const now = currentIsoTimestamp()
@@ -18261,12 +17120,6 @@ export default {
         ).pipe(Effect.asVoid),
       ),
       observedEffect(
-        'AutopilotScheduledLaunches.dispatchDue',
-        dispatchDueScheduledAutopilotWork(autopilotWorkRouteDependencies, env, {
-          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
-        }),
-      ),
-      observedEffect(
         'AgentDefinitionScheduler.tick',
         Effect.promise(async () => {
           const result = await pokeAgentDefinitionScheduler(
@@ -18284,19 +17137,10 @@ export default {
       observedEffect(
         'AutopilotContinuationPolicy.sweep',
         runAutopilotContinuationSweep({
-          billingAllowsContinuation: async userId => {
-            const result = await requireMinimumRunCredits(
-              openAgentsDatabase(env),
-              userId,
-            )
-
-            return result.ok
-              ? { ok: true, reasonRef: 'continuation.billing_ok' }
-              : {
-                  ok: false,
-                  reasonRef: 'continuation.skipped.billing_blocked',
-                }
-          },
+          billingAllowsContinuation: async () => ({
+            ok: false,
+            reasonRef: 'continuation.skipped.paid_capacity_retired',
+          }),
           dispatchFollowUpTurn: async candidate => {
             const result = await omniHandlers.continueUserAutopilotRun(
               env,
@@ -18521,107 +17365,6 @@ export default {
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           tip: async () => ({ error: 'money_surface_retired' }),
         }),
-      ),
-      observedEffect(
-        'TipsBuffer.reconcileForwarding',
-        Effect.promise(() =>
-          reconcileForwardingBufferPayments(paymentsLedgerDbForEnv(env), {
-            fetchBufferPaymentStatus: async paymentId => {
-              const fetchBuffer = fetchMdkTipsBufferPath(env)
-              if (fetchBuffer === undefined) {
-                return 'pending'
-              }
-              try {
-                const response = await fetchBuffer(
-                  `/payments/${encodeURIComponent(paymentId)}`,
-                )
-                const body = (await response.json()) as { status?: string }
-                return body.status === 'succeeded'
-                  ? 'succeeded'
-                  : body.status === 'failed'
-                    ? 'failed'
-                    : 'pending'
-              } catch {
-                return 'pending'
-              }
-            },
-            makeId: randomUuid,
-            nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
-          }),
-        ),
-      ),
-      observedEffect(
-        'TreasuryTransactions.reconcilePending',
-        Effect.promise(() =>
-          reconcilePendingTreasuryTransactions({
-            fetchTipsBuffer: fetchMdkTipsBufferPath(env),
-            fetchTreasury: fetchMdkTreasuryPath(env),
-            limit: 25,
-            transactionStore: makeD1TreasuryTransactionStore(
-              makeTreasuryDatabaseForEnv(env),
-            ),
-          }),
-        ),
-      ),
-      observedEffect(
-        'ForumDirectTips.archiveStaleRecoveries',
-        Effect.promise(() =>
-          archiveStaleDirectTipRecoveries(
-            makeTreasuryDatabaseForEnv(env),
-            epochMillisToIsoTimestamp(event.scheduledTime),
-          ),
-        ),
-      ),
-      observedEffect(
-        'TipsBuffer.backingInvariant',
-        // 2026-07-05 incident (#8409): this check intentionally THROWS on a
-        // real invariant violation ("Checked every tick; a violation raises
-        // ... instead of passing silently" — see tips-sweep.ts), but it
-        // shares this per-minute cron tick's single giant Promise.all with
-        // ~24 unrelated scheduled tasks, including the Artanis responder
-        // scan/compose Postgres dual-write. Promise.all rejects as soon as
-        // ANY entry rejects, tearing down the whole scheduled() invocation
-        // and silently abandoning every sibling's still-in-flight work —
-        // confirmed live via wrangler tail: a standing
-        // TipsBufferBackingViolation (agent balances 263 sat exceeding a 15
-        // sat buffer) fired on effectively every tick and killed the
-        // invocation mid-flight, which is the actual root cause of
-        // artanis_responder_ticks losing ~77-79%/hour of its Postgres
-        // mirror writes outright (not a Hyperdrive/connection-pool problem
-        // — two independent Hyperdrive-side fixes, raising
-        // origin_connection_limit and recreating the config, had zero
-        // effect on the loss rate). Keep the violation loud (still logged,
-        // still distinguishable from a healthy tick) but never let it kill
-        // unrelated sibling work again.
-        Effect.promise(() =>
-          checkTipsBufferBackingInvariant(
-            paymentsLedgerDbForEnv(env),
-            async () => {
-              const fetchBuffer = fetchMdkTipsBufferPath(env)
-              if (fetchBuffer === undefined) {
-                return null
-              }
-              try {
-                const response = await fetchBuffer('/balance')
-                const body = (await response.json()) as {
-                  maxSendableSat?: number
-                  balanceSat?: number
-                }
-                return Number(body.maxSendableSat ?? body.balanceSat ?? 0)
-              } catch {
-                return null
-              }
-            },
-          ).then(
-            () => undefined,
-            error => {
-              logWorkerRouteError(
-                'khala_sync_tips_buffer_backing_invariant_violated',
-                error,
-              )
-            },
-          ),
-        ),
       ),
     ])
     for (const [index, result] of scheduledTaskResults.entries()) {

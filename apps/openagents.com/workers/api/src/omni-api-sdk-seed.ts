@@ -5,7 +5,6 @@ export const OmniApiSdkSeedEndpoint = '/api/omni/sdk-seed'
 
 export const OmniApiSdkSurface = S.Literals([
   'accepted_outcomes',
-  'billing',
   'proof_bundles',
   'program_runs',
   'receipts',
@@ -67,9 +66,7 @@ export class OmniApiSdkRouteEntry extends S.Class<OmniApiSdkRouteEntry>(
   surface: OmniApiSdkSurface,
 }) {}
 
-export class OmniApiSdkSeed extends S.Class<OmniApiSdkSeed>(
-  'OmniApiSdkSeed',
-)({
+export class OmniApiSdkSeed extends S.Class<OmniApiSdkSeed>('OmniApiSdkSeed')({
   docs: S.Struct({
     agents: S.String,
     capabilityManifest: S.String,
@@ -102,7 +99,7 @@ const docs = {
     'https://github.com/OpenAgentsInc/autopilot-omega/tree/main/docs/omni',
   openApi: 'https://openagents.com/api/openapi.json',
   roadmap:
-    'https://github.com/OpenAgentsInc/autopilot-omega/blob/main/docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md',
+    'https://github.com/OpenAgentsInc/openagents/blob/main/docs/sol/MASTER_ROADMAP.md',
 }
 
 const schemaEntry = (
@@ -120,8 +117,8 @@ const routeEntry = (
   id: `omni_sdk_route.${input.operationId}`,
 })
 
-export const OMNI_API_SDK_SCHEMA_CATALOG:
-  ReadonlyArray<OmniApiSdkSchemaEntry> = [
+export const OMNI_API_SDK_SCHEMA_CATALOG: ReadonlyArray<OmniApiSdkSchemaEntry> =
+  [
     schemaEntry({
       exportName: 'OmniWorkroomRecord',
       privacyPolicy: 'scoped_private_refs',
@@ -171,22 +168,6 @@ export const OMNI_API_SDK_SCHEMA_CATALOG:
       surface: 'receipts',
     }),
     schemaEntry({
-      exportName: 'BuyerPaymentReceiptRecord',
-      privacyPolicy: 'public_refs_only',
-      schemaRef: 'schema.omni.BuyerPaymentReceiptRecord.v1',
-      sourceModule: 'workers/api/src/buyer-payment-ledger.ts',
-      status: 'available',
-      surface: 'receipts',
-    }),
-    schemaEntry({
-      exportName: 'BillingSummary',
-      privacyPolicy: 'scoped_private_refs',
-      schemaRef: 'schema.omni.BillingSummary.v1',
-      sourceModule: 'workers/api/src/billing.ts',
-      status: 'available',
-      surface: 'billing',
-    }),
-    schemaEntry({
       exportName: 'WebhookSubscriptionRecord',
       privacyPolicy: 'scoped_private_refs',
       schemaRef: 'schema.omni.WebhookSubscriptionRecord.v1',
@@ -197,139 +178,99 @@ export const OMNI_API_SDK_SCHEMA_CATALOG:
     schemaEntry({
       exportName: 'ProgramRunReceiptWebhookSubscriptionContract',
       privacyPolicy: 'scoped_private_refs',
-      schemaRef:
-        'schema.omni.ProgramRunReceiptWebhookSubscriptionContract.v1',
+      schemaRef: 'schema.omni.ProgramRunReceiptWebhookSubscriptionContract.v1',
       sourceModule: 'workers/api/src/webhook-subscriptions.ts',
       status: 'contract_only',
       surface: 'webhooks',
     }),
   ]
 
-export const OMNI_API_SDK_ROUTE_CATALOG:
-  ReadonlyArray<OmniApiSdkRouteEntry> = [
-    routeEntry({
-      accessKind: 'public_read',
-      method: 'GET',
-      notes:
-        'Returns this public-safe SDK seed. It is discovery metadata only.',
-      operationId: 'getOmniApiSdkSeed',
-      path: OmniApiSdkSeedEndpoint,
-      requestSchemaRef: null,
-      responseSchemaRef: 'schema.omni.OmniApiSdkSeed.v1',
-      status: 'available',
-      surface: 'workrooms',
-    }),
-    routeEntry({
-      accessKind: 'browser_session',
-      method: 'GET',
-      notes:
-        'Lists signed-in owner Program Runs through customer-safe projections.',
-      operationId: 'listOmniAgentRuns',
-      path: '/api/omni/agent-runs',
-      requestSchemaRef: null,
-      responseSchemaRef: 'schema.omni.AgentRunListProjection.v1',
-      status: 'available',
-      surface: 'program_runs',
-    }),
-    routeEntry({
-      accessKind: 'browser_session',
-      method: 'POST',
-      notes:
-        'Creates a signed-in owner Autopilot mission. This is not available to public agents without a matching owner authority path.',
-      operationId: 'createOmniAgentRun',
-      path: '/api/omni/agent-runs',
-      requestSchemaRef: 'schema.omni.AgentRunLaunchSelector.v1',
-      responseSchemaRef: 'schema.omni.AgentRunLaunchProjection.v1',
-      status: 'available',
-      surface: 'program_runs',
-    }),
-    routeEntry({
-      accessKind: 'browser_session',
-      method: 'GET',
-      notes:
-        'Reads a signed-in owner Program Run detail through route access policy.',
-      operationId: 'getOmniAgentRun',
-      path: '/api/omni/agent-runs/{runId}',
-      requestSchemaRef: null,
-      responseSchemaRef: 'schema.omni.AgentRunDetailProjection.v1',
-      status: 'available',
-      surface: 'program_runs',
-    }),
-    routeEntry({
-      accessKind: 'browser_session',
-      method: 'GET',
-      notes:
-        'Streams or lists signed-in owner Program Run events through route access policy.',
-      operationId: 'listOmniAgentRunEvents',
-      path: '/api/omni/agent-runs/{runId}/events',
-      requestSchemaRef: null,
-      responseSchemaRef: 'schema.omni.AgentRunEventListProjection.v1',
-      status: 'available',
-      surface: 'program_runs',
-    }),
-    routeEntry({
-      accessKind: 'browser_session',
-      method: 'GET',
-      notes:
-        'Reads signed-in owner billing and credit projection. It is not a payout or settlement surface.',
-      operationId: 'getBillingSummary',
-      path: '/api/billing/summary',
-      requestSchemaRef: null,
-      responseSchemaRef: 'schema.omni.BillingSummary.v1',
-      status: 'available',
-      surface: 'billing',
-    }),
-    routeEntry({
-      accessKind: 'public_read',
-      method: 'GET',
-      notes:
-        'Reads public-safe commerce discovery for a Site. Payment discovery cannot bypass route auth or owner policy.',
-      operationId: 'getSitePaymentDiscovery',
-      path: '/api/sites/{siteId}/commerce/discovery',
-      requestSchemaRef: null,
-      responseSchemaRef: 'schema.sites.SitePaymentDiscovery.v1',
-      status: 'available',
-      surface: 'billing',
-    }),
-    routeEntry({
-      accessKind: 'public_read',
-      method: 'GET',
-      notes:
-        'Reads a public-safe proof bundle projection for the OTEC Site order.',
-      operationId: 'getPublicOtecProof',
-      path: '/api/public/proof/otec',
-      requestSchemaRef: null,
-      responseSchemaRef: 'schema.omni.PublicOtecProof.v1',
-      status: 'available',
-      surface: 'proof_bundles',
-    }),
-    routeEntry({
-      accessKind: 'public_read',
-      method: 'POST',
-      notes:
-        'Validates a developer package manifest. Validation does not install, deploy, list, promote, or mutate payment state.',
-      operationId: 'validateSignaturePackage',
-      path: '/api/developer/signature-packages/validate',
-      requestSchemaRef: 'schema.developer.SignaturePackageValidationRequest.v1',
-      responseSchemaRef: 'schema.developer.SignaturePackageValidationResult.v1',
-      status: 'available',
-      surface: 'workrooms',
-    }),
-    routeEntry({
-      accessKind: 'contract_only',
-      method: 'POST',
-      notes:
-        'Planned dispatcher route. Current webhook work is schema/projection only and cannot send external webhooks.',
-      operationId: 'createProgramRunReceiptWebhookSubscription',
-      path: '/api/omni/webhooks/program-run-receipts',
-      requestSchemaRef:
-        'schema.omni.ProgramRunReceiptWebhookSubscriptionContract.v1',
-      responseSchemaRef:
-        'schema.omni.ProgramRunReceiptWebhookProjection.v1',
-      status: 'planned',
-      surface: 'webhooks',
-    }),
-  ]
+export const OMNI_API_SDK_ROUTE_CATALOG: ReadonlyArray<OmniApiSdkRouteEntry> = [
+  routeEntry({
+    accessKind: 'public_read',
+    method: 'GET',
+    notes: 'Returns this public-safe SDK seed. It is discovery metadata only.',
+    operationId: 'getOmniApiSdkSeed',
+    path: OmniApiSdkSeedEndpoint,
+    requestSchemaRef: null,
+    responseSchemaRef: 'schema.omni.OmniApiSdkSeed.v1',
+    status: 'available',
+    surface: 'workrooms',
+  }),
+  routeEntry({
+    accessKind: 'browser_session',
+    method: 'GET',
+    notes:
+      'Lists signed-in owner Program Runs through customer-safe projections.',
+    operationId: 'listOmniAgentRuns',
+    path: '/api/omni/agent-runs',
+    requestSchemaRef: null,
+    responseSchemaRef: 'schema.omni.AgentRunListProjection.v1',
+    status: 'available',
+    surface: 'program_runs',
+  }),
+  routeEntry({
+    accessKind: 'browser_session',
+    method: 'POST',
+    notes:
+      'Creates a signed-in owner Autopilot mission. This is not available to public agents without a matching owner authority path.',
+    operationId: 'createOmniAgentRun',
+    path: '/api/omni/agent-runs',
+    requestSchemaRef: 'schema.omni.AgentRunLaunchSelector.v1',
+    responseSchemaRef: 'schema.omni.AgentRunLaunchProjection.v1',
+    status: 'available',
+    surface: 'program_runs',
+  }),
+  routeEntry({
+    accessKind: 'browser_session',
+    method: 'GET',
+    notes:
+      'Reads a signed-in owner Program Run detail through route access policy.',
+    operationId: 'getOmniAgentRun',
+    path: '/api/omni/agent-runs/{runId}',
+    requestSchemaRef: null,
+    responseSchemaRef: 'schema.omni.AgentRunDetailProjection.v1',
+    status: 'available',
+    surface: 'program_runs',
+  }),
+  routeEntry({
+    accessKind: 'browser_session',
+    method: 'GET',
+    notes:
+      'Streams or lists signed-in owner Program Run events through route access policy.',
+    operationId: 'listOmniAgentRunEvents',
+    path: '/api/omni/agent-runs/{runId}/events',
+    requestSchemaRef: null,
+    responseSchemaRef: 'schema.omni.AgentRunEventListProjection.v1',
+    status: 'available',
+    surface: 'program_runs',
+  }),
+  routeEntry({
+    accessKind: 'public_read',
+    method: 'POST',
+    notes:
+      'Validates a developer package manifest. Validation does not install, deploy, list, promote, or mutate payment state.',
+    operationId: 'validateSignaturePackage',
+    path: '/api/developer/signature-packages/validate',
+    requestSchemaRef: 'schema.developer.SignaturePackageValidationRequest.v1',
+    responseSchemaRef: 'schema.developer.SignaturePackageValidationResult.v1',
+    status: 'available',
+    surface: 'workrooms',
+  }),
+  routeEntry({
+    accessKind: 'contract_only',
+    method: 'POST',
+    notes:
+      'Planned dispatcher route. Current webhook work is schema/projection only and cannot send external webhooks.',
+    operationId: 'createProgramRunReceiptWebhookSubscription',
+    path: '/api/omni/webhooks/program-run-receipts',
+    requestSchemaRef:
+      'schema.omni.ProgramRunReceiptWebhookSubscriptionContract.v1',
+    responseSchemaRef: 'schema.omni.ProgramRunReceiptWebhookProjection.v1',
+    status: 'planned',
+    surface: 'webhooks',
+  }),
+]
 
 export const OMNI_API_SDK_SEED: OmniApiSdkSeed = {
   docs,
@@ -339,7 +280,7 @@ export const OMNI_API_SDK_SEED: OmniApiSdkSeed = {
     'Treat this seed as discovery metadata. It does not grant authority by itself.',
     'Use browser-session routes for signed-in owner work and registered-agent routes only when a server-side grant says the action is available.',
     'Use idempotency keys for writes that require them and keep private payloads out of public posts, docs, issue comments, and prompts.',
-    'Payment can satisfy only route-advertised economic requirements. It cannot bypass missing auth, owner scope, moderation, privacy, legal, repository, deployment, or operator policy.',
+    'Money and Sites surfaces are retired. No paid or credit-gated capacity becomes free capacity, and this seed grants no economic or settlement authority.',
   ],
   routeCatalog: [...OMNI_API_SDK_ROUTE_CATALOG],
   schemaCatalog: [...OMNI_API_SDK_SCHEMA_CATALOG],
@@ -357,8 +298,9 @@ export const omniApiSdkSeedIsPrivateDataSafe = (
 ): boolean => {
   const text = JSON.stringify(seed)
 
-  return !containsProviderSecretMaterial(text) &&
-    !unsafeSeedTextPattern.test(text)
+  return (
+    !containsProviderSecretMaterial(text) && !unsafeSeedTextPattern.test(text)
+  )
 }
 
 export const omniApiSdkSeedHasRequiredSurfaces = (
@@ -368,7 +310,6 @@ export const omniApiSdkSeedHasRequiredSurfaces = (
 
   return [
     'accepted_outcomes',
-    'billing',
     'proof_bundles',
     'program_runs',
     'receipts',
@@ -387,7 +328,8 @@ export const omniApiSdkSeed = (): Effect.Effect<
 
       if (!omniApiSdkSeedIsPrivateDataSafe(seed)) {
         throw new OmniApiSdkSeedUnsafe({
-          reason: 'Omni API SDK seed contains private or secret-shaped material.',
+          reason:
+            'Omni API SDK seed contains private or secret-shaped material.',
         })
       }
 
@@ -399,9 +341,10 @@ export const omniApiSdkSeed = (): Effect.Effect<
 
       return seed
     },
-    catch: error => error instanceof OmniApiSdkSeedUnsafe
-      ? error
-      : new OmniApiSdkSeedUnsafe({
-        reason: 'Omni API SDK seed failed schema validation.',
-      }),
+    catch: error =>
+      error instanceof OmniApiSdkSeedUnsafe
+        ? error
+        : new OmniApiSdkSeedUnsafe({
+            reason: 'Omni API SDK seed failed schema validation.',
+          }),
   })
