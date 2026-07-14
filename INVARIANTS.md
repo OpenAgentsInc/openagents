@@ -52,6 +52,24 @@ More specific invariant ledgers apply inside imported apps and packages.
   `qa-runner` directly) and posts the verdict/trace/video comment itself (e.g. PR #6224) —
   never a `pull_request`/`push`/`schedule` workflow.
 
+## QA Swarm Run Projection Evidence
+
+- `packages/qa-swarm-contract` owns
+  `openagents.qa_swarm.run_projection.v1`. QA Runner and the OpenAgents web
+  consumer must decode that same Effect Schema; an app-local schema with the
+  same version string is not a compatible contract.
+- A job id, configured cap, target label, or receipt-looking string is not an
+  observed artifact or admitted receipt. Unpublished/unresolved trace, video,
+  coverage, perf, distilled-test, and verdict refs stay absent. The projection
+  remains `inconclusive` with typed blocker refs when required evidence is
+  absent or its resolver is unavailable.
+- A board link may be `evidence_backed` only when the receipt resolver admits
+  the exact requested ref. Missing, rejected, unavailable, or substituted
+  resolution cannot light the edge. Enforced by
+  `packages/qa-swarm-contract/src/index.test.ts`, the QA Runner cross-package
+  assertions in `apps/qa-runner/src/control.test.ts`, and the web false-green
+  tests in `apps/openagents.com/apps/web/src/page/qa-swarm.test.ts`.
+
 ## Product Surface Ownership
 
 - `apps/openagents.com/` owns the `openagents.com` product surface and retains

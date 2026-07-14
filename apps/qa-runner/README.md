@@ -160,7 +160,8 @@ QA_CONTROL_TOKENS="raynor:tok_demo_secret" bun run --cwd apps/qa-runner api
 #   curl quick-start a third party can follow: docs/control-api-quickstart.md
 
 # QA Swarm hosted-run composition (#8065): one command emits the QS2
-# openagents.qa_swarm.run_projection.v1 artifact plus /qa/{runRef} share URL.
+# openagents.qa_swarm.run_projection.v1 artifact plus a candidate /qa/{runRef}
+# share URL. Publishing that route is a separate operation.
 # Fixture tier is no-spend by default; live tiers are skip-safe unless armed.
 bun run --cwd apps/qa-runner qa -- swarm run \
   --target https://openagents.com \
@@ -184,9 +185,14 @@ no Chrome/network/spend; real runs are owner-gated. Full curl walkthrough:
 fixture-tier fanout, FleetRun-style worker/run caps, skip-safe live tier rows
 for GCE Tier-2 and CF Browser Rendering, and an
 `openagents.qa_swarm.run_projection.v1` artifact with a `/qa/{runRef}` share
-URL. `GET /swarm-runs/:id` returns the projection and tier statuses. Real runs
-still require `QA_CONTROL_ARM_REAL=1`; unarmed live requests fail closed with
-`not_armed`.
+URL candidate. `GET /swarm-runs/:id` returns the projection and tier statuses;
+it does not publish that candidate route. The shared contract lives in
+`packages/qa-swarm-contract`. Artifact fields are emitted only for observed,
+published artifacts, and evidence edges require exact receipt admission from a
+resolver. The fixture composer has neither, so its artifact/evidence arrays are
+empty, its graph carries blockers, and its verdict is `inconclusive` rather
+than a synthetic green. Real runs still require `QA_CONTROL_ARM_REAL=1`;
+unarmed live requests fail closed with `not_armed`.
 
 ## Artifacts (`result.json` + receipt)
 

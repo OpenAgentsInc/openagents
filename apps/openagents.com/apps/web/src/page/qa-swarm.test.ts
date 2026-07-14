@@ -109,9 +109,13 @@ describe('QA Swarm route', () => {
     expect(rendered).toContain('Khala Code nightly QA swarm')
     expect(rendered).toContain('QA Swarm run')
     expect(rendered).toContain('Verdict wall')
+    expect(rendered).toContain('Evidence admission')
+    expect(rendered).toContain('No receipts are admitted for this projection.')
+    expect(rendered).toContain('blocker.qa_swarm.sample_receipts.not_resolved')
     expect(rendered).toContain('Arbiter swarm board')
     expect(rendered).toContain('data-link-id="scenario-to-target"')
-    expect(rendered).toContain('data-status="evidence_backed"')
+    expect(rendered).toContain('data-status="blocked"')
+    expect(rendered).not.toContain('data-status="evidence_backed"')
     expect(rendered).toContain('QA Swarm board text mirror')
     expect(rendered).toContain('Coverage + frontier')
     expect(rendered).toContain('Perf budgets')
@@ -130,8 +134,8 @@ describe('QA Swarm route', () => {
     expect(rendered).toContain('Static scene fallback')
     expect(rendered).toContain('scene.qa_swarm.three_effect.additive_hdr_bloom.20260702')
     expect(rendered).toContain('scene.qa_swarm.reduced_motion.static_fallback.20260702')
-    expect(rendered).toContain('/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef')
-    expect(rendered).toContain('/docs/qa/khala-code-mechanical-corpus')
+    expect(rendered).not.toContain('/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef')
+    expect(rendered).not.toContain('/docs/qa/khala-code-mechanical-corpus')
     expect(rendered).toContain('/docs/qa/qa-swarm-khala-code-standing-engagement')
     expect(rendered).toContain('artifact.qa_swarm.target.opaque.customer_one')
     expect(rendered).not.toMatch(/\/Users\/|bearer|token|secret/i)
@@ -163,7 +167,10 @@ describe('QA Swarm route', () => {
 describe('QA Swarm projection schema and redaction', () => {
   test('decodes the sample projection and declares staleness', () => {
     expect(S.decodeUnknownSync(QaSwarmRunProjection)(sampleQaSwarmRunProjection))
-      .toEqual(sampleQaSwarmRunProjection)
+      .toMatchObject({
+        runRef: QA_SWARM_SAMPLE_RUN_REF,
+        schemaVersion: 'openagents.qa_swarm.run_projection.v1',
+      })
     expect(sampleQaSwarmRunProjection.schemaVersion).toBe(
       'openagents.qa_swarm.run_projection.v1',
     )
@@ -192,6 +199,9 @@ describe('QA Swarm projection schema and redaction', () => {
     expect(sampleQaSwarmRunProjection.boardGraph.schemaVersion).toBe(
       'openagents.arbiter.graph_spec.v0',
     )
+    expect(sampleQaSwarmRunProjection.verdict).toBe('inconclusive')
+    expect(sampleQaSwarmRunProjection.evidenceAdmission.admittedReceiptRefs)
+      .toEqual([])
   })
 
   test('keeps non-owner targets opaque and public-safe', () => {
@@ -227,7 +237,7 @@ describe('QA Swarm projection schema and redaction', () => {
 
     expect(() =>
       assertQaSwarmPublicProjection(broken),
-    ).toThrow(/lit without receipt/)
+    ).toThrow(/not resolver-backed/)
   })
 
   test('redaction tripwire rejects unsafe scene refs', () => {

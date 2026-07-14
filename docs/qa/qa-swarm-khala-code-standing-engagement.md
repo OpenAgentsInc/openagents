@@ -1,7 +1,9 @@
 # QA Swarm at Khala Code: Customer-One Standing Engagement
 
 Date: 2026-07-02
-Status: public-safe case-study seed and weekly-report contract for issue #8066.
+Status: historical public-safe case-study seed and weekly-report contract for
+issue #8066; current receipt admission is unresolved and the web projection is
+`inconclusive`.
 This document does not flip a product promise green, publish a price, or claim
 hosted QA Swarm self-service is generally available.
 
@@ -12,15 +14,17 @@ The customer-one engagement report is the QA Swarm run projection for Khala Code
 - Stable share URL: `/qa/qa-run.khala-code-nightly.latest`
 - Seed snapshot alias: `/qa/qa-run.khala-code-nightly.2026-07-02`
 - Projection schema: `openagents.qa_swarm.run_projection.v1`
-- Source artifact: `artifact.khala_code.qa_status_surface.latest`
-- Weekly report ref: `artifact.qa_swarm.weekly_report.khala_code.latest`
+- Declared source artifact: `artifact.khala_code.qa_status_surface.latest`
+- Declared weekly report ref: `artifact.qa_swarm.weekly_report.khala_code.latest`
 
-The latest URL is the stable link for the standing engagement. The dated alias is
-the public-safe seed snapshot from the 2026-07-02 audit session. Future nightly
-or weekly automation may refresh the latest projection, but it must keep the same
-redaction and evidence rules: every visible count comes from the nightly status
-surface, trace/video receipts, coverage frontier, perf budgets, filed issue refs,
-or distilled regression refs.
+The latest URL is the stable static link for the standing-engagement seed. The
+dated alias is the public-safe seed snapshot from the 2026-07-02 audit session.
+The declared refs above are retained historical identifiers, not current
+resolver admission. Until an exact receipt resolver admits them, the shared run
+projection exposes no trace/video/coverage/perf/distilled-test evidence, lights
+no evidence edge, and reports typed blockers. Future nightly or weekly
+automation may refresh the latest projection, but every visible evidence item
+must come from an observed artifact and an exact admitted receipt.
 
 ## Engagement Contract
 
@@ -34,6 +38,9 @@ Khala Code QA loop as a weekly report:
   distilled`.
 - Link only dereferenceable public-safe receipts: artifact refs, trace refs,
   coverage/frontier refs, perf refs, test refs, and strict issue refs.
+- Resolve every receipt through the shared
+  `qa_swarm.receipt_resolver.v1` boundary before marking an Arbiter edge
+  `evidence_backed`; string shape alone is never admission.
 - Carry behavior-contract registry status: the enforced contracts for the
   surface (ids + statements from
   `clients/khala-code-desktop/src/contracts/ux-contracts.ts`, human doc

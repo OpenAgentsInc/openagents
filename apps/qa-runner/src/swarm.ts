@@ -1,11 +1,19 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import {
+  QA_SWARM_RUN_PROJECTION_SCHEMA,
+  assertResolverBackedQaSwarmProjection,
+  buildResolverBackedQaSwarmBoardGraph,
+  type QaSwarmProjectionEvidence,
+  type QaSwarmRunProjection,
+  type QaSwarmVerdict,
+} from "@openagentsinc/qa-swarm-contract";
+
 import type { Job, JobReceipt, JobStatus, SubmitRunInput } from "./control";
 
-export const QA_SWARM_RUN_PROJECTION_SCHEMA = "openagents.qa_swarm.run_projection.v1";
-
-export type QaSwarmVerdict = "passed" | "failed" | "warning" | "inconclusive";
+export { QA_SWARM_RUN_PROJECTION_SCHEMA };
+export type { QaSwarmRunProjection, QaSwarmVerdict };
 export type QaSwarmTierStatus = "scheduled" | "running" | "passed" | "failed" | "skipped";
 
 export interface SubmitSwarmRunInput {
@@ -26,59 +34,6 @@ export interface QaSwarmRunTier {
   readonly jobId?: string;
   readonly reason?: string;
   readonly status: QaSwarmTierStatus;
-}
-
-export interface QaSwarmRunProjection {
-  readonly coverageFrontier: ReadonlyArray<{
-    readonly current: number;
-    readonly frontier: number;
-    readonly label: string;
-    readonly receiptRef: string;
-  }>;
-  readonly distilledTests: ReadonlyArray<{
-    readonly href: string;
-    readonly label: string;
-    readonly receiptRef: string;
-  }>;
-  readonly generatedAt: string;
-  readonly nightlyArtifactRef: string;
-  readonly opaqueTargetRefs: readonly string[];
-  readonly perfBudgets: ReadonlyArray<{
-    readonly actualMs: number;
-    readonly budgetMs: number;
-    readonly label: string;
-    readonly receiptRef: string;
-    readonly verdict: QaSwarmVerdict;
-  }>;
-  readonly projectionRef: string;
-  readonly publicSafetyRefs: readonly string[];
-  readonly runRef: string;
-  readonly schemaVersion: typeof QA_SWARM_RUN_PROJECTION_SCHEMA;
-  readonly staleness: {
-    readonly contractVersion: "projection_staleness.v1";
-    readonly maxAgeHours: number;
-    readonly mode: "artifact_snapshot";
-  };
-  readonly target: {
-    readonly label: string;
-    readonly ref: string;
-    readonly visibility: "public" | "opaque";
-  };
-  readonly title: string;
-  readonly traceRefs: readonly string[];
-  readonly verdict: QaSwarmVerdict;
-  readonly verdictWall: ReadonlyArray<{
-    readonly label: string;
-    readonly receiptRef: string;
-    readonly summary: string;
-    readonly verdict: QaSwarmVerdict;
-  }>;
-  readonly videoRefs: ReadonlyArray<{
-    readonly label: string;
-    readonly posterRef: string;
-    readonly traceHref: string;
-    readonly videoRef: string;
-  }>;
 }
 
 export interface QaSwarmRunSummary {
@@ -136,7 +91,9 @@ export const assertQaSwarmProjectionPublicSafe = (
     throw new Error("QA Swarm projection contains private material");
   }
   assertPublicRefs([projection.projectionRef], "projectionRef");
-  assertPublicRefs([projection.nightlyArtifactRef], "nightlyArtifactRef");
+  if (projection.nightlyArtifactRef !== undefined) {
+    assertPublicRefs([projection.nightlyArtifactRef], "nightlyArtifactRef");
+  }
   assertPublicRefs(projection.opaqueTargetRefs, "opaqueTargetRefs");
   assertPublicRefs(projection.publicSafetyRefs, "publicSafetyRefs");
   assertPublicRefs(projection.traceRefs, "traceRefs");
@@ -154,7 +111,9 @@ export const assertQaSwarmProjectionPublicSafe = (
     projection.distilledTests.map(item => item.receiptRef),
     "distilledTests.receiptRef",
   );
-  assertPublicRefs([projection.target.ref], "target.ref");
+  if (projection.target.ref !== undefined) {
+    assertPublicRefs([projection.target.ref], "target.ref");
+  }
   return projection;
 };
 
@@ -200,49 +159,23 @@ export const writeQaSwarmRunSummary = (input: Readonly<{
   );
   const failedCount = childVerdicts.filter(verdict => verdict === "failed").length;
   const inconclusiveCount = childVerdicts.filter(verdict => verdict === "inconclusive").length;
-  const passedCount = childVerdicts.filter(verdict => verdict === "passed").length;
   const fixtureVerdict: QaSwarmVerdict =
     failedCount > 0 ? "failed" : inconclusiveCount > 0 ? "inconclusive" : "passed";
-  const overallVerdict: QaSwarmVerdict =
-    fixtureVerdict === "passed" && !input.includeLiveTiers ? "warning" : fixtureVerdict;
-
-  const projection = assertQaSwarmProjectionPublicSafe({
-    coverageFrontier: [
-      {
-        current: passedCount,
-        frontier: Math.max(input.maxRuns, passedCount + failedCount + inconclusiveCount),
-        label: "Fixture scenario fanout",
-        receiptRef: `coverage.qa_swarm.${targetSlug}.${slug(input.runRef)}`,
-      },
-    ],
-    distilledTests: [
-      {
-        href: "/docs/qa/khala-code-mechanical-corpus",
-        label: "Nightly matrix recipe",
-        receiptRef: `test.qa_swarm.${targetSlug}.nightly_matrix_recipe.${slug(input.runRef)}`,
-      },
-    ],
+  const observedVerdict: QaSwarmVerdict = fixtureVerdict;
+  const blockerRefs = [
+    "blocker.qa_swarm.receipts.not_resolved",
+    "blocker.qa_swarm.artifacts.not_published",
+    ...(input.includeLiveTiers ? ["blocker.qa_swarm.live_tiers.receipts_missing"] : []),
+  ];
+  const projectionEvidence: QaSwarmProjectionEvidence = {
+    blockerRefs,
+    coverageFrontier: [],
+    distilledTests: [],
     generatedAt: input.generatedAt,
-    nightlyArtifactRef: `artifact.qa_swarm.${targetSlug}.nightly_matrix.${slug(input.runRef)}`,
-    opaqueTargetRefs: [`artifact.qa_swarm.target.opaque.${targetSlug}`],
-    perfBudgets: [
-      {
-        actualMs: input.childJobs.length,
-        budgetMs: input.maxRuns,
-        label: "Run cap usage",
-        receiptRef: `perf.qa_swarm.${targetSlug}.run_cap.${slug(input.runRef)}`,
-        verdict: input.childJobs.length <= input.maxRuns ? "passed" : "failed",
-      },
-      {
-        actualMs: Math.min(input.maxWorkers, input.childJobs.length),
-        budgetMs: input.maxWorkers,
-        label: "Worker cap usage",
-        receiptRef: `perf.qa_swarm.${targetSlug}.worker_cap.${slug(input.runRef)}`,
-        verdict: "passed",
-      },
-    ],
+    opaqueTargetRefs: [],
+    perfBudgets: [],
     projectionRef: `projection.qa_swarm.run.${targetSlug}.${slug(input.runRef)}`,
-    publicSafetyRefs: [`redaction.qa_swarm.public_projection.${targetSlug}.${slug(input.runRef)}`],
+    publicSafetyRefs: [],
     runRef: input.runRef,
     schemaVersion: QA_SWARM_RUN_PROJECTION_SCHEMA,
     staleness: {
@@ -252,35 +185,27 @@ export const writeQaSwarmRunSummary = (input: Readonly<{
     },
     target: {
       label: input.targetName,
-      ref: `artifact.qa_swarm.target.opaque.${targetSlug}`,
       visibility: "opaque",
     },
     title: `QA Swarm hosted run: ${input.targetName}`,
-    traceRefs: childRunIds.map(jobId => `trace.qa_swarm.${targetSlug}.${slug(jobId)}`),
-    verdict: overallVerdict,
-    verdictWall: [
-      {
-        label: "Fixture-tier fanout",
-        receiptRef: `artifact.qa_swarm.verdict.fixture_fanout.${targetSlug}.${slug(input.runRef)}`,
-        summary: `${passedCount}/${input.childJobs.length} fixture shard(s) passed under owned-runner caps.`,
-        verdict: fixtureVerdict,
-      },
-      {
-        label: "Live owned-runner tiers",
-        receiptRef: `artifact.qa_swarm.verdict.live_tiers.${targetSlug}.${slug(input.runRef)}`,
-        summary: input.includeLiveTiers
-          ? "Live tiers requested; runner evidence is represented by the tier statuses."
-          : "GCE Tier-2 and CF Browser Rendering tiers were skipped safely for this fixture run.",
-        verdict: input.includeLiveTiers ? "inconclusive" : "warning",
-      },
-    ],
-    videoRefs: childRunIds.map(jobId => ({
-      label: `Fixture shard ${jobId}`,
-      posterRef: `poster.qa_swarm.${targetSlug}.${slug(jobId)}`,
-      traceHref: `/trace/${slug(jobId)}`,
-      videoRef: `video.qa_swarm.${targetSlug}.${slug(jobId)}`,
-    })),
+    traceRefs: [],
+    verdict: observedVerdict,
+    verdictWall: [],
+    videoRefs: [],
+  };
+  const resolverBacked = buildResolverBackedQaSwarmBoardGraph(projectionEvidence, {
+    resolve: () => ({
+      status: "unavailable",
+      blockerRef: "blocker.qa_swarm.receipt_resolver.not_configured",
+    }),
   });
+  const projection = assertQaSwarmProjectionPublicSafe(
+    assertResolverBackedQaSwarmProjection({
+      ...projectionEvidence,
+      ...resolverBacked,
+      blockerRefs: resolverBacked.evidenceAdmission.blockerRefs,
+    }),
+  );
 
   const tiers: readonly QaSwarmRunTier[] = [
     ...input.childJobs.map(job => ({

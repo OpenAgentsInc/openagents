@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { NotArmedError, BadRequestError, NotFoundError, QaControl } from "./control";
+import { assertResolverBackedQaSwarmProjection } from "@openagentsinc/qa-swarm-contract";
 import type { FetchLike } from "./publish-trace";
 import { QA_SWARM_RUN_PROJECTION_SCHEMA } from "./swarm";
 
@@ -128,7 +129,17 @@ describe("submitSwarmRun (fixture path)", () => {
     expect(artifacts.qaShareUrl).toContain("/qa/");
     expect(artifacts.swarm).not.toBeNull();
     expect(artifacts.swarm!.projection.schemaVersion).toBe(QA_SWARM_RUN_PROJECTION_SCHEMA);
-    expect(artifacts.swarm!.projection.verdict).toBe("warning");
+    expect(artifacts.swarm!.projection.verdict).toBe("inconclusive");
+    expect(assertResolverBackedQaSwarmProjection(artifacts.swarm!.projection))
+      .toEqual(artifacts.swarm!.projection);
+    expect(artifacts.swarm!.projection.traceRefs).toEqual([]);
+    expect(artifacts.swarm!.projection.videoRefs).toEqual([]);
+    expect(artifacts.swarm!.projection.coverageFrontier).toEqual([]);
+    expect(artifacts.swarm!.projection.opaqueTargetRefs).toEqual([]);
+    expect(artifacts.swarm!.projection.target.ref).toBeUndefined();
+    expect(artifacts.swarm!.projection.boardGraph.links.every(link =>
+      link.status !== "evidence_backed"
+    )).toBe(true);
     expect(artifacts.swarm!.childRunIds.length).toBe(2);
     expect(artifacts.swarm!.tiers.some(tier => tier.backend === "gce-tier-2" && tier.status === "skipped")).toBe(true);
     expect(artifacts.swarm!.tiers.some(tier => tier.backend === "cf-browser-rendering" && tier.status === "skipped")).toBe(true);

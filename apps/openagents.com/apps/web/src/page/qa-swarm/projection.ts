@@ -1,70 +1,29 @@
-import { GraphSpec } from '@openagentsinc/arbiter-effect/core'
-import { buildQaSwarmBoardGraphSpec } from '@openagentsinc/arbiter-effect/qa-swarm'
+import {
+  QaSwarmCoverageFrontierItem,
+  QaSwarmDistilledTestRef,
+  QaSwarmPerfBudgetItem,
+  QaSwarmRunProjection as SharedQaSwarmRunProjection,
+  QaSwarmTargetProjection,
+  QaSwarmTargetVisibility,
+  QaSwarmVerdict,
+  QaSwarmVerdictItem,
+  QaSwarmVideoRef,
+  assertResolverBackedQaSwarmProjection,
+  buildResolverBackedQaSwarmBoardGraph,
+} from '@openagentsinc/qa-swarm-contract'
 import { Schema as S } from 'effect'
 
-export const QaSwarmVerdict = S.Literals([
-  'passed',
-  'failed',
-  'warning',
-  'inconclusive',
-])
-export type QaSwarmVerdict = typeof QaSwarmVerdict.Type
-
-export const QaSwarmTargetVisibility = S.Literals(['public', 'opaque'])
-export type QaSwarmTargetVisibility = typeof QaSwarmTargetVisibility.Type
-
-export class QaSwarmTargetProjection extends S.Class<QaSwarmTargetProjection>(
-  'QaSwarmTargetProjection',
-)({
-  label: S.String,
-  ref: S.String,
-  visibility: QaSwarmTargetVisibility,
-}) {}
-
-export class QaSwarmVerdictItem extends S.Class<QaSwarmVerdictItem>(
-  'QaSwarmVerdictItem',
-)({
-  label: S.String,
-  receiptRef: S.String,
-  summary: S.String,
-  verdict: QaSwarmVerdict,
-}) {}
-
-export class QaSwarmCoverageFrontierItem extends S.Class<QaSwarmCoverageFrontierItem>(
-  'QaSwarmCoverageFrontierItem',
-)({
-  current: S.Number,
-  frontier: S.Number,
-  label: S.String,
-  receiptRef: S.String,
-}) {}
-
-export class QaSwarmPerfBudgetItem extends S.Class<QaSwarmPerfBudgetItem>(
-  'QaSwarmPerfBudgetItem',
-)({
-  actualMs: S.Number,
-  budgetMs: S.Number,
-  label: S.String,
-  receiptRef: S.String,
-  verdict: QaSwarmVerdict,
-}) {}
-
-export class QaSwarmVideoRef extends S.Class<QaSwarmVideoRef>(
-  'QaSwarmVideoRef',
-)({
-  label: S.String,
-  posterRef: S.String,
-  traceHref: S.String,
-  videoRef: S.String,
-}) {}
-
-export class QaSwarmDistilledTestRef extends S.Class<QaSwarmDistilledTestRef>(
-  'QaSwarmDistilledTestRef',
-)({
-  href: S.String,
-  label: S.String,
-  receiptRef: S.String,
-}) {}
+export {
+  QaSwarmCoverageFrontierItem,
+  QaSwarmDistilledTestRef,
+  QaSwarmPerfBudgetItem,
+  SharedQaSwarmRunProjection as QaSwarmRunProjection,
+  QaSwarmTargetProjection,
+  QaSwarmTargetVisibility,
+  QaSwarmVerdict,
+  QaSwarmVerdictItem,
+  QaSwarmVideoRef,
+}
 
 export class QaSwarmEngagementProjection extends S.Class<QaSwarmEngagementProjection>(
   'QaSwarmEngagementProjection',
@@ -152,35 +111,14 @@ export class QaSwarmSceneProjection extends S.Class<QaSwarmSceneProjection>(
   verdictLandings: S.Array(QaSwarmSceneVerdictLanding),
 }) {}
 
-export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
-  'QaSwarmRunProjection',
+export class QaSwarmPageProjection extends S.Class<QaSwarmPageProjection>(
+  'QaSwarmPageProjection',
 )({
-  boardGraph: GraphSpec,
+  ...SharedQaSwarmRunProjection.fields,
   caseStudy: QaSwarmCaseStudyProjection,
-  coverageFrontier: S.Array(QaSwarmCoverageFrontierItem),
-  distilledTests: S.Array(QaSwarmDistilledTestRef),
   engagement: QaSwarmEngagementProjection,
   findingsLedger: QaSwarmFindingsLedgerProjection,
-  generatedAt: S.String,
-  nightlyArtifactRef: S.String,
-  opaqueTargetRefs: S.Array(S.String),
-  perfBudgets: S.Array(QaSwarmPerfBudgetItem),
-  projectionRef: S.String,
-  publicSafetyRefs: S.Array(S.String),
-  runRef: S.String,
-  schemaVersion: S.Literal('openagents.qa_swarm.run_projection.v1'),
   scene: QaSwarmSceneProjection,
-  staleness: S.Struct({
-    contractVersion: S.Literal('projection_staleness.v1'),
-    maxAgeHours: S.Number,
-    mode: S.Literal('artifact_snapshot'),
-  }),
-  target: QaSwarmTargetProjection,
-  title: S.String,
-  traceRefs: S.Array(S.String),
-  verdict: QaSwarmVerdict,
-  verdictWall: S.Array(QaSwarmVerdictItem),
-  videoRefs: S.Array(QaSwarmVideoRef),
 }) {}
 
 export const QA_SWARM_SAMPLE_RUN_REF = 'qa-run.khala-code-nightly.latest'
@@ -206,19 +144,22 @@ const assertPublicRefs = (
 }
 
 export const qaSwarmProjectionHasPrivateMaterial = (
-  projection: QaSwarmRunProjection,
+  projection: QaSwarmPageProjection,
 ): boolean => PRIVATE_MATERIAL_PATTERN.test(JSON.stringify(projection))
 
 export const assertQaSwarmPublicProjection = (
-  projection: QaSwarmRunProjection,
-): QaSwarmRunProjection => {
-  const decoded = S.decodeUnknownSync(QaSwarmRunProjection)(projection)
+  projection: QaSwarmPageProjection,
+): QaSwarmPageProjection => {
+  const decoded = S.decodeUnknownSync(QaSwarmPageProjection)(projection)
+  assertResolverBackedQaSwarmProjection(decoded)
   if (qaSwarmProjectionHasPrivateMaterial(decoded)) {
     throw new Error('QA Swarm projection contains private material')
   }
 
   assertPublicRefs([decoded.projectionRef], 'projectionRef')
-  assertPublicRefs([decoded.nightlyArtifactRef], 'nightlyArtifactRef')
+  if (decoded.nightlyArtifactRef !== undefined) {
+    assertPublicRefs([decoded.nightlyArtifactRef], 'nightlyArtifactRef')
+  }
   assertPublicRefs([decoded.engagement.reportRef], 'engagement.reportRef')
   assertPublicRefs([decoded.engagement.sourceArtifactRef], 'engagement.sourceArtifactRef')
   assertPublicRefs([decoded.findingsLedger.ledgerRef], 'findingsLedger.ledgerRef')
@@ -260,11 +201,6 @@ export const assertQaSwarmPublicProjection = (
     decoded.boardGraph.links.flatMap(item => item.evidenceRefs),
     'boardGraph.links.evidenceRefs',
   )
-  for (const link of decoded.boardGraph.links) {
-    if (link.status === 'evidence_backed' && link.evidenceRefs.length === 0) {
-      throw new Error(`QA Swarm board link lit without receipt: ${link.id}`)
-    }
-  }
   assertPublicRefs(
     [
       decoded.scene.sceneRef,
@@ -282,7 +218,7 @@ export const assertQaSwarmPublicProjection = (
     'scene',
   )
 
-  if (decoded.target.visibility === 'opaque') {
+  if (decoded.target.visibility === 'opaque' && decoded.target.ref !== undefined) {
     assertPublicRefs([decoded.target.ref], 'target.ref')
   }
 
@@ -290,6 +226,9 @@ export const assertQaSwarmPublicProjection = (
 }
 
 const sampleQaSwarmRunProjectionFields = {
+  blockerRefs: [
+    'blocker.qa_swarm.sample_receipts.not_resolved',
+  ],
   caseStudy: {
     href: '/docs/qa/qa-swarm-khala-code-standing-engagement',
     receiptRef: 'artifact.qa_swarm.case_study.khala_code.20260702',
@@ -367,7 +306,6 @@ const sampleQaSwarmRunProjectionFields = {
     ],
   },
   generatedAt: '2026-07-02T17:00:00.000Z',
-  nightlyArtifactRef: 'artifact.qa_swarm.khala_code.nightly.20260702',
   opaqueTargetRefs: ['artifact.qa_swarm.target.opaque.customer_one'],
   perfBudgets: [
     {
@@ -501,7 +439,7 @@ const sampleQaSwarmRunProjectionFields = {
     'trace.public.qa_swarm.khala_code.seed_corpus.20260702',
     'trace.public.qa_swarm.khala_code.desktop_frontier.20260702',
   ],
-  verdict: 'warning',
+  verdict: 'inconclusive',
   verdictWall: [
     {
       label: 'Login and workspace routing',
@@ -539,15 +477,33 @@ const sampleQaSwarmRunProjectionFields = {
 } as const
 
 export const sampleQaSwarmRunProjection = assertQaSwarmPublicProjection(
-  new QaSwarmRunProjection({
+  new QaSwarmPageProjection({
     ...sampleQaSwarmRunProjectionFields,
-    boardGraph: buildQaSwarmBoardGraphSpec(sampleQaSwarmRunProjectionFields),
+    coverageFrontier: [],
+    distilledTests: [],
+    perfBudgets: [],
+    publicSafetyRefs: [],
+    scene: {
+      ...sampleQaSwarmRunProjectionFields.scene,
+      agents: [],
+      receiptArcs: [],
+      verdictLandings: [],
+    },
+    traceRefs: [],
+    verdictWall: [],
+    videoRefs: [],
+    ...buildResolverBackedQaSwarmBoardGraph(sampleQaSwarmRunProjectionFields, {
+      resolve: receiptRef => ({
+        status: 'missing',
+        blockerRef: `blocker.qa_swarm.receipt_unresolved.${receiptRef.split('.').at(-1) ?? 'unknown'}`,
+      }),
+    }),
   }),
 )
 
 export const lookupQaSwarmRunProjection = (
   runRef: string,
-): QaSwarmRunProjection | null =>
+): QaSwarmPageProjection | null =>
   runRef === QA_SWARM_SAMPLE_RUN_REF || runRef === QA_SWARM_SEED_RUN_REF
     ? sampleQaSwarmRunProjection
     : null

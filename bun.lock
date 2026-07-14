@@ -317,6 +317,7 @@
         "@openagentsinc/mullet-sim": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
+        "@openagentsinc/qa-swarm-contract": "workspace:*",
         "@openagentsinc/sync-client": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
         "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#714c37e",
@@ -547,6 +548,7 @@
       "dependencies": {
         "@openagentsinc/atif": "workspace:*",
         "@openagentsinc/khala-qa-harness": "workspace:*",
+        "@openagentsinc/qa-swarm-contract": "workspace:*",
         "effect": "catalog:",
         "playwright": "^1.61.0",
       },
@@ -1186,6 +1188,18 @@
         "@scure/base": "1.2.4",
         "@scure/bip32": "1.6.2",
         "@scure/bip39": "1.5.4",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/qa-swarm-contract": {
+      "name": "@openagentsinc/qa-swarm-contract",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/arbiter-effect": "workspace:*",
         "effect": "catalog:",
       },
       "devDependencies": {
@@ -2055,6 +2069,8 @@
     "@openagentsinc/pylon-runtime": ["@openagentsinc/pylon-runtime@workspace:apps/pylon/packages/runtime"],
 
     "@openagentsinc/qa-runner": ["@openagentsinc/qa-runner@workspace:apps/qa-runner"],
+
+    "@openagentsinc/qa-swarm-contract": ["@openagentsinc/qa-swarm-contract@workspace:packages/qa-swarm-contract"],
 
     "@openagentsinc/reactor-contracts": ["@openagentsinc/reactor-contracts@workspace:packages/reactor-contracts"],
 

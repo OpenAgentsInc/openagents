@@ -99,6 +99,7 @@
   "dependencies": {
     "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/khala-qa-harness": "workspace:*",
+    "@openagentsinc/qa-swarm-contract": "workspace:*",
     "effect": "catalog:",
     "playwright": "^1.61.0"
   },

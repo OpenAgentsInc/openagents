@@ -13,7 +13,7 @@ import {
   type QaSwarmCoverageFrontierItem,
   type QaSwarmFindingsLedgerProjection,
   type QaSwarmPerfBudgetItem,
-  type QaSwarmRunProjection,
+  type QaSwarmPageProjection,
   type QaSwarmSceneProjection,
   type QaSwarmVerdict,
   type QaSwarmVerdictItem,
@@ -475,7 +475,7 @@ const findingsLedger = <Message>(
   ])
 }
 
-const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
+const runArticle = <Message>(projection: QaSwarmPageProjection): Html => {
   const h = html<Message>()
   rememberQaSwarmSceneProjection(projection.scene)
 
@@ -511,7 +511,9 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
                   [projection.title],
                 ),
                 h.p([Ui.className<Message>(body)], [
-                  'Public-safe projection from the nightly status artifact, trace receipts, coverage frontier, perf budgets, videos, and distilled regression tests.',
+                  projection.blockerRefs.length > 0
+                    ? 'Evidence admission is incomplete. Unresolved artifacts and receipts are withheld from the run evidence below.'
+                    : 'Public-safe projection from admitted trace, coverage, performance, video, and regression-test receipts.',
                 ]),
               ]),
               verdictBadge<Message>(projection.verdict),
@@ -538,15 +540,23 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
                   ],
                   [
                     projection.target.label,
-                    projection.target.visibility === 'opaque'
-                      ? ' · opaque ref'
-                      : ' · public ref',
+                    projection.target.ref === undefined
+                      ? ' · no artifact ref'
+                      : projection.target.visibility === 'opaque'
+                        ? ' · opaque ref'
+                        : ' · public ref',
                   ],
                 ),
-                code<Message>(projection.target.ref),
+                ...(projection.target.ref === undefined
+                  ? []
+                  : [code<Message>(projection.target.ref)]),
               ]),
               h.div([Ui.className<Message>('grid gap-1')], [
-                label<Message>('Weekly report'),
+                label<Message>(
+                  projection.blockerRefs.length > 0
+                    ? 'Declared weekly report'
+                    : 'Weekly report',
+                ),
                 h.a(
                   [
                     h.Href(projection.engagement.reportHref),
@@ -559,13 +569,34 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
                 code<Message>(projection.engagement.reportRef),
               ]),
               h.div([Ui.className<Message>('grid gap-1')], [
-                label<Message>('Source artifact'),
+                label<Message>(
+                  projection.blockerRefs.length > 0
+                    ? 'Declared source artifact'
+                    : 'Source artifact',
+                ),
                 code<Message>(projection.engagement.sourceArtifactRef),
               ]),
             ],
           ),
         ],
       ),
+
+      h.section([Ui.className<Message>(panel)], [
+        h.div([Ui.className<Message>('grid gap-3')], [
+          label<Message>('Evidence admission'),
+          h.p([Ui.className<Message>(body)], [
+            projection.evidenceAdmission.admittedReceiptRefs.length === 0
+              ? 'No receipts are admitted for this projection.'
+              : `${projection.evidenceAdmission.admittedReceiptRefs.length} receipt(s) admitted by the exact-ref resolver.`,
+          ]),
+          h.ul(
+            [Ui.className<Message>('grid gap-2 p-0')],
+            projection.blockerRefs.map(blockerRef =>
+              h.li([Ui.className<Message>('list-none')], [code<Message>(blockerRef)]),
+            ),
+          ),
+        ]),
+      ]),
 
       h.section([Ui.className<Message>('grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]')], [
         h.div(
@@ -764,8 +795,10 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
             projection.generatedAt,
             '. Artifact snapshot max age ',
             String(projection.staleness.maxAgeHours),
-            'h. Public safety refs: ',
-            projection.publicSafetyRefs.join(', '),
+            'h. Admitted public safety refs: ',
+            projection.publicSafetyRefs.length === 0
+              ? 'none'
+              : projection.publicSafetyRefs.join(', '),
             '.',
           ]),
         ],

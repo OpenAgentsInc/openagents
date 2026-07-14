@@ -1,0 +1,28 @@
+{
+  "name": "@openagentsinc/qa-swarm-contract",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/arbiter-effect": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}
