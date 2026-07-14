@@ -596,12 +596,77 @@ The loopback PKCE entry/exit oracle is:
 bun test apps/openagents-desktop/tests/desktop-session-pkce.test.ts
 ```
 
+## Release artifact and update-safety guarantees (#8786)
+
+Two live 2026-07-13 incidents define the failure classes these guarantees
+refuse, and both are cited as the standing evidence base:
+
+- **T3 Code shipped a fully-notarized app inside an UNSIGNED, un-notarized
+  DMG.** macOS Gatekeeper assesses the outermost quarantined artifact, so the
+  download died on arrival with the "damaged" dialog and the correct app
+  inside was unreachable (`docs/teardowns/2026-07-13-t3-code-teardown.md`,
+  night addendum: installed-artifact verification).
+- **ChatGPT's updater swapped a working app for one the machine refused to
+  exec and never noticed**, leaving a dead icon
+  (`docs/fable/2026-07-13-chatgpt-codex-launch-failure-analysis.md`,
+  lessons 1–3).
+
+### The outermost artifact is what ships: notarize + staple the DMG itself
+
+`make:mac` notarizes the DMG itself (Apple's ticket covers the nested app)
+and staples the ticket to BOTH the `.app` and the `.dmg`, then fails the make
+closed unless every Gatekeeper oracle is green
+(`forge.config.ts` `postMake`, `scripts/macos-gatekeeper.ts`):
+
+- `codesign --verify --deep --strict` on the app,
+- `spctl -a -t open --context context:primary-signature` on the image,
+- `spctl -a -t exec` on the app,
+- `xcrun stapler validate` on both.
+
+`spctl` acceptance must be as **Notarized Developer ID** — a
+signed-but-unnotarized artifact is a red row, not a warning.
+
+### No unsigned release fallback (fail closed)
+
+When the Developer ID identity or notary credentials are absent, the make
+and preflight lanes REFUSE — a build without a signing ceremony can no
+longer silently produce a release-shaped artifact. The only escape valve is
+explicit (`OA_ALLOW_UNSIGNED_DEV=1` for make, `--allow-unsigned-dev` for
+preflight) and renames the output `-UNSIGNED-DEV`; release preflight and
+`publish-release.ts` refuse that marker unconditionally, so a dev artifact
+can never be mistaken for — or published as — a release.
+
+Every oracle is a pure interpreter over recorded command output, so the full
+set (including the refusal paths) is unit-tested against fixtures WITHOUT
+owner signing credentials; owner-key ceremonies stay owner-gated. Oracles:
+[`tests/macos-gatekeeper.test.ts`](./tests/macos-gatekeeper.test.ts).
+
+### Applying an update is not success — the first demonstrated launch is
+
+After an update applies, the machine holds in `awaiting_launch_receipt` with
+the previous release still staged. The freshly launched build writes a typed
+first-launch receipt (`openagents.desktop.launch_receipt.v1`); only a
+schema-valid receipt for EXACTLY the applied version confirms the update. No
+receipt within the bounded window (10 minutes) → automatic rollback to the
+retained previous version with a typed diagnostic
+(`launch_receipt_missing`). A late receipt never resurrects a rolled-back
+update, and the wait survives a crash/relaunch (the window is re-evaluated
+against the wall clock by the clock-free `evaluateLaunchReceipt`).
+
+Contracts: `src/update-contract.ts` (receipt schema + evaluation),
+`src/update-rollback.ts` (state machine). Oracles:
+[`tests/launch-receipt.test.ts`](./tests/launch-receipt.test.ts) and
+[`tests/update-rollback.test.ts`](./tests/update-rollback.test.ts).
+
 ## Not guaranteed yet
 
-This document does not promise release packaging, signing/notarization,
-automatic updates, server-authoritative FleetRun creation, full-history eager
-rendering, or remote/cloud Codex-history sync. Those remain outside the current
-enforced Desktop contract.
+This document does not promise automatic update delivery (the live feed
+host wiring), server-authoritative FleetRun creation, full-history eager
+rendering, or remote/cloud Codex-history sync. Those remain outside the
+current enforced Desktop contract. Release packaging and signing/notarization
+are now covered by the fail-closed release-lane guarantees above; the
+clean-machine install/update/rollback acceptance ceremony itself stays
+owner-gated.
 
 When behavior changes, update the typed contract, its oracle, and this document
 in the same change. Do not expand this page from aspiration alone.

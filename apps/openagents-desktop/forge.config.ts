@@ -5,10 +5,17 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses"
 import { FuseV1Options, FuseVersion } from "@electron/fuses"
 import { execFileSync } from "node:child_process"
 import { cp, mkdir, rm } from "node:fs/promises"
-import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import path from "node:path"
 import { createRequire } from "node:module"
+import {
+  assertGatekeeperGreen,
+  gatekeeperAppChecks,
+  gatekeeperImageChecks,
+  notarizeAndStapleDmg,
+  unsignedDevArtifactName,
+} from "./scripts/macos-gatekeeper.ts"
 
 
 export const OPENAGENTS_DESKTOP_BUNDLE_ID = "com.openagents.desktop"
@@ -27,6 +34,13 @@ const notarizeCredentials = process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &
       appleApiIssuer: process.env.ASC_API_ISSUER_ID,
     }
   : undefined
+/**
+ * The ONLY escape valve for a make without signing/notary credentials
+ * (#8786). It exists for local dev iteration; the artifact is renamed
+ * `-UNSIGNED-DEV` so it can never be mistaken for — or published as — a
+ * release (release preflight and publish-release both refuse the marker).
+ */
+const allowUnsignedDev = process.env.OA_ALLOW_UNSIGNED_DEV === "1"
 
 const macCodeSignableBasenames = new Set([
   "OpenAgents",
@@ -142,6 +156,56 @@ const config: ForgeConfig = {
       )
       await copyRuntimePackage(buildPath, "@openai/codex", "@openai/codex/bin/codex.js", 1)
       await copyRuntimePackage(buildPath, `@openai/codex-${platform}-${arch}`, `@openai/codex-${platform}-${arch}/package.json`)
+    },
+    /**
+     * Gatekeeper release gate (#8786) — mechanized from two 2026-07-13
+     * incidents: T3 Code's Gatekeeper-dead unsigned DMG around a notarized
+     * app (docs/teardowns/2026-07-13-t3-code-teardown.md, night addendum)
+     * and ChatGPT's updater installing an app the machine refused to exec
+     * (docs/fable/2026-07-13-chatgpt-codex-launch-failure-analysis.md).
+     *
+     * With credentials: notarize the DMG ITSELF (the ticket covers the
+     * nested app), staple both the `.app` and the `.dmg`, then fail the make
+     * closed unless every Gatekeeper oracle is green. Without credentials:
+     * REFUSE — no unsigned release fallback — unless OA_ALLOW_UNSIGNED_DEV=1,
+     * which renames every artifact `-UNSIGNED-DEV`.
+     */
+    postMake: async (_forgeConfig, makeResults) => {
+      if (process.platform !== "darwin") return makeResults
+      const signingReady = developerIdApplication !== undefined && notarizeCredentials !== undefined
+      if (!signingReady) {
+        if (!allowUnsignedDev) {
+          throw new Error(
+            "make REFUSED: Developer ID identity and/or notary credentials are absent " +
+              "(OA_DEVELOPER_ID_APPLICATION + ASC_API_PRIVATE_KEY_PATH/ASC_API_KEY_ID/ASC_API_ISSUER_ID). " +
+              "There is no unsigned release fallback — an unsigned outer artifact is Gatekeeper-dead on arrival " +
+              "(docs/teardowns/2026-07-13-t3-code-teardown.md). " +
+              "For a local dev artifact only, set OA_ALLOW_UNSIGNED_DEV=1; the output is renamed -UNSIGNED-DEV " +
+              "and can never pass release preflight or publish.",
+          )
+        }
+        return makeResults.map((result) => ({
+          ...result,
+          artifacts: result.artifacts.map((artifact) => {
+            const renamed = path.join(path.dirname(artifact), unsignedDevArtifactName(path.basename(artifact)))
+            if (renamed !== artifact) renameSync(artifact, renamed)
+            return renamed
+          }),
+        }))
+      }
+      for (const result of makeResults) {
+        const appPath = path.join(
+          process.cwd(),
+          "out",
+          `OpenAgents-${result.platform}-${result.arch}`,
+          "OpenAgents.app",
+        )
+        for (const artifact of result.artifacts.filter((file) => file.endsWith(".dmg"))) {
+          notarizeAndStapleDmg(artifact, appPath, notarizeCredentials)
+          assertGatekeeperGreen([...gatekeeperImageChecks(artifact), ...gatekeeperAppChecks(appPath)])
+        }
+      }
+      return makeResults
     },
   },
   makers: [

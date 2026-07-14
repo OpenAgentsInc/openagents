@@ -47,7 +47,7 @@ const happyPathToStaged = (state: UpdateMachineState) =>
   ])
 
 describe("update happy path", () => {
-  test("check -> download -> verify -> stage -> apply advances the installed version and retains the rollback slot", () => {
+  test("check -> download -> verify -> stage -> apply advances the installed version and awaits the first-launch receipt", () => {
     const staged = happyPathToStaged(initialUpdateState("0.1.0-rc.1", "rc"))
     expect(staged.refusals).toEqual([])
     expect(staged.state.phase).toBe("staged")
@@ -58,11 +58,20 @@ describe("update happy path", () => {
       { type: "apply_succeeded" },
     ])
     expect(applied.refusals).toEqual([])
-    expect(applied.state.phase).toBe("idle")
+    // Apply is NOT success (#8786): the machine holds with the previous
+    // release staged until the new build demonstrates a first launch.
+    expect(applied.state.phase).toBe("awaiting_launch_receipt")
     expect(applied.state.installed).toBe("0.1.0-rc.2")
     expect(applied.state.candidate).toBeNull()
-    // The rollback slot survives a successful apply for post-apply regression recovery.
     expect(applied.state.previous).toEqual({ version: "0.1.0-rc.1" })
+
+    const confirmed = runUpdateEvents(applied.state, [
+      { type: "launch_receipt_recorded", version: "0.1.0-rc.2" },
+    ])
+    expect(confirmed.refusals).toEqual([])
+    expect(confirmed.state.phase).toBe("idle")
+    // The rollback slot survives a confirmed launch for post-launch regression recovery.
+    expect(confirmed.state.previous).toEqual({ version: "0.1.0-rc.1" })
   })
 })
 
@@ -207,9 +216,11 @@ describe("interruption", () => {
     const applied = runUpdateEvents(result.state, [
       { type: "apply_requested" },
       { type: "apply_succeeded" },
+      { type: "launch_receipt_recorded", version: "0.1.0-rc.2" },
     ])
     expect(applied.refusals).toEqual([])
     expect(applied.state.installed).toBe("0.1.0-rc.2")
+    expect(applied.state.phase).toBe("idle")
   })
 
   test("interrupt during apply rolls back to the retained previous version", () => {
@@ -245,6 +256,7 @@ describe("rollback", () => {
     const applied = runUpdateEvents(staged.state, [
       { type: "apply_requested" },
       { type: "apply_succeeded" },
+      { type: "launch_receipt_recorded", version: "0.1.0-rc.2" },
     ])
     const rolledBack = runUpdateEvents(applied.state, [
       { type: "rollback_requested" },
@@ -290,6 +302,10 @@ describe("totality: illegal events never throw and never mutate", () => {
         { type: "manifest_verified", manifest: manifest("0.1.0-rc.2") },
       ]).state,
       happyPathToStaged(initialUpdateState("0.1.0-rc.1", "rc")).state,
+      runUpdateEvents(happyPathToStaged(initialUpdateState("0.1.0-rc.1", "rc")).state, [
+        { type: "apply_requested" },
+        { type: "apply_succeeded" },
+      ]).state,
     ]
     const events: Array<UpdateEvent> = [
       { type: "check_started" },
@@ -302,6 +318,9 @@ describe("totality: illegal events never throw and never mutate", () => {
       { type: "apply_requested" },
       { type: "apply_succeeded" },
       { type: "apply_failed" },
+      { type: "launch_receipt_recorded", version: "0.1.0-rc.2" },
+      { type: "launch_receipt_recorded", version: "0.0.1" },
+      { type: "launch_receipt_window_elapsed", problem: "receipt_missing" },
       { type: "rollback_requested" },
       { type: "rollback_completed" },
       { type: "rollback_failed" },

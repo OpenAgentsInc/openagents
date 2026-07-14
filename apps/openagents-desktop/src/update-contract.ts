@@ -267,3 +267,94 @@ export const verifyArtifactDigest = (
   if (artifactBytes.byteLength !== manifest.artifactByteLength) return false
   return createHash("sha256").update(artifactBytes).digest("hex") === manifest.artifactSha256
 }
+
+// ---------------------------------------------------------------------------
+// Post-update first-launch receipt (DMG-1, #8786)
+//
+// From the 2026-07-13 ChatGPT incident
+// (docs/fable/2026-07-13-chatgpt-codex-launch-failure-analysis.md): an
+// updater swapped a working app for one the machine refused to exec and
+// never noticed. Applying an update is therefore NOT success — the first
+// demonstrated launch of the new build is. The freshly launched app writes
+// this typed marker; the update host keeps the previous version staged
+// until the marker appears within a bounded window, else it rolls back
+// automatically with a diagnostic (`update-rollback.ts` models the states).
+// ---------------------------------------------------------------------------
+
+export const LAUNCH_RECEIPT_SCHEMA_ID = "openagents.desktop.launch_receipt.v1" as const
+
+const IsoInstantSchema = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/),
+)
+
+export const LaunchReceiptSchema = Schema.Struct({
+  schema: Schema.Literal(LAUNCH_RECEIPT_SCHEMA_ID),
+  app: Schema.Literal("openagents-desktop"),
+  /** The version that demonstrably reached first launch — must equal the applied candidate. */
+  version: ReleaseVersionSchema,
+  launchedAt: IsoInstantSchema,
+})
+export type LaunchReceipt = typeof LaunchReceiptSchema.Type
+
+/**
+ * Bounded receipt window: the previous release stays staged for rollback
+ * until the new build writes its first-launch receipt. No receipt within
+ * this window → automatic rollback. Ten minutes comfortably covers a slow
+ * relaunch while still bounding how long a dead update can sit undetected.
+ */
+export const LAUNCH_RECEIPT_WINDOW_MS = 10 * 60 * 1000
+
+export const createLaunchReceipt = (version: ReleaseVersion, launchedAt: string): LaunchReceipt => ({
+  schema: LAUNCH_RECEIPT_SCHEMA_ID,
+  app: "openagents-desktop",
+  version,
+  launchedAt,
+})
+
+export const launchReceiptProblems = [
+  "receipt_missing",
+  "receipt_invalid",
+  "receipt_version_mismatch",
+] as const
+export type LaunchReceiptProblem = (typeof launchReceiptProblems)[number]
+
+export type LaunchReceiptEvaluation =
+  | { readonly outcome: "confirmed" }
+  | {
+    readonly outcome: "awaiting"
+    readonly problem: LaunchReceiptProblem
+    readonly remainingMs: number
+  }
+  | { readonly outcome: "rollback_required"; readonly problem: LaunchReceiptProblem }
+
+/**
+ * Deterministic, clock-free receipt evaluation (the host injects both
+ * instants). Fail closed: only a schema-valid receipt whose version equals
+ * the applied candidate confirms the update. Anything else — absent marker,
+ * undecodable marker, stale marker from the previous build — is a problem
+ * that becomes `rollback_required` once the bounded window has elapsed.
+ * A LATE receipt (arriving after the window) never resurrects the update;
+ * by then the state machine has already left `awaiting_launch_receipt` and
+ * refuses the event.
+ */
+export const evaluateLaunchReceipt = (input: {
+  /** Parsed marker document as read from disk, or `null` when absent. */
+  readonly receipt: unknown | null
+  readonly expectedVersion: string
+  readonly appliedAtMs: number
+  readonly nowMs: number
+  readonly windowMs?: number
+}): LaunchReceiptEvaluation => {
+  const windowMs = input.windowMs ?? LAUNCH_RECEIPT_WINDOW_MS
+  const problem: LaunchReceiptProblem | null = (() => {
+    if (input.receipt === null) return "receipt_missing"
+    const decoded = decodeExit<LaunchReceipt>(LaunchReceiptSchema, input.receipt)
+    if (decoded === null) return "receipt_invalid"
+    if (decoded.version !== input.expectedVersion) return "receipt_version_mismatch"
+    return null
+  })()
+  if (problem === null) return { outcome: "confirmed" }
+  const elapsedMs = input.nowMs - input.appliedAtMs
+  if (elapsedMs < windowMs) return { outcome: "awaiting", problem, remainingMs: windowMs - elapsedMs }
+  return { outcome: "rollback_required", problem }
+}

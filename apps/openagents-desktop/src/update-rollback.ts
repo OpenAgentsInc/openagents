@@ -1,14 +1,17 @@
 /**
- * Desktop update/rollback state machine (CUT-26, #8706).
+ * Desktop update/rollback state machine (CUT-26, #8706; launch receipt
+ * DMG-1, #8786).
  *
  * A deterministic, total, PURE reducer over the update lifecycle:
  *
  *   idle → checking → downloading → verifying → staged → applying
- *                                                          ├─ success → idle (installed = candidate, previous retained)
+ *                                                          ├─ success → awaiting_launch_receipt
+ *                                                          │              ├─ receipt recorded → idle (installed = candidate, previous retained)
+ *                                                          │              └─ window elapsed  → rolling_back → idle (installed = previous)
  *                                                          └─ failure → rolling_back → idle (installed = previous)
  *
  * Laws enforced structurally (each has a deterministic oracle in
- * `tests/update-rollback.test.ts`):
+ * `tests/update-rollback.test.ts` and `tests/launch-receipt.test.ts`):
  *
  * 1. Version monotonicity — a candidate is admitted only when it is a strict
  *    upgrade for the machine's channel (`isMonotonicUpgrade`). The reducer
@@ -24,12 +27,23 @@
  *    during `applying` is treated as an apply failure and rolls back.
  * 5. Illegal events never throw and never mutate — the reducer returns the
  *    unchanged state plus a typed refusal.
+ * 6. Applying an update is NOT success — the first demonstrated launch is
+ *    (#8786; the 2026-07-13 ChatGPT updater incident,
+ *    `docs/fable/2026-07-13-chatgpt-codex-launch-failure-analysis.md`).
+ *    After `apply_succeeded` the machine sits in `awaiting_launch_receipt`
+ *    with the previous release still staged; only a first-launch receipt for
+ *    EXACTLY the applied version confirms the update, and an elapsed receipt
+ *    window triggers an automatic rollback with a typed diagnostic. A late
+ *    receipt (after the window elapsed) is refused — it never resurrects the
+ *    rolled-back update.
  *
  * No I/O, no clock, no Electron — the host wires this machine to the
- * verification seam (`update-contract.ts`) and the restart plumbing in a
- * later CUT-26 exit; the state logic itself is fully provable here.
+ * verification seam (`update-contract.ts`, including the clock-free
+ * `evaluateLaunchReceipt`) and the restart plumbing in a later CUT-26 exit;
+ * the state logic itself is fully provable here.
  */
 import {
+  type LaunchReceiptProblem,
   type UpdateChannel,
   type UpdateManifest,
   type UpdateVerificationFailure,
@@ -75,6 +89,7 @@ export const updatePhases = [
   "verifying",
   "staged",
   "applying",
+  "awaiting_launch_receipt",
   "rolling_back",
   "rollback_failed",
 ] as const
@@ -88,6 +103,16 @@ export type UpdateFailureRecord =
   | { readonly kind: "manifest_rejected"; readonly reason: UpdateVerificationFailure | "not_monotonic" }
   | { readonly kind: "artifact_rejected" }
   | { readonly kind: "apply_failed" }
+  | {
+    /**
+     * The applied build never demonstrated a first launch within the bounded
+     * receipt window (#8786) — the diagnostic that the ChatGPT updater
+     * incident showed must exist. Recorded on the automatic rollback.
+     */
+    readonly kind: "launch_receipt_missing"
+    readonly problem: LaunchReceiptProblem
+    readonly appliedVersion: string
+  }
   | { readonly kind: "interrupted"; readonly during: UpdatePhase }
   | { readonly kind: "rollback_failed" }
 
@@ -139,6 +164,10 @@ export type UpdateEvent =
   | { readonly type: "apply_requested" }
   | { readonly type: "apply_succeeded" }
   | { readonly type: "apply_failed" }
+  /** The new build wrote its first-launch marker (host: `evaluateLaunchReceipt` → confirmed). */
+  | { readonly type: "launch_receipt_recorded"; readonly version: string }
+  /** The bounded receipt window elapsed without a valid marker (host: `evaluateLaunchReceipt` → rollback_required). */
+  | { readonly type: "launch_receipt_window_elapsed"; readonly problem: LaunchReceiptProblem }
   | { readonly type: "rollback_requested" }
   | { readonly type: "rollback_completed" }
   | { readonly type: "rollback_failed" }
@@ -151,6 +180,7 @@ export const updateRefusals = [
   "migration_ledger_incomplete",
   "loss_reason_ref_invalid",
   "no_previous_release_retained",
+  "launch_receipt_version_mismatch",
 ] as const
 export type UpdateRefusal = (typeof updateRefusals)[number]
 
@@ -262,13 +292,53 @@ export const updateReducer = (
       if (state.phase !== "applying" || state.candidate === null) {
         return refuse(state, "event_not_admissible_in_phase")
       }
+      // Apply is NOT success (#8786): hold in awaiting_launch_receipt with
+      // the previous release still staged until the new build demonstrates a
+      // first launch within the bounded receipt window.
       return admit({
         ...state,
-        phase: "idle",
+        phase: "awaiting_launch_receipt",
         installed: state.candidate.version,
         candidate: null,
         lastFailure: null,
-        // `previous` stays retained so a post-apply regression can still roll back.
+        // `previous` stays retained — it is the automatic-rollback target if
+        // the first-launch receipt never appears.
+      })
+    }
+
+    case "launch_receipt_recorded": {
+      if (state.phase !== "awaiting_launch_receipt") {
+        // A LATE receipt — after the window elapsed the machine has moved to
+        // rolling_back/idle and the receipt can never resurrect the update.
+        return refuse(state, "event_not_admissible_in_phase")
+      }
+      if (event.version !== state.installed) {
+        // A stale marker from a previous build is not launch evidence.
+        return refuse(state, "launch_receipt_version_mismatch")
+      }
+      return admit({
+        ...state,
+        phase: "idle",
+        lastFailure: null,
+        // `previous` stays retained so a post-launch regression can still
+        // roll back manually until the next stage consumes the slot.
+      })
+    }
+
+    case "launch_receipt_window_elapsed": {
+      if (state.phase !== "awaiting_launch_receipt") {
+        return refuse(state, "event_not_admissible_in_phase")
+      }
+      // Automatic rollback + diagnostic: the machine never pretends a build
+      // that failed to demonstrate a first launch is installed and healthy.
+      return admit({
+        ...state,
+        phase: "rolling_back",
+        lastFailure: {
+          kind: "launch_receipt_missing",
+          problem: event.problem,
+          appliedVersion: state.installed,
+        },
       })
     }
 
@@ -325,6 +395,15 @@ export const updateReducer = (
           return admit({
             ...state,
             lastFailure: { kind: "interrupted", during: "staged" },
+          })
+        case "awaiting_launch_receipt":
+          // The receipt wait is durable — a crash/relaunch during the window
+          // resumes here, and the host re-evaluates the bounded window
+          // against the wall clock (`evaluateLaunchReceipt`). The retained
+          // previous slot is untouched.
+          return admit({
+            ...state,
+            lastFailure: { kind: "interrupted", during: "awaiting_launch_receipt" },
           })
         case "applying":
           // Interrupting an apply is an apply failure: roll back.

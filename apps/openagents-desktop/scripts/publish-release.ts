@@ -45,6 +45,7 @@ import {
   type ReleaseDescriptorEntry,
   type ReleaseSigningKey,
 } from "../src/release-publish.ts"
+import { UNSIGNED_DEV_MARKER, isUnsignedDevArtifactName } from "./macos-gatekeeper.ts"
 
 interface Args {
   readonly channel: UpdateChannel
@@ -216,6 +217,16 @@ const main = async (): Promise<void> => {
   const extension = artifactExtension(artifactName)
   if (extension === null) {
     throw new Error("--artifact must be a .dmg or .zip produced by the packaging lane")
+  }
+  // Gatekeeper release oracle (#8786): the -UNSIGNED-DEV escape valve exists
+  // ONLY for local dev artifacts. Publishing one is refused unconditionally —
+  // an unsigned outer artifact is Gatekeeper-dead on arrival
+  // (docs/teardowns/2026-07-13-t3-code-teardown.md, T3 DMG incident).
+  if (isUnsignedDevArtifactName(artifactName)) {
+    throw new Error(
+      `refusing to publish ${artifactName}: ${UNSIGNED_DEV_MARKER} artifacts are dev-only and never releasable ` +
+        "(rebuild with the Developer ID identity + notary credentials; see docs/deploy/openagents-desktop-production-release.md)",
+    )
   }
   const artifactBytes = new Uint8Array(await readFile(args.artifact))
 

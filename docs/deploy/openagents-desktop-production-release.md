@@ -70,11 +70,20 @@ release-contract tests, commit it to `main`, and then build:
 bun test apps/openagents-desktop/tests/release-preflight.test.ts \
   apps/openagents-desktop/tests/update-contract.test.ts \
   apps/openagents-desktop/tests/publish-release.test.ts \
-  apps/openagents-desktop/tests/package-macos.test.ts
+  apps/openagents-desktop/tests/package-macos.test.ts \
+  apps/openagents-desktop/tests/macos-gatekeeper.test.ts \
+  apps/openagents-desktop/tests/launch-receipt.test.ts \
+  apps/openagents-desktop/tests/update-rollback.test.ts
 bun run --cwd apps/openagents-desktop typecheck
 bun run --cwd apps/openagents-desktop build
+set -a; source ~/work/.secrets/appstoreconnect.env; set +a
 bun apps/openagents-desktop/scripts/release-preflight.ts --channel rc --json
 ```
+
+The preflight is fail-closed on signing credentials (#8786): with no
+`OA_DEVELOPER_ID_APPLICATION`/`ASC_API_*` in the environment the
+`signing_credentials_present` row is RED and the lane refuses. For a
+non-release dev iteration only, pass `--allow-unsigned-dev`.
 
 Electron Forge's DMG tool reaches two native addons through Bun's isolated
 dependency store. `make:mac` runs `prepare-macos-maker.ts`, which builds both
@@ -87,7 +96,7 @@ before Forge starts. For a manual diagnosis, the equivalent commands are:
   npm exec --yes --package=node-gyp -- node-gyp rebuild)
 ```
 
-Then sign, package, and notarize the app:
+Then sign, package, notarize, and staple in one gated step (#8786):
 
 ```sh
 set -a
@@ -96,17 +105,30 @@ set +a
 bun run --cwd apps/openagents-desktop make:mac
 ```
 
-Forge notarizes the `.app`; separately submit and staple the final DMG so the
-distributed bytes themselves carry an offline Gatekeeper ticket:
+`make:mac` is fail-closed (Gatekeeper release oracles, issue #8786; from the
+2026-07-13 T3 Gatekeeper-dead-DMG and ChatGPT dead-update incidents):
+
+- Forge notarizes the `.app` during packaging; the `postMake` hook then
+  submits the **DMG itself** to `notarytool` (the ticket covers the nested
+  app) and staples the ticket to BOTH the `.app` and the `.dmg`.
+- The make then refuses to finish unless every Gatekeeper oracle is green:
+  `codesign --verify --deep --strict` (app), `spctl -a -t open --context
+  context:primary-signature` (image), `spctl -a -t exec` (app), and
+  `xcrun stapler validate` (both).
+- If `OA_DEVELOPER_ID_APPLICATION` or the `ASC_API_*` credentials are absent
+  the make REFUSES outright — there is no unsigned release fallback. The only
+  escape valve is `OA_ALLOW_UNSIGNED_DEV=1`, which renames the output
+  `-UNSIGNED-DEV`; preflight and `publish-release.ts` refuse that marker
+  unconditionally.
+
+Re-run the preflight against the built artifacts to record the oracle table
+(the same checks the make already enforced):
 
 ```sh
 DMG=apps/openagents-desktop/out/make/OpenAgents-<version>-arm64.dmg
-xcrun notarytool submit "$DMG" \
-  --key "$ASC_API_PRIVATE_KEY_PATH" \
-  --key-id "$ASC_API_KEY_ID" \
-  --issuer "$ASC_API_ISSUER_ID" --wait --output-format json
-xcrun stapler staple "$DMG"
-xcrun stapler validate "$DMG"
+APP=apps/openagents-desktop/out/OpenAgents-darwin-arm64/OpenAgents.app
+bun apps/openagents-desktop/scripts/release-preflight.ts --channel rc \
+  --dmg "$DMG" --app "$APP" --json
 ```
 
 Wait for stapling to finish before hashing. Hash and size the final bytes twice

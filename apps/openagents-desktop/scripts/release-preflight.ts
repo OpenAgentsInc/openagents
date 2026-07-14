@@ -15,12 +15,25 @@
  *     remnants, NO legacy Desktop UI entrypoints/assets, and NO absolute
  *     source-checkout paths (source-checkout runtime dependencies)
  *
+ * Gatekeeper release oracles (DMG-1, #8786 — from the T3 Gatekeeper-dead DMG
+ * and the ChatGPT dead-update incidents of 2026-07-13): the release lane
+ * REFUSES when the Developer ID identity or notary credentials are absent
+ * (no unsigned fallback; `--allow-unsigned-dev` is the only, honest escape
+ * valve and its artifacts are named `-UNSIGNED-DEV`), and — when pointed at
+ * built artifacts via `--dmg`/`--app` — gates on `codesign --verify --deep
+ * --strict` (app), `spctl -a -t open --context context:primary-signature`
+ * (image), `spctl -a -t exec` (app), and `xcrun stapler validate` (both).
+ * Every verdict is a pure interpreter over recorded command output
+ * (`scripts/macos-gatekeeper.ts`), unit-tested without owner credentials.
+ *
  * What it deliberately does NOT do: touch the ed25519 private key, the Apple
  * Developer ID identity, or notarization — those are owner-gated ceremonies
  * (see the workspace NEEDS_OWNER ledger). This script never reads `.secrets`.
  *
  * Usage:
- *   bun scripts/release-preflight.ts [--channel stable|rc] [--latest-released X.Y.Z] [--json]
+ *   bun scripts/release-preflight.ts [--channel stable|rc] [--latest-released X.Y.Z]
+ *     [--dmg <path/to/OpenAgents.dmg>] [--app <path/to/OpenAgents.app>]
+ *     [--allow-unsigned-dev] [--json]
  */
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
@@ -30,6 +43,13 @@ import {
   parseReleaseVersion,
   updateChannels,
 } from "../src/update-contract.ts"
+import {
+  checkArtifactNotUnsignedDev,
+  checkSigningCredentialsPresent,
+  gatekeeperAppChecks,
+  gatekeeperImageChecks,
+  readMacSigningCredentials,
+} from "./macos-gatekeeper.ts"
 
 export interface PreflightCheck {
   readonly id: string
@@ -274,6 +294,12 @@ export const gatherArtifactFiles = (distDir: string): ReadonlyArray<ArtifactFile
 export const runPreflight = (options: {
   readonly channel: UpdateChannel
   readonly latestReleased: string | null
+  /** Built disk image to assess with the image-side Gatekeeper oracles. */
+  readonly dmgPath?: string
+  /** Packaged `.app` bundle to assess with the app-side Gatekeeper oracles. */
+  readonly appPath?: string
+  /** Dev escape valve — softens ONLY the credentials row, never the artifact oracles. */
+  readonly allowUnsignedDev?: boolean
 }): ReadonlyArray<PreflightCheck> => {
   const packageJson = JSON.parse(readFileSync(path.join(appRoot, "package.json"), "utf8")) as {
     version?: string
@@ -304,6 +330,17 @@ export const runPreflight = (options: {
     checkNoUpdaterRemnants(artifactFiles),
     checkNoLegacyUiEntrypoints(artifactFiles),
     checkNoSourceCheckoutPaths(artifactFiles, repoRoot),
+    // Gatekeeper release oracles (#8786). The credentials row is fail-closed
+    // by default: a release preflight with no Developer ID/notary credentials
+    // is RED unless the caller explicitly engages the -UNSIGNED-DEV escape
+    // valve. Artifact oracles run only when the caller points at real bytes;
+    // an -UNSIGNED-DEV name is refused UNCONDITIONALLY (the valve never
+    // greenlights publishing what it produced).
+    checkSigningCredentialsPresent(readMacSigningCredentials(), options.allowUnsignedDev === true),
+    ...(options.dmgPath === undefined
+      ? []
+      : [checkArtifactNotUnsignedDev(options.dmgPath), ...gatekeeperImageChecks(options.dmgPath)]),
+    ...(options.appPath === undefined ? [] : gatekeeperAppChecks(options.appPath)),
   ]
 }
 
@@ -318,9 +355,14 @@ if (import.meta.main) {
     console.error(`unknown --channel ${channelArg}; expected ${updateChannels.join("|")}`)
     process.exit(1)
   }
+  const dmgPath = readFlag("--dmg")
+  const appPath = readFlag("--app")
   const checks = runPreflight({
     channel: channelArg as UpdateChannel,
     latestReleased: readFlag("--latest-released"),
+    ...(dmgPath === null ? {} : { dmgPath }),
+    ...(appPath === null ? {} : { appPath }),
+    allowUnsignedDev: args.includes("--allow-unsigned-dev"),
   })
   if (args.includes("--json")) {
     console.log(JSON.stringify({ ok: checks.every((check) => check.ok), checks }, null, 2))
