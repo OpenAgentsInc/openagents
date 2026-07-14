@@ -139,6 +139,23 @@ migration, and release proof" retention clause for the named surfaces.
 
 ### Verification (Part 2)
 
+All checks below were re-run after rebasing onto `origin/main`
+`180e073e28` (post MAINT-1 `f9c4b4c2b6` / TC-4 `8b84af0043`).
+
+- `check:deploy` chain on the rebased state: every step green — including
+  `check:sol-docs`/`test:sol-docs`, contract-drift, public-projection
+  freshness, pylon typecheck + adversarial harness test, khala-sync-server
+  migration guard, typecheck:web, all predeploy guards/smokes, the full
+  `apps/web` route/policy test set, and the full `workers/api` deploy test set
+  (`product-promises.test.ts`, `worker-routes.test.ts`,
+  `client-server-route-agreement.test.ts`, ...) — EXCEPT two steps that are
+  byte-identically red at pristine latest `origin/main` with a fresh install:
+  `check:architecture` (six bulk upstream ratchet violations, below) and
+  `typecheck:api` (pre-existing `apps/pylon/portable-session-operation-ledger.ts`
+  + `packages/sqlite-runtime/bun-database.ts` errors from the out-of-bounds
+  portable-session/sqlite-runtime lanes). One khala-sync-client property test
+  timed out only under full parallel-verification load and passes clean
+  (`overlay.property.test.ts`, 2 pass).
 - `bun test apps/openagents.com/workers/api/src/product-promises.test.ts` — pass.
 - `bun run test:assurance-spec` — pass (compiler snapshot updated for the
   post-removal `bun.lock` dependency-lock digest).
@@ -159,4 +176,17 @@ migration, and release proof" retention clause for the named surfaces.
   `clients/khala-code-desktop/src/bun/claude-harness-status.ts` — byte-identical
   on a pristine HEAD worktree with its own fresh install). All belong to the
   pylon/QA/observatory/render-dom lanes; every other root typecheck lane passes
-  post-removal.
+  post-removal (also pre-existing in the same family: `typecheck:khala-mobile`,
+  `typecheck:khala-qa-harness`, `typecheck:harness-conformance`, and the pylon
+  typecheck step inside `check:deploy` — all fail on the same untouched
+  pylon/pylon-core/portable-session/sqlite-runtime files at pristine HEAD).
+- `check:architecture` is red at pristine latest `origin/main` (`180e073e28`)
+  with seven budget violations. This change fixes the one attributable
+  single-line ratchet (index.ts `Effect.runPromise` 9 -> 10, added by the
+  2026-07-12 managed-unit dispatch lane `8244bd64e9` without a bump; recorded
+  per the allowlist's own fix-forward precedent). The remaining six are a bulk
+  upstream ratchet red far outside this scope and are left flagged, not
+  silently bumped: Worker throw new Error 22/0, raw JSON.parse 1/0, raw
+  time/id/random 2/0, semantic Response surfaces 758/752, Response
+  materialization 3142/3123, Response return surfaces 137/135 — byte-identical
+  at pristine `origin/main` with a fresh install.
