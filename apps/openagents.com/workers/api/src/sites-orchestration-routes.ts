@@ -77,7 +77,7 @@ class SiteOrchestrationBadRequest extends S.TaggedErrorClass<SiteOrchestrationBa
 class SiteOrchestrationSessionError extends S.TaggedErrorClass<SiteOrchestrationSessionError>()(
   'SiteOrchestrationSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

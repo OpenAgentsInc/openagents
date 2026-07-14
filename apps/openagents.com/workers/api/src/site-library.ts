@@ -102,7 +102,7 @@ type SiteLibraryRow = Readonly<{
 export class SiteLibraryStorageError extends S.TaggedErrorClass<SiteLibraryStorageError>()(
   'SiteLibraryStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

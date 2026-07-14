@@ -26,7 +26,7 @@ export async function routeAiurSharedSurface(
 }
 
 const server = createServerEntry({
-  async fetch(request) {
+  async fetch(request: Request) {
     const sharedSurfaceResponse = await routeAiurSharedSurface(request)
     if (sharedSurfaceResponse !== undefined) {
       // A successful WebSocket upgrade (status 101) carries a

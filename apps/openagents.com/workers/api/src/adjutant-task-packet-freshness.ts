@@ -58,7 +58,7 @@ export class AdjutantTaskPacketFreshnessStorageError extends S.TaggedErrorClass<
   'AdjutantTaskPacketFreshnessStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

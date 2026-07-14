@@ -22,7 +22,7 @@ export class BlobStoreBackendError extends Schema.TaggedErrorClass<BlobStoreBack
   {
     backend: Schema.String,
     operation: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {}
 

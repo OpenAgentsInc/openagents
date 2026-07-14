@@ -179,7 +179,7 @@ export class MulletPersistenceValidationError extends S.TaggedErrorClass<MulletP
   'MulletPersistenceValidationError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -195,7 +195,7 @@ export class MulletStorageError extends S.TaggedErrorClass<MulletStorageError>()
   'MulletStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

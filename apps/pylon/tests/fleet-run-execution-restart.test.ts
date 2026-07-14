@@ -10,6 +10,7 @@ import { hashPylonAccountRef } from "../src/account-registry.js"
 import { projectFleetRunSupervisorObservation } from "../src/orchestration/fleet-run-execution-projection.js"
 import {
   openPylonFleetRunExecutionReporter,
+  PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
   PylonFleetRunExecutionEventSchemaV2,
   type PylonFleetRunAnyExecutionBatch,
   type PylonFleetRunExecutionHttpPort,
@@ -165,6 +166,7 @@ describe("FleetRun execution projection restart receipt", () => {
     expect(JSON.stringify(projected)).not.toContain("private-account-ref")
     expect(() => S.decodeUnknownSync(PylonFleetRunExecutionEventSchemaV2)({
       ...failed,
+      schema: PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
       sequence: 2,
       eventRef: "event.pylon.fleet_run.0123456789abcdef01234567",
     }, { onExcessProperty: "error" })).not.toThrow()

@@ -653,14 +653,19 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
 
 - Read `INVARIANTS.md` before changing authority, routing, payment,
   projection, or public-claim surfaces.
+- **One completion gate:** `bun run check` is the repository definition of
+  green for humans, agents, and owned CI. Run it before considering a task
+  complete. Root `test`, `typecheck`, `lint`, and `fmt` commands are components
+  of the same workspace-discovered runner; the pre-push hook invokes its
+  `check:fast` profile rather than maintaining a separate policy list.
 - For work under `apps/openagents.com/`, also read
   `apps/openagents.com/AGENTS.md` and `apps/openagents.com/INVARIANTS.md`.
 - **Leave it cleaner than you found it — clean up as you go, every phase.** When you
   touch an area and find pre-existing breakage (failing tests, lint, type errors,
   doc-coverage/OpenAPI/AGENTS.md drift, stale refs, dead code), **fix it even if you did
   not cause it** rather than stepping around it or deferring. Nothing accumulates: every
-  phase, branch, and PR lands with the full relevant test suite **and** `check:deploy`
-  green — not "green except the pre-existing reds." If a pre-existing failure is genuinely
+  phase, branch, and PR lands with `bun run check` green — not "green except
+  the pre-existing reds." If a pre-existing failure is genuinely
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.

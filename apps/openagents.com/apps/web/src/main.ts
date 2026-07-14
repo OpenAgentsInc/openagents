@@ -27,7 +27,7 @@ export const Flags = S.Struct({
 
 class AuthBootstrapFetchError extends S.TaggedErrorClass<AuthBootstrapFetchError>()(
   'AuthBootstrapFetchError',
-  { cause: S.Defect },
+  { cause: S.Defect() },
 ) {}
 
 const fetchAuthBootstrap = Effect.gen(function* () {

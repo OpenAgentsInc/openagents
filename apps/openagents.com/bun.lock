@@ -23,7 +23,7 @@
       "name": "@openagents/autopilot-web",
       "version": "0.1.0",
       "dependencies": {
-        "@effect/platform-browser": "4.0.0-beta.70",
+        "@effect/platform-browser": "4.0.0-beta.94",
         "@openagents/mullet-schema": "workspace:*",
         "@openagents/mullet-sim": "workspace:*",
         "@openagents/provider-account-schema": "workspace:*",
@@ -31,7 +31,7 @@
         "@openagents/sync-schema": "workspace:*",
         "@tailwindcss/vite": "^4.2.4",
         "clsx": "^2.1.1",
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
         "foldkit": "^0.102.1",
         "tailwindcss": "^4.2.4",
       },
@@ -46,7 +46,7 @@
       "name": "@openagents/email-templates",
       "version": "0.1.0",
       "dependencies": {
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
       },
       "devDependencies": {
         "typescript": "^6.0.3",
@@ -57,7 +57,7 @@
       "name": "@openagents/mullet-schema",
       "version": "0.1.0",
       "dependencies": {
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
       },
     },
     "packages/mullet-sim": {
@@ -65,14 +65,14 @@
       "version": "0.1.0",
       "dependencies": {
         "@openagents/mullet-schema": "workspace:*",
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
       },
     },
     "packages/provider-account-schema": {
       "name": "@openagents/provider-account-schema",
       "version": "0.1.0",
       "dependencies": {
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
       },
     },
     "packages/sync-client": {
@@ -80,14 +80,14 @@
       "version": "0.1.0",
       "dependencies": {
         "@openagents/sync-schema": "workspace:*",
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
       },
     },
     "packages/sync-schema": {
       "name": "@openagents/sync-schema",
       "version": "0.1.0",
       "dependencies": {
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
       },
     },
     "packages/sync-worker": {
@@ -95,7 +95,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@openagents/sync-schema": "workspace:*",
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
       },
     },
     "workers/api": {
@@ -103,8 +103,8 @@
       "version": "0.1.0",
       "dependencies": {
         "@cloudflare/containers": "0.3.7",
-        "@effect/sql-d1": "4.0.0-beta.70",
-        "@effect/sql-sqlite-do": "4.0.0-beta.70",
+        "@effect/sql-d1": "4.0.0-beta.94",
+        "@effect/sql-sqlite-do": "4.0.0-beta.94",
         "@moneydevkit/api-contract": "0.1.36",
         "@openagents/email-templates": "workspace:*",
         "@openagents/mullet-schema": "workspace:*",
@@ -115,7 +115,7 @@
         "@openauthjs/openauth": "^0.4.3",
         "@orpc/client": "1.14.5",
         "arctic": "^2.2.2",
-        "effect": "4.0.0-beta.70",
+        "effect": "4.0.0-beta.94",
         "effect-cf": "0.13.1",
         "hono": "^4.12.23",
         "stripe": "^22.2.0",
@@ -163,11 +163,11 @@
 
     "@effect/language-service": ["@effect/language-service@0.86.2", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-SaPln+8srOqDJDUwNTDmP5e+IYpEDr9+1epGznnsLqu8xvo6VnxyWARdeLpqvZJlb0Pgy9ca7ppqvvdWbHPXAg=="],
 
-    "@effect/platform-browser": ["@effect/platform-browser@4.0.0-beta.70", "", { "dependencies": { "multipasta": "^0.2.7" }, "peerDependencies": { "effect": "^4.0.0-beta.70" } }, "sha512-m5MYc2DY6TC+LkgaGnAwn7M2Xr1hDYgN1lrhl2braitd0LlqYG8SrjaraJJC5KcPXavr0BSWdrwaDwiNA1CEQA=="],
+    "@effect/platform-browser": ["@effect/platform-browser@4.0.0-beta.94", "", { "dependencies": { "multipasta": "^0.2.7" }, "peerDependencies": { "effect": "^4.0.0-beta.94" } }, "sha512-qtA331vhAFOe93uZ0C1BH/DarOEz9gdi+ssxWf9lZuZyMR3mRBV4czXUiC3Z2UHD6HNYcG/XfhUHctG5w1JeNQ=="],
 
-    "@effect/sql-d1": ["@effect/sql-d1@4.0.0-beta.70", "", { "dependencies": { "@cloudflare/workers-types": "^4.20260511.1" }, "peerDependencies": { "effect": "^4.0.0-beta.70" } }, "sha512-86zuNS+j9BCB6BnUDkqbzdS0iRhuGw7+bDw+HqV7PgwYAw53/UspyH0Z+v2dLUP9e9LcFat9KJLVbsCGqmdDZQ=="],
+    "@effect/sql-d1": ["@effect/sql-d1@4.0.0-beta.94", "", { "dependencies": { "@cloudflare/workers-types": "^4.20260511.1" }, "peerDependencies": { "effect": "^4.0.0-beta.94" } }, "sha512-eXl5GIjxRuDLGsrQZ5hGIf9NG9Lq6bYXQ01HC3q+otZdjPegNSuVmNG/Fu0rqbms62aKu+JalaewS1Zonl37yg=="],
 
-    "@effect/sql-sqlite-do": ["@effect/sql-sqlite-do@4.0.0-beta.70", "", { "peerDependencies": { "effect": "^4.0.0-beta.70" } }, "sha512-BM9EjDDbTPoJ+almrR8s8mIMq8ZSgn0VAXfkovHUZ0ti3/XJM/HRXE0vK3iZ5J9MLfGq26kd+9ooBkMcqWkkPw=="],
+    "@effect/sql-sqlite-do": ["@effect/sql-sqlite-do@4.0.0-beta.94", "", { "peerDependencies": { "effect": "^4.0.0-beta.94" } }, "sha512-rqN9Sb6ALzygGg5NBq5x7NFokoo+bTblSvmFBqUNVDeEBsg7auvfyHr+OY8UvQzQA7dDpOwvEOPYkbO1WY7g6A=="],
 
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 
@@ -575,7 +575,7 @@
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
-    "effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
+    "effect": ["effect@4.0.0-beta.94", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-Q8BrCNbp/3Uh+7xQYHphZBkNfm2SJnl1frQ+8yWfd/j3SU3cL13D38cBMLcnULupwza2Nt4DrjZoMzHWL3CoxQ=="],
 
     "effect-cf": ["effect-cf@0.13.1", "", { "peerDependencies": { "@effect/sql-d1": "^4.0.0-beta.70", "@effect/sql-pg": "^4.0.0-beta.70", "@effect/sql-sqlite-do": "^4.0.0-beta.70", "effect": "^4.0.0-beta.70" }, "optionalPeers": ["@effect/sql-pg"] }, "sha512-D67b1oucEtYmA2WhHw1nYuf+rJaZtdleTRpelGCFSkYHOHILo5NRWDVE7vUqeR3CnDXk/ah9UHvpz9xZdzMneQ=="],
 

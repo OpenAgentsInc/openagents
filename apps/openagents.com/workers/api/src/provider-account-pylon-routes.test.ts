@@ -425,7 +425,7 @@ describe('provider account Pylon device-login routes', () => {
     const repository = new MemoryProviderAccountRepository()
     repository.accounts.push(makeAccount({
       accountLabel: 'Codex Work',
-      authMode: 'oauth',
+      authMode: 'codex_device_auth',
       id: 'provider-account-codex-owner',
       provider: 'chatgpt_codex',
       providerAccountRef: 'provider_account_codex_owner',

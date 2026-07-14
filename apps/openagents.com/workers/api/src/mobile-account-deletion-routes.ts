@@ -41,7 +41,7 @@ export const MOBILE_ACCOUNT_ROUTE_REF = 'route.khala_mobile.account_delete.v0_1'
 export class MobileAccountDeletionSyncError extends S.TaggedErrorClass<MobileAccountDeletionSyncError>()(
   'MobileAccountDeletionSyncError',
   {
-    cause: S.Defect,
+    cause: S.Defect(),
     reason: S.Union([
       S.Literal('binding_missing'),
       S.Literal('storage_unavailable'),

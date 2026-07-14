@@ -64,7 +64,7 @@ describe("write_stdin tool", () => {
     const started = await startSession(workspace)
     const sessionId = sessionIdFrom(started)
 
-    const result = await writeStdin(workspace, { chars: "hello\n", session_id: sessionId, yield_time_ms: 50 })
+    const result = await writeStdin(workspace, { chars: "hello\n", session_id: sessionId, yield_time_ms: 250 })
 
     expect(result.status).toBe("ok")
     expect(result.modelOutput.text).toContain("hello")
@@ -134,7 +134,7 @@ describe("write_stdin tool", () => {
       chars: `${"abcdefghijklmnopqrstuvwxyz".repeat(30)}\n`,
       max_output_tokens: 2,
       session_id: sessionId,
-      yield_time_ms: 50,
+      yield_time_ms: 250,
     })
 
     expect(result.status).toBe("ok")

@@ -67,7 +67,7 @@ export class PublicAdjutantActivityStorageError extends S.TaggedErrorClass<Publi
   'PublicAdjutantActivityStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

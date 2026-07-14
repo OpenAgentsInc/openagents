@@ -3015,6 +3015,8 @@ const settingsProjection = (
     id: "gpt-5.1-codex",
     isDefault: true,
     model: "gpt-5.1-codex",
+    providerDisplayName: "OpenAI",
+    providerId: "openai",
     serviceTiers: [{ id: "auto", name: "Auto", description: null }],
     supportedReasoningEfforts: [{ value: "medium", description: null }],
     supportsPersonality: true,
@@ -3067,6 +3069,10 @@ const settingsProjection = (
       options: [model],
       selected: model,
       serviceTierCommands: [],
+    },
+    providers: {
+      options: [{ displayName: "OpenAI", id: "openai", modelCount: 1 }],
+      selected: { displayName: "OpenAI", id: "openai", modelCount: 1 },
     },
     observedAt,
     ok: true,
@@ -3221,6 +3227,7 @@ const sessionCatalog = (
     updatedAt: 1,
   }],
   ok: true,
+  scope: "app",
   schemaVersion: "khala-code-desktop.session-catalog.v1",
 })
 

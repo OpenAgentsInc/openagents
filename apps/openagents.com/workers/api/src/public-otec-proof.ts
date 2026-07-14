@@ -181,7 +181,7 @@ export class PublicOtecProofStorageError extends S.TaggedErrorClass<PublicOtecPr
   'PublicOtecProofStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

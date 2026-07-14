@@ -1604,7 +1604,7 @@ const invalidAuthEmailOtpClaim = (email: string): CodeProviderError => ({
 class MdkSidecarUnavailable extends S.TaggedErrorClass<MdkSidecarUnavailable>()(
   'MdkSidecarUnavailable',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 class UnsupportedAuthProvider extends S.TaggedErrorClass<UnsupportedAuthProvider>()(

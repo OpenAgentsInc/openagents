@@ -148,7 +148,7 @@ class OnboardingBadRequest extends S.TaggedErrorClass<OnboardingBadRequest>()(
 class OnboardingSessionError extends S.TaggedErrorClass<OnboardingSessionError>()(
   'OnboardingSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

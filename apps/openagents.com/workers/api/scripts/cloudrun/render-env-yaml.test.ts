@@ -1,9 +1,10 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 
-const script = path.resolve(import.meta.dir, 'render-env-yaml.ts')
+const script = path.resolve(import.meta.dirname, 'render-env-yaml.ts')
 
 const parseRenderedEnvironment = (source: string): Record<string, string> =>
   Object.fromEntries(
@@ -25,12 +26,11 @@ const renderEnvironment = async (
   const directory = await mkdtemp(path.join(tmpdir(), 'openagents-cloudrun-env-'))
   const output = path.join(directory, `${target}.yaml`)
   try {
-    const rendered = Bun.spawnSync(['bun', script, target, output], {
-      stderr: 'pipe',
-      stdout: 'pipe',
+    const rendered = spawnSync('bun', [script, target, output], {
+      encoding: 'utf8',
     })
-    expect(new TextDecoder().decode(rendered.stderr)).toBe('')
-    expect(rendered.exitCode).toBe(0)
+    expect(rendered.stderr).toBe('')
+    expect(rendered.status).toBe(0)
     return parseRenderedEnvironment(await readFile(output, 'utf8'))
   } finally {
     await rm(directory, { recursive: true, force: true })

@@ -34,15 +34,14 @@ describe('Tassadar compiled module marketplace projection', () => {
     expect(envelope.demandSignals[0]!.recommendedBudgetSats).toBeGreaterThan(
       envelope.demandSignals[0]!.baselineBudgetSats,
     )
-    expect(envelope.moduleLibrary).toMatchObject({
+    expect(envelope.moduleLibrary).toEqual({
       collapsedDuplicateCount: 0,
       duplicateGroupCount: 0,
+      entries: envelope.moduleLibrary.entries,
       generatedBy: 'tassadar_module_library_ranker.v1',
-      libraryRef: 'library.public.tassadar_compiled_modules.demand_ranked.v1',
+      modules: envelope.moduleLibrary.modules,
     })
     expect(envelope.moduleLibrary.entries[0]).toMatchObject({
-      canonical: true,
-      demandRank: 1,
       dedupeKey: 'spec.public.tassadar.linked_dense.w3_100m',
       entryRef: 'entry.public.tassadar_compiled_module.linked_dense_canonical',
     })

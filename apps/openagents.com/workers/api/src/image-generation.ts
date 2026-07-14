@@ -142,14 +142,14 @@ export class ProviderInvalidRequest extends S.TaggedErrorClass<ProviderInvalidRe
 export class StorageFailed extends S.TaggedErrorClass<StorageFailed>()(
   'StorageFailed',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
 export class UnknownImageGenerationError extends S.TaggedErrorClass<UnknownImageGenerationError>()(
   'UnknownImageGenerationError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

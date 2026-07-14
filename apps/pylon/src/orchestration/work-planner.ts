@@ -333,9 +333,9 @@ export const normalizeIssueListCandidate = (
 const withSourcePins = <Candidate extends WorkPlannerCandidate>(
   candidate: Candidate,
   source: {
-    readonly branch?: string
-    readonly baseCommit?: string
-    readonly verify?: string
+    readonly branch?: string | undefined
+    readonly baseCommit?: string | undefined
+    readonly verify?: string | undefined
   },
 ): Candidate => ({
   ...candidate,

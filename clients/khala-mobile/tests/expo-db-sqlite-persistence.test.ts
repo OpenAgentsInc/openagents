@@ -7,8 +7,11 @@ import {
   MutationEnvelope,
   MutationId,
   MutatorName,
+  LocalIdentityRef,
+  LocalRevision,
   SyncVersion,
   SyncVersionWatermark,
+  deviceLocalScope,
   personalScope
 } from "@openagentsinc/khala-sync"
 import { Effect } from "effect"
@@ -178,6 +181,43 @@ describe("Khala mobile Expo SQLite Khala Sync store", () => {
       sqliteLoader: async () => sqlite.module
     })
     expect(await Effect.runPromise(reopened.cursor(scope))).toBe(SyncVersion.make(9))
+  })
+
+  test("deletes only exact device-local entity identities", async () => {
+    const sqlite = expoSqliteFromBun()
+    const store = await openKhalaMobileSyncStore({
+      databaseName: "sync-store",
+      sqliteLoader: async () => sqlite.module
+    })
+    const identityRef = LocalIdentityRef.make("local_delete123")
+    const scope = deviceLocalScope(identityRef)
+    await Effect.runPromise(
+      store.writeLocalEntities(scope, [
+        {
+          entityType: "coding_session",
+          entityId: "keep",
+          postImageJson: "{}",
+          revision: LocalRevision.make(1)
+        },
+        {
+          entityType: "coding_session",
+          entityId: "delete",
+          postImageJson: "{}",
+          revision: LocalRevision.make(1)
+        }
+      ])
+    )
+
+    await Effect.runPromise(
+      store.deleteLocalEntities(scope, [{ entityType: "coding_session", entityId: "delete" }])
+    )
+
+    expect(
+      (await Effect.runPromise(store.readLocalEntities(scope))).map(entity => entity.entityId)
+    ).toEqual(["keep"])
+    await expect(
+      Effect.runPromise(store.deleteLocalEntities(personalScope("owner"), []))
+    ).rejects.toThrow("local authority deletes require device-local scope")
   })
 
   test("serializes concurrent write transactions and prefers Expo exclusive transactions", async () => {

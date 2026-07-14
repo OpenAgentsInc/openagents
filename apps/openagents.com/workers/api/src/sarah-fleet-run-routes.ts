@@ -106,7 +106,7 @@ class SarahFleetRunRequestBodyError extends Error {}
 
 class SarahFleetRunDependencyError extends S.TaggedErrorClass<SarahFleetRunDependencyError>()(
   'SarahFleetRunDependencyError',
-  { cause: S.Defect },
+  { cause: S.Defect() },
 ) {}
 
 const collectBoundedRequestChunks = async (

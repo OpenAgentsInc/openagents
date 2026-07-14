@@ -743,7 +743,7 @@ export const makeD1ProviderAccountRepository = (
           grant.userId, grant.revokedAt,
         ),
     ])
-    if (result.meta.changes !== 1) {
+    if (result?.meta.changes !== 1) {
       throw new ProviderGrantNotIssued({ message: 'Grant is not issued.' })
     }
     return { ...grant, status: 'revoked' }

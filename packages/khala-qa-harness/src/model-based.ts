@@ -547,9 +547,9 @@ export const delegateProgramModelCommand = async (
     readonly requestedCount: number
     readonly trace: readonly { readonly module: string; readonly status: string }[]
   }>(await rpcAct(runtime, "codexFleetDelegateRun", [{
+    count: 1,
     mode: "fixture",
     objective: "fixture model-based delegate run",
-    requestedCount: 1,
   }]))
   const observedModules = result.trace.map((step) => step.module)
   const observedModuleStatuses = new Map(result.trace.map((step) => [step.module, step.status]))

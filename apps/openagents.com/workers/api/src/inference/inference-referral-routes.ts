@@ -73,7 +73,7 @@ class InferenceReferralUnauthorized extends S.TaggedErrorClass<InferenceReferral
 
 class InferenceReferralSessionError extends S.TaggedErrorClass<InferenceReferralSessionError>()(
   'InferenceReferralSessionError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class InferenceReferralBadRequest extends S.TaggedErrorClass<InferenceReferralBadRequest>()(
@@ -83,7 +83,7 @@ class InferenceReferralBadRequest extends S.TaggedErrorClass<InferenceReferralBa
 
 class InferenceReferralStorageError extends S.TaggedErrorClass<InferenceReferralStorageError>()(
   'InferenceReferralStorageError',
-  { error: S.Defect, operation: S.String },
+  { error: S.Defect(), operation: S.String },
 ) {}
 
 type InferenceReferralRouteError =

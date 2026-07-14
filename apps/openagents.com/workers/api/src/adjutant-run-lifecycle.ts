@@ -121,7 +121,7 @@ export class AdjutantRunLifecycleStorageError extends S.TaggedErrorClass<Adjutan
   'AdjutantRunLifecycleStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

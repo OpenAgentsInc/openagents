@@ -161,7 +161,7 @@ export class ExaProviderInvalidJson extends S.TaggedErrorClass<ExaProviderInvali
   'ExaProviderInvalidJson',
   {
     endpoint: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -169,7 +169,7 @@ export class ExaProviderFetchError extends S.TaggedErrorClass<ExaProviderFetchEr
   'ExaProviderFetchError',
   {
     endpoint: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -177,7 +177,7 @@ export class ExaProviderSchemaError extends S.TaggedErrorClass<ExaProviderSchema
   'ExaProviderSchemaError',
   {
     endpoint: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

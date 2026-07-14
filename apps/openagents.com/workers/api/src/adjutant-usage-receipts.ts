@@ -136,7 +136,7 @@ export class AdjutantUsageReceiptStorageError extends S.TaggedErrorClass<Adjutan
   'AdjutantUsageReceiptStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

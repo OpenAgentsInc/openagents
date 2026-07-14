@@ -52,7 +52,7 @@ export class FirstBatchPaymentPolicyStorageError extends S.TaggedErrorClass<Firs
   'FirstBatchPaymentPolicyStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

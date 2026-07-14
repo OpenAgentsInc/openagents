@@ -7,10 +7,10 @@ import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { collectKhalaProcessText, spawnKhalaProcess } from "./khala-process.js"
 
 export const KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT =
-  "db887d03e1f907467e33271572dffb73bceecd6b"
+  "08ba14b03d0b3ce3cfdf8c88c0469b9b1924953d"
 
 export const KHALA_CODE_CODEX_PARITY_REFERENCE_LABEL =
-  "openai/codex app-server v2 schema at db887d03e1"
+  "openai/codex app-server v2 schema at 08ba14b03d"
 
 export const KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF =
   "blocker.codex_reference_checkout_missing"

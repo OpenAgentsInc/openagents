@@ -72,7 +72,7 @@ export class OnboardingStorageError extends S.TaggedErrorClass<OnboardingStorage
   'OnboardingStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

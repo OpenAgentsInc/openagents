@@ -108,7 +108,7 @@ export class AdjutantAdjustmentStorageError extends S.TaggedErrorClass<AdjutantA
   'AdjutantAdjustmentStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

@@ -195,7 +195,7 @@ export type SyncMutationRow = Readonly<{
 export class SyncOutboxStorageError extends S.TaggedErrorClass<SyncOutboxStorageError>()(
   'SyncOutboxStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

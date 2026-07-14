@@ -4674,6 +4674,10 @@ const runSmoke = (window: BrowserWindow): void => {
         // Owner details-flash fix: typing in the composer must not change the
         // per-message details affordance's visibility (run before the inspector
         // step consumes the affordance by clicking it).
+        // A synthetic pointerleave does not update Chromium's CSS :hover
+        // state. Move Electron's real pointer into the inert top-left chrome so
+        // the oracle genuinely begins from the documented un-hovered state.
+        window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 })
         await step("details-affordance-stable-on-composer-input", smokeDetailsAffordanceStableOnInput)
         await step("message-metadata-inspector", smokeMessageInspector)
         await step("message-metadata-inspector-reopen", smokeReopenMessageInspector)

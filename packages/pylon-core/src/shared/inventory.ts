@@ -269,6 +269,7 @@ export async function discoverHostInventory(input: { now?: Date; env?: Record<st
     homeFreeBytes = null
   }
 
+  const accelerator = discoverNvidiaAccelerator()
   return projectHostInventoryFixture({
     platform: platformRef(platform()),
     arch: arch(),
@@ -286,7 +287,7 @@ export async function discoverHostInventory(input: { now?: Date; env?: Record<st
     psionicReady: false,
     psionicModelRefs: [],
     localModelRefs: [],
-    accelerator: discoverNvidiaAccelerator(),
+    ...(accelerator === undefined ? {} : { accelerator }),
     now: (input.now ?? new Date()).toISOString(),
   })
 }

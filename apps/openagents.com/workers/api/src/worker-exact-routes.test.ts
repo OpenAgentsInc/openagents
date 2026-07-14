@@ -282,6 +282,8 @@ const approvedExactRoutePaths = [
   '/business',
   '/business/agents.md',
   '/business-new',
+  '/observer',
+  '/observer/traces/openagents-desktop-codex-workroom-mvp',
   '/install.md',
   '/surfaces.md',
   '/pylon.md',

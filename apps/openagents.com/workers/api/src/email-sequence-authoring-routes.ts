@@ -117,7 +117,7 @@ class EmailSequenceAuthoringForbidden extends S.TaggedErrorClass<EmailSequenceAu
 class EmailSequenceAuthoringSessionError extends S.TaggedErrorClass<EmailSequenceAuthoringSessionError>()(
   'EmailSequenceAuthoringSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

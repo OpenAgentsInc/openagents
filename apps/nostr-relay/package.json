@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "nostr-effect": "0.0.12"
+    "nostr-effect": "github:OpenAgentsInc/nostr-effect#2bb5787"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260609.0",

@@ -234,7 +234,7 @@ export class OrderTriageStorageError extends S.TaggedErrorClass<OrderTriageStora
   'OrderTriageStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -265,7 +265,7 @@ class OperatorOrderTriageBadRequest extends S.TaggedErrorClass<OperatorOrderTria
 class OperatorOrderTriageSessionError extends S.TaggedErrorClass<OperatorOrderTriageSessionError>()(
   'OperatorOrderTriageSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

@@ -1,0 +1,14 @@
+diff --git a/package.json b/package.json
+index 1f24eed..0000000 100644
+--- a/package.json
++++ b/package.json
+@@ -204,8 +204,8 @@
+     "dist"
+   ],
+   "peerDependencies": {
+-    "@effect/platform-browser": "4.0.0-beta.66",
+-    "effect": "4.0.0-beta.66"
++    "@effect/platform-browser": "4.0.0-beta.94",
++    "effect": "4.0.0-beta.94"
+   },
+   "devDependencies": {

@@ -115,7 +115,7 @@ type EventLinkRow = Readonly<{
 export class OperatorEmailInspectionStorageError extends S.TaggedErrorClass<OperatorEmailInspectionStorageError>()(
   'OperatorEmailInspectionStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

@@ -14,7 +14,7 @@
     "capture:khala-tokens-pill": "bun run scripts/capture-khala-tokens-pill.ts"
   },
   "dependencies": {
-    "@effect/platform-browser": "4.0.0-beta.70",
+    "@effect/platform-browser": "4.0.0-beta.94",
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/autopilot-ui": "workspace:*",
     "@openagentsinc/arbiter-effect": "workspace:*",
@@ -30,11 +30,11 @@
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/sync-client": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",
-    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b3bdc2a",
+    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#714c37e",
     "@tailwindcss/vite": "^4.2.4",
     "aws4fetch": "^1.0.20",
     "clsx": "^2.1.1",
-    "effect": "4.0.0-beta.70",
+    "effect": "4.0.0-beta.94",
     "foldkit": "^0.102.1",
     "slot-text": "0.3.1",
     "tailwindcss": "^4.2.4",

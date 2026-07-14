@@ -124,7 +124,7 @@ export class AdjutantEnrichmentJobStorageError extends S.TaggedErrorClass<Adjuta
   'AdjutantEnrichmentJobStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

@@ -698,6 +698,26 @@ export const openKhalaMobileSyncStore = async (
           )
         })
       ),
+    deleteLocalEntities: (scope, entities) =>
+      tryStore(() =>
+        runInTransaction(db, async () => {
+          if (!isDeviceLocalScope(scope)) {
+            throw new KhalaSyncClientStoreError(
+              "constraint_violation",
+              "local authority deletes require device-local scope"
+            )
+          }
+          for (const entity of entities) {
+            await db.runAsync(
+              `DELETE FROM local_entities
+               WHERE scope = ? AND entity_type = ? AND entity_id = ?`,
+              String(scope),
+              entity.entityType,
+              entity.entityId
+            )
+          }
+        })
+      ),
     writeLocalEntities: (scope, entities) =>
       tryStore(() =>
         runInTransaction(db, async () => {

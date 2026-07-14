@@ -32,7 +32,7 @@
 import {
   AcceptanceJobMessage,
   type AcceptanceJobSpec,
-} from '../acceptance-dispatch'
+} from '../acceptance-job-message'
 import {
   type AcceptanceSpec,
   crossyRoadAcceptanceSpec,

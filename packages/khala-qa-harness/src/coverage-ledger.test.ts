@@ -60,7 +60,7 @@ describe("Khala Code QA coverage ledger", () => {
     expect(ledger.schema).toBe("khala_code_qa_coverage_ledger.v1")
     expect(ledger.runIds).toHaveLength(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.scenarioCount)
     expect(ledger.rpcMethods.codexThreadList).toMatchObject({
-      calls: 4,
+      calls: 5,
       distinctArgumentShapeCount: 1,
     })
     expect(ledger.rpcMethods.codexConfigValueWrite?.argumentShapes).toEqual(["[{keyPath:string,value:string}]"])

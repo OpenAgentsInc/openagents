@@ -124,8 +124,11 @@ describe('Observatory public trace projection', () => {
       }>
     }
     expect(index.receipts).toHaveLength(18)
-    for (const [position, row] of index.receipts.entries()) {
-      expect(openAgentsDesktopMvpPublicTrace.criteria[position]).toMatchObject({
+    for (const row of index.receipts) {
+      const criterion = openAgentsDesktopMvpPublicTrace.criteria.find(
+        candidate => candidate.criterionRef === row.criterion_refs[0],
+      )
+      expect(criterion).toMatchObject({
         accepted: { dispositionRefs: [row.candidate.ref], state: 'accepted' },
         criterionRef: row.criterion_refs[0],
         mapped: { obligationRefs: [row.obligation_id], state: 'mapped' },

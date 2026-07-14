@@ -98,6 +98,12 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
       { status: 500 },
     )
 
+  const threadFileBindingErrorResponse = (): Response =>
+    noStoreJsonResponse(
+      { error: 'thread_file_binding_unavailable' },
+      { status: 500 },
+    )
+
   const handleThreadFilesApi = (
     request: Request,
     env: OpenAgentsWorkerEnv,
@@ -284,6 +290,12 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
           ),
         ),
       ),
+      Effect.catchTags({
+        BindingNotFoundError: () =>
+          Effect.succeed(threadFileBindingErrorResponse()),
+        BindingValidationError: () =>
+          Effect.succeed(threadFileBindingErrorResponse()),
+      }),
     )
 
   const handleTeamFilesApi = (
@@ -333,6 +345,12 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
       Effect.catchTag('ThreadFileRepositoryError', error =>
         Effect.succeed(threadFileRepositoryErrorResponse(error)),
       ),
+      Effect.catchTags({
+        BindingNotFoundError: () =>
+          Effect.succeed(threadFileBindingErrorResponse()),
+        BindingValidationError: () =>
+          Effect.succeed(threadFileBindingErrorResponse()),
+      }),
     )
 
   const handleThreadFileApi = (
@@ -435,6 +453,12 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
       Effect.catchTag('ThreadFileRepositoryError', error =>
         Effect.succeed(threadFileRepositoryErrorResponse(error)),
       ),
+      Effect.catchTags({
+        BindingNotFoundError: () =>
+          Effect.succeed(threadFileBindingErrorResponse()),
+        BindingValidationError: () =>
+          Effect.succeed(threadFileBindingErrorResponse()),
+      }),
     )
 
   const handleThreadFileDownloadApi = (
@@ -517,6 +541,12 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
           ),
         ),
       ),
+      Effect.catchTags({
+        BindingNotFoundError: () =>
+          Effect.succeed(threadFileBindingErrorResponse()),
+        BindingValidationError: () =>
+          Effect.succeed(threadFileBindingErrorResponse()),
+      }),
     )
 
   const routeThreadFileRequest = (

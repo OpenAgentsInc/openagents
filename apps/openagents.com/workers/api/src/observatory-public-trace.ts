@@ -245,24 +245,24 @@ const evidenceIndexUrl =
   'https://github.com/OpenAgentsInc/openagents/blob/main/assurance/openagents-desktop-mvp.evidence-index.json'
 
 const candidateReceiptRefs = [
-  'assurance.receipt.c7d0aa02dea8b6d9126bd94fb0aada527b8ec43376b4a4236d5ee86974fc6c4e',
-  'assurance.receipt.284fb0d2eb37800acee0b51620c2e369aaaaae0bc09d0048646ce00c886af2c1',
-  'assurance.receipt.f5140c692c5ebf49042f46e5102ae616df7919447272c174236de3f556bf9b2a',
-  'assurance.receipt.ad9412c3ca6a944387abeb257e7abf8ef8e222b77ed0ab674e6c837c050ee8e8',
-  'assurance.receipt.360b84f2cc5219ac1f5847573ae42f7560d9c2ba52ae70456d13ec8e3715705e',
-  'assurance.receipt.b7efdd67389093c2a5c581afb6f0590c00b7ac8050f021044cdc19c3cbb95c9e',
-  'assurance.receipt.8a5c1cbd228fc5deb95c24e0353d3fd779a0a6ce62f91735f1efc29187d1ea38',
-  'assurance.receipt.2682001a7d1833aa3b9e1fbfde9792cac7743bfb9b98a5d8adf076698866c37e',
-  'assurance.receipt.91c37d948cf14953645783c01ac486dcd8c38115bd4893abb15d76f3b239764a',
-  'assurance.receipt.d9113a79acf44d7d74e2a6ba0b83ec72dd0fd79f01121ceff9cbfe00d27fb81e',
-  'assurance.receipt.1ff256914e82ec269038fb9eedf436cf23706bb702702664e270ed38e8b61702',
-  'assurance.receipt.eca1784e51ed56b50791006336a9aceef192b38e6067489515efd759c688b1db',
-  'assurance.receipt.5cd22951116bed310be4d29325258f0fafa87934ee95367c99d4327438f19242',
-  'assurance.receipt.89b0e0251a3d538c97cbb424c2fbdc6078ddf293ae788c3608b8990e755e3ece',
-  'assurance.receipt.9a381993568732e6d0068ddfc34362ce4a5ecb45d8209cbbbcfeeb6ddd226cd0',
-  'assurance.receipt.51d92c28ec5a0620e3d280695731623e643f74fec8ec25ef17f18c6fe75a1342',
-  'assurance.receipt.9b3ffcf9c16cd0d1e185ef06858e620ef8b21305ebe33f0db2cb06e98dda1254',
-  'assurance.receipt.5f16c8ef6a5573a8b7061f90700f798171ac29403e13a3f05b6c12686837824c',
+  'assurance.receipt.24dfeb00c5e6f763ae51f45a15fddc86129dce4c18a1f8baa249f422110fd110',
+  'assurance.receipt.1203db184f75dad4df64a8418f2b58ce151d0ae285221126a7c8d6397383dc44',
+  'assurance.receipt.9af50c648771a500d98dc48938df4052d3f41cf4b1d9d70742e03c804dda4b7f',
+  'assurance.receipt.5bb1083a7a096efca73112fa7baae665dd6effdc255c58ab5e6accb466781b7c',
+  'assurance.receipt.faaa2143820e2708bf12fbdd3657c22a4c6581845a24375ea8c02b866a60ad5d',
+  'assurance.receipt.91348ebfbe8217d46f60ca9e664b86dbd0be683e9673080027636c8ad36b61e2',
+  'assurance.receipt.88d50c291a3403f6eaad261cd2eb53da6a287561d67aeed46e6e71810d21dfdd',
+  'assurance.receipt.6cf2c13851ab4060e2a5ca0b3d9ed49394aa11ce6a233c1a16eeb2c3fcdbca99',
+  'assurance.receipt.2f50de8ae5bdc501d7db492cd147f80117abe133995caf3b1108c68433b520cc',
+  'assurance.receipt.91d533a15bb3c80b1dfadb0723377cb09de7610eb23ffdde2fa4dc2dfed6895f',
+  'assurance.receipt.bbfb72594c66683757490c4a1118a7b44996978b300a75a9a1da9e48d52e3792',
+  'assurance.receipt.5a68a62451fd1f7ad4263c3b767a16841f29bf473cc2413c62e493a89dfaad61',
+  'assurance.receipt.7f656a8e3886c15e57ecaaa13784bb40fe325c93c434a22441855a323c5d4145',
+  'assurance.receipt.e9d2f9c8befeaacd3aa7c74d483de70e311a546104d5b20fe988ba8c180bb179',
+  'assurance.receipt.c480eb496a511fb3d3c1fd8f75929ee5828234abb3d7231dbbe0c40090e0fd0b',
+  'assurance.receipt.112d8f6062ed6d6bebb10ee3b9ddd24842da1b08d82ba8cf2c190c8dd10126d2',
+  'assurance.receipt.abac3671bb706ad478efd0e21d2247f844a58c3b0946b5e7f5a88465f4625829',
+  'assurance.receipt.77daae5b21404c56fcad17e68dd4e04c7bd45acf57933aef4a8f73a177978d0e',
 ] as const
 
 /** Reviewed static projection of the committed full-MVP Evidence Index. */
@@ -327,7 +327,7 @@ export const openAgentsDesktopMvpPublicTrace =
     projectLabel: 'OpenAgents Desktop Codex Workroom MVP',
     projectRef: 'openagents-desktop-codex-workroom-mvp',
     projectionDigest:
-      'sha256:836da81944eb217cecf59c864c9552413047384aec6dd69a49f431ab7b47caeb',
+      'sha256:ecd42d941f4c48c7c370e5805960090030f6a0d516cb787a7229e24598a62eb9',
     projectionRef: 'trace.openagents-desktop-codex-workroom-mvp.v1',
     publicOptIn: {
       optInRef: 'opt-in.observatory.openagents-desktop-mvp.v1',
@@ -336,7 +336,7 @@ export const openAgentsDesktopMvpPublicTrace =
     publicationReview: {
       reviewRef: 'review.observatory.openagents-desktop-mvp.v1',
       reviewedProjectionDigest:
-        'sha256:836da81944eb217cecf59c864c9552413047384aec6dd69a49f431ab7b47caeb',
+        'sha256:ecd42d941f4c48c7c370e5805960090030f6a0d516cb787a7229e24598a62eb9',
       state: 'approved',
     },
     schema: 'openagents.observatory.public_trace.v1',

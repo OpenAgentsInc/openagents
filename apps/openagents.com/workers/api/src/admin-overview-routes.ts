@@ -193,7 +193,7 @@ export class AdminOverviewStorageError extends S.TaggedErrorClass<AdminOverviewS
   'AdminOverviewStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -210,7 +210,7 @@ class AdminOverviewForbidden extends S.TaggedErrorClass<AdminOverviewForbidden>(
 class AdminOverviewSessionError extends S.TaggedErrorClass<AdminOverviewSessionError>()(
   'AdminOverviewSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

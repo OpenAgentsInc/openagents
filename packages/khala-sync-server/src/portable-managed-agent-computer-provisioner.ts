@@ -1,7 +1,30 @@
 import { createHash } from "node:crypto"
 
-import type { PortableCheckpointArtifactStore } from "../../../apps/pylon/src/portable-session-checkpoint-artifact.js"
 import type { ManagedAgentComputerPortableProvisioner } from "./portable-managed-agent-computer-target.js"
+import type { PortableCheckpointBundle } from "./portable-session-move.js"
+
+type PortableCheckpointArtifact = Readonly<{
+  artifactRef: string
+  digest: `sha256:${string}`
+  bytes: Uint8Array
+}>
+
+/** Runtime-neutral artifact seam; Pylon supplies its Bun-backed implementation. */
+type PortableCheckpointArtifactStore = Readonly<{
+  resolve: (input: Readonly<{
+    ownerRef: string
+    targetRef: string
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    checkpointRef: string
+    bundle: PortableCheckpointBundle
+  }>) => Promise<PortableCheckpointArtifact>
+  registerArtifact: (input: Readonly<{
+    bundle: PortableCheckpointBundle
+    artifact: PortableCheckpointArtifact
+  }>) => Promise<void>
+}>
 
 const FORBIDDEN_PRIVATE_MATERIAL =
   /(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)|"(?:token|apiKey|password|secret|credential|mnemonic|hostname|processId|socket|authHome)"\s*:/iu

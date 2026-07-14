@@ -22,7 +22,7 @@
     "load-test": "bun scripts/load-test.ts",
     "migrate": "bun scripts/migrate.ts",
     "test": "bun test",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.port03-production-driver.json --noEmit",
     "capture": "bun scripts/capture.ts",
     "check:pending-migrations": "bun scripts/check-pending-migrations.ts",
     "test:pending-migrations-guard": "bun test scripts/check-pending-migrations.test.ts",

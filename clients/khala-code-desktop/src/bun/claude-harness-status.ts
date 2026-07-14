@@ -30,6 +30,8 @@ const reasonFor = (readiness: ClaudeAgentReadiness): string => {
       return "Claude Agent SDK is not supported on this platform."
     case "disabled_by_config":
       return "Claude harness is disabled by config."
+    case "provider_disabled":
+      return "Claude provider support is disabled."
   }
 }
 

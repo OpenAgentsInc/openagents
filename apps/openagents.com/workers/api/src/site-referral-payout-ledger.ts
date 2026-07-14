@@ -144,7 +144,7 @@ export class SiteReferralPayoutLedgerValidationError extends S.TaggedErrorClass<
 export class SiteReferralPayoutLedgerStorageError extends S.TaggedErrorClass<SiteReferralPayoutLedgerStorageError>()(
   'SiteReferralPayoutLedgerStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

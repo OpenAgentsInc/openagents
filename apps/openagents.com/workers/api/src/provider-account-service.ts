@@ -1083,6 +1083,8 @@ export const issueProviderAccountGrant = async (
   options: Readonly<{
     now?: () => Date
     makeId?: IdFactory
+    grantRef?: string | undefined
+    reissuedFromGrantRef?: string | undefined
   }> = {},
 ): Promise<PublicProviderAccountGrant | undefined> => {
   const account = await repository.findAccountByRef(
@@ -1217,6 +1219,7 @@ export const revokeProviderAccountGrant = async (
     id: runtime.makeId('provider_event'),
     kind: 'auth_grant_revoked',
     providerAccountId: grant.providerAccountId,
+    authGrantId: grant.id,
     userId: grant.userId,
     teamId: grant.teamId,
     threadId: grant.threadId,

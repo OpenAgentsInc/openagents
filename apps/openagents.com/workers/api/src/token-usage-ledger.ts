@@ -114,7 +114,7 @@ export class TokenUsageLedgerStorageError extends S.TaggedErrorClass<TokenUsageL
   'TokenUsageLedgerStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

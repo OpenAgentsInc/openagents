@@ -504,7 +504,7 @@ type AutopilotSiteEventRow = Readonly<{
 export class AutopilotSiteStorageError extends S.TaggedErrorClass<AutopilotSiteStorageError>()(
   'AutopilotSiteStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

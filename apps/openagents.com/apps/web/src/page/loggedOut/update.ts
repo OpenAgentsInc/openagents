@@ -213,83 +213,83 @@ const withUpdateReturn = M.withReturnType<UpdateReturn>()
 
 class PublicAgentGoalLoadError extends S.TaggedErrorClass<PublicAgentGoalLoadError>()(
   'PublicAgentGoalLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicPylonStatsLoadError extends S.TaggedErrorClass<PublicPylonStatsLoadError>()(
   'PublicPylonStatsLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicKhalaTokensServedLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedLoadError>()(
   'PublicKhalaTokensServedLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicKhalaTokensServedHistoryLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedHistoryLoadError>()(
   'PublicKhalaTokensServedHistoryLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicKhalaTokensServedModelMixLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedModelMixLoadError>()(
   'PublicKhalaTokensServedModelMixLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicKhalaTokensServedChannelMixLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedChannelMixLoadError>()(
   'PublicKhalaTokensServedChannelMixLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicGymRunProgressLoadError extends S.TaggedErrorClass<PublicGymRunProgressLoadError>()(
   'PublicGymRunProgressLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicForumLaunchStatusLoadError extends S.TaggedErrorClass<PublicForumLaunchStatusLoadError>()(
   'PublicForumLaunchStatusLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicForumTipLeaderboardsLoadError extends S.TaggedErrorClass<PublicForumTipLeaderboardsLoadError>()(
   'PublicForumTipLeaderboardsLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicProductPromisesLoadError extends S.TaggedErrorClass<PublicProductPromisesLoadError>()(
   'PublicProductPromisesLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicPromiseTransitionsLoadError extends S.TaggedErrorClass<PublicPromiseTransitionsLoadError>()(
   'PublicPromiseTransitionsLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicTrainingRunsLoadError extends S.TaggedErrorClass<PublicTrainingRunsLoadError>()(
   'PublicTrainingRunsLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicArtanisReportLoadError extends S.TaggedErrorClass<PublicArtanisReportLoadError>()(
   'PublicArtanisReportLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicAdjutantActivityLoadError extends S.TaggedErrorClass<PublicAdjutantActivityLoadError>()(
   'PublicAdjutantActivityLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class PublicActivityTimelineLoadError extends S.TaggedErrorClass<PublicActivityTimelineLoadError>()(
   'PublicActivityTimelineLoadError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class ShareProjectionLoadError extends S.TaggedErrorClass<ShareProjectionLoadError>()(
   'ShareProjectionLoadError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     status: S.Int,
   },
 ) {}
@@ -297,7 +297,7 @@ class ShareProjectionLoadError extends S.TaggedErrorClass<ShareProjectionLoadErr
 class TraceLoadError extends S.TaggedErrorClass<TraceLoadError>()(
   'TraceLoadError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     status: S.Int,
   },
 ) {}
@@ -305,7 +305,7 @@ class TraceLoadError extends S.TaggedErrorClass<TraceLoadError>()(
 class ShareLinkCopyError extends S.TaggedErrorClass<ShareLinkCopyError>()(
   'ShareLinkCopyError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -566,7 +566,7 @@ export const LoadPublicKhalaTokensServed = Command.define(
 class KhalaTokensServedSnapshotLoadError extends S.TaggedErrorClass<KhalaTokensServedSnapshotLoadError>()(
   'KhalaTokensServedSnapshotLoadError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -833,7 +833,7 @@ export const LoadPublicGymRunProgress = Command.define(
 class MirrorCodeRunsLoadError extends S.TaggedErrorClass<MirrorCodeRunsLoadError>()(
   'MirrorCodeRunsLoadError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -885,7 +885,7 @@ export const LoadMirrorCodeRuns = Command.define(
 class GymRunProgressSnapshotLoadError extends S.TaggedErrorClass<GymRunProgressSnapshotLoadError>()(
   'GymRunProgressSnapshotLoadError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -960,7 +960,7 @@ export const LoadGymRunProgressSnapshot = Command.define(
 class SettledFeedSnapshotLoadError extends S.TaggedErrorClass<SettledFeedSnapshotLoadError>()(
   'SettledFeedSnapshotLoadError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -1761,7 +1761,7 @@ export const RehydrateAutopilotOnboarding = Command.define(
 
 class OnboardingSessionReconcileError extends S.TaggedErrorClass<OnboardingSessionReconcileError>()(
   'OnboardingSessionReconcileError',
-  { error: S.Defect, status: S.Int },
+  { error: S.Defect(), status: S.Int },
 ) {}
 
 // Reconcile the rehydrated session with the authoritative server record. A 200

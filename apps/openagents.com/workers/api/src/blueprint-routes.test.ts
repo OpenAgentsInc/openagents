@@ -1,7 +1,3 @@
-import {
-  TASSADAR_ALM_LINKED_DENSE_MODULE_CLAIM_CLASS,
-  TASSADAR_COMPILED_WEIGHT_MODULE_LISTING_REF,
-} from '@openagentsinc/tassadar-executor/linked-dense-module'
 import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -21,9 +17,7 @@ import {
 } from './blueprint/repositories/program-runs'
 import {
   BLUEPRINT_TASSADAR_MODULE_REGISTRY_VERSION_REF,
-  BLUEPRINT_TASSADAR_MODULE_REQUIRED_TRUST_POSTURE,
   BlueprintTassadarModuleRegistryProjection,
-  type BlueprintTassadarModuleRegistryEntry,
 } from './blueprint/repositories/tassadar-module-registry'
 import type { BlueprintActionSubmission } from './blueprint/schemas/action-submission'
 import { BlueprintProgramRegistryProjection } from './blueprint/schemas/program-registry'
@@ -380,27 +374,16 @@ describe('Blueprint routes', () => {
       ),
     ).toBe(BLUEPRINT_TASSADAR_MODULE_REGISTRY_VERSION_REF)
     expect(projection.safeProjection).toBe(true)
-    expect(projection.modules.map(module => module.moduleKind)).toEqual([
-      'dense_weight_module',
-      'linked_dense_module',
-    ])
+    expect(projection.modules).toEqual([])
     expect(JSON.stringify(body)).not.toMatch(
       /access_token|callback_token|private_key|provider_payload|raw_prompt|sk-[a-z0-9]/i,
     )
   })
 
-  test('resolves a Tassadar module ref with claim and trust checks', async () => {
+  test('reports archived Tassadar module refs as unavailable', async () => {
     const url = new URL('https://openagents.com/api/blueprint/tassadar-modules')
-    url.searchParams.set('moduleRef', TASSADAR_COMPILED_WEIGHT_MODULE_LISTING_REF)
-    url.searchParams.set(
-      'requiredClaimClass',
-      TASSADAR_ALM_LINKED_DENSE_MODULE_CLAIM_CLASS,
-    )
+    url.searchParams.set('moduleRef', 'module.public.tassadar.archived')
     url.searchParams.set('requiredModuleKind', 'linked_dense_module')
-    url.searchParams.set(
-      'requiredTrustPosture',
-      BLUEPRINT_TASSADAR_MODULE_REQUIRED_TRUST_POSTURE,
-    )
 
     const response = await Effect.runPromise(
       routes({ authorized: true }).handleBlueprintTassadarModuleRegistryApi(
@@ -410,26 +393,13 @@ describe('Blueprint routes', () => {
         env,
       ),
     )
-    const body = (await response.json()) as {
-      module: BlueprintTassadarModuleRegistryEntry
-      registryVersionRef: string
-    }
-
-    expect(response.status).toBe(200)
-    expect(body.registryVersionRef).toBe(
-      BLUEPRINT_TASSADAR_MODULE_REGISTRY_VERSION_REF,
-    )
-    expect(body.module).toMatchObject({
-      claimClass: TASSADAR_ALM_LINKED_DENSE_MODULE_CLAIM_CLASS,
-      moduleKind: 'linked_dense_module',
-      moduleRef: TASSADAR_COMPILED_WEIGHT_MODULE_LISTING_REF,
-      publicSafe: true,
-      trustPosture: BLUEPRINT_TASSADAR_MODULE_REQUIRED_TRUST_POSTURE,
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'tassadar_module_not_found',
     })
-    expect(body.module.moduleDigest).toMatch(/^[0-9a-f]{64}$/)
   })
 
-  test('returns typed Tassadar registry miss and refusal responses', async () => {
+  test('returns typed Tassadar registry misses for all retired refs', async () => {
     const missingUrl = new URL(
       'https://openagents.com/api/blueprint/tassadar-modules',
     )
@@ -439,7 +409,7 @@ describe('Blueprint routes', () => {
     )
     refusedUrl.searchParams.set(
       'moduleRef',
-      TASSADAR_COMPILED_WEIGHT_MODULE_LISTING_REF,
+      'module.public.tassadar.archived',
     )
     refusedUrl.searchParams.set('requiredModuleKind', 'dense_weight_module')
 
@@ -464,9 +434,9 @@ describe('Blueprint routes', () => {
     await expect(missingResponse.json()).resolves.toMatchObject({
       error: 'tassadar_module_not_found',
     })
-    expect(refusedResponse.status).toBe(409)
+    expect(refusedResponse.status).toBe(404)
     await expect(refusedResponse.json()).resolves.toMatchObject({
-      error: 'tassadar_module_refused',
+      error: 'tassadar_module_not_found',
     })
   })
 

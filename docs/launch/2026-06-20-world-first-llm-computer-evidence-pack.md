@@ -83,9 +83,8 @@ claim.
 - Percepta blog: `https://www.percepta.ai/blog/constructing-llm-computer`
 - Percepta reference artifact: `https://github.com/Percepta-Core/transformer-vm`
   (Apache-2.0 WebAssembly interpreter compiled into transformer weights).
-- Internal notes crediting Percepta:
-  `docs/tassadar/2026-06-10-percepta-constructing-llm-computer-notes.md`,
-  `docs/tassadar/2026-06-11-llm-computer-full-introduction.md`.
+- Internal provenance review:
+  `docs/launch/2026-06-18-world-firsts-verification.md`.
 - Prior-art search confirming Percepta is the originator and is not defeated as a
   *public paid* run: `docs/launch/2026-06-18-world-firsts-verification.md` §"Claim 2".
 

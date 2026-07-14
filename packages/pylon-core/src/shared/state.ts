@@ -271,8 +271,12 @@ export async function ensurePylonLocalState(
 ): Promise<PylonLocalState> {
   const paths = resolveStatePaths(summary.paths)
   const identity = await loadOrCreateIdentity(paths, {
-    nodeLabel: summary.bootstrap.displayName ?? undefined,
-    pylonRef: summary.bootstrap.pylonRef ?? undefined,
+    ...(summary.bootstrap.displayName === null
+      ? {}
+      : { nodeLabel: summary.bootstrap.displayName }),
+    ...(summary.bootstrap.pylonRef === null
+      ? {}
+      : { pylonRef: summary.bootstrap.pylonRef }),
   })
   const runtime = await loadOrCreateRuntimeState(paths, {
     displayName: summary.bootstrap.displayName,

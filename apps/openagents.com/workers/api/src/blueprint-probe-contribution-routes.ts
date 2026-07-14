@@ -144,7 +144,7 @@ type BlueprintProbeContributionRoutesDependencies<RouteEnv> = Readonly<{
 
 class BlueprintProbeContributionRouteDependencyError extends S.TaggedErrorClass<BlueprintProbeContributionRouteDependencyError>()(
   'BlueprintProbeContributionRouteDependencyError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class BlueprintProbeContributionIntakeValidationError extends S.TaggedErrorClass<BlueprintProbeContributionIntakeValidationError>()(

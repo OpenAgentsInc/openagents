@@ -4,7 +4,6 @@ import {
   KhalaCodeDesktopRpcMethodNames,
   KhalaCodeDesktopRpcMethodSchemas,
   decodeKhalaCodeDesktopRpcParameters,
-  decodeKhalaCodeDesktopRpcResult,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRpcBridgeFailure as DesktopBridgeFailure,
   type KhalaCodeDesktopRpcMethodName,
@@ -207,7 +206,14 @@ export const decodeKhalaCodeRpcResultOrFailure = <M extends KhalaCodeRpcMethodNa
   payload: unknown,
 ): KhalaCodeRpcDecodeResult<M> => {
   try {
-    const value = decodeKhalaCodeDesktopRpcResult(method, payload) as KhalaCodeRpcResult<M>
+    // The QA oracle deliberately accepts a forward-compatible response so it can
+    // report fields that the production bridge's exact decoder would reject.
+    // Keeping this permissive behavior local to the harness lets drift remain
+    // observable without weakening the desktop RPC boundary.
+    const value = S.decodeUnknownSync(
+      KhalaCodeDesktopRpcMethodSchemas[method].result as never,
+      { onExcessProperty: "ignore" },
+    )(payload) as KhalaCodeRpcResult<M>
     return {
       ok: true,
       method,

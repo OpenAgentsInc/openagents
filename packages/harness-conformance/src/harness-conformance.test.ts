@@ -19,12 +19,17 @@ import {
   codingWorkerFleetKind,
   codingWorkerHarnessKinds,
   harnessKindClassification,
+  type CodingWorkerHarnessKind,
+  type HarnessConformanceEntry,
 } from "./contract.ts"
 import {
   harnessConformanceRegistry,
   knownPendingHarnessKinds,
 } from "./registry.ts"
 import { runHarnessConformance, todoHarnessConformance } from "./runner.ts"
+
+const registry: Readonly<Record<CodingWorkerHarnessKind, HarnessConformanceEntry>> =
+  harnessConformanceRegistry
 
 describe("MH-1 harness conformance coverage gate", () => {
   test("every AgentDefinitionHarnessKind literal is classified", () => {
@@ -68,7 +73,7 @@ describe("MH-1 harness conformance coverage gate", () => {
 
   test("no unexpected pending coding harness (a new pending kind reds the sweep)", () => {
     const pending = codingWorkerHarnessKinds.filter(
-      (kind) => harnessConformanceRegistry[kind].status === "pending",
+      (kind) => registry[kind].status === "pending",
     )
     for (const kind of pending) {
       expect(
@@ -82,7 +87,7 @@ describe("MH-1 harness conformance coverage gate", () => {
 // Drive the per-kind suites: proven -> green five-capability suite; pending ->
 // visible test.todo redness that does not fail the normal sweep.
 for (const kind of codingWorkerHarnessKinds) {
-  const entry = harnessConformanceRegistry[kind]
+  const entry = registry[kind]
   if (entry.status === "proven") {
     runHarnessConformance(entry.fixture)
   } else {

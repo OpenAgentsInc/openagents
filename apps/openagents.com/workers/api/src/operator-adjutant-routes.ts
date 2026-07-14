@@ -287,7 +287,7 @@ class OperatorAdjutantInvalidVisibility extends S.TaggedErrorClass<OperatorAdjut
 class OperatorAdjutantSessionError extends S.TaggedErrorClass<OperatorAdjutantSessionError>()(
   'OperatorAdjutantSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -295,7 +295,7 @@ class OperatorAdjutantPreflightError extends S.TaggedErrorClass<OperatorAdjutant
   'OperatorAdjutantPreflightError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -312,7 +312,7 @@ class OperatorAdjutantLaunchError extends S.TaggedErrorClass<OperatorAdjutantLau
   'OperatorAdjutantLaunchError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -320,7 +320,7 @@ class OperatorAdjutantStorageError extends S.TaggedErrorClass<OperatorAdjutantSt
   'OperatorAdjutantStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

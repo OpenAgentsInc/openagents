@@ -150,7 +150,7 @@ describe('CRM MCP end-to-end smoke', () => {
     const list = (await (await call(routes, db, 'admin', 'tools/list')).json()) as {
       result: { tools: Array<{ name: string }> }
     }
-    expect(list.result.tools).toHaveLength(21)
+    expect(list.result.tools).toHaveLength(23)
 
     const contacts = (await (
       await call(routes, db, 'admin', 'tools/call', { arguments: { limit: 5 }, name: 'crm.contacts.list' })

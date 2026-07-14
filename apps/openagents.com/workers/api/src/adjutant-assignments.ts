@@ -189,7 +189,7 @@ export class AdjutantAssignmentGoalStorageError extends S.TaggedErrorClass<Adjut
   'AdjutantAssignmentGoalStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -220,7 +220,7 @@ export class AdjutantAssignmentStorageError extends S.TaggedErrorClass<AdjutantA
   'AdjutantAssignmentStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

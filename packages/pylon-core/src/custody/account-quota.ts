@@ -45,7 +45,7 @@ function retryAtIsoFromRaw(retryAtRaw: string | null, options: RetryAtParseOptio
 
 export function classifyQuotaSignal(
   output: string,
-  provider: "codex" | "claude_agent",
+  provider: "codex" | "claude_agent" | "grok",
   options: RetryAtParseOptions = {},
 ): QuotaSignal {
   void provider

@@ -318,7 +318,7 @@ export class AdjutantEnrichmentLedgerStorageError extends S.TaggedErrorClass<Adj
   'AdjutantEnrichmentLedgerStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

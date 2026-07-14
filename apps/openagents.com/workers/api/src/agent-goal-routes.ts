@@ -271,7 +271,7 @@ class GoalBadRequest extends S.TaggedErrorClass<GoalBadRequest>()(
 class GoalSessionError extends S.TaggedErrorClass<GoalSessionError>()(
   'GoalSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -279,7 +279,7 @@ class GoalTeamAccessError extends S.TaggedErrorClass<GoalTeamAccessError>()(
   'GoalTeamAccessError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

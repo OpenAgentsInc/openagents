@@ -121,7 +121,7 @@ export class AdjutantResearchBriefStorageError extends S.TaggedErrorClass<Adjuta
   'AdjutantResearchBriefStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

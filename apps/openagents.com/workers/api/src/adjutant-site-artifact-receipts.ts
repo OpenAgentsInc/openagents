@@ -29,7 +29,7 @@ export class AdjutantSiteArtifactReceiptDecodeError extends S.TaggedErrorClass<A
   'AdjutantSiteArtifactReceiptDecodeError',
   {
     eventId: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

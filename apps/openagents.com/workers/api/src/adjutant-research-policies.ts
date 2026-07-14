@@ -67,7 +67,7 @@ export class AdjutantResearchPolicyStorageError extends S.TaggedErrorClass<Adjut
   'AdjutantResearchPolicyStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

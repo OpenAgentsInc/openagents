@@ -93,7 +93,7 @@ class OperatorSitesBadRequest extends S.TaggedErrorClass<OperatorSitesBadRequest
 class OperatorSitesSessionError extends S.TaggedErrorClass<OperatorSitesSessionError>()(
   'OperatorSitesSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

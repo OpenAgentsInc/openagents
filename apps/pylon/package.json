@@ -11,7 +11,7 @@
       "packages/*"
     ],
     "catalog": {
-      "effect": "4.0.0-beta.70",
+      "effect": "4.0.0-beta.94",
       "typescript": "^6.0.3"
     }
   },

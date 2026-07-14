@@ -186,7 +186,7 @@ class OperatorArtanisChatUnavailable extends S.TaggedErrorClass<OperatorArtanisC
 
 class OperatorArtanisChatSessionError extends S.TaggedErrorClass<OperatorArtanisChatSessionError>()(
   'OperatorArtanisChatSessionError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 type OperatorArtanisChatError =

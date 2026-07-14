@@ -355,7 +355,9 @@ export function projectFleetRunSupervisorObservation(input: {
       ...(claim.marginalCostClass === undefined
         ? {}
         : { marginalCostClass: claim.marginalCostClass }),
-      capacityClass: input.event.executionTarget,
+      ...(input.event.executionTarget === undefined
+        ? {}
+        : { capacityClass: input.event.executionTarget }),
       blockerRefs: projectedBlockers,
     }]
   }
@@ -516,7 +518,9 @@ export function projectFleetRunSupervisorObservation(input: {
         workerKind: input.event.workerKind,
         accountRefHash: input.event.accountRefHash,
         marginalCostClass: input.event.marginalCostClass ?? "not_measured",
-        capacityClass: input.event.executionTarget,
+        ...(input.event.executionTarget === undefined
+          ? {}
+          : { capacityClass: input.event.executionTarget }),
         terminalState: "accepted",
         closeoutRef,
         verification,
@@ -575,7 +579,9 @@ export function projectFleetRunSupervisorObservation(input: {
           ? {}
           : { accountRefHash: input.event.accountRefHash }),
         marginalCostClass: input.event.marginalCostClass ?? "not_measured",
-        capacityClass: input.event.executionTarget,
+        ...(input.event.executionTarget === undefined
+          ? {}
+          : { capacityClass: input.event.executionTarget }),
         terminalState: "failed",
         blockerRefs: failedBlockers,
         ...(closeoutRef === null ? {} : { closeoutRef }),
@@ -612,7 +618,9 @@ export function projectFleetRunSupervisorObservation(input: {
         ? {}
         : { accountRefHash: input.event.accountRefHash }),
       marginalCostClass: input.event.marginalCostClass ?? "not_measured",
-      capacityClass: input.event.executionTarget,
+      ...(input.event.executionTarget === undefined
+        ? {}
+        : { capacityClass: input.event.executionTarget }),
       blockerRefs: projectedBlockers,
     }]
   }

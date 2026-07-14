@@ -129,7 +129,7 @@ export class ExaEnrichmentOperationsStorageError extends S.TaggedErrorClass<ExaE
   'ExaEnrichmentOperationsStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

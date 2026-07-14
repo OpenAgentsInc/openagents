@@ -170,7 +170,7 @@ class NexusPylonVisibilityBridgeBlocked extends S.TaggedErrorClass<NexusPylonVis
 class NexusPylonVisibilitySessionError extends S.TaggedErrorClass<NexusPylonVisibilitySessionError>()(
   'NexusPylonVisibilitySessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

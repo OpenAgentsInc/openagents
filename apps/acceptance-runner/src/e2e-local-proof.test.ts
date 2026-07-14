@@ -26,10 +26,12 @@ import {
   type RunnerTransport,
   AcceptanceJobMessage,
   crossyRoadAcceptanceSpec,
-  handleAcceptanceVerdictCallback,
-  makeInMemoryKhalaVerificationStore,
   runAcceptanceJob,
 } from './harness-bridge'
+import {
+  handleAcceptanceVerdictCallback,
+  makeInMemoryKhalaVerificationStore,
+} from './worker-route-bridge'
 
 const here = dirname(fileURLToPath(import.meta.url))
 // apps/acceptance-runner/src -> repo root -> scripts/khala-demo/artifacts

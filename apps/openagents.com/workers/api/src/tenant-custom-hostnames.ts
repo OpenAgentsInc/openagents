@@ -86,7 +86,7 @@ export class TenantCustomHostnameStorageError extends S.TaggedErrorClass<TenantC
   'TenantCustomHostnameStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

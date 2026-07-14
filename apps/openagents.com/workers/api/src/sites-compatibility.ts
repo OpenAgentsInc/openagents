@@ -154,7 +154,7 @@ export class SiteCompatibilityStorageError extends S.TaggedErrorClass<SiteCompat
   'SiteCompatibilityStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

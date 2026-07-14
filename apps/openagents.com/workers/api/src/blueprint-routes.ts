@@ -190,7 +190,7 @@ type BlueprintRoutesDependencies<Bindings> = Readonly<{
 class BlueprintRouteDependencyError extends S.TaggedErrorClass<BlueprintRouteDependencyError>()(
   'BlueprintRouteDependencyError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

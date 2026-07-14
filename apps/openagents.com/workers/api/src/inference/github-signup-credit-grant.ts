@@ -399,7 +399,7 @@ const githubSignupCreditGrantMetadataStatement = (
 
 export class GithubSignupCreditGrantError extends S.TaggedErrorClass<GithubSignupCreditGrantError>()(
   'GithubSignupCreditGrantError',
-  { cause: S.Defect },
+  { cause: S.Defect() },
 ) {}
 
 export type GithubSignupCreditGrantOutcome =

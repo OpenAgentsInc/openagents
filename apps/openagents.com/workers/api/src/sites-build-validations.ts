@@ -167,7 +167,7 @@ export const systemSiteBuildValidationRuntime: SiteBuildValidationRuntime = {
 export class SiteBuildValidationStorageError extends S.TaggedErrorClass<SiteBuildValidationStorageError>()(
   'SiteBuildValidationStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

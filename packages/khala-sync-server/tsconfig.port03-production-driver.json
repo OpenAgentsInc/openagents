@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": false,
+    "noImplicitOverride": false,
+    "noUnusedLocals": false,
+    "plugins": [],
+    "types": ["bun-types"]
+  },
+  "include": [
+    "scripts/port03-production-driver.ts",
+    "scripts/port03-production-driver.test.ts"
+  ],
+  "exclude": []
+}

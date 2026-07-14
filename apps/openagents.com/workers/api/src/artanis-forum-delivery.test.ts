@@ -121,12 +121,26 @@ type AgentForumIdentityRow = Readonly<{
 const deliveryIdentityDb = (store: DeliveryStore): IdentityDb => ({
   batch: () => Promise.resolve(),
   query: (sql, params = []) => {
+    const registered = store.registeredArtanis
+    if (sql.includes('FROM agent_profiles')) {
+      return Promise.resolve(
+        registered !== null && params.map(String).includes(registered.slug)
+          ? [{
+              credential_id: registered.credential_id,
+              metadata_json: registered.metadata_json,
+              openauth_user_id: registered.openauth_user_id,
+              slug: registered.slug,
+              token_prefix: registered.token_prefix,
+              user_id: registered.user_id,
+            }]
+          : [],
+      )
+    }
     if (!sql.includes('FROM users')) {
       return Promise.reject(
         new Error(`unexpected identityDb query: ${sql.slice(0, 80)}`),
       )
     }
-    const registered = store.registeredArtanis
     const ids = params.map(String)
     return Promise.resolve(
       registered !== null && ids.includes(registered.user_id)
@@ -289,10 +303,7 @@ class DeliveryStatement implements D1PreparedStatement {
       return Promise.resolve(post as T | null)
     }
 
-    if (
-      this.query.includes('FROM agent_profiles') &&
-      this.query.includes('agent_credentials')
-    ) {
+    if (this.query.includes('FROM agent_profiles')) {
       const slug = String(this.values[0])
       const registered = this.store.registeredArtanis
       const row =

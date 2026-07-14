@@ -2052,7 +2052,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("createCommandComposerHud")
     expect(main).not.toContain("local-file:/private")
     expect(pkg.dependencies["@openagentsinc/composer-state"]).toBe("workspace:*")
-    expect(pkg.dependencies["@openagentsinc/three-effect"]).toContain("fa84064796")
+    expect(pkg.dependencies["@openagentsinc/three-effect"]).toContain("714c37e")
   })
 
   test("wires native attachments, selected context, and composer work docks", async () => {

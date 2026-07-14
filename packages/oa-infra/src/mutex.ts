@@ -24,7 +24,7 @@ export class MutexBackendError extends Schema.TaggedErrorClass<MutexBackendError
   {
     backend: Schema.String,
     operation: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {}
 

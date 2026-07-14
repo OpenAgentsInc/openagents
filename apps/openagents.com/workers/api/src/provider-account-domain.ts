@@ -1137,8 +1137,12 @@ export const makeEvent = (
     id: string
     kind: ProviderAccountEventKind
     providerAccountId: string | null
+    authGrantId?: string | null | undefined
     userId: string
     teamId: string | null
+    threadId?: string | null | undefined
+    workroomId?: string | null | undefined
+    runnerSessionId?: string | null | undefined
     summary: string
     targetRef: string | null
     metadata: Record<string, unknown>
@@ -1150,12 +1154,12 @@ export const makeEvent = (
 ): ProviderAccountEventRecord => ({
   id: input.id,
   providerAccountId: input.providerAccountId,
-  authGrantId: null,
+  authGrantId: input.authGrantId ?? null,
   userId: input.userId,
   teamId: input.teamId,
-  threadId: null,
-  workroomId: null,
-  runnerSessionId: null,
+  threadId: input.threadId ?? null,
+  workroomId: input.workroomId ?? null,
+  runnerSessionId: input.runnerSessionId ?? null,
   kind: input.kind,
   summary: input.summary,
   sourceRefsJson: JSON.stringify(input.sourceRefs ?? []),

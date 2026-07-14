@@ -55,7 +55,7 @@ import { usdCentsToMsatFloor } from './usd-msat-conversion'
 // only genuine storage failures, which the route surfaces as a 5xx.
 export class UsdCreditBridgeError extends S.TaggedErrorClass<UsdCreditBridgeError>()(
   'UsdCreditBridgeError',
-  { cause: S.Defect },
+  { cause: S.Defect() },
 ) {}
 
 // The agent balance ref for a user. The inference gateway authenticates as

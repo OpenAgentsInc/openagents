@@ -1854,31 +1854,7 @@ const renderSpacer = (view: SpacerView, state: DomRendererState): HTMLElement =>
   return element
 }
 
-// Inline-SVG icon registry (issue #31). The closed IconName set is the stable
-// contract; this per-renderer map is the DOM asset detail. All glyphs draw on a
-// 24x24 viewBox and inherit `currentColor` so token-driven `color` flows
-// through. No user-supplied SVG ever enters the tree.
 const iconSizePixels: Record<IconSize, number> = { sm: 16, md: 20, lg: 24 }
-
-const iconRegistry: Partial<Record<IconName, { readonly body: string; readonly fill: boolean }>> = {
-  Plus: { body: '<path d="M12 5v14M5 12h14"/>', fill: false },
-  Play: { body: '<path d="M8 5v14l11-7z"/>', fill: true },
-  Pause: { body: '<path d="M8 5h3v14H8zM13 5h3v14h-3z"/>', fill: true },
-  Stop: { body: '<path d="M6 6h12v12H6z"/>', fill: true },
-  Reload: { body: '<path d="M4.5 12a7.5 7.5 0 1 1 2.2 5.3M4 12V7"/>', fill: false },
-  Circle: { body: '<circle cx="12" cy="12" r="7"/>', fill: false },
-  Check: { body: '<path d="M5 13l4 4L19 7"/>', fill: false },
-  X: { body: '<path d="M6 6l12 12M18 6L6 18"/>', fill: false },
-  ChevronUp: { body: '<path d="M6 15l6-6 6 6"/>', fill: false },
-  ChevronDown: { body: '<path d="M6 9l6 6 6-6"/>', fill: false },
-  ChevronLeft: { body: '<path d="M15 6l-6 6 6 6"/>', fill: false },
-  ChevronRight: { body: '<path d="M9 6l6 6-6 6"/>', fill: false },
-  // Glass-chrome icons (v30, GL-1 openagents#8647).
-  Menu: { body: '<path d="M4 7h16M4 12h16M4 17h16"/>', fill: false },
-  Compose: { body: '<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>', fill: false },
-  Mic: { body: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', fill: false },
-  Sparkles: { body: '<path d="M12 4l1.8 4.7L18.5 10l-4.7 1.3L12 16l-1.8-4.7L5.5 10l4.7-1.3zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>', fill: false }
-}
 
 const renderIcon = (view: IconView, state: DomRendererState): HTMLElement => {
   const element = state.keyedElement(view, "span")
@@ -2589,7 +2565,6 @@ const renderTooltip = (view: TooltipView, state: DomRendererState, report: Inten
   state.resetListeners(element)
   element.style.position = "relative"
   element.style.display = "inline-flex"
-  const document = element.ownerDocument
   const tooltipId = `en-tooltip-${cssEscape(view.key ?? view.content)}`
   const target = renderView(view.children[0]!, state, report)
   target.setAttribute("aria-describedby", tooltipId)

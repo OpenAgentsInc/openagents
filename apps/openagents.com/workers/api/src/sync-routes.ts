@@ -66,7 +66,7 @@ class RequestDecodeError extends S.TaggedErrorClass<RequestDecodeError>()(
 class SyncRouteDependencyError extends S.TaggedErrorClass<SyncRouteDependencyError>()(
   'SyncRouteDependencyError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}
@@ -86,7 +86,7 @@ class SyncRouteAccessDenied extends S.TaggedErrorClass<SyncRouteAccessDenied>()(
 class SyncStreamDispatchError extends S.TaggedErrorClass<SyncStreamDispatchError>()(
   'SyncStreamDispatchError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     scope: S.String,
   },
 ) {}

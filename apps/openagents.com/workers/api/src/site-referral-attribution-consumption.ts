@@ -31,7 +31,7 @@ export class SiteReferralConsumptionStorageError extends S.TaggedErrorClass<Site
   'SiteReferralConsumptionStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

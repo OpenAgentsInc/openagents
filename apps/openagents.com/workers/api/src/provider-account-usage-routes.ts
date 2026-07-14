@@ -357,7 +357,7 @@ class ProviderAccountUsageForbidden extends S.TaggedErrorClass<ProviderAccountUs
 class ProviderAccountUsageProjectionError extends S.TaggedErrorClass<ProviderAccountUsageProjectionError>()(
   'ProviderAccountUsageProjectionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

@@ -58,21 +58,21 @@ class TokenUsageLedgerRouteForbidden extends S.TaggedErrorClass<TokenUsageLedger
 class TokenUsageLedgerRouteSessionError extends S.TaggedErrorClass<TokenUsageLedgerRouteSessionError>()(
   'TokenUsageLedgerRouteSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
 class TokenUsageLedgerRouteAuthError extends S.TaggedErrorClass<TokenUsageLedgerRouteAuthError>()(
   'TokenUsageLedgerRouteAuthError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
 class TokenUsageLedgerRouteBodyError extends S.TaggedErrorClass<TokenUsageLedgerRouteBodyError>()(
   'TokenUsageLedgerRouteBodyError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

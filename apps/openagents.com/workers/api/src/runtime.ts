@@ -35,7 +35,7 @@ export class SyncRoomNotificationError extends S.TaggedErrorClass<SyncRoomNotifi
   'SyncRoomNotificationError',
   {
     scope: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

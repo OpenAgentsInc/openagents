@@ -50,14 +50,14 @@ class SiteReferralInspectionForbidden extends S.TaggedErrorClass<SiteReferralIns
 class SiteReferralInspectionSessionError extends S.TaggedErrorClass<SiteReferralInspectionSessionError>()(
   'SiteReferralInspectionSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
 class SiteReferralInspectionStorageError extends S.TaggedErrorClass<SiteReferralInspectionStorageError>()(
   'SiteReferralInspectionStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

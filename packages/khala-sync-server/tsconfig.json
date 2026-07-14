@@ -4,5 +4,9 @@
     "noEmit": true,
     "types": ["bun-types"]
   },
-  "include": ["src/**/*", "scripts/**/*"]
+  "include": ["src/**/*", "scripts/**/*"],
+  "exclude": [
+    "scripts/port03-production-driver.ts",
+    "scripts/port03-production-driver.test.ts"
+  ]
 }

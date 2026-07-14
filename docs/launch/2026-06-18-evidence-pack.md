@@ -324,16 +324,8 @@ This is the evidence-first promise honored: the strong claims are explicitly
   `https://www.percepta.ai/blog/constructing-llm-computer` (resolves) and
   `https://github.com/Percepta-Core/transformer-vm` (resolves). The transcript
   explicitly credits Percepta; we did **not** invent the LLM-computer.
-- OpenAgents essays in `docs/tassadar/`:
-  - `docs/tassadar/2026-06-10-percepta-constructing-llm-computer-notes.md`
-  - `docs/tassadar/2026-06-11-llm-computer-full-introduction.md`
-  - `docs/tassadar/2026-06-10-tassadar-percepta-audit.md`
-  - `docs/tassadar/work-that-proves-itself.md` (verification-by-replay thesis)
-  - `docs/tassadar/2026-06-16-verified-work-payment-economics.md` (the
-    money-loop economics)
-  - `docs/tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md` and
-    `docs/tassadar/2026-06-11-autopilot-agentic-labor-market.md` (the
-    "agentic npm" / module-registry direction)
+- OpenAgents provenance review:
+  `docs/launch/2026-06-18-world-firsts-verification.md`.
 
 **Status: gated (concept / roadmap).** The LLM-computer *paradigm* is real and
 Percepta-credited; the *live PoC* is exact-trace executor work

@@ -104,14 +104,14 @@ class OperatorArtanisConsoleNotFound extends S.TaggedErrorClass<OperatorArtanisC
 class OperatorArtanisConsoleSessionError extends S.TaggedErrorClass<OperatorArtanisConsoleSessionError>()(
   'OperatorArtanisConsoleSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
 class OperatorArtanisConsoleStorageError extends S.TaggedErrorClass<OperatorArtanisConsoleStorageError>()(
   'OperatorArtanisConsoleStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

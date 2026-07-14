@@ -237,7 +237,7 @@ const adminCreditGrantMetadataStatement = (
 
 export class AdminCreditGrantError extends S.TaggedErrorClass<AdminCreditGrantError>()(
   'AdminCreditGrantError',
-  { cause: S.Defect },
+  { cause: S.Defect() },
 ) {}
 
 export type AdminCreditGrantOutcome =

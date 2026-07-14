@@ -52,12 +52,12 @@ class OperatorArtanisDashboardForbidden extends S.TaggedErrorClass<OperatorArtan
 
 class OperatorArtanisDashboardSessionError extends S.TaggedErrorClass<OperatorArtanisDashboardSessionError>()(
   'OperatorArtanisDashboardSessionError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 class OperatorArtanisDashboardStorageError extends S.TaggedErrorClass<OperatorArtanisDashboardStorageError>()(
   'OperatorArtanisDashboardStorageError',
-  { error: S.Defect },
+  { error: S.Defect() },
 ) {}
 
 type OperatorArtanisDashboardError =

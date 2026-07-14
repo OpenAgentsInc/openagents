@@ -88,7 +88,7 @@ class OperatorEmailInspectionForbidden extends S.TaggedErrorClass<OperatorEmailI
 class OperatorEmailInspectionSessionError extends S.TaggedErrorClass<OperatorEmailInspectionSessionError>()(
   'OperatorEmailInspectionSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

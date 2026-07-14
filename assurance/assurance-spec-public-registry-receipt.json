@@ -17,7 +17,7 @@
       "version": "0.1.0",
       "dist_tag": "latest",
       "access": "public",
-      "tarball_sha256": "sha256:4dab97a72f1d65c88ea1bb746321c665408b109230fb001efc2752c15b9306eb",
+      "tarball_sha256": "sha256:26402b717f0c15cec2b998aa801d484e05843ad256f60010f62cbfc7d0b8a6ef",
       "registry_integrity": "sha512-YRdn9yIKMTWfpRU3W/unbNw0v/URoK/L3tW+PJ+XKz9VEHvJ/PXN1/WWulO0S6GVHDCMuKjuiEeLegDR4JQ1LQ==",
       "registry_shasum": "41ee7ba41fdbbd6a01facad785a05bd180f37cc3",
       "registry_tarball": "https://registry.npmjs.org/@openagentsinc/product-spec/-/product-spec-0.1.0.tgz"
@@ -27,7 +27,7 @@
       "version": "0.1.1",
       "dist_tag": "latest",
       "access": "public",
-      "tarball_sha256": "sha256:ab8af55072010d86f6c1b1efc7b4379f0c571d04ca133b3d23d8e9b1bb96f4a4",
+      "tarball_sha256": "sha256:8c1bd8a9399e692510c56a07c1356b580387c85498131ea74ebfbf5f88362046",
       "registry_integrity": "sha512-6Daxt3mSvVKSdeaMatgWi/X9SC/UI9hznOPJ2iJaMDDJQ6EsyamGd79bNc5nLiMTwWHlABbcxF7ll3KobrSJCQ==",
       "registry_shasum": "7ff64c7063b18b4256dc9468c4efd4175a7b7445",
       "registry_tarball": "https://registry.npmjs.org/@openagentsinc/assurance-spec/-/assurance-spec-0.1.1.tgz",

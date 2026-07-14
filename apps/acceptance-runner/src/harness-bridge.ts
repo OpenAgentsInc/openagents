@@ -26,14 +26,3 @@ export {
 export { runAcceptanceSuite } from '../../openagents.com/workers/api/src/inference/acceptance-runner/runner'
 export type { AcceptanceVerdict } from '../../openagents.com/workers/api/src/inference/acceptance-runner/verdict'
 export { crossyRoadAcceptanceSpec } from '../../openagents.com/workers/api/src/inference/acceptance-spec'
-
-// The verdict-callback ingest + verification store, re-exported for the in-process
-// end-to-end proof (run the real headless suite -> POST the verdict through the REAL
-// route -> assert the receipt backfills verified:true). Prod uses the D1 store; the
-// proof uses the in-memory reference store.
-export {
-  handleAcceptanceVerdictCallback,
-} from '../../openagents.com/workers/api/src/inference/acceptance-verdict-callback-routes'
-export {
-  makeInMemoryKhalaVerificationStore,
-} from '../../openagents.com/workers/api/src/inference/acceptance-dispatch'

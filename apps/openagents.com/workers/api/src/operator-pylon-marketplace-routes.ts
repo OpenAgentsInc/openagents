@@ -63,7 +63,7 @@ class OperatorPylonMarketplaceForbidden extends S.TaggedErrorClass<OperatorPylon
 class OperatorPylonMarketplaceSessionError extends S.TaggedErrorClass<OperatorPylonMarketplaceSessionError>()(
   'OperatorPylonMarketplaceSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

@@ -18,7 +18,7 @@ const account: ProviderAccountRecord = {
   userId: 'owner_1',
   teamId: null,
   provider: 'chatgpt_codex',
-  authMode: 'oauth_device',
+  authMode: 'codex_device_auth',
   status: 'connected',
   health: 'healthy',
   providerAccountRef: 'provider-account_1',

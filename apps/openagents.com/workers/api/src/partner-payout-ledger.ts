@@ -248,7 +248,7 @@ export class PartnerPayoutLedgerValidationError extends S.TaggedErrorClass<Partn
 export class PartnerPayoutLedgerStorageError extends S.TaggedErrorClass<PartnerPayoutLedgerStorageError>()(
   'PartnerPayoutLedgerStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

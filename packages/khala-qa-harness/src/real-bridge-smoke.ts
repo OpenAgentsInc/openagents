@@ -241,6 +241,7 @@ const readUntilSseEvent = async (
 
 const realBridgeInProcessOnlyScenarioIds = new Set([
   "scenario.khala_code.seed.rpc_threads_lifecycle.v1",
+  "scenario.khala_code.seed.rpc_thread_select_fixture_driver.v1",
   "scenario.khala_code.seed.rpc_fleet_lifecycle.v1",
   "scenario.khala_code.seed.rpc_settings_lifecycle.v1",
   "scenario.khala_code.seed.rpc_threads_q41_completion.v1",

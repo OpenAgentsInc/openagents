@@ -3,7 +3,7 @@
 Date: 2026-07-01
 Tracking epic: <https://github.com/OpenAgentsInc/openagents/issues/7780>
 Issue: <https://github.com/OpenAgentsInc/openagents/issues/7793>
-Pinned Codex reference: `db887d03e1f907467e33271572dffb73bceecd6b`
+Pinned Codex reference: `08ba14b03d0b3ce3cfdf8c88c0469b9b1924953d`
 
 Khala Code's default coding harness is Codex app-server. Parity is guarded by
 checked fixture tests plus one opt-in live smoke. The fixture tests do not

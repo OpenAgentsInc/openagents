@@ -48,6 +48,10 @@ import { openAgentsDatabase } from '../runtime'
 import { currentIsoTimestamp } from '../runtime-primitives'
 
 import type { AcceptanceSpec } from './acceptance-spec'
+import {
+  AcceptanceJobMessage,
+  acceptanceJobSpecFromSpec,
+} from './acceptance-job-message'
 import type { AcceptanceVerdict } from './acceptance-runner/verdict'
 import {
   type KhalaCodeVerification,
@@ -64,54 +68,12 @@ import {
 // the runner harness) so the job message stays a stable Effect Schema class without
 // re-encoding every spec field — the spec is a small JSON object the runner re-reads
 // through `acceptance-spec.ts`.
-export const AcceptanceJobSpecSchema = S.Struct({
-  kind: S.Literal('crossy_road_single_html'),
-  rubricRef: S.String,
-  checks: S.Array(S.String),
-  params: S.Struct({
-    forwardMoves: S.Number,
-    maxCameraDeltaPerMove: S.Number,
-    expectedForwardAdvance: S.Number,
-    minWorldRowsAhead: S.Number,
-  }),
-})
-
-// The queue payload that triggers an out-of-Worker acceptance run for ONE khala-code
-// completion. `requestId` is the inference response id the receipt is keyed on (the
-// runner echoes it back so the verdict backfills the right receipt). `artifactRef`
-// is a dereferenceable handle (an R2 key / store ref) the runner resolves to the
-// HTML bytes — NEVER the raw artifact on the hot enqueue path. `spec` is the derived
-// `AcceptanceSpec`. `servedModel` / `worker` are carried so the backfilled verdict
-// re-derives the same receipt shape the hot path produced.
-export class AcceptanceJobMessage extends S.Class<AcceptanceJobMessage>(
-  'AcceptanceJobMessage',
-)({
-  schemaVersion: S.Literal('openagents.inference.acceptance_job.v1'),
-  requestId: S.String,
-  artifactRef: S.String,
-  servedModel: S.String,
-  worker: S.String,
-  meteringReceiptRef: S.optionalKey(S.NullOr(S.String)),
-  spec: AcceptanceJobSpecSchema,
-}) {}
-
-export type AcceptanceJobSpec = S.Schema.Type<typeof AcceptanceJobSpecSchema>
-
-// Build the wire spec from a typed `AcceptanceSpec` (the runner re-reads it back into
-// the same shape). One place so the encode stays in sync with `acceptance-spec.ts`.
-export const acceptanceJobSpecFromSpec = (
-  spec: AcceptanceSpec,
-): AcceptanceJobSpec => ({
-  checks: spec.checks,
-  kind: spec.kind,
-  params: {
-    expectedForwardAdvance: spec.params.expectedForwardAdvance,
-    forwardMoves: spec.params.forwardMoves,
-    maxCameraDeltaPerMove: spec.params.maxCameraDeltaPerMove,
-    minWorldRowsAhead: spec.params.minWorldRowsAhead,
-  },
-  rubricRef: spec.rubricRef,
-})
+export {
+  AcceptanceJobMessage,
+  AcceptanceJobSpecSchema,
+  acceptanceJobSpecFromSpec,
+  type AcceptanceJobSpec,
+} from './acceptance-job-message'
 
 // ----------------------------------------------------------------------------
 // (2) The enqueue flag — default OFF (nothing is dispatched in prod yet)

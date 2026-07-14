@@ -33,7 +33,7 @@ export class DurableStreamBackendError extends Schema.TaggedErrorClass<DurableSt
   {
     backend: Schema.String,
     operation: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {}
 

@@ -63,7 +63,7 @@ export class AgentGoalStorageError extends S.TaggedErrorClass<AgentGoalStorageEr
   'AgentGoalStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

@@ -427,7 +427,7 @@ export class CustomerOrderStorageError extends S.TaggedErrorClass<CustomerOrderS
   'CustomerOrderStorageError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 

@@ -3,7 +3,7 @@
 Date: 2026-07-01
 Tracking epic: <https://github.com/OpenAgentsInc/openagents/issues/7780>
 Issue: <https://github.com/OpenAgentsInc/openagents/issues/7795>
-Pinned Codex reference: `db887d03e1f907467e33271572dffb73bceecd6b`
+Pinned Codex reference: `08ba14b03d0b3ce3cfdf8c88c0469b9b1924953d`
 Checked fixture: `clients/khala-code-desktop/src/bun/codex-app-server-gap-matrix.ts`
 
 Khala Code is pivoting to a direct wrapper and desktop port of the Codex

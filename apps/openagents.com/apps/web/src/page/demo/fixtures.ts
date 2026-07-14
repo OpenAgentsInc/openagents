@@ -49,7 +49,7 @@ const DEMO_GOAL_ID = 'agent_goal_pylon_release_demo'
 
 class DemoFixtureDecodeError extends S.TaggedErrorClass<DemoFixtureDecodeError>()(
   'DemoFixtureDecodeError',
-  { fixture: S.String, cause: S.Defect },
+  { fixture: S.String, cause: S.Defect() },
 ) {}
 
 const decodeFixture = <A>(

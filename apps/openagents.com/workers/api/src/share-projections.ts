@@ -83,7 +83,7 @@ export class ShareProjectionMalformed extends S.TaggedErrorClass<ShareProjection
 export class ShareProjectionStorageError extends S.TaggedErrorClass<ShareProjectionStorageError>()(
   'ShareProjectionStorageError',
   {
-    error: S.Defect,
+    error: S.Defect(),
     operation: S.String,
   },
 ) {}

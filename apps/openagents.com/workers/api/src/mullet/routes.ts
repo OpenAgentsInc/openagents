@@ -83,7 +83,7 @@ class MulletRouteForbidden extends S.TaggedErrorClass<MulletRouteForbidden>()(
 class MulletRouteSessionError extends S.TaggedErrorClass<MulletRouteSessionError>()(
   'MulletRouteSessionError',
   {
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
@@ -91,7 +91,7 @@ class MulletRouteValidationError extends S.TaggedErrorClass<MulletRouteValidatio
   'MulletRouteValidationError',
   {
     operation: S.String,
-    error: S.Defect,
+    error: S.Defect(),
   },
 ) {}
 
