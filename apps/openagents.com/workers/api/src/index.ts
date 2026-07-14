@@ -118,7 +118,6 @@ import {
   isAgenticLaborProductsEnabled,
 } from './agentic-labor-product-routes'
 import { handlePublicArtanisActivityApi } from './artanis-activity-routes'
-import { makeD1ArtanisAdminCloseoutReceiptStore } from './artanis-admin-closeout-receipts'
 import {
   runArtanisAdminTickScheduled,
   runArtanisCloseoutVerifierScheduled,
@@ -265,7 +264,6 @@ import {
   type AutopilotWorkOrderRecord,
   makeAutopilotWorkRoutes,
   recordAutopilotWorkerCloseoutFromPylon,
-  verifyAutopilotL402PaymentProofFromBuyerLedger,
 } from './autopilot-work-routes'
 import {
   recordBackendIncidentEvent,
@@ -344,11 +342,9 @@ import { makeLedgerCloudPrimitiveReceiptStore } from './cloud/cloud-primitive-re
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
 // STAY red until a dereferenceable paid receipt lands. No green flip here.
 import {
-  handleFineTuningJobSubmit,
   isFineTuningServiceEnabled,
   makeD1FineTunedModelResolver,
   makeD1FineTuningRuntimeAdapter,
-  makeLedgerFineTuningMeteringHook,
   routeFineTuningJobRequest,
 } from './cloud/fine-tuning-service-routes'
 import {
@@ -357,10 +353,8 @@ import {
 } from './cloud/khala-agent-computer-writeback-routes'
 import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
 import {
-  handleSandboxRequest,
   isSandboxComputeServiceEnabled,
   makeD1SandboxRuntimeAdapter,
-  makeLedgerSandboxMeteringHook,
   routeSandboxRequest,
 } from './cloud/sandbox-compute-service-routes'
 import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from './coding-quick-win-claim-upgrade'
@@ -468,7 +462,6 @@ import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { forumContentDatabaseForEnv } from './forum/forum-content-store'
-import { readForumTipRecipientReadinessForActor } from './forum/repository'
 import {
   GitHubScmAuthBrokerDependencyFailed,
   routeGitHubScmAuthBrokerRequest,
@@ -506,7 +499,6 @@ import {
   makeMutaliskKhalaDelegationWorkflowStoreForEnv,
 } from './gym-evals-domain-store'
 import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
-import type { ContainerPathFetch } from './http/container-fetch'
 import { handleForumThreadDocument } from './http/forum-social-preview'
 import { fetchAppShellWithPylonStatsBootPayload } from './http/pylon-stats-boot-payload'
 import {
@@ -546,10 +538,7 @@ import {
   handleAcceptanceJobLease,
 } from './inference/acceptance-job-lease-routes'
 import { makeAcceptanceJobQueueStoreForEnv } from './inference/acceptance-job-queue-store'
-import {
-  type AcceptedOutcomeSettlementSink,
-  handleAcceptanceVerdictCallback,
-} from './inference/acceptance-verdict-callback-routes'
+import { handleAcceptanceVerdictCallback } from './inference/acceptance-verdict-callback-routes'
 import {
   handleOperatorKhalaHeadToHeadApi,
   handlePublicKhalaHeadToHeadApi,
@@ -615,7 +604,6 @@ import {
 } from './inference/hydralisk-adapter'
 import {
   checkFreeAllowancePreflight,
-  withFreeAllowance,
 } from './inference/inference-free-allowance'
 import {
   decideFreeKeyMint,
@@ -629,13 +617,11 @@ import {
   resolveFreeKeyMintCap,
   resolveFreeTierQuota,
   sanitizeFreeKeyLabel,
-  withFreeTierKhala,
 } from './inference/inference-free-tier-key'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import {
   isOperatorExemptionEnabled,
   makeOperatorExemptionGate,
-  withOperatorCredit,
 } from './inference/inference-operator-exemption'
 import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
 import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
@@ -690,7 +676,6 @@ import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './inference/models-routes'
-import { makeFallbackLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice'
 import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
 import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
 import {
@@ -785,7 +770,6 @@ import {
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   makeKhalaCloudRuntimeUsageRoutes,
   ownerCapacityGrantAuthorizesReceipt,
-  publishKhalaCloudRuntimeInsufficientCreditEvent,
 } from './khala-cloud-runtime-usage-routes'
 import { handlePublicKhalaCodeDownloadCountsApi } from './khala-code-download-counts-routes'
 import {
@@ -814,7 +798,6 @@ import {
   runHostedRuntimeTurnDispatch,
 } from './khala-hosted-runtime-dispatch'
 import {
-  hostedKhalaOwnerCreditAccountRef,
   hostedTurnUsageFromArtanisMind,
   recordHostedTurnUsageAndCharge,
 } from './khala-hosted-runtime-metering'
@@ -983,7 +966,6 @@ import {
   executeQueuedAdjutantEnrichmentJob,
   makeOperatorAdjutantRoutes,
 } from './operator-adjutant-routes'
-import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
 import {
   makeOperatorFleetStatusRoutes,
@@ -997,7 +979,6 @@ import { makeOperatorSitesRoutes } from './operator-sites-routes'
 import {
   type OperatorTargetUser,
   readOperatorTargetUser,
-  readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
@@ -1093,7 +1074,7 @@ import {
   makePylonAgentRunnerStatusMirrorForEnv,
   makePylonAgentRunnerStatusReadStoreForEnv,
 } from './pylon-agent-runner-status-store'
-import { type PylonApiStore, resolveSparkPayoutDestination } from './pylon-api'
+import { type PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import {
   type PylonCapacityFunnelSnapshotStore,
@@ -1176,7 +1157,6 @@ import {
   currentEpochMillis,
   currentIsoTimestamp,
   epochMillisToIsoTimestamp,
-  isoTimestampAfter,
   randomUuid,
 } from './runtime-primitives'
 import {
@@ -1248,10 +1228,6 @@ import {
   TassadarReplayRequest,
   runTassadarReplayValidation,
 } from './tassadar-replay-validator'
-import {
-  buildSettledFeedEvents,
-  publishSettledFeedEvents,
-} from './tassadar-settled-feed-sync'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
 import {
@@ -1362,10 +1338,7 @@ import {
   buildTrainingWindowRecord,
   transitionTrainingWindowRecord,
 } from './training-run-window-authority'
-import {
-  dispatchRealRunSettlementCore,
-  makeTrainingRunWindowRoutes,
-} from './training-run-window-routes'
+import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
 import {
   buildTrainingVerificationChallengeRecord,
   finalizeTrainingVerificationChallengeRecord,
@@ -1460,12 +1433,12 @@ class ManagedFleetAuthorityError extends S.TaggedErrorClass<ManagedFleetAuthorit
     message: S.String,
   },
 ) {}
-const fetchMdkTreasuryPath = (
-  _environment: Env,
-): ContainerPathFetch | undefined => undefined
 const runArtanisForumRouteEffect = async (
   effect: ReturnType<typeof forumRoutes.routeForumRequest> | undefined,
-) => (effect === undefined ? undefined : Effect.runPromise(effect))
+): Promise<Response | undefined> =>
+  effect === undefined
+    ? undefined
+    : (Effect.runPromise(effect) as Promise<Response>)
 
 const artanisComposerForumPostForEnv =
   (environment: Env) =>
@@ -1518,8 +1491,6 @@ const artanisComposerForumPostForEnv =
     }
   }
 
-const routeMdkSidecarRequest = (_request: Request, _environment: Env) =>
-  Effect.succeed(moneySurfaceRetiredResponse())
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
 const EmailString = NonEmptyTrimmedString.check(
@@ -6400,19 +6371,6 @@ const readSelectedOperatorTargetUser = (
   selector: Record<string, unknown>,
 ): Promise<OperatorTargetUser | undefined> =>
   readOperatorTargetUser(identityDb, selector, OPENAGENTS_ADMIN_EMAILS[0])
-
-// Kind-agnostic target resolver for the inference-credit grant (human OR agent
-// account) — the bridge funds `agent:<userId>` for either, and an agent account
-// under test is a valid target.
-const readSelectedInferenceCreditTargetUser = (
-  identityDb: IdentityDb,
-  selector: Record<string, unknown>,
-): Promise<OperatorTargetUser | undefined> =>
-  readSelectedInferenceCreditTargetUserBase(
-    identityDb,
-    selector,
-    OPENAGENTS_ADMIN_EMAILS[0],
-  )
 
 const handleAdminSyncNotifyApi = async (
   request: Request,
