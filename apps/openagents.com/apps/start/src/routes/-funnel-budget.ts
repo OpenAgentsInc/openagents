@@ -23,7 +23,6 @@ const routeBudgets = [
   { path: '/code', marker: 'Code, on your own capacity' },
   { path: '/code/download', marker: 'Install paths, with the Codex requirement kept visible' },
   { path: '/download', marker: 'Download Autopilot for Mac' },
-  { path: '/sites/demo-checkout', marker: 'Demo checkout' },
   {
     path: '/pylon/codex/assignments/assignment.public.khala_coding.chatcmpl_example',
     marker: 'Pylon Codex assignment',

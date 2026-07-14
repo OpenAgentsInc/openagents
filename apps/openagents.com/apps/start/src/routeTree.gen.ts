@@ -39,7 +39,6 @@ import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
 import { Route as ArtanisIndexRouteImport } from './routes/artanis/index'
 import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces/$workspaceId'
-import { Route as SitesDemoCheckoutRouteImport } from './routes/sites/demo-checkout'
 import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
 import { Route as PreviewSalesLandingRouteImport } from './routes/preview/sales-landing'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
@@ -54,7 +53,6 @@ import { Route as ArtanisAccountsRouteImport } from './routes/artanis/accounts'
 import { Route as AgentsAgentRefRouteImport } from './routes/agents/$agentRef'
 import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
 import { Route as TrainingRunsRunIdRouteImport } from './routes/training/runs/$runId'
-import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
 import { Route as ForumTTopicIdRouteImport } from './routes/forum/t.$topicId'
 import { Route as ForumReceiptsReceiptRefRouteImport } from './routes/forum/receipts.$receiptRef'
 import { Route as ForumFForumRefRouteImport } from './routes/forum/f.$forumRef'
@@ -211,11 +209,6 @@ const WorkspacesWorkspaceIdRoute = WorkspacesWorkspaceIdRouteImport.update({
   path: '/workspaces/$workspaceId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SitesDemoCheckoutRoute = SitesDemoCheckoutRouteImport.update({
-  id: '/sites/demo-checkout',
-  path: '/sites/demo-checkout',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ShareShareIdRoute = ShareShareIdRouteImport.update({
   id: '/share/$shareId',
   path: '/share/$shareId',
@@ -286,12 +279,6 @@ const TrainingRunsRunIdRoute = TrainingRunsRunIdRouteImport.update({
   path: '/training/runs/$runId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SitesDemoCheckoutReturnActionRoute =
-  SitesDemoCheckoutReturnActionRouteImport.update({
-    id: '/$returnAction',
-    path: '/$returnAction',
-    getParentRoute: () => SitesDemoCheckoutRoute,
-  } as any)
 const ForumTTopicIdRoute = ForumTTopicIdRouteImport.update({
   id: '/forum/t/$topicId',
   path: '/forum/t/$topicId',
@@ -353,7 +340,6 @@ export interface FileRoutesByFullPath {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
-  '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis/': typeof ArtanisIndexRoute
   '/autopilot/': typeof AutopilotIndexRoute
@@ -368,7 +354,6 @@ export interface FileRoutesByFullPath {
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
-  '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
@@ -406,7 +391,6 @@ export interface FileRoutesByTo {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
-  '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis': typeof ArtanisIndexRoute
   '/autopilot': typeof AutopilotIndexRoute
@@ -421,7 +405,6 @@ export interface FileRoutesByTo {
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
-  '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
@@ -460,7 +443,6 @@ export interface FileRoutesById {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
-  '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis/': typeof ArtanisIndexRoute
   '/autopilot/': typeof AutopilotIndexRoute
@@ -475,7 +457,6 @@ export interface FileRoutesById {
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
-  '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
@@ -515,7 +496,6 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
-    | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
     | '/artanis/'
     | '/autopilot/'
@@ -530,7 +510,6 @@ export interface FileRouteTypes {
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
-    | '/sites/demo-checkout/$returnAction'
     | '/training/runs/$runId'
     | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
@@ -568,7 +547,6 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
-    | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
     | '/artanis'
     | '/autopilot'
@@ -583,7 +561,6 @@ export interface FileRouteTypes {
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
-    | '/sites/demo-checkout/$returnAction'
     | '/training/runs/$runId'
     | '/training/runs'
     | '/pylon/codex/assignments/$assignmentRef'
@@ -621,7 +598,6 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
-    | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
     | '/artanis/'
     | '/autopilot/'
@@ -636,7 +612,6 @@ export interface FileRouteTypes {
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
-    | '/sites/demo-checkout/$returnAction'
     | '/training/runs/$runId'
     | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
@@ -675,7 +650,6 @@ export interface RootRouteChildren {
   PreviewLandingRoute: typeof PreviewLandingRoute
   PreviewSalesLandingRoute: typeof PreviewSalesLandingRoute
   ShareShareIdRoute: typeof ShareShareIdRoute
-  SitesDemoCheckoutRoute: typeof SitesDemoCheckoutRouteWithChildren
   WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
   ArtanisIndexRoute: typeof ArtanisIndexRoute
   AutopilotIndexRoute: typeof AutopilotIndexRoute
@@ -907,13 +881,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspacesWorkspaceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sites/demo-checkout': {
-      id: '/sites/demo-checkout'
-      path: '/sites/demo-checkout'
-      fullPath: '/sites/demo-checkout'
-      preLoaderRoute: typeof SitesDemoCheckoutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/share/$shareId': {
       id: '/share/$shareId'
       path: '/share/$shareId'
@@ -1012,13 +979,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TrainingRunsRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sites/demo-checkout/$returnAction': {
-      id: '/sites/demo-checkout/$returnAction'
-      path: '/$returnAction'
-      fullPath: '/sites/demo-checkout/$returnAction'
-      preLoaderRoute: typeof SitesDemoCheckoutReturnActionRouteImport
-      parentRoute: typeof SitesDemoCheckoutRoute
-    }
     '/forum/t/$topicId': {
       id: '/forum/t/$topicId'
       path: '/forum/t/$topicId'
@@ -1057,17 +1017,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface SitesDemoCheckoutRouteChildren {
-  SitesDemoCheckoutReturnActionRoute: typeof SitesDemoCheckoutReturnActionRoute
-}
-
-const SitesDemoCheckoutRouteChildren: SitesDemoCheckoutRouteChildren = {
-  SitesDemoCheckoutReturnActionRoute: SitesDemoCheckoutReturnActionRoute,
-}
-
-const SitesDemoCheckoutRouteWithChildren =
-  SitesDemoCheckoutRoute._addFileChildren(SitesDemoCheckoutRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
@@ -1101,7 +1050,6 @@ const rootRouteChildren: RootRouteChildren = {
   PreviewLandingRoute: PreviewLandingRoute,
   PreviewSalesLandingRoute: PreviewSalesLandingRoute,
   ShareShareIdRoute: ShareShareIdRoute,
-  SitesDemoCheckoutRoute: SitesDemoCheckoutRouteWithChildren,
   WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
   ArtanisIndexRoute: ArtanisIndexRoute,
   AutopilotIndexRoute: AutopilotIndexRoute,

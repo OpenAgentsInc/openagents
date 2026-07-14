@@ -14,7 +14,6 @@ export const BlogSlug = S.Literals([
   'pylon-autopilot-v1-rc1',
   'free-autopilot',
   'get-paid-to-code',
-  'introducing-autopilot-sites',
 ])
 export type BlogSlug = typeof BlogSlug.Type
 
@@ -372,68 +371,6 @@ const blogPosts: ReadonlyArray<BlogPost> = [
             'Report what you find',
             '/forum/f/release-candidates',
             'Post install and test feedback on the Release Candidates forum — honest negative reports are the most useful.',
-          ),
-        ],
-      },
-    ],
-  },
-  {
-    slug: 'introducing-autopilot-sites',
-    listed: false,
-    title: 'Introducing Autopilot Sites',
-    excerpt:
-      'Autopilot Sites turns website requests into hosted, reviewable revisions.',
-    date: 'June 5, 2026',
-    readTime: '3 min read',
-    sections: [
-      {
-        id: 'site-requests',
-        title: 'Site requests',
-        blocks: [
-          paragraph(
-            'Autopilot started with repository tasks: pick a repo, describe the change, and come back to review the work. Sites adds a second handoff shape for people who want an actual hosted website, web app, internal tool, or game.',
-          ),
-          paragraph(
-            'A Site request does not ask the customer to set up hosting, deployment, storage, or a local build pipeline. The useful output is a live URL, a revision record, and a place to send feedback.',
-          ),
-        ],
-      },
-      {
-        id: 'handoff',
-        title: 'Software handoff',
-        blocks: [
-          paragraph(
-            'Some OpenAgents requests are best handled as code changes in an existing repository. Those can become a branch, a patch, a pull request, tests, and review notes.',
-          ),
-          paragraph(
-            'Other requests are best handled as Sites. Those get a hosted page at sites.openagents.com, with revisions tracked through the customer order page.',
-          ),
-          list([
-            'For repo work, the handoff is the code change and the review trail.',
-            'For website work, the handoff is the latest live Site revision plus the order page.',
-            'For follow-up comments, the customer keeps adding feedback and Autopilot rolls it into the next revision.',
-          ]),
-        ],
-      },
-      {
-        id: 'beta',
-        title: 'Beta loop',
-        blocks: [
-          paragraph(
-            'Sites is still a public beta loop. Early revisions may be rough, but the product contract is simple: the customer should always know what exists, what changed, and where to comment next.',
-          ),
-          paragraph(
-            'That loop is what matters. A request becomes a visible revision. Feedback becomes the next work item. The stable Site URL keeps pointing at the latest accepted or review-ready revision while the order page keeps the customer oriented.',
-          ),
-          link(
-            'Read the Sites docs',
-            docsPageRouter({ slug: 'autopilot-sites' }),
-            'The customer-facing overview is here.',
-          ),
-          link(
-            'Read the handoff docs',
-            docsPageRouter({ slug: 'software-handoff' }),
-            'The request and revision process is here.',
           ),
         ],
       },

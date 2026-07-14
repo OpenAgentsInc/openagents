@@ -142,7 +142,6 @@ const FILES = /^\/files(?:\/[^/]+)?$/
 const FORUM = /^\/forum(?:\/.*)?$/
 const ARTANIS_ACCOUNTS = /^\/artanis\/accounts$/
 const SETTINGS = /^\/settings(?:\/[^/]+)?$/
-const SITES_DEMO_CHECKOUT = /^\/sites\/demo-checkout(?:\/[^/]+)?$/
 // Public shareable agent traces (#6209/#6211): /trace/{uuid} + /trace/compare/{ids}.
 const TRACE = /^\/trace(?:\/.*)?$/
 const QA_SWARM = /^\/qa\/[^/]+$/
@@ -467,26 +466,6 @@ export const routeTable = {
     surface: 'spaDocument',
     serverDocument: FORUM,
     examplePaths: ['/forum/receipts/receipt_1'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  SiteCheckoutDemo: {
-    surface: 'spaDocument',
-    serverDocument: SITES_DEMO_CHECKOUT,
-    examplePaths: ['/sites/demo-checkout'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  SiteCheckoutDemoReturn: {
-    surface: 'spaDocument',
-    serverDocument: SITES_DEMO_CHECKOUT,
-    examplePaths: ['/sites/demo-checkout/success'],
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
     inLoggedOutUnion: true,

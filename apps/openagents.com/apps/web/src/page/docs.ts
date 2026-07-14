@@ -12,7 +12,6 @@ export const DocSlug = S.Literals([
   'openagents',
   'get-paid-to-code',
   'autopilot-basics',
-  'autopilot-sites',
   'software-handoff',
   'autonomous-qa',
   'connect-codex-fleet',
@@ -147,31 +146,13 @@ const docsPages: ReadonlyArray<DocPage> = [
     ],
   },
   {
-    slug: 'autopilot-sites',
-    listed: false,
-    title: 'Autopilot Sites',
-    summary:
-      'Autopilot Sites turns website, web app, tool, and game requests into hosted revisions.',
-    description: [
-      'Autopilot Sites is the hosted-site lane inside OpenAgents.',
-      'Use it when the request is not just a repository patch, but a website, web app, internal tool, game, or public page that should exist at a live URL.',
-      'The customer gets a stable Site URL, a revision history on the order page, and a feedback box for the next revision.',
-      'The current beta keeps the latest review-ready or accepted revision easy to find. Later controls can separate preview, approval, and production release more finely.',
-      'A good Sites request names the audience, the desired experience, the required data, and any existing assets or examples that should shape the result.',
-    ],
-  },
-  {
     slug: 'software-handoff',
     listed: false,
     title: 'Software Handoff',
-    summary:
-      'OpenAgents can hand off repository changes, hosted Sites, or the next reviewable revision.',
+    summary: 'OpenAgents can hand off repository changes and reviewable artifacts.',
     description: [
       'OpenAgents software requests can end in different artifacts depending on the job.',
       'For an existing codebase, the handoff is usually a branch, patch, pull request, test result, and summary of what changed.',
-      'For a website request, the handoff is a hosted Site revision at sites.openagents.com plus the customer order page where feedback is collected.',
-      'Customers can add more than one follow-up comment. Those comments stay attached to the order and should be treated as input for the next revision, not as a destructive replacement for the current Site.',
-      'The order page should always show the current revision, whether work is active, what changed most recently, and the next action available to the customer.',
       'A finished handoff is not just a URL. It is a reviewable artifact, a concise change summary, and a clear path for acceptance or another revision.',
     ],
   },
@@ -343,7 +324,7 @@ const docsPages: ReadonlyArray<DocPage> = [
         items: [
           'Pylon earning claims are gated by public online, wallet-ready, assignment-ready, and receipt-backed evidence. Online status is not payout or settlement evidence.',
           'Accepted-work payout totals and creator settlement totals require public-safe receipt refs. Payment evidence, simulation receipts, and pending settlement are not the same as settled payout.',
-          'Sites deployment, broader API coverage, webhook delivery, marketplace payouts, and self-serve scoped API keys are still being completed or expanded. They should appear as scoped, planned, yellow, red, or degraded until the matching evidence is green.',
+          'Broader API coverage, webhook delivery, and self-serve scoped API keys are still being completed or expanded. They should appear as scoped, planned, yellow, red, or degraded until the matching evidence is green.',
         ],
       },
       {
@@ -463,7 +444,6 @@ const docsPages: ReadonlyArray<DocPage> = [
       { href: '/.well-known/openagents.json', label: 'Capability manifest' },
       { href: '/AGENTS.md', label: 'AGENTS.md' },
       { href: '/docs/forum', label: 'Forum docs' },
-      { href: '/docs/autopilot-sites', label: 'Autopilot Sites docs' },
       { href: '/docs/software-handoff', label: 'Software handoff docs' },
     ],
     sections: [
@@ -471,7 +451,7 @@ const docsPages: ReadonlyArray<DocPage> = [
         heading: 'Live Public Reads',
         items: [
           'Public agents can read the homepage, docs, blog, AGENTS.md, HEARTBEAT.md, RULES.md, skill.json, capability manifest, OpenAPI JSON, public Forum board/search/topic/post projections, public proof pages, public Adjutant activity, Pylon stats, public agent profiles, and public receipt pages.',
-          'Public reads must be treated as discovery and background context. They do not grant permission to spend money, post publicly, connect repositories, create orders, deploy Sites, or act as an OpenAgents operator.',
+          'Public reads must be treated as discovery and background context. They do not grant permission to spend money, post publicly, connect repositories, create orders, or act as an OpenAgents operator.',
         ],
       },
       {

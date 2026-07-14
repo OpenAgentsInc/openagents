@@ -7,7 +7,6 @@ import {
   type DiscoverySurfacePath,
   renderDiscoverySurface,
 } from '../../../workers/api/src/inference/discovery-surfaces'
-import { routeSiteCrawlSurfaceRequest } from '../../../workers/api/src/site-crawl-surfaces-routes'
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
 
@@ -49,11 +48,6 @@ export async function routeSharedAgentSurface(
   // web surface and every /sarah/api/* route are gone (apps/sarah deleted).
   if (path === '/sarah' || path.startsWith('/sarah/')) {
     return Response.json({ error: 'not_found', path }, { status: 404 })
-  }
-
-  const crawlSurface = routeSiteCrawlSurfaceRequest(request)
-  if (crawlSurface !== undefined) {
-    return Effect.runPromise(crawlSurface)
   }
 
   const wellKnownSurface = routeWellKnownAgentSurfaceRequest(request)

@@ -100,17 +100,6 @@ export const businessOfferings: ReadonlyArray<BusinessOffering> = [
       'Quick win: a bounded, verified training or compute task with a reported result and receipt - best scoped with us first.',
   },
   {
-    title: 'Sites + commerce',
-    availability: 'Operator-assisted',
-    what: 'An Autopilot Site served at a stable URL, with optional custom branded hostnames, native email sequences, and built-in referral links. Partial/flag-gated today.',
-    liveNow:
-      'Site build/host, hostname, email, and referral pieces exist behind flags or operator paths.',
-    caveat:
-      'Treat this as available with a caveat, not a finished self-serve Sites product.',
-    quickWin:
-      'Quick win: a branded landing page plus a welcome-email sequence for a launch or campaign.',
-  },
-  {
     title: 'Autopilot business automation',
     availability: 'Operator-assisted',
     what: 'Recurring work run by agents through a factory pipeline with prefilled e-commerce, legal, and marketing workspaces. A human-review gate sits before anything publishes or spends.',
@@ -280,31 +269,14 @@ export const docsPages: ReadonlyArray<DocPage> = [
     ],
   },
   {
-    slug: 'autopilot-sites',
-    listed: false,
-    title: 'Autopilot Sites',
-    summary:
-      'Autopilot Sites turns website, web app, tool, and game requests into hosted revisions.',
-    description: [
-      'Autopilot Sites is the hosted-site lane inside OpenAgents.',
-      'Use it when the request is not just a repository patch, but a website, web app, internal tool, game, or public page that should exist at a live URL.',
-      'The customer gets a stable Site URL, a revision history on the order page, and a feedback box for the next revision.',
-      'The current beta keeps the latest review-ready or accepted revision easy to find. Later controls can separate preview, approval, and production release more finely.',
-      'A good Sites request names the audience, the desired experience, the required data, and any existing assets or examples that should shape the result.',
-    ],
-  },
-  {
     slug: 'software-handoff',
     listed: false,
     title: 'Software Handoff',
     summary:
-      'OpenAgents can hand off repository changes, hosted Sites, or the next reviewable revision.',
+      'OpenAgents can hand off repository changes and reviewable artifacts.',
     description: [
       'OpenAgents software requests can end in different artifacts depending on the job.',
       'For an existing codebase, the handoff is usually a branch, patch, pull request, test result, and summary of what changed.',
-      'For a website request, the handoff is a hosted Site revision at sites.openagents.com plus the customer order page where feedback is collected.',
-      'Customers can add more than one follow-up comment. Those comments stay attached to the order and should be treated as input for the next revision, not as a destructive replacement for the current Site.',
-      'The order page should always show the current revision, whether work is active, what changed most recently, and the next action available to the customer.',
       'A finished handoff is not just a URL. It is a reviewable artifact, a concise change summary, and a clear path for acceptance or another revision.',
     ],
   },
@@ -399,7 +371,6 @@ export const docsPages: ReadonlyArray<DocPage> = [
       { href: '/.well-known/openagents.json', label: 'Capability manifest' },
       { href: '/AGENTS.md', label: 'AGENTS.md' },
       { href: '/docs/forum', label: 'Forum docs' },
-      { href: '/docs/autopilot-sites', label: 'Autopilot Sites docs' },
     ],
   },
 ]
@@ -472,24 +443,6 @@ export const blogPosts: ReadonlyArray<BlogPost> = [
         title: 'Release candidate 1 is here',
         paragraphs: [
           'The first release candidate packages Pylon, Autopilot Desktop, and the contributor path for people willing to test the loop.',
-        ],
-      },
-    ],
-  },
-  {
-    slug: 'introducing-autopilot-sites',
-    listed: false,
-    title: 'Introducing Autopilot Sites',
-    excerpt:
-      'Autopilot Sites turns website, web app, tool, and game requests into hosted revisions.',
-    date: 'June 5, 2026',
-    readTime: '3 min read',
-    sections: [
-      {
-        title: 'Site requests',
-        paragraphs: [
-          'Autopilot Sites is the hosted-site lane inside OpenAgents.',
-          'Use it when the request is not just a repository patch, but a website, web app, internal tool, game, or public page that should exist at a live URL.',
         ],
       },
     ],
