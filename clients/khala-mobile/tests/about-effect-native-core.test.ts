@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 // effect via the bridge — same effect copy as @effect-native/* (see the core
 // module for why); Effect values must unify with the renderer's mount Effect.
 import { Effect } from "@effect-native/core/effect"

@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
@@ -8,17 +8,17 @@ import {
   type KhalaCrashReport,
 } from "../src/diagnostics/crash-reporting"
 
-mock.module("../src/components/khala-screen", () => ({
+vi.vi.fn("../src/components/khala-screen", () => ({
   KhalaScreen: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("KhalaScreen", null, children),
 }))
 
-mock.module("../src/components/khala-text", () => ({
+vi.vi.fn("../src/components/khala-text", () => ({
   KhalaText: ({ children, text }: { children?: React.ReactNode; text?: string }) =>
     React.createElement("KhalaText", null, text ?? children),
 }))
 
-mock.module("../src/components/khala-button", () => ({
+vi.vi.fn("../src/components/khala-button", () => ({
   KhalaButton: ({ onPress, text }: { onPress?: () => void; text?: string }) =>
     React.createElement("KhalaButton", { accessibilityRole: "button", onPress }, text),
 }))

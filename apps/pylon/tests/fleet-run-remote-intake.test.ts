@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap.js"
 import { openPylonNodeFleetRunActivationService } from "../src/node/fleet-run-activation.js"

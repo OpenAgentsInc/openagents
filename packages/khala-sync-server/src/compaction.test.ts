@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import {
   type BootstrapResponse,
   EntityId,
@@ -6,8 +7,8 @@ import {
   publicScope,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { CAPTURE_CHECKPOINTS_TABLE, compactAll, compactScope } from "./compaction.js"
 import { KhalaSyncCursorBehindRetainedWindowError } from "./errors.js"
 import { runMigrations } from "./migrate.js"
@@ -15,9 +16,6 @@ import { withSyncTransaction } from "./outbox-writer.js"
 import { bootstrap, logPage } from "./read-service.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(240_000)
-
 const entityType = EntityType.make("thing")
 const eid = (n: number | string) => EntityId.make(`thing-${n}`)
 
@@ -42,14 +40,14 @@ describe.skipIf(!hasLocalPostgres())("compaction against local Postgres", () => 
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_compaction")
     await admin.end()
     const url = pg.urlFor("khala_sync_compaction")
     const result = await runMigrations({ databaseUrl: url })
     expect(result.applied).toContain("0001_khala_sync_core.sql")
     expect(result.applied).toContain("0003_khala_sync_changelog_entity_index.sql")
-    sql = new SQL({ url, max: 10 })
+    sql = SQL({ url, max: 10 })
     // The capture lane (KS-4) lands concurrently; create its checkpoint
     // table (compatible minimal shape, no-op if a migration already made
     // it) so this suite exercises the checkpoint guard for real. Tests that
@@ -511,7 +509,7 @@ describe.skipIf(!hasLocalPostgres())("compaction against local Postgres", () => 
     await markPushed(scope, 5)
 
     const script = new URL("../scripts/compact.ts", import.meta.url).pathname
-    const proc = Bun.spawnSync(
+    const proc = Runtime.spawnSync(
       ["bun", script, "--dry-run", "--max-retained-entries", "2"],
       {
         env: {

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { createHash } from "node:crypto"
 import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import os from "node:os"
@@ -15,7 +16,7 @@ describe("packaged voice helper oracle", () => {
     expect(() => verifyVoiceHelper({ resourcesPath: root, manifest, verifySignature: () => false })).toThrow("voice_helper_signature_invalid")
   })
   test("source launches absolute helper without shell or ambient PATH", async () => {
-    const source = await Bun.file(new URL("./voice-native-helper.ts", import.meta.url)).text()
+    const source = await readFile(new URL("./voice-native-helper.ts", import.meta.url), "utf8")
     expect(source).toContain("spawn(absolutePath")
     expect(source).toContain('PATH: ""')
     expect(source).toContain('HOME: "/var/empty"')
@@ -24,7 +25,7 @@ describe("packaged voice helper oracle", () => {
     expect(source).not.toContain("spawnSync")
   })
   test("Electron main obtains one bounded grant through the authenticated host-only route", async () => {
-    const source = await Bun.file(new URL("./main.ts", import.meta.url)).text()
+    const source = await readFile(new URL("./main.ts", import.meta.url), "utf8")
     expect(source).toContain("/api/desktop/audio/grant")
     expect(source).toContain('"x-openagents-desktop-device-ref": identity.deviceRef')
     expect(source).toContain("authorization: `Bearer ${credential.accessToken}`")

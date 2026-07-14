@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises"
 import { createCollection } from "@tanstack/db"
 import {
   BootstrapEntity,
@@ -64,7 +65,7 @@ import {
   type LiveSocketHandlers,
 } from "@openagentsinc/khala-sync-client"
 import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client/sqlite-store"
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import {
   CHAT_APPEND_MESSAGE_MUTATOR_NAME,
@@ -158,9 +159,9 @@ afterEach(() => {
 
 const loadFleetRunFixture = async (): Promise<FleetRunEntity> =>
   decodeFleetRunEntity(
-    (await Bun.file(
+    (await JSON.parse(await readFile(
       new URL("../../khala-sync/fixtures/FleetRunEntity.json", import.meta.url),
-    ).json()) as unknown,
+    , "utf8"))) as unknown,
   )
 
 type FakeChange = Readonly<{

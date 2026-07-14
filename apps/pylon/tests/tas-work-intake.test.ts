@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { normalizeIntake, type RawWorkIntake } from "../src/tas/work-intake"
 

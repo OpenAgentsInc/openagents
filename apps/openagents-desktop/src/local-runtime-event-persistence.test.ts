@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { DesktopMessage } from "./chat-contract.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"

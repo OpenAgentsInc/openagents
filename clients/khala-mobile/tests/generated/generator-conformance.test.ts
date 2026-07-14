@@ -1,7 +1,8 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { khalaMobileGeneratedScreenBundles } from "../../src/qa/screen-bundles/generated-screen-bundles"
 
@@ -19,8 +20,8 @@ describe("QAM-3 generator conformance", () => {
   test("generate screen emits the full test/story/contract/Maestro/visual bundle with no manual authoring", async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "khala-mobile-generate-"))
     try {
-      const proc = Bun.spawn({
-        cmd: ["bun", "run", "scripts/generate.ts", "screen", "Conformance Probe"],
+      const proc = Runtime.spawn({
+        cmd: [process.execPath, "scripts/generate.ts", "screen", "Conformance Probe"],
         cwd: mobileRoot,
         env: {
           ...process.env,

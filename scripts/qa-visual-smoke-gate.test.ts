@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   KHALA_VISUAL_SMOKE_GATE_HARD_FAIL_DATE,
   khalaVisualSmokeGateShouldRun,

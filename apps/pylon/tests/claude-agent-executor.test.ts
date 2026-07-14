@@ -1,4 +1,5 @@
-import { describe, expect, mock, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test, vi } from "vite-plus/test"
 import { existsSync, realpathSync } from "node:fs"
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -130,7 +131,7 @@ const checkoutRunner: ClaudeAgentCheckoutRunner = async (workspace) => {
   await writeFile(
     join(workspace, "sum.test.ts"),
     [
-      'import { describe, expect, test } from "bun:test"',
+      'import { describe, expect, test, vi } from "vite-plus/test"',
       'import { sum } from "./sum"',
       "",
       'describe("sum checkout", () => {',
@@ -195,7 +196,7 @@ describe("claude agent task recognition", () => {
   })
 
   test("preserves the SDK oauth_org_not_allowed code when the iterator throws after its error result", async () => {
-    mock.module(CLAUDE_AGENT_SDK_PACKAGE, () => ({
+    vi.vi.fn(CLAUDE_AGENT_SDK_PACKAGE, () => ({
       query: () => (async function* () {
         yield {
           type: "system",
@@ -245,7 +246,7 @@ describe("claude agent task recognition", () => {
 
   test("forwards canUseTool only when an explicit supervised controller is injected", async () => {
     const captured: Array<Record<string, unknown>> = []
-    mock.module(CLAUDE_AGENT_SDK_PACKAGE, () => ({
+    vi.vi.fn(CLAUDE_AGENT_SDK_PACKAGE, () => ({
       query: ({ options }: { options: Record<string, unknown> }) => {
         captured.push(options)
         return (async function* () {
@@ -457,7 +458,7 @@ describe("claude agent task recognition", () => {
         claudeAgentProbe: readyProbe,
         claudeOwnerLocalPermissionControl: { authority, signal: controller.signal },
       })
-      await Bun.sleep(5)
+      await sleep(5)
       controller.abort()
       const record = await pending
       expect(record?.status).toBe("rejected")
@@ -489,7 +490,7 @@ describe("claude agent task recognition", () => {
         claudeAgentRunner: runner,
         claudeAgentProbe: readyProbe,
       })
-      await Bun.sleep(5)
+      await sleep(5)
       controller.abort()
       const record = await pending
       expect(record?.status).toBe("rejected")

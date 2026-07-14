@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -47,7 +47,7 @@ const planDagDescriptor = (): FleetRunWorkSourceDescriptor =>
 
 describe("Pylon durable FleetRun work-source planner", () => {
   test("preserves exact Sarah authority unit refs across issue and DAG claims", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const authorityBinding = (claimRef: string) => ({
       schema: "openagents.pylon.fleet_run_authority_binding.v1" as const,
       source: "sarah_authority" as const,
@@ -233,7 +233,7 @@ describe("Pylon durable FleetRun work-source planner", () => {
 
   test("keeps a DAG unit claimable after released or expired account-health attempts", async () => {
     for (const terminalClaimState of ["released", "expired"] as const) {
-      const store = createPylonOrchestrationStore(new Database(":memory:"))
+      const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
       const runRef = `fleet_run.fc5.dag_account_redispatch.${terminalClaimState}`
       const run = store.createFleetRun({
         runRef,
@@ -308,7 +308,7 @@ describe("Pylon durable FleetRun work-source planner", () => {
   })
 
   test("carries checkout and verifier pins through durable issue-list and GitHub planners", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const pins = {
       repo: "OpenAgentsInc/openagents",
       branch: "main",
@@ -366,7 +366,7 @@ describe("Pylon durable FleetRun work-source planner", () => {
   })
 
   test("legacy kind-only rows load but the durable planner fails with a typed public blocker", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = store.createFleetRun({
       runRef: "fleet_run.fc2.legacy_kind_only",
       objective: "Retain a backwards-compatible legacy row.",
@@ -415,7 +415,7 @@ describe("Pylon durable FleetRun work-source planner", () => {
       nodes: [{ ref: "root", title: "Root", objective: "Run root." }],
     })).toThrow(/commit.*required|verify.*required/i)
 
-    const db = new Database(":memory:")
+    const db = new NodeTestDatabase(":memory:")
     const store = createPylonOrchestrationStore(db)
     expect(() => store.createFleetRun({
       runRef: "fleet_run.fc2.kind_mismatch",

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
+import { mkdtemp, rm, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -29,7 +29,7 @@ describe("runRlProbe receipt shape", () => {
           notes: [],
         }
         await writeRlProbeReceipt(fake, path)
-        const raw = await Bun.file(path).text()
+        const raw = await readFile(path, "utf8")
         expect(raw).toContain("openagents.grok_harness.rl_probe.v1")
       } finally {
         await rm(dir, { recursive: true, force: true })

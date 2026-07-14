@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -29,13 +30,13 @@ const validGithubBroker = {
 }
 
 async function git(args: string[], cwd: string): Promise<void> {
-  const proc = Bun.spawn(["git", ...args], { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(["git", ...args], { cwd, stderr: "pipe", stdout: "pipe" })
   const code = await proc.exited
   if (code !== 0) throw new Error(`git ${args.join(" ")} failed (${code})`)
 }
 
 async function headSha(cwd: string): Promise<string> {
-  const proc = Bun.spawn(["git", "rev-parse", "HEAD"], { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(["git", "rev-parse", "HEAD"], { cwd, stderr: "pipe", stdout: "pipe" })
   const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   return out.trim()
 }
@@ -125,7 +126,7 @@ describe("publishAssignmentPullRequest", () => {
           // run the local-only git ops for real so branch/commit reflect state,
           // but never let a push reach the network.
           if (sub === "push") return { exitCode: 0, stdout: "", stderr: "", timedOut: false }
-          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+          const proc = Runtime.spawn(["git", ...input.args.slice(1)], {
             cwd: workingDirectory,
             stderr: "pipe",
             stdout: "pipe",
@@ -189,7 +190,7 @@ describe("publishAssignmentPullRequest", () => {
         const [bin, sub] = input.args
         if (bin === "git") {
           if (sub === "push") return { exitCode: 0, stdout: "", stderr: "", timedOut: false }
-          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+          const proc = Runtime.spawn(["git", ...input.args.slice(1)], {
             cwd: workingDirectory,
             stderr: "pipe",
             stdout: "pipe",
@@ -247,7 +248,7 @@ describe("publishAssignmentPullRequest", () => {
               timedOut: false,
             }
           }
-          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+          const proc = Runtime.spawn(["git", ...input.args.slice(1)], {
             cwd: workingDirectory,
             stderr: "pipe",
             stdout: "pipe",
@@ -303,7 +304,7 @@ describe("publishAssignmentPullRequest", () => {
         }
         if (bin === "git") {
           if (sub === "push") return { exitCode: 0, stdout: "", stderr: "", timedOut: false }
-          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+          const proc = Runtime.spawn(["git", ...input.args.slice(1)], {
             cwd: workingDirectory,
             stderr: "pipe",
             stdout: "pipe",
@@ -370,7 +371,7 @@ describe("publishAssignmentPullRequest", () => {
               timedOut: false,
             }
           }
-          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+          const proc = Runtime.spawn(["git", ...input.args.slice(1)], {
             cwd: workingDirectory,
             stderr: "pipe",
             stdout: "pipe",
@@ -418,7 +419,7 @@ describe("publishAssignmentPullRequest", () => {
         const [bin, sub] = input.args
         if (bin === "git") {
           if (sub === "push") return { exitCode: 0, stdout: "", stderr: "", timedOut: false }
-          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+          const proc = Runtime.spawn(["git", ...input.args.slice(1)], {
             cwd: workingDirectory,
             stderr: "pipe",
             stdout: "pipe",
@@ -498,7 +499,7 @@ describe("publishAssignmentPullRequest", () => {
           return { exitCode: 0, stdout: "https://github.com/x/y/pull/1\n", stderr: "", timedOut: false }
         }
         // local git ops run for real (capture only needs them; no branch work expected)
-        const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+        const proc = Runtime.spawn(["git", ...input.args.slice(1)], {
           cwd: workingDirectory,
           stderr: "pipe",
           stdout: "pipe",

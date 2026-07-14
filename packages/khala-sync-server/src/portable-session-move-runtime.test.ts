@@ -1,5 +1,5 @@
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import {
   makeOwnerLocalCapabilityAdapter,
   type CapabilitySecretVault,
@@ -21,9 +21,6 @@ import type {
 } from "./portable-session-move.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const ownerRef = "owner.port03.runtime"
 const targetRef = "target.port03.runtime.local"
 
@@ -119,11 +116,11 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 production move runtime", () => {
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_portable_move_runtime")
     await admin.end()
     await runMigrations({ databaseUrl: pg.urlFor("khala_sync_portable_move_runtime") })
-    sql = new SQL({ url: pg.urlFor("khala_sync_portable_move_runtime"), max: 10 })
+    sql = SQL({ url: pg.urlFor("khala_sync_portable_move_runtime"), max: 10 })
   })
 
   afterAll(async () => {

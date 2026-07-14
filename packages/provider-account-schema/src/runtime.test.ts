@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 import { ProviderSecretRef as RootProviderSecretRef } from "./index.js";
 import {

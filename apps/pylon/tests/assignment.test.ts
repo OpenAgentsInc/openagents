@@ -1,7 +1,9 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { setTimeout as sleep } from "node:timers/promises"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { decodePylonLifecycleWireEventJson } from "@openagentsinc/agent-runtime-schema"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
@@ -37,7 +39,7 @@ import { activeCodingRunCounts } from "../src/active-assignment-runs"
 
 const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
 const CWD = join(import.meta.dirname, "..")
-const servers: ReturnType<typeof Bun.serve>[] = []
+const servers: ReturnType<typeof Runtime.serve>[] = []
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
@@ -79,7 +81,7 @@ function fakeAssignmentServer(input: {
   const requests: { path: string; body: any; headers: Headers }[] = []
   const accepted = new Set<string>()
   let heartbeatFailures = input.failHeartbeats ?? 0
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
@@ -224,6 +226,7 @@ function fakeAssignmentServer(input: {
       return Response.json({ errorRef: "error.not_found" }, { status: 404 })
     },
   })
+  await server.ready
   servers.push(server)
   return { baseUrl: `http://127.0.0.1:${server.port}`, requests }
 }
@@ -555,7 +558,7 @@ describe("Pylon assignment lease flow", () => {
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl })
 
-      const proc = Bun.spawn(
+      const proc = Runtime.spawn(
         [
           "bun",
           INDEX,
@@ -570,7 +573,7 @@ describe("Pylon assignment lease flow", () => {
         {
           cwd: CWD,
           env: {
-            ...Bun.env,
+            ...process.env,
             PYLON_HOME: home,
           },
           stdout: "pipe",
@@ -991,7 +994,7 @@ describe("Pylon assignment lease flow", () => {
       // The injected worker has already returned; keep the publication held
       // long enough for its bounded fixture verifier and input.run cleanup to
       // reach the ticker's finally block.
-      await Bun.sleep(100)
+      await sleep(100)
       expect(settled).toBe(false)
       releaseDelayedStatus()
       const result = await running
@@ -1394,7 +1397,7 @@ describe("Pylon assignment lease flow", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test } from "vite-plus/test"',
             'import { sum } from "./sum"',
             "",
             'describe("sum checkout", () => {',

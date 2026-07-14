@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { createUpdatesServer } from "./server.ts"
 import { selectPylonUpdate, type PylonFeed } from "./pylon-release.ts"

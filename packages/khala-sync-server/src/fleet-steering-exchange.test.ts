@@ -5,15 +5,8 @@ import {
   FleetSteeringFollowUpCompletionRefKnownAnswer,
   FleetSteeringOutcomeRefKnownAnswer,
 } from "@openagentsinc/khala-fleet-intents"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 
 import {
@@ -35,9 +28,6 @@ import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const FIXED_NOW = Date.parse("2026-07-09T23:00:00.000Z")
 const COMMIT = "6896b5cbcc7c7268d77b05f29f64c1d6f8951b18"
 
@@ -118,7 +108,7 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE sarah_fleet_steering_exchange")
       await admin.end()
       const url = pg.urlFor("sarah_fleet_steering_exchange")
@@ -129,7 +119,7 @@ describe.skipIf(!hasLocalPostgres())(
       expect(migrated.applied).toContain(
         "0055_sarah_fleet_run_steering_completions.sql",
       )
-      sql = new SQL({ url, max: 12 })
+      sql = SQL({ url, max: 12 })
     })
 
     afterAll(async () => {

@@ -1,10 +1,11 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 import * as rootEntryModule from "./index.js"
 import * as webEntryModule from "./web/index.js"
 
 const packageRoot = new URL("../", import.meta.url)
 const read = (path: string): Promise<string> =>
-  Bun.file(new URL(path, packageRoot)).text()
+  readFile(new URL(path, packageRoot), "utf8")
 
 describe("@openagentsinc/khala-sync-client package surface", () => {
   test("keeps the root entry free of runtime-specific SQLite stores", async () => {

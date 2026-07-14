@@ -1,4 +1,5 @@
-import { describe, expect, mock, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test, vi } from "vite-plus/test"
 import { Deferred, Effect, Fiber } from "effect"
 import { existsSync } from "node:fs"
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, writeFile } from "node:fs/promises"
@@ -117,7 +118,7 @@ async function withState<T>(fn: (state: Awaited<ReturnType<typeof ensurePylonLoc
 }
 
 async function runGit(args: string[], cwd: string) {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const proc = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -774,7 +775,7 @@ describe("codex agent task recognition", () => {
 
   test("SDK turn reporter failures do not fail the local Codex task", async () => {
     const reports: Array<unknown> = []
-    mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({
+    vi.vi.fn(CODEX_AGENT_SDK_PACKAGE, () => ({
       Codex: class {
         startThread() {
           return {
@@ -888,7 +889,7 @@ describe("codex agent task recognition", () => {
   test("streams raw event chunks during the SDK turn before final closeout", async () => {
     const chunks: Array<CodexEventChunkReport> = []
     const turns: Array<CodexTurnReport> = []
-    mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({
+    vi.vi.fn(CODEX_AGENT_SDK_PACKAGE, () => ({
       Codex: class {
         startThread() {
           return {
@@ -986,7 +987,7 @@ describe("codex agent task recognition", () => {
   test("retries a failed raw event chunk without skipping the chunk index", async () => {
     const attempts: Array<CodexEventChunkReport> = []
     const storedChunks: Array<CodexEventChunkReport> = []
-    mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({
+    vi.vi.fn(CODEX_AGENT_SDK_PACKAGE, () => ({
       Codex: class {
         startThread() {
           return {
@@ -1144,7 +1145,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "./sum"',
             'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",
@@ -1183,7 +1184,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "./sum"',
             'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",
@@ -1262,7 +1263,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "./sum"',
             'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",
@@ -1326,7 +1327,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "./sum"',
             'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",
@@ -1396,7 +1397,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "./sum"',
             'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",
@@ -1466,7 +1467,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "./sum"',
             'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",
@@ -1517,7 +1518,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(join(workspace, "sum.ts"), "export const sum = (left: number, right: number) => left + right\n")
         await writeFile(
           join(workspace, "sum.test.ts"),
-          'import { expect, test } from "bun:test"\nimport { sum } from "./sum"\ntest("adds", () => expect(sum(2, 3)).toBe(5))\n',
+          'import { expect, test, vi } from "vite-plus/test"\nimport { sum } from "./sum"\ntest("adds", () => expect(sum(2, 3)).toBe(5))\n',
         )
       }
       let runnerCalls = 0
@@ -1585,7 +1586,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "./sum"',
             'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",
@@ -1667,7 +1668,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(join(workspace, "sum.ts"), "export const sum = (left: number, right: number) => left + right\n")
         await writeFile(
           join(workspace, "sum.test.ts"),
-          'import { expect, test } from "bun:test"\nimport { sum } from "./sum"\ntest("adds", () => expect(sum(2, 3)).toBe(5))\n',
+          'import { expect, test, vi } from "vite-plus/test"\nimport { sum } from "./sum"\ntest("adds", () => expect(sum(2, 3)).toBe(5))\n',
         )
       }
       let runnerCalls = 0
@@ -1777,7 +1778,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "./sum"',
             'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",
@@ -1786,7 +1787,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         await writeFile(
           join(workspace, "apps/openagents.com/workers/api/sum.test.ts"),
           [
-            'import { describe, expect, test } from "bun:test"',
+            'import { describe, expect, test, vi } from "vite-plus/test"',
             'import { sum } from "../../../../sum"',
             'describe("nested sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
             "",

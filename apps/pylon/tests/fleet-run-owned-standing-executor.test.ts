@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -31,7 +32,7 @@ const pylonRef = "pylon.public.fc2.owned-standing"
 const waitUntil = async (predicate: () => boolean): Promise<void> => {
   for (let attempt = 0; attempt < 2_000; attempt += 1) {
     if (predicate()) return
-    await Bun.sleep(5)
+    await sleep(5)
   }
   throw new Error("timed out waiting for owned standing FleetRun closeout")
 }

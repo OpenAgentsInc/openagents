@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises"
 /**
  * Codex local runtime tests (EP250 #8712 codex-first-class). Enforces the
  * codex lane no-substitution contract: receipted spawn recipe (NO --ephemeral
@@ -8,7 +9,7 @@
  * fable-local envelope (reasoning lines, Bash tool cards, text deltas, exact
  * usage), typed visible rotation, interrupt, and PROBE-VERIFIED availability.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { EventEmitter } from "node:events"
 import { tmpdir } from "node:os"
@@ -87,7 +88,7 @@ const appServerFixture = () => {
 }
 
 const waitFor = async (messages: ReadonlyArray<unknown>, count: number): Promise<void> => {
-  for (let attempt = 0; attempt < 100 && messages.length < count; attempt += 1) await Bun.sleep(1)
+  for (let attempt = 0; attempt < 100 && messages.length < count; attempt += 1) await sleep(1)
   expect(messages.length).toBeGreaterThanOrEqual(count)
 }
 
@@ -152,7 +153,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     }] }] })
     await waitFor(fake.messages, 6); fake.respond(5, { thread: { id: "native-thread" } })
     await waitFor(fake.messages, 7); fake.respond(6, { turn: { id: "native-turn" } })
-    await Bun.sleep(0)
+    await sleep(0)
     const steering = runtime.steerCurrent({
       threadRef: "thread-native-question",
       message: "Use the native path",
@@ -177,7 +178,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       reason: "Run the focused checks",
     })
     for (let attempt = 0; attempt < 100 && !sink.events.some(event =>
-      event.kind === "question_pending" && event.interactionKind === "tool_approval"); attempt += 1) await Bun.sleep(1)
+      event.kind === "question_pending" && event.interactionKind === "tool_approval"); attempt += 1) await sleep(1)
     const approval = sink.events.find(event =>
       event.kind === "question_pending" && event.interactionKind === "tool_approval")
     expect(approval).toMatchObject({
@@ -206,7 +207,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       }],
     })
     for (let attempt = 0; attempt < 100 && !sink.events.some(event =>
-      event.kind === "question_pending" && event.interactionKind === undefined); attempt += 1) await Bun.sleep(1)
+      event.kind === "question_pending" && event.interactionKind === undefined); attempt += 1) await sleep(1)
     const pending = sink.events.find(event => event.kind === "question_pending" && event.interactionKind === undefined)
     expect(pending).toMatchObject({ kind: "question_pending", questions: [{ question: "Which implementation?" }] })
     if (pending?.kind !== "question_pending") throw new Error("question was not projected")

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
@@ -82,7 +83,7 @@ describe("AT-6 public package readiness", () => {
     expect(receipt.packages.every((entry) => existsSync(resolve(out, entry.filename)))).toBe(true)
     expect(receipt.npm_publication).toBe("owner_authentication_required")
     for (const file of readdirSync(out).filter((path) => path.endsWith(".tgz"))) {
-      const process = Bun.spawnSync(["tar", "-xOf", resolve(out, file), "package/package.json"])
+      const process = Runtime.spawnSync(["tar", "-xOf", resolve(out, file), "package/package.json"])
       expect(process.exitCode).toBe(0)
       const manifest = new TextDecoder().decode(process.stdout)
       expect(manifest).not.toContain("workspace:")

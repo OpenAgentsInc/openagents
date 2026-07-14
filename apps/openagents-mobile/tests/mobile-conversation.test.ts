@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { MutationId, SyncVersionWatermark, type KhalaRuntimeControlIntent } from "@openagentsinc/khala-sync"
 import type {
   ConfirmedChatMessage,
@@ -178,10 +179,10 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
   })
 
   test("production conversation reconciliation contains no interval polling loop", async () => {
-    const source = await Bun.file(new URL(
+    const source = await readFile(new URL(
       "../src/conversation/mobile-conversation.ts",
       import.meta.url,
-    )).text()
+    ), "utf8")
     expect(source).not.toContain("await sleep(100)")
     expect(source).not.toContain("for (let attempt")
     expect(source).toContain("openKhalaConversationLive")

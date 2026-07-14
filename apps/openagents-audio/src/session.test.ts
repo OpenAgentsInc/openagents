@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vite-plus/test"
 import { AudioSession, ROTATE_AFTER_AUDIO_BYTES } from "./session"
 import { FakeSttAdapter } from "./stt"
 import { identity, mediaFrame } from "./test-support"

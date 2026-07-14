@@ -32,7 +32,7 @@
  *     "Scanning coding history…" — never the "No local Codex history found."
  *     claim, which would be a lie mid-scan.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 

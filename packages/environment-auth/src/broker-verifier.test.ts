@@ -5,7 +5,7 @@
  * redeems only for the client holding the bound private key, that every
  * proof is single-use, and that unbound leases keep the pre-ENV-2 path.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import {
   CapabilityBrokerError,

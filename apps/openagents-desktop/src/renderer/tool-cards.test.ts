@@ -4,7 +4,7 @@
  * stuff? Like I thought we had some custom components that showed things
  * properly, not these JSON blobs."
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { parseFableLocalTraceNoteText } from "../fable-local-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"

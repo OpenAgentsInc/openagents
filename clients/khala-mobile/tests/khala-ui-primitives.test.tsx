@@ -1,8 +1,8 @@
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
-mock.module("../src/components/touchable-feedback", () => ({
+vi.vi.fn("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,

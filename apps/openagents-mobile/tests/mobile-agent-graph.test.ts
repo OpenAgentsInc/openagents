@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { IntentRef, StaticPayload } from "@effect-native/core"
 import { Effect, Stream } from "@effect-native/core/effect"
 import {

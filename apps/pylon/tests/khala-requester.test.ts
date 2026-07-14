@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -27,7 +28,7 @@ const sse = (id: string, content: string) =>
     object: "chat.completion.chunk",
   })}\n\ndata: [DONE]\n\n`
 
-const servers: ReturnType<typeof Bun.serve>[] = []
+const servers: ReturnType<typeof Runtime.serve>[] = []
 const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
 const CWD = join(import.meta.dirname, "..")
 type CloseoutProofResult = Parameters<typeof evaluatePylonKhalaCloseoutChecklist>[1]
@@ -48,7 +49,7 @@ async function withTempHome<T>(fn: (home: string) => Promise<T>) {
 }
 
 async function runPylonCli(args: string[], env: Record<string, string>) {
-  const proc = Bun.spawn(["bun", INDEX, ...args], {
+  const proc = Runtime.spawn([process.execPath, INDEX, ...args], {
     cwd: CWD,
     env: {
       ...process.env,
@@ -275,7 +276,7 @@ function khalaAutoRunServer(input: { activeCodexLease?: boolean } = {}) {
   const assignmentRef = "assignment.public.khala_coding.cli_auto_run"
   const leaseRef = "lease.public.khala_coding.cli_auto_run"
   const requests: Array<{ body: Record<string, unknown>; method: string; path: string }> = []
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
@@ -326,6 +327,7 @@ function khalaAutoRunServer(input: { activeCodexLease?: boolean } = {}) {
       return Response.json({ errorRef: "error.not_found" }, { status: 404 })
     },
   })
+  await server.ready
   servers.push(server)
   return { assignmentRef, baseUrl: `http://127.0.0.1:${server.port}`, requests }
 }
@@ -1568,7 +1570,7 @@ describe("pylon khala requester API", () => {
 
   test("local CLI issues a Khala request against a fixture gateway", async () => {
     const requests: Array<{ body: Record<string, unknown>; headers: Headers; path: string }> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -1581,6 +1583,7 @@ describe("pylon khala requester API", () => {
         })
       },
     })
+    await server.ready
     servers.push(server)
 
     const result = await runPylonCli(
@@ -1645,7 +1648,7 @@ describe("pylon khala requester API", () => {
 
   test("local CLI reads Khala assignment proof as JSON", async () => {
     const requests: Array<{ headers: Headers; path: string; search: string }> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -1692,6 +1695,7 @@ describe("pylon khala requester API", () => {
         )
       },
     })
+    await server.ready
     servers.push(server)
 
     const result = await runPylonCli(
@@ -1730,7 +1734,7 @@ describe("pylon khala requester API", () => {
 
   test("local CLI reads Khala closeout checklist as JSON", async () => {
     const requests: Array<{ headers: Headers; path: string; search: string }> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -1745,6 +1749,7 @@ describe("pylon khala requester API", () => {
         )
       },
     })
+    await server.ready
     servers.push(server)
 
     const result = await runPylonCli(
@@ -1790,7 +1795,7 @@ describe("pylon khala requester API", () => {
 
   test("local CLI reads Khala assignment trace status as JSON", async () => {
     const requests: Array<{ headers: Headers; path: string; search: string }> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -1874,6 +1879,7 @@ describe("pylon khala requester API", () => {
         )
       },
     })
+    await server.ready
     servers.push(server)
 
     const result = await runPylonCli(
@@ -1909,13 +1915,14 @@ describe("pylon khala requester API", () => {
 
   test("local CLI refuses codex_agent_task without fixture intent or complete workspace pins before gateway calls", async () => {
     const requests: string[] = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch(request) {
         requests.push(request.url)
         return new Response("unexpected")
       },
     })
+    await server.ready
     servers.push(server)
 
     const result = await runPylonCli(
@@ -1949,7 +1956,7 @@ describe("pylon khala requester API", () => {
 
   test("local CLI preserves an explicit codex fixture smoke request without workspace pins", async () => {
     const requests: Array<{ body: Record<string, unknown>; path: string }> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -1962,6 +1969,7 @@ describe("pylon khala requester API", () => {
         })
       },
     })
+    await server.ready
     servers.push(server)
 
     const result = await runPylonCli(

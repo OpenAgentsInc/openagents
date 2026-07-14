@@ -7,7 +7,7 @@
  * per-item grant scoping rule that a skill's grant lives under its parent
  * plugin's grant and is revoked with it.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   decodeExtensionLifecycleAudit,

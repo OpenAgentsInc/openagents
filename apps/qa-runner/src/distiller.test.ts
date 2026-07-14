@@ -3,7 +3,7 @@
 // (spec §D.2) is enforced, dishonest grades are caught, and a non-public-safe
 // trace fails closed.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { assessCandidate, distill, DistillError } from "./distiller";
 import { makeSessionTrace, type SessionBeat } from "./session-trace";
 import {
@@ -71,7 +71,7 @@ describe("distill (deterministic v1 reducer)", () => {
     expect(src).toContain('{ kind: "url-includes", value: "/login" }');
     expect(src).toContain('{ kind: "text-contains", value: "Log in to OpenAgents" }');
     // it is a real, runnable bun test against the runner
-    expect(src).toContain('import { describe, expect, test } from "bun:test";');
+    expect(src).toContain('import { describe, expect, test } from "vite-plus/test";');
     expect(src).toContain("runQaSession");
     expect(src).toContain("TARGET_URL");
     // NO sleeps: no timer/sleep CALLS in the generated code (the comment may

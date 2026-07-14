@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { stableExternalSessionRef, toSessionListEntry } from "./external-sessions.js"
 import { buildCodexSession } from "./codex-sessions.js"

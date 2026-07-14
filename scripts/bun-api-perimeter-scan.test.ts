@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -6,7 +7,7 @@ import { join } from "node:path"
 const runScan = async (
   args: readonly string[],
 ): Promise<{ readonly exitCode: number; readonly stdout: string }> => {
-  const proc = Bun.spawn(
+  const proc = Runtime.spawn(
     [process.execPath, "scripts/bun-api-perimeter-scan.ts", ...args],
     {
       cwd: process.cwd(),

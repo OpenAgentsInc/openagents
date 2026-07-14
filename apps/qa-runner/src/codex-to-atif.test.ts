@@ -8,7 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { ATIF_SCHEMA_VERSION } from "./atif";
 import { assertValidAtif, validateAtif } from "./atif-validate";
 import {

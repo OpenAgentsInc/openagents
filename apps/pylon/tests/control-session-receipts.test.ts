@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -157,7 +158,7 @@ describe("control session receipts", () => {
       for (let attempt = 0; attempt < 20; attempt += 1) {
         list = await actions.list()
         if (list[0]?.state === "failed" && list[0]?.artifactRef !== null) break
-        await Bun.sleep(10)
+        await sleep(10)
       }
       expect(list[0]).toEqual(
         expect.objectContaining({

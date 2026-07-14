@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   KhalaMobileStraightLineE2eSchemaId,
@@ -10,7 +11,7 @@ import {
 } from "../src/qa/straight-line-e2e"
 
 const mobileRoot = new URL("../", import.meta.url)
-const read = (path: string) => Bun.file(new URL(path, mobileRoot)).text()
+const read = (path: string) => readFile(new URL(path, mobileRoot), "utf8")
 
 // Oracle for khala_mobile.platform.straight_line_repo_pick_writeback.v1 —
 // the typed-skip discipline: blocked legs stay blocked WITH named blockers,

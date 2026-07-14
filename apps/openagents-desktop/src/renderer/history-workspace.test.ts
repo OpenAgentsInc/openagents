@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { View } from "@effect-native/core"
 import { emptyHistoryWorkspaceState, historyAgentTraversalTarget, historyImmediateSearchResults, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historySearchActive, historySearchField, historySearchOpenAnchor, historySearchResultSidebarItems, historyShouldFetchNewer, historyShouldFetchOlder, historySourceBadgeLabel, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistorySearchResults, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistorySearchResult } from "../codex-history-contract.ts"

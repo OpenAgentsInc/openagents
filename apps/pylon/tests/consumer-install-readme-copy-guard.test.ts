@@ -8,7 +8,7 @@
 // copy so a future edit that drops the narrowing sentence or reintroduces a
 // Windows/WSL/any-platform claim fails here — catching real copy drift, not a
 // hypothetical fixture. It does NOT clear the blocker or change promise state.
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 

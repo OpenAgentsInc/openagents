@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   AGENT_RUN_ENTITY_TYPE,
   AGENT_RUN_EVENT_ENTITY_TYPE,

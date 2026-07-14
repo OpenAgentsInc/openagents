@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Release-preflight oracles (CUT-26, #8706).
  *
@@ -9,7 +10,7 @@
  *     template-updater remnant, or source-checkout path entering the artifact
  *     turns the normal test sweep red — not just a release-day script.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import {
@@ -158,7 +159,7 @@ describe("real artifact sweep", () => {
   test("the actual built dist/ carries no updater remnants, legacy UI, or checkout paths", () => {
     const dist = path.join(appRoot, "dist")
     if (!existsSync(path.join(dist, "main.js"))) {
-      const result = Bun.spawnSync([process.execPath, "scripts/build.ts"], {
+      const result = Runtime.spawnSync([process.execPath, "scripts/build.ts"], {
         cwd: appRoot,
         stdout: "pipe",
         stderr: "pipe",

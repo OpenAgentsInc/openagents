@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync } from "node:fs"
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -118,7 +119,7 @@ describe("pylon sessions batch", () => {
       const executor: ControlSessionExecutor = async (input) => {
         active += 1
         maxActive = Math.max(maxActive, active)
-        await Bun.sleep(30)
+        await sleep(30)
         active -= 1
         return executorResult(input.objective.includes("fail") ? "failed" : "passed")
       }

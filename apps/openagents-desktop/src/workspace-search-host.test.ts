@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { EventEmitter } from "node:events"
 import type { Worker } from "node:worker_threads"
 

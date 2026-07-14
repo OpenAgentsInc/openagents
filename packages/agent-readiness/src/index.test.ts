@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   AGENT_READINESS_FIFTEEN_STEP_ASSESSMENT_SCHEMA_VERSION,
@@ -90,7 +91,7 @@ const openAgentsRenderFixtureUrl = new URL(
 
 const openAgentsReportFixture = async () =>
   decodeAgentReadinessReport(
-    JSON.parse(await Bun.file(openAgentsReportFixtureUrl).text()) as unknown,
+    JSON.parse(await readFile(openAgentsReportFixtureUrl, "utf8")) as unknown,
   )
 
 const fixtureFetch = (kind: "openagents" | "spa"): typeof fetch =>
@@ -288,7 +289,7 @@ describe("@openagentsinc/agent-readiness", () => {
     })
 
     expect(rendered).toBe(
-      (await Bun.file(openAgentsRenderFixtureUrl).text()).trimEnd(),
+      (await readFile(openAgentsRenderFixtureUrl, "utf8")).trimEnd(),
     )
     expect(renderAgentReadinessReport(report, {
       generatedAt: "2026-07-04T07:00:00.000Z",

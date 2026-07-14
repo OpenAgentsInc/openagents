@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { Runtime, type RuntimeServer } from "@openagentsinc/runtime-platform"
+import { setTimeout as sleep } from "node:timers/promises"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdtempSync } from "node:fs"
 import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -12,11 +14,11 @@ import {
 import { makeAppleFmWorkspaceTools } from "../src/node/apple-fm-local-session"
 import { createControlSessionActions } from "../src/node/control-sessions"
 
-const servers: Bun.Server[] = []
+const servers: RuntimeServer[] = []
 const fakeBridgeSessionId = "apple_fm_session_123e4567-e89b-12d3-a456-426614174000"
 
-afterEach(() => {
-  for (const server of servers.splice(0)) server.stop(true)
+afterEach(async () => {
+  for (const server of servers.splice(0)) await server.stop(true)
 })
 
 async function withFixture<T>(fn: (fixture: {
@@ -43,13 +45,13 @@ async function withFixture<T>(fn: (fixture: {
   }
 }
 
-function fakeReadyBridge(input: {
+async function fakeReadyBridge(input: {
   toolName?: string
   toolInput?: Record<string, unknown>
-} = {}): Bun.Server {
+} = {}): Promise<RuntimeServer> {
   let callbackUrl = ""
   let callbackToken = ""
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     fetch: async (request) => {
       const url = new URL(request.url)
@@ -114,12 +116,13 @@ function fakeReadyBridge(input: {
       return Response.json({ error: "not found", path: url.pathname }, { status: 404 })
     },
   })
+  await server.ready
   servers.push(server)
   return server
 }
 
-function fakeNotReadyBridge(): Bun.Server {
-  const server = Bun.serve({
+async function fakeNotReadyBridge(): Promise<RuntimeServer> {
+  const server = Runtime.serve({
     port: 0,
     fetch: (request) => {
       const url = new URL(request.url)
@@ -133,6 +136,7 @@ function fakeNotReadyBridge(): Bun.Server {
       return Response.json({ error: "not found" }, { status: 404 })
     },
   })
+  await server.ready
   servers.push(server)
   return server
 }
@@ -145,7 +149,7 @@ async function waitForTerminal(
     const list = await actions.list()
     const row = list.find((entry) => entry.sessionRef === sessionRef)
     if (row?.state === "completed" || row?.state === "failed") return row
-    await Bun.sleep(20)
+    await sleep(20)
   }
   throw new Error("session did not reach a terminal state")
 }
@@ -153,7 +157,7 @@ async function waitForTerminal(
 describe("Apple FM local control sessions", () => {
   test("fake bridge session uses a read-only workspace tool and completes as a normal session", async () => {
     await withFixture(async ({ proofDir, summary, worktree }) => {
-      const bridge = fakeReadyBridge()
+      const bridge = await fakeReadyBridge()
       const actions = createControlSessionActions({
         env: { PROBE_APPLE_FM_BASE_URL: String(bridge.url) },
         proofsDir: proofDir,
@@ -259,7 +263,7 @@ describe("Apple FM local control sessions", () => {
 
   test("not-ready Apple FM refuses before a session is created", async () => {
     await withFixture(async ({ proofDir, summary, worktree }) => {
-      const bridge = fakeNotReadyBridge()
+      const bridge = await fakeNotReadyBridge()
       const actions = createControlSessionActions({
         env: { PROBE_APPLE_FM_BASE_URL: String(bridge.url) },
         proofsDir: proofDir,
@@ -282,7 +286,7 @@ describe("Apple FM local control sessions", () => {
 
   test("unsupported tool callback is retained as a redacted refusal event", async () => {
     await withFixture(async ({ proofDir, summary, worktree }) => {
-      const bridge = fakeReadyBridge({
+      const bridge = await fakeReadyBridge({
         toolName: "shell",
         toolInput: { cmd: "cat README.md" },
       })

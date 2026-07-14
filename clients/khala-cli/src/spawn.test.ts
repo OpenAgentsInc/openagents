@@ -1,8 +1,9 @@
+import { setTimeout as sleep } from "node:timers/promises"
 import { mkdtemp } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   cancelKhalaSpawn,
@@ -61,7 +62,7 @@ describe("Khala spawn supervisor", () => {
     const events: KhalaSpawnLifecycleEvent[] = []
     const runner: KhalaSpawnWorkerRunner = async input => {
       while (!input.signal.aborted) {
-        await Bun.sleep(10)
+        await sleep(10)
       }
       throw new Error("aborted")
     }
@@ -82,7 +83,7 @@ describe("Khala spawn supervisor", () => {
     })
 
     for (let index = 0; index < 200 && !events.some(event => event.state === "starting"); index += 1) {
-      await Bun.sleep(10)
+      await sleep(10)
     }
     expect(runRef).not.toBe("")
 
@@ -111,7 +112,7 @@ describe("Khala spawn supervisor", () => {
         }
       }
       while (!input.signal.aborted) {
-        await Bun.sleep(10)
+        await sleep(10)
       }
       throw new Error("aborted")
     }
@@ -132,7 +133,7 @@ describe("Khala spawn supervisor", () => {
     })
 
     for (let index = 0; index < 200 && !events.some(event => event.workerRef?.endsWith(".02") && event.state === "starting"); index += 1) {
-      await Bun.sleep(10)
+      await sleep(10)
     }
     expect(runRef).not.toBe("")
 

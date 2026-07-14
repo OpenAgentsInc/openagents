@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -22,7 +22,7 @@ import {
 } from "../src/desktop-sync-store.ts"
 
 const openBunDatabase = (databasePath: string): DesktopSqliteDatabase => {
-  const database = new Database(databasePath, { create: true })
+  const database = new NodeTestDatabase(databasePath, { create: true })
   return {
     exec: sql => database.exec(sql),
     prepare: sql => {

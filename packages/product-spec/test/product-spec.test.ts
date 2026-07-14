@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -28,7 +29,7 @@ const packageRoot = resolve(import.meta.dirname, "..")
 const repoRoot = resolve(packageRoot, "../..")
 
 const readFixture = async (relativePath: string): Promise<string> =>
-  Bun.file(join(packageRoot, "fixtures", relativePath)).text()
+  readFile(join(packageRoot, "fixtures", relativePath), "utf8")
 
 const listSpecFiles = (root: string): string[] => {
   const results: string[] = []
@@ -478,7 +479,7 @@ describe("PSEL-0 legacy rev-6 baseline", () => {
   })
 
   test("the baseline validates and executes under the legacy profile with 18 CW-AC ids", async () => {
-    const markdown = await Bun.file(baselinePath).text()
+    const markdown = await readFile(baselinePath, "utf8")
     const result = validateExecutableProductSpec(markdown)
     expect(result.executable).toBe(true)
     expect(result.errors).toEqual([])
@@ -489,7 +490,7 @@ describe("PSEL-0 legacy rev-6 baseline", () => {
   })
 
   test("recorded incompatibility: the baseline fails the upstream profile with exactly these codes", async () => {
-    const markdown = await Bun.file(baselinePath).text()
+    const markdown = await readFile(baselinePath, "utf8")
     const result = validateProductSpec(markdown, { profile: "upstream" })
     expect(result.valid).toBe(false)
     // No structured productspec-acceptance-criteria items (CW-AC-* prose is a
@@ -778,9 +779,9 @@ describe("openagents extensions", () => {
   })
 
   test("the MVP spec is executable with unique author-visible criteria", async () => {
-    const markdown = await Bun.file(
+    const markdown = await readFile(
       join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.product-spec.md"),
-    ).text()
+    , "utf8")
     const result = validateExecutableProductSpec(markdown)
     expect(result.executable).toBe(true)
     expect(result.errors).toEqual([])
@@ -813,9 +814,9 @@ describe("openagents extensions", () => {
   })
 
   test("duplicate criterion IDs refuse executable admission", async () => {
-    const markdown = await Bun.file(
+    const markdown = await readFile(
       join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.product-spec.md"),
-    ).text()
+    , "utf8")
     const duplicate = markdown.replace("**CW-AC-02:**", "**CW-AC-01:**")
     const result = validateExecutableProductSpec(duplicate)
     expect(result.executable).toBe(false)
@@ -845,7 +846,7 @@ describe("PSEL-2 migration proposal (revision 7)", () => {
   const collapse = (text: string): string => text.replace(/\s+/g, " ").trim()
 
   test("the live revision-6 identity is retained, not rewritten", async () => {
-    const rev6 = await Bun.file(rev6Path).text()
+    const rev6 = await readFile(rev6Path, "utf8")
     expect(computeProductSpecDocumentDigest(rev6)).toBe(
       "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
     )
@@ -855,7 +856,7 @@ describe("PSEL-2 migration proposal (revision 7)", () => {
   })
 
   test("the migrated revision validates under both profiles", async () => {
-    const rev7 = await Bun.file(rev7Path).text()
+    const rev7 = await readFile(rev7Path, "utf8")
     for (const profile of ["openagents", "upstream"] as const) {
       const result = validateProductSpec(rev7, { profile })
       expect(result.errors).toEqual([])
@@ -866,15 +867,15 @@ describe("PSEL-2 migration proposal (revision 7)", () => {
   test("the migrated revision is not silently executable under the legacy profile", async () => {
     // The workroom-executable path for structured AC-* identity is PSEL-3
     // territory; revision 7 must not silently inherit executable authority.
-    const result = validateExecutableProductSpec(await Bun.file(rev7Path).text())
+    const result = validateExecutableProductSpec(await readFile(rev7Path, "utf8"))
     expect(result.executable).toBe(false)
     expect(result.errors.map((error) => error.code)).toContain("missing_acceptance_criteria")
   })
 
   test("the ID map binds the exact from/to revisions and digests", async () => {
-    const idMap = JSON.parse(await Bun.file(idMapPath).text())
-    const rev6 = await Bun.file(rev6Path).text()
-    const rev7 = await Bun.file(rev7Path).text()
+    const idMap = JSON.parse(await readFile(idMapPath, "utf8"))
+    const rev6 = await readFile(rev6Path, "utf8")
+    const rev7 = await readFile(rev7Path, "utf8")
     expect(idMap.normalization).toBe("single_line_whitespace_collapse")
     expect(idMap.status).toBe("proposed")
     expect(idMap.from.path).toBe("docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
@@ -890,10 +891,10 @@ describe("PSEL-2 migration proposal (revision 7)", () => {
   })
 
   test("criterion mappings are bijective and preserve the exact revision-6 text", async () => {
-    const idMap = JSON.parse(await Bun.file(idMapPath).text())
-    const rev6Criteria = validateExecutableProductSpec(await Bun.file(rev6Path).text()).criteria
+    const idMap = JSON.parse(await readFile(idMapPath, "utf8"))
+    const rev6Criteria = validateExecutableProductSpec(await readFile(rev6Path, "utf8")).criteria
     const rev7Criteria =
-      parseProductSpec(await Bun.file(rev7Path).text()).sections.find(
+      parseProductSpec(await readFile(rev7Path, "utf8")).sections.find(
         (section) => section.id === "acceptance_criteria",
       )?.acceptance_criteria ?? []
     expect(rev6Criteria).toHaveLength(18)
@@ -911,12 +912,12 @@ describe("PSEL-2 migration proposal (revision 7)", () => {
   })
 
   test("metric mappings preserve metric/target/window and relocate segment/source", async () => {
-    const idMap = JSON.parse(await Bun.file(idMapPath).text())
+    const idMap = JSON.parse(await readFile(idMapPath, "utf8"))
     const rev6Metrics =
-      parseProductSpec(await Bun.file(rev6Path).text()).sections.find(
+      parseProductSpec(await readFile(rev6Path, "utf8")).sections.find(
         (section) => section.id === "success_metrics",
       )?.success_metrics ?? []
-    const rev7Document = parseProductSpec(await Bun.file(rev7Path).text())
+    const rev7Document = parseProductSpec(await readFile(rev7Path, "utf8"))
     const rev7Metrics =
       rev7Document.sections.find((section) => section.id === "success_metrics")
         ?.success_metrics ?? []
@@ -957,8 +958,8 @@ describe("PSEL-2 migration proposal (revision 7)", () => {
   })
 
   test("every other intent section is verbatim revision-6 prose", async () => {
-    const rev6 = parseProductSpec(await Bun.file(rev6Path).text())
-    const rev7 = parseProductSpec(await Bun.file(rev7Path).text())
+    const rev6 = parseProductSpec(await readFile(rev6Path, "utf8"))
+    const rev7 = parseProductSpec(await readFile(rev7Path, "utf8"))
     for (const id of [
       "problem",
       "hypothesis",
@@ -979,7 +980,7 @@ describe("PSEL-2 migration proposal (revision 7)", () => {
   })
 
   test("the Decision Trace references the ID map and supersession is typed, not implied", async () => {
-    const rev7 = parseProductSpec(await Bun.file(rev7Path).text())
+    const rev7 = parseProductSpec(await readFile(rev7Path, "utf8"))
     const trace = rev7.sections.find((section) => section.id === "custom-decision-trace")
     expect(trace?.content).toContain("openagents-codex-workroom-mvp.id-map.json")
     expect(trace?.content).toContain("owner-gated")
@@ -1011,7 +1012,7 @@ describe("repo Product Spec roots gate", () => {
 
   for (const path of specFiles) {
     test(`validates ${path.slice(repoRoot.length + 1)}`, async () => {
-      const result = validateProductSpec(await Bun.file(path).text())
+      const result = validateProductSpec(await readFile(path, "utf8"))
       expect(result.errors).toHaveLength(0)
       expect(result.valid).toBe(true)
     })

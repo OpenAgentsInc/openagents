@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { reduceSessionState } from "./session-state-reducer.js"
 
 describe("session state reducer", () => {

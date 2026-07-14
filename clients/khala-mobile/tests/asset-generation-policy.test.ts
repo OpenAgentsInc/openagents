@@ -1,10 +1,11 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import appJson from "../app.json"
 import packageJson from "../package.json"
 
 const mobileRoot = new URL("../", import.meta.url)
-const read = (path: string) => Bun.file(new URL(path, mobileRoot)).text()
+const read = (path: string) => readFile(new URL(path, mobileRoot), "utf8")
 
 describe("Khala mobile local asset generation", () => {
   test("exposes a local-only asset generation script", async () => {

@@ -69,7 +69,7 @@ test("inventory is complete, deterministic, and classified", () => {
   const { root, write } = fixtureRepo()
   try {
     write("apps/api/src/server.ts", 'export const serve = Bun.serve({})\n')
-    write("apps/api/src/server.test.ts", 'import { test } from "bun:test"\n')
+    write("apps/api/src/server.test.ts", 'import { test } from "vite-plus/test"\n')
     write("apps/api/src/payment.ts", 'export const wallet = "wallet"\n')
     write("apps/api/migrations/0001_payment.sql", "CREATE TABLE payment_receipts(id TEXT);\n")
     write("apps/api/Dockerfile", "FROM oven/bun:1\n")

@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite"
-import { describe, expect, test } from "bun:test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   createKhalaSyncStoreCore,
   localStoreFromCore,
@@ -11,12 +11,12 @@ import { describeKhalaSyncStoreSemantics } from "./store-semantics.testkit.js"
 
 /**
  * KS-5.4: the driver-agnostic SQL core carries ALL store semantics; both
- * the desktop `bun:sqlite` store and the web SQLite-WASM storage worker
+ * the desktop `node:sqlite` store and the web SQLite-WASM storage worker
  * are thin drivers around it. Here the full shared semantics suite runs
- * against the core directly, with `bun:sqlite` as the harness driver.
+ * against the core directly, with `node:sqlite` as the harness driver.
  */
 
-const bunDriver = (db: Database): SqlDriver => ({
+const bunDriver = (db: NodeTestDatabase): SqlDriver => ({
   exec: (sql) => db.exec(sql),
   run: (sql, params = []) => {
     db.query(sql).run(...(params as Array<SqlValue>))
@@ -27,9 +27,9 @@ const bunDriver = (db: Database): SqlDriver => ({
 })
 
 describeKhalaSyncStoreSemantics(
-  "store core (bun:sqlite harness driver)",
+  "store core (node:sqlite harness driver)",
   () => {
-    const db = new Database(":memory:")
+    const db = new NodeTestDatabase(":memory:")
     return {
       store: localStoreFromCore(createKhalaSyncStoreCore(bunDriver(db))),
       cleanup: () => db.close(),

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync } from "node:fs"
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -316,7 +317,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         const list = await actions.list()
         row = list.find((s) => s.sessionRef === spawned.sessionRef)
         if (row && (row.state === "completed" || row.state === "failed")) break
-        await Bun.sleep(5)
+        await sleep(5)
       }
 
       expect(row?.state).toBe("completed")
@@ -399,7 +400,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         const list = await actions.list()
         row = list.find((s) => s.sessionRef === spawned.sessionRef)
         if (row && (row.state === "completed" || row.state === "failed")) break
-        await Bun.sleep(5)
+        await sleep(5)
       }
       expect(row?.state).toBe("failed")
       expect(calls.some((call) => call.url.endsWith("/v1/placement"))).toBe(false)
@@ -444,7 +445,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         const list = await actions.list()
         row = list.find((s) => s.sessionRef === spawned.sessionRef)
         if (row && (row.state === "completed" || row.state === "failed")) break
-        await Bun.sleep(5)
+        await sleep(5)
       }
       expect(row?.state).toBe("failed")
       expect(row?.cloudRunner?.lane).toBe("cloud-gcp")
@@ -527,7 +528,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         const list = await actions.list()
         row = list.find((s) => s.sessionRef === spawned.sessionRef)
         if (row && (row.state === "completed" || row.state === "failed")) break
-        await Bun.sleep(5)
+        await sleep(5)
       }
 
       // The GCE lifecycle events are NON-terminal: the run still completes.
@@ -601,7 +602,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         const list = await actions.list()
         row = list.find((s) => s.sessionRef === spawned.sessionRef)
         if (row && (row.state === "completed" || row.state === "failed")) break
-        await Bun.sleep(5)
+        await sleep(5)
       }
       expect(row?.state).toBe("completed")
       expect(row?.resourceUsageReceiptRef).toBe("sha256:aliased-resource-receipt")
@@ -630,7 +631,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         lane: "cloud-gcp",
       })
       for (let attempt = 0; attempt < 50 && !localExecutorCalled; attempt += 1) {
-        await Bun.sleep(5)
+        await sleep(5)
       }
       expect(localExecutorCalled).toBe(true)
     })

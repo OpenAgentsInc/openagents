@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test"
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { View as RNView } from "react-native"
 import { act, create as createTestRenderer } from "react-test-renderer"
@@ -66,7 +66,7 @@ import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 
 // Uses the statically-imported `RNView`, not a `require("react-native")`
 // call inside the factory — a lazy require here throws "Requested module is
-// already fetched" if Bun's global mock.module registry ever re-invokes
+// already fetched" if Bun's global vi.mock registry ever re-invokes
 // this factory from a different test file's context (confirmed empirically
 // while adding a second, separate reanimated mock in
 // tests/repo-picker-screen.test.tsx for the arcade-fidelity audit's list
@@ -81,9 +81,9 @@ const reanimatedMock = () => ({
   useSharedValue: (initial: unknown) => ({ value: initial }),
   withTiming: (toValue: unknown) => toValue
 })
-mock.module("react-native-reanimated", reanimatedMock)
+vi.vi.fn("react-native-reanimated", reanimatedMock)
 
-mock.module("../src/components/arwes-button", () => ({
+vi.vi.fn("../src/components/arwes-button", () => ({
   ArwesButton: ({
     accessibilityLabel,
     children,
@@ -102,12 +102,12 @@ mock.module("../src/components/arwes-button", () => ({
     )
 }))
 
-mock.module("../src/components/background-gradient", () => ({
+vi.vi.fn("../src/components/background-gradient", () => ({
   BackgroundGradient: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("BackgroundGradient", null, children)
 }))
 
-mock.module("../src/components/activity-indicator", () => ({
+vi.vi.fn("../src/components/activity-indicator", () => ({
   ActivityIndicator: () => React.createElement("ActivityIndicator", null)
 }))
 
@@ -118,7 +118,7 @@ mock.module("../src/components/activity-indicator", () => ({
 // problem as Reanimated above. Same mock shape as
 // `tests/khala-ui-primitives.test.tsx` / `tests/repo-picker-screen.test.tsx`
 // — kept in sync so all three files' mocks are compatible, not conflicting.
-mock.module("../src/components/touchable-feedback", () => ({
+vi.vi.fn("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,
@@ -157,7 +157,7 @@ mock.module("../src/components/touchable-feedback", () => ({
 // real Expo native host. No real device/simulator equivalent is needed for
 // THIS test's purpose (composer state/render/effect logic, not font
 // rendering), so the font-name lookup is stood in with plain strings.
-mock.module("../src/theme/typography", () => ({
+vi.vi.fn("../src/theme/typography", () => ({
   khalaMobileFontsToLoad: {},
   khalaMobileTextSizes: {
     lg: { fontSize: 20, lineHeight: 32 },
@@ -184,7 +184,7 @@ mock.module("../src/theme/typography", () => ({
 const pushToTalkAvailability: { status: "available" | "denied" | "unavailable"; reason?: string } = {
   status: "unavailable"
 }
-mock.module("../src/native/modules", () => ({
+vi.vi.fn("../src/native/modules", () => ({
   khalaNativeModules: {
     pushToTalkStt: {
       getAvailabilityAsync: () => Promise.resolve(pushToTalkAvailability),
@@ -194,7 +194,7 @@ mock.module("../src/native/modules", () => ({
   }
 }))
 
-mock.module("../src/auth/khala-auth-context", () => ({
+vi.vi.fn("../src/auth/khala-auth-context", () => ({
   useKhalaAuth: () => ({
     baseUrl: "https://openagents.test",
     ownerUserId: "user_test",
@@ -203,12 +203,12 @@ mock.module("../src/auth/khala-auth-context", () => ({
   })
 }))
 
-export const registerForPushNotificationsAsyncMock = mock(() => Promise.resolve({ ok: true, deviceId: "device_test" }))
-mock.module("../src/push/push-notifications-client", () => ({
+export const registerForPushNotificationsAsyncMock = vi.fn(() => Promise.resolve({ ok: true, deviceId: "device_test" }))
+vi.vi.fn("../src/push/push-notifications-client", () => ({
   registerForPushNotificationsAsync: registerForPushNotificationsAsyncMock
 }))
 
-// Imported AFTER the `mock.module` calls above (Bun resolves module mocks by
+// Imported AFTER the `vi.mock` calls above (Bun resolves module mocks by
 // the target's absolute path, matching regardless of how differently the
 // two files spell the specifier — verified empirically — but the mocks must
 // still be REGISTERED before `ChatComposer` first pulls in the real modules
@@ -276,7 +276,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   })
 
   test("mounts without crashing, idle state shows Send (not Stop)", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({ activeTurn: undefined, push })
     const tree = renderer.toJSON()
     expect(tree).toBeTruthy()
@@ -288,7 +288,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   })
 
   test("active turn shows Stop (not Send), and the idle lane picker is hidden", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({ activeTurn: makeTurn(), push })
 
     const sendButtons = findByProp(renderer.root, "accessibilityLabel", "Send")
@@ -304,7 +304,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   })
 
   test("typing text updates the input value", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({ activeTurn: undefined, push })
 
     const inputs = renderer.root.findAllByType("TextInput" as unknown as React.ComponentType)
@@ -323,8 +323,8 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   // (composer_send_uses_optimistic_append.unit): the send routes the chat
   // message through the optimistic appendMessage path, not the raw push.
   test("pressing Send with idle text optimistically appends the message, then starts a new turn via push()", async () => {
-    const push = mock(() => Promise.resolve())
-    const appendMessage = mock((_input: { body: string; messageId: string; threadId: string }) =>
+    const push = vi.fn(() => Promise.resolve())
+    const appendMessage = vi.fn((_input: { body: string; messageId: string; threadId: string }) =>
       Promise.resolve({ ok: true }),
     )
     const renderer = await mountComposer({ activeTurn: undefined, appendMessage, push })
@@ -365,7 +365,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   })
 
   test("idle provider pill can select an account-specific Codex execution target", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({
       activeTurn: undefined,
       executionTargets: [
@@ -412,7 +412,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   // idle picker is open, never a persistent banner and never silently absent
   // when a fallback actually happened.
   test("a noticeMessage renders only once the idle picker is opened, never on an active turn", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({
       activeTurn: undefined,
       noticeMessage: "Auto skipped Your Codex (exhausted) → using Khala.",
@@ -434,7 +434,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   })
 
   test("no noticeMessage renders nothing, even with the picker open", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({ activeTurn: undefined, push })
 
     const optionButtons = findByProp(renderer.root, "accessibilityLabel", "Show composer options")
@@ -446,7 +446,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   })
 
   test("pressing Stop on an active turn calls push() with runtime.interruptTurn", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({ activeTurn: makeTurn(), push })
 
     const stopButtons = findByProp(renderer.root, "accessibilityLabel", "Stop")
@@ -463,7 +463,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
 
   // Oracle for khala_mobile.composer.resume_retry_controls_use_same_turn_lane.v1
   test("interrupted recoverable turn shows Resume and calls runtime.continueTurn on the same lane", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({
       activeTurn: undefined,
       push,
@@ -488,7 +488,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
   })
 
   test("failed recoverable turn shows Retry and calls runtime.retryTurn on the same lane", async () => {
-    const push = mock(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const renderer = await mountComposer({
       activeTurn: undefined,
       push,
@@ -514,7 +514,7 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
 
   test("each turn status label renders correctly (queued / running / waiting_for_input)", async () => {
     for (const status of ["queued", "running", "waiting_for_input"] as const) {
-      const push = mock(() => Promise.resolve())
+      const push = vi.fn(() => Promise.resolve())
       const renderer = await mountComposer({ activeTurn: makeTurn({ status }), push })
       const texts = renderer.root.findAllByType("Text" as unknown as React.ComponentType)
       const statusText = texts.map((t: TestInstance) => t.props.children as unknown).join(" ")

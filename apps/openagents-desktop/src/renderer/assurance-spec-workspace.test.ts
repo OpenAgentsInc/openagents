@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"

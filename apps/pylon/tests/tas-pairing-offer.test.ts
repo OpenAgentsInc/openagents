@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 import {
   type Capability,
   decodeBootstrapPayload,
@@ -42,10 +42,10 @@ describe("tas pairing offer", () => {
   })
 
   test("carries the secret without logging it", () => {
-    const log = spyOn(console, "log").mockImplementation(() => {})
-    const info = spyOn(console, "info").mockImplementation(() => {})
-    const warn = spyOn(console, "warn").mockImplementation(() => {})
-    const error = spyOn(console, "error").mockImplementation(() => {})
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
+    const info = vi.spyOn(console, "info").mockImplementation(() => {})
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
 
     try {
       const offer = buildPairingOffer(input)

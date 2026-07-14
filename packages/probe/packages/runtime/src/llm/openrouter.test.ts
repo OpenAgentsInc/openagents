@@ -5,7 +5,7 @@
 // tagged-error mapping from SDK errors, the fail-closed Config, and the spend
 // guard (`clampMaxTokens`).
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { ConfigProvider, Effect, Layer } from "effect";
 import {
   OPENROUTER_DEFAULT_MAX_TOKENS,

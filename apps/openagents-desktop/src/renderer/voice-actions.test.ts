@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { executeVoiceAction, makeVoiceFinalLedger, selectVoiceAction } from "./voice-actions.ts"
 
 describe("registered voice action selector", () => {

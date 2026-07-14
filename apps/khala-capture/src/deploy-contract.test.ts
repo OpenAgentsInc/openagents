@@ -2,7 +2,7 @@
 // daemon: the exact env var names the deploy sets must resolve to a valid
 // Cloud SQL Auth Connector socket config (#8554). If someone renames a var on
 // either side, this fails instead of shipping a daemon that cannot connect.
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { captureConfigFromEnv } from "@openagentsinc/khala-sync-server/capture"
 
 describe("khala-capture deploy env contract", () => {

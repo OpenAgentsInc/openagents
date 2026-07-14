@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { resolve } from "node:path"
 
 import {
@@ -15,8 +16,8 @@ const admittedMvpAssurancePath = resolve(import.meta.dirname, "../../../docs/mvp
 
 describe("AssuranceSpec format and proposal", () => {
   test("keeps the checked-in MVP proposal bound to the current ProductSpec", async () => {
-    const productSpecMarkdown = await Bun.file(mvpPath).text()
-    const generatedMarkdown = await Bun.file(mvpAssurancePath).text()
+    const productSpecMarkdown = await readFile(mvpPath, "utf8")
+    const generatedMarkdown = await readFile(mvpAssurancePath, "utf8")
     const expected = proposeAssuranceSpec({
       productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
       productSpecMarkdown,
@@ -36,7 +37,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("advances the live MVP assurance artifact without rewriting the frozen proposal", async () => {
-    const live = parseAssuranceSpec(await Bun.file(admittedMvpAssurancePath).text())
+    const live = parseAssuranceSpec(await readFile(admittedMvpAssurancePath, "utf8"))
     expect(live.frontmatter).toMatchObject({ assurance_revision: 2, lifecycle_state: "admitted" })
     expect(assessAssuranceSpec(live).coverage).toEqual({
       criteria: 18,
@@ -48,7 +49,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("proposes exact criterion coverage for the current MVP without inventing proof", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -63,7 +64,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("is byte-deterministic and semantic round trips are stable", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const options = { productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source }
     const first = proposeAssuranceSpec(options)
     const second = proposeAssuranceSpec(options)
@@ -76,7 +77,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("preserves authored section narrative while canonicalizing structured blocks", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
     if (!result.ok) throw new Error("fixture proposal failed")
     const edited = result.markdown.replace(
@@ -89,7 +90,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("round trips quoted frontmatter and rejects duplicate keys", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const result = proposeAssuranceSpec({
       productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
       productSpecMarkdown: source,
@@ -105,7 +106,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("refuses a ProductSpec with a missing or duplicate executable criterion ID", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const missing = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source.replace("**CW-AC-01:**", "**Acceptance:**") })
     expect(missing.ok).toBe(false)
     if (!missing.ok) expect(missing.diagnostics.map((diagnostic) => diagnostic.code)).toContain("missing_acceptance_criterion_id")
@@ -115,7 +116,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("keeps structural validity separate from assurance adequacy", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -124,7 +125,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("can represent a fully designed proposal without conflating it with admission", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
     if (!result.ok) throw new Error("fixture proposal failed")
     const designed = {
@@ -169,7 +170,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("rejects self-verification and label-only seam designs with stable false-green diagnostics", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
     if (!result.ok) throw new Error("fixture proposal failed")
     const baseObligation = result.document.obligations[0]!
@@ -224,7 +225,7 @@ describe("AssuranceSpec format and proposal", () => {
   })
 
   test("rejects missing sections and dangling criterion references", async () => {
-    const source = await Bun.file(mvpPath).text()
+    const source = await readFile(mvpPath, "utf8")
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
     if (!result.ok) throw new Error("fixture proposal failed")
     const missing = result.markdown.replace(/## Gates\n[\s\S]*?(?=\n## Evidence Policy)/, "")

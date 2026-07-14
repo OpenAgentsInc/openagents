@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { beforeEach, describe, expect, test } from "vite-plus/test"
 
 import {
   OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,

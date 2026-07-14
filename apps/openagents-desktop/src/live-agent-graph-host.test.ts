@@ -7,7 +7,7 @@
  * No hand-built envelopes: every observation the graph sees here traveled
  * through the same `emit` seam the renderer stream uses.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"

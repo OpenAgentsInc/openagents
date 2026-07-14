@@ -4,7 +4,7 @@
  * accounts-list JSON projection, the bridge contract schemas (main side and
  * renderer side must agree), and the service lifecycle with fake children.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import path from "node:path"

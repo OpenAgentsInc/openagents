@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { View as RNView } from "react-native"
 import { act, create as createTestRenderer } from "react-test-renderer"
@@ -23,14 +23,14 @@ import { act, create as createTestRenderer } from "react-test-renderer"
  * proving RepoPickerScreen's row-press wiring through KhalaListItem's own
  * real `onPress`/`accessibilityLabel` contract.
  *
- * `bun:test`'s `mock.module` mutates the GLOBAL module registry for the
+ * `vite-plus/test`'s `vi.mock` mutates the GLOBAL module registry for the
  * WHOLE test process, not just this file — confirmed empirically while
  * writing this test: an earlier draft globally mocked `khala-list-item` and
  * `khala-mobile-repos-api`, which silently broke `khala-ui-primitives.test.tsx`
  * (needs the REAL `KhalaListItem`) and `khala-mobile-repos-api.test.ts`
  * (needs the REAL client) when the full `bun test` suite ran, even though
  * this file passed in isolation. The rule this test follows: only
- * `mock.module` a dependency that NO other test file in the package needs
+ * `vi.mock` a dependency that NO other test file in the package needs
  * for real (verified by grep before writing each mock below); everything
  * else gets a locally-scoped fake (a `globalThis.fetch` swap, restored in
  * `afterAll`) instead of a module-level mock.
@@ -85,11 +85,11 @@ import { act, create as createTestRenderer } from "react-test-renderer"
 // `app-header` stand-ins used. Everything the test actually exercises (the real
 // Ignite `ListItem`, `TextField`, `EmptyState`, `Text`, and the real
 // khala-mobile-repos-api client + repo-search-core filters) stays REAL.
-mock.module("../src/ignite/components/Screen", () => ({
+vi.vi.fn("../src/ignite/components/Screen", () => ({
   Screen: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
 
-mock.module("../src/ignite/components/Header", () => ({
+vi.vi.fn("../src/ignite/components/Header", () => ({
   Header: ({ title }: { title?: string }) => React.createElement("Header", null, title),
 }))
 
@@ -99,7 +99,7 @@ mock.module("../src/ignite/components/Header", () => ({
 // harness ("Requested module is already fetched"). This screen never renders a
 // safe-area style (Screen/Header are mocked above), so a bare stand-in for the
 // hook keeps the barrel importable without pulling the native module in.
-mock.module("react-native-safe-area-context", () => ({
+vi.vi.fn("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }))
 
@@ -110,10 +110,10 @@ mock.module("react-native-safe-area-context", () => ({
 // separate, minimal mock rather than reusing `chat-composer.test.tsx`'s
 // (that one's factory calls `require("react-native")` at invocation time,
 // which throws "Requested module is already fetched" if Bun's global
-// mock.module registry re-invokes it from a different file's context —
+// vi.mock registry re-invokes it from a different file's context —
 // confirmed empirically while fixing this). Only the two APIs this screen
 // actually uses are stood in.
-mock.module("react-native-reanimated", () => {
+vi.vi.fn("react-native-reanimated", () => {
   const chainable = () => ({ duration: () => chainable() })
   return {
     default: { View: RNView },
@@ -123,7 +123,7 @@ mock.module("react-native-reanimated", () => {
 
 // Same shape as tests/khala-ui-primitives.test.tsx's mock — kept in sync so
 // both files' mocks are compatible, not conflicting, in a shared process.
-mock.module("../src/components/touchable-feedback", () => ({
+vi.vi.fn("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,
@@ -154,7 +154,7 @@ mock.module("../src/components/touchable-feedback", () => ({
     ),
 }))
 
-mock.module("../src/auth/khala-auth-context", () => ({
+vi.vi.fn("../src/auth/khala-auth-context", () => ({
   useKhalaAuth: () => ({
     baseUrl: "https://openagents.test",
     ownerUserId: "user_test",
@@ -163,8 +163,8 @@ mock.module("../src/auth/khala-auth-context", () => ({
   }),
 }))
 
-export const bindThreadRepoMock = mock(() => Promise.resolve({ ok: true as const }))
-mock.module("../src/sync/khala-mobile-sync-runtime-context", () => ({
+export const bindThreadRepoMock = vi.fn(() => Promise.resolve({ ok: true as const }))
+vi.vi.fn("../src/sync/khala-mobile-sync-runtime-context", () => ({
   useKhalaMobileSyncRuntime: () => ({
     runtime: { bindThreadRepo: bindThreadRepoMock },
     status: "ready",
@@ -200,7 +200,7 @@ const scriptedRepos = [
 const originalFetch = globalThis.fetch
 let nextResponseBody: unknown = { hasNextPage: false, page: 1, perPage: 100, repositories: scriptedRepos }
 let nextResponseOk = true
-export const fetchSpy = mock((..._args: Array<unknown>) =>
+export const fetchSpy = vi.fn((..._args: Array<unknown>) =>
   Promise.resolve({ json: () => Promise.resolve(nextResponseBody), ok: nextResponseOk } as Response),
 )
 
@@ -311,7 +311,7 @@ describe("contract khala_mobile.repo_picker.rn_component_mount_coverage.v1 — R
     // name: `KhalaText` renders as real `Text` here, but ANOTHER test file
     // in the full suite (`tests/crash-reporting.test.tsx`) globally mocks
     // `khala-text` to render a `"KhalaText"` host tag instead — a real
-    // instance of the SAME cross-file `mock.module` leakage class this
+    // instance of the SAME cross-file `vi.mock` leakage class this
     // file's other mocks were rewritten to avoid, this time from a module
     // this file never touches. Matching on content, not tag name, is
     // robust to either rendering.

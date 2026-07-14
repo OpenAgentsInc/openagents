@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 const mobileRoot = new URL("../", import.meta.url)
 
-const readSource = (path: string) => Bun.file(new URL(path, mobileRoot)).text()
+const readSource = (path: string) => readFile(new URL(path, mobileRoot), "utf8")
 
 describe("Khala mobile provider spine and primitives", () => {
   test("wraps the app in the Ignite-style provider spine", async () => {

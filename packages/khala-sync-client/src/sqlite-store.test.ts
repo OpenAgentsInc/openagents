@@ -12,8 +12,8 @@ import {
   SyncScope,
   SyncVersion,
 } from "@openagentsinc/khala-sync"
-import { afterEach, describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { afterEach, describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { Effect } from "effect"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -112,7 +112,7 @@ describe("openKhalaSyncStore / applyConfirmed", () => {
     const root = mkdtempSync(join(tmpdir(), "khala-sync-legacy-store-"))
     cleanups.push(() => rmSync(root, { recursive: true, force: true }))
     const path = join(root, "legacy.sqlite")
-    const legacy = new Database(path, { create: true })
+    const legacy = new NodeTestDatabase(path, { create: true })
     legacy.exec(KHALA_SYNC_STORE_SCHEMA)
     legacy.query(
       "INSERT INTO entities(scope, entity_type, entity_id, post_image_json, version) VALUES (?, ?, ?, ?, ?)",
@@ -130,7 +130,7 @@ describe("openKhalaSyncStore / applyConfirmed", () => {
     }])
     expect(run(store.cursor(scopeA))).toBe(SyncVersion.make(3))
 
-    const inspect = new Database(path)
+    const inspect = new NodeTestDatabase(path)
     expect(inspect.query(
       "SELECT value FROM meta WHERE key = 'store_schema_version'",
     ).get()).toEqual({ value: String(KHALA_SYNC_LOCAL_STORE_SCHEMA_VERSION) })
@@ -141,7 +141,7 @@ describe("openKhalaSyncStore / applyConfirmed", () => {
     const root = mkdtempSync(join(tmpdir(), "khala-sync-future-store-"))
     cleanups.push(() => rmSync(root, { recursive: true, force: true }))
     const path = join(root, "future.sqlite")
-    const future = new Database(path, { create: true })
+    const future = new NodeTestDatabase(path, { create: true })
     future.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE future_sentinel(id INTEGER PRIMARY KEY);")
     future.query("INSERT INTO meta(key, value) VALUES('store_schema_version', '2')").run()
     future.close()
@@ -156,7 +156,7 @@ describe("openKhalaSyncStore / applyConfirmed", () => {
     expect((failure as KhalaSyncClientStoreError).reason).toBe("incompatible_version")
     expect((failure as Error).message).toContain("update the app or reset its local Sync cache")
 
-    const inspect = new Database(path)
+    const inspect = new NodeTestDatabase(path)
     expect(inspect.query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all())
       .toContainEqual({ name: "future_sentinel" })
     expect(inspect.query("SELECT name FROM sqlite_master WHERE type='table' AND name='entities'").all())
@@ -475,7 +475,7 @@ describe("file-backed store", () => {
     const path = join(dir, "store.sqlite")
 
     const store = openKhalaSyncStore(path)
-    const raw = new Database(path)
+    const raw = new NodeTestDatabase(path)
     expect(
       (raw.query("PRAGMA journal_mode").get() as { journal_mode: string })
         .journal_mode,

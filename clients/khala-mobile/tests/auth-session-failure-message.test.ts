@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { describeAuthSessionFailure } from "../src/auth/auth-session-failure"
 

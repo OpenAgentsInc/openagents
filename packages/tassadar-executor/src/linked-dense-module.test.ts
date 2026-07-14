@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readFileSync } from "node:fs"
 import {
   TASSADAR_ALM_LINKED_DENSE_COMPOSED_TRACE_DIGEST,

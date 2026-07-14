@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import * as fc from "fast-check"
 import { canonicalJson, CanonicalJsonError } from "./index.js"
 

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vite-plus/test"
 import { createDesktopRuntimeGateway } from "../src/runtime-gateway.ts"
 import { createDesktopVoiceHost, type VoiceNativeMedia } from "../src/voice-host.ts"
 

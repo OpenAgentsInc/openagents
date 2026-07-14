@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { CodexHistoryItem } from "./codex-history-contract.ts"
 import { historyForkFetchPlan, historyForkSeed } from "./history-thread-actions.ts"
 

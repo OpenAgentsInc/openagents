@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { normalizeClaudeLine, buildClaudeSession } from "../src/node/external-sessions"
 
 const ev = (o: any) => normalizeClaudeLine(o)

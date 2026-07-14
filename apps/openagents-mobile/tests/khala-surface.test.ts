@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect, Stream } from "@effect-native/core/effect"
 
 import { buildHomeProgram, renderContentView } from "../src/screens/home-core"

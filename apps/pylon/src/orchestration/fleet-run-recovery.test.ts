@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { afterEach, describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -297,7 +297,7 @@ describe("FleetRun interrupted owner-local recovery", () => {
   })
 
   test("leaves a live owner-local assignment completely untouched", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const fixture = seedActiveAssignment(store, "live")
 
     const receipt = await recoverInterruptedFleetRunAssignments({
@@ -329,7 +329,7 @@ describe("FleetRun interrupted owner-local recovery", () => {
     temporaryDirectories.push(directory)
     const databasePath = join(directory, "orchestration.sqlite")
     const privateWorktreePath = "/Users/owner/private/worktree-with-secret"
-    const database = new Database(databasePath)
+    const database = new NodeTestDatabase(databasePath)
     const store = createPylonOrchestrationStore(database)
     const fixture = seedActiveAssignment(store, "dead", { privateWorktreePath })
 
@@ -398,7 +398,7 @@ describe("FleetRun interrupted owner-local recovery", () => {
     })).toBeNull()
 
     database.close()
-    const reopenedDatabase = new Database(databasePath)
+    const reopenedDatabase = new NodeTestDatabase(databasePath)
     const reopenedStore = createPylonOrchestrationStore(reopenedDatabase)
     let probeCalls = 0
     const afterRestart = await recoverInterruptedFleetRunAssignments({
@@ -423,7 +423,7 @@ describe("FleetRun interrupted owner-local recovery", () => {
   })
 
   test("treats a failed liveness probe as unknown and emits only a public-safe stale closeout", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const fixture = seedActiveAssignment(store, "unknown", {
       privateWorktreePath: "/private/never-project-this",
     })
@@ -451,7 +451,7 @@ describe("FleetRun interrupted owner-local recovery", () => {
     const directory = await mkdtemp(join(tmpdir(), "pylon-fleet-liveness-recovery-"))
     temporaryDirectories.push(directory)
     const assignmentStatePath = join(directory, "private-assignment-state.json")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const fixture = seedActiveAssignment(store, "adapter_dead", {
       assignmentRef: "assignment.public.recovery.adapter_dead",
       privateWorktreePath: "/Users/owner/private/adapter-dead-worktree",

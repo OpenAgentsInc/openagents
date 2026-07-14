@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test, vi } from "vite-plus/test"
 
 import {
   clearActiveSyncRuntimeCloseForTests,
@@ -19,7 +19,7 @@ describe("khala-mobile-sync-runtime-registry", () => {
   })
 
   test("a registered runtime is closed before the drain resolves", async () => {
-    const close = mock(async () => undefined)
+    const close = vi.fn(async () => undefined)
     registerActiveSyncRuntimeClose(close)
 
     await closeActiveSyncRuntimeBeforeReload(1000)
@@ -28,7 +28,7 @@ describe("khala-mobile-sync-runtime-registry", () => {
   })
 
   test("a close() that rejects is swallowed — draining never blocks/crashes the reload", async () => {
-    const close = mock(async () => {
+    const close = vi.fn(async () => {
       throw new Error("store.close() failed")
     })
     registerActiveSyncRuntimeClose(close)
@@ -37,7 +37,7 @@ describe("khala-mobile-sync-runtime-registry", () => {
   })
 
   test("a close() that hangs is bounded by the timeout, not awaited forever", async () => {
-    const close = mock(() => new Promise<void>(() => {}))
+    const close = vi.fn(() => new Promise<void>(() => {}))
     registerActiveSyncRuntimeClose(close)
 
     const start = Date.now()
@@ -46,10 +46,10 @@ describe("khala-mobile-sync-runtime-registry", () => {
   })
 
   test("unregister only clears the registry if it still holds THAT close (no stale-clear race)", async () => {
-    const firstClose = mock(async () => undefined)
+    const firstClose = vi.fn(async () => undefined)
     const unregisterFirst = registerActiveSyncRuntimeClose(firstClose)
 
-    const secondClose = mock(async () => undefined)
+    const secondClose = vi.fn(async () => undefined)
     registerActiveSyncRuntimeClose(secondClose)
 
     // A late-arriving unmount cleanup for the FIRST runtime must not clobber

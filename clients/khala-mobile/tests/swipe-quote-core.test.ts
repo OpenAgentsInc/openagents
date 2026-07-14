@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildComposerTextWithQuote, buildQuoteSnippet } from "../src/sync/swipe-quote-core"
 import type { TranscriptPart } from "../src/sync/khala-runtime-transcript-core"

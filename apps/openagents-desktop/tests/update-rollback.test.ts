@@ -4,7 +4,7 @@
  * The reducer is pure and total, so every law is proven as a deterministic
  * event-sequence walk — no clock, no I/O, no Electron.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   type UpdateManifest,
   UPDATE_CONTRACT_SCHEMA_ID,

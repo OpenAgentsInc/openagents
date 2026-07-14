@@ -6,7 +6,7 @@
  *
  * Runs are deterministic: fixed fast-check seed, no wall-clock input.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Schema as S } from "effect"
 import * as fc from "fast-check"
 import {

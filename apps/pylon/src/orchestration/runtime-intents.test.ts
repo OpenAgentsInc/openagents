@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   CHAT_MESSAGE_READ_ROUTE_PATH,
   RUNTIME_INTENTS_ROUTE_PATH,

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
   buildClaudeSecondPassReviewPrompt,

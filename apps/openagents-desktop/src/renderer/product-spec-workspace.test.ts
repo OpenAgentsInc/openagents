@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 
 import type {

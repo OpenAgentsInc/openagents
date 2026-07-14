@@ -2,7 +2,7 @@
 // best-effort window rebuild (the Cloud-Run-restart replacement for the
 // DO's storage persistence).
 
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { decodeChangelogEntry } from "@openagentsinc/khala-sync"
 
 import { LiveHubService } from "./service.js"

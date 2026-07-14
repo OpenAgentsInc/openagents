@@ -1,14 +1,7 @@
 // KS-8.4 (#8315): Pylon control-plane backfill spine.
 
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { runMigrations } from "./migrate.js"
 import {
   comparePylonControlPlaneTallies,
@@ -30,9 +23,6 @@ import {
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const quarantineRow = (n: number, state = "active"): D1SourceRow => ({
   action_refs_json: "[]",
   archived_at: null,
@@ -455,13 +445,13 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_pylon_control_backfill")
       await admin.end()
       const url = pg.urlFor("khala_pylon_control_backfill")
       const result = await runMigrations({ databaseUrl: url })
       expect(result.applied).toContain("0009_pylon_control_plane_remainder.sql")
-      rawSql = new SQL({ url, max: 4 })
+      rawSql = SQL({ url, max: 4 })
       sql = rawSql as unknown as SyncSql
     })
 

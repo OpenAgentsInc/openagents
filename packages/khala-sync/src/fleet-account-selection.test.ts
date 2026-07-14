@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { selectDispatchAccount } from "./fleet-account-selection.js"
 import { decodeFleetAccountEntity, type FleetAccountEntity } from "./fleet.js"
 

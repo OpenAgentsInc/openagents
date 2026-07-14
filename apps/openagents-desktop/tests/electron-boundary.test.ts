@@ -7,7 +7,7 @@
  * no Electron or Node authority inside the renderer, and no starter/parallel
  * UI architectures (React, shadcn, Zod, oRPC, TanStack) in the app at all.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 

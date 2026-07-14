@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { coalesceNotifications } from "./notification-batch.js"
 import type { NotificationBatchItem } from "./notification-batch.js"

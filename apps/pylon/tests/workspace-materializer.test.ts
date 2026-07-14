@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -91,7 +92,7 @@ function checkoutWith(overrides: {
 }
 
 async function runCommand(args: string[], cwd: string): Promise<{ exitCode: number; stdout: string }> {
-  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
   const [stdout, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     proc.exited,

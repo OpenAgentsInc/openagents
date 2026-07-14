@@ -11,15 +11,15 @@
 // green, and PUT-create itself 500'd (it calls `getMeta()` on the not-yet-
 // existing stream first), so durable writes never persisted at all.
 //
-// This suite backs the REAL `SqliteStreamStore` with a real `bun:sqlite`
+// This suite backs the REAL `SqliteStreamStore` with a real `node:sqlite`
 // database wrapped in a `SqlStorageLike` whose `.one()` reproduces Cloudflare's
 // throw-on-zero/multiple-rows semantics EXACTLY. It then drives the REAL
 // `handleDurableStreamFetch` (the DO `fetch` body) end-to-end, so the prod
 // failure is reproducible here and the fix is proven against real SQLite — not
 // a re-implementation.
 
-import { Database } from 'bun:sqlite'
-import { describe, expect, test } from 'bun:test'
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from 'vite-plus/test'
 
 import {
   handleDurableStreamFetch,
@@ -28,13 +28,13 @@ import {
   type SqlStorageLike,
 } from './durable-object.ts'
 
-// A `SqlStorageLike` over `bun:sqlite` that faithfully reproduces Cloudflare's
+// A `SqlStorageLike` over `node:sqlite` that faithfully reproduces Cloudflare's
 // `SqlStorageCursor` semantics — most importantly `.one()` THROWS on zero rows
 // (and on >1 row), exactly like `state.storage.sql` in a live Durable Object.
 const FAITHFUL_ONE_ERROR =
   'Expected exactly one result from SQL query, but got no results.'
 
-const cloudflareSql = (db: Database): SqlStorageLike => ({
+const cloudflareSql = (db: NodeTestDatabase): SqlStorageLike => ({
   exec<T = Record<string, unknown>>(query: string, ...bindings: Array<unknown>) {
     const stmt = db.query(query)
     const rows = stmt.all(...(bindings as Array<never>)) as Array<T>
@@ -59,7 +59,7 @@ const cloudflareSql = (db: Database): SqlStorageLike => ({
 // A minimal `DurableObjectStateLike` over the faithful SQL surface. Alarms are
 // captured (not scheduled) so the TTL-refresh path is exercised without a real
 // timer.
-const fakeDoState = (db: Database): DurableObjectStateLike => {
+const fakeDoState = (db: NodeTestDatabase): DurableObjectStateLike => {
   const sql = cloudflareSql(db)
   return {
     storage: {
@@ -76,7 +76,7 @@ const streamUrl = (id: string): string =>
 
 describe('real SQLite Durable Object — missing-stream reads are graceful (not a thrown SQL error)', () => {
   test('GET a never-created stream returns 404, never throwing "Expected exactly one result"', async () => {
-    const db = new Database(':memory:')
+    const db = new NodeTestDatabase(':memory:')
     const state = fakeDoState(db)
 
     // This is the EXACT prod reproduction: a durable read of a stream that was
@@ -91,7 +91,7 @@ describe('real SQLite Durable Object — missing-stream reads are graceful (not 
   })
 
   test('HEAD / POST / DELETE on a missing stream are all 404 (no thrown SQL error)', async () => {
-    const db = new Database(':memory:')
+    const db = new NodeTestDatabase(':memory:')
     const state = fakeDoState(db)
 
     const head = await handleDurableStreamFetch(
@@ -125,7 +125,7 @@ describe('real SQLite Durable Object — missing-stream reads are graceful (not 
 
 describe('real SQLite Durable Object — create + append + resume round-trip', () => {
   test('PUT-create succeeds against real SQLite (regression: create reads getMeta on the empty stream first)', async () => {
-    const db = new Database(':memory:')
+    const db = new NodeTestDatabase(':memory:')
     const state = fakeDoState(db)
 
     // Pre-fix this 500'd: `handlePut` calls `store.getMeta()` BEFORE creating,
@@ -142,7 +142,7 @@ describe('real SQLite Durable Object — create + append + resume round-trip', (
   })
 
   test('write deltas + terminal frame, then a separate GET resumes the FULL log (streaming-equivalent) and a mid-offset resume returns only the suffix', async () => {
-    const db = new Database(':memory:')
+    const db = new NodeTestDatabase(':memory:')
     const state = fakeDoState(db)
     const id = 'completion-1'
 
@@ -232,19 +232,19 @@ describe('real SQLite Durable Object — create + append + resume round-trip', (
 
 describe('real SQLite SqliteStreamStore — getMeta / getProducer tolerate zero rows', () => {
   test('getMeta() returns null (not a throw) on an empty store', () => {
-    const db = new Database(':memory:')
+    const db = new NodeTestDatabase(':memory:')
     const store = new SqliteStreamStore(cloudflareSql(db))
     expect(store.getMeta()).toBeNull()
   })
 
   test('getProducer() returns null (not a throw) for an unknown producer', () => {
-    const db = new Database(':memory:')
+    const db = new NodeTestDatabase(':memory:')
     const store = new SqliteStreamStore(cloudflareSql(db))
     expect(store.getProducer('unknown')).toBeNull()
   })
 
   test('byteLength() is 0 (not a throw) on an empty store', () => {
-    const db = new Database(':memory:')
+    const db = new NodeTestDatabase(':memory:')
     const store = new SqliteStreamStore(cloudflareSql(db))
     expect(store.byteLength()).toBe(0)
   })

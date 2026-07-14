@@ -14,15 +14,8 @@ import {
   SyncSchemaVersion,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { KhalaSyncStorageError } from "./errors.js"
 import { runMigrations } from "./migrate.js"
 import { KhalaSyncClientStateMismatchError } from "./mutation-ledger.js"
@@ -37,9 +30,6 @@ import {
 } from "./push-engine.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const schemaVersion = SyncSchemaVersion.make(1)
 const thingSet = MutatorName.make("thing.set")
 const thingExplode = MutatorName.make("thing.explode")
@@ -107,13 +97,13 @@ describe.skipIf(!hasLocalPostgres())("push engine against local Postgres", () =>
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_push")
     await admin.end()
     const url = pg.urlFor("khala_sync_push")
     const result = await runMigrations({ databaseUrl: url })
     expect(result.applied).toContain("0001_khala_sync_core.sql")
-    sql = new SQL({ url, max: 10 })
+    sql = SQL({ url, max: 10 })
 
     // A business table so atomicity covers real business writes, not just
     // the changelog.

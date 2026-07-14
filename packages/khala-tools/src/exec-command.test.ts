@@ -1,7 +1,8 @@
+import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import {
   allowAllKhalaPermissionService,
@@ -39,7 +40,7 @@ async function runExec(
   )
 }
 
-const hasMacosSeatbelt = process.platform === "darwin" && (await Bun.file("/usr/bin/sandbox-exec").exists())
+const hasMacosSeatbelt = process.platform === "darwin" && (await existsSync("/usr/bin/sandbox-exec"))
 
 describe("exec_command tool", () => {
   test("runs successful commands through the process service", async () => {

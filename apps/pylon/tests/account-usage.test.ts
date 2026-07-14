@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { existsSync } from "node:fs"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -44,7 +46,7 @@ async function withHome<T>(fn: (home: string) => Promise<T>) {
 }
 
 async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
-  const proc = Bun.spawn(["bun", INDEX, ...args], {
+  const proc = Runtime.spawn([process.execPath, INDEX, ...args], {
     cwd: CWD,
     env,
     stderr: "pipe",
@@ -124,7 +126,7 @@ describe("pylon account usage", () => {
   test("codex accounts list aliases the local account inventory command", async () => {
     await withHome(async (home) => {
       const proc = await runPylonCli(["codex", "accounts", "list", "--json"], {
-        ...Bun.env,
+        ...process.env,
         CODEX_HOME: join(home, "codex-default"),
         CLAUDE_CONFIG_DIR: join(home, "claude-default"),
         PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
@@ -220,7 +222,7 @@ describe("pylon account usage", () => {
           rateLimitReachedType: null,
         }],
       })).rejects.toThrow(/not measured/)
-      expect(await Bun.file(join(home, "account-usage.json")).exists()).toBe(false)
+      expect(await existsSync(join(home, "account-usage.json"))).toBe(false)
     })
   })
 
@@ -574,7 +576,7 @@ describe("pylon account usage", () => {
       const proc = await runPylonCli(
         ["accounts", "usage", "--provider", "grok", "--refresh", "--json"],
         {
-          ...Bun.env,
+          ...process.env,
           PYLON_HOME: home,
           CODEX_HOME: join(home, "codex-default"),
           CLAUDE_CONFIG_DIR: join(home, "claude-default"),
@@ -590,7 +592,7 @@ describe("pylon account usage", () => {
         "Grok account usage refresh is unavailable; Grok usage truth remains not_measured",
       )
       expect(proc.stderr).not.toContain(home)
-      expect(await Bun.file(join(home, "account-usage.json")).exists()).toBe(false)
+      expect(await existsSync(join(home, "account-usage.json"))).toBe(false)
     })
   })
 

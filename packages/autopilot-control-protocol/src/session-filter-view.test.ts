@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildSessionListView } from "./session-filter-view.js"
 import type { SessionSortRow } from "./session-sort.js"

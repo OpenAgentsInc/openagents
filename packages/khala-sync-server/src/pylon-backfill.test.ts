@@ -5,15 +5,8 @@
 // newest-N hashes unchanged), and `ON CONFLICT DO NOTHING` never clobbers a
 // row the dual-write mirror already owns.
 
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { runMigrations } from "./migrate.js"
 import {
   comparePylonTallies,
@@ -27,9 +20,6 @@ import {
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const registrationRow = (n: number): D1SourceRow => ({
   archived_at: null,
   capability_refs_json: '["capability.codex_worker.v1"]',
@@ -138,13 +128,13 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_pylon_backfill")
       await admin.end()
       const url = pg.urlFor("khala_pylon_backfill")
       const result = await runMigrations({ databaseUrl: url })
       expect(result.applied).toContain("0005_pylon_dispatch.sql")
-      rawSql = new SQL({ url, max: 4 })
+      rawSql = SQL({ url, max: 4 })
       sql = rawSql as unknown as SyncSql
     })
 

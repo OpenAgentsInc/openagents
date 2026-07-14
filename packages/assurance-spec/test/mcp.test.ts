@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { resolve } from "node:path"
 
 import { MCP_PROTOCOL_VERSION, MCP_SERVER_NAME, MCP_TOOLS, handleMcpRequest } from "../src/index.ts"
@@ -212,7 +213,7 @@ describe("MCP definition-of-done flow against this repository", () => {
 describe("MCP stdio transport", () => {
   test("speaks JSON-RPC over stdin/stdout including -32700 on parse errors", async () => {
     const cli = resolve(import.meta.dirname, "../src/cli.ts")
-    const child = Bun.spawn([process.execPath, cli, "mcp", "--root", repoRoot], {
+    const child = Runtime.spawn([process.execPath, cli, "mcp", "--root", repoRoot], {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "ignore",

@@ -7,7 +7,7 @@
  * 204-shape, the immediate-204-on-closed-at-tail rule, and SSE framing are
  * covered here. This honest scope is documented in the README.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import * as P from "./protocol.ts"
 import { startTestServer } from "./test-server.ts"
 

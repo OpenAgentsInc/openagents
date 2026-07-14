@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildShipReceipt } from "../src/coordinator/ship-receipt"
 import { projectShipStatusRoundtrip } from "../src/coordinator/ship-status-roundtrip"

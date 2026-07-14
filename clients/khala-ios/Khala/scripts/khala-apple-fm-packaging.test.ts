@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   KHALA_APPLE_FM_BRIDGE_RESOURCES_SUBPATH,
   KHALA_APPLE_FM_UNAVAILABLE_MARKER_SUBPATH,

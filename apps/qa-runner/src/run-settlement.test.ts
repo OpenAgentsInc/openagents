@@ -3,7 +3,7 @@
 // 8-state machine still records every money-movement step as intent_only with
 // movedSats === false.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import {
   advanceRunSettlement,
   arm,

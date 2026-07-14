@@ -3,7 +3,7 @@
  * Proves the schema accepts the closed operation set, rejects malformed input
  * and unknown ops, and round-trips every result variant plus the typed error.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   decodeGitGithubRequest,

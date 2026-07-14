@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 

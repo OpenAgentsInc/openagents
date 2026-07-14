@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { shouldBurstToMarket } from "../src/coordinator/lane-c-burst"
 

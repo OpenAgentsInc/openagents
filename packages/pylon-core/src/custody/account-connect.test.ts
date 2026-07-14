@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -266,7 +267,7 @@ describe("pylon-core accounts connect grok", () => {
           runGrokDeviceLogin: async () => ({ exitCode: 0 }),
         }),
       ).rejects.toThrow(/isolated account readiness was not confirmed/)
-      expect(await Bun.file(blockedSummary.paths.config).exists()).toBe(false)
+      expect(await existsSync(blockedSummary.paths.config)).toBe(false)
     })
   })
 })

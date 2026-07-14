@@ -2,7 +2,7 @@
  * Unit tests for the offset codec (PROTOCOL.md §8 properties): lexicographic ==
  * numeric ordering, strict monotonicity, sentinel handling, URL-safety.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   isSentinel,
   OFFSET_BEGINNING,

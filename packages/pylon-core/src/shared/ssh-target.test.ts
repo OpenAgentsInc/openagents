@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { classifySshReadiness, normalizeSshTarget } from "./ssh-target.js"
 

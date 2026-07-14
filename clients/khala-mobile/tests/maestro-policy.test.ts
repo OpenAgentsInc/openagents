@@ -1,10 +1,12 @@
-import { describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 const mobileRoot = new URL("../", import.meta.url)
 const repoRoot = new URL("../../../", import.meta.url)
 
-const read = (path: string) => Bun.file(new URL(path, mobileRoot)).text()
-const readRepo = (path: string) => Bun.file(new URL(path, repoRoot)).text()
+const read = (path: string) => readFile(new URL(path, mobileRoot), "utf8")
+const readRepo = (path: string) => readFile(new URL(path, repoRoot), "utf8")
 
 describe("Khala mobile Maestro flows", () => {
   test("define local-only startup and smoke flows", async () => {
@@ -184,7 +186,7 @@ describe("Khala mobile Maestro flows", () => {
     for (const entry of iosEntries) {
       expect(entry.viewport).toBe("iphone-17-pro")
       await expect(
-        Bun.file(new URL(`docs/khala-code/receipts/qam-4-baselines/${entry.screenshot}`, repoRoot)).exists(),
+        existsSync(new URL(`docs/khala-code/receipts/qam-4-baselines/${entry.screenshot}`, repoRoot)),
       ).resolves.toBe(true)
     }
 
@@ -244,7 +246,7 @@ describe("Khala mobile Maestro flows", () => {
     ])
     for (const entry of androidEntries) {
       await expect(
-        Bun.file(new URL(`docs/khala-code/receipts/qam-4-baselines/${entry.screenshot}`, repoRoot)).exists(),
+        existsSync(new URL(`docs/khala-code/receipts/qam-4-baselines/${entry.screenshot}`, repoRoot)),
       ).resolves.toBe(true)
     }
   })

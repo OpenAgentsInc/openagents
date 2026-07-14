@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test";
 import { Effect, Schema as S } from "effect";
 import {
   AppleFmChatCompletionResponse,
@@ -52,7 +53,7 @@ describe("Apple FM backend contract", () => {
   });
 
   test("decodes CI-safe fake bridge health and completion responses", async () => {
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: async (request) => {
         const url = new URL(request.url);
@@ -92,6 +93,7 @@ describe("Apple FM backend contract", () => {
         return new Response("not found", { status: 404 });
       },
     });
+    await server.ready
 
     try {
       const baseUrl = `http://127.0.0.1:${server.port}`;

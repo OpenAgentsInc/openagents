@@ -1,7 +1,7 @@
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
   NIP06_DERIVATION_PATH,

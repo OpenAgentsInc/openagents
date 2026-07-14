@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 // Screen mount artifact marker for QAM-1: react-test-renderer.
 // The Settings screen itself is covered here through source composition because
 // Bun module mocks for the Ignite/React Native barrels leak across this suite.
-const settingsSource = await Bun.file(new URL("../src/screens/settings-screen.tsx", import.meta.url).pathname).text()
+const settingsSource = await readFile(new URL("../src/screens/settings-screen.tsx", import.meta.url).pathname, "utf8")
 
 describe("contract khala_mobile.settings.composition_coverage.v1 — SettingsScreen", () => {
   test("keeps every launch settings section, including CX-2 Codex and CX-5 Claude accounts, wired into the screen", () => {

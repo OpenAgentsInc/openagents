@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 /**
  * MM-H1 (#8487): source-string composition check for the Settings rework —
@@ -12,7 +13,7 @@ import { describe, expect, test } from "bun:test"
  * proves something real: the exact source text a build ships.
  */
 const readSettingsScreenSource = async (): Promise<string> =>
-  Bun.file(new URL("../src/screens/settings-screen.tsx", import.meta.url).pathname).text()
+  readFile(new URL("../src/screens/settings-screen.tsx", import.meta.url).pathname, "utf8")
 
 describe("contract khala_mobile.settings.no_desktop_dependent_sections.v1", () => {
   test("settings_screen_excludes_fleet_desktop_copy.source — no Fleet section or desktop-only language", async () => {

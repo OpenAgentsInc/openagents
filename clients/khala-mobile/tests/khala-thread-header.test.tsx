@@ -1,4 +1,5 @@
-import { describe, expect, mock, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
@@ -20,7 +21,7 @@ import { act, create as createTestRenderer } from "react-test-renderer"
  * `accessibilityLabel`/`onPress`/`disabled` straight through, so the header's
  * own button-wiring is still exercised for real.
  */
-mock.module("../src/components/touchable-feedback", () => ({
+vi.vi.fn("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,
@@ -56,7 +57,7 @@ mock.module("../src/components/touchable-feedback", () => ({
 // which dereferences `globalThis.expo.EventEmitter` at module-evaluation time —
 // dead outside a native host. Same stand-in the composer mount test uses; no
 // real font rendering is needed for this header-structure test.
-mock.module("../src/theme/typography", () => ({
+vi.vi.fn("../src/theme/typography", () => ({
   khalaMobileFontsToLoad: {},
   khalaMobileTextSizes: {
     lg: { fontSize: 20, lineHeight: 32 },
@@ -101,7 +102,7 @@ const mount = async (element: React.ReactElement) => {
 // Oracle for khala_mobile.thread.new_thread_action_always_reachable.v1
 describe("contract khala_mobile.thread.new_thread_action_always_reachable.v1 — KhalaThreadHeader new-thread affordance", () => {
   test("new_thread_button_present_and_calls_handler.unit — the New thread button renders enabled and fires its handler on press", async () => {
-    const onNewThread = mock(() => undefined)
+    const onNewThread = vi.fn(() => undefined)
     const renderer = await mount(
       React.createElement(KhalaThreadHeader, {
         onOpenMenu: () => undefined,
@@ -137,7 +138,7 @@ describe("contract khala_mobile.thread.new_thread_action_always_reachable.v1 —
   })
 
   test("thread_screen_wires_new_thread_action.source — the thread view passes onNewThread and creates+navigates to a fresh thread", async () => {
-    const source = await Bun.file(repoPath("clients/khala-mobile/src/screens/thread-messages-screen.tsx")).text()
+    const source = await readFile(repoPath("clients/khala-mobile/src/screens/thread-messages-screen.tsx"), "utf8")
     expect(source).toContain("onNewThread=")
     expect(source).toContain("startNewThread")
     expect(source).toContain("runtime.createThread")
@@ -164,7 +165,7 @@ describe("contract khala_mobile.thread.active_turn_never_traps_user.v1 — escap
   })
 
   test("stop_interrupts_and_composer_reverts_when_idle.source — Stop dispatches an interrupt, and an idle composer is editable/Send", async () => {
-    const composer = await Bun.file(repoPath("clients/khala-mobile/src/components/chat-composer.tsx")).text()
+    const composer = await readFile(repoPath("clients/khala-mobile/src/components/chat-composer.tsx"), "utf8")
     // Stop actually cancels the turn (not just a visual no-op).
     expect(composer).toContain("buildInterruptTurnIntentArgs")
     expect(composer).toContain("runtime.interruptTurn")
@@ -172,7 +173,7 @@ describe("contract khala_mobile.thread.active_turn_never_traps_user.v1 — escap
     // and the composer flips back to an editable Send once no turn is active
     // (transition proven live by khala_mobile.composer.rn_component_mount_coverage.v1).
     expect(composer).toContain('accessibilityLabel="Send"')
-    const screen = await Bun.file(repoPath("clients/khala-mobile/src/screens/thread-messages-screen.tsx")).text()
+    const screen = await readFile(repoPath("clients/khala-mobile/src/screens/thread-messages-screen.tsx"), "utf8")
     expect(screen).toContain("KhalaThreadHeader")
   })
 })
@@ -180,7 +181,7 @@ describe("contract khala_mobile.thread.active_turn_never_traps_user.v1 — escap
 // Oracle for khala_mobile.thread.header_menu_opens_drawer.v1
 describe("contract khala_mobile.thread.header_menu_opens_drawer.v1 — chat header left button opens the drawer", () => {
   test("menu_button_present_and_calls_handler.unit — the header renders a single 'Open menu' hamburger that fires onOpenMenu, and no 'Back' button", async () => {
-    const onOpenMenu = mock(() => undefined)
+    const onOpenMenu = vi.fn(() => undefined)
     const renderer = await mount(
       React.createElement(KhalaThreadHeader, {
         onOpenMenu,
@@ -201,7 +202,7 @@ describe("contract khala_mobile.thread.header_menu_opens_drawer.v1 — chat head
   })
 
   test("thread_screen_wires_menu_to_open_drawer.source — the thread screen opens the root Drawer from the header hamburger", async () => {
-    const source = await Bun.file(repoPath("clients/khala-mobile/src/screens/thread-messages-screen.tsx")).text()
+    const source = await readFile(repoPath("clients/khala-mobile/src/screens/thread-messages-screen.tsx"), "utf8")
     expect(source).toContain("onOpenMenu=")
     expect(source).toContain("openDrawer()")
     // The thread view is a native-stack screen inside the Drawer, so the

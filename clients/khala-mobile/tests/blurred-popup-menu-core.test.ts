@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildCopyMarkdown, buildCopyText } from "../src/sync/blurred-popup-menu-core"
 import type { TranscriptPart } from "../src/sync/khala-runtime-transcript-core"

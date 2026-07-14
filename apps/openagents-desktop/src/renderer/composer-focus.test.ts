@@ -9,7 +9,7 @@
  * the user placed elsewhere. The built-Electron smoke proves the same journey
  * with a real Chromium keystroke.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Window } from "../../../openagents.com/apps/web/node_modules/happy-dom"
 
 import {

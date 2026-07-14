@@ -9,7 +9,7 @@
 //   - uncertainty is never rounded up: any INCONCLUSIVE keeps the roll-up off
 //     CONFIRMED; any REFUTED makes the roll-up REFUTED.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 import type { QaRunStep } from "./result";
 import {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { summarizeAssignments } from "./assignments-poll-view.js"
 import type { AssignmentRow } from "./assignments-view.js"

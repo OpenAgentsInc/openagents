@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   APPLE_FM_BRIDGE_DEFAULT_PORT,
   APPLE_FM_BRIDGE_PATH_ENV,

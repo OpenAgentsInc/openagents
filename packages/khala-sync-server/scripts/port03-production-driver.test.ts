@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import {
   makeOpenAgentsManagedCapabilityAdapter,
   makeOwnerLocalCapabilityAdapter,
@@ -30,9 +30,6 @@ import {
   PortableSessionProductionDriver,
   PortableSessionProductionDriverError,
 } from "./port03-production-driver.js"
-
-setDefaultTimeout(120_000)
-
 const ownerRef = "owner.port03.driver"
 const sessionRef = "session.port03.driver"
 const localTargetRef = "target.port03.driver.local"
@@ -321,12 +318,12 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 production round-trip driver", () 
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_port03_driver")
     await admin.end()
     const databaseUrl = pg.urlFor("khala_sync_port03_driver")
     await runMigrations({ databaseUrl })
-    sql = new SQL({ url: databaseUrl, max: 4 })
+    sql = SQL({ url: databaseUrl, max: 4 })
     await sql`
       INSERT INTO khala_sync_portable_sessions
         (session_ref, owner_user_id, owner_scope_ref, work_context_ref,

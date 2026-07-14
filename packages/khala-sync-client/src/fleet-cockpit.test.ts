@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { ConfirmedAgentRun } from "./agent-timeline.js"
 import type { ConfirmedRuntimeInteraction } from "./runtime-interactions.js"
 import { admitFleetAttentionCommand, admitFleetRunCommand, projectFleetCockpitCard } from "./fleet-cockpit.js"

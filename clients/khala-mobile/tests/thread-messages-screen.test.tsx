@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
@@ -11,7 +11,7 @@ import {
 } from "./fixtures/mobile-screen-fixtures"
 import { reduceRuntimeTranscript } from "../src/sync/khala-runtime-transcript-core"
 
-mock.module("../src/components/touchable-feedback", () => ({
+vi.vi.fn("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,
@@ -23,7 +23,7 @@ mock.module("../src/components/touchable-feedback", () => ({
   }) => React.createElement("TouchableFeedback", { accessibilityLabel, accessibilityRole }, children),
 }))
 
-mock.module("react-native-safe-area-context", () => ({
+vi.vi.fn("react-native-safe-area-context", () => ({
   SafeAreaView: ({ children }: { children?: React.ReactNode }) => React.createElement("SafeAreaView", null, children),
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }))

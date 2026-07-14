@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -27,7 +28,7 @@ test("CUT-17 real worker bounds a 20k-entry repository and project close drains 
       }
     }
 
-    const build = await Bun.build({
+    const build = await Runtime.build({
       entrypoints: [path.join(appRoot, "src/workspace-search-worker.ts")],
       outdir: workerOut,
       target: "node",

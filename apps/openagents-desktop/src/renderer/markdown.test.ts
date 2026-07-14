@@ -4,7 +4,7 @@
  * nodes only (no HTML injection is constructible); streaming-safe on
  * unterminated markers.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"

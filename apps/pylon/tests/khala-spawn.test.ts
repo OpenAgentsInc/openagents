@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { BootstrapSummary } from "../src/bootstrap"
 import type { PylonAccountsListProjection } from "../src/account-usage"
@@ -312,7 +313,7 @@ describe("pylon khala spawn runner", () => {
             leaseRef: `lease.public.${options.assignmentRef}`,
             observedAt: "2026-06-27T12:00:01.000Z",
           })
-          await Bun.sleep(25)
+          await sleep(25)
           await options.onLifecycleEvent?.({
             schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
             assignmentRef: options.assignmentRef,

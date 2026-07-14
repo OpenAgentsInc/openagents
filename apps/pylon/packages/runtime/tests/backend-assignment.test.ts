@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { Effect } from "effect";
 import {
   APPLE_FM_DEFAULT_MODEL_ID,

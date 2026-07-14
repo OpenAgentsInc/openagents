@@ -7,15 +7,8 @@ import {
   decodeFleetWorkerEntity,
   fleetRunScope,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 
 import {
@@ -35,9 +28,6 @@ import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const FIXED_NOW = Date.parse("2026-07-09T22:00:00.000Z")
 const COMMIT = "57f540bc13922351fee17fdd2c1b866c0fd21e86"
 const FIXTURE_RUN_REF = "fleet_run.sarah.0123456789abcdef0123"
@@ -649,7 +639,7 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE sarah_fleet_run_authority")
       await admin.end()
       const url = pg.urlFor("sarah_fleet_run_authority")
@@ -670,7 +660,7 @@ describe.skipIf(!hasLocalPostgres())(
       expect(migrated.applied).toContain(
         "0065_sarah_fleet_run_managed_cloud_capacity.sql",
       )
-      sql = new SQL({ url, max: 12 })
+      sql = SQL({ url, max: 12 })
     })
 
     afterAll(async () => {

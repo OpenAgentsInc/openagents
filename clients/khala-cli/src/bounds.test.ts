@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   KHALA_CHAT_MAX_MESSAGE_CHARS,
   KHALA_CHAT_MAX_MESSAGES,

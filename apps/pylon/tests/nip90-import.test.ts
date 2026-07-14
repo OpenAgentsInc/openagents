@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { KIND_JOB_TEXT_GENERATION, getResultKind, makeJobRequest, jobInput } from "@openagentsinc/nip90"
 
 describe("Pylon NIP-90 package import", () => {

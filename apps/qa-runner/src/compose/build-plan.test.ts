@@ -2,7 +2,7 @@
 // before/after layouts, and prove `buildComposePlan` is deterministic — no
 // render, no I/O, no clock.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import {
   buildComposePlan,
   clampLabel,

@@ -1,5 +1,5 @@
-import { SQL } from "bun"
-import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test"
 
 import {
   PortableCapabilityBroker,
@@ -33,9 +33,6 @@ import {
 } from "./portable-session-move.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const owner = "owner.port03"
 const sessionRef = "session.port03"
 const localTargetRef = "target.port03.local"
@@ -379,11 +376,11 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_portable_move")
     await admin.end()
     await runMigrations({ databaseUrl: pg.urlFor("khala_sync_portable_move") })
-    sql = new SQL({ url: pg.urlFor("khala_sync_portable_move"), max: 10 })
+    sql = SQL({ url: pg.urlFor("khala_sync_portable_move"), max: 10 })
   })
 
   beforeEach(async () => {
@@ -680,7 +677,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
       expiresAt: firstTransfer.expiresAt,
     }))
 
-    const restarted = new SQL({ url: pg.urlFor("khala_sync_portable_move"), max: 2 })
+    const restarted = SQL({ url: pg.urlFor("khala_sync_portable_move"), max: 2 })
     const restoredBroker = await PortableCapabilityBroker.restore(brokerConfig)
     expect(restoredBroker).not.toBe(broker)
     const resumed = new PortableSessionMoveCoordinator({
@@ -708,7 +705,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     })
     expect(result.status).toBe("failed")
     expect(log.targetOperations).toEqual([])
-    const restarted = new SQL({ url: pg.urlFor("khala_sync_portable_move"), max: 1 })
+    const restarted = SQL({ url: pg.urlFor("khala_sync_portable_move"), max: 1 })
     const snapshot = await readPortableSessionAuthoritySnapshot(restarted as unknown as SyncSql, { sessionRef, ownerUserId: owner })
     await restarted.end()
     expect(snapshot?.commands).toHaveLength(0)

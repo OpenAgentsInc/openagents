@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildDecisionResolveEnvelope } from "@openagentsinc/autopilot-control-protocol"
 import { createApprovalQueue } from "../src/node/approval-queue"

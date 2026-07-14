@@ -18,7 +18,7 @@
  * 8. the contract registry carries this suite as the enforced oracle and
  *    main.ts wires capture at both turn boundaries on both local lanes.
  */
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "vite-plus/test"
 import { execFileSync } from "node:child_process"
 import {
   existsSync,

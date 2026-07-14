@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -14,7 +15,7 @@ import {
 import { assertPublicProjectionSafe } from "../src/state"
 
 async function run(args: string[], cwd: string) {
-  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),

@@ -5,8 +5,8 @@ import {
   SyncScope,
   SyncVersion,
 } from "@openagentsinc/khala-sync"
-import { Database } from "bun:sqlite"
-import { describe, expect, test } from "bun:test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import { bunSqlDriver } from "../sqlite-store.js"
 import { createKhalaSyncStoreCore } from "../store-core.js"
@@ -32,7 +32,7 @@ import {
  * the complete web pipeline — main-thread proxy → typed postMessage RPC
  * over a faked port pair (structured-clone enforced, async delivery) →
  * storage-worker runtime → RPC server → shared SQL core — with
- * `bun:sqlite` standing in for SQLite-WASM behind the driver seam.
+ * `node:sqlite` standing in for SQLite-WASM behind the driver seam.
  *
  * Browser-runtime specifics that bun cannot execute (real `opfs-sahpool`
  * init, real SharedWorker, real `navigator.locks`) are covered by the
@@ -67,9 +67,9 @@ const createPortPair = (): {
 
 const createServer = (): {
   readonly server: KhalaSyncStoreWorkerServer
-  readonly db: Database
+  readonly db: NodeTestDatabase
 } => {
-  const db = new Database(":memory:")
+  const db = new NodeTestDatabase(":memory:")
   return {
     server: createKhalaSyncStoreWorkerServer(
       createKhalaSyncStoreCore(bunSqlDriver(db)),

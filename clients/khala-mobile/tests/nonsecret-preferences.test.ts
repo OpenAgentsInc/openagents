@@ -1,5 +1,5 @@
-import { Database, type SQLQueryBindings } from "bun:sqlite"
-import { describe, expect, test } from "bun:test"
+import { NodeTestDatabase, type SqliteTestBinding } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   KHALA_MOBILE_PREFERENCES_DB_NAME,
@@ -15,11 +15,11 @@ const expoSqliteFromBun = (): {
   module: ExpoPreferenceSqliteModule
   statements: Array<string>
 } => {
-  const databases = new Map<string, Database>()
+  const databases = new Map<string, NodeTestDatabase>()
   const statements: Array<string> = []
 
   const open = (name: string): ExpoPreferenceSqliteDatabase => {
-    const db = databases.get(name) ?? new Database(":memory:")
+    const db = databases.get(name) ?? new NodeTestDatabase(":memory:")
     databases.set(name, db)
     return {
       execAsync: async statement => {
@@ -27,10 +27,10 @@ const expoSqliteFromBun = (): {
         db.exec(statement)
       },
       getFirstAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
-        (db.query(statement).get(...(params as ReadonlyArray<SQLQueryBindings>)) as T | null) ?? null,
+        (db.query(statement).get(...(params as ReadonlyArray<SqliteTestBinding>)) as T | null) ?? null,
       runAsync: async (statement, ...params) => {
         statements.push(statement)
-        db.query(statement).run(...(params as ReadonlyArray<SQLQueryBindings>))
+        db.query(statement).run(...(params as ReadonlyArray<SqliteTestBinding>))
       },
     }
   }

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 // Pending oracle for khala_mobile.mobile-testing-lab.behavior.v1.
 // Replace this with the real behavior oracle before routing production UX here.

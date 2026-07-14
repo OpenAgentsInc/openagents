@@ -9,7 +9,7 @@
  *   3. Runs the full five-capability suite for every proven kind (green) and
  *      emits `test.todo` for every pending kind (visible red, sweep stays green).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   agentDefinitionHarnessKinds,
   agentRuntimeAdapterKinds,

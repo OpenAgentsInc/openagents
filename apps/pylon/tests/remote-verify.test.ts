@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { planRemoteVerify } from "../src/remote-verify"
 import { normalizeSshTarget } from "../src/ssh-target"

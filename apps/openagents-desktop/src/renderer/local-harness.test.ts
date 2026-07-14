@@ -4,7 +4,7 @@
  * bridge; a "codex" send is an explicit typed refusal; NEITHER ever reaches
  * the base host's legacy gateway sendMessage. Only a laneless send does.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { DesktopThread } from "../chat-contract.ts"
 import type { FableLocalEventEnvelope } from "../fable-local-contract.ts"

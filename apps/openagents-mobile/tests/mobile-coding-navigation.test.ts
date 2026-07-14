@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import {
   CODING_REPOSITORY_ENTITY_TYPE,
   CODING_SESSION_ENTITY_TYPE,
@@ -142,7 +142,7 @@ const catalog = (value: ConfirmedCodingCatalogSnapshot): KhalaSyncCodingCatalog 
 })
 
 const openBunDatabase = (databasePath: string): ExpoSqliteDatabase => {
-  const database = new Database(databasePath, { create: true })
+  const database = new NodeTestDatabase(databasePath, { create: true })
   return {
     execSync: sql => database.exec(sql),
     runSync: (sql, ...params) => database.query(sql).run(...params),

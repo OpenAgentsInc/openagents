@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Publish-path oracles (CUT-26, #8706).
  *
@@ -7,7 +8,7 @@
  * through the SAME documented env seam the production ceremony uses, then
  * assert the seed never appears in any output.
  */
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "vite-plus/test"
 import { generateKeyPairSync } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import { readFile, writeFile } from "node:fs/promises"
@@ -180,7 +181,7 @@ const runCli = (
   args: readonly string[],
   env: Record<string, string | undefined> = {},
 ): { exitCode: number; stdout: string; stderr: string } => {
-  const result = Bun.spawnSync(["bun", scriptPath, ...args], {
+  const result = Runtime.spawnSync([process.execPath, scriptPath, ...args], {
     cwd: appRoot,
     stdout: "pipe",
     stderr: "pipe",

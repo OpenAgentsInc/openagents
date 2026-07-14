@@ -18,7 +18,7 @@ test("VP-2 guard rejects Bun runtime source and permits the named SQLite oracle"
     }
     write("apps/example/src/server.ts", "Bun.serve({ fetch() {} })\n")
     write("packages/sqlite-runtime/src/bun-database.ts", 'import("bun:sqlite")\n')
-    write("packages/example/src/server.test.ts", 'import { test } from "bun:test"\n')
+    write("packages/example/src/server.test.ts", 'import { test } from "vite-plus/test"\n')
     execFileSync("git", ["add", "."], { cwd: root })
 
     assert.deepEqual(scanVp2NodeRuntime(root), [

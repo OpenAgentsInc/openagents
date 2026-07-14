@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 
 /**
  * `readNativeReadiness()` (`../src/native/modules`) runs two unrelated
@@ -22,7 +22,7 @@ import { describe, expect, mock, test } from "bun:test"
  *
  * `../src/native/modules` (the wrapper under test) is imported below with a
  * cache-busting query suffix rather than the bare specifier. Bun's
- * `mock.module` registry is process-global and keyed on the exact specifier
+ * `vi.mock` registry is process-global and keyed on the exact specifier
  * string, and a mocked module's cached exports persist for the rest of the
  * `bun test` process once evaluated — so if any OTHER test file in this
  * suite (today or in the future — see `tests/chat-composer.test.tsx`, which
@@ -33,14 +33,14 @@ import { describe, expect, mock, test } from "bun:test"
  * incomplete) stand-in instead of the real production wrapper — this bit
  * a prior version of this test with a `readNativeReadiness is not a
  * function` crash. The `?fresh=` suffix makes this a distinct module
- * specifier that no `mock.module` call anywhere else in the suite targets,
+ * specifier that no `vi.mock` call anywhere else in the suite targets,
  * forcing a genuinely fresh, real evaluation of `modules.ts` — using only
  * the two leaf-package mocks this file registers immediately above —
  * regardless of run order or what any other file has done to the bare
  * specifier (verified empirically: a cache-busted specifier bypasses an
- * active `mock.module` registration on the bare path entirely).
+ * active `vi.mock` registration on the bare path entirely).
  */
-mock.module("khala-push-to-talk-stt", () => ({
+vi.vi.fn("khala-push-to-talk-stt", () => ({
   default: {
     getAvailabilityAsync: () => Promise.reject(new Error("bridge disconnected: native binary out of sync")),
     startRecognitionAsync: () => Promise.reject(new Error("not implemented in test")),
@@ -48,7 +48,7 @@ mock.module("khala-push-to-talk-stt", () => ({
   }
 }))
 
-mock.module("khala-apple-foundation-models", () => ({
+vi.vi.fn("khala-apple-foundation-models", () => ({
   default: {
     getAvailabilityAsync: () =>
       Promise.resolve({ blockerRefs: [], status: "available", summary: "Apple Foundation Models are ready." })

@@ -4,7 +4,7 @@
  * (ready/output/exit/preview/closed/error), and the typed intent loop run
  * headlessly through the real registry with a fake bridge (no Electron).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 

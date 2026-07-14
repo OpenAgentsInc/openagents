@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -12,7 +13,7 @@ import { assertPublicProjectionSafe, ensurePylonLocalState } from "../src/state"
 const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
 const CWD = join(import.meta.dirname, "..")
 
-const servers: ReturnType<typeof Bun.serve>[] = []
+const servers: ReturnType<typeof Runtime.serve>[] = []
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
@@ -59,7 +60,7 @@ async function seedLocalCodexRuntime(home: string) {
 }
 
 async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
-  const proc = Bun.spawn(["bun", INDEX, ...args], {
+  const proc = Runtime.spawn([process.execPath, INDEX, ...args], {
     cwd: CWD,
     env,
     stderr: "pipe",
@@ -188,7 +189,7 @@ function makeControlServer(token: string) {
     resourceUsageReceiptRef: null,
   })
 
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
@@ -274,6 +275,7 @@ function makeControlServer(token: string) {
       }
     },
   })
+  await server.ready
   servers.push(server)
 
   return {
@@ -287,7 +289,7 @@ function makeControlServer(token: string) {
 function makeStatsIngestServer() {
   const ingests: Array<{ body: Record<string, unknown>; headers: Headers; path: string }> = []
   let total = 10_000
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
@@ -307,6 +309,7 @@ function makeStatsIngestServer() {
       })
     },
   })
+  await server.ready
   servers.push(server)
   return { baseUrl: `http://127.0.0.1:${server.port}`, ingests }
 }
@@ -316,7 +319,7 @@ describe("Khala Code programmatic CLI fleet and stats coverage", () => {
     await withHome(async ({ codexHome, home, noSiblingRoot, worktree }) => {
       const summary = await seedLocalCodexRuntime(home)
       const baseEnv = {
-        ...Bun.env,
+        ...process.env,
         CLAUDE_CONFIG_DIR: join(home, "claude-default"),
         CODEX_HOME: codexHome,
         PYLON_ACCOUNT_HOME_ROOT: noSiblingRoot,

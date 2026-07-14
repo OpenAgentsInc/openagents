@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vite-plus/test"
 import { decodeBinaryMediaFrame, GOOGLE_STREAM_AUDIO_LIMIT } from "./media"
 import { mediaFrame } from "./test-support"
 test("bounded binary media validates framing, digest, and Google limit", () => {

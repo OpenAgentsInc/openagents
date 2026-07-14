@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildDecisionCloseoutReceipt } from "./decision-closeout-receipt.js"
 import { createDecisionCloseoutLedger } from "./decision-closeout-ledger.js"

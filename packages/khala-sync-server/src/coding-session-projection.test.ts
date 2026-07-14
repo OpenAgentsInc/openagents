@@ -1,5 +1,5 @@
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import type { ChangelogEntry } from "@openagentsinc/khala-sync"
 
 import {
@@ -12,9 +12,6 @@ import type { AppendChangeInput, SyncTransactionWriter } from "./outbox-writer.j
 import type { SyncSql } from "./sql.js"
 import { runMigrations } from "./migrate.js"
 import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const at = "2026-07-11T12:00:00.000Z"
 const schema = "openagents.coding_catalog.v1"
 const ownerScopeRef = "scope.user.owner-1"
@@ -237,12 +234,12 @@ describe.skipIf(!hasLocalPostgres())("CUT-13 coding catalog projection against l
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_coding_catalog")
     await admin.end()
     const url = pg.urlFor("khala_sync_coding_catalog")
     await runMigrations({ databaseUrl: url })
-    sql = new SQL({ url, max: 5 })
+    sql = SQL({ url, max: 5 })
   })
 
   afterAll(async () => {

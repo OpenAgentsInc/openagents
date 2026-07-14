@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Database } from "bun:sqlite"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 
 import type { GrokWorkerExecutorPort } from "@openagentsinc/grok-harness/worker-executor"
 
@@ -357,7 +358,7 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
       body: privateBody,
       bodyRef: null,
     } as const)
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createFleetRun({
       runRef: run.runRef,
       objective: run.objective,
@@ -480,7 +481,7 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
         state: "failed",
         failureRef: "blocker.pylon.fleet_steering.intent_replay_conflict",
       })
-      await Bun.sleep(0)
+      await sleep(0)
       expect(followUps).toHaveLength(0)
       releaseInitial()
       expect(await first).toEqual({ state: "applied" })
@@ -516,7 +517,7 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
     await mkdir(accountHome, { recursive: true })
     await mkdir(workingDirectory, { recursive: true })
     const request = dispatchFor(accountRef, 205, "fixture")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createFleetRun({
       runRef: run.runRef,
       objective: run.objective,
@@ -771,7 +772,7 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
     await mkdir(accountHome, { recursive: true })
     const account = accountFor(accountHome, accountRef)
     const dispatch = dispatchFor(accountRef, 2, "fixture")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createFleetRun({
       runRef: run.runRef,
       objective: run.objective,
@@ -832,7 +833,7 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
       const first = runner.dispatch(dispatch)
       const duplicate = runner.dispatch(dispatch)
       for (let attempt = 0; attempt < 50 && runs === 0; attempt += 1) {
-        await Bun.sleep(1)
+        await sleep(1)
       }
       expect(runs).toBe(1)
       expect(store.getWorkClaim(storedClaim.claimRef)?.assignmentRef).toMatch(
@@ -920,7 +921,7 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
         createExecutor: () => ({
           ...successfulExecutor(),
           runClaimedWork: async input => {
-            await Bun.sleep(250)
+            await sleep(250)
             return {
               ok: true,
               claimRef: input.pin.claimRef,
@@ -948,7 +949,7 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
           activeDeliveries += 1
           maxActiveDeliveries = Math.max(maxActiveDeliveries, activeDeliveries)
           delivered.push(event.event)
-          await Bun.sleep(150)
+          await sleep(150)
           activeDeliveries -= 1
         },
       })
@@ -961,7 +962,7 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
       expect(delivered).toContain("assignment_run.runtime_started")
       expect(delivered).toContain("assignment_run.runtime_progress")
       expect(maxActiveDeliveries).toBe(1)
-      await Bun.sleep(200)
+      await sleep(200)
       expect(delivered).toHaveLength(deliveredAtTerminal)
       const receiptFiles = await readdir(join(summary.paths.cache, "grok-fleet-receipts"))
       const terminalReceipt = JSON.parse(await readFile(

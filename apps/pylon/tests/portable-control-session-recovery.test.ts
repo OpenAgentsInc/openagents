@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite"
-import { afterEach, describe, expect, test } from "bun:test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -48,7 +48,7 @@ describe("durable portable control-session restart recovery", () => {
       PYLON_HOME: join(root, "pylon"),
     })
     const path = join(root, "portable.sqlite")
-    const firstDatabase = new Database(path, { create: true })
+    const firstDatabase = new NodeTestDatabase(path, { create: true })
     const firstLedger = new PylonPortableSessionOperationLedger(firstDatabase)
     const executor: ControlSessionExecutor = async input => {
       await new Promise<never>((_resolve, reject) => {
@@ -115,7 +115,7 @@ describe("durable portable control-session restart recovery", () => {
 
     // A second SQLite handle models the fresh Pylon process. Recovery changes
     // the shared durable epoch before any new process can accept graph work.
-    const restartedDatabase = new Database(path)
+    const restartedDatabase = new NodeTestDatabase(path)
     const restartedLedger = new PylonPortableSessionOperationLedger(restartedDatabase)
     const restarted = createControlSessionActions({
       env: {},

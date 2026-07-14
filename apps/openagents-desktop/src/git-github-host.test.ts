@@ -7,7 +7,7 @@
  * directly, and one guarded real `gh --version`/`gh auth status` test skips
  * with a printed reason when gh is unavailable, so CI stays honest.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

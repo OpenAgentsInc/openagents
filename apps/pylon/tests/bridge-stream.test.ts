@@ -1,7 +1,7 @@
 // Tests for the bridge stream sequencing/replay core (CL-10 / #4912).
 // Pure unit tests — no I/O, no network, fully deterministic.
 
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   initialCursor,
   needsResnapshot,

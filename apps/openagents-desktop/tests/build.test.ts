@@ -1,9 +1,10 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Build check (#8574): the three real artifacts — ESM Electron main, CommonJS
  * sandboxed preload, and the bundled Effect Native renderer — build from
  * source in the test sweep, so a broken bundle can never reach `bun run dev`.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { createHash } from "node:crypto"
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -16,8 +17,8 @@ describe("openagents-desktop build", () => {
   test("bundles main, workers, preload, and the EN renderer into dist/", async () => {
     // Run the real build in its own process with the app as cwd — module
     // resolution for the vendored EN workspace packages is cwd-sensitive
-    // when Bun.build runs inside `bun test` from the repo root.
-    const result = Bun.spawnSync([process.execPath, "scripts/build.ts"], {
+    // when Runtime.build runs inside `bun test` from the repo root.
+    const result = Runtime.spawnSync([process.execPath, "scripts/build.ts"], {
       cwd: appRoot,
       stdout: "pipe",
       stderr: "pipe",

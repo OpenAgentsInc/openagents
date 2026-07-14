@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { View as RNView } from "react-native"
 import { act, create as createTestRenderer } from "react-test-renderer"
@@ -25,36 +25,36 @@ import { act, create as createTestRenderer } from "react-test-renderer"
 // Ignite `Screen`/`Header` pull @react-navigation/native + the native shell
 // wrappers at module-eval; WelcomeStep uses neither, so stand them in exactly
 // like `repo-picker-screen.test.tsx` does (compatible shapes).
-mock.module("../src/ignite/components/Screen", () => ({
+vi.vi.fn("../src/ignite/components/Screen", () => ({
   Screen: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
-mock.module("../src/ignite/components/Header", () => ({
+vi.vi.fn("../src/ignite/components/Header", () => ({
   Header: ({ title }: { title?: string }) => React.createElement("Header", null, title),
 }))
 
 // The `../ignite` barrel re-exports `useSafeAreaInsetsStyle`, which imports
 // `react-native-safe-area-context` (native, trips Bun's reentrant-require
 // guard). Same stand-in the repo-picker mount test uses.
-mock.module("react-native-safe-area-context", () => ({
+vi.vi.fn("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }))
 
 // Credits chip pulls the real Khala Sync runtime primitives; the welcome CTA
 // doesn't depend on the balance readout, so a null stand-in keeps the mount
 // focused on the button. No other test mounts this component for real.
-mock.module("../src/components/credits-balance-chip", () => ({
+vi.vi.fn("../src/components/credits-balance-chip", () => ({
   CreditsBalanceChip: () => null,
 }))
 
 // Push registration imports `expo-notifications` (dead outside a native host).
-mock.module("../src/push/push-notifications-client", () => ({
+vi.vi.fn("../src/push/push-notifications-client", () => ({
   registerForPushNotificationsAsync: async () => undefined,
   unregisterPushNotificationsAsync: async () => undefined,
 }))
 
 // Real sync runtime needs Expo SQLite + a durable-cursor session. Same shape
 // the repo-picker mount test uses (compatible in the shared process).
-mock.module("../src/sync/khala-mobile-sync-runtime-context", () => ({
+vi.vi.fn("../src/sync/khala-mobile-sync-runtime-context", () => ({
   useKhalaMobileSyncRuntime: () => ({ runtime: {}, status: "ready" }),
   useKhalaMobileSyncPrimitives: () => ({ overlay: {}, session: {}, store: {} }),
 }))
@@ -62,7 +62,7 @@ mock.module("../src/sync/khala-mobile-sync-runtime-context", () => ({
 // Static auth values; `githubLogin` is a harmless superset over the shapes the
 // other mount tests provide. The greeting-selection logic itself is covered
 // purely in `onboarding-core.test.ts`, so this file does not assert on it.
-mock.module("../src/auth/khala-auth-context", () => ({
+vi.vi.fn("../src/auth/khala-auth-context", () => ({
   useKhalaAuth: () => ({
     baseUrl: "https://openagents.test",
     githubLogin: "octocat",

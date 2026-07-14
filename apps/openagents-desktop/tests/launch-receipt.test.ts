@@ -8,7 +8,7 @@
  * late) plus the fail-closed decode/version rules, entirely against the pure
  * contract and reducer — no live update feed, no clock, no Electron.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   LAUNCH_RECEIPT_SCHEMA_ID,
   LAUNCH_RECEIPT_WINDOW_MS,

@@ -4,7 +4,7 @@
  * evidence superseding presence-based "ready"), deterministic snapshot
  * order, push notification, and disposal.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { decodeUsageLedgerSnapshot } from "./usage-ledger-contract.ts"
 import { makeUsageLedger } from "./usage-ledger.ts"

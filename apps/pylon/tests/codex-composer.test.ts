@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync } from "node:fs"
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -289,7 +289,7 @@ describe("Codex composer SDK stream", () => {
 
   test("injects per-session CODEX_HOME without mutating the process env", async () => {
     let clientEnv: Record<string, string | undefined> | null = null
-    const original = Bun.env.CODEX_HOME
+    const original = process.env.CODEX_HOME
     const importer = async (specifier: string) => {
       if (specifier !== CODEX_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
       return {
@@ -317,7 +317,7 @@ describe("Codex composer SDK stream", () => {
 
     expect(result.threadId).toBe("thread.test.codex")
     expect(clientEnv).toMatchObject({ PATH: "/bin", CODEX_HOME: "/tmp/codex-home-a" })
-    expect(Bun.env.CODEX_HOME).toBe(original)
+    expect(process.env.CODEX_HOME).toBe(original)
   })
 
   test("injects the ripgrep guard into the Codex environment", async () => {

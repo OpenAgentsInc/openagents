@@ -11,7 +11,7 @@
  * File naming: `<MessageType>[.<variant>].json`; the segment before the
  * first `.` selects the codec.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { Schema as S } from "effect"

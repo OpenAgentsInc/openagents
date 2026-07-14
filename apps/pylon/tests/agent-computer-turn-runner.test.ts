@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vite-plus/test'
 import { mkdtempSync } from 'node:fs'
-import { readFile, rm } from 'node:fs/promises'
+import { readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1027,7 +1027,7 @@ describe('agent-computer turn-runner: runCodexTurnWithReceipt (CX-3 #8547)', () 
   test('happy path: REAL spawn of a stub binary, exact org-capacity receipt, token never serialized', async () => {
     const stubDir = mkdtempSync(join(tmpdir(), 'codex-stub-'))
     const stubPath = join(stubDir, 'codex')
-    await Bun.write(stubPath, `#!/bin/sh\ncat << 'JSONL'\n${codexJsonl}\nJSONL\n`)
+    await writeFile(stubPath, `#!/bin/sh\ncat << 'JSONL'\n${codexJsonl}\nJSONL\n`)
     const { chmod } = await import('node:fs/promises')
     await chmod(stubPath, 0o755)
     const { calls, fetchImpl } = receiptFetch()

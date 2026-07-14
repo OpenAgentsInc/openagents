@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { decodeFleetStageRequest } from "../src/fleet-contract.ts"
 import { submitFleetBrief } from "../src/fleet-control.ts"

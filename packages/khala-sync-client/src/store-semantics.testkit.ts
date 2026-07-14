@@ -13,7 +13,7 @@ import {
   SyncVersion,
   SyncVersionWatermark,
 } from "@openagentsinc/khala-sync"
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import {
   type ConfirmedEntity,

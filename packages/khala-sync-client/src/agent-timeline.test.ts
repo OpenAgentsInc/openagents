@@ -18,7 +18,7 @@ import {
   encodeRuntimeInteractionEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { enCopy, khalaCopyKeys, tx, type KhalaCopyKey } from "../src/i18n/copy"
 

@@ -1,6 +1,6 @@
 import { join } from "node:path"
 
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { createInMemoryAssetStore } from "./asset-store.ts"
 import { seedFromDist } from "./serve.ts"

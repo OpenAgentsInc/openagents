@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   LBR_BOND_FORFEIT_FEEDBACK_TYPE,

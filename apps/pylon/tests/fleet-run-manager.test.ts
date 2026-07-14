@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 
 import { PylonFleetRunManager } from "../src/orchestration/fleet-run-manager.js"
@@ -20,7 +20,7 @@ const lifecycle = (
 })
 
 const managerFixture = () => {
-  const store = createPylonOrchestrationStore(new Database(":memory:"))
+  const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
   const manager = new PylonFleetRunManager({ now: () => now, store })
   const planner = {
     plan: async () => planWorkCandidates(

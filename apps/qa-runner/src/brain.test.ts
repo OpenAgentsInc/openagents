@@ -2,7 +2,7 @@
 // and inert by default (throws without an injected driver) so CI never makes a
 // live inference call.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import {
   KhalaBrainNotArmedError,
   khalaBrain,

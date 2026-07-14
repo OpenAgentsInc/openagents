@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { Capability, PairingCredentialClaims } from "@openagentsinc/autopilot-control-protocol"
 import {
   exchangeBootstrap,

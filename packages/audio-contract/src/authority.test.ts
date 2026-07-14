@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vite-plus/test"
 import { observeProse, stoppedVoiceModel } from "./lifecycle-model"
 test("openagents_voice.command_outcome_receipt_authority.v1: prose is never authority", () => {
   const initial = stoppedVoiceModel()

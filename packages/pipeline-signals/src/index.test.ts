@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Cause, Deferred, Effect, Exit, Fiber, PubSub, Scope } from "effect"
 
 import {

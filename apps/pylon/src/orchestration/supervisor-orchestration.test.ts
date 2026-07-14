@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import fc from "fast-check"
 import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -48,7 +48,7 @@ const greenVerifyEvidence = (commandRef = "command.public.pylon_khala.verify.284
 
 describe("Pylon supervisor orchestration store", () => {
   test("migrates older dispatch tables before creating account-lane indexes", () => {
-    const db = new Database(":memory:")
+    const db = new NodeTestDatabase(":memory:")
     db.exec(`
       CREATE TABLE pylon_orchestration_dispatch_contexts (
         id TEXT PRIMARY KEY,
@@ -102,7 +102,7 @@ describe("Pylon supervisor orchestration store", () => {
   })
 
   test("migrates an existing FleetRun table so Sarah can durably import Grok work", () => {
-    const db = new Database(":memory:")
+    const db = new NodeTestDatabase(":memory:")
     db.exec(`
       CREATE TABLE pylon_orchestration_fleet_runs (
         run_ref TEXT PRIMARY KEY,
@@ -153,7 +153,7 @@ describe("Pylon supervisor orchestration store", () => {
   })
 
   test("persists a dependency DAG and promotes dependents when prerequisites complete", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
 
     store.createTask({ id: "task.root", spec: baseTaskSpec })
     store.createTask({
@@ -173,7 +173,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("records dispatch failures as a three-strike circuit breaker", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({ id: "task.flaky", spec: baseTaskSpec, now })
     store.createDispatchContext({
       id: "ctx.codex.1",
@@ -199,7 +199,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("keeps circuit-broken dispatch contexts quarantined across heartbeats", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createDispatchContext({
       id: "ctx.flapping",
       assigneeHandle: "codex-flap",
@@ -225,7 +225,7 @@ describe("Pylon supervisor orchestration store", () => {
   test("records typed transient account-lane breakers and cools dispatch eligibility", () => {
     // background_agents.dispatch.lane_account_breaker.v1
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({ id: "task.rate-limited", spec: baseTaskSpec, now })
     store.createTask({ id: "task.next", spec: { ...baseTaskSpec, title: "next" }, now })
     store.createDispatchContext({
@@ -274,7 +274,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("records permanent account-lane breakers from worker failures", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({ id: "task.revoked", spec: baseTaskSpec, now })
     store.createDispatchContext({
       id: "ctx.codex.revoked",
@@ -307,7 +307,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("plans dispatch only for fresh, non-drifted idle contexts and persists assignment", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({ id: "task.a", spec: baseTaskSpec, now })
     store.createTask({ id: "task.b", spec: { ...baseTaskSpec, title: "b" }, now })
     store.createDispatchContext({
@@ -347,7 +347,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("uses registry runner kinds to match typed tasks to compatible contexts", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({
       id: "task.claude",
       spec: { ...baseTaskSpec, title: "Claude task", runnerKind: "claude_agent" },
@@ -385,7 +385,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("projects dispatch contexts as runner-neutral fleet status events", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const task = store.createTask({
       id: "task.7809",
       spec: { ...baseTaskSpec, title: "Issue #7809", runnerKind: "codex" },
@@ -426,7 +426,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("ingests agent runner status events as live status and updates dispatch contexts", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({
       id: "task.status-spine",
       spec: { ...baseTaskSpec, title: "Status spine", runnerKind: "codex" },
@@ -478,7 +478,7 @@ describe("Pylon supervisor orchestration store", () => {
   })
 
   test("retains previous live status entries and rolls state history", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const base = {
       runnerRef: "runner.raw.codex-history",
       runnerKind: "codex",
@@ -518,7 +518,7 @@ describe("Pylon supervisor orchestration store", () => {
   })
 
   test("caps runner status history at the requested rolling limit", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     let latest = null as ReturnType<typeof store.ingestAgentRunnerStatusEvent> | null
     for (let index = 0; index < 25; index += 1) {
       const state = index % 2 === 0 ? "working" : "waiting"
@@ -549,7 +549,7 @@ describe("Pylon supervisor orchestration store", () => {
   })
 
   test("decays stale live runner statuses to idle while retaining the active entry", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const working = store.ingestAgentRunnerStatusEvent({
       event: {
         eventRef: "event.decay.working",
@@ -579,7 +579,7 @@ describe("Pylon supervisor orchestration store", () => {
   })
 
   test("normalizes legacy runner aliases through the AgentRunner registry vocabulary", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const task = store.createTask({
       id: "task.legacy-claude",
       spec: { ...baseTaskSpec, runnerKind: "claude_agent" },
@@ -601,7 +601,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("projects public-safe task and dispatch-context state without prompts or worktree paths", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({
       id: "task.public-safe",
       spec: {
@@ -648,7 +648,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("persists FleetRun records on the orchestration store with supervised-dispatch taxonomy", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = store.createFleetRun({
       runRef: "fleet_run.t2_1",
       objective: "Burn down the public Fable fixture backlog.",
@@ -687,7 +687,7 @@ describe("Pylon supervisor orchestration store", () => {
   })
 
   test("rejects FleetRun handoffs that claim DAG tracking", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const handoff = store.createFleetRun({
       runRef: "fleet_run.handoff",
       objective: "One-shot handoff.",
@@ -707,7 +707,7 @@ describe("Pylon supervisor orchestration store", () => {
   test("reconciles FleetRun counters from existing orchestration tasks", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
     const doneAt = new Date("2026-07-01T12:05:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createFleetRun({
       runRef: "fleet_run.reconcile",
       objective: "Run three fixture work units.",
@@ -764,7 +764,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("counts retried attempts as one work unit while retaining failed-attempt history", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const runRef = "fleet_run.reconcile.retry_unit"
     const workUnitRef = "issue.8640"
     store.createFleetRun({
@@ -821,7 +821,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("reconciles completed FleetRuns when every DAG-tracked work unit is terminal", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createFleetRun({
       runRef: "fleet_run.completed",
       objective: "Finish a fixture work unit.",
@@ -846,7 +846,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("tracks state provenance: operator verbs stamp operator, reconcile auto-close stamps reconcile (#7975)", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createFleetRun({
       runRef: "fleet_run.provenance",
       objective: "Provenance fixture.",
@@ -893,7 +893,7 @@ describe("Pylon supervisor orchestration store", () => {
   test("mirrors FleetRun records to owner-local state and rehydrates a fresh store", async () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
     const home = await mkdtemp(join(tmpdir(), "pylon-fleet-runs-"))
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = store.createFleetRun({
       runRef: "fleet_run.owner_local",
       objective: "Resume fixture work after restart.",
@@ -910,7 +910,7 @@ describe("Pylon supervisor orchestration store", () => {
     expect(file.runs).toHaveLength(1)
     expect(file.runs[0]).toMatchObject({ runRef: run.runRef, schema: FLEET_RUN_SCHEMA })
 
-    const freshStore = createPylonOrchestrationStore(new Database(":memory:"))
+    const freshStore = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const rehydrated = await reconcileFleetRunsFromOwnerLocalState(freshStore, { home }, { now })
 
     expect(rehydrated.map((entry) => entry.runRef)).toEqual(["fleet_run.owner_local"])
@@ -954,7 +954,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("enforces one live work claim per work unit with TTL reuse", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const first = store.tryClaimWorkUnit({
       claimRef: "claim.1",
       workUnitRef: "issue.7827",
@@ -1011,7 +1011,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("releases live work claims when worker heartbeat evidence is dead", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createDispatchContext({
       id: "ctx.dead",
       assigneeHandle: "codex-dead",
@@ -1070,7 +1070,7 @@ describe("Pylon supervisor orchestration store", () => {
 
     fc.assert(
       fc.property(fc.array(operationArbitrary, { minLength: 1, maxLength: 120 }), (operations) => {
-        const store = createPylonOrchestrationStore(new Database(":memory:"))
+        const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
         let nowMs = Date.parse("2026-07-01T12:00:00.000Z")
         let claimSeq = 0
 
@@ -1106,7 +1106,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("closeout gate refuses ready_for_review without verify-green evidence", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const claim = store.tryClaimWorkUnit({
       claimRef: "claim.t4_3.verify",
       workUnitRef: "issue.7836",
@@ -1132,7 +1132,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("closeout gate refuses ready_for_review when the claim expired", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const claim = store.tryClaimWorkUnit({
       claimRef: "claim.t4_3.expired",
       workUnitRef: "issue.7836",
@@ -1160,7 +1160,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("merge policy defaults to manual review and auto-merges only clean owner-toggled closeouts", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const claim = store.tryClaimWorkUnit({
       claimRef: "claim.t4_3.policy",
       workUnitRef: "issue.7836",
@@ -1218,7 +1218,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("Claude second-pass review is advisory: it can demote auto_merge_clean but never approve", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const claim = store.tryClaimWorkUnit({
       claimRef: "claim.t9_5.policy",
       workUnitRef: "issue.7874",
@@ -1278,7 +1278,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("merge-wave resolver has one live claim per wave work unit", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const job = createMergeWaveResolverJob({
       waveRef: "wave.t4_3.conflicts",
       runRef: "fleet_run.t4_3",
@@ -1313,7 +1313,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("refuses an otherwise healthy idle context when the ready task requires another runner", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({
       id: "task.claude",
       spec: { ...baseTaskSpec, title: "Claude task", runnerKind: "claude_agent" },
@@ -1339,7 +1339,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("tracks a virtual HEAD chain for concurrently dispatched git tasks", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({ id: "task.a", spec: baseTaskSpec, now })
     store.createTask({ id: "task.b", spec: { ...baseTaskSpec, title: "Issue #6406" }, now })
     store.createDispatchContext({
@@ -1378,7 +1378,7 @@ describe("Pylon supervisor orchestration store", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
     const heartbeatAt = new Date("2026-06-27T12:01:00.000Z")
     const doneAt = new Date("2026-06-27T12:02:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({ id: "task.root", spec: baseTaskSpec, now })
     store.createTask({
       id: "task.child",
@@ -1432,7 +1432,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("worker failures increment the dispatch circuit breaker and preserve dependent blockers", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createTask({ id: "task.fail", spec: baseTaskSpec, now })
     store.createTask({
       id: "task.dependent",
@@ -1470,7 +1470,7 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("classifies heartbeat liveness with fresh, stale, hung, and missing states", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const fresh = store.createDispatchContext({
       id: "ctx.fresh",
       assigneeHandle: "codex-1",
@@ -1501,7 +1501,7 @@ describe("Pylon supervisor orchestration store", () => {
 describe("Pylon supervisor group addressing", () => {
   test("resolves @all, @idle, @worktree:<id>, and assignee addresses", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createDispatchContext({
       id: "ctx.a",
       assigneeHandle: "codex-1",

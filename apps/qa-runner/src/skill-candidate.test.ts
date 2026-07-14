@@ -2,7 +2,7 @@
 // Blueprint optimizer candidate: typed, honest ladder tier, evidence-only,
 // Release-Gate-gated, never self-promoted, fail-closed on a non-public-safe trace.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { makeSessionTrace, type SessionBeat } from "./session-trace";
 import {
   assertSkillCandidateGoverned,

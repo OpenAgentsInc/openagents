@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { EventEmitter } from "node:events"
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -62,7 +63,7 @@ const fakeServer = () => {
 }
 
 const waitForMessages = async (messages: ReadonlyArray<unknown>, count: number): Promise<void> => {
-  for (let attempt = 0; attempt < 100 && messages.length < count; attempt += 1) await Bun.sleep(1)
+  for (let attempt = 0; attempt < 100 && messages.length < count; attempt += 1) await sleep(1)
   expect(messages.length).toBeGreaterThanOrEqual(count)
 }
 
@@ -82,17 +83,17 @@ describe("Codex app-server native integration", () => {
       skillRoot: "/isolated/codex-home/skills",
       skillPath: "/isolated/codex-home/skills/productspec-work/SKILL.md",
     })
-    await Bun.sleep(0)
+    await sleep(0)
     expect(fake.messages[0]).toMatchObject({ method: "initialize", id: 1, params: { capabilities: { experimentalApi: true } } })
     fake.respond(1, { userAgent: "codex-test" })
-    await Bun.sleep(0)
+    await sleep(0)
     expect(fake.messages[1]).toEqual({ method: "initialized", params: {} })
     expect(fake.messages[2]).toMatchObject({ method: "skills/extraRoots/set", id: 2 })
     fake.respond(2, {})
-    await Bun.sleep(0)
+    await sleep(0)
     expect(fake.messages[3]).toMatchObject({ method: "skills/config/write", id: 3 })
     fake.respond(3, {})
-    await Bun.sleep(0)
+    await sleep(0)
     expect(fake.messages[4]).toMatchObject({ method: "skills/list", id: 4 })
     fake.respond(4, { data: [{ cwd: "/workspace", skills: [{
       name: "productspec-work",
@@ -122,13 +123,13 @@ describe("Codex app-server native integration", () => {
       skillRoot: "/isolated/codex-home/skills",
       skillPath: "/isolated/codex-home/skills/assurancespec-work/SKILL.md",
     })
-    await Bun.sleep(0)
+    await sleep(0)
     fake.respond(1, { userAgent: "codex-test" })
-    await Bun.sleep(0)
+    await sleep(0)
     fake.respond(2, {})
-    await Bun.sleep(0)
+    await sleep(0)
     fake.respond(3, {})
-    await Bun.sleep(0)
+    await sleep(0)
     fake.respond(4, { data: [{ cwd: "/workspace", skills: [{
       name: "assurancespec-work",
       path: "/isolated/codex-home/skills/assurancespec-work/SKILL.md",
@@ -155,7 +156,7 @@ describe("Codex app-server native integration", () => {
     fake.notify("turn/completed", { threadId: "thread-1" })
     fake.child.stdout.write(`${JSON.stringify({ id: 91, method: "item/commandExecution/requestApproval", params: {} })}\n`)
     fake.child.stdout.write(`${JSON.stringify({ id: "question-92", method: "item/tool/requestUserInput", params: {} })}\n`)
-    await Bun.sleep(0)
+    await sleep(0)
     expect(seen).toEqual([{ method: "turn/completed", params: { threadId: "thread-1" } }])
     expect(fake.messages).toContainEqual({ id: 91, result: { decision: "decline" } })
     expect(fake.messages).toContainEqual({ id: "question-92", result: { answers: {} } })
@@ -237,7 +238,7 @@ describe("Codex app-server native integration", () => {
     fake.respond(7, { turnId: "codex-turn-1" })
     await expect(steer).resolves.toBe(true)
     fake.child.stdout.write(`${JSON.stringify({ id: "product-tool-1", method: "item/tool/call", params: { namespace: "product_spec", tool: "get_run", callId: "call-1", arguments: { runRef: "run.1" } } })}\n`)
-    await Bun.sleep(0)
+    await sleep(0)
     expect(fake.messages).toContainEqual({ id: "product-tool-1", result: {
       contentItems: [{ type: "inputText", text: JSON.stringify({ ok: true, callId: "call-1" }) }],
       success: true,

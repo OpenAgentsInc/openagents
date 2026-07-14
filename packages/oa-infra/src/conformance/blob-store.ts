@@ -5,7 +5,7 @@
  * hot-swap guarantee). Keys are namespaced per test with a fresh UUID so
  * shared buckets can host the suite.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import type { Layer } from "effect"
 import { BlobStore } from "../blob-store.ts"

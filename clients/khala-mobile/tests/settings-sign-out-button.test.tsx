@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
@@ -26,48 +26,48 @@ import { act, create as createTestRenderer } from "react-test-renderer"
 // wrappers at module-eval; AccountSection only needs Card as a passthrough
 // wrapper, so stand them in with compatible shapes (same idea as the
 // repo-picker/onboarding mount tests).
-mock.module("../src/ignite/components/Screen", () => ({
+vi.vi.fn("../src/ignite/components/Screen", () => ({
   Screen: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
-mock.module("../src/ignite/components/Header", () => ({
+vi.vi.fn("../src/ignite/components/Header", () => ({
   Header: ({ title }: { title?: string }) => React.createElement("Header", null, title),
 }))
-mock.module("../src/ignite/components/Card", () => ({
+vi.vi.fn("../src/ignite/components/Card", () => ({
   Card: ({ ContentComponent, heading }: { ContentComponent?: React.ReactNode; heading?: string }) =>
     React.createElement(React.Fragment, null, React.createElement("Text", null, heading), ContentComponent),
 }))
 
 // The `../ignite` barrel re-exports `useSafeAreaInsetsStyle` (native). Same
 // stand-in the other mount tests use.
-mock.module("react-native-safe-area-context", () => ({
+vi.vi.fn("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }))
 
 // Native-bridge / expo modules the settings-screen module graph pulls at eval
 // but that AccountSection's Sign out button does not exercise.
-mock.module("expo-constants", () => ({ default: { expoConfig: { version: "0.0.0" } } }))
-mock.module("expo-notifications", () => ({
+vi.vi.fn("expo-constants", () => ({ default: { expoConfig: { version: "0.0.0" } } }))
+vi.vi.fn("expo-notifications", () => ({
   getPermissionsAsync: async () => ({ canAskAgain: true, granted: false }),
 }))
-mock.module("../src/push/push-notifications-client", () => ({
+vi.vi.fn("../src/push/push-notifications-client", () => ({
   registerForPushNotificationsAsync: async () => undefined,
 }))
-mock.module("../src/native/use-on-device-readiness", () => ({
+vi.vi.fn("../src/native/use-on-device-readiness", () => ({
   useOnDeviceReadiness: () => ({ status: "loading" }),
 }))
-mock.module("../src/sync/khala-mobile-credits-api", () => ({
+vi.vi.fn("../src/sync/khala-mobile-credits-api", () => ({
   fetchKhalaMobileCreditsBalance: async () => ({ ok: false }),
 }))
-mock.module("../src/sync/khala-mobile-model-preference-api", () => ({
+vi.vi.fn("../src/sync/khala-mobile-model-preference-api", () => ({
   fetchKhalaMobileModelPreference: async () => ({ ok: false }),
   putKhalaMobileModelPreference: async () => ({ ok: false }),
 }))
-mock.module("../src/auth/mobile-openauth", () => ({
+vi.vi.fn("../src/auth/mobile-openauth", () => ({
   KHALA_ACCOUNT_DELETION_POLICY_COPY: "…",
 }))
 
-const signOut = mock(() => undefined)
-mock.module("../src/auth/khala-auth-context", () => ({
+const signOut = vi.fn(() => undefined)
+vi.vi.fn("../src/auth/khala-auth-context", () => ({
   useKhalaAuth: () => ({
     baseUrl: "https://openagents.test",
     deleteAccount: async () => undefined,

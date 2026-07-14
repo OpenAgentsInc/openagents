@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   type OtaUpdatesClient,
@@ -52,9 +53,9 @@ describe("contract openagents_mobile.ota.temporary_3s_poll.v1", () => {
     expect(TEMPORARY_OTA_POLL_INTERVAL_MS).toBe(3000)
     // The aggressive cadence must stay explicitly marked as temporary so it
     // gets dialed down deliberately, not forgotten.
-    const source = await Bun.file(
+    const source = await readFile(
       new URL("../src/updates/ota-polling.ts", import.meta.url).pathname,
-    ).text()
+    , "utf8")
     expect(source).toContain("TEMPORARY CADENCE")
     expect(source).toContain("TEMPORARY_OTA_POLL_INTERVAL_MS")
   })

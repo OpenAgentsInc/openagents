@@ -1,7 +1,7 @@
 // Target registry tests (#6190): named targets, restrictions, env overrides,
 // and the read-only enforcement policy. Pure — no browser, no network.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 import {
   checkStepAllowed,

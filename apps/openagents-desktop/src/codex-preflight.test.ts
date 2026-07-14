@@ -7,7 +7,7 @@
  * bound, health + onResult feeds, concurrent probing, and the session cache
  * semantics of ensureProbed vs probeAll.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { EventEmitter } from "node:events"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"

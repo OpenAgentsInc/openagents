@@ -5,7 +5,7 @@
 // mid-stream rehydrate, attach catch-up, fan-out policy, and
 // access-changed broadcast are byte-level ports of the DO cases.
 
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   LIVE_HUB_PING_TEXT,

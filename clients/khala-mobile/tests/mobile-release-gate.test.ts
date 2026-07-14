@@ -1,6 +1,7 @@
+import { readFile } from "node:fs/promises"
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   khalaMobileGateFixtureTierStatus,
@@ -23,7 +24,7 @@ const screenFiles = (): readonly string[] =>
 
 describe("QAM-1 mobile release gate policy", () => {
   test("package exposes the local qa:mobile:gate runner", async () => {
-    const packageJson = JSON.parse(await Bun.file(fromRoot("package.json")).text()) as {
+    const packageJson = JSON.parse(await readFile(fromRoot("package.json"), "utf8")) as {
       scripts?: Record<string, string>
     }
 

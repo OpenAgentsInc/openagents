@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 
@@ -9,7 +10,7 @@ const cli = resolve(import.meta.dirname, "../src/cli.ts")
 type CliResult = Readonly<{ exitCode: number; stdout: string; stderr: string }>
 
 const run = (args: ReadonlyArray<string>, cwd: string = repoRoot): CliResult => {
-  const result = Bun.spawnSync([process.execPath, cli, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const result = Runtime.spawnSync([process.execPath, cli, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   return {
     exitCode: result.exitCode,
     stdout: result.stdout.toString("utf8"),

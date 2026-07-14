@@ -1,9 +1,10 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Obligation dependency-graph projection (#8761, GAP_ANALYSIS §6 / §11 item 5):
  * cycle detection with the designed stable codes, the pure designable-now vs
  * blocked vs gated projection, and its CLI/MCP exposure.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
@@ -374,7 +375,7 @@ describe("CLI graph command", () => {
     args: ReadonlyArray<string>,
     cwd: string = repoRoot,
   ): Readonly<{ exitCode: number; stdout: string; stderr: string }> => {
-    const result = Bun.spawnSync([process.execPath, cli, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+    const result = Runtime.spawnSync([process.execPath, cli, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
     return {
       exitCode: result.exitCode,
       stdout: result.stdout.toString("utf8"),

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { OpenAgentsMcpReceipt } from "@openagentsinc/mcp-contract"
 
 // FEED-1 (openagents #8783): OpenAgents harness MCP server — list/call round

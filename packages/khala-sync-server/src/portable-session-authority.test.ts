@@ -1,5 +1,5 @@
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 
 import { runMigrations } from "./migrate.js"
 import { withSyncTransaction } from "./outbox-writer.js"
@@ -19,9 +19,6 @@ import {
 } from "./portable-session-authority.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const owner = "owner.port01"
 const sessionRef = "session.port01"
 const sourceAttachmentRef = "attachment.port01.1"
@@ -177,13 +174,13 @@ describe.skipIf(!hasLocalPostgres())("PORT-01 portable session authority against
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_portable_session")
     await admin.end()
     const result = await runMigrations({ databaseUrl: pg.urlFor("khala_sync_portable_session") })
     expect(result.applied).toContain("0066_portable_session_authority.sql")
     expect(result.applied).toContain("0067_portable_session_execution_binding.sql")
-    sql = new SQL({ url: pg.urlFor("khala_sync_portable_session"), max: 10 })
+    sql = SQL({ url: pg.urlFor("khala_sync_portable_session"), max: 10 })
   })
 
   afterAll(async () => {
@@ -228,7 +225,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-01 portable session authority against
       }, "mutation.event.2")).toBe(2)
     })
 
-    const restarted = new SQL({ url: pg.urlFor("khala_sync_portable_session"), max: 1 })
+    const restarted = SQL({ url: pg.urlFor("khala_sync_portable_session"), max: 1 })
     const snapshot = await readPortableSessionAuthoritySnapshot(
       restarted as unknown as SyncSql,
       { sessionRef, ownerUserId: owner },

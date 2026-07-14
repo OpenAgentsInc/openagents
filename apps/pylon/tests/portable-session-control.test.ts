@@ -1,9 +1,11 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { existsSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { cp, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 
 import {
   continuePortableSession,
@@ -91,7 +93,7 @@ const fixture = async () => {
 }
 
 const run = async (command: ReadonlyArray<string>, cwd?: string): Promise<void> => {
-  const child = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe", env: { ...process.env, COPYFILE_DISABLE: "1" } })
+  const child = Runtime.spawn(command, { cwd, stdout: "pipe", stderr: "pipe", env: { ...process.env, COPYFILE_DISABLE: "1" } })
   if (await child.exited !== 0) throw new Error(await new Response(child.stderr).text())
 }
 
@@ -292,7 +294,7 @@ describe("retained Agent Computer portable-session-control", () => {
       material: "excluded",
     })
     const sessionRoot = portableSessionRoot(stateRoot, metadata.sessionRef)
-    const leaf = new Bun.CryptoHasher("sha256").update(metadata.leaseRef).digest("hex").slice(0, 24)
+    const leaf = createHash("sha256").update(metadata.leaseRef).digest("hex").slice(0, 24)
     expect(await readFile(join(sessionRoot, "capability-material", `${leaf}.material`), "utf8")).toBe("opaque-test-material")
 
     const wiped = await executePortableSessionControl({
@@ -304,8 +306,8 @@ describe("retained Agent Computer portable-session-control", () => {
       runtime,
     })
     expect(wiped).toMatchObject({ material: "excluded" })
-    expect(await Bun.file(join(sessionRoot, "capability-material", `${leaf}.material`)).exists()).toBe(false)
-    expect(await Bun.file(join(sessionRoot, "capabilities", `${leaf}.installed.json`)).exists()).toBe(false)
+    expect(await existsSync(join(sessionRoot, "capability-material", `${leaf}.material`))).toBe(false)
+    expect(await existsSync(join(sessionRoot, "capabilities", `${leaf}.installed.json`))).toBe(false)
   })
 
   test("safely materializes a private checkpoint archive before verified stage", async () => {
@@ -447,3 +449,4 @@ describe("retained Agent Computer portable-session-control", () => {
     expect(sha(await readFile(join(exportedRoot, "checkpoint.tar.zst")))).toBe(exported.artifactDigest)
   }, 15_000)
 })
+import { createHash } from "node:crypto"

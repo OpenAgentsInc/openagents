@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { planRemoteVerify } from "./remote-verify.js"
 import { normalizeSshTarget } from "../shared/ssh-target.js"

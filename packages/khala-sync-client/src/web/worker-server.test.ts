@@ -1,6 +1,6 @@
 import { canonicalJson, SyncScope } from "@openagentsinc/khala-sync"
-import { Database } from "bun:sqlite"
-import { afterEach, describe, expect, test } from "bun:test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { bunSqlDriver } from "../sqlite-store.js"
 import { createKhalaSyncStoreCore } from "../store-core.js"
 import type {
@@ -17,7 +17,7 @@ import {
 /**
  * Storage-worker RPC server (KS-5.4): wire decode → core dispatch → wire
  * encode, with the typed error taxonomy transported by reason + message.
- * The core behind it is real SQL (`bun:sqlite` harness driver); full
+ * The core behind it is real SQL (`node:sqlite` harness driver); full
  * store semantics through this server run in web-store.test.ts.
  */
 
@@ -27,7 +27,7 @@ afterEach(() => {
 })
 
 const createServer = (): KhalaSyncStoreWorkerServer => {
-  const db = new Database(":memory:")
+  const db = new NodeTestDatabase(":memory:")
   cleanups.push(() => db.close())
   return createKhalaSyncStoreWorkerServer(
     createKhalaSyncStoreCore(bunSqlDriver(db)),

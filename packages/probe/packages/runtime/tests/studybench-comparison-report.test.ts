@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 const REPORT_URL = new URL(
   "../../../docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json",

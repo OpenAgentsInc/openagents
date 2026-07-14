@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vite-plus/test"
 import { acceptAudio, acceptRetentionReceipt, acknowledge, connected, mute, observeProse, publishFinal, replayDelivery, start, stop, stoppedVoiceModel } from "./lifecycle-model"
 const ids = ["openagents_voice.capture_egress_retention_truth.v1", "openagents_voice.mute_and_stop_fail_closed.v1", "openagents_voice.retention_requires_policy_receipt.v1", "openagents_voice.replay_delivery_only.v1"]
 test("lifecycle model falsifiers remain rejected", () => {

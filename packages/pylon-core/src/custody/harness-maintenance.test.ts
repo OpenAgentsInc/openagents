@@ -6,7 +6,7 @@
  * file), so detect → update → re-probe → receipt runs through the default
  * command runner and PATH resolver, not through mocks.
  */
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"

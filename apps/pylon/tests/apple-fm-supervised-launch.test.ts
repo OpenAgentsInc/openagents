@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { DiscoveredAppleFmBridgeHelper } from "../src/node/apple-fm-bridge-helper"
 import type { AppleFmBridgeLauncher } from "../src/node/apple-fm-bridge-launcher"
 import type { DefaultAppleFmBridgeLauncher } from "../src/node/apple-fm-bridge-launcher-host"

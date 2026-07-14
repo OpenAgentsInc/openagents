@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { createDeployCloudActions } from "../src/node/deploy-cloud"
 
 // CL-26 "Deploy to Cloud": the node-side action validates via the shared
@@ -51,8 +51,8 @@ describe("CL-26 deploy.cloud node action", () => {
     const rec = recordingSpawn()
     // No isEnabled override: createDeployCloudActions reads OA_DEPLOY_ENABLE.
     // The test runner does not set it to "1", so this must be disabled.
-    const prior = Bun.env.OA_DEPLOY_ENABLE
-    delete Bun.env.OA_DEPLOY_ENABLE
+    const prior = process.env.OA_DEPLOY_ENABLE
+    delete process.env.OA_DEPLOY_ENABLE
     try {
       const actions = createDeployCloudActions({ spawn: rec.spawn })
       const result = (await actions.deployCloud({ target: "cloudrun", ref: "main" })) as {
@@ -63,8 +63,8 @@ describe("CL-26 deploy.cloud node action", () => {
       expect(result.reason).toBe("deploy_disabled")
       expect(rec.calls.length).toBe(0)
     } finally {
-      if (prior === undefined) delete Bun.env.OA_DEPLOY_ENABLE
-      else Bun.env.OA_DEPLOY_ENABLE = prior
+      if (prior === undefined) delete process.env.OA_DEPLOY_ENABLE
+      else process.env.OA_DEPLOY_ENABLE = prior
     }
   })
 

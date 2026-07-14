@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import {
   BootstrapResponse,
   LogPage,
@@ -63,7 +63,7 @@ const liveTransport = (input: Readonly<{
 })
 
 const openBunDatabase = (databasePath: string): ExpoSqliteDatabase => {
-  const database = new Database(databasePath, { create: true })
+  const database = new NodeTestDatabase(databasePath, { create: true })
   return {
     execSync: sql => database.exec(sql),
     runSync: (sql, ...params) => database.query(sql).run(...params),
@@ -79,7 +79,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
     const root = mkdtempSync(join(tmpdir(), "openagents-mobile-future-sync-"))
     const databaseName = join(root, "future.sqlite")
     try {
-      const future = new Database(databaseName, { create: true })
+      const future = new NodeTestDatabase(databaseName, { create: true })
       future.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
       future.query("INSERT INTO meta(key, value) VALUES('store_schema_version', '2')").run()
       future.close()

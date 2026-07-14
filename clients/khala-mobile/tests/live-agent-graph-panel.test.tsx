@@ -1,9 +1,9 @@
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 import { decodeLiveAgentGraphEntity, type LiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
-mock.module("../src/theme/typography", () => ({
+vi.vi.fn("../src/theme/typography", () => ({
   khalaMobileFontsToLoad: {},
   khalaMobileTextSizes: {
     lg: { fontSize: 20, lineHeight: 32 }, md: { fontSize: 18, lineHeight: 26 },
@@ -88,7 +88,7 @@ const mount = async (element: React.ReactElement) => {
 
 describe("contract khala_mobile.agent_graph.confirmed_hierarchy_and_safe_focus.v1 — mobile live-agent graph panel", () => {
   test("renders the hierarchy, accessible inspect action, attention, and typed focus action", async () => {
-    const actions = mock(() => undefined)
+    const actions = vi.fn(() => undefined)
     const value = graph([
       node("agent.root", { kind: "root" }),
       node("agent.child", { kind: "agent", agentRef: "agent.root" }, {

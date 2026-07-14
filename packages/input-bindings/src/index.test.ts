@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   OPENAGENTS_INPUT_BINDINGS_SCHEMA_VERSION,

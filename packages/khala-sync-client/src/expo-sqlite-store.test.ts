@@ -7,8 +7,8 @@ import {
   MutatorName,
   SyncSchemaVersion,
 } from "@openagentsinc/khala-sync"
-import { afterEach, describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { afterEach, describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { Effect } from "effect"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -25,7 +25,7 @@ afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop()!, { recursive: true, force: true })
 })
 
-const expoDatabaseFromBun = (database: Database): ExpoSqliteDatabase => ({
+const expoDatabaseFromBun = (database: NodeTestDatabase): ExpoSqliteDatabase => ({
   execSync: sql => database.exec(sql),
   runSync: (sql, ...params) => database.query(sql).run(...params),
   getAllSync: <Row>(sql: string, ...params: ReadonlyArray<string | number>) =>
@@ -35,7 +35,7 @@ const expoDatabaseFromBun = (database: Database): ExpoSqliteDatabase => ({
 })
 
 const openBunExpoDatabase = (databasePath: string): ExpoSqliteDatabase =>
-  expoDatabaseFromBun(new Database(databasePath, { create: true }))
+  expoDatabaseFromBun(new NodeTestDatabase(databasePath, { create: true }))
 
 describe("Expo SQLite Khala Sync adapter", () => {
   test("preserves identity and the durable mutation queue across reopen", () => {
@@ -65,7 +65,7 @@ describe("Expo SQLite Khala Sync adapter", () => {
   })
 
   test("rolls back the whole synchronous transaction on failure", () => {
-    const database = new Database(":memory:")
+    const database = new NodeTestDatabase(":memory:")
     const driver = expoSqliteDriver(expoDatabaseFromBun(database))
     driver.exec("CREATE TABLE receipt (id INTEGER PRIMARY KEY);")
     expect(() => driver.transaction(() => {
@@ -93,7 +93,7 @@ describe("Expo SQLite Khala Sync adapter", () => {
   })
 
   test("preserves typed incompatible-version recovery guidance at the mobile adapter", () => {
-    const database = new Database(":memory:")
+    const database = new NodeTestDatabase(":memory:")
     database.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
     database.query("INSERT INTO meta(key, value) VALUES('store_schema_version', '2')").run()
     let closed = false

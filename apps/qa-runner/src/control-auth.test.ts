@@ -1,6 +1,6 @@
 // Auth tests for the QA control daemon (#6196): Khala agent bearer token.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import {
   allowlistFromEnv,
   bearerFrom,

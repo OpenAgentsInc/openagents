@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { createRemoteDecisionQueue, type DecisionEvent } from "./remote-decision-queue.js"
 import type { BridgeTransport } from "./bridge-transport.js"
 

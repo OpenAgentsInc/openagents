@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { expect, test } from "vite-plus/test"
 import { FakeSttAdapter } from "./stt"
 import { AudioSession } from "./session"
 import { decodeMediaHeader } from "@openagentsinc/audio-contract"
@@ -44,7 +45,7 @@ test("qualified speech cancels synthesis, emits outcome ref, while noise/backcha
   const tts: TtsAdapter = { adapterRef: "controlled", synthesize: () => stream }
   const session = new AudioSession(identity, stt, { sendText: value => { frames.push(value); return true }, sendBinary: () => true, close: () => {} }, { adapter: tts, now: () => 1_000, onBargeIn: async () => "outcome.interrupt.1" })
   const speaking = session.speak({ turnRef: "turn.9", speechRef: "speech.9", messageRef: "message.9", text: "long answer" })
-  await Bun.sleep(1)
+  await sleep(1)
   stt.streams[0]!.events({ _tag: "speech_begin" }); stt.streams[0]!.events({ _tag: "interim", text: "uh", stability: 0.1 })
   expect(canceled).toBe(false)
   stt.streams[0]!.events({ _tag: "interim", text: "stop now", stability: 0.8 })
@@ -60,7 +61,7 @@ test("a newer utterance cancels the old stream and stale chunks cannot resume", 
     return Object.assign((async function* () { await gate; if (!request.canceled) yield new Uint8Array([1, 0]) })(), { cancel: () => { request.canceled = true; release() } })
   } }
   const session = new AudioSession(identity, stt, { sendText: () => true, sendBinary: value => { binary.push(value); return true }, close: () => {} }, { adapter: tts })
-  const old = session.speak({ turnRef: "turn.1", speechRef: "speech.old", messageRef: "m1", text: "old" }); await Bun.sleep(1)
+  const old = session.speak({ turnRef: "turn.1", speechRef: "speech.old", messageRef: "m1", text: "old" }); await sleep(1)
   const fresh = session.speak({ turnRef: "turn.2", speechRef: "speech.new", messageRef: "m2", text: "new" }); requests[1]!.release()
   expect((await old).outcome).toBe("canceled"); expect((await fresh).outcome).toBe("completed")
   expect(binary.map(frame => decodeBinary(frame).header).every(header => header.kind === "server_tts" && header.speechRef === "speech.new")).toBe(true)

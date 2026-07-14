@@ -1,5 +1,5 @@
-import { Database, type SQLQueryBindings } from "bun:sqlite"
-import { describe, expect, test } from "bun:test"
+import { NodeTestDatabase, type SqliteTestBinding } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from "vite-plus/test"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 import {
@@ -55,7 +55,7 @@ import {
  * after the reopen still arrives as a delta.
  *
  * Shares the same fake Expo SQLite + fake Khala Sync transport shape as
- * `khala-mobile-sync-runtime.test.ts` (bun:sqlite standing in for the real
+ * `khala-mobile-sync-runtime.test.ts` (node:sqlite standing in for the real
  * native module, same wire fixtures), trimmed to just chat_thread/
  * chat_message so this file stays a focused, self-contained fixture.
  */
@@ -76,21 +76,21 @@ const eventually = async (predicate: () => boolean, attempts = 20): Promise<void
   expect(predicate()).toBe(true)
 }
 
-const expoSqliteFromBun = (): { module: ExpoSqliteModule; databases: Map<string, Database> } => {
-  const databases = new Map<string, Database>()
+const expoSqliteFromBun = (): { module: ExpoSqliteModule; databases: Map<string, NodeTestDatabase> } => {
+  const databases = new Map<string, NodeTestDatabase>()
   const open = (name: string): ExpoSqliteDatabase => {
-    const db = databases.get(name) ?? new Database(":memory:")
+    const db = databases.get(name) ?? new NodeTestDatabase(":memory:")
     databases.set(name, db)
     return {
       execAsync: async statement => {
         db.exec(statement)
       },
       getAllAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
-        db.query(statement).all(...(params as ReadonlyArray<SQLQueryBindings>)) as ReadonlyArray<T>,
+        db.query(statement).all(...(params as ReadonlyArray<SqliteTestBinding>)) as ReadonlyArray<T>,
       getFirstAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
-        (db.query(statement).get(...(params as ReadonlyArray<SQLQueryBindings>)) as T | null) ?? null,
+        (db.query(statement).get(...(params as ReadonlyArray<SqliteTestBinding>)) as T | null) ?? null,
       runAsync: async (statement, ...params) => {
-        db.query(statement).run(...(params as ReadonlyArray<SQLQueryBindings>))
+        db.query(statement).run(...(params as ReadonlyArray<SqliteTestBinding>))
       },
       withTransactionAsync: async task => task()
     }

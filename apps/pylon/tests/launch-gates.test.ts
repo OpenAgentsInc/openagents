@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { assertLaunchCopyAllowed, projectLaunchGateMatrix } from "../src/launch-gates"
 import { assertPublicProjectionSafe } from "../src/state"
 import { PYLON_VERSION } from "../src/version"

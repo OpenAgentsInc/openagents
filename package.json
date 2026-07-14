@@ -201,6 +201,7 @@
     "prepare": "effect-language-service patch"
   },
   "devDependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "tsdown": "0.22.4",
     "@effect/language-service": "^0.86.2",
     "@playwright/test": "^1.61.0",

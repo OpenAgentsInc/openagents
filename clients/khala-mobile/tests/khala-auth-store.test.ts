@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test"
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test"
 
 /**
  * `khala-auth-store.ts` imports `expo-secure-store` directly (no injectable
@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test"
  */
 const store = new Map<string, string>()
 
-mock.module("expo-secure-store", () => ({
+vi.vi.fn("expo-secure-store", () => ({
   deleteItemAsync: async (key: string) => {
     store.delete(key)
   },

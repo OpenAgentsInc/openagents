@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
@@ -117,7 +118,7 @@ describe("Khala CLI info diagnostics", () => {
 
   test("routes Artanis approval-gate status through the owner console endpoint", async () => {
     const authHeaders: Array<string | null> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: request => {
         authHeaders.push(request.headers.get("authorization"))
@@ -128,6 +129,7 @@ describe("Khala CLI info diagnostics", () => {
         })
       },
     })
+    await server.ready
 
     const originalWrite = process.stdout.write
     let stdout = ""
@@ -157,7 +159,7 @@ describe("Khala CLI info diagnostics", () => {
 
   test("arms Artanis pylon dispatch through the approval-gate create endpoint", async () => {
     const requests: Array<{ body: unknown; path: string }> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: async request => {
         requests.push({
@@ -176,6 +178,7 @@ describe("Khala CLI info diagnostics", () => {
         })
       },
     })
+    await server.ready
 
     const originalWrite = process.stdout.write
     let stdout = ""
@@ -210,7 +213,7 @@ describe("Khala CLI info diagnostics", () => {
 
   test("approves a pending Artanis gate through the gated decision endpoint", async () => {
     const paths: Array<string> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: request => {
         paths.push(new URL(request.url).pathname)
@@ -222,6 +225,7 @@ describe("Khala CLI info diagnostics", () => {
         })
       },
     })
+    await server.ready
 
     const originalWrite = process.stdout.write
     let stdout = ""
@@ -282,7 +286,7 @@ describe("Khala CLI info diagnostics", () => {
 
   test("renders the live fleet dashboard from the operator status endpoint", async () => {
     const authHeaders: Array<string | null> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: request => {
         authHeaders.push(request.headers.get("authorization"))
@@ -296,6 +300,7 @@ describe("Khala CLI info diagnostics", () => {
         })
       },
     })
+    await server.ready
 
     const originalWrite = process.stdout.write
     let stdout = ""
@@ -337,7 +342,7 @@ describe("Khala CLI info diagnostics", () => {
     writeFileSync(tokenPath, "oa_agent_stored_api_test\n", { mode: 0o600 })
 
     const authHeaders: Array<string | null> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: async request => {
         authHeaders.push(request.headers.get("authorization"))
@@ -356,6 +361,7 @@ describe("Khala CLI info diagnostics", () => {
         })
       },
     })
+    await server.ready
 
     const originalWrite = process.stdout.write
     let stdout = ""
@@ -390,7 +396,7 @@ describe("Khala CLI info diagnostics", () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-session-cli-test-"))
     const sessionDir = join(dir, "state")
     const requests: Array<ReadonlyArray<{ readonly content?: string; readonly role?: string }>> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: async request => {
         expect(new URL(request.url).pathname).toBe("/api/khala/chat")
@@ -407,6 +413,7 @@ describe("Khala CLI info diagnostics", () => {
         })
       },
     })
+    await server.ready
 
     const originalWrite = process.stdout.write
     let stdout = ""
@@ -488,7 +495,7 @@ describe("Khala CLI info diagnostics", () => {
 
     const authHeaders: Array<string | null> = []
     const toolNames: Array<string> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: async request => {
         authHeaders.push(request.headers.get("authorization"))
@@ -524,6 +531,7 @@ describe("Khala CLI info diagnostics", () => {
         })
       },
     })
+    await server.ready
 
     const originalWrite = process.stdout.write
     let stdout = ""
@@ -561,7 +569,7 @@ describe("Khala CLI info diagnostics", () => {
   })
 
   test("surfaces pylon spawn server validation errors instead of reporting network failure", async () => {
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: () =>
         Response.json({
@@ -569,6 +577,7 @@ describe("Khala CLI info diagnostics", () => {
           message: "Missing key [\"jobKind\"] after network reached server",
         }, { status: 400 }),
     })
+    await server.ready
 
     const originalWrite = process.stderr.write
     let stderr = ""
@@ -609,7 +618,7 @@ describe("Khala CLI info diagnostics", () => {
     writeFileSync(tokenPath, "oa_agent_stored_pylon_test\n", { mode: 0o600 })
 
     const workflows: Array<unknown> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: async request => {
         const body = await request.json() as {
@@ -642,6 +651,7 @@ describe("Khala CLI info diagnostics", () => {
         })
       },
     })
+    await server.ready
 
     const originalWrite = process.stdout.write
     let stdout = ""

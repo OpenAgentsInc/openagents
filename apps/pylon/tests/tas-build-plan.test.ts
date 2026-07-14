@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildLocalBuildPlan, requireRebuild } from "../src/coordinator/build-plan"
 

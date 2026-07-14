@@ -8,15 +8,8 @@ import {
   decodeKhalaCodeThreadMessageEntity,
   teamScope,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 
 import {
   KHALA_CODE_POST_IMAGE_FORBIDDEN_PATTERN,
@@ -36,9 +29,6 @@ import { withSyncTransaction } from "./outbox-writer.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const NOW = "2026-07-04T18:00:00.000Z"
 
 // ---------------------------------------------------------------------------
@@ -560,13 +550,13 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_code_product_state")
       await admin.end()
       const url = pg.urlFor("khala_code_product_state")
       const result = await runMigrations({ databaseUrl: url })
       expect(result.applied).toContain("0017_khala_code_product_state.sql")
-      sql = new SQL({ url, max: 10 })
+      sql = SQL({ url, max: 10 })
     })
 
     afterAll(async () => {

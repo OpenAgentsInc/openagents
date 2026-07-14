@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,7 +16,7 @@ const fixedNow = new Date("2026-07-09T21:00:00.000Z")
 const waitUntil = async (predicate: () => boolean): Promise<void> => {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (predicate()) return
-    await Bun.sleep(2)
+    await sleep(2)
   }
   throw new Error("timed out waiting for standing FleetRun dispatch")
 }

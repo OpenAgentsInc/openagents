@@ -1,13 +1,6 @@
 import { publicScope, SETTLED_FEED_CHANNEL_ID } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { runMigrations } from "./migrate.js"
 import {
   DEFAULT_SETTLED_FEED_READ_LIMIT,
@@ -20,9 +13,6 @@ import {
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const rawEvent = (overrides: Partial<Record<string, unknown>> = {}) => ({
   amountSats: 5,
   challengeRef: "challenge.tassadar.window.0001",
@@ -128,12 +118,12 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_settled_feed")
       await admin.end()
       const url = pg.urlFor("khala_sync_settled_feed")
       await runMigrations({ databaseUrl: url })
-      sql = new SQL({ url, max: 10 })
+      sql = SQL({ url, max: 10 })
     })
 
     afterAll(async () => {

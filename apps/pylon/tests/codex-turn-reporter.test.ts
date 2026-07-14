@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   PYLON_AGENT_RUNNER_CONTROL_COMMAND_SCHEMA_VERSION,

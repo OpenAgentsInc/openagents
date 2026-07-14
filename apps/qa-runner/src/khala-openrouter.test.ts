@@ -7,7 +7,7 @@
 // layer (no truncation wobble), the reasoning-empty-content honest failure, and
 // that `makeKhalaChatClient` routes to the selected backend.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { Layer } from "effect";
 import {
   OpenRouterClient,

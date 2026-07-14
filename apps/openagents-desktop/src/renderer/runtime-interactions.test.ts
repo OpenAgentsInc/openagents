@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { DesktopRuntimeGatewayEvent, DesktopRuntimeGatewayResponse, RuntimeInteractionDecisionEnvelope } from "../runtime-gateway-contract.ts"
 import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
 

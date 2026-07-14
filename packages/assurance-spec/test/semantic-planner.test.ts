@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import { resolve } from "node:path"
 
@@ -28,7 +29,7 @@ const prepare = async (): Promise<SemanticPlannerInput> => {
   const result = prepareSemanticPlannerInput({
     acceptedSubject,
     productSpecPath: subjectPath,
-    productSpecMarkdown: await Bun.file(mvpPath).text(),
+    productSpecMarkdown: await readFile(mvpPath, "utf8"),
   })
   if (!result.ok) throw new Error(result.diagnostics.map((entry) => entry.code).join(", "))
   return result.input
@@ -84,7 +85,7 @@ const designedOutput = (input: SemanticPlannerInput): SemanticPlannerOutput => (
 
 describe("Observer semantic planner boundary", () => {
   test("requires an explicit accepted identity that exactly matches the ProductSpec bytes", async () => {
-    const markdown = await Bun.file(mvpPath).text()
+    const markdown = await readFile(mvpPath, "utf8")
     const drifted = prepareSemanticPlannerInput({
       acceptedSubject: { ...acceptedSubject, spec_revision: acceptedSubject.spec_revision + 1 },
       productSpecPath: subjectPath,

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   MAX_PENDING_NATIVE_CODING_TARGETS,
@@ -15,7 +16,7 @@ const target = {
 
 describe("contract openagents_mobile.coding.native_target_delivery.v1", () => {
   test("production app owns initial/live URL and notification response listeners plus teardown", async () => {
-    const source = await Bun.file(new URL("../src/app.tsx", import.meta.url)).text()
+    const source = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8")
     expect(source).toContain('Linking.getInitialURL()')
     expect(source).toContain('Linking.addEventListener("url"')
     expect(source).toContain("getLastNotificationResponseAsync()")

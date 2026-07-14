@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { mkdtemp, mkdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { discoverPylonSiblingAccountHomes } from "../account-registry.js"
 
 import { runtimeSiblingAccountDiscoveryEnv } from "./runtime-account-discovery.js"

@@ -2,7 +2,7 @@
 // schema, is deterministic (digest re-derives), and the public-safety tripwire
 // rejects secrets in keys OR values (never a fabricated pass).
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import {
   assertSessionTracePublicSafe,
   computeDigest,

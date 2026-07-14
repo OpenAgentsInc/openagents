@@ -15,7 +15,7 @@
  * 3. The notification preference payload is boolean-only (no content field a
  *    prompt/secret could ride in on).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { decodeLiveAgentGraphEntity, type LiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 
 import { newestLiveAgentGraph, projectLiveAgentGraphPresentation } from "../src/agent-graph-presentation.ts"

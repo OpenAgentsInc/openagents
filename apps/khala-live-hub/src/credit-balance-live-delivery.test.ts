@@ -43,14 +43,11 @@ import {
   startLocalPostgres,
   type LocalPostgres,
 } from "@openagentsinc/khala-sync-server/test/local-postgres"
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 
 import type { HubSocketLike } from "./scope-hub.js"
 import { startLiveHubServer, type LiveHubServer } from "./server.js"
-
-setDefaultTimeout(120_000)
-
 // ---------------------------------------------------------------------------
 // A structural subscriber that records the frames the hub fans out to it.
 // This is exactly the HubSocketLike adapter server.ts builds for a live WS,
@@ -113,7 +110,7 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_credit_live")
       await admin.end()
       databaseUrl = pg.urlFor("khala_sync_credit_live")
@@ -123,7 +120,7 @@ describe.skipIf(!hasLocalPostgres())(
       expect(result.applied).toContain("0001_khala_sync_core.sql")
       expect(result.applied).toContain("0002_khala_sync_capture.sql")
       expect(result.applied).toContain("0038_khala_sync_user_credit_balances.sql")
-      sql = new SQL({ url: databaseUrl, max: 10 })
+      sql = SQL({ url: databaseUrl, max: 10 })
 
       // The REAL LiveHub server (no rebuild loader: hubs hydrate from capture
       // appends, and a subscriber attaches to the live edge — the production

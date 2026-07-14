@@ -7,7 +7,7 @@
  * read), bounded add/remove, the thumbnail data URL, and the boundary
  * projection.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   COMPOSER_IMAGE_BYTES_LIMIT,
   COMPOSER_IMAGE_COUNT_LIMIT,

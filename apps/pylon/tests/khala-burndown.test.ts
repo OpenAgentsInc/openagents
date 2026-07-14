@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { BootstrapSummary } from "../src/bootstrap"
 import type { PylonAccountsListProjection } from "../src/account-usage"

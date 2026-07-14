@@ -8,7 +8,7 @@
  * and the lockout is ARMED BY DEFAULT, disarmable only by the exact
  * documented archival value.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   LEGACY_DESKTOP_LOCKOUT_SCHEMA_ID,

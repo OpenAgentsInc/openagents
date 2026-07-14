@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   KhalaMobileStoreSubmissionSchemaId,
@@ -32,7 +33,7 @@ describe("Khala Mobile P0.9 store submission receipt", () => {
   })
 
   test("store_submission_owner_gate_documented.source — owner console actions and URLs are explicit", async () => {
-    const ownerDoc = await Bun.file(repoPath("NEEDS_OWNER.md")).text()
+    const ownerDoc = await readFile(repoPath("NEEDS_OWNER.md"), "utf8")
     expect(ownerDoc).toContain("Khala Mobile P0.9 Store Submissions")
     expect(ownerDoc).toContain("Source issue: OpenAgentsInc/openagents#8544")
     expect(ownerDoc).toContain("https://appstoreconnect.apple.com/apps")

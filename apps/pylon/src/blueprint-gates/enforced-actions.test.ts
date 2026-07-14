@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { evaluateCommandSourceVerified } from "./command-execution-source-verified.js"
 import { evaluateDiagnosisGrounding } from "./diagnosis-grounding.js"

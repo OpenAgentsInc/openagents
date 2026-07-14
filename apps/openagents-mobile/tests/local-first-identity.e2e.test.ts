@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts";
 import { openAgentsMobileUxContractRegistry } from "../src/contracts/ux-contracts";
 import { renderContentView, initialHomeState } from "../src/screens/home-core";

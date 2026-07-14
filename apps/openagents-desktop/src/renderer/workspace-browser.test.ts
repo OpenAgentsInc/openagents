@@ -2,7 +2,7 @@
  * CUT-17 workspace browser tests: grant fencing and bounded hierarchy state,
  * plus the pure Effect Native projection for explicit states and mutations.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 

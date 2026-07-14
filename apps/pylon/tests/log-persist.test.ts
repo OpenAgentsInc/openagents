@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { describe, expect, test } from "vite-plus/test"
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -63,8 +63,8 @@ describe("feed log persistence", () => {
     for (let i = 0; i < 130; i += 1) {
       await writer.append(entry(i))
     }
-    const rotated = Bun.file(join(dir, feedLogRotatedFileName))
-    expect(await rotated.exists()).toBe(true)
+    const rotated = join(dir, feedLogRotatedFileName)
+    expect(existsSync(rotated)).toBe(true)
     // Both files together still yield a coherent tail.
     const tail = await readPersistedLogTail(dir, 5)
     expect(tail).toHaveLength(5)

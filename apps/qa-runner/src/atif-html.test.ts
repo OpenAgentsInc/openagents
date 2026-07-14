@@ -1,6 +1,6 @@
 // Unit tests for the ATIF HTML trace renderer (epic #6174).
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { mapKhalaRunToAtif } from "./atif";
 import { renderTraceHtml } from "./atif-html";
 import { computeDigest, type KhalaSessionTrace, type SessionBeat } from "./session-trace";

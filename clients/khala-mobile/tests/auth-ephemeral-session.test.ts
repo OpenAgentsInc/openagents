@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 /**
  * Oracle for khala_mobile.auth.signout_ends_web_session_for_account_switch.v1
@@ -24,9 +25,9 @@ const repoPath = (ref: string): string => new URL(`../../../${ref}`, import.meta
 
 describe("contract khala_mobile.auth.signout_ends_web_session_for_account_switch.v1", () => {
   test("signout_ephemeral_web_session.source — OAuth prompt is ephemeral and sign-out revokes the server session", async () => {
-    const source = await Bun.file(
+    const source = await readFile(
       repoPath("clients/khala-mobile/src/auth/khala-auth-context.tsx"),
-    ).text()
+    , "utf8")
 
     // (1) Ephemeral web session on the prompt — the reliable "let the user
     // choose the account" fix. Must be passed to promptAsync. (expo-auth-session

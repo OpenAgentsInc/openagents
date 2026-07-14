@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Gatekeeper release-oracle tests (DMG-1, #8786).
  *
@@ -11,7 +12,7 @@
  * against an unsigned fixture "dmg"/"app" on macOS and must come back all
  * red — the fail-closed half needs no ceremony to prove.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -219,7 +220,7 @@ describe("-UNSIGNED-DEV artifact naming", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "oa-unsigned-dev-"))
     const artifact = path.join(dir, "OpenAgents-9.9.9-arm64-UNSIGNED-DEV.dmg")
     writeFileSync(artifact, "not a real dmg")
-    const result = Bun.spawnSync(
+    const result = Runtime.spawnSync(
       [
         process.execPath,
         path.join(import.meta.dirname, "..", "scripts", "publish-release.ts"),

@@ -4,7 +4,7 @@
 // deterministic KhalaSessionTrace for a /login verify) so the tests need no
 // network and no live model. The fixture mirrors the shape the runner emits.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import {
   ATIF_SCHEMA_VERSION,
   assertAtifPublicSafe,

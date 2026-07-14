@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync, mkdtempSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -74,7 +76,7 @@ const appleFmFetch = (handler: (url: URL) => Response | Promise<Response>): type
   }) as typeof fetch
 
 async function runCommand(args: string[], cwd: string): Promise<void> {
-  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
   const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
   if (exitCode !== 0) throw new Error(`command failed: ${args.join(" ")}\n${stderr}`)
 }
@@ -1353,7 +1355,7 @@ describe("control protocol", () => {
         const cleanState = list.find((entry) => entry.sessionRef === clean.sessionRef)?.state
         const dirtyState = list.find((entry) => entry.sessionRef === dirty.sessionRef)?.state
         if (cleanState === "completed" && dirtyState === "completed") break
-        await Bun.sleep(10)
+        await sleep(10)
       }
       const cleanRow = list.find((entry) => entry.sessionRef === clean.sessionRef)
       const dirtyRow = list.find((entry) => entry.sessionRef === dirty.sessionRef)
@@ -1460,7 +1462,7 @@ describe("control protocol", () => {
       for (let attempt = 0; attempt < 20; attempt += 1) {
         list = await actions.list()
         if (list[0]?.state === "failed") break
-        await Bun.sleep(10)
+        await sleep(10)
       }
       expect(list[0]?.state).toBe("failed")
       expect(list[0]?.errorClass).toBe("verification_failed")

@@ -1,4 +1,4 @@
-import { describe, test } from 'bun:test'
+import { describe, test } from 'vite-plus/test'
 import { Config, ConfigProvider, Effect, Schema as S } from 'effect'
 
 import {

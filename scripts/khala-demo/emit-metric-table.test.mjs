@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 import { loadManifest, reduceKhalaHeadToHeadManifest } from "./reduce-head-to-head.mjs";
 import {

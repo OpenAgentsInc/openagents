@@ -11,7 +11,7 @@
  *
  * These enforce openagents_desktop.chat.fable_local_runtime_capabilities.v1.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"

@@ -2,7 +2,7 @@
 // feeds observations back, ends on done/fail or the step cap, and applies a
 // BOUNDED corrective re-prompt on an invalid reply before failing honestly.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { KhalaActionParseError } from "./khala-action";
 import type { ChatClient, ChatMessage } from "./khala-driver";
 import { makeKhalaDriver } from "./khala-driver";

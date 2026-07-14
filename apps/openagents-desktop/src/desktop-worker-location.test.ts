@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { desktopWorkerUrl } from "./desktop-worker-location.ts"
 
 describe("desktopWorkerUrl", () => {

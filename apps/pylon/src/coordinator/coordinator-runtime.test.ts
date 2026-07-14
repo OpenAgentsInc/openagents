@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { createIntentQueue, decodeSubmittedWorkIntent } from "../node/intent-intake.js"
 import { createCoordinatorRuntime } from "./coordinator-runtime.js"

@@ -2,7 +2,7 @@
 // Khala driver relies on must parse strict JSON, extract from fences/prose, and
 // FAIL HONESTLY on unparseable/invalid output (never a fabricated default).
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { extractFirstJsonObject, KhalaActionParseError, parseKhalaAction } from "./khala-action";
 
 describe("extractFirstJsonObject", () => {

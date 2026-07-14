@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { runVerifyAcrossTables } from "./backfill-agent-runtime-remainder.js"
 import type { AgentRuntimeRemainderTable } from "../src/agent-runtime-remainder-backfill.js"
 

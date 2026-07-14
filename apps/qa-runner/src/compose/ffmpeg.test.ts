@@ -2,7 +2,7 @@
 // filtergraph is well-formed for single and side-by-side plans and that
 // drawtext escaping is safe.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { buildComposePlan } from "./build-plan.ts";
 import { buildFfmpegArgs, escapeDrawText } from "./ffmpeg.ts";
 import type { ComposeRunMeta } from "./plan.ts";

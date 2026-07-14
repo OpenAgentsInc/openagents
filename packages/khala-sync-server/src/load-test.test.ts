@@ -1,5 +1,5 @@
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import {
   cleanupLoadTestRows,
   defaultRunId,
@@ -15,9 +15,6 @@ import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 // ---------------------------------------------------------------------------
 // Config parsing (pure)
 // ---------------------------------------------------------------------------
@@ -170,13 +167,13 @@ describe.skipIf(!hasLocalPostgres())("substrate smoke (local Postgres)", () => {
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_loadtest")
     await admin.end()
     const url = pg.urlFor("khala_sync_loadtest")
     const result = await runMigrations({ databaseUrl: url })
     expect(result.applied).toContain("0001_khala_sync_core.sql")
-    sql = new SQL({ url, max: 8 })
+    sql = SQL({ url, max: 8 })
   })
 
   afterAll(async () => {

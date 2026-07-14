@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { parsePushNotificationDeepLink } from "../src/push/push-notify-deep-link-core"
 

@@ -10,15 +10,8 @@ import {
   PushRequest,
   SyncSchemaVersion,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { readPendingFleetIntents } from "./fleet-intents.js"
 import {
   FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME,
@@ -44,9 +37,6 @@ import { executePush, makeMutatorRegistry } from "./push-engine.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 /**
  * KS-3.2 (#8292) fleet operator mutators: per-worker pause/resume, inbox
  * flag acknowledgment, and the confirmed terminal stop — through
@@ -119,13 +109,13 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_fleet2")
       await admin.end()
       const url = pg.urlFor("khala_sync_fleet2")
       const result = await runMigrations({ databaseUrl: url })
       expect(result.applied).toContain("0005_khala_sync_fleet_intents_v2.sql")
-      sql = new SQL({ url, max: 10 })
+      sql = SQL({ url, max: 10 })
     })
 
     afterAll(async () => {

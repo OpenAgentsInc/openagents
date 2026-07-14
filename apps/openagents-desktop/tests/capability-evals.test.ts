@@ -20,7 +20,7 @@
  * `openagents_desktop.chat.composer_stop_button.v1` (the interrupt seam test
  * below references that contract id).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync } from "node:fs"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

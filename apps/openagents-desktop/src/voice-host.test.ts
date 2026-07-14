@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { createDesktopVoiceHost, type VoiceNativeMedia, type VoiceNativeMediaSession } from "./voice-host.ts"
 
 const identity = { ownerRef: "owner", deviceRef: "device", threadRef: "thread", sessionRef: "session", generation: 1 }

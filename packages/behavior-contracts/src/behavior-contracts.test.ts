@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import {
   BehaviorContractSchemaVersion,
@@ -325,10 +327,10 @@ describe("behavior contract registry", () => {
                 portalContracts
                   .flatMap(contract => contract.oracles)
                   .map(async oracle => {
-                    const file = Bun.file(repoPath(oracle.ref))
+                    const file = repoPath(oracle.ref)
                     return [
                       oracle.ref,
-                      (await file.exists()) ? await file.text() : "",
+                      existsSync(file) ? await readFile(file, "utf8") : "",
                     ] as const
                   }),
               ),
@@ -822,7 +824,7 @@ describe("background agent contract registry", () => {
   })
 
   test("the background-agent human contract doc stays in sync with the registry", async () => {
-    const doc = await Bun.file(repoPath(BACKGROUND_AGENTS_CONTRACT_DOC_PATH)).text()
+    const doc = await readFile(repoPath(BACKGROUND_AGENTS_CONTRACT_DOC_PATH), "utf8")
     expect(doc).toContain(
       `Registry version: \`${backgroundAgentsContractRegistry.version}\``,
     )
@@ -921,10 +923,10 @@ describe("khala sync contract registry", () => {
                 khalaSyncContractRegistry.contracts
                   .flatMap(contract => contract.oracles)
                   .map(async oracle => {
-                    const file = Bun.file(repoPath(oracle.ref))
+                    const file = repoPath(oracle.ref)
                     return [
                       oracle.ref,
-                      (await file.exists()) ? await file.text() : "",
+                      existsSync(file) ? await readFile(file, "utf8") : "",
                     ] as const
                   }),
               ),
@@ -1012,9 +1014,9 @@ describe("customer behavior contract engagements", () => {
   })
 
   test("validates the committed public-demo pilot registry for issue 8186", async () => {
-    const raw = await Bun.file(
+    const raw = await JSON.parse(await readFile(
       new URL("../../../docs/qa-demo/customer-behavior-contract-pilot.json", import.meta.url),
-    ).json()
+    , "utf8"))
     const pilot = decodeCustomerBehaviorContractEngagementDocument(raw)
     const validation = validateCustomerBehaviorContractEngagement(pilot)
 

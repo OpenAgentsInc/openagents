@@ -8,7 +8,7 @@
  * all this up and make a pass to remove everything from the sidebar and all
  * UI that's not specifically called for in our MVP spec."
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   desktopShellView,

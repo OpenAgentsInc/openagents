@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { KhalaAutoExecutionTargetResolution, KhalaModelPreference } from "../src/sync/khala-mobile-model-preference-api"
 import {

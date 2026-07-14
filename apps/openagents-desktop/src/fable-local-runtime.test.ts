@@ -14,7 +14,7 @@
  * (never bypassPermissions, which would skip canUseTool and kill the
  * question flow; receipted from sdk.d.ts).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { tmpdir, homedir } from "node:os"
 import { join } from "node:path"

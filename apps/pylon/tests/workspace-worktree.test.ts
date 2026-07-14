@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -46,7 +47,7 @@ import { assertPublicProjectionSafe } from "../src/state"
 // Behavior contract oracle: background_agents.warm_dispatch.prebuilt_baseline_cache.v1
 
 async function run(args: string[], cwd: string): Promise<string> {
-  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -212,7 +213,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
       expect(existsSync(join(bareDirectory, "HEAD"))).toBe(true)
       expect(existsSync(join(workingDirectory, "sum.ts"))).toBe(true)
       // a linked worktree has a .git file pointer, not a .git directory
-      expect((await Bun.file(join(workingDirectory, ".git")).text()).startsWith("gitdir:")).toBe(true)
+      expect((await readFile(join(workingDirectory, ".git"), "utf8")).startsWith("gitdir:")).toBe(true)
       const head = (await run(["git", "rev-parse", "HEAD"], workingDirectory)).trim()
       expect(head).toBe(origin.commitSha)
     } finally {
@@ -247,7 +248,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
       const paths = await gitCredentialHelperRuntimePathsFor(materialized.workingDirectory)
       const helperConfig = await readFile(paths.gitConfigPath, "utf8")
       const brokerConfig = await readFile(paths.configPath, "utf8")
-      const extension = Bun.spawn(["git", "config", "--get", "extensions.worktreeConfig"], {
+      const extension = Runtime.spawn(["git", "config", "--get", "extensions.worktreeConfig"], {
         cwd: materialized.workingDirectory,
         stderr: "pipe",
         stdout: "pipe",

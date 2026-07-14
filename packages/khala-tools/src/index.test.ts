@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { fileURLToPath } from "node:url"
 import { Effect } from "effect"
 import {
@@ -377,7 +378,7 @@ describe("@openagentsinc/khala-tools foundation", () => {
 const khalaToolsRoot = fileURLToPath(new URL("..", import.meta.url))
 
 async function runBunJson<T>(script: string, cwd: string): Promise<T> {
-  const proc = Bun.spawn([process.execPath, "--eval", script], {
+  const proc = Runtime.spawn([process.execPath, "--eval", script], {
     cwd,
     env: process.env,
     stderr: "pipe",

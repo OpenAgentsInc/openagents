@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import { decodeLiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import { readFileSync } from "node:fs"

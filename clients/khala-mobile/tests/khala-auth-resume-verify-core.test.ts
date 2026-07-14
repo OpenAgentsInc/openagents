@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, test, vi } from "vite-plus/test"
 
 import { resolveVerifiedStoredCredentials } from "../src/auth/khala-auth-resume-verify-core"
 
@@ -7,8 +7,8 @@ const credentials = { ownerUserId: "owner-1", token: "token-1" }
 // Oracle for khala_mobile.auth.stored_credential_revalidated_on_launch.v1
 describe("resolveVerifiedStoredCredentials", () => {
   test("no stored credential: returns null, never calls validate or clear", async () => {
-    const validate = mock(async () => ({ ok: true as const }))
-    const clearStoredCredentials = mock(async () => undefined)
+    const validate = vi.fn(async () => ({ ok: true as const }))
+    const clearStoredCredentials = vi.fn(async () => undefined)
 
     const result = await resolveVerifiedStoredCredentials(null, {
       clearStoredCredentials,
@@ -21,8 +21,8 @@ describe("resolveVerifiedStoredCredentials", () => {
   })
 
   test("a credential that validates: returned unchanged, clear never called", async () => {
-    const validate = mock(async () => ({ ok: true as const }))
-    const clearStoredCredentials = mock(async () => undefined)
+    const validate = vi.fn(async () => ({ ok: true as const }))
+    const clearStoredCredentials = vi.fn(async () => undefined)
 
     const result = await resolveVerifiedStoredCredentials(credentials, {
       clearStoredCredentials,
@@ -36,11 +36,11 @@ describe("resolveVerifiedStoredCredentials", () => {
   })
 
   test("a credential that fails validation (e.g. a leftover pre-pivot or revoked token): cleared and returns null", async () => {
-    const validate = mock(async () => ({
+    const validate = vi.fn(async () => ({
       messageSafe: "session expired",
       ok: false as const,
     }))
-    const clearStoredCredentials = mock(async () => undefined)
+    const clearStoredCredentials = vi.fn(async () => undefined)
 
     const result = await resolveVerifiedStoredCredentials(credentials, {
       clearStoredCredentials,

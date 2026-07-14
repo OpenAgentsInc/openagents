@@ -8,8 +8,8 @@
  * server + one migrated database host all suites; conformance tests
  * namespace their keys/topics/streams/locks so they never interfere.
  */
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { Effect, Layer } from "effect"
 import postgres from "postgres"
 import {
@@ -33,9 +33,6 @@ import * as MutexPostgres from "./mutex-postgres.ts"
 import * as MutexPostgresLayer from "./mutex-postgres-layer.ts"
 import * as BlobStoreGcs from "./blob-store-gcs.ts"
 import { OaInfraSql } from "./sql.ts"
-
-setDefaultTimeout(240_000)
-
 const pgAvailable = hasLocalPostgres()
 
 let pg: LocalPostgres
@@ -45,7 +42,7 @@ let pgJsSql: ReturnType<typeof postgres>
 if (pgAvailable) {
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE oa_infra_conformance")
     await admin.end()
     const url = pg.urlFor("oa_infra_conformance")
@@ -53,7 +50,7 @@ if (pgAvailable) {
     expect(result.applied).toContain("0001_oa_infra_kv.sql")
     expect(result.applied).toContain("0002_oa_infra_job_queue.sql")
     expect(result.applied).toContain("0003_oa_infra_durable_stream.sql")
-    sql = new SQL({ url, max: 10 })
+    sql = SQL({ url, max: 10 })
     // postgres.js client with the openagents.com Worker's Hyperdrive
     // transaction-mode discipline (`prepare: false`; see the KHALA_SYNC_DB
     // comment in that app's wrangler.jsonc) — proves the driver seam the

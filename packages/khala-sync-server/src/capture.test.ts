@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import {
   EntityId,
   EntityType,
@@ -5,8 +6,8 @@ import {
   type SyncScope,
   decodeChangelogEntry,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import {
   captureConfigFromEnv,
   runCapturePass,
@@ -20,11 +21,8 @@ import { runMigrations } from "./migrate.js"
 import { withSyncTransaction } from "./outbox-writer.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 // ---------------------------------------------------------------------------
-// Fake hub: a Bun.serve replica of the KhalaSyncHubDO /append contract
+// Fake hub: a Runtime.serve replica of the KhalaSyncHubDO /append contract
 // (scope match, ascending version groups, density with the window edge,
 // idempotent replay dedupe by version, 409 gap) behind the Worker's
 // internal-route shape (?scope= query + admin bearer).
@@ -78,7 +76,7 @@ const makeFakeHub = (): FakeHub => {
     return existing
   }
 
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     fetch: async (request) => {
       const url = new URL(request.url)
@@ -170,6 +168,7 @@ const makeFakeHub = (): FakeHub => {
       })
     },
   })
+  await server.ready
 
   return {
     appendUrl: `http://127.0.0.1:${server.port}/api/internal/khala-sync/hub/append`,
@@ -297,7 +296,7 @@ const freshScope = (): SyncScope => publicScope(`capture-test-${++scopeCounter}`
 
 describe("pushBatchToHub response hardening", () => {
   test("a JSON `null` body on a non-2xx response maps to a typed failure, never a throw (mirror-exposed 2026-07-06)", async () => {
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch: () =>
         new Response("null", {
@@ -305,6 +304,7 @@ describe("pushBatchToHub response hardening", () => {
           headers: { "content-type": "application/json" },
         }),
     })
+    await server.ready
     try {
       const outcome = await pushBatchToHub(
         { appendUrl: `http://127.0.0.1:${server.port}/append`, token: "t" },
@@ -338,7 +338,7 @@ describe.skipIf(!hasLocalPostgres())("capture against local Postgres", () => {
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_capture")
     await admin.end()
     databaseUrl = pg.urlFor("khala_sync_capture")
@@ -346,7 +346,7 @@ describe.skipIf(!hasLocalPostgres())("capture against local Postgres", () => {
     const result = await runMigrations({ databaseUrl })
     expect(result.applied).toContain("0001_khala_sync_core.sql")
     expect(result.applied).toContain("0002_khala_sync_capture.sql")
-    sql = new SQL({ url: databaseUrl, max: 10 })
+    sql = SQL({ url: databaseUrl, max: 10 })
     hub = makeFakeHub()
   })
 
@@ -465,7 +465,7 @@ describe.skipIf(!hasLocalPostgres())("capture against local Postgres", () => {
     await upsertGroup(scope, ["d", "e"])
 
     // "Restart": a fresh SQL pool resuming purely from the checkpoint table.
-    const restarted = new SQL({ url: databaseUrl, max: 2 })
+    const restarted = SQL({ url: databaseUrl, max: 2 })
     try {
       const pass = await runCapturePass(restarted, baseConfig())
       const scopeResult = pass.scopes.find((s) => s.scope === scope)!

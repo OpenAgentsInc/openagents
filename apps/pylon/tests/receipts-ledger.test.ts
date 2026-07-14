@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { indexReceipts } from "../src/coordinator/receipts-ledger"
 

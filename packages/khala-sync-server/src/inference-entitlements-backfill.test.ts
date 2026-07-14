@@ -10,15 +10,8 @@
 // tally = SUM(events) enforcement invariant catch drift exactly — a lost
 // increment is a free-tier leak, a doubled one a false denial.
 
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { runMigrations } from "./migrate.js"
 import {
   compareEntitlementsTallies,
@@ -35,9 +28,6 @@ import {
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const NOW = "2026-07-04T12:00:00.000Z"
 
 const freeTierUsageEventRow = (n: number): D1SourceRow => ({
@@ -128,13 +118,13 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_entitlements_backfill")
       await admin.end()
       const url = pg.urlFor("khala_entitlements_backfill")
       const result = await runMigrations({ databaseUrl: url })
       expect(result.applied).toContain("0013_inference_entitlements.sql")
-      rawSql = new SQL({ url, max: 4 })
+      rawSql = SQL({ url, max: 4 })
       sql = rawSql as unknown as SyncSql
     })
 

@@ -1,5 +1,6 @@
-import { Database } from "bun:sqlite"
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -666,12 +667,12 @@ describe("headless Pylon FleetRun activation", () => {
       releaseFirstClose()
 
       for (let attempt = 0; attempt < 20 && closeAttempts < 2; attempt += 1) {
-        await Bun.sleep(1)
+        await sleep(1)
       }
       expect(closeAttempts).toBe(2)
       // Both cleanup attempts failed. With no third lifecycle generation, the
       // scheduler must leave the failed handle counted instead of spinning.
-      await Bun.sleep(5)
+      await sleep(5)
       expect(closeAttempts).toBe(2)
       await service.close()
     })
@@ -802,7 +803,7 @@ describe("headless Pylon FleetRun activation", () => {
   test("migration creates activation authority and tampered or foreign rows fail closed", async () => {
     await fixture(async ({ summary }) => {
       await mkdir(summary.paths.home, { recursive: true })
-      const database = new Database(pylonFleetRunDatabasePath(summary), { create: true })
+      const database = new NodeTestDatabase(pylonFleetRunDatabasePath(summary), { create: true })
       database.exec(`
         CREATE TABLE pylon_orchestration_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         INSERT INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', '3');
@@ -829,7 +830,7 @@ describe("headless Pylon FleetRun activation", () => {
         armed: true,
       })
       await runtime.close()
-      const tamper = new Database(pylonFleetRunDatabasePath(summary))
+      const tamper = new NodeTestDatabase(pylonFleetRunDatabasePath(summary))
       tamper.query(`
         INSERT INTO pylon_orchestration_fleet_run_activations
           (pylon_ref, run_ref, armed)

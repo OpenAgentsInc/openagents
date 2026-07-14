@@ -5,7 +5,7 @@
  * guarantee). Topics are namespaced per test with a fresh UUID so shared
  * backends (one Postgres database) can host the suite.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import type { Layer } from "effect"
 import { JobQueue, type JobQueueShape } from "../job-queue.ts"

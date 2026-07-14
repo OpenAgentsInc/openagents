@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { SessionSummary } from "./control.js"
 import { mergeSessions } from "./multi-origin.js"

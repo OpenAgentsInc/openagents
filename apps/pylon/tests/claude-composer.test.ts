@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
@@ -209,7 +209,7 @@ describe("Claude composer SDK stream", () => {
 
   test("injects per-session CLAUDE_CONFIG_DIR into the SDK session env", async () => {
     let queryOptions: Record<string, unknown> | null = null
-    const original = Bun.env.CLAUDE_CONFIG_DIR
+    const original = process.env.CLAUDE_CONFIG_DIR
     const importer = async (specifier: string) => {
       if (specifier !== CLAUDE_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
       return {
@@ -233,7 +233,7 @@ describe("Claude composer SDK stream", () => {
       cwd: "/tmp/current-repo",
       env: { PATH: "/bin", CLAUDE_CONFIG_DIR: "/tmp/claude-config-a" },
     })
-    expect(Bun.env.CLAUDE_CONFIG_DIR).toBe(original)
+    expect(process.env.CLAUDE_CONFIG_DIR).toBe(original)
   })
 
   test("bypassPermissions requires the local supervised execution mode", async () => {

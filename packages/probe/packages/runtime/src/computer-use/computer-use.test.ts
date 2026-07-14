@@ -5,7 +5,7 @@
 // qa-runner (#6176/#6177), NOT here — mirroring acceptance-runner's
 // fakes-in-CI / real-for-proof discipline.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { Effect, Fiber } from "effect";
 
 import { withBrowserSurface, type AcquiredBrowser } from "./browser";

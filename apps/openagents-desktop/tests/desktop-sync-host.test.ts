@@ -1,8 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { Database } from "bun:sqlite"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import {
   BootstrapResponse,
   LogPage,
@@ -73,7 +73,7 @@ const liveTransport = (input: Readonly<{
 })
 
 const openBunDatabase = (databasePath: string): DesktopSqliteDatabase => {
-  const database = new Database(databasePath, { create: true })
+  const database = new NodeTestDatabase(databasePath, { create: true })
   return {
     exec: sql => database.exec(sql),
     prepare: sql => {
@@ -114,7 +114,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
     const root = mkdtempSync(path.join(tmpdir(), "openagents-desktop-future-sync-"))
     const databasePath = path.join(root, "future.sqlite")
     try {
-      const future = new Database(databasePath, { create: true })
+      const future = new NodeTestDatabase(databasePath, { create: true })
       future.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
       future.query("INSERT INTO meta(key, value) VALUES('store_schema_version', '2')").run()
       future.close()

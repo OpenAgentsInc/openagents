@@ -5,7 +5,7 @@
 // exercised via an injected fake timer, so an unmet condition fails honestly
 // without any wall-clock waiting.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 import type { PtyExitResult, PtySession } from "./terminal";
 import { makeTerminalView, stripAnsi } from "./terminal-snapshot";

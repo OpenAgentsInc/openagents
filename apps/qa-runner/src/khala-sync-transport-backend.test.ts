@@ -5,7 +5,7 @@
 // bounds, auth resolution precedence + honest skip, self-registration, scope
 // redaction, and the public-safety tripwire over every artifact.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

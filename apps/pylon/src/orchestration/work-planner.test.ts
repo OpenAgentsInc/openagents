@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 
 import { createPylonOrchestrationStore } from "./store.js"
 import {
@@ -24,7 +24,7 @@ const repo = "OpenAgentsInc/openagents"
 
 describe("typed work planner", () => {
   test("issue_list emits claimable units and typed skips with no silent drops", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.tryClaimWorkUnit({
       claimRef: "claim.issue.101",
       workUnitRef: "github:OpenAgentsInc/openagents:issue:101",
@@ -364,7 +364,7 @@ describe("typed work planner", () => {
       "plan_dag:plan.t9_4:node:adapter": "dependency_pending",
     })
 
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const rootClaim = store.tryClaimWorkUnit({
       claimRef: "claim.plan.root",
       workUnitRef: "plan_dag:plan.t9_4:node:root",
@@ -448,7 +448,7 @@ describe("typed work planner", () => {
   })
 
   test("skip priority is deterministic and includes merged PR siblings", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.tryClaimWorkUnit({
       claimRef: "claim.priority",
       workUnitRef: "github:OpenAgentsInc/openagents:issue:300",
@@ -491,7 +491,7 @@ describe("typed work planner", () => {
   })
 
   test("T4.5 fixture run completes 10 units with 6 workers, no duplicate claims, and typed skips", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
 
     const result = runFixtureFleetAcceptance({
       store,
@@ -510,7 +510,7 @@ describe("typed work planner", () => {
   })
 
   test("T4.5 duplicate temptation skips the second worker with already_claimed", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
 
     const result = runDuplicateTemptationAcceptance({
       store,

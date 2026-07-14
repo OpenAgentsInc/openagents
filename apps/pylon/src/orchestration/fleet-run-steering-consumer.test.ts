@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -1244,7 +1245,7 @@ describe("Pylon FleetRun steering consumer", () => {
       })
       try {
         for (let attempt = 0; attempt < 50 && calls.length === 0; attempt += 1) {
-          await Bun.sleep(2)
+          await sleep(2)
         }
         expect(calls).toHaveLength(1)
         expect(new URL(calls[0]!.url).pathname).toBe(

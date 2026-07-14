@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { CronParseError, cronMatches, parseCron } from "./cron.ts"
 
 /** UTC date helper: (y, m 1-12, d, hh, mm). */

@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { writeFile } from "node:fs/promises"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -20,9 +21,9 @@ const fixture = async (): Promise<string> => {
   const root = mkdtempSync(join(tmpdir(), "assurance-spec-repo-"))
   roots.push(root)
   git(root, ["init", "-q"])
-  await Bun.write(join(root, "package.json"), JSON.stringify({ scripts: { test: "bun test", verify: "bun test && tsc --noEmit" } }, null, 2))
-  await Bun.write(join(root, "tests", "CW-AC-04-passes.test.ts"), "test('looks persuasive', () => expect(true).toBe(true))\n")
-  await Bun.write(join(root, "src", "main.ts"), "export const value = 1\n")
+  await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "bun test", verify: "bun test && tsc --noEmit" } }, null, 2))
+  await writeFile(join(root, "tests", "CW-AC-04-passes.test.ts"), "test('looks persuasive', () => expect(true).toBe(true))\n")
+  await writeFile(join(root, "src", "main.ts"), "export const value = 1\n")
   git(root, ["add", "."])
   git(root, ["-c", "user.name=OpenAgents Test", "-c", "user.email=test@openagents.invalid", "commit", "-qm", "fixture"])
   return root
@@ -51,8 +52,8 @@ describe("repository proposal inventory", () => {
   test("dirty tracked bytes change state but not the committed candidate inventory", async () => {
     const root = await fixture()
     const clean = inventoryRepository(root)
-    await Bun.write(join(root, "tests", "CW-AC-04-passes.test.ts"), "throw new Error('dirty')\n")
-    await Bun.write(join(root, "tests", "untracked-secret.test.ts"), "secret\n")
+    await writeFile(join(root, "tests", "CW-AC-04-passes.test.ts"), "throw new Error('dirty')\n")
+    await writeFile(join(root, "tests", "untracked-secret.test.ts"), "secret\n")
     const dirty = inventoryRepository(root)
     expect(dirty.state).toBe("dirty")
     expect(dirty.head).toBe(clean.head)

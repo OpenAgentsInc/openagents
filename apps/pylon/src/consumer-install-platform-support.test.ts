@@ -2,7 +2,7 @@
 //
 // Promise: pylon.consumer_compute_earns_bitcoin_self_serve.v1
 // Blocker:  blocker.product_promises.windows_wsl_consumer_install_coverage_missing
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "vite-plus/test"
 import {
   classifyConsumerInstallHost,
   CONSUMER_INSTALL_SUPPORTED_TARGETS,

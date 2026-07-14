@@ -1,5 +1,5 @@
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 
 import {
   createOaCodexControlPortableManagedContinuation,
@@ -146,12 +146,12 @@ describe.skipIf(!hasLocalPostgres())("durable managed continuation authority", (
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_continuation")
     await admin.end()
     const databaseUrl = pg.urlFor("khala_sync_continuation")
     await runMigrations({ databaseUrl })
-    sql = new SQL({ url: databaseUrl, max: 4 })
+    sql = SQL({ url: databaseUrl, max: 4 })
     await sql`
       INSERT INTO khala_sync_portable_sessions
         (session_ref, owner_user_id, owner_scope_ref, work_context_ref,

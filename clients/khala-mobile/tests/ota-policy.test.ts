@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import appConfig from "../app.json"
 import packageJson from "../package.json"
@@ -22,9 +23,9 @@ describe("Khala mobile OTA and build policy", () => {
   })
 
   test("publish script no longer points at retired AutopilotRemoteControl", async () => {
-    const script = await Bun.file(
+    const script = await readFile(
       new URL("../../../apps/oa-updates/scripts/publish-ota.sh", import.meta.url),
-    ).text()
+    , "utf8")
 
     expect(script).toContain("clients/khala-mobile")
     expect(script).toContain("OA_MOBILE_PLATFORM")

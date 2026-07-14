@@ -13,16 +13,9 @@ import {
   SyncSchemaVersion,
   threadScope,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import { createHash } from "node:crypto"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import {
   CHAT_APPEND_MESSAGE_MUTATOR_NAME,
   CHAT_BIND_THREAD_REPO_MUTATOR_NAME,
@@ -40,9 +33,6 @@ import { readScopeOwner } from "./fleet-projection.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const schemaVersion = SyncSchemaVersion.make(1)
 
 let clientCounter = 0
@@ -93,14 +83,14 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_chat")
       await admin.end()
       const result = await runMigrations({
         databaseUrl: pg.urlFor("khala_sync_chat"),
       })
       expect(result.applied).toContain("0018_owner_private_chat.sql")
-      sql = new SQL({ url: pg.urlFor("khala_sync_chat"), max: 10 })
+      sql = SQL({ url: pg.urlFor("khala_sync_chat"), max: 10 })
     })
 
     afterAll(async () => {

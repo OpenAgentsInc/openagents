@@ -1,6 +1,6 @@
 import { join } from "node:path"
 
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { assetKeyFromBytes } from "./asset-store.ts"
 import { seedDesktopReleases } from "./desktop-seed.ts"

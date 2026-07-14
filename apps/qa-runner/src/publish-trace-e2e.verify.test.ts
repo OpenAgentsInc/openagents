@@ -8,7 +8,7 @@
 // This is a verification harness kept as a test so it runs in CI alongside the
 // unit tests; it is NOT excluded from the default `test` script intentionally.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { Effect } from "effect";
 
 import { mapKhalaRunToAtif } from "./atif";

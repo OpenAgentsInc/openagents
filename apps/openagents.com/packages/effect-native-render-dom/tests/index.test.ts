@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Window } from "../../../apps/web/node_modules/happy-dom"
 import {
   Accordion,

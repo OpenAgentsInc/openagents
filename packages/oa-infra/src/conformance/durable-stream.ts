@@ -5,7 +5,7 @@
  * hot-swap guarantee). Stream ids are namespaced per test with a fresh
  * UUID so shared backends can host the suite.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import type { Layer } from "effect"
 import { DurableStream, type DurableStreamShape } from "../durable-stream.ts"

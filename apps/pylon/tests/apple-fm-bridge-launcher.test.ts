@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { DiscoveredAppleFmBridgeHelper } from "../src/node/apple-fm-bridge-helper"
 import { APPLE_FM_BRIDGE_DEFAULT_PORT } from "../src/node/apple-fm-bridge-helper"
 import { APPLE_FM_BRIDGE_SUPERVISOR_DEFAULTS } from "../src/node/apple-fm-bridge-supervisor"

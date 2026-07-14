@@ -1,5 +1,5 @@
-import { Database, type SQLQueryBindings } from "bun:sqlite"
-import { describe, expect, test } from "bun:test"
+import { NodeTestDatabase, type SqliteTestBinding } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   ChangelogEntry,
   EntityId,
@@ -30,11 +30,11 @@ const expoSqliteFromBun = (): {
   module: ExpoSqliteModule
   statements: Array<string>
 } => {
-  const databases = new Map<string, Database>()
+  const databases = new Map<string, NodeTestDatabase>()
   const statements: Array<string> = []
 
   const open = (name: string): ExpoSqliteDatabase => {
-    const db = databases.get(name) ?? new Database(":memory:")
+    const db = databases.get(name) ?? new NodeTestDatabase(":memory:")
     databases.set(name, db)
     return {
       execAsync: async statement => {
@@ -42,12 +42,12 @@ const expoSqliteFromBun = (): {
         db.exec(statement)
       },
       getAllAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
-        db.query(statement).all(...(params as ReadonlyArray<SQLQueryBindings>)) as ReadonlyArray<T>,
+        db.query(statement).all(...(params as ReadonlyArray<SqliteTestBinding>)) as ReadonlyArray<T>,
       getFirstAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
-        (db.query(statement).get(...(params as ReadonlyArray<SQLQueryBindings>)) as T | null) ?? null,
+        (db.query(statement).get(...(params as ReadonlyArray<SqliteTestBinding>)) as T | null) ?? null,
       runAsync: async (statement, ...params) => {
         statements.push(statement)
-        db.query(statement).run(...(params as ReadonlyArray<SQLQueryBindings>))
+        db.query(statement).run(...(params as ReadonlyArray<SqliteTestBinding>))
       },
       withTransactionAsync: async task => task()
     }
@@ -221,7 +221,7 @@ describe("Khala mobile Expo SQLite Khala Sync store", () => {
   })
 
   test("serializes concurrent write transactions and prefers Expo exclusive transactions", async () => {
-    const db = new Database(":memory:")
+    const db = new NodeTestDatabase(":memory:")
     let activeTransactions = 0
     let maxActiveTransactions = 0
     let exclusiveTransactions = 0
@@ -232,11 +232,11 @@ describe("Khala mobile Expo SQLite Khala Sync store", () => {
           db.exec(statement)
         },
         getAllAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
-          db.query(statement).all(...(params as ReadonlyArray<SQLQueryBindings>)) as ReadonlyArray<T>,
+          db.query(statement).all(...(params as ReadonlyArray<SqliteTestBinding>)) as ReadonlyArray<T>,
         getFirstAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
-          (db.query(statement).get(...(params as ReadonlyArray<SQLQueryBindings>)) as T | null) ?? null,
+          (db.query(statement).get(...(params as ReadonlyArray<SqliteTestBinding>)) as T | null) ?? null,
         runAsync: async (statement, ...params) => {
-          db.query(statement).run(...(params as ReadonlyArray<SQLQueryBindings>))
+          db.query(statement).run(...(params as ReadonlyArray<SqliteTestBinding>))
         },
         withExclusiveTransactionAsync: async task => {
           exclusiveTransactions += 1

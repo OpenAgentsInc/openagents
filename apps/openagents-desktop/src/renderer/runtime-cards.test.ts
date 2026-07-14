@@ -8,7 +8,7 @@
  * child_steered outcome + message-action-absent, queue chip), and the
  * local-harness event projection that drives them.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { DesktopThread } from "../chat-contract.ts"
 import type { FableLocalEventEnvelope } from "../fable-local-contract.ts"

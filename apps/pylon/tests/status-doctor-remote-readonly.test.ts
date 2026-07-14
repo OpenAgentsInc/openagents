@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -72,8 +73,8 @@ async function startStubNode(input: { port: number; token: string }): Promise<()
 }
 
 function runCli(args: string[], env: Record<string, string>) {
-  const proc = Bun.spawn(["bun", CLI_ENTRY, ...args], {
-    env: { ...Bun.env, ...env, PYLON_DISABLE_OPENCODE_STARTUP: "1" },
+  const proc = Runtime.spawn([process.execPath, CLI_ENTRY, ...args], {
+    env: { ...process.env, ...env, PYLON_DISABLE_OPENCODE_STARTUP: "1" },
     stdout: "pipe",
     stderr: "pipe",
   })

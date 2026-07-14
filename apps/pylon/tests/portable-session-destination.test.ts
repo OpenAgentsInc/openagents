@@ -1,5 +1,6 @@
-import { Database } from "bun:sqlite"
-import { afterEach, describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { createHash } from "node:crypto"
 import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -84,7 +85,7 @@ test("concrete rehydrator restores private repository bytes and activates the re
 })
 
 const git = async (cwd: string, ...args: string[]): Promise<Uint8Array> => {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const proc = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).bytes(),
     new Response(proc.stderr).text(),
@@ -287,7 +288,7 @@ describe("owner-local portable destination rehydration", () => {
     roots.push(root)
     const { bundle, repository } = await fixture(root)
     const databasePath = join(root, "portable.sqlite")
-    const database = new Database(databasePath, { create: true })
+    const database = new NodeTestDatabase(databasePath, { create: true })
     const ledger = new PylonPortableSessionOperationLedger(database)
     await Effect.runPromise(ledger.registerSession({
       sessionRef: bundle.checkpoint.sessionRef,
@@ -360,7 +361,7 @@ describe("owner-local portable destination rehydration", () => {
     })
     database.close()
 
-    const reopened = new Database(databasePath)
+    const reopened = new NodeTestDatabase(databasePath)
     const restartedLedger = new PylonPortableSessionOperationLedger(reopened)
     const restarted = createPylonOwnerLocalDestinationLifecycle({
       targetRef: "target.port03.owner.local",
@@ -377,7 +378,7 @@ describe("owner-local portable destination rehydration", () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-port03-local-abort-"))
     roots.push(root)
     const { bundle, repository } = await fixture(root)
-    const database = new Database(join(root, "portable.sqlite"), { create: true })
+    const database = new NodeTestDatabase(join(root, "portable.sqlite"), { create: true })
     const ledger = new PylonPortableSessionOperationLedger(database)
     await Effect.runPromise(ledger.registerSession({
       sessionRef: bundle.checkpoint.sessionRef,

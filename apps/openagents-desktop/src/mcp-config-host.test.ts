@@ -7,7 +7,7 @@
  * reserved/duplicate rejection on add, and the public-safe projection carrying
  * no secret values.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"

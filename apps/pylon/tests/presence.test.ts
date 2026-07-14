@@ -1,7 +1,8 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
   codexAccountCapacityKey,
@@ -39,7 +40,7 @@ const offlineWalletProbe = async () => ({
   sendReady: false,
 })
 
-const servers: ReturnType<typeof Bun.serve>[] = []
+const servers: ReturnType<typeof Runtime.serve>[] = []
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
@@ -57,7 +58,7 @@ async function withTempHome<T>(fn: (home: string) => Promise<T>) {
 function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
   const requests: { path: string; body: any; headers: Headers }[] = []
   let heartbeatFailures = input.failHeartbeats ?? 0
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
@@ -108,6 +109,7 @@ function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
       return Response.json({ errorRef: "error.not_found" }, { status: 404 })
     },
   })
+  await server.ready
   servers.push(server)
   return {
     baseUrl: `http://127.0.0.1:${server.port}`,
@@ -117,7 +119,7 @@ function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
 
 function fakePresenceCliServer() {
   const requests: { path: string; body: any; headers: Headers }[] = []
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
@@ -148,6 +150,7 @@ function fakePresenceCliServer() {
       return Response.json({ errorRef: "error.not_found" }, { status: 404 })
     },
   })
+  await server.ready
   servers.push(server)
   return {
     baseUrl: `http://127.0.0.1:${server.port}`,
@@ -218,7 +221,7 @@ async function runPresenceCli(input: {
   env: Record<string, string>
   timeoutMs?: number
 }): Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }> {
-  const proc = Bun.spawn(["bun", INDEX, "presence", ...input.args], {
+  const proc = Runtime.spawn([process.execPath, INDEX, "presence", ...input.args], {
     cwd: CWD,
     env: {
       ...process.env,
@@ -253,7 +256,7 @@ async function runProviderCli(input: {
   env: Record<string, string>
   timeoutMs?: number
 }): Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }> {
-  const proc = Bun.spawn(["bun", INDEX, "provider", ...input.args], {
+  const proc = Runtime.spawn([process.execPath, INDEX, "provider", ...input.args], {
     cwd: CWD,
     env: {
       ...process.env,
@@ -307,7 +310,7 @@ describe("Pylon presence registration and heartbeat", () => {
   test("uses bearer auth and idempotency keys when an agent token is supplied", async () => {
     await withTempHome(async (home) => {
       const requests: { path: string; body: any; headers: Headers }[] = []
-      const server = Bun.serve({
+      const server = Runtime.serve({
         port: 0,
         async fetch(request) {
           const url = new URL(request.url)
@@ -328,6 +331,7 @@ describe("Pylon presence registration and heartbeat", () => {
           return Response.json({ errorRef: "error.not_found" }, { status: 404 })
         },
       })
+      await server.ready
       servers.push(server)
       const summary = createBootstrapSummary(
         parseBootstrapArgs(["--display-name", "Bearer Presence Test"]),

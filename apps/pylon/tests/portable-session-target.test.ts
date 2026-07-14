@@ -1,5 +1,7 @@
-import { Database } from "bun:sqlite"
-import { afterEach, describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { setTimeout as sleep } from "node:timers/promises"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -21,7 +23,7 @@ afterEach(async () => {
 })
 
 const git = async (cwd: string, ...args: string[]) => {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const proc = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   if (await proc.exited !== 0) throw new Error(await new Response(proc.stderr).text())
 }
 
@@ -95,10 +97,10 @@ describe("owner-local Pylon portable execution target", () => {
       sessionRef: rootRun.sessionRef,
       objective: "Run child",
     })
-    while (invocation < 2) await Bun.sleep(5)
+    while (invocation < 2) await sleep(5)
 
     const databasePath = join(root, "portable.sqlite")
-    const database = new Database(databasePath, { create: true })
+    const database = new NodeTestDatabase(databasePath, { create: true })
     const ledger = new PylonPortableSessionOperationLedger(database)
     const sessionRef = "session.portable.owner.1"
     const attachmentRef = "attachment.portable.owner.1"
@@ -184,7 +186,7 @@ describe("owner-local Pylon portable execution target", () => {
     expect(bundle.checkpoint.graphDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
     expect(JSON.stringify(bundle)).not.toContain(root)
 
-    const reopenedDb = new Database(databasePath)
+    const reopenedDb = new NodeTestDatabase(databasePath)
     const reopenedLedger = new PylonPortableSessionOperationLedger(reopenedDb)
     expect(await Effect.runPromise(reopenedLedger.readCheckpointBundle(checkpointInput.operationRef)))
       .toEqual(bundle)

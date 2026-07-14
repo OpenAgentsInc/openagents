@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vite-plus/test'
 import { Effect } from 'effect'
 
 import {

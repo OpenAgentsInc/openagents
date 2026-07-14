@@ -3,7 +3,7 @@
  * the same interface the Postgres backend passes conformance for, so what
  * is proven here holds for the deployed FOR UPDATE SKIP LOCKED backend.
  */
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vite-plus/test'
 import { Effect } from 'effect'
 import { JobQueue } from '@openagentsinc/oa-infra/job-queue'
 import * as JobQueueMemory from '@openagentsinc/oa-infra/job-queue-memory'

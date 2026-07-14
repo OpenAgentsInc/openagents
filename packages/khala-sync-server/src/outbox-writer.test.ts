@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises"
 import {
   canonicalJson,
   decodeChangelogEntry,
@@ -8,8 +9,8 @@ import {
   type SyncScope,
   type SyncVersion,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { KhalaSyncStorageError, storageErrorFromUnknown } from "./errors.js"
 import { runMigrations } from "./migrate.js"
 import {
@@ -20,9 +21,6 @@ import {
 } from "./outbox-writer.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const entityType = EntityType.make("thing")
 const entityId = (n: number) => EntityId.make(`thing-${n}`)
 
@@ -108,7 +106,7 @@ describe.skipIf(!hasLocalPostgres())("outbox writer against local Postgres", () 
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_outbox")
     await admin.end()
     const url = pg.urlFor("khala_sync_outbox")
@@ -116,7 +114,7 @@ describe.skipIf(!hasLocalPostgres())("outbox writer against local Postgres", () 
     const result = await runMigrations({ databaseUrl: url })
     expect(result.applied).toContain("0001_khala_sync_core.sql")
     // max: 10 so concurrent-writer tests hold several transactions open.
-    sql = new SQL({ url, max: 10 })
+    sql = SQL({ url, max: 10 })
   })
 
   afterAll(async () => {
@@ -224,7 +222,7 @@ describe.skipIf(!hasLocalPostgres())("outbox writer against local Postgres", () 
           })
           // Hold the transaction (and the scope-counter row lock) open so
           // writers genuinely overlap.
-          await Bun.sleep(25)
+          await sleep(25)
           return Number(entry.version)
         }),
       ),

@@ -15,7 +15,7 @@
  *   previous corpus per version. Fixtures are frozen bytes; do not regenerate
  *   them to make a serializer change pass.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readdirSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 

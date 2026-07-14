@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test'
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from 'vite-plus/test'
 import {
   composerAttachmentId,
   emptyComposerState,
@@ -63,9 +64,9 @@ const renderHtml = (html: Html): string => {
 
 describe('ai-elements command composer', () => {
   test('keeps the empty composer compact before users start typing', async () => {
-    const css = await Bun.file(
+    const css = await readFile(
       new URL('../src/ai-elements/command-composer.css', import.meta.url),
-    ).text()
+    , "utf8")
 
     expect(css).toContain('--oa-command-composer-height: 8rem')
     expect(css).toContain('min-height: 4rem')
@@ -147,9 +148,9 @@ describe('ai-elements command composer', () => {
         },
       }),
     )
-    const css = await Bun.file(
+    const css = await readFile(
       new URL('../src/ai-elements/command-composer.css', import.meta.url),
-    ).text()
+    , "utf8")
 
     expect(rendered).toContain('rows="10"')
     expect(css).toContain('field-sizing: content')

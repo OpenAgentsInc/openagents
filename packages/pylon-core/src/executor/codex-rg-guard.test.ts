@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { spawnSync } from "node:child_process"
 import { join } from "node:path"

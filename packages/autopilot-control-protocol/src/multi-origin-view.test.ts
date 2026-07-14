@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { mergeSessionViews, type MergeSessionViewsInput, type UnifiedSessionRow } from "./multi-origin-view.js"
 

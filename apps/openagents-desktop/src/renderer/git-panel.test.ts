@@ -8,7 +8,7 @@
  * Git mutation authority); the substrate intents stay internal and are
  * exercised here by direct dispatch, never through a rendered control.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 

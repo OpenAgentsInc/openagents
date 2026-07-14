@@ -6,7 +6,7 @@
 // REAL headless run is proven separately by run-once.ts against the committed artifact
 // and by the worker-side acceptance-dispatch.test.ts.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vite-plus/test'
 
 import {
   AcceptanceJobMessage,

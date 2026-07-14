@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { DesktopVoiceState } from "../voice-host.ts"
 import { idleVoiceModeState, voiceActive, voiceBehaviorContractIds, voiceIndicatorText, withVoiceHostState } from "./voice-mode.ts"
 

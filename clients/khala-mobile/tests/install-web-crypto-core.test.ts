@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { applyWebCryptoShim, type WebCryptoImpl } from "../src/native/install-web-crypto-core"
 

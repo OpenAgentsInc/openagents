@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { PYLON_COMMAND_CATALOG } from "../cli-catalog.js"
 import {

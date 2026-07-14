@@ -1,13 +1,6 @@
 import { publicScope, ACTIVITY_TIMELINE_SNAPSHOT_CHANNEL_ID } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { runMigrations } from "./migrate.js"
 import {
   activityTimelinePublicScope,
@@ -17,9 +10,6 @@ import {
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const nowIso = "2026-07-05T00:00:00.000Z"
 
 const sampleEvent = (overrides: Partial<Record<string, unknown>> = {}) => ({
@@ -122,12 +112,12 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_activity_timeline")
       await admin.end()
       const url = pg.urlFor("khala_sync_activity_timeline")
       await runMigrations({ databaseUrl: url })
-      sql = new SQL({ url, max: 10 })
+      sql = SQL({ url, max: 10 })
     })
 
     afterAll(async () => {
@@ -179,11 +169,11 @@ describe.skipIf(!hasLocalPostgres())(
 
     test("a fresh scope with no snapshot yet reads as null (fail-open signal)", async () => {
       const url2 = pg.urlFor("khala_sync_activity_timeline_empty")
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_activity_timeline_empty")
       await admin.end()
       await runMigrations({ databaseUrl: url2 })
-      const emptySql = new SQL({ url: url2, max: 5 })
+      const emptySql = SQL({ url: url2, max: 5 })
       try {
         const read = await readActivityTimelineSnapshot(
           emptySql as unknown as SyncSql,

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vite-plus/test"
 import { mintAudioGrant, verifyAudioGrant } from "./auth"
 import { identity } from "./test-support"
 const secret = "s".repeat(32)

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildPylonKhalaBurndownPlan } from "./khala-burndown.js"
 import type { PylonAccountsListProjection } from "./account-usage.js"

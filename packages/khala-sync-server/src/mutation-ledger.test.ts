@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises"
 import {
   canonicalJson,
   ClientGroupId,
@@ -13,8 +14,8 @@ import {
   SyncSchemaVersion,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { runMigrations } from "./migrate.js"
 import {
   checkAndReserve,
@@ -31,9 +32,6 @@ import {
 import { withSyncTransaction } from "./outbox-writer.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const mutatorName = MutatorName.make("thing.set")
 const entityType = EntityType.make("thing")
 const schemaVersion = SyncSchemaVersion.make(1)
@@ -117,13 +115,13 @@ describe.skipIf(!hasLocalPostgres())("mutation ledger against local Postgres", (
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_ledger")
     await admin.end()
     const url = pg.urlFor("khala_sync_ledger")
     const result = await runMigrations({ databaseUrl: url })
     expect(result.applied).toContain("0001_khala_sync_core.sql")
-    sql = new SQL({ url, max: 10 })
+    sql = SQL({ url, max: 10 })
   })
 
   afterAll(async () => {
@@ -467,7 +465,7 @@ describe.skipIf(!hasLocalPostgres())("mutation ledger against local Postgres", (
         if (gate.kind !== "execute") return gate.result
         executions += 1
         // Hold the transaction open so the racer genuinely overlaps.
-        await Bun.sleep(50)
+        await sleep(50)
         await recordMutation(writer.sql, {
           clientGroupId: client.clientGroupId,
           clientId: client.clientId,
@@ -501,7 +499,7 @@ describe.skipIf(!hasLocalPostgres())("mutation ledger against local Postgres", (
         FROM khala_sync_client_state
        WHERE client_group_id = ${client.clientGroupId}
     `
-    await Bun.sleep(15)
+    await sleep(15)
 
     const refreshed = await upsertClientState(sql, {
       clientGroupId: client.clientGroupId,

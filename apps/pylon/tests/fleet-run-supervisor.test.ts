@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -91,7 +92,7 @@ const capacity = () => ({ accounts: async () => mixedCapacity })
 
 describe("Pylon-owned FleetRun supervisor", () => {
   test("places two concurrent units on owner-local and managed-cloud through one claim registry", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc4.hybrid_per_unit",
       workUnits: 2,
@@ -198,7 +199,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("waits for every residual attempt before emitting an operator-stop terminal", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc3.operator_stop_residual",
       workUnits: 2,
@@ -293,7 +294,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
 
   test("emits a failed run terminal when the last local attempt fails or blocks", async () => {
     for (const status of ["failed", "blocked"] as const) {
-      const store = createPylonOrchestrationStore(new Database(":memory:"))
+      const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
       const run = createRun(store, {
         runRef: `fleet_run.fc3.terminal_${status}`,
         workUnits: 1,
@@ -342,7 +343,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("projects the durable claim immediately and streams lifecycle before dispatch returns", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc3.lifecycle_immediate",
       workUnits: 1,
@@ -404,7 +405,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("terminalizes locally before a slow lifecycle projection can trigger double reconciliation", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc3.slow_terminal_projection",
       workUnits: 1,
@@ -486,7 +487,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
     await terminalDispatchProjected
     // Let the fire-and-forget bookkeeping continuation clear its finalizing
     // marker after the terminal lifecycle sink returns.
-    await Bun.sleep(1)
+    await sleep(1)
     expect(store.getTask(task!.id)?.status).toBe("completed")
     expect(store.getWorkClaim(claim!.claimRef)?.state).toBe("closeout")
 
@@ -504,7 +505,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("binds a real executor approval signal to the exact live attempt and stable worker", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const pylonRef = "pylon.owner.fc3.approval"
     const authorityClaimRef = `claim.sarah_fleet_run.${"a".repeat(24)}`
     const baseRun = createRun(store, {
@@ -594,7 +595,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("gives simultaneous slots on one account distinct worker refs with stable replay", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const pylonRef = "pylon.owner.fc3.concurrent_approvals"
     const authorityClaimRef = `claim.sarah_fleet_run.${"c".repeat(24)}`
     const baseRun = createRun(store, {
@@ -683,7 +684,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("replays buffered lifecycle when the first live projection fails", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc3.lifecycle_retry",
       workUnits: 1,
@@ -727,7 +728,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("starts one simultaneous stream per concrete harness and persists each worker kind", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc2.mixed_concurrent",
       workUnits: 3,
@@ -778,7 +779,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("spreads the default three-slot auto wave across harnesses despite extra ready Codex capacity", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc5.default_harness_spread",
       workUnits: 3,
@@ -841,7 +842,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("includes an already-live harness claim when spreading the next tick", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc5.live_harness_spread",
       workUnits: 2,
@@ -874,7 +875,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("keeps a single default auto slot Codex-first", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc5.default_single_slot",
       workUnits: 1,
@@ -904,7 +905,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("records an exhausted Grok fallback before filling the next tied harness slot", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc5.exhausted_grok_spread",
       workUnits: 3,
@@ -975,7 +976,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("does not fabricate a Grok selection when no Grok account exists", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc5.missing_grok",
       workUnits: 3,
@@ -1015,7 +1016,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("uses the shared default auto policy and emits one public-safe fallback per skipped candidate", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc2.typed_auto_fallback",
       workUnits: 1,
@@ -1098,7 +1099,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("emits a typed cost-ceiling fallback before selecting an allowed named account", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc2.typed_auto_cost_ceiling",
       workUnits: 1,
@@ -1166,7 +1167,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("records a failed Grok account as a durable account-lane breaker", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc2.grok_breaker",
       workUnits: 1,
@@ -1212,7 +1213,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("redispatches an account-health failure to the next ready Claude account", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc5.claude_account_redispatch",
       workUnits: 1,
@@ -1313,7 +1314,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("does not call a pending account-health redispatch backlog-empty", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc5.pending_redispatch_not_empty",
       workUnits: 1,
@@ -1389,7 +1390,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("does not loop an ordinary task failure onto another ready account", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc5.ordinary_failure_terminal",
       workUnits: 1,
@@ -1447,7 +1448,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("does not quarantine a healthy account for task or verifier failure", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc2.grok_task_failure",
       workUnits: 1,
@@ -1485,7 +1486,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
   })
 
   test("keeps explicit concrete runs constrained to their requested harness", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const run = createRun(store, {
       runRef: "fleet_run.fc2.explicit_codex",
       workUnits: 1,
@@ -1541,7 +1542,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-fc2-supervisor-"))
     const dbPath = join(root, "orchestration.sqlite")
     try {
-      const firstDb = new Database(dbPath)
+      const firstDb = new NodeTestDatabase(dbPath)
       const firstStore = createPylonOrchestrationStore(firstDb)
       const run = createRun(firstStore, {
         runRef: "fleet_run.fc2.restart_refill",
@@ -1570,7 +1571,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
       expect(firstStore.listTasks("dispatched")).toHaveLength(3)
       firstDb.close()
 
-      const secondDb = new Database(dbPath)
+      const secondDb = new NodeTestDatabase(dbPath)
       const secondStore = createPylonOrchestrationStore(secondDb)
       const resumedAssignments: FleetRunSupervisorActiveAssignment[][] = []
       const refilled: FleetRunSupervisorDispatchInput[] = []
@@ -1643,7 +1644,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
       },
     ]
     try {
-      const firstDb = new Database(dbPath)
+      const firstDb = new NodeTestDatabase(dbPath)
       const firstStore = createPylonOrchestrationStore(firstDb)
       const run = createRun(firstStore, {
         runRef: "fleet_run.fc5.restart_account_redispatch",
@@ -1671,7 +1672,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
         .toBe("claude-a-revoked")
       firstDb.close()
 
-      const secondDb = new Database(dbPath)
+      const secondDb = new NodeTestDatabase(dbPath)
       const secondStore = createPylonOrchestrationStore(secondDb)
       const dispatchedAccounts: string[] = []
       let reconciledAccount: string | null = null
@@ -1750,7 +1751,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
       },
     ]
     try {
-      const firstDb = new Database(dbPath)
+      const firstDb = new NodeTestDatabase(dbPath)
       const firstStore = createPylonOrchestrationStore(firstDb)
       const run = createRun(firstStore, {
         runRef: "fleet_run.fc5.expired_account_redispatch",
@@ -1793,7 +1794,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
       // between durable task completion and its separate claim transition.
       firstDb.close()
 
-      const secondDb = new Database(dbPath)
+      const secondDb = new NodeTestDatabase(dbPath)
       const secondStore = createPylonOrchestrationStore(secondDb)
       const dispatchedAccounts: string[] = []
       const resumed = await tickFleetRunSupervisor({

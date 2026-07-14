@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { HarnessV1NetworkPolicy } from "@ai-sdk/harness"
 import type {
   Experimental_SandboxProcess,

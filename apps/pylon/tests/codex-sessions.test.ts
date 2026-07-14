@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { stableExternalSessionRef } from "../src/node/external-sessions"
 import { buildCodexSession, normalizeCodexLine, scanCodexSessions } from "../src/node/codex-sessions"
 

@@ -11,7 +11,7 @@
  * result, the host-side timeout bound, and concurrent children with isolated
  * per-child scratch dirs — all through the REAL JSONL parser.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect, Exit, Fiber, Scope } from "effect"
 import { awaitPipelineSignal, makePipelineSignalBus } from "@openagentsinc/pipeline-signals"
 

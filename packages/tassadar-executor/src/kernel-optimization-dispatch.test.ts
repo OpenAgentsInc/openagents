@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   KERNEL_OPTIMIZATION_ACCEPTED_WORK_RECEIPT_SCHEMA,

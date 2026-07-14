@@ -4,7 +4,7 @@
  * slug was the on-camera 400), and a non-OK response surfaces the bounded
  * response-body detail instead of a bare status.
  */
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test"
 
 import { completeChatTurn } from "./chat-service.ts"
 

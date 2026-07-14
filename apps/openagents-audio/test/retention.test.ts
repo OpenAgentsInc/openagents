@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import { AudioRetentionService, dispositionClasses, MemoryPrivateObjectStore, sha256Hex, type RetainedSessionReceipt, type SegmentInput } from "../src/index.js"
 

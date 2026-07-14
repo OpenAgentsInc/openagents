@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vite-plus/test'
 import type { Html } from 'foldkit/html'
 
 import { AiElements } from '../src/index'

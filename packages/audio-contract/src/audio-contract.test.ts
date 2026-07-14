@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { decodeClientFrame, decodeMediaHeader, MAX_AUDIO_PAYLOAD_BYTES } from "./index"
 const identity = { ownerRef: "owner:1", deviceRef: "device:1", threadRef: "thread:1", sessionRef: "session:1", generation: 1 }
 const digest = "0".repeat(64)

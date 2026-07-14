@@ -6,7 +6,7 @@
  * progress bar showing remaining weekly/hourly usage (grayed out if we dont
  * have that data)."
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import type { View } from "@effect-native/core"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 

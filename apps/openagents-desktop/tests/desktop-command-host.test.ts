@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   deferredDesktopCommand,
@@ -12,9 +13,9 @@ import { resolveDesktopDeferredCommandIntent } from "../src/renderer/command-reg
 describe("contract openagents_desktop.commands.host_routing.v1", () => {
   test("production composition owns single-instance, native menu, ready handshake, and schema-decoded renderer dispatch", async () => {
     const [main, preload, boot] = await Promise.all([
-      Bun.file(new URL("../src/main.ts", import.meta.url)).text(),
-      Bun.file(new URL("../src/preload.cts", import.meta.url)).text(),
-      Bun.file(new URL("../src/renderer/boot.ts", import.meta.url)).text(),
+      readFile(new URL("../src/main.ts", import.meta.url), "utf8"),
+      readFile(new URL("../src/preload.cts", import.meta.url), "utf8"),
+      readFile(new URL("../src/renderer/boot.ts", import.meta.url), "utf8"),
     ])
     expect(main).toContain("app.requestSingleInstanceLock()")
     expect(main).toContain('app.on("second-instance"')

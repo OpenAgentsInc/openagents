@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 
 import { parseRouteSelection, selectKhalaRoute } from "./codex.js"
 
@@ -50,7 +51,7 @@ describe("Khala route selector", () => {
 
   test("keeps the model-backed selector prompt schema-aware for spawn requests", async () => {
     let selectorPrompt = ""
-    const server = Bun.serve({
+    const server = Runtime.serve({
       hostname: "127.0.0.1",
       port: 0,
       fetch: async request => {
@@ -64,6 +65,7 @@ describe("Khala route selector", () => {
         ].join("\n\n"))
       },
     })
+    await server.ready
     try {
       const selection = await selectKhalaRoute({
         baseUrl: `http://127.0.0.1:${server.port}`,

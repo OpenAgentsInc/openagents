@@ -5,7 +5,7 @@
  * guarantee). Lock names are namespaced per test with a fresh UUID so
  * shared backends (one Postgres server) can host the suite.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import type { Layer } from "effect"
 import { Mutex, type MutexShape } from "../mutex.ts"

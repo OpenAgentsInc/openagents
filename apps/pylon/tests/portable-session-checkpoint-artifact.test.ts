@@ -1,9 +1,10 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { lstat, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, test } from "vite-plus/test"
 import { canonicalJson } from "@openagentsinc/khala-sync"
 
 import {
@@ -17,7 +18,7 @@ const sha = (value: string | Uint8Array): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`
 
 const git = async (cwd: string, args: string[]): Promise<string> => {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const proc = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   if (code !== 0) throw new Error(`git ${args[0]} failed`)
   return stdout.trim()
@@ -159,7 +160,7 @@ test("exports a canonical private tar.zst bound to the exact checkpoint", async 
     bundle,
   })
   expect(sha(artifact.bytes)).toBe(artifact.digest)
-  const files = tarFiles(Bun.zstdDecompressSync(artifact.bytes))
+  const files = tarFiles(Runtime.zstdDecompressSync(artifact.bytes))
   expect([...files.keys()]).toEqual([
     "manifest.json",
     "repository.bundle",
@@ -254,7 +255,7 @@ test("preserves tracked deletions as absence from the post-image", async () => {
     checkpointRef: bundle.checkpoint.checkpointRef,
     bundle,
   })
-  const files = tarFiles(Bun.zstdDecompressSync(artifact.bytes))
+  const files = tarFiles(Runtime.zstdDecompressSync(artifact.bytes))
   const manifest = JSON.parse(new TextDecoder().decode(files.get("manifest.json")))
   expect(manifest.files.map((file: { path: string }) => file.path)).toEqual(["scratch.txt"])
   expect(files.has("post-image/tracked.txt")).toBeFalse()
@@ -277,7 +278,7 @@ test("preserves bounded relative symlinks and rejects escaping links", async () 
     checkpointRef: bundle.checkpoint.checkpointRef,
     bundle,
   })
-  const files = tarFiles(Bun.zstdDecompressSync(artifact.bytes))
+  const files = tarFiles(Runtime.zstdDecompressSync(artifact.bytes))
   const manifest = JSON.parse(new TextDecoder().decode(files.get("manifest.json")))
   expect(manifest.files.find((file: { path: string }) => file.path === "alias.txt")).toEqual({
     path: "alias.txt",

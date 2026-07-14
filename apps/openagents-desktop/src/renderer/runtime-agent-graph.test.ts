@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { type View } from "@effect-native/core"
 import { decodeLiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import { projectLiveAgentGraphPresentation } from "../agent-graph-presentation.ts"

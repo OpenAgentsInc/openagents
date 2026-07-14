@@ -15,7 +15,7 @@
  *    connect, the result is an honest `connected_local_only` projection —
  *    never a throw.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { join } from "node:path"

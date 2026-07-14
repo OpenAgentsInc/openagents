@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vite-plus/test'
 import { PYLON_COMMAND_CATALOG, findCommandEntry, projectCommandCatalog, projectCommandHelp } from '../src/cli-catalog'
 
 // CL-5035: `pylon help --json` is the machine-readable command catalog an agent

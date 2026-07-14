@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vite-plus/test'
 import { projectHostInventoryFixture } from '../src/inventory'
 import { createOperatorSnapshot, formatOperatorSnapshotText } from '../src/operator'
 import { assertPublicProjectionSafe } from '../src/state'

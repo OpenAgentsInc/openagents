@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
-const read = (file: string) => Bun.file(new URL(file, import.meta.url)).text()
+const read = (file: string) => readFile(new URL(file, import.meta.url), "utf8")
 
 describe("Desktop signed update staging integration", () => {
   test("main and preload both decode one fixed update channel", async () => {

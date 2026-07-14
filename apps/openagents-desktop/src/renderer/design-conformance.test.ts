@@ -13,7 +13,7 @@
  * scales, and (c) the per-surface structural recipes hold on the typed view
  * trees. The typed trees are data — no DOM needed.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 import { radiusTokens, spacingTokens } from "@effect-native/tokens"

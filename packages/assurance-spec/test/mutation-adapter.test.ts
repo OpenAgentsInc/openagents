@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
@@ -14,7 +14,7 @@ const subject = `export const acceptsUnique = (ids: readonly string[]): boolean 
   new Set(ids).size === ids.length
 `
 
-const oracle = `import { expect, test } from "bun:test"
+const oracle = `import { expect, test } from "vite-plus/test"
 import { acceptsUnique } from "./subject.ts"
 
 test("strong admitted identity oracle", () => {

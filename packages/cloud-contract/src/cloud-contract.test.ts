@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Schema as S } from "effect"
 import {
   AGENT_COMPUTER_ISOLATION_POLICY_VERSION,

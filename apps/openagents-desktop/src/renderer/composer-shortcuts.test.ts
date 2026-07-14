@@ -7,7 +7,7 @@
  * allowed (capability truth lives on the chip/Send, never a silent block of
  * the gesture — the handler does not consult availability at all).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   handleComposerShiftTab,

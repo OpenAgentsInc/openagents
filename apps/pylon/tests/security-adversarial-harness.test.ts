@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Adversarial security / safety harness (issue #6643).
 //
 // This suite simulates an attacker probing the OpenAgents admission and
@@ -23,7 +24,7 @@
 // NOT weaken the assertion to force green — fix the production boundary.
 
 import { plugin } from "bun"
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 
 import type {
@@ -105,7 +106,7 @@ const EXPIRED_TOKEN = "oa_agent_charlie_expired_credential"
 const FORGED_TOKEN = "oa_agent_forged_never_issued"
 const MALFORMED_TOKEN = "definitely-not-an-agent-token"
 
-const servers: ReturnType<typeof Bun.serve>[] = []
+const servers: ReturnType<typeof Runtime.serve>[] = []
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
 })
@@ -490,7 +491,7 @@ describe("vector 1: pylon_join admission fails closed", () => {
   test("a WebSocket admission handshake destroys the socket for bad tokens and admits only a live credential", async () => {
     const agentStore = await buildAgentStore()
     const admitted: string[] = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request, srv) {
         // The admission decision is the REAL auth gate, over a WS transport.
@@ -517,6 +518,7 @@ describe("vector 1: pylon_join admission fails closed", () => {
         message() {},
       },
     })
+    await server.ready
     servers.push(server)
     const baseUrl = `ws://127.0.0.1:${server.port}`
 

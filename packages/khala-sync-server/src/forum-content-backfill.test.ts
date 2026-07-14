@@ -11,15 +11,8 @@
 // the same digest. Privacy: no assertion prints body text — hashes and
 // keys only, same as the CLI.
 
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import {
   buildForumContentVerifyReport,
   comparePostChains,
@@ -42,9 +35,6 @@ import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 // ---------------------------------------------------------------------------
 // Fixtures (snake_case rows exactly as `wrangler d1 execute --json` returns)
 // ---------------------------------------------------------------------------
@@ -296,13 +286,13 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_forum_content_backfill")
       await admin.end()
       const url = pg.urlFor("khala_forum_content_backfill")
       const result = await runMigrations({ databaseUrl: url })
       expect(result.applied).toContain("0014_forum_content.sql")
-      rawSql = new SQL({ url, max: 4 })
+      rawSql = SQL({ url, max: 4 })
       sql = rawSql as unknown as SyncSql
     })
 

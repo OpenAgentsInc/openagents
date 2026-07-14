@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { afterEach, expect, test } from "vite-plus/test"
 import { mintAudioGrant } from "./auth"
 import { startAudioServer } from "./server"
 import { FakeSttAdapter } from "./stt"
@@ -30,7 +31,7 @@ test("canonical speak route streams identity/turn/speech-bound PCM and returns t
   const response = await fetch(`http://127.0.0.1:${running.port}/v1/speak`, { method: "POST", headers: { "content-type": "application/json", "x-openagents-audio-grant": token }, body: JSON.stringify({ turnRef: "turn.1", speechRef: "speech.1", messageRef: "message.1", text: "Canonical visible reply" }) })
   expect(response.status).toBe(200); const receipt = await response.json() as any
   expect(receipt).toMatchObject({ outcome: "completed", chunksOut: 1, charsIn: 23 }); expect(JSON.stringify(receipt)).not.toContain("Canonical")
-  await Bun.sleep(10)
+  await sleep(10)
   const binary = received.find(value => value instanceof Uint8Array) as Uint8Array
   const headerLength = new DataView(binary.buffer, binary.byteOffset + 4, 4).getUint32(0)
   expect(decodeMediaHeader(JSON.parse(Buffer.from(binary.subarray(8, 8 + headerLength)).toString("utf8")))).toMatchObject({ identity, turnRef: "turn.1", speechRef: "speech.1" })
@@ -47,7 +48,7 @@ test("retained sessions announce policy and ACK only after the durable accept ho
   const socket = new WebSocket(`ws://127.0.0.1:${running.port}/v1/stream?token=${token}`); const frames: any[] = []
   await new Promise<void>((resolve, reject) => { socket.onopen = () => resolve(); socket.onerror = reject })
   socket.onmessage = event => frames.push(JSON.parse(String(event.data)))
-  await Bun.sleep(5); socket.send(Buffer.from(mediaFrame(0))); await Bun.sleep(5)
+  await sleep(5); socket.send(Buffer.from(mediaFrame(0))); await sleep(5)
   expect(frames[0]).toMatchObject({ _tag: "retention_receipt", receipt: { receiptRef: "retained.1" } }); expect(accepted).toBe(1); expect(frames.some(frame => frame._tag === "ack")).toBeFalse()
-  release(); await Bun.sleep(5); expect(frames.at(-1)).toMatchObject({ _tag: "ack", acknowledgedClientSequence: 0 }); socket.close()
+  release(); await sleep(5); expect(frames.at(-1)).toMatchObject({ _tag: "ack", acknowledgedClientSequence: 0 }); socket.close()
 })

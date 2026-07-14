@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { SyncScope } from "@openagentsinc/khala-sync"
 import type { KhalaSyncSession } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"

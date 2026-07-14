@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 const mobileRoot = new URL("../", import.meta.url)
-const read = (path: string) => Bun.file(new URL(path, mobileRoot)).text()
+const read = (path: string) => readFile(new URL(path, mobileRoot), "utf8")
 
 describe("Khala mobile chat view reference structure", () => {
   // MM-H1 follow-up (Ignite port): the thread view was rebuilt on the ported

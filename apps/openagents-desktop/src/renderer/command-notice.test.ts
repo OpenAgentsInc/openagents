@@ -8,7 +8,7 @@
  * cancels the prior pending clear, and the typed dismiss intent clears it
  * immediately — rather than persisting as a permanent top banner.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { resolveIntentRef } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import { TestClock } from "@effect-native/core/testing"

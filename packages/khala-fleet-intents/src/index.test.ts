@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "vite-plus/test"
 import {
   decodeFleetSteeringFollowUpCompletionAck,
   decodeFleetSteeringFollowUpCompletionBatch,

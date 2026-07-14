@@ -13,7 +13,7 @@
  *  - 1.4.11 non-text/UI        ≥ 3:1
  *  - disabled/inactive text   EXEMPT (1.4.3 note)
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 

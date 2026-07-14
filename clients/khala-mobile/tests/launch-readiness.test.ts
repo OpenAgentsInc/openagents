@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   KhalaMobileLaunchReadinessSchemaId,
@@ -52,7 +53,7 @@ describe("Khala Mobile P0.8 launch readiness receipt", () => {
   })
 
   test("launch_readiness_owner_gate_documented.source — owner action list and NEEDS_OWNER entry stay aligned", async () => {
-    const ownerDoc = await Bun.file(repoPath("NEEDS_OWNER.md")).text()
+    const ownerDoc = await readFile(repoPath("NEEDS_OWNER.md"), "utf8")
     expect(ownerDoc).toContain("Khala Mobile P0.8 Launch Readiness")
     expect(ownerDoc).toContain("Source issue: OpenAgentsInc/openagents#8543")
 

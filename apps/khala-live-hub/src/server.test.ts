@@ -1,11 +1,12 @@
-// khala-live-hub server E2E tests (CFG-5, #8520): the REAL Bun.serve
+import { Runtime } from "@openagentsinc/runtime-platform"
+// khala-live-hub server E2E tests (CFG-5, #8520): the REAL Runtime.serve
 // surface — shared-bearer auth (header AND ?token=, the b45071b9b6
 // query-token channel), append→log round trips, real WebSocket connects
 // with catch-up + fan-out + access-changed broadcast, and the pre-upgrade
 // HTTP error contract. These are the seam-tier transport assertions (epic
 // #8506) against the LiveHub instead of the DO.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 
 import {
   LIVE_HUB_PING_TEXT,

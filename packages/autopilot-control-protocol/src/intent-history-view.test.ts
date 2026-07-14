@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { projectIntentHistory, type IntentHistoryView } from "./intent-history-view.js"
 

@@ -1,13 +1,6 @@
 import { personalScope } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { runMigrations } from "./migrate.js"
 import {
   applyUserCreditBalanceDelta,
@@ -21,9 +14,6 @@ import {
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 // ---------------------------------------------------------------------------
 // Fail-soft wrapper (no working database: must return a diagnostic)
 // ---------------------------------------------------------------------------
@@ -109,7 +99,7 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_user_credit_balances")
       await admin.end()
       const url = pg.urlFor("khala_sync_user_credit_balances")
@@ -117,7 +107,7 @@ describe.skipIf(!hasLocalPostgres())(
       expect(result.applied).toContain(
         "0038_khala_sync_user_credit_balances.sql",
       )
-      sql = new SQL({ url, max: 10 })
+      sql = SQL({ url, max: 10 })
     })
 
     afterAll(async () => {

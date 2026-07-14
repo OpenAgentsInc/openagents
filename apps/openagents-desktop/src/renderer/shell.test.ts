@@ -3,7 +3,7 @@
  * plus the full typed intent loop run headlessly through the real registry —
  * dispatch -> handler -> SubscriptionRef -> re-rendered view.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopVoiceState } from "../voice-host.ts"

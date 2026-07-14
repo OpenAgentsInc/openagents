@@ -9,10 +9,10 @@
  * with an in-process FIXTURE keypair. The production private key is never
  * read, loaded, or printed.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { generateKeyPairSync } from "node:crypto"
 import { mkdtempSync } from "node:fs"
-import { writeFile } from "node:fs/promises"
+import { writeFile, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -134,7 +134,7 @@ describe("publish → seed → serve → client-verify (all fixture)", () => {
     const distDir = await stageDist()
     // Flip one byte of the rc manifest: digest no longer matches the envelope.
     const manifestPath = join(distDir, "manifest-rc-0.1.0-rc.2.json")
-    const original = await Bun.file(manifestPath).text()
+    const original = await readFile(manifestPath, "utf8")
     await writeFile(manifestPath, original.replace("0.1.0-rc.2", "9.9.9-rc.1"))
 
     const server = createUpdatesServer()

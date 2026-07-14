@@ -10,7 +10,7 @@
  *    `OA_INFRA_GCS_HMAC_SECRET` (same pattern as the SDK-backed GCS suite
  *    in postgres-backends.test.ts). Skips cleanly without credentials.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Layer } from "effect"
 import { BlobStore } from "./blob-store.ts"
 import {

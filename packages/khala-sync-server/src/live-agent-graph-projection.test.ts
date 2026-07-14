@@ -4,8 +4,8 @@ import {
   emptyLiveAgentGraphEntity,
   liveAgentGraphScope,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 
 import {
   LIVE_AGENT_GRAPH_PROJECTION_SYSTEM_REF,
@@ -15,9 +15,6 @@ import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const graph = () => emptyLiveAgentGraphEntity({
   graphRef: "graph.server.1",
   sessionRef: "session.server.1",
@@ -97,12 +94,12 @@ describe.skipIf(!hasLocalPostgres())("live-agent graph projection against local 
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    const admin = new SQL({ url: pg.url, max: 1 })
+    const admin = SQL({ url: pg.url, max: 1 })
     await admin.unsafe("CREATE DATABASE khala_sync_live_agent_graph")
     await admin.end()
     const url = pg.urlFor("khala_sync_live_agent_graph")
     await runMigrations({ databaseUrl: url })
-    sql = new SQL({ url, max: 5 })
+    sql = SQL({ url, max: 5 })
   })
 
   afterAll(async () => {

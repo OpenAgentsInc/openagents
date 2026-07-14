@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import { emptyLiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import type { KhalaConversationLiveUpdate } from "@openagentsinc/khala-sync-client"

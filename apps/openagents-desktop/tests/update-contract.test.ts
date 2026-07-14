@@ -7,7 +7,7 @@
  * referenced is the committed PUBLIC pin, which a drift oracle keeps
  * byte-equal with `apps/oa-updates/keys/release-pubkey.json`.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { createHash, generateKeyPairSync, sign as edSign } from "node:crypto"
 import { readFileSync } from "node:fs"
 import path from "node:path"

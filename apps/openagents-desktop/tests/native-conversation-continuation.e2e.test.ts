@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite"
-import { describe, expect, test } from "bun:test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -243,7 +243,7 @@ class AuthoritativeChatServer {
 }
 
 const openDesktopDatabase = (databasePath: string): DesktopSqliteDatabase => {
-  const database = new Database(databasePath, { create: true })
+  const database = new NodeTestDatabase(databasePath, { create: true })
   return {
     exec: sql => database.exec(sql),
     prepare: sql => {
@@ -258,7 +258,7 @@ const openDesktopDatabase = (databasePath: string): DesktopSqliteDatabase => {
 }
 
 const openExpoDatabase = (databasePath: string): ExpoSqliteDatabase => {
-  const database = new Database(databasePath, { create: true })
+  const database = new NodeTestDatabase(databasePath, { create: true })
   return {
     execSync: sql => database.exec(sql),
     runSync: (sql, ...params) => database.query(sql).run(...params),

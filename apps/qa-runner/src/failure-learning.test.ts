@@ -5,7 +5,7 @@
 // config-gated (default OFF -> downgraded; armed -> plan only, never executed);
 // a clean pass produces NO capture (no fabricated failure, no fake green).
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 import {
   captureFailurePattern,

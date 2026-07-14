@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { createBridgePairingService, type BridgeExchangeInput } from "../src/node/bridge-pairing-service"
 
 const baseExchange = (

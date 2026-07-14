@@ -9,7 +9,7 @@
  * after-terminal refusal, permutation convergence, and exact usage
  * attribution.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { FableChildUsage, FableLocalEvent } from "./fable-local-contract.ts"
 import {

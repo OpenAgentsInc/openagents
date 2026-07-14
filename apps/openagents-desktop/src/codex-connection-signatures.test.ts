@@ -19,7 +19,7 @@
  * revoke-mid-session→demote→other-verified keeps the chip→reconnect clears;
  * no-verified-accounts→disabled with the reconnect reason).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"

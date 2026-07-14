@@ -7,7 +7,7 @@ import {
   teamScope,
   threadScope,
 } from "@openagentsinc/khala-sync"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   isAnonymousReadableScope,
   type KhalaSyncScopeAuthCapabilities,

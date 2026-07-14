@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 
 import {
@@ -123,8 +123,8 @@ describe("Khala Code lag profiling sweep", () => {
       expect(fixtureInput).toBeDefined()
       const wrappedPath = join(outDir, "wrapped.json")
       const rawPath = join(outDir, "raw.json")
-      await Bun.write(wrappedPath, `${JSON.stringify(fixtureInput, null, 2)}\n`)
-      await Bun.write(rawPath, `${JSON.stringify(fixtureInput!.snapshot, null, 2)}\n`)
+      await writeFile(wrappedPath, `${JSON.stringify(fixtureInput, null, 2)}\n`)
+      await writeFile(rawPath, `${JSON.stringify(fixtureInput!.snapshot, null, 2)}\n`)
 
       const wrapped = await loadKhalaCodeLagProfilingSnapshotInputs(wrappedPath)
       const raw = await loadKhalaCodeLagProfilingSnapshotInputs(rawPath)
@@ -152,9 +152,9 @@ describe("Khala Code lag profiling sweep", () => {
       const goodPathB = join(outDir, "good-b.json")
       const missingPath = join(outDir, "does-not-exist.json")
       const malformedPath = join(outDir, "malformed.json")
-      await Bun.write(goodPathA, `${JSON.stringify(fixtureInput, null, 2)}\n`)
-      await Bun.write(goodPathB, `${JSON.stringify(fixtureInput!.snapshot, null, 2)}\n`)
-      await Bun.write(malformedPath, `${JSON.stringify({ nonsense: true }, null, 2)}\n`)
+      await writeFile(goodPathA, `${JSON.stringify(fixtureInput, null, 2)}\n`)
+      await writeFile(goodPathB, `${JSON.stringify(fixtureInput!.snapshot, null, 2)}\n`)
+      await writeFile(malformedPath, `${JSON.stringify({ nonsense: true }, null, 2)}\n`)
 
       const result = await loadKhalaCodeLagProfilingSnapshotFiles([
         goodPathA,

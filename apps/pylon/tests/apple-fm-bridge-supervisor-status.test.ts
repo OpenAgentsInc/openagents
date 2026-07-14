@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   APPLE_FM_BRIDGE_SUPERVISOR_CRASH_LOOP_BLOCKER,
   APPLE_FM_BRIDGE_SUPERVISOR_DEFAULTS,

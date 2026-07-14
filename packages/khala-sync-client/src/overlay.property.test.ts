@@ -9,8 +9,8 @@ import {
   SyncScope,
   SyncVersion,
 } from "@openagentsinc/khala-sync"
-import { afterEach, describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { afterEach, describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { Effect } from "effect"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -272,7 +272,7 @@ const runSession = (seed: number, steps: number, dbPath: string): Array<string> 
   const rand = mulberry32(seed)
   const store = openKhalaSyncStore(dbPath)
   cleanups.push(() => Effect.runSync(Effect.ignore(store.close())))
-  const raw = new Database(dbPath, { readonly: true })
+  const raw = new NodeTestDatabase(dbPath, { readonly: true })
   cleanups.push(() => raw.close())
   const overlay = run(createOverlay(store, mutators))
   const server = new ServerModel()

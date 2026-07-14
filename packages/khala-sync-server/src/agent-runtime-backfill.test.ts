@@ -11,15 +11,8 @@
 // exactly. Privacy: no assertion here ever prints trajectory content —
 // hashes and keys only, same as the CLI.
 
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { runMigrations } from "./migrate.js"
 import {
   AGENT_RUNTIME_SCALAR_TALLIES,
@@ -39,9 +32,6 @@ import {
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const runRow = (n: number, overrides: Partial<Record<string, unknown>> = {}): D1SourceRow => ({
   archived_at: null,
   assignment_json: "{}",
@@ -215,13 +205,13 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_agent_runtime_backfill")
       await admin.end()
       const url = pg.urlFor("khala_agent_runtime_backfill")
       const result = await runMigrations({ databaseUrl: url })
       expect(result.applied).toContain("0010_agent_runtime.sql")
-      rawSql = new SQL({ url, max: 4 })
+      rawSql = SQL({ url, max: 4 })
       sql = rawSql as unknown as SyncSql
     })
 

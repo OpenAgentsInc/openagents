@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -17,7 +17,7 @@ const RUN_REF = "fleet-run.pylon.supervisor.abc123"
 const WORKER_ID = "dispatch-context.pylon.supervisor.9ab31c44"
 
 const memoryStore = (): PylonOrchestrationStore =>
-  createPylonOrchestrationStore(new Database(":memory:"))
+  createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
 
 const seedRun = (store: PylonOrchestrationStore, state: "running" | "paused" = "running"): void => {
   store.createFleetRun({
@@ -222,13 +222,13 @@ describe("enforcePendingFleetIntents", () => {
   test("watermark persists across a store restart (same db file, new store)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pylon-intent-enforce-"))
     const dbPath = join(dir, "orchestration.sqlite")
-    const first = createPylonOrchestrationStore(new Database(dbPath))
+    const first = createPylonOrchestrationStore(new NodeTestDatabase(dbPath))
     seedRun(first)
     const pause = intent({ intent: "pause" })
     const firstResult = await enforce(first, pageReader([{ intents: [pause], nextAfter: pause.id }]).reader, [])
     expect(firstResult.ok).toBe(true)
 
-    const reopened = createPylonOrchestrationStore(new Database(dbPath))
+    const reopened = createPylonOrchestrationStore(new NodeTestDatabase(dbPath))
     expect(reopened.getFleetIntentWatermark()).toBe(pause.id)
     const { calls, reader } = pageReader([{ intents: [], nextAfter: pause.id }])
     const secondResult = await enforce(reopened, reader, [])

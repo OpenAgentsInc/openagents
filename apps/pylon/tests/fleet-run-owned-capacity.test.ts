@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { existsSync } from "node:fs"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -107,7 +109,7 @@ const capacityFixture = (input: {
   readonly slots?: (account: PylonAccountRegistryEntry) => number | null
   readonly grokExecutionAvailable?: boolean
 }) => {
-  const store = input.store ?? createPylonOrchestrationStore(new Database(":memory:"))
+  const store = input.store ?? createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
   const capacity = createPylonOwnedFleetRunSupervisorCapacity({
     store,
     summary,
@@ -154,7 +156,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
 
   test("reports named ready Grok custody but admits zero work until its executor is composed", async () => {
     let registryReads = 0
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const capacity = createPylonOwnedFleetRunSupervisorCapacity({
       store,
       summary,
@@ -231,7 +233,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
   })
 
   test("subtracts external durable load while leaving current-run subtraction to the supervisor", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const runA = createRun(store, "fleet_run.capacity.shared_a", "codex")
     const runB = createRun(store, "fleet_run.capacity.shared_b", "codex")
     const claim = store.tryClaimWorkUnit({
@@ -266,7 +268,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
       readiness: async () => {
         active += 1
         maximumActive = Math.max(maximumActive, active)
-        await Bun.sleep(5)
+        await sleep(5)
         active -= 1
         return "ready"
       },
@@ -281,7 +283,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
   })
 
   test("rotates around paused, revoked, exhausted, rate-limited, and circuit-open accounts", async () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const healthy = account("codex-healthy", "codex")
     const paused = account("codex-paused", "codex", { paused: true })
     const revoked = account("codex-revoked", "codex")
@@ -356,7 +358,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
     const throttled = account("grok-throttled", "grok")
     const healthy = account("grok-healthy", "grok")
     try {
-      const firstDatabase = new Database(databasePath, { create: true })
+      const firstDatabase = new NodeTestDatabase(databasePath, { create: true })
       const firstStore = createPylonOrchestrationStore(firstDatabase)
       const firstRun = createRun(
         firstStore,
@@ -399,7 +401,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
       expect(firstStore.listActiveDispatchBreakers(fixedNow)).toHaveLength(1)
       firstDatabase.close()
 
-      const reopenedDatabase = new Database(databasePath)
+      const reopenedDatabase = new NodeTestDatabase(databasePath)
       const reopenedStore = createPylonOrchestrationStore(reopenedDatabase)
       const { capacity } = capacityFixture({
         registry: [throttled, healthy],
@@ -455,7 +457,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
 
   test("fails a corrupt readiness dependency closed with fixed public diagnostics", async () => {
     const diagnostics: unknown[] = []
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     const capacity = createPylonOwnedFleetRunSupervisorCapacity({
       store,
       summary,
@@ -538,7 +540,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
           home: root,
         },
       } as unknown as Pick<BootstrapSummary, "paths">
-      const store = createPylonOrchestrationStore(new Database(":memory:"))
+      const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
       const run = createRun(store, "fleet_run.capacity.strict_loaders", "codex")
       await writeFile(strictSummary.paths.config, "{ malformed private registry")
       const malformedRegistry = createPylonOwnedFleetRunSupervisorCapacity({ store, summary: strictSummary })
@@ -621,7 +623,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
           }],
         },
       }))
-      const store = createPylonOrchestrationStore(new Database(":memory:"))
+      const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
       const run = createRun(store, "fleet_run.capacity.local_readiness", "codex")
       const capacity = createPylonOwnedFleetRunSupervisorCapacity({
         store,
@@ -632,7 +634,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
       expect(await capacity.accounts({ run, now: fixedNow })).toEqual([
         expect.objectContaining({ accountRef: "codex-local", advertisedCapacity: 1 }),
       ])
-      expect(await Bun.file(join(root, "account-usage.json")).exists()).toBe(false)
+      expect(await existsSync(join(root, "account-usage.json"))).toBe(false)
     } finally {
       await rm(root, { force: true, recursive: true })
     }
@@ -642,7 +644,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-fleet-capacity-restart-"))
     const databasePath = join(root, "orchestration.sqlite")
     try {
-      const firstDatabase = new Database(databasePath)
+      const firstDatabase = new NodeTestDatabase(databasePath)
       const firstStore = createPylonOrchestrationStore(firstDatabase)
       const ownerRun = createRun(firstStore, "fleet_run.capacity.restart_owner", "codex")
       const claim = firstStore.tryClaimWorkUnit({
@@ -657,7 +659,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
       firstStore.updateWorkClaimState(claim.claimRef, "in_progress", fixedNow)
       firstDatabase.close()
 
-      const reopenedDatabase = new Database(databasePath)
+      const reopenedDatabase = new NodeTestDatabase(databasePath)
       const reopenedStore = createPylonOrchestrationStore(reopenedDatabase)
       const waitingRun = createRun(reopenedStore, "fleet_run.capacity.restart_waiter", "codex")
       const { capacity } = capacityFixture({

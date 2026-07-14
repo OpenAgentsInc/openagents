@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 
 import { laborPrompt, makeConfiguredLaborRuntime } from "../src/labor"
 import type { LaborJobRequest, LaborWorkspace } from "../src/labor"
@@ -44,7 +45,7 @@ describe("labor codex execution", () => {
           stderr: new Response("").body,
           exited: Promise.resolve(0),
         }
-      }) as unknown as typeof Bun.spawn,
+      }) as unknown as typeof Runtime.spawn,
     })
     await runtime.runLabor({
       agentKind: "codex",

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vite-plus/test"
 import golden from "../../../fixtures/audio-contract/media-v1.json"
 import { decodeMediaHeader } from "./index"
 test("Effect matches the normative Rust/Effect media corpus", () => {

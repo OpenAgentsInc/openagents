@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { parseCodexSessionMeta } from "../src/node/codex-meta"
 
 describe("Codex session metadata parsing (#4951)", () => {

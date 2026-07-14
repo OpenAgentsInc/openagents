@@ -13,7 +13,7 @@
  * index reads bounded heads, and a >page-size multi-workspace store keeps
  * every session countable (no silent truncation).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"

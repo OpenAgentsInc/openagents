@@ -10,7 +10,7 @@
  * one-conversation-service translation to prove Codex `agent.child.*`
  * events emerge end-to-end.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { PassThrough } from "node:stream"
 
 import {

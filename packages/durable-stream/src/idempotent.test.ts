@@ -3,7 +3,7 @@
  * (producerId, epoch, seq). Mirrors upstream
  * packages/client-conformance-tests/test-cases/producer/idempotent/.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import * as P from "./protocol.ts"
 import { startTestServer } from "./test-server.ts"
 

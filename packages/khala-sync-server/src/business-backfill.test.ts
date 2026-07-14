@@ -17,15 +17,8 @@
 //   - row hashes normalize identically for a D1 export row and its
 //     Postgres twin (extra export columns like d1_rowid are ignored).
 
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import {
   BUSINESS_GROUPED_TALLIES,
   BUSINESS_SET_DIGEST_COLUMNS,
@@ -47,9 +40,6 @@ import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const funnelEventRow = (
   n: number,
   overrides: Partial<Record<string, unknown>> = {},
@@ -216,13 +206,13 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_business_backfill")
       await admin.end()
       const url = pg.urlFor("khala_business_backfill")
       const result = await runMigrations({ databaseUrl: url })
       expect(result.applied).toContain("0023_business_funnel.sql")
-      rawSql = new SQL({ url, max: 4 })
+      rawSql = SQL({ url, max: 4 })
       sql = rawSql as unknown as SyncSql
     })
 

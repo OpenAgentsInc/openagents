@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { parsePlanJson } from "../scripts/multi-session-run"
 import {

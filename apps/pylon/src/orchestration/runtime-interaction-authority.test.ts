@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { decodeRuntimeInteraction } from "@openagentsinc/agent-runtime-schema"
 import { Effect } from "effect"
 import { createRuntimeInteractionHttpAuthority } from "./runtime-interaction-authority.js"

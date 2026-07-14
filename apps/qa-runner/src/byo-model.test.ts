@@ -3,7 +3,7 @@
 // Proves the OSS credential path: model + base URL + key come from flags/env
 // ONLY, with no OpenAgents secrets-dir discovery and no agent-token lookup.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import {
   ByoModelConfigError,
   DEFAULT_QA_BASE_URL,

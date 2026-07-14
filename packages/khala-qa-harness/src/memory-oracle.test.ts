@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import {
   KHALA_CODE_QA_MEMORY_ORACLE_SCHEMA,

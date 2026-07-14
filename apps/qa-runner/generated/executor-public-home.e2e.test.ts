@@ -10,7 +10,7 @@
 // Pointing TARGET_URL at a local or preview executor deployment runs the same
 // scenario without changing the artifact contract.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { Effect } from "effect";
 import { localBackend } from "../src/backend";
 import { scriptedBrain, type BrainStep } from "../src/brain";

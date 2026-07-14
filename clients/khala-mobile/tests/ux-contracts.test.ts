@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 
 import {
@@ -60,7 +61,7 @@ describe("khala mobile ux contract registry", () => {
     const report = await Effect.runPromise(
       checkBehaviorContractCoverage(khalaMobileUxContractRegistry).pipe(
         Effect.provide(
-          fileOracleSourceLayer(path => Bun.file(path).text(), repoPath),
+          fileOracleSourceLayer(path => readFile(path, "utf8"), repoPath),
         ),
       ),
     )
@@ -69,7 +70,7 @@ describe("khala mobile ux contract registry", () => {
   })
 
   test("the human contract doc stays in sync with the registry", async () => {
-    const doc = await Bun.file(repoPath(KHALA_MOBILE_UX_CONTRACT_DOC_PATH)).text()
+    const doc = await readFile(repoPath(KHALA_MOBILE_UX_CONTRACT_DOC_PATH), "utf8")
     expect(doc).toContain(`Registry version: \`${khalaMobileUxContractRegistry.version}\``)
     for (const contract of khalaMobileUxContractRegistry.contracts) {
       expect(doc).toContain(contract.contractId)
@@ -100,9 +101,9 @@ describe("contract khala_mobile.auth.github_sign_in_primary_action.v1", () => {
       storedCredentials: null,
       type: "stored_credentials_loaded",
     })
-    const authProviderSource = await Bun.file(
+    const authProviderSource = await readFile(
       repoPath("clients/khala-mobile/src/auth/khala-auth-context.tsx"),
-    ).text()
+    , "utf8")
 
     expect(state.status).not.toBe("discovering")
     expect(authProviderSource).not.toContain("discoverKhalaMobilePairing")
@@ -223,11 +224,11 @@ describe("contract khala_mobile.security.delegation_prompt_rejects_secrets_and_l
 // Oracle for khala_mobile.android.stt_module_typed_asyncfunction_signature.v1
 describe("contract khala_mobile.android.stt_module_typed_asyncfunction_signature.v1", () => {
   test("stt_asyncfunction_pinned_type.source — startRecognitionAsync pins an explicit AsyncFunction<Map<String, Any>, String?> signature", async () => {
-    const source = await Bun.file(
+    const source = await readFile(
       repoPath(
         "clients/khala-mobile/modules/khala-push-to-talk-stt/android/src/main/java/com/openagents/khalaptt/KhalaPushToTalkSttModule.kt",
       ),
-    ).text()
+    , "utf8")
     expect(source).toContain('AsyncFunction<Map<String, Any>, String?>("startRecognitionAsync")')
   })
 })
@@ -358,7 +359,7 @@ describe("contract khala_mobile.credits.no_free_execution_path_claims.v1", () =>
 
   test("mobile_copy_never_claims_free_execution.source — no unlimited/free-forever/no-cost-ever language anywhere in user-facing copy", async () => {
     for (const ref of COPY_BEARING_FILES) {
-      const source = await Bun.file(repoPath(ref)).text()
+      const source = await readFile(repoPath(ref), "utf8")
       for (const pattern of FORBIDDEN_FREE_CLAIM_PATTERNS) {
         expect(source).not.toMatch(pattern)
       }

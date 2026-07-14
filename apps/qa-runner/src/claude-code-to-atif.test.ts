@@ -2,7 +2,7 @@
 // output must validate against atif-validate.ts and preserve the message /
 // tool_use / tool_result / metrics mapping.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { convertClaudeCodeEvents, convertClaudeCodeJsonl, type CcEvent } from "./claude-code-to-atif";
 import { validateAtif } from "./atif-validate";
 

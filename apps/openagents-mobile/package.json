@@ -38,6 +38,7 @@
     "react-native-safe-area-context": "5.8.0"
   },
   "devDependencies": {
+    "@openagentsinc/sqlite-runtime": "workspace:*",
     "@babel/core": "7.29.7",
     "@types/react": "^19.2.14",
     "babel-preset-expo": "57.0.1",

@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test'
+import { readFile } from "node:fs/promises"
+import { describe, expect, test } from 'vite-plus/test'
 import type { Html } from 'foldkit/html'
 
 import { AiElements } from '../src/index'
@@ -79,9 +80,9 @@ describe('ai-elements shimmer', () => {
   })
 
   test('ships token-backed CSS with reduced-motion fallback', async () => {
-    const css = await Bun.file(
+    const css = await readFile(
       new URL('../src/ai-elements/shimmer.css', import.meta.url),
-    ).text()
+    , "utf8")
 
     expect(css).toContain('.oa-ai-shimmer')
     expect(css).toContain('@keyframes oa-ai-shimmer-sweep')

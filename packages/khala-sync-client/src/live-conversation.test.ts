@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { emptyLiveAgentGraphEntity, type LiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import { Effect, Schema } from "effect"
 

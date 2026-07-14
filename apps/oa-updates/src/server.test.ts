@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { verifyManifestSignature } from "./code-signing.ts"
 import { createUpdatesServer } from "./server.ts"

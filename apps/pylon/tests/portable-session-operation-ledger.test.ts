@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite"
-import { afterEach, describe, expect, test } from "bun:test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -18,13 +18,13 @@ afterEach(async () => {
 
 const fileLedger = async (): Promise<Readonly<{
   path: string
-  database: Database
+  database: NodeTestDatabase
   ledger: PylonPortableSessionOperationLedger
 }>> => {
   const root = await mkdtemp(join(tmpdir(), "pylon-portable-ledger-"))
   roots.push(root)
   const path = join(root, "portable.sqlite")
-  const database = new Database(path, { create: true })
+  const database = new NodeTestDatabase(path, { create: true })
   return { path, database, ledger: new PylonPortableSessionOperationLedger(database) }
 }
 
@@ -57,7 +57,7 @@ describe("owner-local Pylon portable operation ledger", () => {
     })
     first.database.close()
 
-    const secondDatabase = new Database(first.path)
+    const secondDatabase = new NodeTestDatabase(first.path)
     const second = new PylonPortableSessionOperationLedger(secondDatabase)
     expect(await Effect.runPromise(second.quiesceGeneration(quiesceInput))).toMatchObject({
       status: "replayed",
@@ -84,7 +84,7 @@ describe("owner-local Pylon portable operation ledger", () => {
     })
     secondDatabase.close()
 
-    const thirdDatabase = new Database(first.path)
+    const thirdDatabase = new NodeTestDatabase(first.path)
     const third = new PylonPortableSessionOperationLedger(thirdDatabase)
     expect(await Effect.runPromise(third.readSession(initial.sessionRef))).toMatchObject({
       attachmentRef: "attachment.port03.pylon.move.2",
@@ -167,7 +167,7 @@ describe("owner-local Pylon portable operation ledger", () => {
     await Effect.runPromise(first.ledger.admitOperation(operation))
     first.database.close()
 
-    const reopenedDatabase = new Database(first.path)
+    const reopenedDatabase = new NodeTestDatabase(first.path)
     const reopened = new PylonPortableSessionOperationLedger(reopenedDatabase)
     expect(await Effect.runPromise(reopened.admitOperation(operation))).toMatchObject({
       status: "replayed",

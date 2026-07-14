@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vite-plus/test"
 import { decideDesktopMediaPermission } from "./voice-permission-policy.ts"
 
 test("microphone permission is explicit, origin-bound, and deny-by-default", () => {

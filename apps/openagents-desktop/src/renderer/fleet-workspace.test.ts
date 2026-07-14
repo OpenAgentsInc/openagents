@@ -4,7 +4,7 @@
  * rule (lit ONLY on decoded ready evidence), the read-only table, and the
  * typed intent loop run headlessly through the real registry.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 

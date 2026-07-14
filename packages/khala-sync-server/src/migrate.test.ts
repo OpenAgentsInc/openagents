@@ -1,5 +1,6 @@
-import { SQL } from "bun"
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import * as path from "node:path"
@@ -13,9 +14,6 @@ import {
 } from "./migrate.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 // ---------------------------------------------------------------------------
 // Pure file/plan behavior (no database needed)
 // ---------------------------------------------------------------------------
@@ -73,7 +71,7 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
 
   beforeAll(async () => {
     pg = await startLocalPostgres()
-    admin = new SQL({ url: pg.url, max: 1 })
+    admin = SQL({ url: pg.url, max: 1 })
   })
 
   afterAll(async () => {
@@ -97,7 +95,7 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
     expect(lines.join("\n")).toContain("would apply")
 
     // Nothing was created — not even the ledger table.
-    const sql = new SQL({ url, max: 1 })
+    const sql = SQL({ url, max: 1 })
     try {
       const [{ ledger }] = await sql`
         SELECT to_regclass('khala_sync_migrations') IS NOT NULL AS ledger
@@ -118,7 +116,7 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
     expect(second.applied).toEqual([])
     expect(second.plan.alreadyApplied).toContain("0001_khala_sync_core.sql")
 
-    const sql = new SQL({ url, max: 1 })
+    const sql = SQL({ url, max: 1 })
     try {
       const rows = await sql`
         SELECT filename, sha256, applied_at FROM khala_sync_migrations ORDER BY filename
@@ -216,21 +214,21 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
     const url = await freshDatabaseUrl()
     const script = path.join(import.meta.dirname, "..", "scripts", "migrate.ts")
 
-    const dry = Bun.spawnSync(
+    const dry = Runtime.spawnSync(
       ["bun", script, "--dry-run", "--database-url", url],
       { stdout: "pipe", stderr: "pipe" },
     )
     expect(dry.exitCode).toBe(0)
     expect(dry.stdout.toString()).toContain("would apply      0001_khala_sync_core.sql")
 
-    const apply = Bun.spawnSync(["bun", script, "--database-url", url], {
+    const apply = Runtime.spawnSync([process.execPath, script, "--database-url", url], {
       stdout: "pipe",
       stderr: "pipe",
     })
     expect(apply.exitCode).toBe(0)
     expect(apply.stdout.toString()).toContain("applied          0001_khala_sync_core.sql")
 
-    const again = Bun.spawnSync(["bun", script, "--database-url", url], {
+    const again = Runtime.spawnSync([process.execPath, script, "--database-url", url], {
       stdout: "pipe",
       stderr: "pipe",
     })

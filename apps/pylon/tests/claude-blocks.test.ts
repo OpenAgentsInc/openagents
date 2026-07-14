@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { expandClaudeMessage } from "../src/node/claude-blocks"
 
 describe("Claude content block expansion (#4951)", () => {

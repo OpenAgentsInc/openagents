@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
+import { describe, expect, test } from "vite-plus/test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import {
   AGENT_RUN_ENTITY_TYPE,
   AGENT_RUN_EVENT_ENTITY_TYPE,
@@ -43,7 +43,7 @@ const RUN = "run.timeline.fault.8688"
 const scope = threadScope(THREAD)
 
 const desktopDatabase = (path: string): DesktopSqliteDatabase => {
-  const database = new Database(path, { create: true })
+  const database = new NodeTestDatabase(path, { create: true })
   return {
     close: () => database.close(),
     exec: sql => database.exec(sql),
@@ -58,7 +58,7 @@ const desktopDatabase = (path: string): DesktopSqliteDatabase => {
 }
 
 const mobileDatabase = (path: string): ExpoSqliteDatabase => {
-  const database = new Database(path, { create: true })
+  const database = new NodeTestDatabase(path, { create: true })
   return {
     closeSync: () => database.close(),
     execSync: sql => database.exec(sql),

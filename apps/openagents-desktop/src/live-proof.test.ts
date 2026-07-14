@@ -8,7 +8,7 @@
  * output-dir resolution (env override vs userData default), and the
  * mutual-exclusion flag against smoke mode.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import path from "node:path"
 
 import {

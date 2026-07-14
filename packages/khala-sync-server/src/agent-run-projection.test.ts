@@ -1,13 +1,6 @@
 import { agentRunScope } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 import {
   AGENT_RUN_EVENT_PROJECTION_SYSTEM_REF,
   AGENT_RUN_PROJECTION_SYSTEM_REF,
@@ -18,9 +11,6 @@ import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const queuedRun = (
   runId: string,
   overrides: Record<string, unknown> = {},
@@ -114,12 +104,12 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_agent_run")
       await admin.end()
       const url = pg.urlFor("khala_sync_agent_run")
       await runMigrations({ databaseUrl: url })
-      sql = new SQL({ url, max: 10 })
+      sql = SQL({ url, max: 10 })
     })
 
     afterAll(async () => {
@@ -273,12 +263,12 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE khala_sync_agent_run_events")
       await admin.end()
       const url = pg.urlFor("khala_sync_agent_run_events")
       await runMigrations({ databaseUrl: url })
-      sql = new SQL({ url, max: 10 })
+      sql = SQL({ url, max: 10 })
     })
 
     afterAll(async () => {

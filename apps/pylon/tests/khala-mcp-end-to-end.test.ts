@@ -1,9 +1,10 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { plugin } from "bun"
 import { MemoryStreamStore } from "@openagentsinc/durable-stream"
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
@@ -69,7 +70,7 @@ const NOW_MS = Date.parse(NOW_ISO)
 const OWNER_TOKEN = "oa_agent_owner_fixture"
 const OTHER_TOKEN = "oa_agent_other_fixture"
 
-const servers: ReturnType<typeof Bun.serve>[] = []
+const servers: ReturnType<typeof Runtime.serve>[] = []
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
@@ -300,7 +301,7 @@ const makeOpenAgentsFixtureServer = (input: {
   }
   const requireSession = (request: Request) => sessionForToken(bearerToken(request))
 
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
@@ -515,6 +516,7 @@ const makeOpenAgentsFixtureServer = (input: {
       return json({ error: "not_found" }, { status: 404 })
     },
   })
+  await server.ready
   servers.push(server)
   return {
     baseUrl: `http://127.0.0.1:${server.port}`,

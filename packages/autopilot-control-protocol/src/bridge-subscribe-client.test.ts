@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { buildSubscribeEnvelope, parseBridgeEventBatch, parseEventBatchResponse } from "./bridge-subscribe-client.js"
 import { CONTROL_SCHEMA_TAG } from "./control.js"

@@ -29,7 +29,7 @@
  * demonstrate sensitivity) so the suite can never rot into an always-green
  * check.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 

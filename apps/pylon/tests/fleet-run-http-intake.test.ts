@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import { makePylonFleetRunHttpIntake } from "../src/orchestration/fleet-run-http-intake.js"
 import { PylonFleetRunRemotePortError } from "../src/orchestration/fleet-run-remote-intake.js"

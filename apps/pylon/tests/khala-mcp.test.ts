@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { afterEach, describe, expect, test } from "vite-plus/test"
 
 import {
   handlePylonKhalaMcpRequest,
@@ -18,7 +19,7 @@ const sse = (id: string, content: string) =>
     object: "chat.completion.chunk",
   })}\n\ndata: [DONE]\n\n`
 
-const servers: ReturnType<typeof Bun.serve>[] = []
+const servers: ReturnType<typeof Runtime.serve>[] = []
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
@@ -81,7 +82,7 @@ describe("pylon khala MCP stdio handler", () => {
   test("khala.request drives the OpenAI-compatible request path and returns a durable handle", async () => {
     const requests: Array<{ body: Record<string, unknown>; headers: Headers; path: string }> =
       []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -99,6 +100,7 @@ describe("pylon khala MCP stdio handler", () => {
         })
       },
     })
+    await server.ready
     servers.push(server)
 
     const response = await callMcp(
@@ -140,7 +142,7 @@ describe("pylon khala MCP stdio handler", () => {
   test("khala.resume proxies through the remote MCP surface so ownership is checked server-side", async () => {
     const requests: Array<{ body: Record<string, unknown>; headers: Headers; path: string }> =
       []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -168,6 +170,7 @@ describe("pylon khala MCP stdio handler", () => {
         })
       },
     })
+    await server.ready
     servers.push(server)
 
     const response = await callMcp(
@@ -202,7 +205,7 @@ describe("pylon khala MCP stdio handler", () => {
   })
 
   test("khala.resume preserves remote MCP ownership denial as an isError result", async () => {
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       fetch() {
         return Response.json({
@@ -220,6 +223,7 @@ describe("pylon khala MCP stdio handler", () => {
         })
       },
     })
+    await server.ready
     servers.push(server)
 
     const response = await callMcp(
@@ -241,7 +245,7 @@ describe("pylon khala MCP stdio handler", () => {
   test("khala.spawn proxies through the remote MCP surface", async () => {
     const requests: Array<{ body: Record<string, unknown>; headers: Headers; path: string }> =
       []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -281,6 +285,7 @@ describe("pylon khala MCP stdio handler", () => {
         })
       },
     })
+    await server.ready
     servers.push(server)
 
     const response = await callMcp(
@@ -318,7 +323,7 @@ describe("pylon khala MCP stdio handler", () => {
 
   test("khala.spawnStatus proxies parent status reads through the remote MCP surface", async () => {
     const requests: Array<{ body: Record<string, unknown>; path: string }> = []
-    const server = Bun.serve({
+    const server = Runtime.serve({
       port: 0,
       async fetch(request) {
         const url = new URL(request.url)
@@ -349,6 +354,7 @@ describe("pylon khala MCP stdio handler", () => {
         })
       },
     })
+    await server.ready
     servers.push(server)
 
     const response = await callMcp(

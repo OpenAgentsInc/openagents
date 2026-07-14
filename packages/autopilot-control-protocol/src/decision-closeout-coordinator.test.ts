@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 
 import type { BridgeTransport } from "./bridge-transport.js"
 import { createDecisionCloseoutCoordinator, type CoordinatedClient } from "./decision-closeout-coordinator.js"

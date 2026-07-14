@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import { fetchTokensServed, runArtanisTurn, runChatTurn, submitFeedback } from "./client.js"
 import { KhalaCliError } from "./types.js"
@@ -106,9 +107,9 @@ describe("Khala client", () => {
     const fakeFetch = (async () =>
       new Response(new ReadableStream<Uint8Array>({
         async start(controller) {
-          await Bun.sleep(20)
+          await sleep(20)
           controller.enqueue(new TextEncoder().encode('event: delta\ndata: {"text":"ok"}\n\n'))
-          await Bun.sleep(10)
+          await sleep(10)
           controller.enqueue(new TextEncoder().encode('event: done\ndata: {"done":true}\n\n'))
           controller.close()
         },

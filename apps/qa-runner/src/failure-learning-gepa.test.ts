@@ -5,7 +5,7 @@
 // Release Gate REJECTS it unapproved (no `promoted: true` path); the governance
 // guard fails closed; the signal is public-safe (refs/summaries only).
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 import { captureFailurePattern } from "./failure-learning";
 import {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   PYLON_ARTIFACT_UPLOAD_CAPABILITY_REF,
   PYLON_ASSIGNMENT_CLOSEOUT_CAPABILITY_REF,

@@ -8,7 +8,7 @@
  * classes. Pending kinds instead emit `test.todo` via `todoHarnessConformance`
  * so the redness is visible without failing the normal sweep.
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { decodeKhalaChatTurnEventV1 } from "@openagentsinc/agent-runtime-schema"
 import type { KhalaChatTurnEventKind } from "@openagentsinc/agent-runtime-schema"
 import { marginalCostClasses } from "@openagentsinc/khala-fleet-intents"

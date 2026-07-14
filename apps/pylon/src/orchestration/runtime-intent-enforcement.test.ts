@@ -1,8 +1,8 @@
-import { Database } from "bun:sqlite"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { decodeFleetAccountEntity, decodeKhalaRuntimeEvent, decodeRuntimeControlIntentRow } from "@openagentsinc/khala-sync"
 import type { KhalaRuntimeEvent, RuntimeControlIntentRow } from "@openagentsinc/khala-sync"
 import { Effect } from "effect"
@@ -600,7 +600,7 @@ const controlIntentRow = (input: {
     updatedAt: iso,
   })
 
-const memoryStore = (): PylonOrchestrationStore => createPylonOrchestrationStore(new Database(":memory:"))
+const memoryStore = (): PylonOrchestrationStore => createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
 
 const pageReader = (
   intents: ReadonlyArray<RuntimeControlIntentRow>,

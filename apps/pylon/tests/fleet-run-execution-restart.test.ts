@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite"
-import { describe, expect, test } from "bun:test"
+import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
+import { describe, expect, test } from "vite-plus/test"
 import { createHash } from "node:crypto"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -112,7 +112,7 @@ const lifecycleSink = (
 
 describe("FleetRun execution projection restart receipt", () => {
   test("projects a failed unit as terminal without inventing unavailable proof", () => {
-    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const store = createPylonOrchestrationStore(new NodeTestDatabase(":memory:"))
     store.createFleetRun({
       runRef,
       objective: "Project a bounded failed-work fixture.",
@@ -459,7 +459,7 @@ describe("FleetRun execution projection restart receipt", () => {
     const assignmentRef = "assignment.public.approval_restart"
     const approvalRef = "approval.public.approval_restart"
     try {
-      const firstDatabase = new Database(databasePath)
+      const firstDatabase = new NodeTestDatabase(databasePath)
       const firstStore = createPylonOrchestrationStore(firstDatabase)
       firstStore.createFleetRun({
         runRef,
@@ -538,7 +538,7 @@ describe("FleetRun execution projection restart receipt", () => {
       // rebuild that exact event from SQLite custody.
       firstDatabase.close()
 
-      const secondDatabase = new Database(databasePath)
+      const secondDatabase = new NodeTestDatabase(databasePath)
       const secondStore = createPylonOrchestrationStore(secondDatabase)
       const delivered: PylonFleetRunAnyExecutionBatch[] = []
       const secondReporter = openPylonFleetRunExecutionReporter({
@@ -606,7 +606,7 @@ describe("FleetRun execution projection restart receipt", () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-fc2-execution-restart-"))
     const databasePath = join(root, "orchestration.sqlite")
     try {
-      const firstDatabase = new Database(databasePath)
+      const firstDatabase = new NodeTestDatabase(databasePath)
       const firstStore = createPylonOrchestrationStore(firstDatabase)
       firstStore.createFleetRun({
         runRef,
@@ -701,7 +701,7 @@ describe("FleetRun execution projection restart receipt", () => {
           }
         },
       }
-      const secondDatabase = new Database(databasePath)
+      const secondDatabase = new NodeTestDatabase(databasePath)
       const secondStore = createPylonOrchestrationStore(secondDatabase)
       expect(secondStore.listWorkClaims({ runRef }).map(claim =>
         claim.marginalCostClass

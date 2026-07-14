@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { changelogTeaser, firstWords, formatKhalaChangelog, formatReleaseTimestamp } from "./changelog.js"
 import { compareVersions, runKhalaAutoUpdate, startKhalaAutoUpdate } from "./updater.js"
 

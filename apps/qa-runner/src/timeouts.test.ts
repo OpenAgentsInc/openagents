@@ -5,7 +5,7 @@
 // instantly. This proves the policy WITHOUT flakiness — the harness's own test
 // setup is itself deterministic, which is the point of #6193.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import {
   StepTimeoutError,
   runStepWithPolicy,

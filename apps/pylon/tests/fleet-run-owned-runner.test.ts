@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { createHash } from "node:crypto"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 
@@ -588,7 +589,7 @@ describe("Pylon-owned FleetRun runner", () => {
     })
 
     await firstDelivery
-    await Bun.sleep(2)
+    await sleep(2)
     expect(settled).toBe(false)
     expect(delivered).toEqual(["assignment_run.runtime_started"])
     release()
@@ -599,7 +600,7 @@ describe("Pylon-owned FleetRun runner", () => {
       "assignment_run.runtime_started",
       "assignment_run.runtime_progress",
     ])
-    await Bun.sleep(2)
+    await sleep(2)
     expect(delivered).toHaveLength(2)
   })
 

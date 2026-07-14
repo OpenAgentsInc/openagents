@@ -3,7 +3,7 @@
 // deterministic; the report must count categories; a whole ATIF-shaped value
 // must scrub through the Effect service.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 import { Effect } from "effect";
 import {
   redactString,

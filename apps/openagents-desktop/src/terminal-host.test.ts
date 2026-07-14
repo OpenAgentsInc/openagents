@@ -6,7 +6,7 @@
  * stdin steering, real exit codes, real process-tree disposal) — the evidence
  * the #8700 close rule names ("merge with process-tree disposal evidence").
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"

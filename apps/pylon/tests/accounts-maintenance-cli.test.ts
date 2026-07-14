@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * CLI parity for typed per-harness maintenance (MAINT-1, #8785):
  * `pylon accounts maintenance --json` (status) and
@@ -9,7 +10,7 @@
  * live-looking `~/.codex/auth.json` that must stay byte-identical, and a
  * local registry server standing in for registry.npmjs.org (no network).
  */
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
@@ -23,7 +24,7 @@ const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
 const CWD = join(import.meta.dirname, "..")
 
 async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
-  const proc = Bun.spawn(["bun", INDEX, ...args], {
+  const proc = Runtime.spawn([process.execPath, INDEX, ...args], {
     cwd: CWD,
     env,
     stderr: "pipe",
@@ -52,7 +53,7 @@ type Fixture = {
 
 async function withFixture<T>(fn: (fixture: Fixture) => Promise<T>): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), "pylon-maintenance-cli-"))
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     fetch(request) {
       if (new URL(request.url).pathname.endsWith("/latest")) {
@@ -61,6 +62,7 @@ async function withFixture<T>(fn: (fixture: Fixture) => Promise<T>): Promise<T> 
       return new Response("not found", { status: 404 })
     },
   })
+  await server.ready
   try {
     const binDir = join(root, "prefix", "lib", "node_modules", ".bin")
     await mkdir(binDir, { recursive: true })
@@ -86,7 +88,7 @@ async function withFixture<T>(fn: (fixture: Fixture) => Promise<T>): Promise<T> 
     const pylonHome = join(root, "pylon-home")
     await mkdir(pylonHome, { recursive: true })
 
-    const bunDir = dirname(Bun.which("bun") ?? "/usr/local/bin/bun")
+    const bunDir = dirname(Runtime.which("bun") ?? "/usr/local/bin/bun")
     const env: Record<string, string | undefined> = {
       PATH: `${binDir}:${bunDir}:/usr/bin:/bin`,
       HOME: home,

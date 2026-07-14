@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -253,12 +254,12 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
 
       try {
         for (let attempt = 0; attempt < 100 && executorCalls === 0; attempt += 1) {
-          await Bun.sleep(2)
+          await sleep(2)
         }
         const taskFailed = (): boolean =>
           standing.runtime.store.listTasks().some((candidate) => candidate.status === "failed")
         for (let attempt = 0; attempt < 100 && !taskFailed(); attempt += 1) {
-          await Bun.sleep(2)
+          await sleep(2)
         }
         expect(grantCalls).toBe(1)
         expect(executorCalls).toBe(1)

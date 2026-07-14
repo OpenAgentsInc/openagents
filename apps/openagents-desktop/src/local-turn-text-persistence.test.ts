@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { setTimeout as sleep } from "node:timers/promises"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -27,7 +28,7 @@ describe("local turn text persistence", () => {
       persistence.append("one ")
       persistence.append("two")
       expect(journal.get(key)?.persistedCursor).toBe(0)
-      await Bun.sleep(20)
+      await sleep(20)
       expect(journal.get(key)).toMatchObject({ assistantText: "one two", persistedCursor: 1 })
       persistence.boundary()
       persistence.append("three")

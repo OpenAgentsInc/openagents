@@ -3,16 +3,8 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { SQL } from "bun"
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test"
+import { SQL } from "@openagentsinc/postgres-runtime"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test"
 
 import type {
   PortableCapabilityLease,
@@ -33,9 +25,6 @@ import {
   startLocalPostgres,
   type LocalPostgres,
 } from "./test/local-postgres.js"
-
-setDefaultTimeout(120_000)
-
 const temporaryRoots: string[] = []
 
 afterEach(async () => {
@@ -377,12 +366,12 @@ describe.skipIf(!hasLocalPostgres())(
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
-      const admin = new SQL({ url: pg.url, max: 1 })
+      const admin = SQL({ url: pg.url, max: 1 })
       await admin.unsafe("CREATE DATABASE port03_capability_resolver")
       await admin.end()
       const url = pg.urlFor("port03_capability_resolver")
       await runMigrations({ databaseUrl: url })
-      sql = new SQL({ url, max: 4 })
+      sql = SQL({ url, max: 4 })
       await sql`
         INSERT INTO khala_sync_portable_sessions
           (session_ref, owner_user_id, owner_scope_ref, work_context_ref,

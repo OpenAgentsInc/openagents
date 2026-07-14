@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   MIXED_HARNESS_FLEET_RUN_SMOKE_SCHEMA,
   runMixedHarnessFleetRunCiSmoke,

@@ -109,7 +109,7 @@ const COMPOSER_TASKS: Array<{
     objective: (dir) =>
       `In the directory ${dir} (relative to the repository root), create stats.ts ` +
       `exporting mean(values: number[]): number and median(values: number[]): number, ` +
-      `plus stats.test.ts covering both functions with bun:test, including an ` +
+      `plus stats.test.ts covering both functions with vite-plus/test, including an ` +
       `empty-input case. Run \`bun test ${dir}\` and make every test pass. ` +
       `Only create or modify files inside ${dir}.`,
     verification: (dir) => ["bun", "test", dir],
@@ -120,7 +120,7 @@ const COMPOSER_TASKS: Array<{
       `In the directory ${dir} (relative to the repository root), create notes.md ` +
       `documenting a small command-line countdown timer tool with exactly three ` +
       `level-2 sections titled "Purpose", "Usage", and "Limits", plus notes.test.ts ` +
-      `that reads notes.md with bun:test and asserts all three section headings are ` +
+      `that reads notes.md with vite-plus/test and asserts all three section headings are ` +
       `present. Run \`bun test ${dir}\` and make every test pass. ` +
       `Only create or modify files inside ${dir}.`,
     verification: (dir) => ["bun", "test", dir],
@@ -131,7 +131,7 @@ const COMPOSER_TASKS: Array<{
       `In the directory ${dir} (relative to the repository root), create slug.ts ` +
       `exporting slugify(input: string): string that lowercases, trims, collapses ` +
       `whitespace to single hyphens, and strips characters outside [a-z0-9-], plus ` +
-      `slug.test.ts covering at least four cases with bun:test. Run ` +
+      `slug.test.ts covering at least four cases with vite-plus/test. Run ` +
       `\`bun test ${dir}\` and make every test pass. Only create or modify files inside ${dir}.`,
     verification: (dir) => ["bun", "test", dir],
   },

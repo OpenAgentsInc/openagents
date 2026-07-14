@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   KHALA_SYNC_SAH_POOL_DIRECTORY,
   KHALA_SYNC_WEB_DB_FILENAME,

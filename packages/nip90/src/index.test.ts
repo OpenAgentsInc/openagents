@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vite-plus/test"
 import {
   KIND_DATASET_ACCESS_REQUEST,
   KIND_DATASET_LISTING,

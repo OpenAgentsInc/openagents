@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { Runtime } from "@openagentsinc/runtime-platform"
+import { describe, expect, test } from "vite-plus/test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,7 +16,7 @@ async function runOperatorSnapshot(env: Record<string, string>): Promise<{
   timedOut: boolean
 }> {
   const started = Date.now()
-  const proc = Bun.spawn(["bun", INDEX, "operator", "snapshot", "--json"], {
+  const proc = Runtime.spawn([process.execPath, INDEX, "operator", "snapshot", "--json"], {
     cwd: CWD,
     env: {
       ...process.env,
