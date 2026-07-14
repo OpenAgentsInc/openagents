@@ -19,7 +19,6 @@ import type {
 
 export * from "./activity-timeline-projection.js"
 export * from "./agent-run-projection.js"
-export * from "./billing-domain-tables.js"
 export * from "./business-domain-tables.js"
 export * from "./chat-mutators.js"
 export * from "./compaction.js"

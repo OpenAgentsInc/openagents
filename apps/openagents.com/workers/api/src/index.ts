@@ -30,15 +30,6 @@ import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-rou
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import {
-  ADMIN_CREDITS_BALANCE_PATH,
-  ADMIN_CREDITS_CLAWBACK_PATH,
-  ADMIN_CREDITS_GRANT_PATH,
-  ADMIN_CREDITS_HISTORY_PATH,
-  ADMIN_CREDITS_RECENT_GRANTS_PATH,
-  ADMIN_CREDITS_USERS_PATH,
-  makeAdminCreditsRoutes,
-} from './admin-credits-routes'
-import {
   ADMIN_OPS_HEALTH_PATH,
   ADMIN_OPS_RUNS_PATH,
   makeAdminOpsRoutes,
@@ -281,15 +272,6 @@ import {
   routePatternFromRequest,
 } from './backend-incident-events'
 import {
-  type BillingSummary,
-  readBillingSummary,
-  withBillingCreditPackages,
-} from './billing'
-import { makeBillingApiHandlers } from './billing-routes'
-import {
-  billingDomainMirrorFromEnv,
-} from './billing-store'
-import {
   OpenAgentsDatabase,
   type OpenAgentsWorkerEnv,
   ThreadFileArtifacts,
@@ -342,16 +324,10 @@ import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import { handleBusinessSignupApi } from './business-signup-routes'
-import { makeD1BusinessStarterCreditStore } from './business-starter-credit'
-import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { buyModePaymentBridgeForEnv } from './buy-mode-http-payment-bridge'
 import { buyModeEvalBridgeForEnv } from './buy-mode-live-eval-bridge'
 import { buyModeRelayPublisherForEnv } from './buy-mode-live-publisher'
-import {
-  makeD1BuyerPaymentLedgerStore,
-  withBuyerPaymentLedgerMirror,
-} from './buyer-payment-ledger'
 import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
 // "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
@@ -432,7 +408,6 @@ import {
 } from './crm-resend'
 import { makeCrmResendRoutes } from './crm-resend-routes'
 import { makeCrmRoutes } from './crm-routes'
-import { makeCrmSalesCheckoutRoutes } from './crm-sales-checkout-routes'
 import { makeCrmSendRoutes } from './crm-send-routes'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import {
@@ -476,8 +451,6 @@ import {
   recordEventLedgerMessageWithOwnerObject,
 } from './event-ledger'
 import { recordEventLedgerMessageWithOwnerMutex } from './event-ledger-owner-sequence-store'
-import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-routes'
-import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
 import {
   authorizesManagedFleetUnitDispatch,
   selectExactManagedFleetProviderAccount,
@@ -537,9 +510,6 @@ import {
   makeMutaliskKhalaDelegationWorkflowStoreForEnv,
 } from './gym-evals-domain-store'
 import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
-import {
-  makeMissingOpenAgentsHostedMdkClient,
-} from './hosted-mdk-client'
 import type { ContainerPathFetch } from './http/container-fetch'
 import { handleForumThreadDocument } from './http/forum-social-preview'
 import { fetchAppShellWithPylonStatsBootPayload } from './http/pylon-stats-boot-payload'
@@ -554,11 +524,6 @@ import {
 } from './http/responses'
 import { routeAccessResponse } from './http/route-access-response'
 import { routeEffect, routeEffectOrResponse } from './http/route-effects'
-import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
-import {
-  IAP_REVENUECAT_WEBHOOK_PATH,
-  handleIapRevenueCatWebhookRequest,
-} from './iap-webhook-routes'
 import {
   makeGitHubWriteRepositoryForEnv,
   makeProviderAccountRepositoryForEnv,
@@ -594,7 +559,6 @@ import {
   handlePublicKhalaHeadToHeadApi,
 } from './inference/benchmark/head-to-head-routes'
 import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
-import { makeCardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import {
   handleChatCompletions,
   isInferenceDurableStreamEnabled,
@@ -622,7 +586,6 @@ import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharin
 import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
 import { makeGemma4Adapter } from './inference/gemma4-adapter'
-import { grantGithubSignupCredit } from './inference/github-signup-credit-grant'
 import { handleGlmFleetReadiness } from './inference/glm-fleet-readiness-routes'
 import {
   glmPoolHeartbeatRoutingStateOracle,
@@ -689,12 +652,6 @@ import {
   handlePaidPrivacyPurchase,
   handlePublicPrivacyReceiptRead,
 } from './inference/inference-privacy-receipt-routes'
-import { withReferralAccrual } from './inference/inference-referral-accrual'
-import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
-import {
-  settleVerifiedAcceptedOutcome,
-  summarizeAcceptedOutcomeSettlement,
-} from './inference/khala-accepted-outcome-settlement'
 import {
   emitKhalaChatTrace,
   isKhalaChatTraceEmitEnabled,
@@ -702,12 +659,6 @@ import {
 } from './inference/khala-chat-trace-emitter'
 import { isKhalaCodeLightningPaymentsEnabled } from './inference/khala-code-lightning-payments'
 import { isKhalaCodePaidPlansEnabled } from './inference/khala-code-plan-catalog'
-import {
-  handleKhalaCodePlanCatalogApi,
-  handleKhalaCodePlanPurchase,
-  handleKhalaCodePlanStatus,
-  readKhalaCodePaidPlanPriceSats,
-} from './inference/khala-code-plan-routes'
 import { isComponentChannelEnabled } from './inference/khala-component-channel'
 import {
   type KhalaSettlementDispatch,
@@ -793,7 +744,6 @@ import {
 } from './inference/served-tokens-recorder'
 import { runServingRateMonitorScheduled } from './inference/serving-rate-monitor'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
-import { agentRefForUser } from './inference/usd-credit-bridge'
 import {
   VERTEX_ANTHROPIC_ADAPTER_ID,
   makeVertexAnthropicAdapter,
@@ -955,7 +905,6 @@ import {
   handleOperatorKhalaUnsupportedRequests,
   makeD1KhalaUnsupportedRequestStore,
 } from './khala-unsupported-request-routes'
-import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
 import { handleLander2Page } from './lander2-routes'
@@ -976,17 +925,10 @@ import {
   MarketplaceWorkClassCatalogEndpoint,
   handleMarketplaceWorkClassCatalogApi,
 } from './marketplace-work-class-catalog-routes'
-import { hostedMdkDirectPayoutDisabledGate } from './mdk-payout-mode-gate'
 import {
   MOBILE_ACCOUNT_PATH,
   handleMobileAccountDeletionRequest,
 } from './mobile-account-deletion-routes'
-import {
-  MOBILE_CREDITS_BALANCE_PATH,
-  MOBILE_CREDITS_TRANSACTIONS_PATH,
-  handleMobileCreditsBalanceRequest,
-  handleMobileCreditsTransactionsRequest,
-} from './mobile-credits-routes'
 import {
   MobileWorkroomApprovalProjectionEndpoint,
   handleMobileWorkroomApprovalProjectionApi,
@@ -1000,7 +942,6 @@ import { makeMulletRoutes } from './mullet/routes'
 import { makeNativeListsService } from './native-lists'
 import { makeNativeListsRoutes } from './native-lists-routes'
 import { makeNexusPylonVisibilityRoutes } from './nexus-pylon-visibility-routes'
-import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
 import {
   OA_JOB_TOPIC_EVENT_LEDGER_INGEST,
@@ -1065,7 +1006,6 @@ import {
   executeQueuedAdjutantEnrichmentJob,
   makeOperatorAdjutantRoutes,
 } from './operator-adjutant-routes'
-import { makeOperatorBillingHandlers } from './operator-billing-routes'
 import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
 import {
@@ -1083,8 +1023,6 @@ import {
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
-import { PartnerPayoutDispatchError } from './partner-payout-dispatch'
-import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
 import { readAgentBalance } from './payments-ledger'
@@ -1147,7 +1085,6 @@ import {
 } from './public-activity-timeline-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
 import { routePublicAgentMcpRequest } from './public-agent-mcp-routes'
-import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
 import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
@@ -1271,7 +1208,6 @@ import {
   SARAH_FLEET_RUNS_PATH,
   makeSarahFleetRunRoutes,
 } from './sarah-fleet-run-routes'
-import { makeOperatorSarahSalesCheckoutRoutes } from './sarah-sales-checkout-routes'
 import {
   SelfServeFanoutEndpoint,
   handleSelfServeFanoutApi,
@@ -1284,12 +1220,9 @@ import {
   handleSignatureUsageMeteringApi,
   isSignatureUsageMeteringEnabled,
 } from './signature-usage-metering-routes'
-import { makeD1SiteCommerceReviewStore } from './site-commerce-review'
-import { makeSiteCommerceRoutes } from './site-commerce-routes'
 import { routeSiteCrawlSurfaceRequest } from './site-crawl-surfaces-routes'
 import { resolveSiteFormSpec } from './site-form-spec-registry'
 import { makeD1SiteMdkAccountBindingStore } from './site-mdk-account-bindings'
-import { makeD1SiteMdkCheckoutIntentStore } from './site-mdk-checkout-intents'
 import { omegaMdkDemoSitePaymentCatalog } from './site-mdk-demo-product'
 import {
   isSiteFormCaptureEnabled,
@@ -1310,10 +1243,6 @@ import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import {
-  makeStripeCheckoutServiceForRoutes,
-  readBillingCreditPackages,
-} from './stripe-billing'
-import {
   makeD1StripeCheckoutReceiptStore,
   stripeCheckoutReceiptStoreForEnv,
 } from './stripe-checkout-receipts'
@@ -1333,7 +1262,6 @@ import {
   publishTeamThreadFileSync,
 } from './sync-notifier'
 import { type ParsedSyncPath, makeSyncRoutes } from './sync-routes'
-import { autoSettleVerifiedPair } from './tassadar-auto-settlement'
 import {
   TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
   buildPublicTassadarCompiledModuleMarketplaceEnvelope,
@@ -1350,11 +1278,6 @@ import {
   TassadarReplayRequest,
   runTassadarReplayValidation,
 } from './tassadar-replay-validator'
-import {
-  readTassadarRealSettlementGate,
-  tassadarRealSettledSatsForDay,
-  tassadarRealSettlementUtcDayKey,
-} from './tassadar-run-settlement-gate'
 import {
   buildSettledFeedEvents,
   publishSettledFeedEvents,
@@ -1481,9 +1404,6 @@ import {
 } from './training-verification'
 import { makeTrainingVerificationRoutes } from './training-verification-routes'
 import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
-import { makeTreasuryPaymentAuthority } from './treasury-payment-authority'
-import { makeHostedMdkPayoutAdapter } from './treasury-payment-hosted-mdk-payout-adapter'
-import { makeSparkTreasuryPayoutAdapter } from './treasury-payment-spark-payout-adapter'
 import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
 import { handleVerticalFunnelRequest } from './vertical-funnel-routes'
 import {
