@@ -11,7 +11,7 @@ const listFiles = dir =>
     return entry.isDirectory() ? listFiles(path) : [path]
   })
 
-const sourceFiles = ['workers/api/src', 'packages', 'apps/web/src']
+const sourceFiles = ['workers/api/src', 'packages']
   .flatMap(listFiles)
   .filter(path => /\.tsx?$/.test(path))
   .filter(path => !/\.test\.tsx?$/.test(path))
@@ -61,7 +61,9 @@ const workerServiceDomainFiles = workerFiles.filter(
     !path.endsWith('-handlers.ts'),
 )
 
-const read = path => readFileSync(path, 'utf8')
+// Retired-source ratchets may still name a deleted file while their historical
+// invariant is being removed. A missing file contributes zero violations.
+const read = path => (existsSync(path) ? readFileSync(path, 'utf8') : '')
 
 const countMatches = (text, regex) => Array.from(text.matchAll(regex)).length
 

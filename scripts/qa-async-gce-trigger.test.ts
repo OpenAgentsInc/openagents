@@ -17,7 +17,7 @@ const fixtureConfig = (): QaAsyncConfig => ({
   lane: "cloud-gcp",
   metadata: {
     branch: "main",
-    changedFiles: ["apps/qa-runner/src/byo.ts", "apps/openagents.com/apps/web/src/page.tsx"],
+    changedFiles: ["apps/qa-runner/src/byo.ts", "apps/openagents.com/apps/start/src/page.tsx"],
     commitSha: "d91ea3e3792ce4b2ae54e8b45f7449d45e3ec91b",
     repository: "OpenAgentsInc/openagents",
   },

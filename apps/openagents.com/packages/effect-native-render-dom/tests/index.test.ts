@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test"
-import { Window } from "../../../apps/web/node_modules/happy-dom"
+import { Window } from "../../../apps/start/node_modules/happy-dom"
 import {
   Accordion,
   Button,

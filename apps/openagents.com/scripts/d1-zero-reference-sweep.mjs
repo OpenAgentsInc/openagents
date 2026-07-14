@@ -17,7 +17,7 @@ export const defaultMigrationRoot = 'workers/api/migrations'
 export const defaultScanRoots = [
   'workers/api/src',
   'packages',
-  'apps/web/src',
+  'apps/start/src',
   'scripts',
   '../../apps',
   '../../clients',

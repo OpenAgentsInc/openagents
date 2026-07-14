@@ -10,7 +10,7 @@ import {
 
 describe("qa pre-push smoke scoping", () => {
   test("recognizes user-facing surfaces", () => {
-    expect(isUserFacingSurfaceChange("apps/openagents.com/apps/web/src/page/home.ts")).toBe(true)
+    expect(isUserFacingSurfaceChange("apps/openagents.com/apps/start/src/page/home.ts")).toBe(true)
     expect(isUserFacingSurfaceChange("apps/openagents.com/workers/api/src/index.ts")).toBe(true)
     expect(isUserFacingSurfaceChange("apps/qa-runner/src/byo.ts")).toBe(true)
     expect(isUserFacingSurfaceChange("packages/input-bindings/src/index.ts")).toBe(true)
@@ -27,11 +27,11 @@ describe("qa pre-push smoke scoping", () => {
       selectUserFacingSurfaceFiles([
         "docs/notes/internal.md",
         "apps/qa-runner/src/byo.ts",
-        "apps/openagents.com/apps/web/src/main.ts",
+        "apps/openagents.com/apps/start/src/main.ts",
         "apps/qa-runner/src/byo.ts",
       ]),
     ).toEqual([
-      "apps/openagents.com/apps/web/src/main.ts",
+      "apps/openagents.com/apps/start/src/main.ts",
       "apps/qa-runner/src/byo.ts",
     ])
   })

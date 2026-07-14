@@ -45,6 +45,7 @@ import {
 import { handlePortalUiRequest } from './portal-ui'
 // #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
 import { handleForumUiRequest } from './forum-ui'
+import { assertStartUiArtifactsExist, handleStartUiRequest } from './start-ui'
 
 const log = (event: string, detail: Record<string, unknown> = {}): void => {
   console.log(
@@ -56,6 +57,7 @@ const log = (event: string, detail: Record<string, unknown> = {}): void => {
 const main = async (): Promise<void> => {
   const runtime = buildCloudRunRuntime(process.env)
   assertAssetsDirExists(runtime.webDistDir)
+  assertStartUiArtifactsExist()
 
   const tasks = makeBackgroundTasks((event, error) => {
     log(event, { error: error instanceof Error ? error.message : String(error) })
@@ -96,7 +98,7 @@ const main = async (): Promise<void> => {
       : undefined
   })()
 
-  const server = Runtime.serve<SyncBridgeData, never>({
+  const server = Runtime.serve<SyncBridgeData>({
     fetch: async (incoming, bunServer): Promise<Response | undefined> => {
       const request = withForwardedHost(
         withForwardedProto(incoming),
@@ -147,6 +149,18 @@ const main = async (): Promise<void> => {
       const holding = holdingPageInterception(url)
       if (holding !== undefined) {
         return holding
+      }
+
+      // #8813: apps/start owns retained documents after the dedicated EN
+      // mounts and root holding-page interception above. API/auth/unknown
+      // paths continue into the Worker unchanged.
+      const startResponse = await handleStartUiRequest(
+        request,
+        runtime.env as unknown as Readonly<Record<string, unknown>>,
+        ctx,
+      )
+      if (startResponse !== undefined) {
+        return startResponse
       }
 
       // CFG-5 LiveHub WS bridge: Bun fetch cannot carry a WebSocket upgrade,

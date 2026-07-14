@@ -696,103 +696,6 @@ importers:
         specifier: ^4.1.8
         version: 4.1.10(@types/node@24.13.1)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))(happy-dom@20.10.6)
 
-  apps/openagents.com/apps/web:
-    dependencies:
-      '@effect/platform-browser':
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94(effect@4.0.0-beta.94)
-      '@openagentsinc/arbiter-effect':
-        specifier: workspace:*
-        version: link:../../../../packages/arbiter-effect
-      '@openagentsinc/autopilot-control-protocol':
-        specifier: workspace:*
-        version: link:../../../../packages/autopilot-control-protocol
-      '@openagentsinc/khala-sync':
-        specifier: workspace:*
-        version: link:../../../../packages/khala-sync
-      '@openagentsinc/mcp-contract':
-        specifier: workspace:*
-        version: link:../../../../packages/mcp-contract
-      '@openagentsinc/mullet-schema':
-        specifier: workspace:*
-        version: link:../../packages/mullet-schema
-      '@openagentsinc/mullet-sim':
-        specifier: workspace:*
-        version: link:../../packages/mullet-sim
-      '@openagentsinc/provider-account-schema':
-        specifier: workspace:*
-        version: link:../../../../packages/provider-account-schema
-      '@openagentsinc/public-activity-timeline':
-        specifier: workspace:*
-        version: link:../../../../packages/public-activity-timeline
-      '@openagentsinc/qa-swarm-contract':
-        specifier: workspace:*
-        version: link:../../../../packages/qa-swarm-contract
-      '@openagentsinc/sync-client':
-        specifier: workspace:*
-        version: link:../../packages/sync-client
-      '@openagentsinc/sync-schema':
-        specifier: workspace:*
-        version: link:../../packages/sync-schema
-      '@openagentsinc/three-effect':
-        specifier: https://github.com/OpenAgentsInc/three-effect/archive/714c37edf650258a767ae3fe0d98b6499acadd95.tar.gz
-        version: https://github.com/OpenAgentsInc/three-effect/archive/714c37edf650258a767ae3fe0d98b6499acadd95.tar.gz(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))
-      '@openagentsinc/ui':
-        specifier: workspace:*
-        version: link:../../../../packages/ui
-      '@openagentsinc/world-client':
-        specifier: workspace:*
-        version: link:../../../../packages/world-client
-      '@openagentsinc/world-contract':
-        specifier: workspace:*
-        version: link:../../../../packages/world-contract
-      '@tailwindcss/vite':
-        specifier: ^4.2.4
-        version: 4.3.2(@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))
-      aws4fetch:
-        specifier: ^1.0.20
-        version: 1.0.20
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-      foldkit:
-        specifier: ^0.102.1
-        version: 0.102.1(patch_hash=23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0)(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))(effect@4.0.0-beta.94)
-      slot-text:
-        specifier: 0.3.1
-        version: 0.3.1(react@19.2.7)
-      tailwindcss:
-        specifier: ^4.2.4
-        version: 4.3.2
-      three:
-        specifier: 0.184.0
-        version: 0.184.0
-    devDependencies:
-      '@foldkit/devtools-mcp':
-        specifier: ^0.9.0
-        version: 0.9.1(effect@4.0.0-beta.94)(foldkit@0.102.1(patch_hash=23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0)(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))(effect@4.0.0-beta.94))(zod@4.4.3)
-      '@foldkit/vite-plugin':
-        specifier: ^0.7.0
-        version: 0.7.0(@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))(effect@4.0.0-beta.94)(foldkit@0.102.1(patch_hash=23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0)(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))(effect@4.0.0-beta.94))
-      '@types/three':
-        specifier: 0.184.0
-        version: 0.184.0
-      happy-dom:
-        specifier: ^20.9.0
-        version: 20.10.6
-      unplugin:
-        specifier: ^2.3.11
-        version: 2.3.11
-      vite:
-        specifier: npm:@voidzero-dev/vite-plus-core@0.2.4
-        version: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)'
-      vitest:
-        specifier: ^4.1.8
-        version: 4.1.10(@types/node@24.13.1)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))(happy-dom@20.10.6)
-
   apps/openagents.com/packages/effect-native-core:
     dependencies:
       '@effect-native/tokens':
@@ -2768,9 +2671,6 @@ packages:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
 
-  '@dimforge/rapier3d-compat@0.12.0':
-    resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
-
   '@effect/language-service@0.86.6':
     resolution: {integrity: sha512-uwXbp+lWzt60bZnm6lG6S5DWy0m6TthUzV2hcQoiS6NzieEDm07tuBakscxOXoO+AU9+yTH+0TSIa9mEDt9dFA==}
     hasBin: true
@@ -3530,22 +3430,6 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
-  '@foldkit/devtools-mcp@0.9.1':
-    resolution: {integrity: sha512-YuNV6/ShpRSdkZ8Xd9vNML8kAyTOzFdr37vok/dT6uOoeW/RyBaxAAwqA9z2NO0tQ8wMa/IeYqtYD09uoHFIXA==}
-    engines: {node: '>=18.0.0'}
-    hasBin: true
-    peerDependencies:
-      effect: 4.0.0-beta.94
-      foldkit: ^0
-
-  '@foldkit/vite-plugin@0.7.0':
-    resolution: {integrity: sha512-nodccdJDAaA5MM8q+tBjWCTGBiR6s74nrUACgXrMkJ+0Apig9VRvc/xZaioVv0kvS5Gxj7FMGEI+yEvpBTgrwQ==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      effect: 4.0.0-beta.94
-      foldkit: ^0
-      vite: ^8.0.0
-
   '@gar/promisify@1.1.3':
     resolution: {integrity: sha512-k2Ty1JcVojjJFwrg/ThKi2ujJ7XNLYaFGNB/bWT9wGR+oSMJHMa5w+CUq6p/pVrKeNNgA7pCqEcjSnHVoqJQFw==}
 
@@ -4023,10 +3907,6 @@ packages:
   '@oozcitak/util@10.0.0':
     resolution: {integrity: sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA==}
     engines: {node: '>=20.0'}
-
-  '@openagentsinc/three-effect@https://github.com/OpenAgentsInc/three-effect/archive/714c37edf650258a767ae3fe0d98b6499acadd95.tar.gz':
-    resolution: {integrity: sha512-oC6Hzta5NUv9mTorYjrvu0qbQWY956+EdXcyuGWNLcDKqm7QhOCI3brh0pONi04IVOX2xaurPLb1Z28TJLvbfA==, tarball: https://github.com/OpenAgentsInc/three-effect/archive/714c37edf650258a767ae3fe0d98b6499acadd95.tar.gz}
-    version: 0.1.0
 
   '@openai/codex-sdk@0.144.3':
     resolution: {integrity: sha512-WPtEx38iVyksWujOwmsxnJznRR8T/YF+lAJghMhHL1xIWdJrrvZ1iafhIsw4egY5CRoRmFm2ta8NQsK4f4XDZA==}
@@ -5737,9 +5617,6 @@ packages:
       svelte:
         optional: true
 
-  '@tweenjs/tween.js@23.1.3':
-    resolution: {integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==}
-
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
 
@@ -5838,20 +5715,11 @@ packages:
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
 
-  '@types/stats.js@0.17.4':
-    resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
-
-  '@types/three@0.184.0':
-    resolution: {integrity: sha512-4mY2tZAu0y0B0567w7013BBXSpsP0+Z48NJvmNo4Y/Pf76yCyz6Jw4P3tUVs10WuYNXXZ+wmHyGWpCek3amJxA==}
-
   '@types/tough-cookie@4.0.5':
     resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
-
-  '@types/webxr@0.5.24':
-    resolution: {integrity: sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg==}
 
   '@types/whatwg-mimetype@3.0.2':
     resolution: {integrity: sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==}
@@ -7656,9 +7524,6 @@ packages:
   fetchdts@0.1.7:
     resolution: {integrity: sha512-YoZjBdafyLIop9lSxXVI33oLD5kN31q4Td+CasofLLYeLXRFeOsuOw0Uo+XNRi9PZlbfdlN2GmRtm4tCEQ9/KA==}
 
-  fflate@0.8.3:
-    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
-
   file-entry-cache@8.0.0:
     resolution: {integrity: sha512-XXTUwCvisa5oacNGRP9SfNtYBNAMi+RPwBFmblZEF7N7swHYQS6/Zfk7SRwx4D5j3CH211YNRco1DEMNVfZCnQ==}
     engines: {node: '>=16.0.0'}
@@ -8737,9 +8602,6 @@ packages:
   merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
-
-  meshoptimizer@1.1.1:
-    resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
 
   metro-babel-transformer@0.84.4:
     resolution: {integrity: sha512-rvCfz8snl9h20VcvpOHxZuHP1SlAkv4HXbzw7nyyVwu6Eqo5PRerbakQ9XmUCOsRy70spJ37O+G1TK8oMzo48g==}
@@ -10160,23 +10022,6 @@ packages:
     resolution: {integrity: sha512-FC+lgizVPfie0kkhqUScwRu1O/lF6NOgJmlCgK+/LYxDCTk8sGelYaHDhFcDN+Sn3Cv+3VSa4Byeo+IMCzpMgQ==}
     engines: {node: '>=12'}
 
-  slot-text@0.3.1:
-    resolution: {integrity: sha512-gDHfMnFrz4CxqD7H8F3CqWVGYwTbgjpJiIH1bQg1Tj60TzgnLe47vuQDHNeyg4zbhsEAPFvUp05nG7lKsboCVw==}
-    peerDependencies:
-      react: '>=18 <20'
-      solid-js: '>=1.8 <2'
-      svelte: '>=4 <6'
-      vue: '>=3.4 <4'
-    peerDependenciesMeta:
-      react:
-        optional: true
-      solid-js:
-        optional: true
-      svelte:
-        optional: true
-      vue:
-        optional: true
-
   slugify@1.6.9:
     resolution: {integrity: sha512-vZ7rfeehZui7wQs438JXBckYLkIIdfHOXsaVEUMyS5fHo1483l1bMdo0EDSWYclY0yZKFOipDy4KHuKs6ssvdg==}
     engines: {node: '>=8.0.0'}
@@ -10461,9 +10306,6 @@ packages:
   thenify@3.3.1:
     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
 
-  three@0.184.0:
-    resolution: {integrity: sha512-wtTRjG92pM5eUg/KuUnHsqSAlPM296brTOcLgMRqEeylYTh/CdtvKUvCyyCQTzFuStieWxvZb8mVTMvdPyUpxg==}
-
   throat@5.0.0:
     resolution: {integrity: sha512-fcwX4mndzpLQKBS1DVYhGAcYaYt7vsHNIvQV+WXMvnow5cgjPphq5CaayLaGsjRdSCKZFNGt7/GYAuXaNOiYCA==}
 
@@ -10690,10 +10532,6 @@ packages:
   unpipe@1.0.0:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
     engines: {node: '>= 0.8'}
-
-  unplugin@2.3.11:
-    resolution: {integrity: sha512-5uKD0nqiYVzlmCRs01Fhs2BdkEgBS3SAVP6ndrBsuK42iC2+JHyxM05Rm9G8+5mkmRtzMZGY8Ct5+mliZxU/Ww==}
-    engines: {node: '>=18.12.0'}
 
   unplugin@3.3.0:
     resolution: {integrity: sha512-qa66K+crbfyE6JK10GjvbJeRrOsuC/JpbnHctfyp/i4oBTxWOzJfRZyDiOk1PtErMFRu8JhsU/wPvOdBNWe5Rg==}
@@ -11831,8 +11669,6 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@dimforge/rapier3d-compat@0.12.0': {}
-
   '@effect/language-service@0.86.6': {}
 
   '@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94)':
@@ -12899,29 +12735,6 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@foldkit/devtools-mcp@0.9.1(effect@4.0.0-beta.94)(foldkit@0.102.1(patch_hash=23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0)(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))(effect@4.0.0-beta.94))(zod@4.4.3)':
-    dependencies:
-      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.3)
-      effect: 4.0.0-beta.94
-      foldkit: 0.102.1(patch_hash=23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0)(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))(effect@4.0.0-beta.94)
-      ws: 8.21.0
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-      - zod
-
-  '@foldkit/vite-plugin@0.7.0(@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))(effect@4.0.0-beta.94)(foldkit@0.102.1(patch_hash=23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0)(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))(effect@4.0.0-beta.94))':
-    dependencies:
-      effect: 4.0.0-beta.94
-      foldkit: 0.102.1(patch_hash=23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0)(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))(effect@4.0.0-beta.94)
-      vite: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)'
-      ws: 8.21.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   '@gar/promisify@1.1.3': {}
 
   '@google-cloud/common@6.0.1':
@@ -13424,15 +13237,6 @@ snapshots:
       '@oozcitak/util': 10.0.0
 
   '@oozcitak/util@10.0.0': {}
-
-  '@openagentsinc/three-effect@https://github.com/OpenAgentsInc/three-effect/archive/714c37edf650258a767ae3fe0d98b6499acadd95.tar.gz(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))':
-    dependencies:
-      '@types/three': 0.184.0
-      effect: 4.0.0-beta.94
-      foldkit: 0.102.1(patch_hash=23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0)(@effect/platform-browser@4.0.0-beta.94(effect@4.0.0-beta.94))(effect@4.0.0-beta.94)
-      three: 0.184.0
-    transitivePeerDependencies:
-      - '@effect/platform-browser'
 
   '@openai/codex-sdk@0.144.3':
     dependencies:
@@ -14999,8 +14803,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tweenjs/tween.js@23.1.3': {}
-
   '@tybys/wasm-util@0.10.3':
     dependencies:
       tslib: 2.8.1
@@ -15124,22 +14926,9 @@ snapshots:
     dependencies:
       '@types/node': 24.13.1
 
-  '@types/stats.js@0.17.4': {}
-
-  '@types/three@0.184.0':
-    dependencies:
-      '@dimforge/rapier3d-compat': 0.12.0
-      '@tweenjs/tween.js': 23.1.3
-      '@types/stats.js': 0.17.4
-      '@types/webxr': 0.5.24
-      fflate: 0.8.3
-      meshoptimizer: 1.1.1
-
   '@types/tough-cookie@4.0.5': {}
 
   '@types/unist@3.0.3': {}
-
-  '@types/webxr@0.5.24': {}
 
   '@types/whatwg-mimetype@3.0.2': {}
 
@@ -17170,8 +16959,6 @@ snapshots:
 
   fetchdts@0.1.7: {}
 
-  fflate@0.8.3: {}
-
   file-entry-cache@8.0.0:
     dependencies:
       flat-cache: 4.0.1
@@ -18305,8 +18092,6 @@ snapshots:
   merge-stream@2.0.0: {}
 
   merge2@1.4.1: {}
-
-  meshoptimizer@1.1.1: {}
 
   metro-babel-transformer@0.84.4:
     dependencies:
@@ -20037,10 +19822,6 @@ snapshots:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 4.0.0
 
-  slot-text@0.3.1(react@19.2.7):
-    optionalDependencies:
-      react: 19.2.7
-
   slugify@1.6.9: {}
 
   smart-buffer@4.2.0: {}
@@ -20360,8 +20141,6 @@ snapshots:
     dependencies:
       any-promise: 1.3.0
 
-  three@0.184.0: {}
-
   throat@5.0.0: {}
 
   tiny-invariant@1.3.3: {}
@@ -20551,13 +20330,6 @@ snapshots:
     optional: true
 
   unpipe@1.0.0: {}
-
-  unplugin@2.3.11:
-    dependencies:
-      '@jridgewell/remapping': 2.3.5
-      acorn: 8.17.0
-      picomatch: 4.0.5
-      webpack-virtual-modules: 0.6.2
 
   unplugin@3.3.0(@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)(webpack@5.108.4(esbuild@0.28.1)):
     dependencies:

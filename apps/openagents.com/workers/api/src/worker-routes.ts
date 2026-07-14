@@ -11,7 +11,7 @@ import { Effect } from 'effect'
 // (`client-server-route-agreement.test.ts`) makes a desync structurally
 // impossible. The table is foldkit-free, so importing it here does not pull the
 // web app's UI dependencies into the Worker bundle.
-import { knownDocumentPathPatterns } from '../../../apps/web/src/route-table'
+import { knownDocumentPathPatterns } from '../../../apps/start/src/route-table'
 import { redirectResponse } from './http/responses'
 import { type RouteEffect, routeEffectOrResponse } from './http/route-effects'
 import { type ExactRoute, routeExact } from './http/router'

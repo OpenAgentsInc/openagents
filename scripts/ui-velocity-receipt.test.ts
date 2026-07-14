@@ -27,7 +27,7 @@ describe("ui velocity receipt helpers", () => {
       ["apps/openagents.com/apps/start"],
     )).toBe(true)
     expect(pathMatchesAnyPrefix(
-      "apps/openagents.com/apps/web/src/page.ts",
+      "apps/openagents.com/apps/start/src/page.ts",
       ["apps/openagents.com/apps/start"],
     )).toBe(false)
   })

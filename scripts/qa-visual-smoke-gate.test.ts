@@ -15,7 +15,7 @@ describe("Khala visual smoke gate scoping", () => {
         "docs/qa/khala-code-visual-smoke-gate.md",
         "apps/openagents-desktop/src/renderer.ts",
         "apps/openagents.com/packages/effect-native-core/src/index.ts",
-        "apps/openagents.com/apps/web/src/page/home.ts",
+        "apps/openagents.com/apps/start/src/routes/index.tsx",
       ]),
     ).toEqual([
       "apps/openagents-desktop/src/renderer.ts",

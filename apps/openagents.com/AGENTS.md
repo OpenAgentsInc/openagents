@@ -25,13 +25,12 @@ product promises and service deliverables. Legal, auth, other API, asset,
 health, manifest, and receipt routes are infrastructure exceptions. Other
 human-facing pages are retirement sources, not surfaces to grow or port.
 
-New and converted retained UI is authored in Effect Native. The existing
-Foldkit/Tailwind application remains legacy maintenance code until each
-retained route is converted and its old implementation deleted. The Foldkit
-instructions below apply only when repairing that legacy implementation; they
-do not override the repository-wide Effect Native mandate or justify new
-Foldkit components/routes. React, TanStack Start, and DOM remain renderer/host
-machinery, not the product architecture.
+New and converted retained UI is authored in Effect Native. As of #8813 the
+former `apps/web` Foldkit/Tailwind application is deleted; `apps/start` owns
+retained web documents and its built server/client artifacts are staged into
+the Cloud Run monolith. Do not recreate an SPA fallback or a Foldkit route.
+React, TanStack Start, and DOM remain renderer/host machinery, not the product
+architecture.
 
 <!-- effect-solutions:start -->
 
@@ -55,25 +54,11 @@ The Effect v4 repository is cloned to `~/.local/share/effect-solutions/effect` f
 Use this to explore APIs, find usage examples, and understand implementation
 details when the documentation isn't enough.
 
-## Getting the canonical references
+## Canonical UI references
 
-The live Foldkit code is the canonical reference for everything: which APIs exist, what idiomatic apps look like, what the current conventions are. Written docs (including this one) can drift; the code can't.
-
-Do not vendor Foldkit source into this repo. In particular, do not create or
-commit `repos/foldkit`. Use external/local references instead:
-
-- `../projects/repos/foldkit/examples/`: runnable example apps spanning every complexity tier. Usually your first stop when looking for a precedent for how to write something.
-- `../projects/repos/foldkit/packages/foldkit/src/`: framework source. Ground truth for API signatures.
-- `../projects/repos/foldkit/packages/typing-game/client/src/` and `../projects/repos/foldkit/packages/website/src/`: production apps built with Foldkit. Highest-fidelity reference for application architecture, Submodels, and OutMessage.
-
-Imports must come from the `foldkit` npm package. If the external Foldkit
-reference is missing, use the workspace-level `projects/sync.sh` from
-`/Users/christopherdavid/work` or inspect the installed package under
-`node_modules/foldkit`; do not add a subtree here.
-
-subtree_prompted: disabled
-
-If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program` and `audit-program` skills carry snapshot architecture and conventions guides synced from the live code.
+Use `apps/start`, the vendored Effect Native packages under `packages/`, and
+the owned Effect Native repository as the canonical web-UI references.
+Historical Foldkit docs remain migration evidence only.
 
 ## Project Conventions
 
@@ -90,10 +75,8 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
 - Before editing a UI surface for a named URL, trace the actual rendered
   entrypoint from routing/startup through the top-level view and verify which
   component produces the live DOM. Do not assume that a same-named file is the
-  route owner. For example, live `/login` is rendered by `apps/web/src/view.ts`
-  via the GitHub OAuth login button, while
-  `apps/web/src/page/loggedOut/page/login.ts` is a legacy/local auth view and
-  is not the production `/login` surface. When changing deployed UI, verify
+  route owner. For example, live `/login` is rendered by
+  `apps/start/src/routes/login.tsx` and `-login-page.tsx`. When changing deployed UI, verify
   against the served bundle or rendered DOM before calling the work complete.
 - When the user asks to deploy `openagents.com`, the sanctioned production path
   is the Google Cloud Run monolith script:

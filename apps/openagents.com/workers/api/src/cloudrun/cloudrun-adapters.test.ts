@@ -188,7 +188,7 @@ describe('assets fetcher', () => {
     )
   })
 
-  it('serves exact assets and falls back to the SPA shell', async () => {
+  it('serves exact assets and never falls back to a retired SPA shell', async () => {
     const fetcher = makeAssetsFetcher(distDir)
     const asset = await fetcher.fetch(
       new Request('https://openagents.com/assets/app-Abc12345.js'),
@@ -196,11 +196,11 @@ describe('assets fetcher', () => {
     expect(asset.status).toBe(200)
     expect(asset.headers.get('cache-control')).toContain('immutable')
 
-    const spa = await fetcher.fetch(
+    const missing = await fetcher.fetch(
       new Request('https://openagents.com/some/client/route'),
     )
-    expect(spa.status).toBe(200)
-    expect(await spa.text()).toContain('shell')
+    expect(missing.status).toBe(404)
+    expect(await missing.text()).toBe('asset not found')
 
     const method = await fetcher.fetch(
       new Request('https://openagents.com/x', { method: 'POST' }),

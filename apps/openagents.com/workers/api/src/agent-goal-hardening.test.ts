@@ -128,10 +128,9 @@ describe('agent goal hardening guardrails', () => {
 
   test('keeps browser code away from SHC and OpenCode control endpoints', () => {
     const browserSources = [
-      '../../../apps/web/src/page/loggedIn/goals/commands.ts',
-      '../../../apps/web/src/page/loggedIn/goals/transitions.ts',
-      '../../../apps/web/src/page/loggedIn/sync/projection.ts',
-      '../../../apps/web/src/page/loggedOut/page/publicAgent.ts',
+      '../../../apps/start/src/routes/-public-agent-page.tsx',
+      '../../../apps/start/src/routes/-use-khala-sync-collection.ts',
+      '../../../apps/start/src/routes/agents/$agentRef.tsx',
     ].map(source)
     const joined = browserSources.join('\n')
 

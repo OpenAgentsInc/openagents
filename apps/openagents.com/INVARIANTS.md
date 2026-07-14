@@ -2,6 +2,19 @@
 
 This is the invariant ledger for `openagents`.
 
+## 2026-07-14 retained web application cutover
+
+- `apps/start` is the only retained `openagents.com` document application.
+  `apps/web` and its Foldkit SPA fallback are deleted and must not be revived.
+- The Cloud Run monolith gives first refusal to infrastructure health,
+  retired-path tombstones, Portal, the dedicated Effect Native Forum mount,
+  and the root holding-page interception. It then serves exact Start client
+  assets and delegates only Start-owned document routes to the built Start SSR
+  handler. API, auth, and unknown paths remain Worker-owned.
+- `/`, `/forum` and supported descendants, `/promises`, legal/auth documents,
+  and companion agent files remain available. Legacy Sites, billing, credits,
+  checkout, and other non-MVP Foldkit documents are not Start-owned.
+
 ## 2026-07-14 payment, markets, and Sites retirement
 
 - The accepted MVP excludes payments, billing credits, markets, Sites,
@@ -75,7 +88,8 @@ This is the invariant ledger for `openagents`.
 
 ## Login Surface
 
-- The `/login` SPA page (`LoginRoute` / `loginRouter`, `apps/web/src/page/login.ts`)
+- The `/login` Start page (`apps/start/src/routes/login.tsx` and
+  `-login-page.tsx`)
   is a **branded launcher into the real OpenAuth flow only**: it links to
   `/login/github` (GitHub OAuth) and `/login/email` (OpenAuth `CodeProvider`
   one-time email code). It must never reintroduce a **simulated / in-app** auth
@@ -84,8 +98,8 @@ This is the invariant ledger for `openagents`.
   `scripts/check-zero-debt-architecture.mjs` ("deleted simulated login auth
   symbols").
 - Login only authenticates. Authorization stays gated downstream
-  (`authHasCoreTeamAccess` / `isAdmin` / onboarding in
-  `apps/web/src/product-policy.ts`); email sign-in does not widen product access.
+  (Worker session/authorization gates and route-specific loaders); email
+  sign-in does not widen product access.
 - Khala mobile native sign-in may use only the exact OpenAuth public mobile
   client `openagents-khala-mobile` with GitHub authorization-code + PKCE S256
   and the canonical `openagents://auth` redirect. The only temporary rollback

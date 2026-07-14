@@ -17,7 +17,7 @@ const thisScriptPath = 'scripts/check-live-agent-doc-links.mjs'
 
 const sourceFiles = [
   'docs/live/AGENTS.md',
-  'apps/web/public/AGENTS.md',
+  'apps/start/public/AGENTS.md',
   'docs/live/HEARTBEAT.md',
   'docs/live/RULES.md',
   'docs/live/skill.json',

@@ -16,7 +16,7 @@ export const QA_PRE_PUSH_DEFAULT_TIMEOUT_MS = 60_000
 export const USER_FACING_SURFACE_PREFIXES = [
   ".githooks/pre-push",
   "scripts/qa-pre-push-smoke",
-  "apps/openagents.com/apps/web/",
+  "apps/openagents.com/apps/start/",
   "apps/openagents.com/workers/api/src/",
   "apps/openagents.com/workers/api/migrations/",
   "apps/openagents.com/workers/api/wrangler",
@@ -79,7 +79,7 @@ export const collectChangedFiles = (
   try {
     git(root, ["fetch", "origin", "main", "--quiet"])
   } catch {
-    return ["apps/openagents.com/apps/web/__fetch_failed_run_conservatively__"]
+    return ["apps/openagents.com/apps/start/__fetch_failed_run_conservatively__"]
   }
 
   const changed: Array<string> = []
@@ -89,7 +89,7 @@ export const collectChangedFiles = (
     } catch {
       // A missing ref should not make QA silently disappear; the caller can force
       // the smoke by treating the synthetic path as changed.
-      changed.push("apps/openagents.com/apps/web/__diff_failed_run_conservatively__")
+      changed.push("apps/openagents.com/apps/start/__diff_failed_run_conservatively__")
     }
   }
 

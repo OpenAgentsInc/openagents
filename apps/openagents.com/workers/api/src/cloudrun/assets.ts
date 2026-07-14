@@ -1,11 +1,11 @@
-import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * CFG-9 (#8524): `env.ASSETS` Fetcher for the Cloud Run monolith.
  *
  * Replaces the Workers static-assets binding (wrangler `assets` with
  * `not_found_handling: "single-page-application"`): serve files from the
- * built `apps/web/dist` directory, and fall back to `index.html` for any
- * path without a matching file so client-side routing keeps working.
+ * built `apps/start/dist/client` directory. Document rendering is handled by
+ * the Start server adapter; this fetcher serves exact companion/static files
+ * only and never revives a retired SPA shell for an unknown path.
  *
  * The worker code calls `env.ASSETS.fetch(request)` as its final fallback
  * (index.ts `handle_asset_request`) and for a handful of companion files
@@ -78,8 +78,6 @@ export type AssetsFetcher = Readonly<{
 
 export const makeAssetsFetcher = (distDirInput: string): AssetsFetcher => {
   const distDir = path.resolve(distDirInput)
-  const indexPath = path.join(distDir, 'index.html')
-
   const respondWithFile = async (
     filePath: string,
     method: string,
@@ -140,21 +138,15 @@ export const makeAssetsFetcher = (distDirInput: string): AssetsFetcher => {
         }
       }
 
-      // single-page-application fallback: any unknown path serves the shell.
-      const shell = await respondWithFile(indexPath, method, 'no-cache')
-      if (shell !== null) return shell
-
-      return new Response('assets directory missing index.html', {
-        status: 404,
-      })
+      return new Response('asset not found', { status: 404 })
     },
   }
 }
 
 export const assertAssetsDirExists = (distDir: string): void => {
-  if (!existsSync(path.join(distDir, 'index.html'))) {
+  if (!existsSync(distDir)) {
     throw new Error(
-      `CFG-9: web assets not found at ${distDir} (expected apps/web/dist with index.html). Run \`pnpm run build:web\` first.`,
+      `CFG-9: Start client assets not found at ${distDir}. Run \`pnpm run build:start\` first.`,
     )
   }
 }

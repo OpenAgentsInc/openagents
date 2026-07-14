@@ -13,10 +13,6 @@ const commandComposerArtifacts = [
   'packages/composer-state/src/index.test.ts',
   'apps/openagents.com/packages/effect-native-core/src/index.ts',
   'apps/openagents.com/packages/effect-native-render-dom/src/index.ts',
-  'apps/openagents.com/apps/web/src/main.test.ts',
-  'apps/openagents.com/apps/web/src/page/khala-chat/flow.ts',
-  'apps/openagents.com/apps/web/src/page/khala-chat/page.ts',
-  'apps/openagents.com/apps/web/src/page/loggedOut/update.test.ts',
 ] as const
 
 const forbiddenPatterns = [

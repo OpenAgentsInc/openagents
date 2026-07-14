@@ -607,30 +607,11 @@ const criticalPackageExpectations = [
     label: 'openagents.com Worker -> @effect/sql-sqlite-do',
   },
   {
-    context: 'apps/openagents.com/apps/web/package.json',
-    dependency: '@effect/platform-browser',
+    context: 'apps/openagents.com/apps/start/package.json',
+    dependency: 'effect',
     expectedDependencyVersion: OMEGA_EFFECT_VERSION,
     expectedEffectVersion: OMEGA_EFFECT_VERSION,
-    label: 'openagents.com web -> @effect/platform-browser',
-  },
-  {
-    context: 'apps/openagents.com/apps/web/package.json',
-    dependency: 'foldkit',
-    expectedDependencyVersion: '0.102.1',
-    expectedEffectVersion: OMEGA_EFFECT_VERSION,
-    label: 'openagents.com web -> Foldkit',
-  },
-  {
-    context: 'apps/openagents.com/apps/web/package.json',
-    dependency: '@foldkit/devtools-mcp',
-    expectedEffectVersion: OMEGA_EFFECT_VERSION,
-    label: 'openagents.com web -> Foldkit devtools',
-  },
-  {
-    context: 'apps/openagents.com/apps/web/package.json',
-    dependency: '@foldkit/vite-plugin',
-    expectedEffectVersion: OMEGA_EFFECT_VERSION,
-    label: 'openagents.com web -> Foldkit Vite plugin',
+    label: 'openagents.com Start -> Effect',
   },
   {
     context: 'apps/nostr-relay/package.json',

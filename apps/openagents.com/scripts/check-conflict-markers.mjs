@@ -11,7 +11,7 @@ import { join, relative } from 'node:path'
 
 // Directories scanned, relative to apps/openagents.com. Covers the worker API
 // source, the browser app source, all packages, and the docs tree.
-export const scanRoots = ['workers/api/src', 'apps/web/src', 'packages', 'docs']
+export const scanRoots = ['workers/api/src', 'apps/start/src', 'packages', 'docs']
 
 const ignoredDirs = new Set([
   'node_modules',

@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 const publicTrainingRunSources = [
   'src/training-run-window-authority.ts',
   'src/training-run-window-routes.ts',
-  '../../apps/web/src/page/loggedOut/page/trainingRuns.ts',
+  '../../apps/start/src/routes/-training-runs-page.tsx',
   '../../docs/live/AGENTS.md',
   '../../docs/live/PYLON.md',
 ]

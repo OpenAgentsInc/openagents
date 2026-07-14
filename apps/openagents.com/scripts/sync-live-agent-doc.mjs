@@ -10,7 +10,7 @@ const main = async () => {
   await Promise.all(
     companionFiles.map(async fileName => {
       const sourcePath = resolve(repoRoot, 'docs/live', fileName)
-      const outputPath = resolve(repoRoot, 'apps/web/public', fileName)
+      const outputPath = resolve(repoRoot, 'apps/start/public', fileName)
       const contents = await readFile(sourcePath, 'utf8')
 
       await mkdir(dirname(outputPath), { recursive: true })

@@ -22,7 +22,7 @@ const repoRoot = resolve(import.meta.dirname, '../../..')
 const readLive = (name: string): string =>
   readFileSync(resolve(repoRoot, `docs/live/${name}`), 'utf8')
 const readPublic = (name: string): string =>
-  readFileSync(resolve(repoRoot, `apps/web/public/${name}`), 'utf8')
+  readFileSync(resolve(repoRoot, `apps/start/public/${name}`), 'utf8')
 
 const liveAgentDocMarkdown = readLive('AGENTS.md')
 const liveAgentCoreMarkdown = readLive('AGENTS-CORE.md')

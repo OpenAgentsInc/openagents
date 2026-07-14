@@ -468,7 +468,7 @@
     "binding": "BROWSER",
   },
   "assets": {
-    "directory": "../../apps/web/dist",
+    "directory": "../../apps/start/dist/client",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": true,
@@ -748,7 +748,7 @@
         "SHC_DISPATCH_MODE": "unconfigured",
       },
       "assets": {
-        "directory": "../../apps/web/dist",
+        "directory": "../../apps/start/dist/client",
         "binding": "ASSETS",
         "not_found_handling": "single-page-application",
         "run_worker_first": true,

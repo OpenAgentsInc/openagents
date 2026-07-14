@@ -8,7 +8,7 @@ set -euo pipefail
 #   scripts/deploy-cloudrun.sh production   # openagents-monolith
 #
 # Build happens here on the deploy machine (aiur/oa-updates pattern):
-#   1. pnpm run build:web (repo apps/web SPA assets)
+#   1. pnpm run build:start (TanStack Start client + server artifacts)
 #   2. vp pack src/cloudrun/server.ts + preload.ts → dist-cloudrun/
 #   3. render the non-secret env YAML from wrangler.jsonc vars
 #   4. gcloud run deploy --source . (Dockerfile in this directory)
@@ -53,8 +53,8 @@ APP_DIR="$(cd "$API_DIR/../.." && pwd)"   # apps/openagents.com
 REPO_ROOT="$(cd "$API_DIR/../../../.." && pwd)"
 
 cd "$APP_DIR"
-echo "==> Building web assets (apps/web/dist)"
-pnpm run build:web >/dev/null
+echo "==> Building retained Start application (apps/start/dist)"
+pnpm run build:start >/dev/null
 
 cd "$API_DIR"
 echo "==> Bundling Node server + preload (Vite Plus pack)"
@@ -76,17 +76,24 @@ fi
 # dependencies with the app. This image is built from workers/api alone, so
 # stage a portable production node_modules tree into the Cloud Build context.
 RUNTIME_DEPLOY_DIR="$(mktemp -d)"
-trap 'rm -rf "$RUNTIME_DEPLOY_DIR"' EXIT
+START_RUNTIME_DEPLOY_DIR=""
+trap 'rm -rf "$RUNTIME_DEPLOY_DIR" "${START_RUNTIME_DEPLOY_DIR:-}"' EXIT
 (cd "$REPO_ROOT" && CI=true pnpm --config.node-linker=hoisted \
   --filter @openagentsinc/api-worker deploy "$RUNTIME_DEPLOY_DIR" \
   --prod --legacy >/dev/null)
 mv "$RUNTIME_DEPLOY_DIR/node_modules" dist-cloudrun/node_modules
+START_RUNTIME_DEPLOY_DIR="$(mktemp -d)"
+(cd "$REPO_ROOT" && CI=true pnpm --config.node-linker=hoisted \
+  --filter @openagentsinc/openagents-com-start deploy "$START_RUNTIME_DEPLOY_DIR" \
+  --prod --legacy >/dev/null)
+cp -R "$START_RUNTIME_DEPLOY_DIR/node_modules/." dist-cloudrun/node_modules/
 # Legacy deploy mutates the workspace install mode while materializing the
 # portable tree. Restore the development install before later build/smoke
 # commands invoke pnpm again.
 (cd "$REPO_ROOT" && CI=true pnpm install --frozen-lockfile >/dev/null)
 node scripts/cloudrun/assert-self-contained-bundle.mjs dist-cloudrun
-cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
+cp -R "$APP_DIR/apps/start/dist/client" dist-cloudrun/start-client
+cp -R "$APP_DIR/apps/start/dist/server" dist-cloudrun/start-server
 # Sarah removed at owner direction 2026-07-10 (epic #8610): the former
 # sarah-ui / sarah-agent / sarah-clips bundle steps are gone with apps/sarah.
 # #8652 PORTAL-1: /portal Effect Native bundle (authored in apps/start).

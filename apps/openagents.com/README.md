@@ -12,7 +12,7 @@ A Node 24 and pnpm workspace for the OpenAgents application stack.
 ## Layout
 
 ```text
-apps/web/              Foldkit/Vite browser app
+apps/start/            TanStack Start host for retained Effect Native web UI
 workers/api/           Cloudflare Worker API and SyncRoom Durable Object
 packages/sync-schema/  Effect Schema protocol models
 packages/sync-client/  browser-side sync helpers

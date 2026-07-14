@@ -29,20 +29,6 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
     expect(
       shouldRedirectUnknownDocumentToHome(
-        requestFor('/tassadar/replay/first-real-settlement'),
-        '/tassadar/replay/first-real-settlement',
-      ),
-    ).toBe(false)
-    expect(
-      shouldRedirectUnknownDocumentToHome(
-        requestFor(
-          '/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social',
-        ),
-        '/tassadar/replay/first-real-settlement',
-      ),
-    ).toBe(false)
-    expect(
-      shouldRedirectUnknownDocumentToHome(
         requestFor('/training/runs'),
         '/training/runs',
       ),
@@ -92,12 +78,6 @@ describe('Worker document route fallback', () => {
         '/autopilot/legal',
       ),
     ).toBe(false)
-    expect(
-      shouldRedirectUnknownDocumentToHome(
-        requestFor('/autopilot/work'),
-        '/autopilot/work',
-      ),
-    ).toBe(false)
   })
 
   test('redirects unclaimed autopilot vertical and deeper onboarding documents', () => {
@@ -117,16 +97,12 @@ describe('Worker document route fallback', () => {
 
   test('redirects retired Wave 0 document paths home', () => {
     for (const path of [
-      '/components',
-      '/components/buttons',
       '/forge',
       '/moksha',
       '/moksha2',
       '/landing',
       '/stats-old',
-      '/clients-preview',
       '/animations',
-      '/preview/landing',
     ]) {
       expect(shouldRedirectUnknownDocumentToHome(requestFor(path), path)).toBe(
         true,
@@ -140,16 +116,16 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
-  test('keeps the public Khala chat document route in the app shell when unauthed', () => {
+  test('retires the legacy /chat document in favor of /khala', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/chat'), '/chat'),
-    ).toBe(false)
+    ).toBe(true)
   })
 
-  test('keeps the GPT-OSS Gym document route in the app shell', () => {
+  test('retires the legacy GPT-OSS Gym vertical', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/gym/oss'), '/gym/oss'),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('keeps the public Terminal-Bench Gym document route in the app shell', () => {
@@ -491,11 +467,11 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     )
   })
 
-  test('direct anonymous /chat document load reaches the app shell with 200', async () => {
+  test('direct anonymous /chat document load redirects to the retained root', async () => {
     const result = await runRoute(requestFor('/chat'))
 
-    expect(result.response.status).toBe(200)
-    await expect(result.response.text()).resolves.toBe('ok')
+    expect(result.response.status).toBe(302)
+    expect(result.response.headers.get('location')).toBe('/')
     expect(result.observed.exactPath).toBeUndefined()
   })
 

@@ -78,12 +78,12 @@ describe('deploy:safe package command', () => {
       'cd ../.. && pnpm run check:deploy-from-main',
       '&& pnpm run check:deploy &&',
       '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot-staging --env staging --remote',
-      '&& cd ../.. && pnpm run build:web',
-      '&& cd workers/api && wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
+      '&& cd ../.. && pnpm run build:start',
+      '&& cd workers/api && wrangler deploy --env staging --containers-rollout=none --assets ../../apps/start/dist/client',
       '&& cd ../.. && pnpm run predeploy:parallel-dispatch-smoke',
       '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote',
       '&& cd ../.. && pnpm run check:pending-migrations',
-      '&& cd workers/api && wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
+      '&& cd workers/api && wrangler deploy --containers-rollout=none --assets ../../apps/start/dist/client',
     ]
 
     expectedOrder.reduce((previousIndex, step) => {
@@ -95,20 +95,20 @@ describe('deploy:safe package command', () => {
 
   test('disables Wrangler container rollout probing on the final upload', () => {
     expect(deploySafe).toContain(
-      'wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
+      'wrangler deploy --containers-rollout=none --assets ../../apps/start/dist/client',
     )
   })
 
   test('runs the staging parallel-dispatch smoke before any production upload', () => {
     const stagingUpload = deploySafe.indexOf(
-      'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
+      'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/start/dist/client',
     )
     const smoke = deploySafe.indexOf('pnpm run predeploy:parallel-dispatch-smoke')
     const productionMigration = deploySafe.indexOf(
       'wrangler d1 migrations apply openagents-autopilot --remote',
     )
     const productionUpload = deploySafe.indexOf(
-      'wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
+      'wrangler deploy --containers-rollout=none --assets ../../apps/start/dist/client',
     )
 
     expect(stagingUpload).toBeGreaterThan(-1)
@@ -119,7 +119,7 @@ describe('deploy:safe package command', () => {
 
   test('runs the khala-sync live-seam smoke after the staging upload and before any production step (#8507)', () => {
     const stagingUpload = deploySafe.indexOf(
-      'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
+      'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/start/dist/client',
     )
     const seamSmoke = deploySafe.indexOf(
       'pnpm run predeploy:khala-sync-live-seam-smoke',
