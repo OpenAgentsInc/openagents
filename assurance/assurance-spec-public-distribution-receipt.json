@@ -1,6 +1,5 @@
 {
   "distribution_proof_format_version": "0.1",
-  "prepared_from_commit": "c6292a0f22",
   "clean_checkout": "pass",
   "owned_runner_verdict": "pass",
   "package_tarballs": [
@@ -12,9 +11,9 @@
     },
     {
       "name": "@openagentsinc/assurance-spec",
-      "version": "0.1.0",
-      "filename": "openagentsinc-assurance-spec-0.1.0.tgz",
-      "sha256": "sha256:36b75b2055fdd73b5771b38b163023c01a6dde11acdad4cde397c0485c0fb72d"
+      "version": "0.1.1",
+      "filename": "openagentsinc-assurance-spec-0.1.1.tgz",
+      "sha256": "sha256:ab8af55072010d86f6c1b1efc7b4379f0c571d04ca133b3d23d8e9b1bb96f4a4"
     }
   ],
   "publish_order": [

@@ -202,8 +202,9 @@ bun run --cwd packages/assurance-spec verify:distribution
 The packager rewrites monorepo-only dependency protocols to concrete versions,
 packs ProductSpec before AssuranceSpec, records SHA-256 tarball receipts, then
 the verifier installs the exact tarballs offline in a clean temporary checkout
-and runs the starter gate. This proves packaging, not npm publication. Live npm
-publication remains a separately authenticated owner action and must preserve
-the recorded package order. The repository's own adoption lives at
+and runs the starter gate. Registry publication and no-auth clean-consumer
+proofs are recorded separately in the adopting repository's immutable
+distribution and registry receipts; package prose is not publication
+authority. The repository's own adoption lives at
 `assurance/owned-runner.json` with a committed current MVP session pin; it runs
 the same structural blocking and informational-ledger policy as the kit.
