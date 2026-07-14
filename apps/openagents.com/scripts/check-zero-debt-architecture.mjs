@@ -825,7 +825,14 @@ const runPromiseAllowlist = new Map([
   // This lane never bumped the ratchet, leaving check:deploy red on
   // main; this records the actual count. Ratchet down if the sign-in
   // callback becomes an Effect program end-to-end.
-  ['workers/api/src/index.ts', 9],
+  // Raised 9 -> 10 on 2026-07-14: the agent-computer managed-unit
+  // dispatch lane (8244bd64e9, feat(fleet): dispatch managed units
+  // through agent computers, 2026-07-12) added a session bridge
+  // (`await Effect.runPromise(...)`) without bumping this ratchet,
+  // leaving check:deploy red on main; this records the actual count per
+  // the fix-forward precedent above. Ratchet down if that handler
+  // becomes an Effect program end-to-end.
+  ['workers/api/src/index.ts', 10],
   // Added 2026-07-06 (CFG-3 #8518): auth/auth-kv.ts is the AUTH_STORAGE KV
   // evacuation seam — oa-infra's Effect-typed KvStore bridged ONCE (a single
   // named `run` helper) into the Promise-shaped store surface every auth
