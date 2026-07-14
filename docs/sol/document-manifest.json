@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "735b7faebaeff130f22dd8897956faa62c3224dd899f0bc14bf6f97cfc06ab95",
+  "sourceTreeSha256": "dd3f029cb672b9641acbfa39f9851174a11af26ae8730bffb52938210b7bdee7",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1353,6 +1353,26 @@
       "issueLinks": [
         8777,
         8795
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-14-node-pnpm-vite-plus-vp2-node-runtime-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8796",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "2f1e7de228ee9f728bcb7203dbf17b6cce890e362b40b73a48663c4dc39745cc",
+      "status": "implementation complete; closure pending pushed receipt;",
+      "snapshot": "2026-07-14",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8777,
+        8796
       ]
     },
     {
@@ -2713,7 +2733,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "39caa404e3f8a3c50fd5581114ecc13e58a0667054efbc5d644c2dccde1b59f6",
+      "sha256": "c220fde1e8564cc9ddae8bffd72dba0dcb959c1e751e240e20ce9ad8aab93e82",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2756,7 +2776,8 @@
         8745,
         8746,
         8747,
-        8748
+        8748,
+        8796
       ]
     }
   ]
