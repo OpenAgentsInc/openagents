@@ -1,0 +1,16 @@
+{
+  "agent_run_format_version": "0.1",
+  "run_id": "missing-status",
+  "agent": {
+    "name": "Codex"
+  },
+  "product_spec": {
+    "path": "docs/product-specs/transcript-search.product-spec.md",
+    "spec_revision": 1
+  },
+  "started_at": "2026-07-13T00:00:00Z",
+  "checked_items": [],
+  "drift": {
+    "detected": false
+  }
+}

@@ -1,4 +1,5 @@
 export * from "./admission.ts"
+export * from "./agent-run.ts"
 export * from "./artifact.ts"
 export * from "./bun-test-adapter.ts"
 export * from "./environment.ts"

@@ -52,7 +52,8 @@ current receipts.
    ProductSpec 0.20 has shipped, per capability area, with actions.
 7. [`AGENT_TOOLING.md`](./AGENT_TOOLING.md) — the design for our own
    AssuranceSpec agent surfaces: CLI extensions, the read-only deterministic
-   MCP server with dual-digest session pinning, the work/authoring skills,
+   MCP server with dual-digest session pinning and Agent Run 0.1 self-report
+   ingest, the work/authoring skills,
    the starter-kit adoption path, and sequencing onto the AS ladder.
 8. [`UX_CONTRACTS_AND_ASSURANCE.md`](./UX_CONTRACTS_AND_ASSURANCE.md) — where
    owner-stated UX/micro-interaction/visual do-and-don't rules live: statement

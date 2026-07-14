@@ -33,6 +33,7 @@ import {
   getSeams,
   getSubjectBinding,
   getTypedGaps,
+  ingestAgentRun,
   listAssuranceSpecs,
   runTool,
   validateAssuranceSpecFile,
@@ -153,6 +154,18 @@ const pathArgs = (args: Record<string, unknown>, serverRoot: string) => ({
 })
 
 export const MCP_TOOLS: Readonly<Record<string, ToolDefinition>> = {
+  ingest_agent_run: {
+    description:
+      "Read and cross-check an upstream Agent Run 0.1 against its pinned ProductSpec, projecting per-item statuses only as producer-equals-claimant self-report. Never promotes the observation axis, verifies a claim, or satisfies independent-producer requirements.",
+    inputSchema: objectSchema(
+      {
+        root: ROOT_PROPERTY,
+        path: requiredStringProperty("Root-relative path to a .agent-run.json file."),
+      },
+      ["path"],
+    ),
+    handler: (args, root) => ingestAgentRun(pathArgs(args, root)),
+  },
   begin_assurance_session: {
     description:
       "Validate an AssuranceSpec and its bound ProductSpec subject, then pin a stateless dual digest (spec revision+digest, subject revision+digest). Store the full returned pin; no daemon holds it.",

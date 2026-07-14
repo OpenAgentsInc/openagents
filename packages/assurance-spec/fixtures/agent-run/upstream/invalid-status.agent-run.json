@@ -1,0 +1,22 @@
+{
+  "agent_run_format_version": "0.1",
+  "run_id": "invalid-status-run",
+  "agent": {
+    "name": "Codex"
+  },
+  "product_spec": {
+    "path": "conformance/valid/minimal.product-spec.md",
+    "spec_revision": 1
+  },
+  "started_at": "2026-07-13T00:00:00Z",
+  "status": "waiting",
+  "checked_items": [
+    {
+      "item_id": "AC-1",
+      "status": "not_checked"
+    }
+  ],
+  "drift": {
+    "detected": false
+  }
+}

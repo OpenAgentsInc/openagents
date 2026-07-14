@@ -16,8 +16,17 @@ import { isAbsolute, join, normalize, relative, resolve } from "node:path"
 
 import { Effect, Schema } from "effect"
 
-import { validateExecutableProductSpec } from "@openagentsinc/product-spec"
+import {
+  computeProductSpecDocumentDigest,
+  validateExecutableProductSpec,
+  validateProductSpec,
+} from "@openagentsinc/product-spec"
 
+import {
+  AGENT_RUN_INGEST_SCHEMA,
+  validateAgentRunJson,
+  type AgentRunSelfReportEvidence,
+} from "./agent-run.ts"
 import { projectObligationGraph, type ObligationGraph } from "./graph.ts"
 import { inventoryRepository } from "./repository-inventory.ts"
 import {
@@ -265,6 +274,126 @@ const probeSubject = (root: string, document: AssuranceSpecDocument): SubjectPro
 // ---------------------------------------------------------------------------
 
 export type PathArgs = Readonly<{ root?: string; path: string }>
+
+/**
+ * Ingest an upstream Agent Run 0.1 as self-reported evidence only. This is a
+ * read-only projection: claimed item statuses never become observations.
+ */
+export const ingestAgentRun = (
+  args: PathArgs,
+): Effect.Effect<AgentRunSelfReportEvidence, AssuranceToolError> =>
+  Effect.gen(function* () {
+    const root = resolveRoot(args.root)
+    if (!args.path.endsWith(".agent-run.json")) {
+      return yield* toolError(
+        "invalid_agent_run_path",
+        `Agent Run paths must end in .agent-run.json: ${args.path}`,
+        { path: args.path },
+      )
+    }
+    const sourcePath = yield* confinePath(root, args.path)
+    let source: string
+    try {
+      source = readFileSync(sourcePath.absolute, "utf8")
+    } catch {
+      return yield* toolError("file_not_found", `File is not readable: ${args.path}`, { path: args.path })
+    }
+    const validation = validateAgentRunJson(source)
+    if (!validation.valid) {
+      const first = validation.errors[0]
+      return yield* toolError(
+        first?.code ?? "invalid_agent_run",
+        `Agent Run is invalid: ${validation.errors.map((error) => `${error.code}: ${error.message}`).join("; ")}`,
+        { path: sourcePath.relative, errors: validation.errors },
+      )
+    }
+    const run = validation.document
+    const productSpecPath = yield* confinePath(root, run.product_spec.path)
+    let markdown: string
+    try {
+      markdown = readFileSync(productSpecPath.absolute, "utf8")
+    } catch {
+      return yield* toolError("file_not_found", `ProductSpec is not readable: ${run.product_spec.path}`, { path: run.product_spec.path })
+    }
+    const productSpec = validateProductSpec(markdown, { profile: "upstream" })
+    if (!productSpec.valid) {
+      const first = productSpec.errors[0]
+      return yield* toolError(
+        "invalid_pinned_product_spec",
+        `Pinned ProductSpec is invalid: ${productSpec.errors.map((error) => `${error.code}: ${error.message}`).join("; ")}`,
+        { path: productSpecPath.relative, errors: productSpec.errors },
+      )
+    }
+    const actualRevision = productSpec.document.frontmatter.spec_revision
+    if (actualRevision !== run.product_spec.spec_revision) {
+      return yield* toolError(
+        "product_spec_revision_mismatch",
+        `Agent Run pins ProductSpec revision ${run.product_spec.spec_revision}, but ${productSpecPath.relative} is revision ${actualRevision ?? "missing"}.`,
+        { path: productSpecPath.relative },
+      )
+    }
+    const computedHash = computeProductSpecDocumentDigest(markdown)
+    if (run.product_spec.content_hash !== undefined && run.product_spec.content_hash !== computedHash) {
+      return yield* toolError(
+        "product_spec_digest_mismatch",
+        `Agent Run ProductSpec content_hash does not match ${productSpecPath.relative}.`,
+        { path: productSpecPath.relative },
+      )
+    }
+    const itemIds = new Set(productSpec.document.sections.flatMap((section) => [
+      ...(section.acceptance_criteria ?? []).map((item) => item.id),
+      ...(section.ai_evals ?? []).map((item) => item.id),
+      ...(section.success_metrics ?? []).map((item) => item.id),
+    ]))
+    const unknownItems = run.checked_items.filter((item) => !itemIds.has(item.item_id))
+    if (unknownItems.length > 0) {
+      return yield* toolError(
+        "agent_run_item_not_found",
+        `Agent Run cites item ids absent from the pinned ProductSpec: ${unknownItems.map((item) => item.item_id).join(", ")}.`,
+        {
+          path: productSpecPath.relative,
+          errors: unknownItems.map((item) => ({ code: "agent_run_item_not_found", item_id: item.item_id })),
+        },
+      )
+    }
+    const identity = {
+      name: run.agent.name,
+      ...(run.agent.version === undefined ? {} : { version: run.agent.version }),
+    }
+    return {
+      schema: AGENT_RUN_INGEST_SCHEMA,
+      source: { path: sourcePath.relative, document_digest: sha256Digest(source) },
+      agent_run_format_version: run.agent_run_format_version,
+      run_id: run.run_id,
+      run_status: run.status,
+      started_at: run.started_at,
+      ...(run.completed_at === undefined ? {} : { completed_at: run.completed_at }),
+      proof_rung: "self_report",
+      producer: identity,
+      claimant: identity,
+      producer_equals_claimant: true,
+      independently_verified: false,
+      observation_axis: "not_promoted",
+      spec_pin: {
+        path: productSpecPath.relative,
+        spec_revision: run.product_spec.spec_revision,
+        declared_content_hash: run.product_spec.content_hash ?? null,
+        computed_content_hash: computedHash,
+        digest_status: run.product_spec.content_hash === undefined ? "missing" : "matched",
+      },
+      claimed_items: run.checked_items,
+      drift: run.drift,
+      ...(run.completion_claim === undefined ? {} : { completion_claim: run.completion_claim }),
+      gaps: run.product_spec.content_hash === undefined
+        ? [{ code: "missing_product_spec_content_hash", message: "The Agent Run omitted the optional ProductSpec content_hash; revision and item identity were checked, but byte identity was not pinned by the producer." }]
+        : [],
+      authority: {
+        can_promote_observation: false,
+        can_verify: false,
+        can_satisfy_independent_producer: false,
+      },
+    }
+  })
 
 export const beginAssuranceSession = (
   args: PathArgs,

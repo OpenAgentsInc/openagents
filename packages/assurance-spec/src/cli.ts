@@ -23,6 +23,7 @@ import {
   getObligationGraph,
   getObligations,
   getRepositoryInventory,
+  ingestAgentRun,
   inventoryRepository,
   parseAssuranceSpec,
   proposeAssuranceSpec,
@@ -47,6 +48,7 @@ const usage = (): never => {
   console.error("  assurance-spec ledgers <file.assurance-spec.md> [--root <dir>] [--json]")
   console.error("  assurance-spec checklist <file.assurance-spec.md> [--criterion <id>] [--root <dir>] [--json]")
   console.error("  assurance-spec claim <file.assurance-spec.md> [--claim <text>] [--root <dir>] [--json]")
+  console.error("  assurance-spec agent-run ingest <file.agent-run.json> [--root <dir>] [--json]")
   console.error("  assurance-spec mcp [--root <dir>]")
   console.error("")
   console.error("exit codes: 0 success · 1 operation failure · 2 usage error · 3 stale session")
@@ -399,6 +401,21 @@ const claim = (args: ReadonlyArray<string>): void => {
   console.log(audit.message)
 }
 
+const agentRunIngest = (args: ReadonlyArray<string>): void => {
+  const [path] = positional(args, 1)
+  if (path === undefined) usage()
+  const json = jsonFlag(args)
+  const evidence = runOrExit(ingestAgentRun({ path, ...rootArg(args) }), json)
+  if (json) {
+    printJson(evidence)
+    return
+  }
+  console.log(`${evidence.run_id}: ${evidence.run_status} · proof rung ${evidence.proof_rung}`)
+  console.log(`  ProductSpec ${evidence.spec_pin.path}@r${evidence.spec_pin.spec_revision} · digest ${evidence.spec_pin.digest_status}`)
+  console.log(`  ${evidence.claimed_items.length} claimed item statuses · producer == claimant · observation not promoted`)
+  for (const gap of evidence.gaps) console.log(`  gap ${gap.code}: ${gap.message}`)
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
@@ -420,5 +437,10 @@ else if (command === "graph") graph(args)
 else if (command === "ledgers") ledgers(args)
 else if (command === "checklist") checklist(args)
 else if (command === "claim") claim(args)
+else if (command === "agent-run") {
+  const [subcommand, ...rest] = args
+  if (subcommand === "ingest") agentRunIngest(rest)
+  else usage()
+}
 else if (command === "mcp") runAssuranceSpecMcpServer(flagValue(args, "--root"))
 else usage()

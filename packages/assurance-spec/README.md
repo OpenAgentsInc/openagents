@@ -60,6 +60,9 @@ bun packages/assurance-spec/src/cli.ts checklist <file> [--criterion <id>] [--js
 bun packages/assurance-spec/src/cli.ts claim <file> [--claim "<text>"] [--json]
 bun packages/assurance-spec/src/cli.ts inventory <repo-dir> [--out <file.json>] [--json]
 
+# Agent Run 0.1 interop: cross-checked, but only self-reported evidence
+bun packages/assurance-spec/src/cli.ts agent-run ingest <file.agent-run.json> [--root <dir>] [--json]
+
 # Read-only stdio MCP server (JSON-RPC 2.0, protocol 2024-11-05), confined to --root
 bun packages/assurance-spec/src/cli.ts mcp --root .
 ```
@@ -68,7 +71,7 @@ Exit codes are the API: **0** success, **1** operation failure, **2** usage
 error, **3** stale session. Every command takes `--json`.
 
 The MCP server exposes the §3.1 read-only tool table
-(`begin_assurance_session`, `check_assurance_session`, `list_assurance_specs`,
+(`ingest_agent_run`, `begin_assurance_session`, `check_assurance_session`, `list_assurance_specs`,
 `get_assurance_spec`, `validate_assurance_spec`, `get_subject_binding`,
 `get_obligations`, `get_obligation`, `get_seams`, `get_environments`,
 `get_gates`, `get_coverage_ledgers`, `get_evidence_checklist`,
@@ -83,6 +86,15 @@ rounding up. Sessions are stateless: `begin` returns the full dual-digest pin
 recomputes both digests and classifies `unchanged` / `assurance_spec_changed`
 / `subject_changed` / `both_changed` / `invalid_current` with a typed
 `recommended_action`.
+
+Agent Run ingest is deliberately weaker than receipt ingestion. It validates
+the upstream 0.1 shape, rejects duplicate item IDs, confines and validates the
+pinned ProductSpec, checks its revision and every cited `AC-*` / `EVAL-*` /
+`SM-*` ID, and checks the byte digest when `content_hash` is present. A missing
+optional hash is returned as `missing_product_spec_content_hash`. The output is
+always `proof_rung: "self_report"`, explicitly records `producer == claimant`,
+preserves item results as `claimed_items`, and grants no observation,
+verification, or independent-producer authority.
 
 Without `--repo`, proposal generation remains valid and emits a typed
 `repository_not_supplied` diagnostic. With `--repo`, inventory reads the
@@ -147,6 +159,7 @@ out of scope, and a valid bound review grants no authority.
 ```ts
 import {
   bindAssuranceReviewAnnotation,
+  ingestAgentRun,
   inventoryRepository,
   proposeAssuranceSpec,
   validateAssuranceReviewAnnotation,

@@ -1,0 +1,27 @@
+{
+  "agent_run_format_version": "0.1",
+  "run_id": "minimal-run",
+  "agent": {
+    "name": "Codex"
+  },
+  "product_spec": {
+    "path": "conformance/valid/minimal.product-spec.md",
+    "spec_revision": 1,
+    "content_hash": "sha256:abc123"
+  },
+  "started_at": "2026-07-13T00:00:00Z",
+  "status": "draft",
+  "checked_items": [
+    {
+      "item_id": "AC-1",
+      "status": "not_checked"
+    },
+    {
+      "item_id": "SM-1",
+      "status": "not_checked"
+    }
+  ],
+  "drift": {
+    "detected": false
+  }
+}

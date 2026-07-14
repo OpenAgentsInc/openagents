@@ -5,9 +5,9 @@ Status: design proposal for the AssuranceSpec agent surfaces; nothing in this
 document is implemented unless it names code that exists today
 (`packages/assurance-spec/src/cli.ts` ships `propose`, `validate`, `coverage`,
 `session begin/check`, `inventory`, `obligations`, `obligation`, `graph`,
-`ledgers`, `checklist`, `claim`, and `mcp`; the stdio MCP server in
-`src/mcp.ts` ships the §3.1 tool table; skills and the starter kit remain
-unimplemented)
+`ledgers`, `checklist`, `claim`, `agent-run ingest`, and `mcp`; the stdio MCP server in
+`src/mcp.ts` ships the §3.1 tool table; the repository-installable skills ship,
+while the starter kit remains unimplemented)
 Owner directive being served: agents should be able to interact with the spec
 from whatever codebase or workspace they are already active in, with our way
 of doing things loaded — CLI, skill, MCP, whatever — for AssuranceSpec.
@@ -87,6 +87,7 @@ loops can branch on staleness without parsing output. Every command takes
 | `ledgers <file>` | `--json` | The three coverage ledgers, separately: criterion→obligation traceability; obligation×environment execution (all `not_run` today); reachable-frontier coverage (`not_computed` until a compiler exists). Never a single percentage. | 0/1/2 |
 | `checklist <file>` | `--criterion <id>` `--json` | Per criterion: bound obligations, each obligation's required evidence kinds, environments, and what is currently missing (which is, today, everything past design). The AssuranceSpec analogue of upstream's evidence checklist. | 0/1/2 |
 | `claim <file>` | `--claim "<text>"` `--json` | Completion-claim audit: echoes the claim, then reports every obligation across all eight status axes. Rounds nothing up; a claim against an unadmitted spec gets `admission: proposed` on every line. | 0/1/2 |
+| `agent-run ingest <file.agent-run.json>` | `--root <dir>` `--json` | Validates upstream Agent Run 0.1, cross-checks the pinned ProductSpec revision, item IDs, and optional digest, then returns a no-authority `self_report` projection. | 0/1/2 |
 | `mcp` | `--root <dir>` | Starts the stdio MCP server (§3), confined to `root`. | runs |
 
 Deliberately **not** CLI commands: `admit`, `approve`, `verify`, `plan`,
@@ -129,6 +130,7 @@ everything takes an optional `root`.
 
 | Tool | Params | Returns |
 | --- | --- | --- |
+| `ingest_agent_run` | `path` (req) | Same read-only projection as CLI `agent-run ingest`: validated Agent Run 0.1 with a cross-checked ProductSpec pin, `producer_equals_claimant: true`, claimed item statuses, and explicit denial of observation/verification/independence authority. |
 | `begin_assurance_session` | `path` (req) | Validates the AssuranceSpec and its subject ProductSpec, then pins a **dual digest**: `{ session_id, assurance_spec: {path, revision, document_digest}, subject: {path, revision, document_digest, intent_digest?}, criterion_refs }`. `intent_digest` is present only once PSEL lands it — the field is declared now, never faked. Unlike upstream, the full pin is always returned to the caller, so the stateless path is the primary path, not a fallback. |
 | `check_assurance_session` | `session_id` or the full pin object; `path` (req) | Recomputes digests; returns `status` ∈ `unchanged` / `assurance_spec_changed` / `subject_changed` / `both_changed` / `invalid_current`, per-digest detail, and `recommended_action` ∈ `continue_against_pinned` / `replan_before_continuing` / `resolve_invalid_current`. When intent digests exist, a subject change that preserves `intent_digest` additionally reports `subject_change_class: "evidence_index_changed"` — and only then (Law: never inferred from prose). |
 | `list_assurance_specs` | — | Every `*.assurance-spec.md` under root: path, id, revision, lifecycle_state, subject path, validity, error/warning counts. |
@@ -147,11 +149,10 @@ everything takes an optional `root`.
 | `get_typed_gaps` | `path` (req) | Consolidated typed-gap report: unresolved obligation fields, missing environment profiles, missing falsifiers/oracles, unbound criteria, unsupported capabilities. The machine-readable version of "what would have to exist before this spec could be admitted." |
 | `get_repository_inventory` | `root`-scoped | Committed-HEAD inventory (existing `inventoryRepository`): candidate test artifacts and scripts, explicitly labeled `candidates_not_proof: true`. |
 
-Seventeen tools; thirteen ship in the first slice (§6 — everything except the
-receipt-aware refinements of `check_completion_claim`, which still ships but
-with all-`not_run` observation, and the profile-reading half of
-`get_environments`, which returns typed gaps until Environment Profiles
-exist).
+All eighteen tools ship. Receipt-aware refinement of
+`check_completion_claim` remains deferred (the tool honestly reports
+all-`not_run` observation), and `get_environments` returns typed gaps until
+Environment Profiles exist.
 
 Deliberately **no** mutating tools — no `propose_assurance_spec` over MCP.
 Proposal writes a file; file-writing agents already have file tools, and the
@@ -333,7 +334,7 @@ does not have. The value of shipping the honest thin version first is the same
 value the whole standard bets on: an agent that can *see* 0/18 executed is an
 agent that cannot claim done.
 
-## 7. Agent Run interop (proposed 2026-07-13 — nothing here is implemented)
+## 7. Agent Run interop (ingest implemented 2026-07-13; emit deferred)
 
 Upstream v0.21.0/v0.22.0 added **Agent Run** (`.agent-run.json`): a
 self-reported per-run receipt drafted by `productspec init-run` / the MCP
@@ -348,16 +349,17 @@ relationship should be explicit:
   rounding up. These compose rather than compete: an agent working under both
   standards drafts the Agent Run, runs `claim`, and attaches the un-rounded
   audit output to the run's `evidence` rather than asserting bare `passed`.
-- **Ingest (`agent-run ingest <file>` — proposed CLI verb + MCP read tool).**
+- **Ingest (`agent-run ingest <file>` CLI verb + `ingest_agent_run` MCP read tool — implemented).**
   Parse and shape-validate an `.agent-run.json`, then map it into our typed
   evidence model as **self-reported evidence at the lowest proof rung**
-  (proposed rung vocabulary addition: `self_report`), with:
+  (`self_report`), with:
   `producer == claimant` always flagged (it is structurally true for this
   artifact kind), the spec pin recorded (and `content_hash` absence surfaced
   as a typed gap — upstream makes the hash optional), per-item statuses
-  imported as *claimed* observations that never touch the observation axis,
+  imported as *claimed statuses* that never touch the observation axis,
   and cross-checks upstream skips: do the cited item IDs exist in the pinned
-  spec, and does the recomputed digest match. Never a verdict (Law 13); never
+  spec, and does the recomputed digest match when the optional hash exists.
+  A missing hash is `missing_product_spec_content_hash`. Never a verdict (Law 13); never
   admissible where `producer_may_verify: false` requires an independent
   producer.
 - **Emit (`agent-run emit` — proposed, lower priority).** Project a valid
@@ -366,8 +368,8 @@ relationship should be explicit:
   status; independence and environment binding have no upstream field), so an
   emitted run must carry a note that statuses were down-converted and link
   back to the receipts. Do not build until someone real asks for it.
-- **Ship gate.** Ingest is PSEL-adjacent (it needs the upstream-parity item
-  model to cross-check IDs) and lands no earlier than PSEL-0; it must not
-  jump the AT-1 → PSEL-0 → AS-MVP order. Emit waits for real receipts (AS-3),
+- **Ship gate.** Ingest landed after the upstream-parity PSEL item model and
+  remains outside Desktop verification and the observation ledger. Emit waits
+  for real receipts (AS-3),
   because emitting self-report-shaped output from a system whose point is
   independent observation is only honest when the receipts behind it exist.

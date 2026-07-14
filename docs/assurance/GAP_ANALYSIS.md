@@ -29,8 +29,9 @@ Three columns, kept honestly separate throughout:
   `@openagentsinc/assurance-spec` AS-1 slice (schema, parser, serializer,
   structural validator, adequacy assessment, deterministic proposal,
   committed-HEAD repository inventory, CLI with `propose`/`validate`/`coverage`),
-  the generated 18-criterion MVP proposal in `docs/mvp/`, and the shipping
-  ProductSpec-native Desktop workroom loop.
+  the generated 18-criterion MVP proposal in `docs/mvp/`, the shipping
+  ProductSpec-native Desktop workroom loop, and read-only Agent Run 0.1 ingest
+  in `packages/assurance-spec/src/agent-run.ts` / `handlers.ts`.
 - **Us — designed.** The `docs/assurance/` dossiers: a full proof-design
   standard (14 laws, 9-section document, obligations/oracles/falsifiers/seams,
   Environment Profiles, adapter protocol, admission lifecycle, deterministic
@@ -300,11 +301,14 @@ serve. It also marks, precisely, where our layer begins: an Agent Run is a
 provenance, environment, oracle sensitivity, independence
 (`producer_may_verify: false`), and eight axes that never round up (Law 7,
 Law 10). Upstream shipping the self-report rung does not compress our
-differentiation — it names the baseline we verify above. Action: treat
-`.agent-run.json` as an ingestable low-rung evidence *pointer* (never a
+differentiation — it names the baseline we verify above. Implemented action:
+`.agent-run.json` is now an ingestable low-rung evidence *pointer* (never a
 verdict — Law 13), mapped into our typed model with `producer == claimant`
-flagged; the concrete interop proposal is AGENT_TOOLING.md §7 and it is
-proposed, not implemented. The upstream-proposal candidate list in the
+flagged. The CLI `agent-run ingest` verb and read-only MCP `ingest_agent_run`
+tool validate the 0.1 shape, cross-check ProductSpec revision and cited item
+IDs, verify an optional digest, and return a typed gap when that hash is
+absent. They never promote the observation axis or satisfy independent-
+producer policy. Emit remains deferred. The upstream-proposal candidate list in the
 companion strategy doc (fable §4.2) gains a third cheap item: an `agent_run`
 Related Artifact type, so the artifact they created has first-class attachment
 vocabulary in their own spec.
@@ -467,9 +471,9 @@ Ordered by leverage, each mapped to its ladder home:
 
 1. **PSEL-0** — catch `packages/product-spec` up to upstream structured items +
    Related Artifacts; compute the intent digest. Unblocks §3, §5, §6.
-2. **Agent tooling first slice** (AGENT_TOOLING.md §7) — CLI session/checklist
-   commands + read-only MCP server over the implemented parser/validator/
-   coverage. AS-1-adjacent; ships against current code.
+2. **Agent tooling first slice** (AGENT_TOOLING.md) — shipped CLI
+   session/checklist commands, read-only MCP server, and Agent Run 0.1 ingest
+   over the implemented parser/validator/coverage surfaces.
 3. **Conformance corpus + custom-section preservation + thin-section warnings**
    — completes AS-1 honestly. Landed (#8760), including the portable
    review-annotation format with exact subject binding.

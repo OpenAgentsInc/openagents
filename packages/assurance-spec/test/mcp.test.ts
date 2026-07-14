@@ -5,6 +5,7 @@ import { MCP_PROTOCOL_VERSION, MCP_SERVER_NAME, MCP_TOOLS, handleMcpRequest } fr
 import { MVP_SPEC, repoRoot } from "./fixture.ts"
 
 const EXPECTED_TOOL_NAMES = [
+  "ingest_agent_run",
   "begin_assurance_session",
   "check_assurance_session",
   "list_assurance_specs",

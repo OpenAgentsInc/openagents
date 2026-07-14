@@ -5,6 +5,7 @@
  * package root because they require Node. Editors and other renderers only
  * need the document grammar, parser, serializer, and adequacy assessment.
  */
+export * from "./agent-run.ts"
 export * from "./graph.ts"
 export * from "./parser.ts"
 export * from "./review-annotation.ts"

@@ -1,0 +1,25 @@
+{
+  "agent_run_format_version": "0.1",
+  "run_id": "fixture-run",
+  "agent": {
+    "name": "Codex",
+    "version": "desktop"
+  },
+  "product_spec": {
+    "path": "packages/assurance-spec/fixtures/agent-run/workspace/subject.product-spec.md",
+    "spec_revision": 3
+  },
+  "started_at": "2026-07-13T12:00:00Z",
+  "completed_at": "2026-07-13T12:01:00Z",
+  "status": "completed",
+  "checked_items": [
+    { "item_id": "AC-1", "status": "passed", "notes": "Agent claims the behavior works." },
+    { "item_id": "AC-2", "status": "not_checked" },
+    { "item_id": "EVAL-1", "status": "failed" },
+    { "item_id": "SM-1", "status": "blocked" }
+  ],
+  "drift": {
+    "detected": false
+  },
+  "completion_claim": "All implementation work is complete."
+}
