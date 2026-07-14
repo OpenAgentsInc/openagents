@@ -53,6 +53,7 @@ import {
 } from "./fleet-run.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
 import { readStdinText } from "./proc.js"
+import { runKhalaLocalUp } from "./local.js"
 import { openVerificationUrl, runKhalaLogin, type KhalaLoginResult } from "./login.js"
 import {
   cancelKhalaSpawn,
@@ -114,6 +115,7 @@ type ParsedCommand =
       readonly provider: string | undefined
       readonly key: string | undefined
     }
+  | { readonly kind: "localUp"; readonly port: number | undefined; readonly open: boolean; readonly smoke: boolean }
   | { readonly kind: "login" }
   | { readonly kind: "logout" }
   | { readonly kind: "mcpServer" }
@@ -201,6 +203,16 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       const result = await runArtanisApprovalGateCommand(args, env, args.command)
       process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatArtanisApprovalGateResult(result)}\n`)
       return 0
+    }
+    if (args.command.kind === "localUp") {
+      return await runKhalaLocalUp({
+        env,
+        port: args.command.port,
+        open: args.command.open,
+        smoke: args.command.smoke,
+        stdout: line => process.stdout.write(`${line}\n`),
+        openUrl: openVerificationUrl,
+      })
     }
     if (args.command.kind === "codexAuth") {
       const connected = await connectKhalaCodex({ env })
@@ -464,6 +476,9 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let fleetForce = false
   let fleetHarness: KhalaFleetHarness = "codex"
   let fleetLive = false
+  let localPort: number | undefined
+  let localOpen = false
+  let localSmoke = false
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -592,6 +607,15 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       fleetForce = true
     } else if (arg === "--live") {
       fleetLive = true
+    } else if (arg === "--port") {
+      localPort = parsePositiveInteger(requireValue(argv, index, arg), arg)
+      index += 1
+    } else if (arg.startsWith("--port=")) {
+      localPort = parsePositiveInteger(arg.slice("--port=".length), "--port")
+    } else if (arg === "--open") {
+      localOpen = true
+    } else if (arg === "--smoke") {
+      localSmoke = true
     } else if (arg.startsWith("-")) {
       throw new Error(`Unknown flag: ${arg}`)
     } else {
@@ -663,6 +687,10 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       provider: positional[2],
       key: positional[3],
     }
+  } else if (maybeCommand === "up" || maybeCommand === "local") {
+    // Zero-install front door (#8784): `npx @openagentsinc/khala up` boots the
+    // local runtime and prints a fragment-style pairing URL. No account needed.
+    command = { kind: "localUp", port: localPort, open: localOpen, smoke: localSmoke }
   } else if (maybeCommand === "login") {
     command = { kind: "login" }
   } else if (maybeCommand === "logout") {
@@ -2296,11 +2324,15 @@ Free to use, streams answers live, no signup or API key required.
 Get started:
   khala                       Start an interactive chat
   khala --prompt "hello"      Ask one question and print the answer
+  npx @openagentsinc/khala up Zero-install: boot the local runtime + pairing URL
   npm install -g @openagentsinc/khala   Install / share
 
 Usage:
   khala
   khala help
+  khala up
+  khala up --open
+  khala up --port 4777
   khala login
   khala logout
   khala resume <sessionId>
@@ -2384,6 +2416,9 @@ Flags:
   --verify <command>   Bounded verification command for --strategy pylon
   --workflow <name>    Pylon workflow: claude_agent_task, codex_agent_task, or cloud_coding_session
   --timeout <seconds>  Per-worker timeout for khala spawn
+  --port <n>           Loopback port for khala up (default: auto-assigned)
+  --open               Open the pairing URL in the browser for khala up
+  --smoke              Run the bounded khala up pairing self-proof, then exit
   --account <ref>      Account ref for khala fleet connect (auto-assigned if omitted)
   --harness <name>     Harness for khala fleet connect: codex or claude
   --force              Re-run device login for khala fleet connect even if already linked

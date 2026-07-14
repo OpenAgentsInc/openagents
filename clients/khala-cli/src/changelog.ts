@@ -20,6 +20,14 @@ export const KHALA_CLI_VERSION = packageJson.version
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
   {
+    version: "0.1.22",
+    releasedAt: "2026-07-14T00:00:00.000Z",
+    bullets: [
+      "Adds `khala up` — the zero-install front door: `npx @openagentsinc/khala up` initializes/migrates the device-local store, starts the local runtime on 127.0.0.1, and prints a single-use, short-lived pairing URL with the token in the URL fragment (never in query strings or server logs). `--open` opens the browser; no account required.",
+      "Pairing consumes the token for a device-local grant and records a KnownEnvironment entry; every local control route is pairing-gated by default.",
+    ],
+  },
+  {
     version: "0.1.21",
     releasedAt: "2026-06-27T16:52:00.000Z",
     bullets: [

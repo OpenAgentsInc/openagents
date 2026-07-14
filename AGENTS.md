@@ -180,6 +180,15 @@ khala fleet connect                     # connect a Codex account (paste-free de
 khala fleet status                      # see your fleet
 ```
 
+Zero-install front door (#8784): `npx @openagentsinc/khala up` (or `bunx`)
+needs no install and no account — it initializes/migrates the device-local
+store, starts the local runtime on 127.0.0.1 only, and prints a single-use,
+short-lived pairing URL with the token in the URL fragment
+(`http://127.0.0.1:<port>/pair#token=…`; add `--open` to open the browser).
+Pairing creates a device-local grant that gates every local control route.
+`khala fleet connect` semantics above are unchanged and remain the path for
+connecting Codex accounts.
+
 What the user will see: `khala fleet connect` drives the standard
 `codex login --device-auth` flow — it opens the browser to the device URL and
 shows a SHORT code to enter (no long auth string to copy). It then confirms with
