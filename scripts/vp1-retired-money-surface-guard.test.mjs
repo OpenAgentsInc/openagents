@@ -116,6 +116,27 @@ test('rejects removal of OpenAPI or capability discovery filters', () => {
   )
 })
 
+test('rejects executable client requests to retired money endpoints', () => {
+  const findings = scan({
+    'apps/openagents.com/apps/start/src/routes/forum.ts': `
+      export const sendTip = postId =>
+        fetch('/api/forum/posts/' + postId + '/tips/ladder', { method: 'POST' })
+    `,
+    'apps/aiur/src/routes/credits.tsx': `
+      export const load = () => fetch('/api/admin/credits/balance')
+    `,
+    'clients/khala-mobile/src/screens/settings.tsx': `
+      export const load = () => fetch('/api/mobile/credits/history')
+    `,
+  })
+
+  assert.equal(
+    findings.filter(finding => finding.category === 'retired-client-money-request')
+      .length,
+    3,
+  )
+})
+
 test('comments mentioning the retired topology do not restore authority', () => {
   assert.deepEqual(
     scan({

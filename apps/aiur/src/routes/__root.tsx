@@ -9,7 +9,7 @@ import type * as React from 'react'
 import '../styles.css'
 
 const description =
-  'Aiur — the owner-only OpenAgents admin panel for Khala Code mobile: credits, users, and cloud-execution ops.'
+  'Aiur — the owner-only OpenAgents admin panel for Khala Code mobile and cloud-execution operations.'
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient

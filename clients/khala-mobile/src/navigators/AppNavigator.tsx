@@ -12,12 +12,10 @@ import {
 } from "@react-navigation/native"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import * as Linking from "expo-linking"
-import { View, type ViewStyle } from "react-native"
+import { type ViewStyle } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
-import { DrawerCreditsBalance } from "../components/drawer-credits-balance"
 import { AboutEffectNativeScreen } from "../screens/about-effect-native-screen"
-import { CreditsHistoryScreen } from "../screens/credits-history-screen"
 import { FleetPeekScreen } from "../screens/fleet-peek-screen"
 import { RepoPickerScreen } from "../screens/repo-picker-screen"
 import { SettingsScreen } from "../screens/settings-screen"
@@ -53,7 +51,6 @@ const linking: LinkingOptions<AppDrawerParamList> = {
           Threads: "",
           ThreadMessages: "thread/:threadId",
           RepoPicker: "thread/:threadId/repo",
-          CreditsHistory: "credits/history",
         },
       },
       FleetPeek: "fleet",
@@ -64,7 +61,7 @@ const linking: LinkingOptions<AppDrawerParamList> = {
   prefixes: [Linking.createURL("/")],
 }
 
-/** The threads area — list, thread/chat view, repo picker, and credit history —
+/** The threads area — list, thread/chat view, and repo picker —
  * as a native stack nested inside the root Drawer's "Main" screen. The chat
  * header's hamburger opens the drawer from any of these via
  * `navigation.getParent()?.openDrawer()`. */
@@ -78,20 +75,15 @@ const MainStackNavigator = () => (
     <Stack.Screen name="Threads" component={ThreadListScreen} />
     <Stack.Screen name="ThreadMessages" component={ThreadMessagesScreen} />
     <Stack.Screen name="RepoPicker" component={RepoPickerScreen} options={{ presentation: "modal" }} />
-    <Stack.Screen name="CreditsHistory" component={CreditsHistoryScreen} />
   </Stack.Navigator>
 )
 
-/** Custom drawer flyout: the standard nav items, then the live credit balance
- * pinned at the very bottom (owner request, 2026-07-07). */
+/** Custom drawer flyout for the standard navigation items. */
 const AppDrawerContent = (props: DrawerContentComponentProps) => (
   <SafeAreaView style={$drawerContent} edges={["top", "bottom"]}>
     <DrawerContentScrollView {...props} contentContainerStyle={$drawerScroll}>
       <DrawerItemList {...props} />
     </DrawerContentScrollView>
-    <View style={$drawerFooter}>
-      <DrawerCreditsBalance />
-    </View>
   </SafeAreaView>
 )
 

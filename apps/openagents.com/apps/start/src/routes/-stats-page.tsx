@@ -185,16 +185,6 @@ const endpointRows = [
     method: 'GET',
   },
   {
-    detail: 'Public tip paid and settled evidence rows.',
-    href: '/api/forum/tip-leaderboards',
-    method: 'GET',
-  },
-  {
-    detail: 'Forum posting and tipping launch gates.',
-    href: '/api/forum/launch-status',
-    method: 'GET',
-  },
-  {
     detail: 'Public Autopilot activity projection.',
     href: '/api/public/adjutant/activity',
     method: 'GET',

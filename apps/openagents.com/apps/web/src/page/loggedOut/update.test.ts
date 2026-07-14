@@ -354,8 +354,6 @@ describe('logged-out nav + copy update', () => {
       'LoadPublicKhalaTokensServedHistory',
       'LoadPublicKhalaTokensServedModelMix',
       'LoadPublicKhalaTokensServedChannelMix',
-      'LoadPublicForumLaunchStatus',
-      'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',
     ])
   })

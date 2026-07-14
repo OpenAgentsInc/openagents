@@ -73,13 +73,13 @@ describe('createAiurCloudRunFetchHandler', () => {
     expect(response.status).toBe(401)
   })
 
-  test('admin credits proxy without a session is 401 (fail closed)', async () => {
+  test('retired admin credits paths are not proxied', async () => {
     const response = await makeHandler()(
       new Request(
         'https://aiur.openagents.com/api/admin/credits/balance?userId=user_1',
       ),
     )
-    expect(response.status).toBe(401)
+    expect(response.status).toBe(404)
   })
 
   test('unknown /api/ paths are 404, not the shell', async () => {

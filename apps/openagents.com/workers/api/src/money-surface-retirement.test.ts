@@ -16,6 +16,7 @@ describe('VP-1 money-surface ingress retirement', () => {
     ['POST', '/api/sites/site-1/commerce/checkout-intents'],
     ['POST', '/api/pylons/pylon-1/spark-payout-target'],
     ['POST', '/api/operator/treasury/payout'],
+    ['GET', '/api/public/treasury'],
     ['POST', '/api/public/labor-earnings/payout'],
     ['GET', '/api/public/markets/open-markets'],
     ['GET', '/api/sites'],

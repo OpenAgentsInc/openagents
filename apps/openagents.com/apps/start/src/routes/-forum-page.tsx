@@ -3,16 +3,15 @@
 //
 // Route surface (deep-link stable, identical URL contract to the legacy
 // Foldkit page in apps/web/src/page/forum.ts):
-//   /forum                      board index + tip leaderboards
+//   /forum                      board index
 //   /forum/f/$forumRef          forum topic list
 //   /forum/t/$topicId           topic posts (?sortDir=asc|desc, #post-<id>)
 //   /forum/receipts/$receiptRef payment receipt
 //
 // Authority boundary: this file is presentation only. All Forum reads hit the
-// existing public Worker projections and the only mutation is the existing
-// browser tip-ladder POST — see -forum-data.ts. Content writes (topics,
-// replies, edits, tombstones), moderation, locks, identity, and work-request
-// authority remain on the Worker's /api/forum* contracts untouched. React is
+// existing public Worker projections. Content writes (topics, replies, edits,
+// tombstones), moderation, locks, identity, and work-request authority remain
+// on the Worker's /api/forum* contracts untouched. React is
 // only the thin route-shell host that mounts the Effect Native tree through
 // the DOM renderer (the EN adapter rule).
 
@@ -23,11 +22,9 @@ import {
   CodeBlock,
   Divider,
   IntentRef,
-  JsonPayloadSchema,
   Link,
   Markdown,
   Navigate,
-  NumberField,
   Stack,
   StaticPayload,
   StatusBanner,
@@ -52,49 +49,36 @@ import {
   actorInitial,
   actorProfilePath,
   actorRole,
-  defaultPostRewardSats,
   fetchForumAuthMode,
   fetchForumIndex,
-  fetchForumLaunchStatus,
   fetchForumReceipt,
   fetchForumSummary,
-  fetchForumTipLeaderboards,
   fetchForumTopicDetail,
   fetchForumTopics,
   forumBoardPath,
-  forumLoginHref,
   forumPath,
   forumRefPath,
   forumStatusLabel,
-  forumTipReceiptStateLabel,
-  forumTipUiProjectionForPost,
   friendlyTime,
   lastPostProjection,
-  makeForumTipIdempotencyKeyFactory,
-  normalizeTipAmount,
   parseTopicPostSortDirection,
   postAnchor,
   postCountText,
   postNumberAnchor,
   postPath,
-  postTipStatsBadge,
   receiptActionText,
   receiptAmountText,
   receiptPath,
   replyCountText,
-  submitForumTipLadder,
-  tipTotalsLabel,
   topicCountText,
   topicPath,
   topicSortPath,
   topicStatusLabel,
   viewCountText,
   type ForumAuthMode,
-  type ForumLaunchStatusProjection,
   type ForumPostProjection,
   type ForumReceiptProjection,
   type ForumSummaryProjection,
-  type ForumTipLeaderboardsProjection,
   type ForumTopicPostSortDirection,
   type ForumTopicProjection,
 } from './-forum-data'
@@ -114,27 +98,17 @@ export type ForumRouteParams =
     }>
   | Readonly<{ kind: 'receipt'; receiptRef: string }>
 
-export type ForumTipPanelState = Readonly<{
-  phase: 'idle' | 'login_required' | 'sending' | 'success' | 'failed' | 'recipient_pending'
-  message: string
-  receiptRef?: string | undefined
-}>
-
 export type ForumPageState = Readonly<{
   params: ForumRouteParams
   phase: 'loading' | 'ready' | 'unavailable'
   errorMessage: string
   authMode: ForumAuthMode
   forums: ReadonlyArray<ForumSummaryProjection>
-  tipLeaderboards: ForumTipLeaderboardsProjection | null
   forum: ForumSummaryProjection | null
   topics: ReadonlyArray<ForumTopicProjection>
   topic: ForumTopicProjection | null
   posts: ReadonlyArray<ForumPostProjection>
-  launchStatus: ForumLaunchStatusProjection | null
   receipt: ForumReceiptProjection | null
-  tipAmounts: Readonly<Record<string, number>>
-  tipPanels: Readonly<Record<string, ForumTipPanelState>>
   copiedPermalinkPostId: string | null
 }>
 
@@ -146,15 +120,11 @@ export const initialForumPageState = (
   errorMessage: '',
   authMode: 'LoggedOut',
   forums: [],
-  tipLeaderboards: null,
   forum: null,
   topics: [],
   topic: null,
   posts: [],
-  launchStatus: null,
   receipt: null,
-  tipAmounts: {},
-  tipPanels: {},
   copiedPermalinkPostId: null,
 })
 
@@ -172,28 +142,12 @@ export const forumReturnPath = (params: ForumRouteParams): string =>
 // Intents
 // ---------------------------------------------------------------------------
 
-const TipAmountChanged = defineIntent(
-  'ForumTipAmountChanged',
-  Schema.Struct({
-    form: Schema.String,
-    field: Schema.String,
-    value: JsonPayloadSchema,
-  }),
-)
-
-const TipSubmitted = defineIntent(
-  'ForumTipSubmitted',
-  Schema.Struct({ postId: Schema.String }),
-)
-
 const PermalinkCopied = defineIntent(
   'ForumPermalinkCopied',
   Schema.Struct({ postId: Schema.String, href: Schema.String }),
 )
 
-const forumIntents = [TipAmountChanged, TipSubmitted, PermalinkCopied, Navigate] as const
-
-const TIP_AMOUNT_FORM = 'forum-tips'
+const forumIntents = [PermalinkCopied, Navigate] as const
 
 // ---------------------------------------------------------------------------
 // View helpers
@@ -386,73 +340,17 @@ const forumRow = (
   )
 }
 
-const tipLeaderboardsView = (
-  leaderboards: ForumTipLeaderboardsProjection | null,
-): View | null => {
-  const posts = (leaderboards?.posts ?? []).slice(0, 5)
-  const creators = (leaderboards?.creators ?? []).slice(0, 5)
-  if (posts.length === 0 && creators.length === 0) return null
-
-  const postRows: ReadonlyArray<View> =
-    posts.length === 0
-      ? [text('tip-board-posts-empty', 'No tipped posts yet.', 'caption', 'textMuted')]
-      : posts.map((post, index) => {
-          const key = `tip-board-post-${index}`
-          const rawTitle =
-            (post.postTitle ?? '').trim() ||
-            post.author?.displayName ||
-            post.author?.actorRef ||
-            'creator'
-          const title =
-            rawTitle.length > 70 ? `${rawTitle.slice(0, 69).trimEnd()}…` : rawTitle
-          return Stack({ key, direction: 'column', gap: '1' }, [
-            pathLink(`${key}-link`, title, post.postPermalink ?? forumBoardPath, 'label'),
-            text(`${key}-totals`, tipTotalsLabel(post), 'caption', 'textMuted'),
-          ])
-        })
-
-  const creatorRows: ReadonlyArray<View> =
-    creators.length === 0
-      ? [text('tip-board-creators-empty', 'No tipped creators yet.', 'caption', 'textMuted')]
-      : creators.map((creator, index) => {
-          const key = `tip-board-creator-${index}`
-          const profilePath = actorProfilePath(creator.actor)
-          const name = actorDisplayName(creator.actor)
-          return Stack({ key, direction: 'column', gap: '1' }, [
-            profilePath === null
-              ? text(`${key}-name`, name, 'label')
-              : pathLink(`${key}-name`, name, profilePath, 'label'),
-            text(`${key}-totals`, tipTotalsLabel(creator), 'caption', 'textMuted'),
-          ])
-        })
-
-  return panelCard('tip-board', [
-    Stack({ key: 'tip-board-grid', direction: 'row', gap: '5', style: { width: 'full' } }, [
-      Stack(
-        { key: 'tip-board-posts', direction: 'column', gap: '3', style: { flex: 1, minWidth: 'md' } },
-        [text('tip-board-posts-title', 'Top tipped posts', 'label', 'accent'), ...postRows],
-      ),
-      Stack(
-        { key: 'tip-board-creators', direction: 'column', gap: '3', style: { flex: 1, minWidth: 'md' } },
-        [text('tip-board-creators-title', 'Top tipped creators', 'label', 'accent'), ...creatorRows],
-      ),
-    ]),
-  ])
-}
-
 const indexView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> => {
   const rows =
     state.forums.length === 0
       ? [text('forum-index-empty', 'No listed forums yet.', 'body', 'textMuted')]
       : state.forums.map((forum, index) => forumRow(forum, index, nowMs))
-  const leaderboards = tipLeaderboardsView(state.tipLeaderboards)
   return [
     breadcrumb('forum-index-crumbs', [boardBreadcrumbItem]),
     panelCard('forum-index-panel', [
       text('forum-index-title', 'OpenAgents Forum', 'heading'),
       ...rows,
     ]),
-    ...(leaderboards === null ? [] : [leaderboards]),
   ]
 }
 
@@ -562,12 +460,6 @@ const authorAside = (
   const profilePath = actorProfilePath(actor)
   const postCount = actor?.postCount ?? actor?.forumPostCount ?? post.authorPostCount
   const joinedAt = actor?.joinedAt ?? actor?.firstSeenAt ?? post.authorFirstSeenAt
-  const readiness =
-    post.tipRecipientReadiness?.tippingAvailable === true
-      ? 'Wallet ready'
-      : post.tipRecipientReadiness != null
-        ? 'Wallet pending'
-        : null
   return Stack(
     { key, direction: 'column', gap: '2', style: { minWidth: 'sm' } },
     [
@@ -586,125 +478,8 @@ const authorAside = (
       ...(joinedAt == null
         ? []
         : [text(`${key}-joined`, `Joined: ${friendlyTime(joinedAt, nowMs)}`, 'caption', 'textMuted')]),
-      ...(readiness === null
-        ? []
-        : [text(`${key}-tips`, `Tips: ${readiness}`, 'caption', 'textMuted')]),
     ],
   )
-}
-
-const tipControls = (
-  state: ForumPageState,
-  post: ForumPostProjection,
-  key: string,
-): ReadonlyArray<View> => {
-  const postId = post.postId ?? ''
-  const projection = forumTipUiProjectionForPost({
-    authMode: state.authMode,
-    launchStatus: state.launchStatus,
-    post,
-  })
-  const badge = postTipStatsBadge(post)
-  const badgeViews =
-    badge === null
-      ? []
-      : [
-          Badge({
-            key: `${key}-tip-total`,
-            label: badge.label,
-            tone: badge.settlement === 'settled' ? 'success' : 'info',
-          }),
-        ]
-
-  if (!projection.buttonVisible) {
-    // Launch-gated posts that already carry paid totals keep the badge only
-    // (legacy parity); otherwise show the honest gate status label.
-    if (projection.reason === 'launch_gated' && badge !== null) {
-      return badgeViews
-    }
-    return [
-      ...badgeViews,
-      text(`${key}-tip-state`, projection.statusLabel, 'caption', 'textMuted'),
-    ]
-  }
-
-  const panel = state.tipPanels[postId]
-  const amount = state.tipAmounts[postId] ?? defaultPostRewardSats
-  const panelViews: ReadonlyArray<View> =
-    panel === undefined || panel.phase === 'idle'
-      ? []
-      : panel.phase === 'login_required'
-        ? [
-            pathLink(
-              `${key}-tip-login`,
-              `Log in with GitHub to tip ${projection.recipientLabel}.`,
-              forumLoginHref(forumReturnPath(state.params)),
-              'caption',
-            ),
-          ]
-        : panel.phase === 'success' && panel.receiptRef !== undefined
-          ? [
-              Stack(
-                { key: `${key}-tip-result`, direction: 'row', gap: '2', align: 'center' },
-                [
-                  text(`${key}-tip-result-copy`, panel.message, 'caption', 'textMuted'),
-                  pathLink(
-                    `${key}-tip-receipt`,
-                    'Receipt',
-                    receiptPath(panel.receiptRef),
-                    'caption',
-                  ),
-                ],
-              ),
-            ]
-          : [text(`${key}-tip-panel`, panel.message, 'caption', 'textMuted')]
-
-  return [
-    ...badgeViews,
-    Stack(
-      { key: `${key}-tip-controls`, direction: 'row', gap: '2', align: 'center' },
-      [
-        text(`${key}-tip-label`, 'Tip', 'caption', 'textMuted'),
-        NumberField({
-          key: `${key}-tip-amount`,
-          label: 'Tip amount in sats',
-          value: amount,
-          min: 1,
-          step: 1,
-          field: { form: TIP_AMOUNT_FORM, field: postId },
-          onChange: IntentRef('ForumTipAmountChanged', {
-            _tag: 'FormFieldValueBinding',
-            form: TIP_AMOUNT_FORM,
-            field: postId,
-          }),
-          style: { width: 'xs' },
-        }),
-        text(`${key}-tip-sats`, 'sats', 'caption', 'textMuted'),
-        Button({
-          key: `${key}-tip-send`,
-          label: 'Send tip',
-          variant: 'secondary',
-          onPress: IntentRef('ForumTipSubmitted', StaticPayload({ postId })),
-          style: {
-            backgroundColor: 'surface',
-            borderColor: 'accent',
-            borderRadius: 'md',
-            borderWidth: 1,
-            color: 'accent',
-            fontWeight: 'semibold',
-            paddingTop: '1',
-            paddingRight: '3',
-            paddingBottom: '1',
-            paddingLeft: '3',
-            typeScale: 'caption',
-          },
-        }),
-        text(`${key}-tip-to`, `to ${projection.recipientLabel}`, 'caption', 'textMuted'),
-      ],
-    ),
-    text(`${key}-tip-caveat`, projection.caveat, 'caption', 'textMuted'),
-    ...panelViews,
-  ]
 }
 
 const postArticle = (
@@ -763,7 +538,6 @@ const postArticle = (
                   style: { width: 'full' },
                 },
                 [
-                  ...tipControls(state, post, anchor),
                   Button({
                     key: `${anchor}-permalink`,
                     label: copied ? 'Copied' : 'Permalink',
@@ -891,47 +665,6 @@ const receiptView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> 
   if (receipt === null) {
     return [unavailableView('receipt-missing', state.errorMessage)]
   }
-  const settlement = receipt.tipSettlement ?? null
-  const settlementViews: ReadonlyArray<View> =
-    settlement === null
-      ? []
-      : [
-          Card(
-            {
-              key: 'receipt-settlement',
-              padding: '3',
-              radius: 'md',
-              style: {
-                backgroundColor: 'surfaceRaised',
-                borderColor: 'border',
-                borderWidth: 1,
-                width: 'full',
-              },
-            },
-            [
-              text('receipt-settlement-eyebrow', 'Tip settlement', 'caption', 'textMuted'),
-              text(
-                'receipt-settlement-state',
-                forumTipReceiptStateLabel(settlement.state),
-                'label',
-              ),
-              text(
-                'receipt-settlement-copy',
-                settlement.wording?.publicPage ?? 'Settlement state is pending.',
-                'caption',
-                'textMuted',
-              ),
-              text(
-                'receipt-settlement-evidence',
-                settlement.creatorReceivedSpendableValue === true
-                  ? 'Recipient wallet payment confirmed'
-                  : 'Recipient wallet payment not confirmed',
-                'caption',
-                'textMuted',
-              ),
-            ],
-          ),
-        ]
   return [
     breadcrumb('receipt-crumbs', [
       boardBreadcrumbItem,
@@ -946,7 +679,6 @@ const receiptView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> 
         'caption',
         'textMuted',
       ),
-      ...settlementViews,
       receiptRowView('receipt-ref-row', 'Receipt', [
         text('receipt-ref', receipt.receiptRef ?? '', 'body'),
       ]),
@@ -1013,7 +745,6 @@ export const forumPageView = (
 export type ForumSurfaceDependencies = Readonly<{
   fetchFn?: typeof fetch
   now?: () => number
-  sessionNonce?: string
   copyToClipboard?: (value: string) => Promise<void>
   assignLocation?: (href: string) => void
   scrollToAnchor?: (anchor: string) => void
@@ -1025,14 +756,11 @@ const loadForumState = (
 ): Effect.Effect<Partial<ForumPageState>> =>
   Effect.promise(async (): Promise<Partial<ForumPageState>> => {
     if (params.kind === 'index') {
-      const [forums, tipLeaderboards] = await Promise.all([
-        fetchForumIndex(fetchFn),
-        fetchForumTipLeaderboards(fetchFn),
-      ])
+      const forums = await fetchForumIndex(fetchFn)
       if (forums === null) {
         return { phase: 'unavailable', errorMessage: 'Board index unavailable' }
       }
-      return { phase: 'ready', forums, tipLeaderboards }
+      return { phase: 'ready', forums }
     }
     if (params.kind === 'forum') {
       const [forum, topics] = await Promise.all([
@@ -1045,9 +773,8 @@ const loadForumState = (
       return { phase: 'ready', forum, topics: topics ?? [] }
     }
     if (params.kind === 'topic') {
-      const [detail, launchStatus, authMode] = await Promise.all([
+      const [detail, authMode] = await Promise.all([
         fetchForumTopicDetail(params.topicId, params.sortDirection, fetchFn),
-        fetchForumLaunchStatus(fetchFn),
         fetchForumAuthMode(fetchFn),
       ])
       if (detail === null) {
@@ -1057,7 +784,6 @@ const loadForumState = (
         phase: 'ready',
         topic: detail.topic,
         posts: detail.posts,
-        launchStatus,
         authMode,
       }
     }
@@ -1109,82 +835,12 @@ export const mountForumSurface = (
           target.scrollIntoView({ block: 'start' })
         }
       })
-    const tipIdempotencyKey = makeForumTipIdempotencyKeyFactory(
-      deps.sessionNonce ?? String(Math.trunc(now())),
-    )
-
     const state = yield* SubscriptionRef.make(initialForumPageState(params))
     const program = makeViewProgramFromState(state, (value) =>
       forumPageView(value, now()),
     )
 
-    const updateTipPanel = (postId: string, panel: ForumTipPanelState) =>
-      SubscriptionRef.update(state, (previous) => ({
-        ...previous,
-        tipPanels: { ...previous.tipPanels, [postId]: panel },
-      }))
-
     const handlers: IntentHandlers<typeof forumIntents> = {
-      ForumTipAmountChanged: ({ field, value }) =>
-        SubscriptionRef.update(state, (previous) => ({
-          ...previous,
-          tipAmounts: {
-            ...previous.tipAmounts,
-            [field]: normalizeTipAmount(value),
-          },
-        })),
-      ForumTipSubmitted: ({ postId }) =>
-        Effect.gen(function* () {
-          const current = yield* SubscriptionRef.get(state)
-          const post = current.posts.find((item) => item.postId === postId)
-          if (post === undefined) return
-          if (current.authMode !== 'LoggedIn') {
-            yield* updateTipPanel(postId, {
-              phase: 'login_required',
-              message: 'Log in with GitHub to tip.',
-            })
-            return
-          }
-          const amount = normalizeTipAmount(
-            current.tipAmounts[postId] ?? defaultPostRewardSats,
-          )
-          yield* updateTipPanel(postId, {
-            phase: 'sending',
-            message: `Sending ${amount} sats...`,
-          })
-          const result = yield* Effect.promise(() =>
-            submitForumTipLadder(
-              { postId, amountSat: amount, idempotencyKey: tipIdempotencyKey(postId, amount) },
-              fetchFn,
-            ),
-          )
-          if (result.ok && result.receiptRef !== undefined) {
-            yield* updateTipPanel(postId, {
-              phase: 'success',
-              message: 'Payment recorded ·',
-              receiptRef: result.receiptRef,
-            })
-            return
-          }
-          if (result.ok && result.denialKind === 'recipient_not_ready') {
-            yield* updateTipPanel(postId, {
-              phase: 'recipient_pending',
-              message: 'Recipient wallet pending.',
-            })
-            return
-          }
-          if (result.ok) {
-            yield* updateTipPanel(postId, {
-              phase: 'recipient_pending',
-              message: 'Payment submitted.',
-            })
-            return
-          }
-          yield* updateTipPanel(postId, {
-            phase: 'failed',
-            message: `Payment failed · ${result.errorMessage ?? 'Request failed'}`,
-          })
-        }),
       ForumPermalinkCopied: ({ postId, href }) =>
         Effect.gen(function* () {
           const origin =

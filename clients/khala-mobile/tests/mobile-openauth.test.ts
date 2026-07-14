@@ -165,7 +165,7 @@ describe("mobile OpenAuth boundary", () => {
       },
     ])
     expect(KHALA_ACCOUNT_DELETION_POLICY_COPY).toBe(
-      "Deleting your Khala account permanently removes your GitHub sign-in link, your chat threads and turn history, and your device's push notification registration. Any remaining credit balance is forfeited and is not refunded — credits are non-transferable and have no cash value.",
+      "Deleting your Khala account permanently removes your GitHub sign-in link, your chat threads and turn history, and your device's push notification registration.",
     )
   })
 })

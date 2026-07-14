@@ -5,7 +5,6 @@ import {
   type RuntimeEventEntity,
   type RuntimeTurnEntity,
 } from "@openagentsinc/khala-sync"
-import type { KhalaMobileCreditsTransaction } from "../../src/sync/khala-mobile-credits-api"
 import type { KhalaModelPreference } from "../../src/sync/khala-mobile-model-preference-api"
 
 export const mobileFixtureAt = "2026-07-07T18:00:00.000Z"
@@ -259,23 +258,6 @@ export const mobileTurnFixtures: readonly RuntimeTurnEntity[] = [
     threadId: mobileFixtureThreadId,
     turnId: "turn.mobile.fixture.1",
     updatedAt: "2026-07-07T18:06:00.000Z",
-  },
-]
-
-export const mobileCreditsTransactions: readonly KhalaMobileCreditsTransaction[] = [
-  {
-    amountUsdCents: 1000,
-    description: "Launch credit",
-    id: "credit.mobile.fixture.grant",
-    kind: "grant",
-    occurredAt: "2026-07-07T16:00:00.000Z",
-  },
-  {
-    amountUsdCents: 125,
-    description: "Codex mobile fixture run",
-    id: "credit.mobile.fixture.charge",
-    kind: "charge",
-    occurredAt: "2026-07-07T17:00:00.000Z",
   },
 ]
 

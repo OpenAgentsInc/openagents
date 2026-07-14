@@ -11,7 +11,6 @@ describe("contract khala_mobile.settings.composition_coverage.v1 — SettingsScr
       'heading="Account"',
       'heading="Codex accounts"',
       'heading="Claude accounts"',
-      'heading="Credits"',
       'heading="Models"',
       'heading="Notifications"',
       'heading="About & diagnostics"',

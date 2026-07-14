@@ -11,7 +11,6 @@ import { Effect, Exit, Scope } from '@effect-native/core/effect'
 
 import {
   parseTopicPostSortDirection,
-  type ForumLaunchStatusProjection,
   type ForumPostProjection,
   type ForumReceiptProjection,
   type ForumSummaryProjection,
@@ -87,8 +86,6 @@ const POSTS: ReadonlyArray<ForumPostProjection> = [
       postCount: 10,
       joinedAt: '2026-06-01T00:00:00Z',
     },
-    tipStats: { totalPaidSats: 21, totalSettledSats: 21, tipCount: 2 },
-    tipRecipientReadiness: { tippingAvailable: true },
   },
   {
     postId: 'post-b',
@@ -96,16 +93,8 @@ const POSTS: ReadonlyArray<ForumPostProjection> = [
     bodyText: 'A reply with an [unsafe link](javascript:alert(1)).',
     createdAt: '2026-07-09T11:00:00Z',
     author: { displayName: 'Zeratul' },
-    tipRecipientReadiness: {
-      tippingAvailable: false,
-      blockerRef: 'recipient wallet pending',
-    },
   },
 ]
-
-const LAUNCH_READY: ForumLaunchStatusProjection = {
-  publicTipping: { postTips: 'ready', remainingBeforeLiveTips: [] },
-}
 
 const RECEIPT: ForumReceiptProjection = {
   receiptRef: 'receipt_1',
@@ -115,36 +104,12 @@ const RECEIPT: ForumReceiptProjection = {
   target: { topicId: 'topic-1', postId: 'post-a' },
   targetPostPermalink: '/forum/t/topic-1#post-post-a',
   recipientActorRef: 'agent:raynor',
-  tipSettlement: {
-    state: 'settled',
-    wording: { publicPage: 'Recipient wallet paid.' },
-    creatorReceivedSpendableValue: true,
-  },
 }
 
 const readyIndexState: ForumPageState = {
   ...initialForumPageState({ kind: 'index' }),
   phase: 'ready',
   forums: FORUMS,
-  tipLeaderboards: {
-    posts: [
-      {
-        postPermalink: '/forum/t/topic-1#post-post-a',
-        postTitle: 'First post',
-        totalPaidSats: 21,
-        totalSettledSats: 21,
-        tipCount: 2,
-      },
-    ],
-    creators: [
-      {
-        actor: { actorId: 'actor-1', slug: 'raynor', displayName: 'Raynor' },
-        totalPaidSats: 21,
-        totalSettledSats: 10,
-        tipCount: 2,
-      },
-    ],
-  },
 }
 
 const readyForumState: ForumPageState = {
@@ -163,7 +128,6 @@ const readyTopicState: ForumPageState = {
   phase: 'ready',
   topic: TOPIC,
   posts: POSTS,
-  launchStatus: LAUNCH_READY,
   authMode: 'LoggedIn',
 }
 
@@ -260,9 +224,6 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     // Moderation/discoverability state is visible but read-only.
     expect(serialized).toContain('"label":"Unlisted"')
     expect(serialized).toContain('"label":"Locked"')
-    // Tip leaderboards render with exact paid-versus-settled wording.
-    expect(serialized).toContain('Top tipped posts')
-    expect(serialized).toContain('21 paid sats · 10 settled sats · 2 tips')
     // Adapter rule: no React class names inside the typed tree.
     expect(serialized).not.toContain('className')
   })
@@ -303,12 +264,10 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     expect(serialized).toContain('Newest first')
   })
 
-  test('receipt view renders the exact payment/settlement wording', () => {
+  test('receipt view preserves the immutable historical payment record', () => {
     const serialized = JSON.stringify(forumPageView(readyReceiptState, NOW))
     expect(serialized).toContain('post tip')
     expect(serialized).toContain('25 sats of bitcoin')
-    expect(serialized).toContain('Recipient wallet paid')
-    expect(serialized).toContain('Recipient wallet payment confirmed')
     expect(serialized).toContain('receipt_1')
     expect(serialized).toContain('"path":"/forum/t/topic-1#post-post-a"')
     expect(serialized).toContain('agent:raynor')
@@ -360,7 +319,6 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     const fetchStub = makeFetchStub(
       {
         '/api/forum': { forums: FORUMS },
-        '/api/forum/tip-leaderboards': readyIndexState.tipLeaderboards,
       },
       calls,
     )
@@ -384,9 +342,7 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
         '[data-en-key="forum-row-product-promises-title"]',
       )
       expect(link?.getAttribute('href')).toBe('/forum/f/product-promises')
-      expect(calls.map((call) => call.url.split('?')[0])).toEqual(
-        expect.arrayContaining(['/api/forum', '/api/forum/tip-leaderboards']),
-      )
+      expect(calls.map((call) => call.url.split('?')[0])).toEqual(['/api/forum'])
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       container.remove()
@@ -421,7 +377,6 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     const fetchStub = makeFetchStub(
       {
         '/api/forum/topics/topic-1': { topic: TOPIC, posts: POSTS },
-        '/api/forum/launch-status': LAUNCH_READY,
         '/api/auth/session': { authenticated: false },
       },
       calls,

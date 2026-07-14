@@ -7,6 +7,16 @@
 - Last observed balance: approximately `9,274 sats` (`8,622` MDK and `652`
   Spark), before fees and subject to fresh wallet synchronization
 
+## Retirement decision
+
+The owner decision on 2026-07-14 is to remove the Treasury product surface,
+not keep it serving while the cutover proceeds. `/treasury`,
+`/api/public/treasury`, launch-status, donation, operator, callback, and payout
+paths are retired with the typed `410 money_surface_retired` response. The
+wallet services stay stopped. Recovery is a separate, one-time owner operation
+using this runbook; it is not a reason to restart a public page or production
+wallet daemon.
+
 ## Safety boundary
 
 This procedure moves real bitcoin and therefore requires the owner to choose
@@ -85,14 +95,15 @@ one rail at a time. Prefer the wallet's supported sweep/send-all operation; if
 it requires an amount, compute it from the freshly synchronized maximum
 sendable value, not from the `9,274 sats` observation.
 
-1. Sweep the smaller Spark rail first. Wait for a terminal payment result and
-   verify the destination received it before touching MDK.
+1. Sweep the smaller Spark rail first (last observed near `652 sats`). Wait for
+   a terminal payment result and verify the destination received it before
+   touching MDK.
 2. Re-synchronize Spark and record a redacted terminal receipt plus the
    remaining-balance bucket.
-3. Sweep MDK once, only after its outbound-readiness gate passes. Do not retry
-   an unknown result. Reconcile by payment history and destination receipt
-   first; retry only an identical idempotent operation after proving the first
-   attempt did not settle.
+3. Sweep MDK once (last observed near `8,622 sats`), only after its
+   outbound-readiness gate passes. Do not retry an unknown result. Reconcile by
+   payment history and destination receipt first; retry only an identical
+   idempotent operation after proving the first attempt did not settle.
 4. Re-synchronize MDK and verify that the expected remainder is fee/reserve
    dust or zero. Any material remainder stays in recovery review.
 

@@ -10,7 +10,7 @@
  * must stay pure fetch/Request/Response code.
  */
 
-import { routeAiurAdminCreditsProxyRequest } from './admin-credits-proxy'
+import { routeAiurAdminOpsProxyRequest } from './admin-ops-proxy'
 import { AIUR_ACCESS_PATH, handleAiurAccessRequest } from './auth/access-route'
 import { type AiurEnv } from './auth/config'
 import { routeAiurAuthRequest } from './auth/routes'
@@ -42,7 +42,7 @@ export function applySecurityHeaders(response: Response): Response {
 /**
  * Routes everything that is NOT a normal app-shell page render: OpenAuth
  * sign-in/callback/logout, the `/api/aiur/access` UI-status endpoint, the
- * owner-gated Khala Sync proxy, and the owner-gated admin credits proxy
+ * owner-gated Khala Sync proxy, and the owner-gated admin operations proxy
  * (AIUR-2, #8500). Returns `undefined` to fall through to the app shell
  * (which itself re-checks access before rendering anything sensitive).
  *
@@ -62,9 +62,9 @@ export async function routeAiurSharedSurfaceRequest(
     return handleAiurAccessRequest(request, env)
   }
 
-  const adminCreditsResponse = routeAiurAdminCreditsProxyRequest(request, env)
-  if (adminCreditsResponse !== undefined) {
-    return adminCreditsResponse
+  const adminOpsResponse = routeAiurAdminOpsProxyRequest(request, env)
+  if (adminOpsResponse !== undefined) {
+    return adminOpsResponse
   }
 
   return routeAiurKhalaSyncProxyRequest(request, env)

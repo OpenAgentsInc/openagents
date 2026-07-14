@@ -30,22 +30,13 @@ import {
 
 import type { KhalaStoredCredentials } from "../auth/khala-auth-store"
 
-// NOTE: this module intentionally does NOT import the credits/repos/model-
+// NOTE: this module intentionally does NOT import the repos/model-
 // preference API modules (not even their types). Those modules import this one
 // for the demo gate, so importing them back — even `import type` — creates a
 // dependency cycle the architecture check rejects. Instead the demo data is
 // typed with the local structural aliases below, and each API module's gate
 // assigns it into that module's own Result type, which acts as a compile-time
 // conformance check that the two shapes stay identical.
-
-/** Structural mirror of `KhalaMobileCreditsTransaction` (see the note above). */
-export type DemoCreditsTransaction = Readonly<{
-  amountUsdCents: number
-  description: string
-  id: string
-  kind: "grant" | "purchase" | "charge" | "other"
-  occurredAt: string
-}>
 
 /** Structural mirror of `KhalaMobileRepository`. */
 export type DemoRepository = Readonly<{
@@ -286,35 +277,6 @@ export const demoSyncScopeEntities = (entityType: string, scope: string): Readon
   }
   return []
 }
-
-// --- Credits ---------------------------------------------------------------
-
-/** Example balance: $10.00. */
-export const DEMO_CREDITS_BALANCE_USD_CENTS = 1_000
-
-export const demoCreditsTransactions: ReadonlyArray<DemoCreditsTransaction> = [
-  {
-    amountUsdCents: 2_000,
-    description: "Welcome credit",
-    id: "demo-txn-1",
-    kind: "grant",
-    occurredAt: "2026-07-01T12:00:00Z",
-  },
-  {
-    amountUsdCents: -640,
-    description: "Coding session — example-web-app",
-    id: "demo-txn-2",
-    kind: "charge",
-    occurredAt: "2026-07-06T14:08:00Z",
-  },
-  {
-    amountUsdCents: -360,
-    description: "Coding session — example-api",
-    id: "demo-txn-3",
-    kind: "charge",
-    occurredAt: "2026-07-05T09:42:00Z",
-  },
-]
 
 // --- Repositories ----------------------------------------------------------
 

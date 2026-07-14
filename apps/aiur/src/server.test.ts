@@ -47,7 +47,7 @@ describe('routeAiurSharedSurface', () => {
     expect(response?.status).toBe(401)
   })
 
-  test('routes /api/admin/credits/balance through the owner-gated proxy (401 without a session)', async () => {
+  test('does not route the retired admin credits surface', async () => {
     const response = await withStartRequestContext(
       { request: new Request('https://aiur.openagents.com/api/admin/credits/balance?userId=user_1'), env: {} },
       () =>
@@ -55,7 +55,7 @@ describe('routeAiurSharedSurface', () => {
           new Request('https://aiur.openagents.com/api/admin/credits/balance?userId=user_1'),
         ),
     )
-    expect(response?.status).toBe(401)
+    expect(response).toBeUndefined()
   })
 
   test('falls through (returns undefined) for an unrelated path', async () => {

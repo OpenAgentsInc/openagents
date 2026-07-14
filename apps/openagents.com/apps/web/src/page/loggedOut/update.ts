@@ -183,7 +183,6 @@ import {
   PublicAgentGoalResponse,
   PublicArtanisReport,
   PublicForumLaunchStatus,
-  PublicForumTipLeaderboards,
   PublicKhalaTokensServed,
   PublicKhalaTokensServedChannelMix,
   PublicKhalaTokensServedHistory,
@@ -1122,34 +1121,11 @@ export const LoadPublicForumTipLeaderboards = Command.define(
   SucceededLoadPublicForumTipLeaderboards,
   FailedLoadPublicForumTipLeaderboards,
 )(
-  Effect.gen(function* () {
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetch('/api/forum/tip-leaderboards?limit=10', {
-          cache: 'no-store',
-          headers: { accept: 'application/json' },
-        }),
-      catch: error => new PublicForumTipLeaderboardsLoadError({ error }),
-    })
-
-    if (!response.ok) {
-      return yield* new PublicForumTipLeaderboardsLoadError({
-        error: `Forum tip leaderboards returned HTTP ${response.status}.`,
-      })
-    }
-
-    const payload = yield* Effect.tryPromise({
-      try: () => response.json(),
-      catch: error => new PublicForumTipLeaderboardsLoadError({ error }),
-    })
-    const decoded = yield* S.decodeUnknownEffect(PublicForumTipLeaderboards)(
-      payload,
-    )
-
-    return SucceededLoadPublicForumTipLeaderboards({
-      leaderboards: decoded,
-    })
-  }).pipe(
+  Effect.fail(
+    new PublicForumTipLeaderboardsLoadError({
+      error: 'Forum tip leaderboards retired by VP-1.',
+    }),
+  ).pipe(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicForumTipLeaderboards({
@@ -1837,8 +1813,6 @@ export const initialCommands = (
               LoadKhalaTokensServedSnapshot(),
               LoadPublicKhalaTokensServed(),
               LoadPublicKhalaTokensServedHistory(),
-              LoadPublicForumLaunchStatus(),
-              LoadPublicForumTipLeaderboards(),
               LoadSettledFeedSnapshot(),
             ]
           : model.route._tag === 'Stats'
@@ -1849,8 +1823,6 @@ export const initialCommands = (
                 LoadPublicKhalaTokensServedHistory(),
                 LoadPublicKhalaTokensServedModelMix(),
                 LoadPublicKhalaTokensServedChannelMix(),
-                LoadPublicForumLaunchStatus(),
-                LoadPublicForumTipLeaderboards(),
                 LoadSettledFeedSnapshot(),
               ]
             : model.route._tag === 'Khala'

@@ -8,7 +8,6 @@ import {
   accountingPanel,
   copyBoundaryPanel,
   endpointManifestPanel,
-  forumStatsPanel,
   khalaTokensServedHeaderCounter,
   khalaTokensServedChannelMixPanel,
   khalaTokensServedHistoryChart,
@@ -124,14 +123,7 @@ export const view = (input: HomeViewInput): Html => {
                   [Ui.className<Message>('grid content-start gap-3')],
                   [
                     pylonStatsPanel(input.publicPylonStats),
-                    forumStatsPanel(
-                      input.forumLaunchStatus,
-                      input.forumTipLeaderboards,
-                    ),
-                    accountingPanel(
-                      input.publicPylonStats,
-                      input.forumTipLeaderboards,
-                    ),
+                    accountingPanel(input.publicPylonStats),
                   ],
                 ),
                 h.section(

@@ -12,7 +12,6 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack"
  */
 export type AppStackParamList = {
   Threads: undefined
-  CreditsHistory: undefined
   RepoPicker: {
     threadId: string
   }

@@ -29,10 +29,6 @@ export const khalaMobileGateScreenMountBundles: readonly KhalaMobileGateScreenBu
     screenFile: "src/screens/thread-messages-screen.tsx",
   },
   {
-    mountTest: "tests/credits-history-screen.test.tsx",
-    screenFile: "src/screens/credits-history-screen.tsx",
-  },
-  {
     mountTest: "tests/settings-screen.test.tsx",
     screenFile: "src/screens/settings-screen.tsx",
   },

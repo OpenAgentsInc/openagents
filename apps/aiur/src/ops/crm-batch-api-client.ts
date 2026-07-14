@@ -12,7 +12,7 @@
 import {
   AIUR_ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
   AIUR_ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
-} from '../admin-credits-proxy'
+} from '../admin-ops-proxy'
 
 export type CrmBatchCommand = Readonly<{
   id: string

@@ -456,7 +456,7 @@ describe('Forum routes', () => {
     ])
   })
 
-  test('renders post tip controls only behind tipping launch and recipient readiness gates', () => {
+  test('does not render retired post tipping controls', () => {
     const script = forumScript(
       ForumTopicRoute({
         topicId: '55555555-5555-4555-8555-555555555555',
@@ -464,32 +464,16 @@ describe('Forum routes', () => {
       'LoggedIn',
     )
 
-    expect(script).toContain(
-      "state.launchStatus?.publicTipping?.postTips === 'ready'",
-    )
-    expect(script).toContain('if (readiness.tippingAvailable !== true) {')
-    expect(script).toContain('data-forum-tip-post-id')
-    expect(script).toContain('data-forum-post-tip-total')
-    expect(script).toContain('data-forum-post-tip-settlement')
-    expect(script).toContain("String(totalPaidSats) + ' sats paid · '")
-    expect(script).toContain("String(totalSettledSats) + ' sats settled'")
-    expect(script).toContain("' · settlement pending'")
-    expect(script).toContain("settlement === 'settled' ? '✓' : '◷'")
-    expect(script).toContain('data-forum-tip-amount')
-    expect(script).toContain('Send tip')
-    expect(script).toContain('renderTipControls(post)')
-    expect(script).toContain('const defaultPostRewardSats = 10')
-    expect(script).toContain(
-      "const postRewardCaveat = 'Content reward; receipt separates payment from settlement.'",
-    )
-    expect(script).toContain('Tip setup pending')
-    expect(script).toContain('Live smoke pending')
-    expect(script).toContain('Self-serve tips pending')
-    expect(script).not.toContain('Payments gated')
-    expect(script).toContain('Wallet pending')
+    expect(script).not.toContain('data-forum-tip-post-id')
+    expect(script).not.toContain('data-forum-post-tip-total')
+    expect(script).not.toContain('data-forum-tip-amount')
+    expect(script).not.toContain('Send tip')
+    expect(script).not.toContain('renderTipControls(post)')
+    expect(script).not.toContain('/tips/ladder')
+    expect(script).toContain('data-forum-copy-permalink')
   })
 
-  test('keeps Forum tip payment flow public-safe in client state', () => {
+  test('does not retain the retired Forum payment flow in client state', () => {
     const script = forumScript(
       ForumTopicRoute({
         topicId: '55555555-5555-4555-8555-555555555555',
@@ -497,21 +481,10 @@ describe('Forum routes', () => {
       'LoggedIn',
     )
 
-    expect(script).toContain("const authMode = initial.authMode || 'LoggedOut'")
-    expect(script).toContain("authMode !== 'LoggedIn'")
-    expect(script).toContain(
-      `const loginHref = "/login/github?returnTo=${encodeURIComponent('/forum/t/55555555-5555-4555-8555-555555555555')}";`,
-    )
-    expect(script).toContain('Log in with GitHub')
-    expect(script).toContain('href="\' + escapeHtml(loginHref) + \'"')
-    expect(script).toContain("'/api/forum/launch-status'")
-    expect(script).toContain(
-      "'/api/forum/posts/' + encodeURIComponent(postId) + '/tips/ladder'",
-    )
-    expect(script).toContain('amountSat: amount')
-    expect(script).toContain("result.receiptRef ? 'success' : 'failed'")
-    expect(script).toContain('Payment recorded · <a')
-    expect(script).toContain("setTipPanel(postId, 'failed'")
+    expect(script).not.toContain("'/api/forum/launch-status'")
+    expect(script).not.toContain('/tips/ladder')
+    expect(script).not.toContain('amountSat: amount')
+    expect(script).not.toContain('Payment recorded · <a')
     expect(script).not.toContain('raw_invoice')
     expect(script).not.toContain('payment_preimage')
     expect(script).not.toContain('mnemonic')
@@ -519,7 +492,7 @@ describe('Forum routes', () => {
     expect(script).not.toContain('private_key')
   })
 
-  test('browser topic UI posts forum tips to the ladder endpoint', async () => {
+  test('browser topic UI never posts money', async () => {
     const topicId = '55555555-5555-4555-8555-555555555555'
     const postId = '66666666-6666-4666-8666-666666666666'
     const calls: Array<
@@ -556,7 +529,6 @@ describe('Forum routes', () => {
               postId,
               postNumber: 1,
               subject: 'Tip target',
-              tipRecipientReadiness: { tippingAvailable: true },
               topicId,
             },
           ],
@@ -566,26 +538,6 @@ describe('Forum routes', () => {
             title: 'Tip topic',
             topicId,
           },
-        })
-      }
-
-      if (path === '/api/forum/launch-status') {
-        return jsonResponse({
-          publicTipping: {
-            postTips: 'ready',
-            remainingBeforeLiveTips: [],
-          },
-        })
-      }
-
-      if (path.includes('/api/forum/posts/')) {
-        return jsonResponse({
-          amountSat: 10,
-          ladderReason: 'recipient_destination_missing',
-          payInId: 'payin_forum',
-          receiptRef: 'receipt.forum.tip_ladder.sha256.forumroute',
-          rung: 'credited',
-          senderBalanceMsatAfter: 90_000,
         })
       }
 
@@ -602,25 +554,9 @@ describe('Forum routes', () => {
     )()
     await flushForumScript()
 
-    const forumTipButton = document.querySelector<HTMLButtonElement>(
-      '[data-forum-tip-post-id]',
-    )
-
-    expect(forumTipButton).not.toBeNull()
-
-    forumTipButton?.click()
-    await flushForumScript()
-
-    expect(calls).toEqual([
-      {
-        body: { amountSat: 10 },
-        method: 'POST',
-        path: `/api/forum/posts/${postId}/tips/ladder`,
-      },
-    ])
-    expect(
-      document.querySelector('[data-forum-tip-panel]')?.textContent,
-    ).toContain('Payment recorded')
+    expect(document.querySelector('[data-forum-tip-post-id]')).toBeNull()
+    expect(document.querySelector('[data-forum-copy-permalink]')).not.toBeNull()
+    expect(calls).toEqual([])
   })
 
   test('topic pages no longer render the pylon-tips panel', () => {
@@ -639,13 +575,12 @@ describe('Forum routes', () => {
     expect(script).not.toContain('Tip pylon')
     expect(script).not.toContain("'/api/public/pylon-stats'")
 
-    // The per-post Send-tip controls still render.
-    expect(script).toContain('data-forum-tip-post-id')
-    expect(script).toContain('data-forum-tip-amount')
-    expect(script).toContain('Send tip')
-    expect(script).toContain(
-      "'/api/forum/posts/' + encodeURIComponent(postId) + '/tips/ladder'",
-    )
+    // The per-post money controls are retired too; permalink remains.
+    expect(script).not.toContain('data-forum-tip-post-id')
+    expect(script).not.toContain('data-forum-tip-amount')
+    expect(script).not.toContain('Send tip')
+    expect(script).not.toContain('/tips/ladder')
+    expect(script).toContain('data-forum-copy-permalink')
   })
 
   test('renders Forum login errors from the callback cookie', async () => {
@@ -672,7 +607,7 @@ describe('Forum routes', () => {
     expect(document.cookie).not.toContain('oa_login_error=github_login_failed')
   })
 
-  test('renders receipt state without overclaiming creator settlement', () => {
+  test('renders immutable receipt facts without live settlement claims', () => {
     const script = forumScript(
       ForumTopicRoute({
         topicId: '55555555-5555-4555-8555-555555555555',
@@ -680,26 +615,22 @@ describe('Forum routes', () => {
       'LoggedIn',
     )
 
-    expect(script).toContain("paid: 'Payment recorded'")
-    expect(script).toContain("recipient_pending: 'Creator settlement pending'")
-    expect(script).toContain("settled: 'Recipient wallet paid'")
-    expect(script).toContain('Recipient wallet payment confirmed')
-    expect(script).toContain(
-      'receipt?.targetPostPermalink) links.push(\'<a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="\' + escapeHtml(receipt.targetPostPermalink) + \'">Post</a>\')',
-    )
+    expect(script).not.toContain("paid: 'Payment recorded'")
+    expect(script).not.toContain('Creator settlement pending')
+    expect(script).not.toContain('Recipient wallet paid')
+    expect(script).not.toContain('Recipient wallet payment confirmed')
+    expect(script).toContain('const amountText = amount =>')
     expect(script).toContain('renderReceiptTarget(receipt)')
   })
 
-  test('renders Forum tip leaderboards on the board index', () => {
+  test('does not render retired Forum tip leaderboards on the board index', () => {
     const script = forumScript(ForumRoute(), 'LoggedOut')
 
-    expect(script).toContain("'/api/forum/tip-leaderboards'")
-    expect(script).toContain('Top tipped posts')
-    expect(script).toContain('Top tipped creators')
-    expect(script).toContain('post.postPermalink')
-    expect(script).toContain('tipTotalsLabel')
-    expect(script).toContain('paid sats')
-    expect(script).toContain('settled sats')
+    expect(script).not.toContain("'/api/forum/tip-leaderboards'")
+    expect(script).not.toContain('Top tipped posts')
+    expect(script).not.toContain('Top tipped creators')
+    expect(script).not.toContain('tipTotalsLabel')
+    expect(script).toContain("paths: ['/api/forum']")
   })
 
   test('renders prosilver list modules for board and forum topic rows', () => {

@@ -1,13 +1,13 @@
 /**
  * Client-side (browser) API for the Aiur ops views (AIUR-3, #8501). Hits
- * Aiur's own same-origin admin-credits-proxy paths (shared with AIUR-2),
+ * Aiur's own same-origin admin-operations proxy paths,
  * which forward to the main Worker with the signed-in owner's bearer.
  */
 import {
   AIUR_ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
   AIUR_ADMIN_OPS_HEALTH_PATH,
   AIUR_ADMIN_OPS_RUNS_PATH,
-} from '../admin-credits-proxy'
+} from '../admin-ops-proxy'
 
 export type OpsRun = Readonly<{
   observedAt: string

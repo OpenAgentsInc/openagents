@@ -2,11 +2,9 @@ import { useEffect, useState } from "react"
 import { Pressable, ScrollView, Text as RNText, View, type TextStyle, type ViewStyle } from "react-native"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
-import { CreditsBalanceChip } from "../components/credits-balance-chip"
 import { Button, EmptyState, ListItem, Text, TextField, useAppTheme } from "../ignite"
 import type { ThemedStyle } from "../ignite"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
-import { fetchKhalaMobileCreditsBalance } from "../sync/khala-mobile-credits-api"
 import {
   dedupeKhalaMobileRepositoriesById,
   filterKhalaMobileRepositories,
@@ -17,7 +15,7 @@ import { useKhalaMobileSyncRuntime } from "../sync/khala-mobile-sync-runtime-con
 import { buildChatAppendMessageArgs, buildStartTurnIntentArgs, chatMessageBodyRef, DEFAULT_RUNTIME_LANE } from "../sync/khala-runtime-compose-core"
 import { makeSafeRef } from "../sync/khala-sync-push-core"
 import { useKhalaSyncPush } from "../sync/use-khala-sync-push"
-import { blocksOnZeroBalance, deriveThreadTitleFromTask, ONBOARDING_SUGGESTED_TASKS, welcomeHeadingForLogin, type OnboardingRepoBinding } from "./onboarding-core"
+import { deriveThreadTitleFromTask, ONBOARDING_SUGGESTED_TASKS, welcomeHeadingForLogin, type OnboardingRepoBinding } from "./onboarding-core"
 
 type OnboardingStep = "welcome" | "repo" | "task"
 
@@ -82,9 +80,6 @@ const WelcomeStep = ({ onContinue }: { onContinue: () => void }) => {
           style={themed($centerDim)}
           text="Pick a repo, ask the agent to do something, and watch it work — right from your phone."
         />
-      </View>
-      <View style={themed($centerRow)}>
-        <CreditsBalanceChip />
       </View>
       {/* Filled high-contrast CTA. The fill lives on an INNER plain `View`, not
         * on the `Pressable` itself: under the New Architecture (Fabric) a
@@ -228,22 +223,10 @@ const TaskStep = ({
   const [taskText, setTaskText] = useState("")
   const [creating, setCreating] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [zeroBalanceBlock, setZeroBalanceBlock] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    void fetchKhalaMobileCreditsBalance(baseUrl, token).then(result => {
-      if (cancelled) return
-      setZeroBalanceBlock(blocksOnZeroBalance(result.ok ? { ok: true, value: result.value } : { ok: false }))
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [baseUrl, token])
 
   const startTask = async (text: string) => {
     const trimmed = text.trim()
-    if (trimmed.length === 0 || creating || zeroBalanceBlock || runtimeState.status !== "ready") return
+    if (trimmed.length === 0 || creating || runtimeState.status !== "ready") return
     setCreating(true)
     setErrorMessage(null)
     try {
@@ -309,13 +292,10 @@ const TaskStep = ({
         value={taskText}
       />
 
-      {zeroBalanceBlock ? (
-        <Text style={themed($danger)} text="You're out of credits. Add more in Settings to start a task." />
-      ) : null}
       {errorMessage === null ? null : <Text style={themed($danger)} text={errorMessage} />}
 
       <Button
-        disabled={taskText.trim().length === 0 || creating || zeroBalanceBlock}
+        disabled={taskText.trim().length === 0 || creating}
         preset="reversed"
         onPress={() => void startTask(taskText)}
         text="Start"

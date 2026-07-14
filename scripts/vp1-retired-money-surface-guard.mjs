@@ -24,6 +24,9 @@ const RETIRED_RUNTIME_AUTHORITY =
 const RETIRED_SECRET_MOUNT =
   /\b(?:MDK_(?:SIDECAR|TREASURY|TIPS_BUFFER)_(?:ACCESS_TOKEN|MNEMONIC|SERVICE_TOKEN)|SPARK_TREASURY_MNEMONIC|STRIPE_(?:API_KEY|WEBHOOK_SECRET)|REVENUECAT_WEBHOOK_SECRET|KHALA_SYNC_(?:BILLING|TREASURY)_(?:READS|WRITES))\b|\b(?:mdk-(?:sidecar|treasury|tips-buffer)-(?:access-token|mnemonic|service-token)|openagents-stripe-api-key-(?:live|test))\b/i
 
+const RETIRED_CLIENT_MONEY_REQUEST =
+  /["'`](?:\/api\/(?:admin\/credits(?:\/|["'`])|mobile\/credits(?:\/|["'`])|treasury(?:\/|["'`])|sites(?:\/|["'`])|forum\/tip(?:[^"'`]*))|\/treasury(?:[/?"'`]|$))|\/tips\/ladder["'`]/i
+
 const OPENAPI_PATH = 'apps/openagents.com/workers/api/src/openagents-openapi.ts'
 const CAPABILITY_PATH =
   'apps/openagents.com/workers/api/src/openagents-capability-manifest.ts'
@@ -89,6 +92,12 @@ const isActiveProductionFile = path => {
   }
   return /^(?:apps|clients|infra|packages|scripts)\//.test(path)
 }
+
+const isClientRuntimeFile = path =>
+  /^(?:apps\/(?:aiur|openagents\.com\/apps\/(?:start|web))|clients\/khala-mobile)\/src\//.test(
+    path,
+  ) &&
+  !/(?:^|\/)(?:contracts|demo|qa)(?:\/|$)/.test(path)
 
 const isDeploymentOrConfigFile = path =>
   /(?:^|\/)(?:Dockerfile|package\.json|wrangler(?:\.[^/]+)?\.jsonc?|[^/]+\.(?:jsonc?|ya?ml|toml|sh|tf|tfvars))$/i.test(
@@ -203,6 +212,17 @@ export const scanVp1RetiredMoneySurfaces = ({ files, readText }) => {
     const source = readText(rawPath)
     if (source === undefined) continue
     const activeText = uncomment(source)
+
+    if (isClientRuntimeFile(rawPath)) {
+      findings.push(
+        ...patternFinding(
+          rawPath,
+          activeText,
+          'retired-client-money-request',
+          RETIRED_CLIENT_MONEY_REQUEST,
+        ),
+      )
+    }
 
     // Discovery checks look for required executable structure rather than
     // forbidden tokens, so inspect the source verbatim. Large schema files can

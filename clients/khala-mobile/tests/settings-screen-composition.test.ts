@@ -27,19 +27,18 @@ describe("contract khala_mobile.settings.no_desktop_dependent_sections.v1", () =
     expect(source).not.toContain("FLEET_WORKER_ENTITY_TYPE")
   })
 
-  test("settings_screen_has_mobile_only_sections.source — Account, Credits, Models, Notifications, About are all present", async () => {
+  test("settings_screen_has_mobile_only_sections.source — Account, Models, Notifications, About are all present", async () => {
     const source = await readSettingsScreenSource()
-    for (const label of ["Account", "Credits", "Models", "Notifications", "About"]) {
+    for (const label of ["Account", "Models", "Notifications", "About"]) {
       expect(source).toContain(label)
     }
     expect(source).toContain("Delete account")
     expect(source).toContain("KHALA_ACCOUNT_DELETION_POLICY_COPY")
   })
 
-  test("settings_screen_stubs_are_honest.source — Credits/Models sections state what's real without fabricating live data", async () => {
+  test("settings_screen_model_fallback_is_honest.source", async () => {
     const source = await readSettingsScreenSource()
-    expect(source).toContain("coming soon")
-    // Never claims a live balance figure or a real model list exists yet.
+    expect(source).toContain("Choosing your own model isn't available right now.")
     expect(source).not.toMatch(/balance:\s*\$/i)
   })
 })

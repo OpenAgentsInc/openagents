@@ -7,6 +7,7 @@ const retiredExactPaths = new Set([
   '/api/operator/buy-mode/results/settle',
   '/api/public/partner-payouts',
   '/api/public/site-referral-payouts',
+  '/api/public/treasury',
   '/api/public/treasury/launch-status',
   '/api/treasury/donate',
   '/api/sites',

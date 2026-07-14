@@ -43,8 +43,6 @@ import {
   codexQuotaLabel,
   codexReadinessLabel,
 } from "../sync/khala-mobile-codex-accounts-core"
-import { fetchKhalaMobileCreditsBalance } from "../sync/khala-mobile-credits-api"
-import { formatUsdCents, isLowBalance } from "../sync/khala-mobile-credits-format-core"
 import {
   fetchKhalaMobileModelPreference,
   putKhalaMobileModelPreference,
@@ -61,8 +59,7 @@ import {
  * `Button`) so the app shows the real Ignite look on a live screen. The prior
  * NativeWind + bespoke-primitive composition is gone; the product behavior is
  * unchanged. Settings must contain nothing that requires a desktop
- * (acceptance criterion): Account, Credits (MM-D3, #8480, live-attempting with
- * an honest fallback), Models (MM-F1, #8484, real `GET/PUT` model preference),
+ * (acceptance criterion): Account, Models (MM-F1, #8484, real `GET/PUT` model preference),
  * Notifications (MM-G1, #8485/#8486, real push permissions), and
  * About & diagnostics (on-device native-module readiness).
  */
@@ -539,55 +536,6 @@ export const DeleteAccountSection = () => {
   )
 }
 
-type CreditsBalanceState =
-  | Readonly<{ status: "loading" }>
-  | Readonly<{ status: "unavailable" }>
-  | Readonly<{ status: "ready"; balanceUsdCents: number }>
-
-/** MM-D3 (#8480): live-attempting balance, honest fallback. */
-const CreditsSection = ({ onViewHistory }: { onViewHistory: () => void }) => {
-  const { baseUrl, token } = useKhalaAuth()
-  const { theme, themed } = useAppTheme()
-  const [state, setState] = useState<CreditsBalanceState>({ status: "loading" })
-
-  useEffect(() => {
-    let cancelled = false
-    void fetchKhalaMobileCreditsBalance(baseUrl, token).then(result => {
-      if (cancelled) return
-      setState(result.ok ? { balanceUsdCents: result.value, status: "ready" } : { status: "unavailable" })
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [baseUrl, token])
-
-  return (
-    <SectionCard heading="Credits">
-      {state.status === "loading" ? (
-        <Text size="xs" style={themed($dim)} text="Checking your balance…" />
-      ) : state.status === "ready" ? (
-        <>
-          <Text size="xs" style={themed($dim)} text={"Balance: " + formatUsdCents(state.balanceUsdCents)} />
-          {isLowBalance(state.balanceUsdCents) ? (
-            <Text size="xs" style={{ color: theme.colors.error }} text="Your balance is low." />
-          ) : null}
-          <Button preset="filled" text="View history" onPress={onViewHistory} />
-          <Button preset="filled" text="Buy more credits (coming soon)" disabled />
-        </>
-      ) : (
-        <>
-          <Text
-            size="xs"
-            style={themed($dim)}
-            text="You received $10 in free credit when you signed in with GitHub."
-          />
-          <Text size="xs" style={themed($faint)} text="Balance and usage history are coming soon." />
-        </>
-      )}
-    </SectionCard>
-  )
-}
-
 type ModelsState =
   | Readonly<{ status: "loading" }>
   | Readonly<{ status: "unavailable" }>
@@ -794,7 +742,6 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
         <AccountSection />
         <CodexAccountsSection />
         <ClaudeAccountsSection />
-        <CreditsSection onViewHistory={() => navigation.navigate("Main", { screen: "CreditsHistory" })} />
         <ModelsSection />
         <NotificationsSection />
         <AboutSection />

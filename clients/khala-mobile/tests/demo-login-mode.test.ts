@@ -18,11 +18,9 @@ import {
   DEMO_REVIEWER_CREDENTIALS,
   DEMO_REVIEWER_OWNER_USER_ID,
   DEMO_REVIEWER_TOKEN,
-  DEMO_CREDITS_BALANCE_USD_CENTS,
   DEMO_MODEL_ID,
   demoChatMessagesByThread,
   demoChatThreads,
-  demoCreditsTransactions,
   demoModelPreference,
   demoRepositories,
   demoSyncScopeEntities,
@@ -37,7 +35,7 @@ import {
 // long-press → demo-session transition and proves every product data source
 // serves hardcoded, offline, public-safe example data in demo mode.
 //
-// NOTE: it asserts the credits/repos/model-preference DEMO GATE at the source
+// NOTE: it asserts the repos/model-preference DEMO GATE at the source
 // level (each client short-circuits on `isDemoToken`) rather than by calling
 // those functions, because other test files globally `mock.module` those
 // clients — a call here would resolve to another test's mock, not the real
@@ -90,9 +88,8 @@ describe("contract khala_mobile.auth.demo_login_example_data.v1 — reviewer dem
     expect(demoSyncScopeEntities(RUNTIME_EVENT_ENTITY_TYPE, String(threadScope(firstThreadId)))).toEqual([])
   })
 
-  test("the credits/repos/model-preference clients short-circuit to demo data on the demo token", () => {
+  test("the repos/model-preference clients short-circuit to demo data on the demo token", () => {
     // Each API client gates on isDemoToken(token) before any network call.
-    expect(read("src/sync/khala-mobile-credits-api.ts")).toContain("isDemoToken(token)")
     expect(read("src/sync/khala-mobile-repos-api.ts")).toContain("isDemoToken(token)")
     expect(read("src/sync/khala-mobile-model-preference-api.ts")).toContain("isDemoToken(token)")
     // The runtime provider serves an offline demo runtime for the demo token
@@ -104,9 +101,6 @@ describe("contract khala_mobile.auth.demo_login_example_data.v1 — reviewer dem
   })
 
   test("the demo fixtures are realistic, complete example data", () => {
-    // Credits: an example balance ($10.00) + a couple of example transactions.
-    expect(DEMO_CREDITS_BALANCE_USD_CENTS).toBe(1_000)
-    expect(demoCreditsTransactions.length).toBeGreaterThanOrEqual(2)
     // Repos: public + private badges both represented.
     expect(demoRepositories.some(repo => repo.private)).toBe(true)
     expect(demoRepositories.some(repo => !repo.private)).toBe(true)

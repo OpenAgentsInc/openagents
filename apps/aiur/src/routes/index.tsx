@@ -3,7 +3,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AIUR_LOGIN_START_PATH, AIUR_LOGOUT_PATH } from '@/auth/routes'
-import { RecentUsersPanel } from '@/dashboard/recent-users-panel'
 import { TokensServedPanel } from '@/dashboard/tokens-served-panel'
 
 import { useAiurAccess } from './-use-aiur-access'
@@ -80,15 +79,11 @@ function OwnerDashboard({ login }: { login: string | undefined }) {
           <Button asChild size="sm" variant="secondary">
             <a href="/ops">Ops</a>
           </Button>
-          <Button asChild size="sm" variant="secondary">
-            <a href="/credits">Credits console</a>
-          </Button>
           <Button asChild size="sm" variant="ghost">
             <a href={AIUR_LOGOUT_PATH}>Sign out</a>
           </Button>
         </div>
       </header>
-      <RecentUsersPanel />
       <TokensServedPanel />
     </section>
   )

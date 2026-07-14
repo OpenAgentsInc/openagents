@@ -320,16 +320,6 @@ export const endpointManifestPanel = (): Html => {
       ),
       endpointRow(
         'GET',
-        '/api/forum/tip-leaderboards',
-        'Public tip paid and settled evidence rows.',
-      ),
-      endpointRow(
-        'GET',
-        '/api/forum/launch-status',
-        'Forum posting and tipping launch gates.',
-      ),
-      endpointRow(
-        'GET',
         '/api/public/adjutant/activity',
         'Public Autopilot activity projection.',
       ),
@@ -647,11 +637,8 @@ export const forumStatsPanel = (
 
 export const accountingPanel = (
   pylonModel: PublicPylonStatsModel,
-  leaderboardModel: PublicForumTipLeaderboardsModel,
 ): Html => {
   const stats = statsFromModel(pylonModel)
-  const leaderboards = forumTipLeaderboardsFromModel(leaderboardModel)
-  const totals = forumTotals(leaderboards)
   const acceptedGate = stats?.nexusAcceptedWorkSettlementGate
   const acceptedPaid =
     stats !== null && acceptedGate?.publicPaidWorkTotalsAllowed === true
@@ -692,14 +679,6 @@ export const accountingPanel = (
           'Asset-bound ledger projection. Not a withdrawal promise or settled payout.',
         label: 'Revshare',
         value: 'Unavailable',
-      }),
-      metricRow({
-        detail: 'Forum paid minus settled sats in shown leaderboard rows.',
-        label: 'Forum paid vs settled',
-        value:
-          totals.paid === null || totals.settled === null
-            ? 'Unavailable'
-            : `${formatSats(totals.paid)} / ${formatSats(totals.settled)}`,
       }),
     ],
   )
@@ -2184,10 +2163,6 @@ const topStatTile = (label: string, value: string, detail: string): Html => {
 const topStatsStrip = (input: HomeViewInput): Html => {
   const h = html<Message>()
   const stats = statsFromModel(input.publicPylonStats)
-  const leaderboards = forumTipLeaderboardsFromModel(
-    input.forumTipLeaderboards,
-  )
-  const totals = forumTotals(leaderboards)
   const acceptedGate = stats?.nexusAcceptedWorkSettlementGate
   const acceptedPaid =
     stats !== null && acceptedGate?.publicPaidWorkTotalsAllowed === true
@@ -2202,7 +2177,7 @@ const topStatsStrip = (input: HomeViewInput): Html => {
       h.div(
         [
           Ui.className<Message>(
-            'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5',
+            'grid grid-cols-2 gap-2 sm:grid-cols-3',
           ),
         ],
         [
@@ -2215,16 +2190,6 @@ const topStatsStrip = (input: HomeViewInput): Html => {
             'Pylons seen 24h',
             numberOrUnavailable(stats?.pylonsSeen24h),
             'Distinct devices in 24h.',
-          ),
-          topStatTile(
-            'Tip sats paid',
-            totals.paid === null ? '—' : formatNumber(totals.paid),
-            'Payer-side evidence.',
-          ),
-          topStatTile(
-            'Tip sats settled',
-            totals.settled === null ? '—' : formatNumber(totals.settled),
-            'Creator settlement evidence.',
           ),
           topStatTile(
             'Accepted-work sats',

@@ -49,7 +49,6 @@ export const forumScript = (
   route: ForumRouteValue,
   authMode: ForumAuthMode = 'LoggedOut',
 ): string => {
-  const loginHref = forumLoginHref(route)
   const initial =
     route._tag === 'ForumForum'
       ? { authMode, kind: 'forum', ref: route.forumRef }
@@ -62,16 +61,13 @@ export const forumScript = (
   return `(() => {
   const initial = ${JSON.stringify(initial)};
   const authMode = initial.authMode || 'LoggedOut';
-  const loginHref = ${JSON.stringify(loginHref)};
   const state = {
     forum: null,
-    launchStatus: null,
     topics: [],
     topic: null,
     posts: [],
     topicPostSortDirection: 'asc',
     receipt: null,
-    tipLeaderboards: null,
   };
   const root = document.querySelector('[data-forum-app]');
   const main = document.querySelector('[data-forum-main]');
@@ -158,26 +154,9 @@ export const forumScript = (
   const postAnchor = post => 'post-' + encodeURIComponent(post.postId);
   const postNumberAnchor = post => 'post-' + Number(post.postNumber || 0);
   const postHref = post => topicHref(post) + '#' + postAnchor(post);
-  const defaultPostRewardSats = 10;
-  const postRewardAmountLabel = amount => String(amount) + ' sats';
-  const postRewardCaveat = 'Content reward; receipt separates payment from settlement.';
   const countText = (count, singular, plural) => {
     const normalized = Number(count || 0);
     return normalized === 1 ? '1 ' + singular : normalized + ' ' + plural;
-  };
-  const postTipStatsBadge = post => {
-    const stats = post.tipStats || {};
-    const totalPaidSats = Number(stats.totalPaidSats || 0);
-    if (!Number.isFinite(totalPaidSats) || totalPaidSats <= 0) return '';
-    const rawSettledSats = Number(stats.totalSettledSats || 0);
-    const totalSettledSats = Number.isFinite(rawSettledSats) ? rawSettledSats : 0;
-    const tipCount = Number(stats.tipCount || 0);
-    const settlement = totalSettledSats >= totalPaidSats ? 'settled' : totalSettledSats > 0 ? 'partial' : 'pending';
-    const settlementIcon = settlement === 'settled' ? '✓' : '◷';
-    const detail = String(totalPaidSats) + ' sats paid · ' + String(totalSettledSats) + ' sats settled' +
-      (settlement === 'settled' ? '' : ' · settlement pending') +
-      (tipCount > 1 ? ' · ' + String(tipCount) + ' payments' : '');
-    return '<span data-forum-post-tip-total data-forum-post-tip-settlement="' + settlement + '" class="font-sans text-sm text-forum-payment sm:text-xs" title="' + escapeHtml(detail) + '" aria-label="' + escapeHtml(detail) + '">' + escapeHtml(String(totalPaidSats) + ' sats ' + settlementIcon) + '</span>';
   };
   const markdownParagraphClass = 'm-0 break-words text-sm/6 text-forum-heading [overflow-wrap:anywhere]';
   const markdownHeadingClass = 'm-0 break-words pt-1 font-semibold text-forum-heading [overflow-wrap:anywhere]';
@@ -391,7 +370,7 @@ export const forumScript = (
     const subjectHtml = '<span class="block truncate font-bold text-forum-heading" title="' + escapeHtml(subject) + '">' + escapeHtml(truncated) + '</span>';
     // NOTE: this cell renders inside anchor rows; author names stay
     // plain text here to avoid nested <a>. Linked names appear on the
-    // leaderboards, thread sidebars, and tip controls instead.
+    // board lists, thread sidebars, and post controls instead.
     return subjectHtml + '<span class="block truncate">by ' + escapeHtml(author) + ' &raquo; ' + escapeHtml(time) + '</span>';
   };
   const actionBar = html => '<div class="flex flex-wrap items-center justify-between gap-2 rounded-md bg-forum-navbar px-3 py-2 text-xs text-forum-heading">' + html + '</div>';
@@ -413,38 +392,6 @@ export const forumScript = (
   const forumBadge = forum => forum.discoverability === 'unlisted'
     ? '<span class="rounded border border-forum-payment px-2 py-1 font-sans text-xs font-bold text-forum-payment">Unlisted</span>'
     : '<span class="rounded border border-forum-row-c px-2 py-1 font-sans text-xs font-bold text-forum-text">Listed</span>';
-  const tipTotalsLabel = item => {
-    const paid = Number(item?.totalPaidSats || 0);
-    const settled = Number(item?.totalSettledSats || 0);
-    const tipCount = Number(item?.tipCount || 0);
-    const paidLabel = Number.isFinite(paid) ? String(paid) : '0';
-    const settledLabel = Number.isFinite(settled) ? String(settled) : '0';
-    return paidLabel + ' paid sats · ' + settledLabel + ' settled sats · ' + tipCount + ' tips';
-  };
-  const renderTipLeaderboards = leaderboards => {
-    const posts = (leaderboards?.posts || []).slice(0, 5);
-    const creators = (leaderboards?.creators || []).slice(0, 5);
-    if (posts.length === 0 && creators.length === 0) return '';
-    const truncatedPostTitle = post => {
-      const title = String(post.postTitle || '').trim() ||
-        post.author?.displayName || post.author?.actorRef || 'creator';
-      return title.length > 70 ? title.slice(0, 69).trimEnd() + '…' : title;
-    };
-    const postRows = posts.length === 0
-      ? '<div class="border-t border-forum-row-c py-3 text-sm text-forum-text">No tipped posts yet.</div>'
-      : posts.map(post => '<a class="grid gap-1 border-t border-forum-row-c py-3 text-forum-link hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover" href="' + escapeHtml(post.postPermalink) + '">' +
-          '<span class="text-sm font-bold">' + escapeHtml(truncatedPostTitle(post)) + '</span>' +
-          '<span class="font-sans text-sm text-forum-payment">' + escapeHtml(tipTotalsLabel(post)) + '</span></a>').join('');
-    const creatorRows = creators.length === 0
-      ? '<div class="border-t border-forum-row-c py-3 text-sm text-forum-text">No tipped creators yet.</div>'
-      : creators.map(creator => '<div class="grid gap-1 border-t border-forum-row-c py-3">' +
-          '<span class="text-sm font-bold">' + actorNameHtml(creator.actor) + '</span>' +
-          '<span class="font-sans text-sm text-forum-payment">' + escapeHtml(tipTotalsLabel(creator)) + '</span></div>').join('');
-    return '<section class="${panelClass} p-4 sm:p-5"><div class="grid gap-5 md:grid-cols-2">' +
-      '<div><p class="${eyebrowClass}">Top tipped posts</p><div class="mt-3">' + postRows + '</div></div>' +
-      '<div><p class="${eyebrowClass}">Top tipped creators</p><div class="mt-3">' + creatorRows + '</div></div>' +
-      '</div></section>';
-  };
   const scrollPostAnchorIntoView = () => {
     const rawHash = window.location.hash || '';
     if (!rawHash.startsWith('#post-')) return;
@@ -501,72 +448,12 @@ export const forumScript = (
           '<div class="' + lastPostCellClass + '">' + lastPostCell(topic) + '</div>' +
           '</a>';
       }).join('');
-  const tipPostGateReady = () => state.launchStatus?.publicTipping?.postTips === 'ready';
-  const firstTipBlocker = () => state.launchStatus?.publicTipping?.remainingBeforeLiveTips?.[0] || 'payment verification';
-  const tipGateStatusLabel = () => {
-    const blocker = firstTipBlocker().toLowerCase();
-    if (blocker.includes('payer wallet')) return 'Tip setup pending';
-    if (blocker.includes('smoke')) return 'Live smoke pending';
-    return 'Self-serve tips pending';
-  };
-  const tipStateLabel = value => ({
-    dispatched: 'Payout dispatched',
-    evidence_only: 'Receipt evidence only',
-    failed: 'Payment failed',
-    paid: 'Payment recorded',
-    payment_required: 'Payment required',
-    previewed: 'Previewed',
-    recipient_pending: 'Creator settlement pending',
-    refunded: 'Refunded',
-    reversed: 'Reversed',
-    settled: 'Recipient wallet paid',
-  })[value] || 'Payment state';
-  const findTipPanel = postId =>
-    Array.from(main.querySelectorAll('[data-forum-tip-panel]')).find(element =>
-      element.getAttribute('data-forum-tip-panel') === postId
-    ) || null;
-  const setTipPanel = (postId, stateName, html) => {
-    const panel = findTipPanel(postId);
-    if (!panel) return;
-    panel.setAttribute('data-forum-tip-result', stateName);
-    panel.innerHTML = html;
-  };
-  const tipSessionNonce = String(Math.trunc(performance.timeOrigin));
-  let tipSequence = 0;
-  const tipIdempotencyKey = postId => {
-    tipSequence += 1;
-    const nonce = tipSessionNonce + ':' + String(tipSequence);
-    return 'forum:browser_tip:' + postId + ':' + nonce;
-  };
-  const renderTipControls = post => {
-    const readiness = post.tipRecipientReadiness || {};
-    const postId = post.postId || '';
-    const recipient = post.author?.displayName || 'creator';
-    const stats = post.tipStats || {};
-    const totalPaidSats = Number(stats.totalPaidSats || 0);
-    if (!tipPostGateReady()) {
-      if (Number.isFinite(totalPaidSats) && totalPaidSats > 0) return '';
-      return '<span data-forum-tip-state="gated" class="font-sans text-xs text-forum-text" title="' + escapeHtml(firstTipBlocker()) + '">' + escapeHtml(tipGateStatusLabel()) + '</span>';
-    }
-    if (readiness.tippingAvailable !== true) {
-      return '<span data-forum-tip-state="recipient_not_ready" class="font-sans text-xs text-forum-text" title="' + escapeHtml(readiness.blockerRef || 'recipient wallet pending') + '">Wallet pending</span>';
-    }
-    return '<div class="flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-1" data-forum-tip-control="' + escapeHtml(postId) + '">' +
-      '<label class="flex items-center gap-1 font-sans text-xs text-forum-text"><span>Tip</span><input class="h-8 w-20 rounded border border-forum-row-c bg-forum-panel px-2 text-right text-forum-heading" data-forum-tip-amount="' + escapeHtml(postId) + '" inputmode="numeric" min="1" step="1" type="number" value="' + String(defaultPostRewardSats) + '"><span>sats</span></label>' +
-      '<button type="button" class="min-h-8 rounded border border-forum-payment bg-forum-panel px-3 py-1.5 font-sans text-xs font-bold text-forum-payment hover:bg-forum-post-link-hover-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forum-header" data-forum-tip-post-id="' + escapeHtml(postId) + '">Send tip</button>' +
-      '<span class="font-sans text-xs text-forum-text">to ' + (post.author && actorProfileHref(post.author) ? actorNameHtml(post.author) : escapeHtml(recipient)) + '</span>' +
-      '<span class="min-w-0 break-words font-sans text-xs text-forum-text">' + postRewardCaveat + '</span>' +
-      '<span class="basis-full text-right text-xs text-forum-text" data-forum-tip-panel="' + escapeHtml(postId) + '"></span>' +
-      '</div>';
-  };
   const postControlLink = (href, label) =>
     '<a class="rounded border border-forum-row-c bg-forum-panel px-2 py-1 text-xs font-bold text-forum-link hover:border-forum-header hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover" href="' + escapeHtml(href) + '">' + escapeHtml(label) + '</a>';
   const renderPostControls = post =>
     // Capped width so the grid's auto column cannot size to the
     // controls' unwrapped max-content and crush the title.
     '<div class="flex max-w-full flex-wrap items-center justify-end gap-2 sm:max-w-[24rem]">' +
-      postTipStatsBadge(post) +
-      renderTipControls(post) +
       '<button type="button" class="rounded border border-forum-row-c bg-forum-panel px-2 py-1 text-xs font-bold text-forum-link hover:border-forum-header hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover" data-forum-copy-permalink="' + escapeHtml(postHref(post)) + '">Permalink</button>' +
       '</div>';
   const renderAuthorProfile = post => {
@@ -574,7 +461,6 @@ export const forumScript = (
     const displayName = actorDisplayName(actor);
     const postCount = actor.postCount ?? actor.forumPostCount ?? post.authorPostCount;
     const joinedAt = actor.joinedAt || actor.firstSeenAt || post.authorFirstSeenAt;
-    const readiness = post.tipRecipientReadiness?.tippingAvailable === true ? 'Wallet ready' : post.tipRecipientReadiness ? 'Wallet pending' : '';
     return '<aside class="grid content-start gap-2 border-b border-forum-row-c bg-forum-row-b p-3 text-sm text-forum-text md:border-b-0 md:border-r">' +
       '<div class="flex items-start gap-2">' +
       '<span class="khala-index flex size-10 shrink-0 items-center justify-center rounded border border-forum-row-c bg-forum-header text-base font-bold text-forum-heading" aria-hidden="true">' + escapeHtml(actorInitial(actor)) + '</span>' +
@@ -583,7 +469,6 @@ export const forumScript = (
       '<dl class="grid gap-1 text-xs">' +
       (postCount === undefined ? '' : '<div><dt class="inline font-bold">Posts:</dt> <dd class="inline">' + escapeHtml(postCount) + '</dd></div>') +
       (joinedAt ? '<div><dt class="inline font-bold">Joined:</dt> <dd class="inline">' + escapeHtml(friendlyTime(joinedAt)) + '</dd></div>' : '') +
-      (readiness ? '<div><dt class="inline font-bold">Tips:</dt> <dd class="inline">' + escapeHtml(readiness) + '</dd></div>' : '') +
       '</dl>' +
       '</aside>';
   };
@@ -599,58 +484,6 @@ export const forumScript = (
       '<div data-forum-markdown class="mt-3 grid gap-3 break-words font-sans text-sm/6 text-forum-heading [overflow-wrap:anywhere]">' + renderMarkdown(post.bodyText || post.contentRef || '') + '</div>' +
       '</div>';
   };
-  const renderTipResult = (post, result) => {
-    if (result.receiptRef) {
-      const receiptHref = '/forum/receipts/' + encodeURIComponent(result.receiptRef);
-      return 'Payment recorded · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + receiptHref + '">Receipt</a> · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(postHref(post)) + '">Post</a>';
-    }
-    if (result.writeDenial?.denialKind === 'recipient_not_ready') {
-      return 'Recipient wallet pending.';
-    }
-    return 'Payment submitted.';
-  };
-  const handleTipClick = async button => {
-    const postId = button.getAttribute('data-forum-tip-post-id') || '';
-    const post = state.posts.find(item => item.postId === postId);
-    if (!post) return;
-    if (authMode !== 'LoggedIn') {
-      setTipPanel(postId, 'login_required', '<a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(loginHref) + '">Log in with GitHub</a> to tip ' + escapeHtml(post.author?.displayName || 'creator') + '.');
-      return;
-    }
-    button.disabled = true;
-    const amountInput = Array.from(main.querySelectorAll('[data-forum-tip-amount]')).find(element =>
-      element.getAttribute('data-forum-tip-amount') === postId
-    );
-    const rawAmount = Math.trunc(Number(amountInput?.value || defaultPostRewardSats));
-    const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : defaultPostRewardSats;
-    setTipPanel(postId, 'sending', 'Sending ' + postRewardAmountLabel(amount) + '...');
-    try {
-      const result = await api('/api/forum/posts/' + encodeURIComponent(postId) + '/tips/ladder', {
-        method: 'POST',
-        headers: {
-          'Idempotency-Key': tipIdempotencyKey(postId + ':' + String(amount)),
-        },
-        body: JSON.stringify({
-          amountSat: amount,
-        }),
-      });
-      setTipPanel(postId, result.receiptRef ? 'success' : 'failed', renderTipResult(post, result));
-    } catch (error) {
-      setTipPanel(postId, 'failed', 'Payment failed · ' + escapeHtml(error.message || error));
-    } finally {
-      button.disabled = false;
-    }
-  };
-  main.addEventListener('click', event => {
-    const target = event.target instanceof Element
-      ? event.target.closest('[data-forum-tip-post-id]')
-      : null;
-    if (target instanceof HTMLButtonElement) {
-      event.preventDefault();
-      handleTipClick(target);
-    }
-  });
-
   const postRows = posts => posts.length === 0
     ? '<div class="border-t border-forum-row-c py-8 text-sm text-forum-text">No visible posts yet.</div>'
     : posts.map((post, index) => '<article id="' + escapeHtml(postAnchor(post)) + '" data-forum-post-id="' + escapeHtml(post.postId || '') + '" data-forum-post-number-anchor="' + escapeHtml(postNumberAnchor(post)) + '" tabindex="-1" class="scroll-mt-6 grid overflow-hidden border-t border-forum-row-c outline-none target:border-forum-payment target:bg-forum-post-link-hover-bg focus-visible:border-forum-header md:grid-cols-[12rem_minmax(0,1fr)] ' + rowClass(index) + '">' +
@@ -670,8 +503,7 @@ export const forumScript = (
       '<section class="' + forumListClass + '"><div class="${forumHeaderClass} rounded-none">OpenAgents Forum</div>' +
       listHeader(forumGridClass, 'Forum', 'Topics', 'Posts', 'Last post') +
       forumRows(forums) +
-      '</section>' +
-      renderTipLeaderboards(state.tipLeaderboards);
+      '</section>';
   };
   const renderForum = (forum, topics) => {
     main.innerHTML = '<nav class="${forumBreadcrumbClass}" aria-label="Forum breadcrumbs"><a class="font-bold text-forum-link hover:text-forum-link-hover" href="/forum">Board index</a> &raquo; <span>' + escapeHtml(forum.title) + '</span></nav>' +
@@ -713,23 +545,13 @@ export const forumScript = (
     if (target && !target.topicId && target.postId) links.push('<a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="/api/forum/posts/' + encodeURIComponent(target.postId) + '">Post API</a>');
     return links.length === 0 ? '<span class="text-forum-text">Forum payment</span>' : links.join(' · ');
   };
-  const renderTipSettlement = settlement => {
-    if (!settlement) return '';
-    const settlementEvidenceLabel = settlement.creatorReceivedSpendableValue ? 'Recipient wallet payment confirmed' : 'Recipient wallet payment not confirmed';
-    return '<div class="mt-4 rounded border border-forum-row-c bg-forum-row-a p-3">' +
-      '<div class="font-sans text-xs text-forum-text">Tip settlement</div>' +
-      '<div class="mt-1 text-sm font-bold text-forum-heading">' + escapeHtml(tipStateLabel(settlement.state)) + '</div>' +
-      '<p class="m-0 mt-1 text-sm text-forum-text">' + escapeHtml(settlement.wording?.publicPage || 'Settlement state is pending.') + '</p>' +
-      '<div class="mt-2 font-sans text-xs text-forum-text">' + escapeHtml(settlementEvidenceLabel) + '</div>' +
-      '</div>';
-  };
   const renderReceipt = receipt => {
     main.innerHTML = '<nav class="${forumBreadcrumbClass}" aria-label="Forum breadcrumbs"><a class="font-bold text-forum-link hover:text-forum-link-hover" href="/forum">Board index</a> &raquo; <span>Receipt</span></nav>' +
       '<section class="${panelClass} overflow-hidden"><div class="${forumHeaderClass}">Forum receipt</div><div class="flex flex-wrap items-start justify-between gap-3 border-b border-forum-row-c p-4 sm:p-5">' +
       '<div><p class="${eyebrowClass}">Forum receipt</p><h1 class="m-0 text-2xl font-bold text-forum-heading sm:text-3xl">' + escapeHtml(actionText(receipt.actionKind)) + '</h1>' +
       '<p class="mt-2 ${mutedClass}">' + escapeHtml(amountText(receipt.amount)) + ' · ' + friendlyTime(receipt.createdAt) + '</p></div>' +
       '<a class="${ghostButtonClass}" href="/forum">Board</a></div>' +
-      '<div class="p-4 sm:p-5">' + renderTipSettlement(receipt.tipSettlement) +
+      '<div class="p-4 sm:p-5">' +
       '<dl class="mt-4 grid gap-0 text-sm">' +
       '<div class="grid gap-2 border-t border-forum-row-c py-3 sm:grid-cols-[10rem_1fr]"><dt class="${eyebrowClass}">Receipt</dt><dd class="m-0 min-w-0 break-words text-forum-heading [overflow-wrap:anywhere]">' + escapeHtml(receipt.receiptRef || '') + '</dd></div>' +
       '<div class="grid gap-2 border-t border-forum-row-c py-3 sm:grid-cols-[10rem_1fr]"><dt class="${eyebrowClass}">Target</dt><dd class="m-0 text-forum-heading">' + renderReceiptTarget(receipt) + '</dd></div>' +
@@ -751,13 +573,9 @@ export const forumScript = (
     }
     if (initial.kind === 'topic') {
       return {
-        paths: [
-          topicApiPath(initial.id),
-          '/api/forum/launch-status',
-        ],
+        paths: [topicApiPath(initial.id)],
         apply: results => {
           state.topic = results[0].topic; state.posts = results[0].posts || [];
-          state.launchStatus = results[1];
           renderTopic(state.topic, state.posts);
         },
       };
@@ -769,9 +587,8 @@ export const forumScript = (
       };
     }
     return {
-      paths: ['/api/forum', '/api/forum/tip-leaderboards'],
+      paths: ['/api/forum'],
       apply: results => {
-        state.tipLeaderboards = results[1];
         renderIndex(results[0]);
       },
     };

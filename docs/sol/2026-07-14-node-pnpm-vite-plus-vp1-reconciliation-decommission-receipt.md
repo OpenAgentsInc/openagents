@@ -150,6 +150,22 @@ The archive preserves facts, not execution authority. In particular:
 
 The owner wallet-recovery procedure is
 [`VP-1 treasury wallet recovery runbook`](../ops/2026-07-14-vp1-treasury-wallet-recovery-runbook.md).
+
+## 2026-07-14 follow-up audit
+
+A compiler-backed follow-up found presentation residue after the first
+closeout: the retained Start Forum, the legacy web Forum, and public home/stats
+surfaces still rendered or loaded tipping projections even though ingress was
+retired. The follow-up removes those controls and requests, removes Aiur and
+mobile credits screens, and extends the static guard to reject executable
+client calls to retired Forum-tip, credit, Sites, and Treasury endpoints.
+
+The owner superseded the earlier request to keep `/treasury` visible. Both the
+page and the public projection are now explicitly retired; recovery remains a
+one-time owner operation against the stopped wallets. Immutable receipt reads,
+applied migrations, and internal typed ledger substrate remain because they
+carry historical truth and non-money database contracts, not deployable spend
+authority.
 It is deliberately separate from code deletion and requires explicit owner
 approval for any real send.
 
