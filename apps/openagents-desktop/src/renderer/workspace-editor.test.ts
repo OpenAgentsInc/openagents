@@ -232,7 +232,10 @@ describe("workspace editor state", () => {
 describe("workspace editor Effect Native view", () => {
   test("empty state explains how to open a document", () => {
     const view = workspaceEditorView(emptyWorkspaceEditorState())
-    expect(nodeByKey(view, "workspace-editor-empty-title")?.content).toBe("No document open")
+    const empty = nodeByKey(view, "workspace-editor-empty")
+    expect(empty?._tag).toBe("EmptyMessage")
+    expect(empty?.title).toBe("No document open")
+    expect(empty?.description).toContain("Select a text file")
   })
 
   test("ready state lowers to the replaceable code-editor Host contract", () => {

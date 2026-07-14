@@ -10,7 +10,9 @@ import {
   CodeEditorEventSchema,
   ComponentValueBinding,
   Divider,
+  EmptyMessage,
   IntentRef,
+  ShimmerText,
   Spacer,
   Stack,
   StaticPayload,
@@ -783,10 +785,13 @@ export const workspaceEditorView = (
 ): View => {
   const tab = activeTab(state)
   if (tab === null) {
-    return Stack({ key: "workspace-editor-empty", direction: "column", gap: "2", style: { flex: 1, minHeight: 0 } }, [
-      Text({ key: "workspace-editor-empty-title", content: "No document open", variant: "title", color: "textPrimary" }),
-      Text({ key: "workspace-editor-empty-copy", content: "Select a text file from the workspace tree to open it in a grant-scoped editor tab.", variant: "body", color: "textMuted" }),
-    ])
+    return EmptyMessage({
+      key: "workspace-editor-empty",
+      icon: { name: "Code", tone: "secondary" },
+      title: "No document open",
+      description: "Select a text file from the workspace tree to open it in a grant-scoped editor tab.",
+      style: { flex: 1, minHeight: 0 },
+    })
   }
   const closing = state.closeConfirmRef === tab.pathRef
   return Stack({ key: "workspace-editor", direction: "column", gap: "2", style: { flex: 1, minWidth: 0, minHeight: 0, width: "full" } }, [
@@ -794,7 +799,8 @@ export const workspaceEditorView = (
       ...state.tabs.map(item => Button({
         key: `workspace-editor-tab-${item.pathRef}`,
         label: tabLabel(item),
-        variant: item.pathRef === state.activePathRef ? "secondary" : "ghost",
+        variant: "ghost",
+        selected: item.pathRef === state.activePathRef,
         onPress: IntentRef("WorkspaceEditorTabSelected", StaticPayload(item.pathRef)),
         a11y: { role: "tab", label: `${item.pathRef}${workspaceEditorTabDirty(item) ? ", unsaved changes" : ""}`, selected: item.pathRef === state.activePathRef },
       })),
@@ -811,8 +817,8 @@ export const workspaceEditorView = (
       Spacer({ key: "workspace-editor-toolbar-fill", flex: true }),
       Button({ key: "workspace-editor-undo", label: "Undo", variant: "ghost", disabled: tab.undo.length === 0, onPress: IntentRef("WorkspaceEditorUndoRequested") }),
       Button({ key: "workspace-editor-redo", label: "Redo", variant: "ghost", disabled: tab.redo.length === 0, onPress: IntentRef("WorkspaceEditorRedoRequested") }),
-      Button({ key: "workspace-editor-wrap", label: "Wrap", variant: state.wordWrap ? "secondary" : "ghost", onPress: IntentRef("WorkspaceEditorWordWrapToggled"), a11y: { selected: state.wordWrap } }),
-      Button({ key: "workspace-editor-minimap", label: "Minimap", variant: state.minimap ? "secondary" : "ghost", onPress: IntentRef("WorkspaceEditorMinimapToggled"), a11y: { selected: state.minimap } }),
+      Button({ key: "workspace-editor-wrap", label: "Wrap", variant: "ghost", selected: state.wordWrap, onPress: IntentRef("WorkspaceEditorWordWrapToggled"), a11y: { selected: state.wordWrap } }),
+      Button({ key: "workspace-editor-minimap", label: "Minimap", variant: "ghost", selected: state.minimap, onPress: IntentRef("WorkspaceEditorMinimapToggled"), a11y: { selected: state.minimap } }),
       ...(options.attachToChat === undefined ? [] : [Button({
         key: "workspace-editor-attach-chat",
         label: "Mention in chat",
@@ -825,7 +831,7 @@ export const workspaceEditorView = (
             : `Mention ${tab.pathRef} in the next chat turn`,
         },
       })]),
-      Button({ key: "workspace-editor-save", label: tab.saveState === "saving" ? "Saving…" : tab.saveState === "saved" ? "Saved" : "Save", variant: "primary", disabled: !workspaceEditorTabDirty(tab) || tab.saveState === "saving" || tab.phase === "unavailable", onPress: IntentRef("WorkspaceEditorSaveRequested"), a11y: { label: `Save ${tab.pathRef}` } }),
+      Button({ key: "workspace-editor-save", label: tab.saveState === "saved" ? "Saved" : "Save", variant: "primary", loading: tab.saveState === "saving", disabled: !workspaceEditorTabDirty(tab) || tab.saveState === "saving" || tab.phase === "unavailable", onPress: IntentRef("WorkspaceEditorSaveRequested"), a11y: { label: `Save ${tab.pathRef}` } }),
       Button({ key: "workspace-editor-save-as", label: "Save As", variant: "secondary", disabled: tab.saveState === "saving" || tab.phase === "unavailable", onPress: IntentRef("WorkspaceEditorSaveAsStarted"), a11y: { label: `Save ${tab.pathRef} as a new file` } }),
     ]),
     ...(state.saveAsPathRef === null ? [] : [Stack({ key: "workspace-editor-save-as-row", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
@@ -839,7 +845,7 @@ export const workspaceEditorView = (
       Button({ key: "workspace-editor-find-previous", label: "Previous", variant: "ghost", disabled: tab.findMatches.length === 0, onPress: IntentRef("WorkspaceEditorFindPrevious") }),
       Button({ key: "workspace-editor-find-next", label: "Next", variant: "ghost", disabled: tab.findMatches.length === 0, onPress: IntentRef("WorkspaceEditorFindNext") }),
     ]),
-    ...(tab.phase === "loading" ? [Text({ key: "workspace-editor-loading", content: "Opening document…", variant: "body", color: "textMuted" })]
+    ...(tab.phase === "loading" ? [ShimmerText({ key: "workspace-editor-loading", text: "Opening document…", typeScale: "body", style: { color: "textMuted" } })]
       : tab.phase === "unavailable" ? [Text({ key: "workspace-editor-unavailable", content: tab.reason ?? "This document is unavailable.", variant: "body", color: "warning" })]
       : [
           ...(tab.phase === "conflict" ? [Stack({ key: "workspace-editor-conflict", direction: "row", gap: "2", align: "center" }, [

@@ -1173,14 +1173,14 @@ describe("pure transitions", () => {
     expect(nodeByKey(view, "workspace-files-split")?._tag).toBe("SplitPane")
     expect(nodeByKey(view, "workspace-browser")?._tag).toBe("Stack")
     expect(nodeByKey(view, "workspace-browser-select-README.md")?._tag).toBe("Button")
-    expect(nodeByKey(view, "workspace-editor-empty-title")?.content).toBe("No document open")
+    expect(nodeByKey(view, "workspace-editor-empty")?.title).toBe("No document open")
     expect(JSON.stringify(view)).not.toContain("/workspace")
     expect(nodeByKey(view, "shell-composer")).toBeUndefined()
   })
 
   test("Files workspace no longer composes the legacy absolute-path editor", () => {
     const view = desktopShellView(withWorkspace(baseState, "files"))
-    expect(nodeByKey(view, "workspace-browser-idle")?._tag).toBe("Text")
+    expect(nodeByKey(view, "workspace-browser-idle")?._tag).toBe("EmptyMessage")
     expect(nodeByKey(view, "workspace-file-editor")).toBeUndefined()
     expect(nodeByKey(view, "workspace-file-save")).toBeUndefined()
   })
