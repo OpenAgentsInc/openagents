@@ -1,5 +1,5 @@
 import { Deferred, Effect, Exit, FiberSet, Layer, Scope, Stream } from "effect"
-import { iconSvg as openAiIconSvg } from "@openagentsinc/ui/icon"
+import { iconAssetSvg } from "./icons"
 import {
   type BadgeView,
   type ButtonView,
@@ -2103,8 +2103,8 @@ const renderTable = (view: TableView, state: DomRendererState, report: IntentRep
 // free-form drag math in app code). NavRail is a selection contract; Workbench
 // swaps the active pane as typed state.
 const iconSvg = (name: IconName, sizePx: number): string => {
-  const assetName = name === "Compose" ? "ChatCompose" : name
-  return openAiIconSvg(assetName).replace(
+  const assetName = (name === "Compose" ? "ChatCompose" : name) as Exclude<IconName, "Compose">
+  return iconAssetSvg[assetName].replace(
     'width="1em" height="1em"',
     `width="${sizePx}" height="${sizePx}"`,
   )
