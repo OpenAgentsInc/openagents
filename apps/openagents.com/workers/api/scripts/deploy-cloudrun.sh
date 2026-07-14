@@ -63,7 +63,13 @@ vp pack src/cloudrun/server.ts --out-dir dist-cloudrun --format esm \
   --deps.never-bundle cloudflare:workers \
   --deps.never-bundle '@cloudflare/playwright' >/dev/null
 vp pack src/cloudrun/preload.ts --out-dir dist-cloudrun --format esm \
-  --platform node --target node24 >/dev/null
+  --platform node --target node24 --no-clean >/dev/null
+# `vp pack` cleans its output directory by default. The preload pass must
+# preserve server.mjs and any split server chunks produced by the first pass.
+if [[ ! -f dist-cloudrun/server.mjs || ! -f dist-cloudrun/preload.mjs ]]; then
+  echo "FATAL: Vite Plus Cloud Run bundles are incomplete" >&2
+  exit 1
+fi
 cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
 # Sarah removed at owner direction 2026-07-10 (epic #8610): the former
 # sarah-ui / sarah-agent / sarah-clips bundle steps are gone with apps/sarah.
