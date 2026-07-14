@@ -19,8 +19,39 @@ import {
   type PylonDispatchStoreEnv,
 } from './pylon-dispatch-store'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
-import { makeD1TreasuryTransactionStore } from './treasury-page-routes'
 import { currentEpochMillis } from './runtime-primitives'
+
+type PublicTreasuryPayoutRow = Readonly<{
+  amount_sat: number
+  created_at: string
+  direction: 'in' | 'out'
+  settled_at: string | null
+  state: 'pending' | 'settled' | 'expired' | 'failed'
+}>
+
+const makeD1PublicTreasuryPayoutStatsStore = (
+  database: D1Database,
+): PublicTreasuryPayoutStatsStore => ({
+  listRecent: async limit => {
+    const result = await database
+      .prepare(
+        `SELECT amount_sat, created_at, direction, settled_at, state
+         FROM treasury_transactions
+         ORDER BY created_at DESC
+         LIMIT ?`,
+      )
+      .bind(limit)
+      .all<PublicTreasuryPayoutRow>()
+
+    return (result.results ?? []).map(row => ({
+      amountSat: row.amount_sat,
+      createdAt: row.created_at,
+      direction: row.direction,
+      settledAt: row.settled_at,
+      state: row.state,
+    }))
+  },
+})
 
 type PublicPylonStatsRouteInput = Partial<PylonDispatchStoreEnv> &
   Readonly<{
@@ -98,7 +129,7 @@ export const handlePublicPylonStatsApi = (
         input.treasuryPayoutStore ??
         (input.OPENAGENTS_DB === undefined
           ? undefined
-          : makeD1TreasuryTransactionStore(input.OPENAGENTS_DB)),
+          : makeD1PublicTreasuryPayoutStatsStore(input.OPENAGENTS_DB)),
     }),
     stats => {
       if (cacheable) statsCache = { at: currentEpochMillis(), stats }

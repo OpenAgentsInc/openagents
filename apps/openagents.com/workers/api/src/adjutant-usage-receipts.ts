@@ -1,10 +1,16 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Schema as S } from 'effect'
 
-import { BILLING_CURRENCY, formatUsdCents } from './billing'
 import { parseJsonRecord } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
+
+const BILLING_CURRENCY = 'USD'
+const formatUsdCents = (cents: number): string =>
+  new Intl.NumberFormat('en-US', {
+    currency: BILLING_CURRENCY,
+    style: 'currency',
+  }).format(cents / 100)
 
 export const ADJUTANT_USAGE_CATEGORIES = [
   'generation',

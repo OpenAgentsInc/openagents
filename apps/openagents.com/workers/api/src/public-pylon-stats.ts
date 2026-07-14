@@ -9,7 +9,6 @@ import {
   parseJsonUnknown,
   stringArrayFromUnknown,
 } from './json-boundary'
-import { nexusPylonPublicReceiptDetailFromLedger } from './nexus-pylon-visibility'
 import {
   type NexusPaymentAuthorityReceiptRecord,
   type NexusTreasuryPayoutAttemptRecord,
@@ -38,7 +37,6 @@ import {
 } from './public-projection-staleness'
 import type { TrainingAuthorityStore } from './training-run-window-authority'
 import { publicTrainingRunSummary } from './training-run-window-authority'
-import type { TreasuryTransactionStore } from './treasury-page-routes'
 
 export const PUBLIC_NEXUS_STATS_URL = 'https://nexus.openagents.com/api/stats'
 export const PUBLIC_PYLON_STATS_URL =
@@ -62,7 +60,6 @@ const PUBLIC_PYLON_EARNING_LAUNCH_GATE_REF =
   'gate.public.pylon.earning_network_counters.v1'
 const PUBLIC_PYLON_SETTLEMENT_TOTALS_GATE_REF =
   'gate.public.pylon.accepted_work_settlement_receipts.v1'
-const OPENAGENTS_PUBLIC_APP_URL = 'https://openagents.com'
 const DEFAULT_STATS_TRAINING_RUN_REF = 'run.tassadar.executor.20260615'
 const onlineHeartbeatStatuses = new Set([
   'available',
@@ -93,10 +90,19 @@ export type PublicPylonSettlementReceiptStore = Readonly<{
   ) => Promise<NexusTreasuryPayoutReconciliationEventRecord | undefined>
 }>
 
-export type PublicTreasuryPayoutStatsStore = Pick<
-  TreasuryTransactionStore,
-  'listRecent'
->
+export type PublicTreasuryPayoutTransaction = Readonly<{
+  amountSat: number
+  createdAt: string
+  direction: 'in' | 'out'
+  settledAt: string | null
+  state: 'pending' | 'settled' | 'expired' | 'failed'
+}>
+
+export type PublicTreasuryPayoutStatsStore = Readonly<{
+  listRecent: (
+    limit: number,
+  ) => Promise<ReadonlyArray<PublicTreasuryPayoutTransaction>>
+}>
 export type PublicTrainingContributorStatsStore = Pick<
   TrainingAuthorityStore,
   | 'listVerificationChallengesForRun'
@@ -930,7 +936,6 @@ const publicPylonSettlementTotalsFromReceipts = async (
     receiptStore: PublicPylonSettlementReceiptStore
   }>,
 ): Promise<PublicPylonSettlementTotals> => {
-  const nowIso = epochMillisToIsoTimestamp(input.nowUnixMs)
   const receipts = await input.receiptStore.listPaymentAuthorityReceipts(1000)
   const settlementReceipts = receipts
     .filter(receipt => receipt.receiptKind === 'settlement_recorded')
@@ -975,23 +980,14 @@ const publicPylonSettlementTotalsFromReceipts = async (
     if (countedByIntent.has(receipt.payoutIntentRef)) continue
     if (intent === undefined || intent.acceptedWorkRefs.length === 0) continue
 
-    const detail = nexusPylonPublicReceiptDetailFromLedger({
-      appUrl: OPENAGENTS_PUBLIC_APP_URL,
-      attempt,
-      event,
-      intent,
-      nowIso,
-      receipt,
-    })
     const sats = satsFromBitcoinMillisats(intent.amount)
 
     if (
       sats === null ||
       !receiptPublicProjectionIsRealBitcoin(receipt) ||
-      !detail.realBitcoinMoved ||
-      detail.receiptKind !== 'settlement_recorded' ||
-      detail.settlement.state !== 'settled' ||
-      !detail.payoutMovement.terminalSettlementClaimAllowed
+      intent.status !== 'settled' ||
+      attempt?.status !== 'confirmed' ||
+      event?.status !== 'matched'
     ) {
       continue
     }

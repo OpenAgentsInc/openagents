@@ -120,7 +120,6 @@ const publicProjection = (
     ]),
   }
 }
-
 export const makeD1SiteReferralPayoutReceiptStore = (
   db: D1Database,
 ): SiteReferralPayoutReceiptStore => ({
