@@ -1719,6 +1719,42 @@ Its evidence changes this document's decisions in the following ways.
    already records as the R1 amendment: local-first by default, account as
    an opt-in upgrade. OpenAgents' version additionally carries receipts and
    durable cross-device truth through Khala Sync, which T3 does not attempt.
+10. **The frontend's strongest transferable artifact is its shared projection
+    kernel.** Web/Electron and mobile share environment-scoped Effect queries,
+    explicit command scheduling, cache-first shell/thread state, HTTP
+    snapshots, WebSocket resume cursors and sequence deduplication, typed
+    cached/synchronizing/live phases, and schema-versioned platform
+    persistence. This is the right service boundary for Effect Native to
+    adapt—strengthened by OpenAgents' replay-to-live marker,
+    acknowledgement/worker-epoch rules, authority classes, and receipts. It is
+    substantially more valuable than copying the visible chat shell.
+11. **Renderer reuse stops below the UI layer, which sharpens the Effect Native
+    requirement.** Electron hosts the exact React/Vite web renderer behind a
+    hardened preload bridge; Expo mobile independently implements navigation,
+    theme tokens, composer, Markdown, diff, terminal, controls, and adaptive
+    layout. The latter proves that native specialization matters, but also
+    leaves two design systems and two implementations of the most complex
+    surfaces. OpenAgents should retain one typed component/token/intent
+    contract with web, React Native, native, and canvas renderers—not adopt
+    T3's independent Tailwind DOM and Uniwind/native trees.
+12. **Conversation rendering is infrastructure.** T3's virtualized and
+    end-anchored Legend List feed, visible-content preservation, bounded
+    Markdown highlight cache, sanitized rich text, worker-backed diff parsing,
+    lazy secondary panels, and persistent Electron webview host are direct
+    references for Desktop/mobile performance contracts. Copy those mechanics
+    behind Effect Native foreign hosts, then add browser/device oracles for
+    focus, keyboard, screen-reader terminal output, reduced motion, contrast,
+    memory, and bundle budgets—the pinned source has material gaps in each of
+    the first five.
+13. **The state split is sound but needs a stricter ownership ledger.** T3
+    mostly keeps server facts in Effect projections and drafts/layout in
+    Zustand, yet command acknowledgement, optimistic UI, cache freshness, and
+    cross-window persistence are partly hand-composed inside feature modules;
+    `ChatView`, `Sidebar`, and the draft store have grown into multi-thousand-
+    line integration boundaries. OpenAgents should declare owner, persistence,
+    freshness, invalidation, acknowledgement, and disposal for every feature
+    state; keep domain state out of renderer stores; and decompose through
+    typed intents/services before adding a second renderer.
 
 Per the standing rule, none of these items is authority here: each lives or
 dies by its owning roadmap gate, issue, or contract when promoted.

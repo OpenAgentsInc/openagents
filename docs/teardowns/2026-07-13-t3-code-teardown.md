@@ -41,9 +41,10 @@ harnesses through four transport kinds — Codex over `codex app-server`
 JSON-RPC/stdio, Claude Code in-process through the Claude Agent SDK, Cursor
 and Grok over ACP (Zed's Agent Client Protocol), OpenCode over its V2 HTTP
 SDK — and normalizes all of them into one **event-sourced CQRS orchestration
-core** persisted in SQLite. React web, Electron desktop, and Expo mobile
-clients consume one hand-written Effect RPC WebSocket contract with ordered
-typed pushes. [source]
+core** persisted in SQLite. The React/Vite web renderer is also the Electron
+desktop renderer; Expo mobile is a separate React Native implementation. All
+three surfaces share the hand-written Effect RPC contract and client runtime,
+but web and mobile do not share UI components or theme tokens. [source]
 
 ```text
 web (React/Vite)   desktop (Electron)   mobile (Expo iOS/Android)
@@ -1119,6 +1120,462 @@ An unverified auto-updater for the tools that hold `danger-full-access` is
 also a supply-chain lesson in the other direction; adopt the ergonomics,
 keep the ledger. [inferred]
 
+## Addendum (2026-07-14): frontend implementation deep dive
+
+The initial audit treated the three clients mostly as projections of the
+server architecture. A second source pass traced the actual render trees,
+state owners, cache layers, component libraries, styling systems, responsive
+rules, and hot-path performance work at the pinned commit. The main correction
+is that T3 does **not** have three independent frontends: Electron hosts the
+same DOM renderer as web, while mobile is a second React Native renderer over
+the shared contracts and client runtime. [source]
+
+```text
+browser                                  Electron main process
+  |                                             |
+  | browser history                     hash history + preload bridge
+  |                                             |
+  +---------- React/Vite web renderer ----------+
+             Tailwind DOM components
+             Base UI / Lexical / xterm / Pierre
+                         |
+                Effect AtomRegistry
+                         |
+              packages/client-runtime
+                         |
+              Effect RPC / snapshots / deltas
+                         |
+                      T3 server
+                         |
+              packages/client-runtime
+                         |
+                Effect AtomRegistry
+                         |
+                Expo / React Native
+             Uniwind + native modules
+                     mobile
+```
+
+The shared boundary is substantial but precise: contracts, connection
+supervision, snapshots, deltas, commands, and domain query state are shared;
+component trees, navigation, theming, local interaction state, and platform
+hosts are not. [source] [inferred]
+
+### Render and navigation topology
+
+#### Web and Electron: one renderer, two histories
+
+`apps/web/src/main.tsx` imports DM Sans, JetBrains Mono, xterm's stylesheet,
+and the global Tailwind stylesheet before creating a React 19 root. It selects
+TanStack Router hash history inside Electron and browser history on the hosted
+web surface, then conditionally wraps the application in Clerk authentication.
+Before that root exists, `index.html` applies the stored/system light or dark
+class and paints a theme-aware splash, avoiding a light-theme flash.
+`AppRoot.tsx` creates one Effect `AtomRegistry` for the renderer and mounts the
+router, preview-automation hosts, and `ElectronBrowserHost`. The latter sits
+outside route content deliberately, so embedded browser webviews survive route
+transitions while still using the same atom registry. [source]
+
+The generated TanStack route tree is file-based. `routes/__root.tsx` performs
+pairing, hosted-auth, and environment gates before presenting the main shell:
+command palette, `AppSidebarLayout`, route outlet, toasts, onboarding, SSH and
+update coordinators, plus the server-event router. The thread route reads the
+environment shell, thread detail, and draft state, delays stale-route repair
+until bootstrap is settled, and mounts `ChatView` inside the sidebar inset.
+This keeps URL identity explicit without making route state the conversation
+authority. [source]
+
+`AppSidebarLayout.tsx` is a resizable off-canvas shell with persisted width,
+window-control insets for Electron, a 13 rem sidebar minimum, and a 40 rem
+minimum main pane. The right-side file/diff/terminal/preview surfaces choose an
+inline panel up to 980 px or a responsive sheet up to 760 px. The renderer is
+therefore a workbench with route-addressable conversation at the center, not a
+collection of independent pages. [source]
+
+Electron does not install a second React tree. `apps/desktop` loads the web
+renderer and contributes privileged capabilities through an explicit preload
+bridge: settings, connection catalog, SSH, updater, preview, window, and secure
+storage operations. The main window is 1100×780 with an 840×620 minimum;
+`contextIsolation`, sandboxing, and disabled Node integration remain the
+default. Preview webviews are separately preference-gated. This is the right
+privilege shape: desktop-specific authority stays in main/preload instead of
+entering ordinary renderer modules. [source]
+
+#### Mobile: shared domain runtime, separate UI product
+
+`apps/mobile/src/App.tsx` builds a different tree: Effect `AtomRegistry`, Clerk
+cloud auth, native appearance, gesture and keyboard providers, safe-area
+context, native navigation theme, blur targets, and portal hosts. `Stack.tsx`
+uses React Navigation's static native stacks and iOS-specific glass/solid
+header presets; flat thread routes preserve native shared-header transitions.
+There is no reuse of the web DOM component library. [source]
+
+The mobile shell is adaptive rather than device-name-based. `lib/layout.ts`
+derives split mode from available space (720×600 threshold), constrains the
+sidebar to 280–460 px, and suppresses side panes when they would crush the
+conversation. `AdaptiveWorkspaceLayout.tsx` animates persisted sidebar and
+inspector widths with Reanimated, while focus-scoped portals avoid rendering
+through screens frozen by `react-native-screens`. This is stronger than a
+simple “tablet breakpoint” implementation. [source]
+
+Mobile is also not a thin WebView. Five local Expo modules provide native
+composer, Markdown, review diff, terminal, and controls implementations.
+`ThreadFeed.tsx` uses `KeyboardAwareLegendList`, patched scroll anchoring and
+inset behavior, and native diff rendering. The price is two implementations of
+the most complex interaction surfaces, not merely two platform adapters.
+[source] [inferred]
+
+### State ownership: five layers with mostly clear authority
+
+The frontend uses several state technologies, but they are not interchangeable.
+At the pinned commit their effective ownership is:
+
+| Layer | Technology | Owns | Does not own |
+| --- | --- | --- | --- |
+| Durable product truth | Server SQLite event store and projections | projects, threads, turns, commands, plans, activities, provider state | renderer layout or draft presentation |
+| Connection and synchronized domain state | Effect services, `packages/client-runtime`, `@effect/atom-react` | environment sessions, connection generation, shell/thread snapshots and deltas, queries, typed commands | durable acceptance or final product authority |
+| Renderer persistence | IndexedDB on web; SQLite and secure storage on mobile | connection catalog, cached shells/threads, server config, VCS refs, schema-versioned recovery data | canonical server facts |
+| Local workbench state | Zustand plus local storage | drafts, right-panel tabs, selection, terminal/diff/preview preferences, pane layout | server-owned thread or run lifecycle |
+| Interaction and address state | React state/refs and TanStack/React Navigation | open controls, focus, cursor, transient gestures, current route | domain truth |
+
+All [source], with the authority interpretation [inferred]. This separation is
+the strongest part of the frontend architecture. The server remains canonical;
+client persistence accelerates startup and reconnect; Zustand is generally
+kept to renderer-local concerns.
+
+#### Shared Effect client runtime
+
+`apps/web/src/rpc/atomRegistry.ts` and
+`apps/mobile/src/state/atom-registry.ts` each provide one unstable Effect
+reactivity `AtomRegistry`. Entity hooks select environment, project, thread,
+message, activity, plan, and session atoms. Query hooks convert `AsyncResult`
+into the familiar data/error/pending/refresh shape, while command hooks run
+typed `AtomCommand`s through the registry. [source]
+
+The deeper behavior lives in `packages/client-runtime/src/state/`:
+
+- **Queries are environment-scoped atom families.** A connection generation
+  change restarts them; stale-while-revalidate defaults to a 30-second stale
+  window, atoms receive an idle TTL, and callers can opt into refresh and
+  subscription behavior. [source]
+- **Commands declare scheduling semantics.** The runtime supports parallel,
+  serial, single-flight, latest-only, and keyed execution; defects become
+  `AsyncResult` failures instead of escaping into components. [source]
+- **The environment shell is cache-first.** A valid cached shell paints first,
+  then a cold path obtains a gzip-friendly HTTP snapshot and a live WebSocket
+  subscription resumes after its sequence. A warm cache skips the network
+  snapshot and resumes directly from its stored sequence. [source]
+- **Thread state follows the same snapshot-plus-delta protocol.** Sequence
+  deduplication protects projections, reconnect resumes after the last cached
+  sequence, and deletion/cached/live states are explicit. [source]
+- **Persistence is a platform contract.** `platform/persistence.ts` defines
+  typed Effect services for connection targets and schema-versioned shell,
+  thread, server-config, and VCS-ref caches. Web and mobile supply different
+  implementations without changing the synchronization algorithm. [source]
+- **Writes are deliberately coalesced.** Shell persistence uses a sliding queue
+  of one plus a 500 ms debounce, preventing every delta from becoming storage
+  traffic. [source]
+
+This is more than “shared networking.” It is a reusable client projection
+kernel: cache lifecycle, freshness, reconnection, query identity, command
+concurrency, and platform persistence are part of one typed contract.
+[inferred]
+
+#### Web persistence and Zustand
+
+Web persistence uses IndexedDB database `t3code:connection-runtime`, version 4,
+with stores for the connection catalog, shell, thread, server configuration,
+and VCS refs. Records are decoded through versioned Effect Schemas. Corrupt
+catalog entries are quarantined instead of trusted, and catalog mutations are
+serialized with an Effect semaphore. Electron may replace the browser catalog
+with secure storage exposed by the desktop bridge. [source]
+
+Zustand fills the intentionally local gap, but at considerable scale.
+`composerDraftStore.ts` is 3,563 lines and persists a versioned, migrated,
+partialized representation of Lexical content and attachment/context tokens.
+`rightPanelStore.ts` persists per-thread file, diff, terminal, and preview
+surfaces. Other stores cover thread selection, terminal UI, preview state, and
+general UI migration. This avoids contaminating server projections with local
+ergonomics, yet leaves contributors reasoning across Effect atoms, Zustand,
+React state, router state, IndexedDB, and local storage in the same feature.
+[source] [inferred]
+
+Mobile implements the same cache contract over Expo SQLite
+(`t3code-client.db`) with WAL and foreign keys, plus secure storage for
+sensitive connection data. Legacy cache records are migrated; schema-invalid
+records are logged and deleted. That is a stronger mobile restart story than
+relying on React Native async key/value storage alone. [source]
+
+The source also exposes seven weak seams to avoid as this architecture grows:
+
+1. `useAtomCommand` returns a settled promise but no shared reactive
+   pending/error atom. `ChatView` and settings therefore build local busy or
+   optimistic state, and the server-settings patch path can discard the
+   command result. Command acknowledgement remains convention rather than one
+   reusable presentation contract. [source]
+2. Freshness is inconsistent. Shell and thread projections expose explicit
+   cached/synchronizing/live/error phases, while VCS refresh failure keeps the
+   old value and only logs. User-visible caches need one envelope containing
+   source, update time, freshness, and error. [source] [inferred]
+3. Desktop encrypts the connection catalog with Electron `safeStorage`, but
+   hosted web stores the catalog—including credentials and remote DPoP token
+   material—as schema-validated JSON in IndexedDB. This makes the browser XSS
+   and at-rest threat assumptions load-bearing. [source]
+4. Persisted Zustand stores and the module-level settings store do not broadly
+   reconcile native `storage` changes. The singleton Electron window mitigates
+   this today; a future multi-window renderer would need main/server ownership
+   or versioned BroadcastChannel/IPC synchronization. [source] [inferred]
+5. Desktop topology changes are polled every three seconds because the preload
+   bridge has no topology event. A host-pushed event with polling only as
+   recovery would reduce latency and background work. [source] [inferred]
+6. Generic query identity uses raw `JSON.stringify` and mutation invalidation
+   is feature-specific. Schema-canonical keys plus a typed dependency/
+   invalidation map would scale more safely. [source] [inferred]
+7. `docs/architecture/overview.md` still names deleted `wsTransport.ts` and
+   `wsNativeApi.ts` paths. The implemented connection authority is now
+   `EnvironmentRegistry`/`EnvironmentSupervisor` plus Effect RPC. For this
+   frontend pass, source supersedes that stale overview. [docs] [source]
+
+### Component and rendering stack
+
+The frontend library choices reveal which work T3 considers product-defining:
+
+| Concern | Web / Electron | Mobile |
+| --- | --- | --- |
+| View/runtime | React 19.2, React DOM, React Compiler | React 19.2, React Native 0.85, Expo 56 |
+| Navigation | TanStack Router, generated file routes | React Navigation static native stack |
+| Domain state | Effect 4 + `@effect/atom-react` + shared client runtime | same |
+| Local state | Zustand, local storage | React state, native persistence, feature stores |
+| Primitive UI | Base UI React plus local shadcn/COSS-style adapters, Lucide | React Native, Expo UI, `@callstack/liquid-glass`, local native controls |
+| Composer | Lexical with custom decorator nodes | local native composer module |
+| Long feeds | Legend List | Legend List / KeyboardAwareLegendList |
+| Markdown/code | `react-markdown`, remark GFM/breaks, rehype raw+sanitize, Shiki | local native Markdown plus Shiki paths |
+| Diff/tree | `@pierre/diffs`, `@pierre/trees` | local native review diff plus Pierre paths |
+| Terminal | xterm 6 | local native terminal module |
+| Motion/interaction | dnd-kit, AutoAnimate, TanStack Pacer | Reanimated, Gesture Handler, native screens/keyboard |
+| Styling | Tailwind CSS 4, CSS variables, one global stylesheet | Uniwind/Tailwind-class bridge plus native dynamic colors |
+
+All [source]. `apps/web/components.json` confirms the shadcn-compatible
+primitive setup: `base-mira` style, Zinc base, CSS variables, Lucide, no React
+Server Components, and COSS/spell registries. The 42 primitives under
+`components/ui/` are local adapters, mostly around Base UI, rather than a stock
+component package dropped into feature code. [source]
+
+#### Hot-path rendering work
+
+The workbench contains serious performance engineering rather than naive chat
+rendering:
+
+- `MessagesTimeline.tsx` renders typed rows through Legend List with a stable
+  item renderer, estimated heights, end anchoring, visible-content retention,
+  and a minimap. Mobile independently implements the equivalent hard scroll
+  problem around keyboard and native inset changes. [source]
+- `ChatMarkdown.tsx` places Shiki/Pierre highlighting behind Suspense and an
+  error boundary, caps its highlight cache at 500 entries / 50 MB, and runs raw
+  HTML through a customized `rehype-sanitize` schema. [source]
+- `DiffWorkerPoolProvider.tsx` sizes a Pierre worker pool to half the available
+  logical processors, clamped from two to six, caps its AST LRU at 240 entries,
+  and synchronizes the active theme. [source]
+- Heavy diff, preview, and file panels are lazy-loaded. React Compiler,
+  `memo`, stable callbacks, shallow Zustand selectors, and prewarming appear on
+  the main conversation/sidebar paths. [source]
+- The Lexical prompt editor uses plain-text/history/on-change plugins and
+  custom decorator nodes for file mentions, skills, and terminal context,
+  reconciling externally controlled draft state with selection position.
+  [source]
+- The xterm host uses incremental buffer appends, 5,000 lines of scrollback,
+  fit/link addons, explicit disposal, and live theme synchronization. [source]
+- The embedded Electron browser host is kept outside the route outlet, avoiding
+  webview teardown and recreation during navigation. [source]
+
+The counterweight is concentration. `ChatView.tsx` is 5,370 lines,
+`Sidebar.tsx` 3,751, `MessagesTimeline.tsx` 2,057,
+`ComposerPromptEditor.tsx` 1,697, and mobile `ThreadFeed.tsx` 1,796. React
+Compiler and virtualization reduce runtime work; they do not reduce the human
+state space or the probability that unrelated behaviors collide inside a
+feature module. [source] [inferred]
+
+Three bundle/network choices leave clear optimization work. The chat graph
+statically imports the xterm drawer even when no terminal is open; the header's
+“open in” menu pulls a large editor-icon source graph; and visible external
+Markdown links request favicons from Google's favicon service, disclosing the
+linked hostname to a third party. Diff, preview, and file chunks are correctly
+lazy, but their Suspense fallbacks are `null`, so a cold chunk can present a
+blank panel rather than progress feedback. [source]
+
+### CSS, themes, and responsive behavior
+
+The web renderer uses Tailwind CSS 4 through the Vite plugin, with 893 lines of
+global CSS. `index.css` defines semantic CSS variables for light and dark
+themes, maps them into Tailwind's `@theme inline` vocabulary, defines the DM
+Sans/monospace typography, safe-area and Electron window-control variables,
+focus defaults, Markdown/code/table rules, and the application-height/overflow
+contract. Colors use OKLCH, Tailwind colors, and `color-mix`; radii and shadow
+levels are centralized. [source]
+
+`useTheme.ts` schema-validates `light | dark | system`, subscribes to OS theme
+changes with `useSyncExternalStore`, toggles the root `.dark` class, updates the
+browser theme-color, and informs the Electron shell. It briefly applies a
+`no-transitions` class during theme changes. `useMediaQuery.ts` provides typed
+breakpoints and coarse/fine-pointer queries. Safe-area utilities and
+`svh`-based sizing make the browser surface usable on mobile and installed-app
+viewports. [source]
+
+Responsive behavior is split between container queries, Tailwind breakpoints,
+off-canvas sidebars, right-panel geometry, safe-area variables, and
+pointer-capability rules. That is more deliberate than width-only responsive
+CSS. Mobile then carries a second independent token sheet (`apps/mobile/global.css`,
+237 lines) with its own light/dark values, font scale, and utilities, plus
+hard-coded native dynamic colors for some headers. [source]
+
+Visually, the web defaults lean on translucent “glass” composer surfaces,
+large soft shadows, blur, a data-URI SVG `feTurbulence` grain over the body,
+and an “ultrathink” spectrum treatment with animated gradient border and
+gradient-clipped text. Mobile intentionally follows iOS liquid-glass language.
+These choices make the surfaces feel related, but no shared token package or
+shared component contract guarantees that relationship. [source] [inferred]
+
+### Source-only interface health audit
+
+This score is a static implementation audit, not a runtime accessibility,
+contrast, bundle, or device-lab certification. The pinned code was not served
+or exercised in this pass. [limitation]
+
+| Category | Score (0–4) | Evidence-based assessment |
+| --- | ---: | --- |
+| Accessibility | 2 | Base UI, semantic controls, labels/live regions, keyboard commands, focus-visible rules, sanitization, and native accessibility props provide a strong base, but core composer, drag, modal, terminal, resize, and motion paths retain material gaps. |
+| Performance | 3 | Virtualized anchored feeds, capped caches, workers, React Compiler, memoization, cache-first projections, and webview lifetime control are strong; xterm/icon graph loading, blank lazy fallbacks, third-party favicons, and component concentration leave measurable work. |
+| Responsive/adaptive | 3 | Container/media/pointer queries, safe areas, off-canvas geometry, sheets, and available-space mobile layout cover all major shapes; custom compact/resize controls bypass the reusable coarse-pointer policy. |
+| Theming/system consistency | 3 | Each renderer has coherent semantic tokens and light/dark/system synchronization, but web and mobile duplicate token vocabularies and terminal/special-effect colors bypass the shared web roles. |
+| Anti-patterns/maintainability | 2 | Credible workbench foundations are offset by global glass/grain/animated-gradient decoration, duplicated complex renderers, and very large feature/store modules. |
+| **Total** | **13/20 — acceptable** | Strong runtime mechanics and adaptivity with significant accessibility, cross-renderer consistency, and decomposition work remaining. |
+
+Prioritized findings:
+
+1. **P1 — the composer is not persistently named and its placeholder is too
+   faint.** Lexical `ContentEditable` receives `aria-placeholder` but no
+   `aria-label` or `aria-labelledby`; the visible placeholder uses
+   `text-muted-foreground/35` (approximately 1.6:1 from the declared theme
+   tokens). Add a stable “Message” label and a contrast-checked placeholder
+   role. [source]
+2. **P1 — manual project ordering is pointer-only.** `Sidebar.tsx` registers
+   only dnd-kit's `PointerSensor`; no keyboard sensor, sortable keyboard
+   coordinates, or move-up/down actions provide an equivalent path. [source]
+3. **P1 — expanded-image modal lacks a complete focus lifecycle.**
+   `components/chat/ExpandedImageDialog.tsx` creates a custom
+   `role="dialog"` overlay and global Escape/arrow handler, but does not trap
+   focus, focus an initial control, restore focus, or inert the background.
+   Replace it with the shared Base UI dialog primitive or reproduce that
+   primitive's tested focus behavior. [source]
+4. **P1 — reduced-motion coverage is incomplete.** Many component transitions
+   use Tailwind `motion-reduce` variants and mobile workspace animation honors
+   `ReduceMotion.System`, but the infinite `ultrathink` rainbow/chroma
+   animations, provider countdown, dialog/toast motion, and status pulses have
+   no complete global `prefers-reduced-motion` fallback or pause path. [source]
+5. **P1 — terminal output is not configured for screen readers.** xterm is
+   created without `screenReaderMode` or a session label, and mounts into an
+   unlabeled `div`. Enable its accessibility mode, name each terminal, and test
+   output announcements. [source]
+6. **P2 — custom navigation and resize controls bypass shared semantics.** The
+   primary sidebar roots are generic `div`s rather than a labelled navigation
+   landmark. Its resize rail is removed from tab order and pointer-only;
+   terminal resize handles and several 24–28 px action controls similarly skip
+   keyboard and coarse-pointer behavior already encoded in `Button`. Use
+   landmarks, separator/range semantics, keyboard increments, and 44 px coarse-
+   pointer hit areas. [source]
+7. **P2 — diff filename opening is pointer-only.** The Pierre title region is
+   styled as clickable and handled through `onClickCapture`, but it is not a
+   button/link or keyboard target. Render a semantic control with Enter/Space
+   activation. [source]
+8. **P2 — core-graph loading and remote favicon behavior are avoidable.**
+   Lazy-load xterm and the editor icon catalog, give lazy panels visible loading
+   states, and replace Google's Markdown favicon endpoint with a local icon,
+   owned cache/proxy, or explicit privacy contract. [source]
+9. **P2 — renderer design drift is structurally permitted.** Web and mobile
+   share contracts and domain runtime but not tokens, primitives, navigation
+   intents, or complex composer/diff/terminal hosts. Visual and accessibility
+   parity therefore depend on duplicate review rather than one executable
+   component contract. [source] [inferred]
+10. **P2 — oversized feature modules and browser-test gaps increase regression
+    radius.** The main conversation, sidebar, feed, and draft store combine
+    rendering, projection, persistence, keyboard, layout, and provider-specific
+    branches. Extract lifecycle-owned feature services and smaller
+    render/presenter boundaries; retain the current pure helpers and colocated
+    tests, and add browser/axe coverage for focus, keyboard, contrast, and
+    motion on these surfaces. [source] [inferred]
+11. **P3 — decoration competes with the otherwise quiet workbench.** Default
+    glass, noise, animated spectrum borders, and gradient text add GPU work and
+    make platform styles harder to normalize. Reserve them for a named semantic
+    state, and provide a flat token fallback. [source] [inferred]
+
+Positive patterns worth retaining are the shared Base UI adapters, explicit
+keyboard command layer, route/bootstrap repair, coarse-pointer awareness,
+safe-area handling, sanitized rich text, virtualized anchored feeds, bounded
+highlight/diff caches, adaptive mobile geometry, and clear renderer/main-process
+privilege separation. [source]
+
+### What the frontend evidence changes for OpenAgents
+
+#### Adapt directly
+
+1. **Treat the client runtime as a projection kernel, not a fetch helper.**
+   Environment-scoped query identity, cached-first shell/thread rendering,
+   snapshot-plus-sequenced-delta repair, schema-versioned platform persistence,
+   explicit freshness/idle policies, and command concurrency modes belong in
+   the shared Effect Native application services. OpenAgents should add its
+   stronger replay-to-live marker, acknowledgement, worker epoch, authority,
+   and receipt rules at that seam. [inferred]
+2. **Make long conversation feeds a named systems problem.** Retain T3's
+   virtualization, stable typed row renderer, end anchoring, visible-content
+   retention, capped rich-text caches, background diff work, and separate
+   mobile keyboard/inset oracles. These are supervision primitives, not visual
+   polish. [inferred]
+3. **Keep desktop privilege outside the shared renderer.** T3's single web/
+   Electron renderer plus explicit preload capabilities is the right sharing
+   boundary. OpenAgents strengthens it with generated bridge contracts,
+   capability grants, Effect lifecycles, and receipts rather than exposing a
+   generic invoke surface. [inferred]
+4. **Use platform-native hosts where the interaction justifies them.** Native
+   terminal, diff, Markdown, composer, and iOS status surfaces are evidence for
+   Effect Native foreign hosts—provided one typed host contract owns lifecycle,
+   events, accessibility, and fallback behavior across renderers. [inferred]
+
+#### Refuse the implementation split
+
+1. **Do not copy the two-design-system topology.** OpenAgents' Effect Native
+   mandate is one typed component and token set with swappable web, React
+   Native, native, and canvas renderers. T3's shared client runtime is a model
+   for the service layer; its independent Tailwind DOM and Uniwind/native
+   component trees are evidence of the drift that mandate must prevent.
+2. **Do not let Zustand become a second domain runtime.** A small renderer-
+   local store is defensible for drafts and geometry, but server facts,
+   connection state, command lifecycle, approvals, and receipts stay in typed
+   Effect services/projections. State owners and persistence policy should be
+   declared per feature.
+3. **Do not make giant components the integration boundary.** `ChatView`- or
+   `Sidebar`-scale modules should decompose into Effect-owned feature services,
+   typed intents, foreign-host adapters, and small renderers before the second
+   platform implementation appears.
+4. **Do not encode product identity as glass/noise/gradient defaults.** The
+   OpenAgents design system should remain semantic and token-driven, respect
+   reduced motion and contrast at the renderer boundary, and reserve expensive
+   decoration for an explicit state rather than the whole shell.
+
+All four are [inferred] adaptations from the source. They do not replace the
+Effect Native dossier, Sol roadmap, typed contracts, or executable guarantees.
+
+### Frontend evidence limitations
+
+This addendum inspected source and dependency manifests at the pinned commit.
+It did not run Lighthouse, axe, VoiceOver/TalkBack, keyboard-only task flows,
+contrast calculation, bundle profiling, memory traces, or representative
+device labs. CSS and component structure establish implementation intent, not
+the performance or accessibility of a shipped binary. Findings tied to
+explicit attributes, input sensors, xterm configuration, and CSS animation are
+direct source defects; perceived visual quality and the severity of module-size
+risk remain partly interpretive.
+[limitation]
+
 ## Primary source map
 
 All paths relative to the pinned clone at `projects/repos/t3code`.
@@ -1136,10 +1593,19 @@ All paths relative to the pinned clone at `projects/repos/t3code`.
 | Runtime modes / approvals | `docs/architecture/runtime-modes.md`; `packages/contracts/src/orchestration.ts` |
 | Checkpoints | `apps/server/src/checkpointing/CheckpointStore.ts`; `CheckpointDiffQuery.ts` |
 | Remote model | `docs/architecture/remote.md`; `docs/architecture/connection-runtime.md`; `packages/client-runtime/` |
+| Shared client projections | `packages/client-runtime/src/state/{runtime,shell,threads,threadReducer,threadDetail}.ts`; `packages/client-runtime/src/platform/persistence.ts` |
+| Web boot / navigation | `apps/web/index.html`; `apps/web/src/main.tsx`; `apps/web/src/AppRoot.tsx`; `apps/web/src/router.ts`; `apps/web/src/routes/{__root,_chat.$environmentId.$threadId}.tsx`; `apps/web/src/components/AppSidebarLayout.tsx` |
+| Web domain and local state | `apps/web/src/state/`; `apps/web/src/rpc/atomRegistry.ts`; `apps/web/src/composerDraftStore.ts`; `apps/web/src/rightPanelStore.ts`; `apps/web/src/uiStateStore.ts` |
+| Web persistence | `apps/web/src/connection/storage.ts`; `apps/desktop/src/app/DesktopConnectionCatalogStore.ts`; `apps/desktop/src/electron/ElectronSafeStorage.ts` |
+| Web components / styling | `apps/web/src/components/ui/`; `apps/web/components.json`; `apps/web/src/index.css`; `apps/web/src/hooks/useTheme.ts`; `apps/web/src/rightPanelLayout.ts` |
+| Conversation rendering | `apps/web/src/components/{ChatView,ChatMarkdown,ComposerPromptEditor,DiffWorkerPoolProvider,ThreadTerminalDrawer}.tsx`; `apps/web/src/components/chat/MessagesTimeline.tsx` |
 | Environment auth | `docs/cloud/environment-auth.md`; `apps/server/src/auth/dpop.ts` |
 | Relay / T3 Connect | `infra/relay/`; `docs/cloud/t3-connect-clerk.md`; `apps/server/src/cloud/ManagedEndpointRuntime.ts` |
 | Desktop security | `apps/desktop/src/window/DesktopWindow.ts`; `apps/desktop/src/preview/WebviewPreferences.ts` |
-| Mobile | `apps/mobile/app.config.ts`; `apps/mobile/modules/`; `apps/mobile/src/widgets/AgentActivity.tsx` |
+| Desktop renderer bridge | `apps/desktop/src/preload.ts`; `apps/desktop/src/ipc/DesktopIpc.ts`; `apps/web/src/browser/ElectronBrowserHost.tsx` |
+| Mobile renderer / navigation | `apps/mobile/src/{App,Stack}.tsx`; `apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx`; `apps/mobile/src/features/threads/ThreadFeed.tsx` |
+| Mobile state / styling | `apps/mobile/src/state/`; `apps/mobile/src/connection/runtime.ts`; `apps/mobile/src/persistence/mobile-database.ts`; `apps/mobile/global.css` |
+| Mobile native hosts | `apps/mobile/app.config.ts`; `apps/mobile/modules/`; `apps/mobile/src/widgets/AgentActivity.tsx` |
 | MCP server | `apps/server/src/mcp/McpHttpServer.ts`; `apps/server/src/mcp/toolkits/preview/tools.ts` |
 | Effect patch | `patches/effect@4.0.0-beta.78.patch`; `pnpm-workspace.yaml` |
 | Lint enforcement | `oxlint-plugin-t3code/rules/` |
