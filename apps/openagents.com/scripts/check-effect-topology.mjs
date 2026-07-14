@@ -6,14 +6,24 @@ import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const OMEGA_EFFECT_VERSION = '4.0.0-beta.70'
+// 2026-07-14 (`build: unify completion checks on Effect beta.94`,
+// 1da7bbc2af): the whole repo — root catalog, Omega worker/web, companion
+// @effect/* packages, nostr-effect (github pin), and the vendored Effect
+// Native workspaces — now runs ONE effect line. The previous three-line
+// topology (Omega beta.70 / vendored beta.94 / isolated Nostr Effect 3.19.8)
+// and its isolation rules are retired; this guard now enforces the single
+// unified line plus the named external peer exceptions below.
+const OMEGA_EFFECT_VERSION = '4.0.0-beta.94'
 const EFFECT_NATIVE_EFFECT_VERSION = '4.0.0-beta.94'
 const FOLDKIT_EFFECT_EXCEPTION_VERSION = '4.0.0-beta.66'
-const ISOLATED_NOSTR_RELAY_EFFECT_VERSION = '3.19.8'
+// effect-cf@0.13.1 still PEERS on ^4.0.0-beta.70 upstream; bun resolves that
+// range to the unified installed beta.94.
+const EFFECT_CF_PEER_RANGE = '^4.0.0-beta.70'
+const NOSTR_EFFECT_PINNED_SPEC = 'github:OpenAgentsInc/nostr-effect#2bb5787'
 const EFFECT_CF_VERSION = '0.13.1'
 const EFFECT_VITEST_VERSION = OMEGA_EFFECT_VERSION
 const EFFECT_VITEST_DEFERRED_NOTE =
-  '@effect/vitest is allowed only on the repo-aligned 4.0.0-beta.70 line; latest stable 0.29.0 still peers on effect ^3.21.0.'
+  `@effect/vitest is allowed only on the unified effect@${OMEGA_EFFECT_VERSION} line; latest stable 0.29.0 still peers on effect ^3.21.0.`
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(SCRIPT_DIR, '..')
@@ -423,255 +433,19 @@ const collectInstalledPackageJsonPaths = root => {
   return packageJsonPaths
 }
 
-const ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS = new Set([
-  'nostr-effect@0.0.12',
-  '@effect/platform@0.93.5',
-  '@effect/schema@0.75.5',
-])
-const ISOLATED_NOSTR_DEPENDENCY_NAMES = new Set([
-  'nostr-effect',
-  '@effect/platform',
-  '@effect/schema',
-])
-const ISOLATED_NOSTR_SOURCE_EDGE =
-  'apps/nostr-relay/package.json -> nostr-effect@0.0.12'
-const REQUIRED_ISOLATED_NOSTR_EXTERNAL_EDGES = new Map([
-  ['@effect/platform@0.93.5', 'nostr-effect@0.0.12'],
-  ['@effect/schema@0.75.5', 'nostr-effect@0.0.12'],
-])
-
-const isIsolatedNostrDependency = ({
-  dependencyEffectVersion,
-  dependencyPackageRef,
-}) =>
-  dependencyEffectVersion === ISOLATED_NOSTR_RELAY_EFFECT_VERSION &&
-  ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS.has(dependencyPackageRef)
-
-const sourceIsolatedNostrEdgePolicyProblem = ({
-  declaredDependencyVersion,
-  dependencyEffectVersion,
-  dependencyPackageRef,
-  parentPackagePath,
-}) => {
-  if (
-    !isIsolatedNostrDependency({
-      dependencyEffectVersion,
-      dependencyPackageRef,
-    })
-  ) {
-    return null
-  }
-
-  if (
-    parentPackagePath === 'apps/nostr-relay/package.json' &&
-    dependencyPackageRef === 'nostr-effect@0.0.12' &&
-    declaredDependencyVersion === '0.0.12'
-  ) {
-    return null
-  }
-
-  return `${parentPackagePath} unexpectedly pulls isolated ${dependencyPackageRef} on effect@${dependencyEffectVersion} via manifest spec ${String(declaredDependencyVersion)}; the only source edge into Effect 3 is exact ${ISOLATED_NOSTR_SOURCE_EDGE}`
-}
-
-const sourceIsolatedNostrEdgePolicyCases = [
-  {
-    input: {
-      declaredDependencyVersion: '0.0.12',
-      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      dependencyPackageRef: 'nostr-effect@0.0.12',
-      parentPackagePath: 'apps/nostr-relay/package.json',
-    },
-    shouldAllow: true,
-  },
-  {
-    input: {
-      declaredDependencyVersion: '^0.0.12',
-      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      dependencyPackageRef: 'nostr-effect@0.0.12',
-      parentPackagePath: 'apps/nostr-relay/package.json',
-    },
-    shouldAllow: false,
-  },
-  {
-    input: {
-      declaredDependencyVersion: '0.0.12',
-      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      dependencyPackageRef: 'nostr-effect@0.0.12',
-      parentPackagePath: 'apps/openagents.com/workers/api/package.json',
-    },
-    shouldAllow: false,
-  },
-  {
-    input: {
-      declaredDependencyVersion: '0.93.5',
-      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      dependencyPackageRef: '@effect/platform@0.93.5',
-      parentPackagePath: 'apps/openagents.com/workers/api/package.json',
-    },
-    shouldAllow: false,
-  },
-  {
-    input: {
-      declaredDependencyVersion: 'github:OpenAgentsInc/nostr-effect#4c52847',
-      dependencyEffectVersion: OMEGA_EFFECT_VERSION,
-      dependencyPackageRef: 'nostr-effect@0.0.12',
-      parentPackagePath: 'apps/openagents.com/workers/api/package.json',
-    },
-    shouldAllow: true,
-  },
-]
-
-const sourceIsolatedNostrEdgePolicyTestProblems =
-  sourceIsolatedNostrEdgePolicyCases.flatMap(({ input, shouldAllow }) => {
-    const allowed = sourceIsolatedNostrEdgePolicyProblem(input) === null
-    return allowed === shouldAllow
-      ? []
-      : [
-          `Internal source dependency-edge policy regression for ${input.parentPackagePath} -> ${input.dependencyPackageRef} on effect@${input.dependencyEffectVersion}: expected ${shouldAllow ? 'allow' : 'deny'}`,
-        ]
-  })
-
-const sourceIsolatedNostrEdgeProblems = []
-const observedIsolatedNostrSourceEdges = new Set()
-
-for (const { json, path } of packageJsons) {
-  const isolatedDependencyEntries = dependencySections(json).flatMap(
-    ([section, dependencies]) =>
-      Object.entries(dependencies)
-        .filter(([dependencyName]) =>
-          ISOLATED_NOSTR_DEPENDENCY_NAMES.has(dependencyName),
-        )
-        .map(([dependencyName, declaredDependencyVersion]) => ({
-          declaredDependencyVersion,
-          dependencyName,
-          section,
-        })),
-  )
-
-  for (const {
-    declaredDependencyVersion,
-    dependencyName,
-    section,
-  } of isolatedDependencyEntries) {
-    try {
-      const dependencyPackageJsonPath = resolveDependencyPackageJson(
-        path,
-        dependencyName,
-      )
-      const dependencyPackageJson = readJson(dependencyPackageJsonPath)
-      const dependencyEffect = resolveEffectFromPackage(
-        dependencyPackageJsonPath,
-      )
-      const dependencyPackageRef = `${dependencyPackageJson.name}@${String(dependencyPackageJson.version)}`
-      const parentPackagePath = repoRelative(path)
-      const policyProblem = sourceIsolatedNostrEdgePolicyProblem({
-        declaredDependencyVersion,
-        dependencyEffectVersion: dependencyEffect.version,
-        dependencyPackageRef,
-        parentPackagePath,
-      })
-
-      if (policyProblem !== null) {
-        sourceIsolatedNostrEdgeProblems.push(policyProblem)
-      } else if (
-        parentPackagePath === 'apps/nostr-relay/package.json' &&
-        declaredDependencyVersion === '0.0.12' &&
-        dependencyPackageRef === 'nostr-effect@0.0.12' &&
-        dependencyEffect.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION
-      ) {
-        observedIsolatedNostrSourceEdges.add(
-          `${parentPackagePath} -> ${dependencyPackageRef}`,
-        )
-      }
-    } catch (error) {
-      sourceIsolatedNostrEdgeProblems.push(
-        `${repoRelative(path)} ${section}.${dependencyName} could not resolve its installed dependency edge: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
-  }
-}
-
-if (!observedIsolatedNostrSourceEdges.has(ISOLATED_NOSTR_SOURCE_EDGE)) {
-  sourceIsolatedNostrEdgeProblems.push(
-    `Isolated Nostr Effect 3 graph is missing required source edge ${ISOLATED_NOSTR_SOURCE_EDGE}`,
-  )
-}
-
-const installedIsolatedNostrEdgePolicyProblem = ({
-  dependencyEffectVersion,
-  dependencyPackageRef,
-  parentEffectVersion,
-  parentPackageRef,
-}) => {
-  if (
-    !isIsolatedNostrDependency({
-      dependencyEffectVersion,
-      dependencyPackageRef,
-    })
-  ) {
-    return null
-  }
-
-  const expectedParent =
-    REQUIRED_ISOLATED_NOSTR_EXTERNAL_EDGES.get(dependencyPackageRef)
-  if (
-    expectedParent === parentPackageRef &&
-    parentEffectVersion === ISOLATED_NOSTR_RELAY_EFFECT_VERSION
-  ) {
-    return null
-  }
-
-  return `${parentPackageRef} unexpectedly pulls isolated ${dependencyPackageRef} on effect@${dependencyEffectVersion}; expected only ${expectedParent ?? 'the apps/nostr-relay source workspace'} on the isolated effect@${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} chain`
-}
-
-const installedIsolatedNostrEdgePolicyCases = [
-  {
-    input: {
-      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      dependencyPackageRef: '@effect/platform@0.93.5',
-      parentEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      parentPackageRef: 'nostr-effect@0.0.12',
-    },
-    shouldAllow: true,
-  },
-  {
-    input: {
-      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      dependencyPackageRef: '@effect/platform@0.93.5',
-      parentEffectVersion: null,
-      parentPackageRef: 'external-main-app-helper@1.0.0',
-    },
-    shouldAllow: false,
-  },
-  {
-    input: {
-      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      dependencyPackageRef: '@effect/schema@0.75.5',
-      parentEffectVersion: OMEGA_EFFECT_VERSION,
-      parentPackageRef: 'nostr-effect@0.0.12',
-    },
-    shouldAllow: false,
-  },
-  {
-    input: {
-      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      dependencyPackageRef: 'nostr-effect@0.0.12',
-      parentEffectVersion: OMEGA_EFFECT_VERSION,
-      parentPackageRef: 'external-main-app-helper@1.0.0',
-    },
-    shouldAllow: false,
-  },
-]
-
-const installedIsolatedNostrEdgePolicyTestProblems =
-  installedIsolatedNostrEdgePolicyCases.flatMap(({ input, shouldAllow }) => {
-    const allowed = installedIsolatedNostrEdgePolicyProblem(input) === null
-    return allowed === shouldAllow
-      ? []
-      : [
-          `Internal installed dependency-edge policy regression for ${input.parentPackageRef} -> ${input.dependencyPackageRef} on effect@${input.dependencyEffectVersion}: expected ${shouldAllow ? 'allow' : 'deny'}`,
-        ]
-  })
+// The Nostr relay rides the unified effect line via a reviewed github pin of
+// nostr-effect. Guard the exact pin so a drive-by respec (registry range,
+// different commit) cannot silently change the relay's protocol/runtime line.
+const nostrRelayPackageJson = readJson(
+  join(REPO_ROOT, 'apps', 'nostr-relay', 'package.json'),
+)
+const nostrRelayPinProblems =
+  nostrRelayPackageJson.dependencies?.['nostr-effect'] ===
+  NOSTR_EFFECT_PINNED_SPEC
+    ? []
+    : [
+        `apps/nostr-relay/package.json dependencies.nostr-effect is ${String(nostrRelayPackageJson.dependencies?.['nostr-effect'])}; expected the reviewed pin ${NOSTR_EFFECT_PINNED_SPEC}`,
+      ]
 
 const installedExternalPullerPolicyProblem = ({
   effectVersion,
@@ -684,17 +458,7 @@ const installedExternalPullerPolicyProblem = ({
     return null
   }
 
-  if (effectVersion === EFFECT_NATIVE_EFFECT_VERSION) {
-    return `${packageRef} unexpectedly resolves vendored Effect Native's effect@${EFFECT_NATIVE_EFFECT_VERSION}; only the exact four source-vendored @effect-native/* workspaces may pull that line`
-  }
-
-  if (effectVersion === ISOLATED_NOSTR_RELAY_EFFECT_VERSION) {
-    return ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS.has(packageRef)
-      ? null
-      : `${packageRef} unexpectedly resolves isolated effect@${ISOLATED_NOSTR_RELAY_EFFECT_VERSION}; only the exact nostr-effect@0.0.12 dependency chain may pull that line`
-  }
-
-  return `${packageRef} resolves unexpected installed Effect runtime line ${effectVersion}`
+  return `${packageRef} resolves unexpected installed Effect runtime line ${effectVersion}; the repo runs one unified effect@${OMEGA_EFFECT_VERSION} line`
 }
 
 const installedExternalPullerPolicyCases = [
@@ -708,15 +472,7 @@ const installedExternalPullerPolicyCases = [
   },
   {
     input: {
-      effectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-      packageName: 'nostr-effect',
-      packageVersion: '0.0.12',
-    },
-    shouldAllow: true,
-  },
-  {
-    input: {
-      effectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      effectVersion: '3.19.8',
       packageName: 'unrelated-effect3-consumer',
       packageVersion: '1.0.0',
     },
@@ -724,8 +480,8 @@ const installedExternalPullerPolicyCases = [
   },
   {
     input: {
-      effectVersion: EFFECT_NATIVE_EFFECT_VERSION,
-      packageName: 'external-effect-native-consumer',
+      effectVersion: '4.0.0-beta.70',
+      packageName: 'stale-previous-line-consumer',
       packageVersion: '1.0.0',
     },
     shouldAllow: false,
@@ -744,9 +500,6 @@ const installedExternalPullerPolicyTestProblems =
 
 const installedExternalEffectPullers = []
 const installedExternalEffectProblems = []
-const installedIsolatedNostrEdgeProblems = []
-const observedIsolatedNostrExternalPullers = new Set()
-const observedIsolatedNostrExternalEdges = new Set()
 const installedPackageJsonPaths =
   collectInstalledPackageJsonPaths(BUN_PACKAGE_STORE)
 
@@ -758,7 +511,6 @@ if (installedPackageJsonPaths.length === 0) {
 
 for (const packageJsonPath of installedPackageJsonPaths) {
   const packageJson = readJson(packageJsonPath)
-  const packageRef = `${packageJson.name ?? repoRelative(packageJsonPath)}@${String(packageJson.version)}`
   // Published devDependencies are build metadata, not an installed runtime
   // edge. Only installed dependency and peer declarations are pullers.
   const runtimeDependencySections = [
@@ -769,12 +521,10 @@ for (const packageJsonPath of installedPackageJsonPaths) {
   const declaresEffect = runtimeDependencySections.some(dependencies =>
     Object.hasOwn(dependencies, 'effect'),
   )
-  let parentEffectVersion = null
 
   if (declaresEffect && packageJson.name !== 'effect') {
     try {
       const resolvedEffect = resolveEffectFromPackage(packageJsonPath)
-      parentEffectVersion = resolvedEffect.version
       installedExternalEffectPullers.push({
         effectVersion: resolvedEffect.version,
         packageName: packageJson.name ?? repoRelative(packageJsonPath),
@@ -789,84 +539,13 @@ for (const packageJsonPath of installedPackageJsonPaths) {
       if (policyProblem !== null) {
         installedExternalEffectProblems.push(policyProblem)
       }
-
-      if (resolvedEffect.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION) {
-        observedIsolatedNostrExternalPullers.add(packageRef)
-      }
     } catch (error) {
       installedExternalEffectProblems.push(
         `${packageJson.name ?? repoRelative(packageJsonPath)} declares Effect but its installed package context could not resolve effect/package.json: ${error instanceof Error ? error.message : String(error)}`,
       )
     }
   }
-
-  const isolatedDependencyNames = new Set(
-    runtimeDependencySections
-      .flatMap(dependencies => Object.keys(dependencies))
-      .filter(dependencyName =>
-        ISOLATED_NOSTR_DEPENDENCY_NAMES.has(dependencyName),
-      ),
-  )
-
-  for (const dependencyName of isolatedDependencyNames) {
-    try {
-      const dependencyPackageJsonPath = resolveDependencyPackageJson(
-        packageJsonPath,
-        dependencyName,
-      )
-      const dependencyPackageJson = readJson(dependencyPackageJsonPath)
-      const dependencyEffect = resolveEffectFromPackage(
-        dependencyPackageJsonPath,
-      )
-      const dependencyPackageRef = `${dependencyPackageJson.name}@${String(dependencyPackageJson.version)}`
-      const policyProblem = installedIsolatedNostrEdgePolicyProblem({
-        dependencyEffectVersion: dependencyEffect.version,
-        dependencyPackageRef,
-        parentEffectVersion,
-        parentPackageRef: packageRef,
-      })
-
-      if (policyProblem !== null) {
-        installedIsolatedNostrEdgeProblems.push(policyProblem)
-      } else if (
-        dependencyEffect.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION &&
-        REQUIRED_ISOLATED_NOSTR_EXTERNAL_EDGES.get(dependencyPackageRef) ===
-          packageRef &&
-        parentEffectVersion === ISOLATED_NOSTR_RELAY_EFFECT_VERSION
-      ) {
-        observedIsolatedNostrExternalEdges.add(
-          `${packageRef} -> ${dependencyPackageRef}`,
-        )
-      }
-    } catch (error) {
-      installedIsolatedNostrEdgeProblems.push(
-        `${packageRef} declares ${dependencyName} but its installed dependency edge could not be resolved: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
-  }
 }
-
-const missingIsolatedNostrExternalEdgeProblems = [
-  ...REQUIRED_ISOLATED_NOSTR_EXTERNAL_EDGES,
-]
-  .map(
-    ([dependencyPackageRef, parentPackageRef]) =>
-      `${parentPackageRef} -> ${dependencyPackageRef}`,
-  )
-  .filter(edge => !observedIsolatedNostrExternalEdges.has(edge))
-  .map(
-    edge =>
-      `Isolated Nostr Effect 3 graph is missing required installed dependency edge ${edge}`,
-  )
-
-const missingIsolatedNostrExternalPullerProblems = [
-  ...ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS,
-]
-  .filter(puller => !observedIsolatedNostrExternalPullers.has(puller))
-  .map(
-    puller =>
-      `Isolated Nostr Effect 3 chain is missing expected installed puller ${puller}`,
-  )
 
 for (const [
   packagePath,
@@ -945,8 +624,8 @@ const criticalPackageExpectations = [
     context: 'apps/nostr-relay/package.json',
     dependency: 'nostr-effect',
     expectedDependencyVersion: '0.0.12',
-    expectedEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
-    label: 'isolated Nostr relay -> nostr-effect',
+    expectedEffectVersion: OMEGA_EFFECT_VERSION,
+    label: 'Nostr relay -> reviewed nostr-effect pin',
   },
 ]
 
@@ -1006,19 +685,18 @@ const runBunWhyEffect = () => {
 
 // `bun pm why` is deliberately report-only. Bun 1.3.11 displays compatible
 // peer ranges beneath every satisfying Effect line, so effect-cf's
-// `^4.0.0-beta.70` peer appears under beta.94 even though its installed
-// package-local `effect` symlink resolves to beta.70. The authoritative checks
-// above resolve `effect/package.json` from each package's own context.
+// `^4.0.0-beta.70` peer appears under beta.94. The authoritative checks above
+// resolve `effect/package.json` from each package's own installed context.
 const effectWhyOutput = runBunWhyEffect()
 
 const trackedInstalledVersions = [
-  ['OpenAgents/Omega runtime', OMEGA_EFFECT_VERSION],
+  ['unified repo effect line', OMEGA_EFFECT_VERSION],
   ['vendored Effect Native runtime', EFFECT_NATIVE_EFFECT_VERSION],
   ['effect-cf', EFFECT_CF_VERSION],
   ['foldkit', '0.102.1'],
   [
-    'isolated @openagentsinc/nostr-relay effect line',
-    `${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} via nostr-effect@0.0.12 only`,
+    '@openagentsinc/nostr-relay nostr-effect pin',
+    `${NOSTR_EFFECT_PINNED_SPEC} on the unified line`,
   ],
   [
     '@effect/vitest',
@@ -1030,16 +708,16 @@ const bunLock = readFileSync(BUN_LOCK_PATH, 'utf8')
 
 const lockExpectations = [
   {
-    description: `effect-cf@${EFFECT_CF_VERSION} peers on effect ^${OMEGA_EFFECT_VERSION}`,
+    description: `effect-cf@${EFFECT_CF_VERSION}`,
     pattern: `"effect-cf": ["effect-cf@${EFFECT_CF_VERSION}"`,
   },
   {
-    description: `effect-cf peerDependencies.effect is ^${OMEGA_EFFECT_VERSION}`,
-    pattern: `"effect": "^${OMEGA_EFFECT_VERSION}"`,
+    description: `effect-cf peerDependencies.effect is ${EFFECT_CF_PEER_RANGE}`,
+    pattern: `"effect": "${EFFECT_CF_PEER_RANGE}"`,
   },
   {
-    description: `openagents.com Worker resolves a package-local effect@${OMEGA_EFFECT_VERSION}`,
-    pattern: `"@openagentsinc/api-worker/effect": ["effect@${OMEGA_EFFECT_VERSION}"`,
+    description: `the unified installed effect@${OMEGA_EFFECT_VERSION}`,
+    pattern: `"effect": ["effect@${OMEGA_EFFECT_VERSION}"`,
   },
   {
     description: `foldkit@0.102.1 peers on effect ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
@@ -1063,14 +741,9 @@ const problems = [
   ...directEffectVersionProblems,
   ...directCompanionVersionProblems,
   ...resolvedEffectProblems,
-  ...sourceIsolatedNostrEdgePolicyTestProblems,
-  ...sourceIsolatedNostrEdgeProblems,
+  ...nostrRelayPinProblems,
   ...installedExternalPullerPolicyTestProblems,
   ...installedExternalEffectProblems,
-  ...installedIsolatedNostrEdgePolicyTestProblems,
-  ...installedIsolatedNostrEdgeProblems,
-  ...missingIsolatedNostrExternalEdgeProblems,
-  ...missingIsolatedNostrExternalPullerProblems,
   ...criticalResolutionProblems,
   ...lockProblems,
   ...unexpectedEffectVitestReferences.map(
@@ -1081,13 +754,11 @@ const problems = [
 
 console.log('Effect topology report')
 console.log('')
-console.log(`OpenAgents/Omega line: effect@${OMEGA_EFFECT_VERSION}`)
-console.log(
-  `Vendored Effect Native line: effect@${EFFECT_NATIVE_EFFECT_VERSION} (exact four-package source boundary)`,
-)
+console.log(`Unified repository line: effect@${OMEGA_EFFECT_VERSION}`)
+console.log('Vendored Effect Native workspaces: unified on the repository line')
 console.log(`effect-cf line: effect-cf@${EFFECT_CF_VERSION}`)
 console.log(
-  `Isolated Nostr relay line: effect@${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} via nostr-effect@0.0.12 only`,
+  `Nostr relay: ${NOSTR_EFFECT_PINNED_SPEC} on effect@${OMEGA_EFFECT_VERSION}`,
 )
 console.log(`@effect/vitest deferred: ${EFFECT_VITEST_DEFERRED_NOTE}`)
 console.log('')
@@ -1113,13 +784,7 @@ criticalResolutionRows.forEach(row =>
   ),
 )
 console.log(
-  `- installed external Effect pullers checked: ${installedExternalEffectPullers.length} (beta.70 or the exact three-package Nostr beta3 chain; none may resolve vendored beta.94)`,
-)
-console.log(
-  `- isolated Nostr source edge checked: ${ISOLATED_NOSTR_SOURCE_EDGE}`,
-)
-console.log(
-  `- isolated Nostr installed edges checked: ${[...observedIsolatedNostrExternalEdges].sort().join(', ')}`,
+  `- installed external Effect pullers checked: ${installedExternalEffectPullers.length}; every one resolves effect@${OMEGA_EFFECT_VERSION}`,
 )
 console.log('')
 console.log(
