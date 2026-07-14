@@ -109,14 +109,12 @@ import {
   makeExaClient,
 } from './exa'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import {
   OA_JOB_TOPIC_ADJUTANT_ENRICHMENT,
   makeOaJobEnqueueForEnv,
   type OaJobEnqueue,
   type OaJobQueueProducerEnv,
 } from './oa-job-queue-producer'
-import { githubIdentityTokenKey } from './onboarding/github'
 // KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
 // mirroring database is a passthrough for non-scoped statements and
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
@@ -136,7 +134,6 @@ import {
 type OperatorAdjutantEnv = OpenAgentsWorkerConfigEnv &
   OaJobQueueProducerEnv &
   Readonly<{
-    AUTH_KV?: AuthKvStore | undefined
     OPENAGENTS_DB: D1Database
   }>
 type HttpResponse = globalThis.Response
@@ -352,7 +349,6 @@ export class PreflightOperatorAdjutantAssignmentRequest extends S.Class<Prefligh
   'PreflightOperatorAdjutantAssignmentRequest',
 )({
   includeCallbackLag: S.optionalKey(S.Boolean),
-  launchChecklist: S.optionalKey(AutopilotSiteLaunchChecklist),
 }) {}
 
 export class ClearOperatorAdjutantCurrentRunRequest extends S.Class<ClearOperatorAdjutantCurrentRunRequest>(
@@ -366,7 +362,6 @@ export class LaunchOperatorAdjutantAssignmentRequest extends S.Class<LaunchOpera
   'LaunchOperatorAdjutantAssignmentRequest',
 )({
   includeCallbackLag: S.optionalKey(S.Boolean),
-  launchChecklist: S.optionalKey(AutopilotSiteLaunchChecklist),
   providerAccountId: S.optionalKey(S.String),
   providerAccountRef: S.optionalKey(S.String),
   runnerBackend: S.optionalKey(S.String),
@@ -1172,22 +1167,6 @@ const requireAdminSession = <
 
     return session
   })
-
-const readOperatorGitHubIdentityToken = async (
-  env: OperatorAdjutantEnv,
-  userId: string,
-): Promise<string | undefined> => {
-  // Fail-soft on storage errors: enrichment simply proceeds without the
-  // operator's GitHub identity token (CFG-3 #8518: Postgres KvStore, not KV).
-  try {
-    return (
-      (await authKvStoreForEnv(env).get(githubIdentityTokenKey(userId))) ??
-      undefined
-    )
-  } catch {
-    return undefined
-  }
-}
 
 const rejectUnlessMethod = (
   request: Request,
@@ -3470,15 +3449,6 @@ const readAssignmentReview = (
     }
   })
 
-const launchChecklistComplete = (
-  checklist: PreflightOperatorAdjutantAssignmentRequest['launchChecklist'],
-): boolean =>
-  checklist?.sourceReviewed === true &&
-  checklist.buildReviewed === true &&
-  checklist.audienceReviewed === true &&
-  checklist.secretsReviewed === true &&
-  checklist.urlReviewed === true
-
 const sourceRepositoryDetails = (
   order: PreflightSoftwareOrderRow | null,
   site: PreflightSiteRow | null,
@@ -3761,14 +3731,6 @@ const siteRequiredForAssignment = (assignment: AdjutantAssignment): boolean =>
   assignment.assignmentKind === 'site_review' ||
   assignment.assignmentKind === 'site_deployment'
 
-const publicLaunchChecklistRequired = (
-  assignment: AdjutantAssignment,
-  site: PreflightSiteRow | null,
-): boolean =>
-  assignment.assignmentKind === 'site_deployment' &&
-  site !== null &&
-  (site.access_mode === 'public' || site.visibility === 'public')
-
 const researchGateStatus = (
   researchPolicy: AdjutantResearchPolicy,
   researchBrief: AdjutantResearchBrief | null,
@@ -3990,10 +3952,6 @@ const assignmentSourceChecks = (
       assignment,
     )
     const siteRequired = siteRequiredForAssignment(assignment)
-    const requiresLaunchChecklist = publicLaunchChecklistRequired(
-      assignment,
-      site,
-    )
     const checks: Array<OperatorAdjutantCheck> = []
 
     checks.push(
@@ -4337,24 +4295,6 @@ const assignmentSourceChecks = (
             'ok',
             'Assignment records a pushed commit SHA.',
             { commitSha: assignment.commitSha },
-          ),
-    )
-
-    checks.push(
-      requiresLaunchChecklist && !launchChecklistComplete(body.launchChecklist)
-        ? operatorCheck(
-            'sites_launch_checklist',
-            'blocked',
-            'Public Site deployment work requires the Sites launch checklist.',
-            { siteId: assignment.siteId },
-          )
-        : operatorCheck(
-            'sites_launch_checklist',
-            'ok',
-            requiresLaunchChecklist
-              ? 'Public Site launch checklist is complete.'
-              : 'Sites launch checklist is not required for this assignment.',
-            { required: requiresLaunchChecklist },
           ),
     )
 
@@ -5722,9 +5662,6 @@ export const makeOperatorAdjutantRoutes = <
             ...(body.includeCallbackLag === undefined
               ? {}
               : { includeCallbackLag: body.includeCallbackLag }),
-            ...(body.launchChecklist === undefined
-              ? {}
-              : { launchChecklist: body.launchChecklist }),
           },
           config.exa.enabled,
         )

@@ -62,7 +62,6 @@ type OperatorOrderTriageRouteDependencies<
 }>
 
 export const OrderTriageClassification = S.Literals([
-  'runnable_site',
   'runnable_general_autopilot',
   'needs_clarification',
   'smoke_or_test',
@@ -234,7 +233,6 @@ class OperatorOrderTriageSessionError extends S.TaggedErrorClass<OperatorOrderTr
 
 type OperatorOrderTriageRouteError =
   | AdjutantAssignmentError
-  | AutopilotSiteError
   | OperatorOrderTriageBadRequest
   | OperatorOrderTriageForbidden
   | OperatorOrderTriageSessionError
@@ -265,7 +263,7 @@ type FirstBatchAssignmentResult = Readonly<{
   nextAction: string
   orderStatus: CustomerOrderStatus
   receiptId: string | null
-  site: AutopilotSiteProject | null
+  site: null
   siteId: string | null
   softwareOrderId: string
   summary: string
@@ -472,8 +470,6 @@ type FirstBatchMonitorItem = Readonly<{
 
 type FoldoverInventorySourceKind =
   | 'adjutant_assignment'
-  | 'site_builder_artifact'
-  | 'site_project'
   | 'software_order'
 
 type FoldoverInventoryState =
@@ -542,29 +538,6 @@ type FoldoverAssignmentRow = Readonly<{
   visibility: string
 }>
 
-type FoldoverSiteRow = Readonly<{
-  active_deployment_id: string | null
-  active_version_id: string | null
-  archived_at: string | null
-  id: string
-  software_order_id: string | null
-  status: string
-  updated_at: string
-  visibility: string
-}>
-
-type FoldoverArtifactRow = Readonly<{
-  archived_at: string | null
-  artifact_ref: string
-  created_at: string
-  id: string
-  metadata_json: string
-  order_id: string | null
-  session_id: string
-  session_status: string
-  site_id: string | null
-}>
-
 const d1Effect = <A>(
   operation: string,
   run: () => Promise<A>,
@@ -587,7 +560,6 @@ const numericLimit = (url: URL): number => {
 const isRunnableClassification = (
   classification: OrderTriageClassification,
 ): boolean =>
-  classification === 'runnable_site' ||
   classification === 'runnable_general_autopilot'
 
 const isActiveAssignmentStatus = (status: string | null): boolean =>
@@ -618,29 +590,8 @@ const titleFromRecord = (record: OperatorOrderTriageRecord): string => {
   return `Site for ${record.softwareOrderId}`
 }
 
-const slugFromRecord = (record: OperatorOrderTriageRecord): string => {
-  const base = titleFromRecord(record)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48)
-    .replace(/-+$/g, '')
-
-  return `${base === '' ? 'site' : base}-${record.softwareOrderId
-    .replace(/^software_order_/, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 24)}`
-}
-
-const objectiveFromRecord = (
-  record: OperatorOrderTriageRecord,
-  site: AutopilotSiteProject | null,
-): string =>
-  record.classification === 'runnable_site'
-    ? `Prepare the first-batch Autopilot Site assignment for ${site?.title ?? titleFromRecord(record)} from software order ${record.softwareOrderId}. Generate a task packet and preflight plan, but do not deploy without explicit review.`
-    : `Prepare first-batch Autopilot fulfillment for software order ${record.softwareOrderId}. Generate a task packet and preflight plan, but do not launch without explicit review.`
+const objectiveFromRecord = (record: OperatorOrderTriageRecord): string =>
+  `Prepare first-batch Autopilot fulfillment for software order ${record.softwareOrderId}. Run operator preflight, but do not launch without explicit review.`
 
 const statusForCreatedAssignment: CustomerOrderStatus = 'agent_queued'
 
@@ -1468,9 +1419,8 @@ const createFirstBatchAssignment = (
 ): Effect.Effect<
   FirstBatchAssignmentResult,
   | AdjutantAssignmentError
-  | AutopilotSiteError
   | OrderTriageStorageError,
-  AdjutantAssignmentService | AutopilotSitesService
+  AdjutantAssignmentService
 > =>
   Effect.gen(function* () {
     const requiresFirstBatchEligibility = mode === 'first_batch'
@@ -1534,18 +1484,6 @@ const createFirstBatchAssignment = (
       return alreadyAssignedResult(record, dryRun, receiptId)
     }
 
-    const site =
-      record.classification === 'runnable_site'
-        ? yield* (yield* AutopilotSitesService).createProjectFromSoftwareOrder({
-            accessMode: 'customer_owner',
-            actorUserId,
-            softwareOrderId: record.softwareOrderId,
-            slug: record.order.siteSlug ?? slugFromRecord(record),
-            title: record.order.siteTitle ?? titleFromRecord(record),
-            visibility: 'team',
-          })
-        : null
-
     if (dryRun) {
       return {
         assignment: null,
@@ -1553,18 +1491,16 @@ const createFirstBatchAssignment = (
         classification: record.classification,
         customerSafeStatus: 'queued',
         customerSafeSummary:
-          record.classification === 'runnable_site'
-            ? 'OpenAgents is ready to create a website assignment for this order.'
-            : 'OpenAgents is ready to create an Autopilot assignment for this order.',
+          'OpenAgents is ready to create an Autopilot assignment for this order.',
         decision: 'would_create_assignment' as const,
         dryRun,
         firstBatchEligible: record.firstBatchEligible,
         holdReason: null,
-        nextAction: 'Create task packet and run operator preflight.',
+        nextAction: 'Run operator preflight.',
         orderStatus: record.order.status,
         receiptId: null,
-        site,
-        siteId: site?.id ?? record.order.siteProjectId,
+        site: null,
+        siteId: null,
         softwareOrderId: record.softwareOrderId,
         summary: `Would create first-batch assignment for software order ${record.softwareOrderId}.`,
       }
@@ -1580,15 +1516,11 @@ const createFirstBatchAssignment = (
     const assignment = yield* (yield* AdjutantAssignmentService).createAssignment(
       {
         assignedByUserId: actorUserId,
-        assignmentKind:
-          record.classification === 'runnable_site'
-            ? 'site_generation'
-            : 'general_order_fulfillment',
-        objective: objectiveFromRecord(record, site),
+        assignmentKind: 'general_order_fulfillment',
+        objective: objectiveFromRecord(record),
         softwareOrderId: record.softwareOrderId,
         status: 'preflight_pending',
         visibility: 'team',
-        ...(site?.id === undefined ? {} : { siteId: site.id }),
       },
     )
 
@@ -1602,10 +1534,10 @@ const createFirstBatchAssignment = (
       payload: {
         classification: record.classification,
         firstBatchEligible: record.firstBatchEligible,
-        nextAction: 'Create task packet and run operator preflight.',
+        nextAction: 'Run operator preflight.',
         orderTriageRecordId: record.id,
         prepareMode: mode,
-        siteId: site?.id ?? null,
+        siteId: null,
         softwareOrderId: record.softwareOrderId,
       },
       summary:
@@ -1626,12 +1558,12 @@ const createFirstBatchAssignment = (
         assignmentKind: assignment.assignmentKind,
         classification: record.classification,
         firstBatchEligible: record.firstBatchEligible,
-        nextAction: 'Create task packet and run operator preflight.',
+        nextAction: 'Run operator preflight.',
         prepareMode: mode,
-        siteId: site?.id ?? null,
+        siteId: null,
         softwareOrderId: record.softwareOrderId,
       },
-      siteId: site?.id ?? null,
+      siteId: null,
       summary:
         mode === 'first_batch'
           ? 'First-batch assignment created from typed order triage. No launch was started.'
@@ -1644,18 +1576,16 @@ const createFirstBatchAssignment = (
       classification: record.classification,
       customerSafeStatus: 'queued',
       customerSafeSummary:
-        record.classification === 'runnable_site'
-          ? 'OpenAgents queued this website order for Autopilot preflight.'
-          : 'OpenAgents queued this request for Autopilot preflight.',
+        'OpenAgents queued this request for Autopilot preflight.',
       decision: 'created_assignment' as const,
       dryRun,
       firstBatchEligible: record.firstBatchEligible,
       holdReason: null,
-      nextAction: 'Create task packet and run operator preflight.',
+      nextAction: 'Run operator preflight.',
       orderStatus: statusForCreatedAssignment,
       receiptId,
-      site,
-      siteId: site?.id ?? null,
+      site: null,
+      siteId: null,
       softwareOrderId: record.softwareOrderId,
       summary: `Created first-batch assignment ${assignment.id} for software order ${record.softwareOrderId}.`,
     }
@@ -1710,9 +1640,8 @@ const assignFirstBatch = (
     summary: FirstBatchAssignmentSummary
   }>,
   | AdjutantAssignmentError
-  | AutopilotSiteError
   | OrderTriageStorageError,
-  AdjutantAssignmentService | AutopilotSitesService
+  AdjutantAssignmentService
 > =>
   Effect.gen(function* () {
     const dryRun = input.dryRun ?? false
@@ -1748,10 +1677,9 @@ const prepareOrderFulfillment = (
 ): Effect.Effect<
   FirstBatchAssignmentResult,
   | AdjutantAssignmentError
-  | AutopilotSiteError
   | OrderTriageSoftwareOrderNotFound
   | OrderTriageStorageError,
-  AdjutantAssignmentService | AutopilotSitesService
+  AdjutantAssignmentService
 > =>
   Effect.gen(function* () {
     const record = yield* requireTriageRecordByOrderId(db, identityDb, softwareOrderId)
@@ -2079,52 +2007,6 @@ const readFoldoverAssignments = (
     ).bind(limit).all<FoldoverAssignmentRow>()
   ).pipe(Effect.map(result => result.results ?? []))
 
-const readFoldoverSites = (
-  db: D1Database,
-  limit: number,
-): Effect.Effect<ReadonlyArray<FoldoverSiteRow>, OrderTriageStorageError> =>
-  d1Effect('orderTriage.foldover.sites', () =>
-    db.prepare(
-      `SELECT id,
-              software_order_id,
-              status,
-              visibility,
-              active_version_id,
-              active_deployment_id,
-              updated_at,
-              archived_at
-       FROM site_projects
-       WHERE archived_at IS NULL
-       ORDER BY updated_at DESC
-       LIMIT ?`,
-    ).bind(limit).all<FoldoverSiteRow>()
-  ).pipe(Effect.map(result => result.results ?? []))
-
-const readFoldoverArtifacts = (
-  db: D1Database,
-  limit: number,
-): Effect.Effect<ReadonlyArray<FoldoverArtifactRow>, OrderTriageStorageError> =>
-  d1Effect('orderTriage.foldover.artifacts', () =>
-    db.prepare(
-      `SELECT a.id,
-              a.artifact_ref,
-              a.metadata_json,
-              a.created_at,
-              a.archived_at,
-              s.id AS session_id,
-              s.site_id,
-              s.order_id,
-              s.status AS session_status
-       FROM site_builder_artifacts a
-       INNER JOIN site_builder_sessions s
-          ON s.id = a.session_id
-       WHERE a.archived_at IS NULL
-         AND s.archived_at IS NULL
-       ORDER BY a.created_at DESC
-       LIMIT ?`,
-    ).bind(limit).all<FoldoverArtifactRow>()
-  ).pipe(Effect.map(result => result.results ?? []))
-
 const foldoverInventorySummary = (
   items: ReadonlyArray<FoldoverInventoryItem>,
 ): FoldoverInventorySummary => {
@@ -2134,8 +2016,6 @@ const foldoverInventorySummary = (
   }
   const bySourceKind: Record<FoldoverInventorySourceKind, number> = {
     adjutant_assignment: 0,
-    site_builder_artifact: 0,
-    site_project: 0,
     software_order: 0,
   }
   const byState: Record<FoldoverInventoryState, number> = {
@@ -2171,16 +2051,9 @@ const foldoverInventory = (
 ): Effect.Effect<FoldoverInventoryReport, OrderTriageStorageError> =>
   Effect.gen(function* () {
     const nowIso = runtime.nowIso()
-    const [
-      softwareOrders,
-      assignments,
-      sites,
-      artifacts,
-    ] = yield* Effect.all([
+    const [softwareOrders, assignments] = yield* Effect.all([
       readFoldoverSoftwareOrders(db, limit),
       readFoldoverAssignments(db, limit),
-      readFoldoverSites(db, limit),
-      readFoldoverArtifacts(db, limit),
     ])
 
     const softwareOrderItems = softwareOrders.map(row => {
@@ -2225,54 +2098,9 @@ const foldoverInventory = (
         updatedAt: row.updated_at,
       } satisfies FoldoverInventoryItem
     })
-    const siteItems = sites.map(row => {
-      const privacyState = row.visibility === 'public'
-        ? 'public_safe'
-        : 'private_only'
-      const state = foldoverState(row.status, row.updated_at, nowIso)
-
-      return {
-        artifactRef: row.active_version_id,
-        assignmentId: null,
-        foldableIntoAutopilot: foldableForState(state),
-        id: row.id,
-        orderId: row.software_order_id,
-        privacyState,
-        reasonRefs: sourceReasonRef('site_project', state, privacyState),
-        siteId: row.id,
-        sourceKind: 'site_project',
-        state,
-        status: row.status,
-        updatedAt: row.updated_at,
-      } satisfies FoldoverInventoryItem
-    })
-    const artifactItems = artifacts.map(row => {
-      const privacyState = safeMetadataFlag(row.metadata_json, 'publicSafe')
-        ? 'public_safe'
-        : 'private_only'
-      const state = foldoverState(row.session_status, row.created_at, nowIso)
-
-      return {
-        artifactRef: row.artifact_ref,
-        assignmentId: null,
-        foldableIntoAutopilot: foldableForState(state),
-        id: row.id,
-        orderId: row.order_id,
-        privacyState,
-        reasonRefs: sourceReasonRef('site_builder_artifact', state, privacyState),
-        siteId: row.site_id,
-        sourceKind: 'site_builder_artifact',
-        state,
-        status: row.session_status,
-        updatedAt: row.created_at,
-      } satisfies FoldoverInventoryItem
-    })
-    const items = [
-      ...softwareOrderItems,
-      ...assignmentItems,
-      ...siteItems,
-      ...artifactItems,
-    ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    const items = [...softwareOrderItems, ...assignmentItems].sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    )
 
     return {
       dryRun: true,
@@ -2295,9 +2123,8 @@ export class OrderTriageService extends Context.Service<
         summary: FirstBatchAssignmentSummary
       }>,
       | AdjutantAssignmentError
-      | AutopilotSiteError
       | OrderTriageStorageError,
-      AdjutantAssignmentService | AutopilotSitesService
+      AdjutantAssignmentService
     >
     readonly foldoverInventory: (
       limit: number,
@@ -2318,10 +2145,9 @@ export class OrderTriageService extends Context.Service<
     ) => Effect.Effect<
       FirstBatchAssignmentResult,
       | AdjutantAssignmentError
-      | AutopilotSiteError
       | OrderTriageSoftwareOrderNotFound
       | OrderTriageStorageError,
-      AdjutantAssignmentService | AutopilotSitesService
+      AdjutantAssignmentService
     >
     readonly listQueue: (
       limit: number,
@@ -2409,20 +2235,17 @@ const routeErrorResponse = (
         { status: 409 },
       )
     case 'AdjutantAssignmentSiteNotFound':
-    case 'AutopilotSiteProjectNotFound':
       return noStoreJsonResponse(
         { error: 'site_not_found', siteId: error.siteId },
         { status: 404 },
       )
     case 'AdjutantAssignmentSoftwareOrderNotFound':
-    case 'AutopilotSiteSoftwareOrderNotFound':
     case 'OrderTriageSoftwareOrderNotFound':
       return noStoreJsonResponse(
         { error: 'software_order_not_found', softwareOrderId: error.softwareOrderId },
         { status: 404 },
       )
     case 'AdjutantAssignmentUnsafePayload':
-    case 'AutopilotSiteUnsafePayload':
       return noStoreJsonResponse(
         { error: 'unsafe_payload_rejected' },
         { status: 400 },
@@ -2431,11 +2254,6 @@ const routeErrorResponse = (
       return noStoreJsonResponse(
         { error: 'assignment_validation_error', reason: error.reason },
         { status: 400 },
-      )
-    case 'AutopilotSiteSlugUnavailable':
-      return noStoreJsonResponse(
-        { error: 'site_slug_unavailable', slug: error.slug },
-        { status: 409 },
       )
     case 'OperatorOrderTriageBadRequest':
       return noStoreJsonResponse(
@@ -2449,7 +2267,6 @@ const routeErrorResponse = (
     case 'OperatorOrderTriageUnauthorized':
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     case 'AdjutantAssignmentStorageError':
-    case 'AutopilotSiteStorageError':
     case 'OrderTriageStorageError':
       return noStoreJsonResponse({ error: 'storage_error' }, { status: 500 })
     default:
@@ -2531,7 +2348,6 @@ const runRoute = (
     HttpResponse,
     OperatorOrderTriageRouteError,
     | AdjutantAssignmentService
-    | AutopilotSitesService
     | OrderTriageService
   >,
 ): Effect.Effect<HttpResponse> =>
@@ -2539,7 +2355,6 @@ const runRoute = (
     Effect.provide(
       Layer.mergeAll(
         AdjutantAssignmentService.layer(env),
-        AutopilotSitesService.layer(env),
         OrderTriageService.layer(env),
       ),
     ),
