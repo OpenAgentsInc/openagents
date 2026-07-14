@@ -28,7 +28,6 @@ import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
-import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import {
   ADMIN_OPS_HEALTH_PATH,
   ADMIN_OPS_RUNS_PATH,
@@ -425,7 +424,6 @@ import {
   type EmailCampaignDispatcherResult,
   dispatchDueEmailCampaignSends,
 } from './email-campaign-dispatcher'
-import type { OnboardingDripOrderState } from './email-onboarding-drip'
 import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
 import {
   isEmailSequenceSendEnabled,
@@ -567,8 +565,6 @@ import {
   makeFireworksAdapter,
 } from './inference/fireworks-adapter'
 import { runFleetBurnStallDetectorScheduled } from './inference/fleet-burn-stall-detector'
-import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
-import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
 import { makeGemma4Adapter } from './inference/gemma4-adapter'
 import { handleGlmFleetReadiness } from './inference/glm-fleet-readiness-routes'
@@ -602,29 +598,7 @@ import {
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolRuntime,
 } from './inference/hydralisk-adapter'
-import {
-  checkFreeAllowancePreflight,
-} from './inference/inference-free-allowance'
-import {
-  decideFreeKeyMint,
-  isFreeTierEnabled,
-  makeFreeTierGate,
-  markAccountFreeTierAsync,
-  parseInternalAccountDailyTokenCaps,
-  readAccountFreeTier,
-  readFreeKeyMintsToday,
-  recordFreeKeyMintAsync,
-  resolveFreeKeyMintCap,
-  resolveFreeTierQuota,
-  sanitizeFreeKeyLabel,
-} from './inference/inference-free-tier-key'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
-import {
-  isOperatorExemptionEnabled,
-  makeOperatorExemptionGate,
-} from './inference/inference-operator-exemption'
-import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
-import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
 import {
   isConfidentialComputeEnabled,
   makePaidPrivacyResolver,
@@ -799,7 +773,7 @@ import {
 } from './khala-hosted-runtime-dispatch'
 import {
   hostedTurnUsageFromArtanisMind,
-  recordHostedTurnUsageAndCharge,
+  recordHostedTurnUsage,
 } from './khala-hosted-runtime-metering'
 import {
   combineMcpCatalogs,
@@ -872,7 +846,6 @@ import { handleLander2Page } from './lander2-routes'
 import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
 import { handleLander5Page } from './lander5-routes'
-import { enrollListSubscriberInSequence } from './list-sequence-enrollment'
 import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from './marketing-agency-claim-upgrade'
 import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import { makeInMemoryMarketingAgencySelfServeClaimStore } from './marketing-agency-self-serve-claim-upgrade'
@@ -975,7 +948,6 @@ import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
 import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
-import { makeOperatorSitesRoutes } from './operator-sites-routes'
 import {
   type OperatorTargetUser,
   readOperatorTargetUser,
@@ -991,12 +963,10 @@ import {
   makeD1PrivateProjectWorkspaceStore,
   makePrivateProjectWorkspaceRoutes,
 } from './private-project-workspace-routes'
-import { publicProductPromisesDocument } from './product-promises'
 import { handlePublicPromiseAuditApi } from './promise-transition-audit-routes'
 import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
-  lastVerifiedAtByPromise,
   makeD1PromiseTransitionReceiptStore,
 } from './promise-transition-receipt-routes'
 import { probeProviderApiKey } from './provider-account-api-key'
@@ -1052,7 +1022,6 @@ import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
-import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { makePublicPartnerPayoutReceiptRoutes } from './public-partner-payout-receipt-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
@@ -1176,23 +1145,7 @@ import {
   handleSignatureUsageMeteringApi,
   isSignatureUsageMeteringEnabled,
 } from './signature-usage-metering-routes'
-import { routeSiteCrawlSurfaceRequest } from './site-crawl-surfaces-routes'
-import { resolveSiteFormSpec } from './site-form-spec-registry'
-import {
-  isSiteFormCaptureEnabled,
-  makeSitePageFormCaptureRoutes,
-} from './site-page-form-capture-routes'
-import {
-  type ReferralConsumptionResult,
-  consumePendingReferralForUser,
-} from './site-referral-attribution-consumption'
-import { makeSiteReferralInspectionRoutes } from './site-referral-inspection-routes'
-import { sendSiteReferralOnboardingForConsumption } from './site-referral-onboarding'
 import { makeD1SiteReferralPayoutReceiptStore } from './site-referral-payout-receipts'
-import { makeSiteReferralRoutes } from './site-referral-routes'
-import { PENDING_REFERRAL_COOKIE } from './site-referrals'
-import { sitesContentDatabaseForEnv } from './sites-content-store'
-import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import {
   makeD1StripeCheckoutReceiptStore,
   stripeCheckoutReceiptStoreForEnv,
@@ -3274,35 +3227,6 @@ const verifySession = async (
   return verifyOpenAuthUserTokens(access, cookies.get(REFRESH_COOKIE), env, ctx)
 }
 
-const scheduleSiteReferralOnboardingEmail = (
-  ctx: ExecutionContext,
-  env: EmailCampaignDispatcherBindings,
-  session: VerifiedSession,
-  referralResult: ReferralConsumptionResult,
-  orderState: OnboardingDripOrderState,
-): void => {
-  if (referralResult._tag !== 'consumed') {
-    return
-  }
-
-  scheduleBackgroundWork(
-    ctx,
-    sendSiteReferralOnboardingForConsumption(openAgentsDatabase(env), {
-      appOrigin: getAppOrigin(env),
-      displayName: session.user.name,
-      email: session.user.email,
-      orderState,
-      referralResult,
-      resend: getResendEmailConfig(env),
-      userId: session.user.userId,
-    }).catch(error =>
-      logWorkerRouteError('site_referral_onboarding_failed', error, {
-        userId: session.user.userId,
-      }),
-    ),
-  )
-}
-
 const { appendRefreshedSessionCookies, requireBrowserSession } =
   makeBrowserSessionBoundary<UserSubject, Env>({
     persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
@@ -3679,25 +3603,6 @@ const handlePublicHomeApi = (request: Request) =>
           ],
         }),
       )
-
-const handlePublicProductPromisesApi = (request: Request, db: D1Database) =>
-  request.method !== 'GET'
-    ? Effect.succeed(methodNotAllowed(['GET']))
-    : Effect.promise(async () => {
-        const document = publicProductPromisesDocument()
-        const receipts = await makeD1PromiseTransitionReceiptStore(db)
-          .listReceipts(200)
-          .catch(() => [])
-        const verifiedAt = lastVerifiedAtByPromise(receipts)
-
-        return noStoreJsonResponse({
-          ...document,
-          promises: document.promises.map(promise => ({
-            ...promise,
-            lastVerifiedAt: verifiedAt.get(promise.promiseId) ?? null,
-          })),
-        })
-      })
 
 const handleThreadPage = async (
   request: Request,
@@ -4434,21 +4339,7 @@ const handleSessionApi = async (
   }
 
   await upsertUser(identityDbForEnv(env), session.user)
-  const referralResult = await consumePendingReferralForUser(
-    // KS-8.14 (#8325): consume-once attribution writes mirror fail-soft.
-    businessDomainDatabaseForEnv(env),
-    workerRuntime,
-    {
-      pendingAttributionId: parseCookies(request).get(PENDING_REFERRAL_COOKIE),
-      userId: session.user.userId,
-    },
-  ).catch(error => {
-    logWorkerRouteError('site_referral_session_consumption_failed', error)
-
-    return { _tag: 'none' as const }
-  })
   const accountContext = await readAuthenticatedPageContext(env, session)
-  scheduleSiteReferralOnboardingEmail(ctx, env, session, referralResult, 'none')
 
   const response = noStoreJsonResponse({
     authenticated: true,
@@ -4472,13 +4363,6 @@ const handleSessionApi = async (
 
   if (session.tokens !== undefined) {
     appendSessionCookies(response.headers, session.tokens)
-  }
-
-  if (referralResult._tag !== 'none') {
-    response.headers.append(
-      'set-cookie',
-      expiredCookie(PENDING_REFERRAL_COOKIE),
-    )
   }
 
   return response
@@ -5471,22 +5355,6 @@ type SiteCustomerNotificationOutcome = Readonly<{
   skipReason?: string | undefined
 }>
 
-type ReviewReadyNotificationRow = Readonly<{
-  assignment_current_run_id: string | null
-  assignment_goal_id: string | null
-  assignment_id: string | null
-  assignment_visibility: 'private' | 'team' | 'public' | null
-  deployment_id: string | null
-  display_name: string | null
-  order_id: string | null
-  primary_email: string | null
-  site_id: string
-  site_title: string | null
-  site_url: string | null
-  target_user_id: string | null
-  version_id: string
-}>
-
 type ReviewReadyArtifactNotificationRow = Readonly<{
   artifact_id: string
   artifact_title: string
@@ -5502,33 +5370,6 @@ type ReviewReadyArtifactNotificationRow = Readonly<{
   repository_full_name: string | null
   target_user_id: string | null
 }>
-
-const reviewReadyNotificationPayloadJson = (
-  input: Readonly<{
-    deploymentId: string | null
-    emailMessageId: string | null
-    emailStatus: string
-    providerMessageId?: string | null | undefined
-    siteId: string
-    siteUrl: string | null
-    skipReason?: string | undefined
-    softwareOrderId: string | null
-    stage: 'review_ready'
-    versionId: string
-  }>,
-): string =>
-  JSON.stringify({
-    deploymentId: input.deploymentId,
-    emailMessageId: input.emailMessageId,
-    emailStatus: input.emailStatus,
-    providerMessageId: input.providerMessageId ?? null,
-    siteId: input.siteId,
-    siteUrl: input.siteUrl,
-    skipReason: input.skipReason ?? null,
-    softwareOrderId: input.softwareOrderId,
-    stage: input.stage,
-    versionId: input.versionId,
-  })
 
 const reviewReadyArtifactNotificationPayloadJson = (
   input: Readonly<{
@@ -5552,331 +5393,6 @@ const reviewReadyArtifactNotificationPayloadJson = (
     softwareOrderId: input.softwareOrderId,
     stage: input.stage,
   })
-
-const siteRevisionUrl = (
-  siteUrl: string | null,
-  versionId: string | null,
-): string | null =>
-  siteUrl === null || versionId === null
-    ? null
-    : `${siteUrl.replace(/\/+$/, '')}/versions/${encodeURIComponent(versionId)}`
-
-const readPendingReviewReadyNotifications = async (
-  db: D1Database,
-  identityDb: IdentityDb,
-): Promise<ReadonlyArray<ReviewReadyNotificationRow>> => {
-  // CFG-4 Domain 2 (#8519): the old `LEFT JOIN users` is gone — the D1
-  // query returns the order's user id and a second Postgres read fills in
-  // the notification target (deleted users stay excluded, matching the old
-  // `users.deleted_at IS NULL` join condition).
-  const rows = await db
-    .prepare(
-      `SELECT site_projects.id AS site_id,
-              site_projects.title AS site_title,
-              site_projects.active_version_id AS version_id,
-              site_projects.active_deployment_id AS deployment_id,
-              site_deployments.url AS site_url,
-              software_orders.id AS order_id,
-              software_orders.user_id AS order_user_id,
-              adjutant_assignments.id AS assignment_id,
-              adjutant_assignments.goal_id AS assignment_goal_id,
-              adjutant_assignments.current_run_id AS assignment_current_run_id,
-              adjutant_assignments.visibility AS assignment_visibility
-         FROM site_projects
-         JOIN site_versions
-           ON site_versions.id = site_projects.active_version_id
-          AND site_versions.site_id = site_projects.id
-         LEFT JOIN site_deployments
-           ON site_deployments.id = site_projects.active_deployment_id
-          AND site_deployments.site_id = site_projects.id
-         LEFT JOIN software_orders
-           ON software_orders.id = site_projects.software_order_id
-          AND software_orders.archived_at IS NULL
-         LEFT JOIN adjutant_assignments
-           ON adjutant_assignments.id = (
-                SELECT id
-                  FROM adjutant_assignments AS assignment
-                 WHERE assignment.site_id = site_projects.id
-                   AND assignment.archived_at IS NULL
-                 ORDER BY assignment.updated_at DESC
-                 LIMIT 1
-              )
-        WHERE site_projects.archived_at IS NULL
-          AND site_projects.active_version_id IS NOT NULL
-          AND json_extract(site_versions.metadata_json, '$.customerReviewState') = 'customer_review_ready'
-          AND NOT EXISTS (
-                SELECT 1
-                  FROM site_events
-                  JOIN email_messages
-                    ON email_messages.id = site_events.email_message_id
-                 WHERE site_events.site_id = site_projects.id
-                   AND site_events.version_id = site_projects.active_version_id
-                   AND site_events.type = 'adjutant.notification.review_ready'
-                   AND email_messages.status = 'accepted'
-              )
-        ORDER BY site_versions.created_at ASC
-        LIMIT 10`,
-    )
-    .all<
-      Omit<
-        ReviewReadyNotificationRow,
-        'target_user_id' | 'display_name' | 'primary_email'
-      > &
-        Readonly<{ order_user_id: string | null }>
-    >()
-    .then(result => result.results)
-
-  const profiles = await readIdentityUserProfiles(
-    identityDb,
-    rows.flatMap(row =>
-      row.order_user_id === null ? [] : [row.order_user_id],
-    ),
-  )
-
-  return rows.map(({ order_user_id, ...row }) => {
-    const profile =
-      order_user_id === null ? undefined : profiles.get(order_user_id)
-    const liveProfile =
-      profile === undefined || profile.deletedAt !== null ? undefined : profile
-    return {
-      ...row,
-      display_name: liveProfile?.displayName ?? null,
-      primary_email: liveProfile?.primaryEmail ?? null,
-      target_user_id: liveProfile?.userId ?? null,
-    }
-  })
-}
-
-const sendReviewReadySiteNotification = async (
-  env: Parameters<typeof getResendEmailConfig>[0],
-  row: ReviewReadyNotificationRow,
-): Promise<SiteCustomerNotificationOutcome> => {
-  // KS-8.12 (#8323): writes site_events — sites dual-write mirror seam.
-  const db = sitesContentDatabaseForEnv(env)
-  // KS-8.17 (#8361): the adjutant_assignment_events write below rides the
-  // SEPARATE supervision long-tail mirror.
-  const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
-  const email = row.primary_email?.trim()
-  const resend = getResendEmailConfig(env)
-  const notification =
-    await (async (): Promise<SiteCustomerNotificationOutcome> => {
-      if (row.order_id === null || row.target_user_id === null) {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'missing_order_notification_target',
-        }
-      }
-
-      if (email === undefined || email === '') {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'missing_customer_email',
-        }
-      }
-
-      if (resend === undefined) {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'email_config_missing',
-        }
-      }
-
-      const notificationInput = new OrderSitesTransactionalEmailInput({
-        appOrigin: getAppOrigin(env),
-        ...(row.assignment_id === null
-          ? {}
-          : { assignmentId: row.assignment_id }),
-        artifactLabel: null,
-        artifactUrl: null,
-        customerSafeStatus: 'Ready for review',
-        displayName: row.display_name ?? email,
-        eventRef: row.version_id,
-        lifecycleKind: 'review_ready',
-        nextAction:
-          'Open your order status page, review the latest Site revision, and send any follow-up comment.',
-        orderId: row.order_id,
-        revisionUrl: siteRevisionUrl(row.site_url, row.version_id),
-        safeReason: null,
-        siteId: row.site_id,
-        siteTitle: row.site_title,
-        siteUrl: row.site_url,
-        sourceAuthorityRefs: [
-          'docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md#email-and-drip-campaign-plan',
-          'system.review_ready_site_notification_reconciler.v1',
-        ],
-        targetRefs: [
-          row.order_id,
-          row.site_id,
-          row.version_id,
-          ...(row.deployment_id === null ? [] : [row.deployment_id]),
-          ...(row.assignment_id === null ? [] : [row.assignment_id]),
-        ],
-        to: email,
-      })
-
-      const result = await observedEffect(
-        'Email.sendReviewReadySiteNotification',
-        sendOrderSitesTransactionalEmailWithLedger(
-          db,
-          resend,
-          new OrderSitesTransactionalEmailInput({
-            ...notificationInput,
-            idempotencyKey:
-              buildOrderSitesTransactionalEmailIdempotencyKey(
-                notificationInput,
-              ),
-          }),
-          {
-            actorUserId: 'system:review-ready-reconciler',
-            metadata: {
-              assignmentId: row.assignment_id,
-              deploymentId: row.deployment_id,
-              eventSource: 'review_ready_site_notification_reconciler',
-              lifecycleKind: 'review_ready',
-              siteId: row.site_id,
-              softwareOrderId: row.order_id,
-              stage: 'review_ready',
-              versionId: row.version_id,
-            },
-            sourceAuthorityRef:
-              'system.review_ready_site_notification_reconciler.v1',
-            targetUserId: row.target_user_id,
-          },
-        ),
-      )
-
-      return result.ok
-        ? {
-            emailMessageId: result.emailMessageId,
-            emailStatus: 'accepted',
-            providerMessageId: result.providerMessageId,
-          }
-        : {
-            emailMessageId: result.emailMessageId,
-            emailStatus: 'failed',
-            skipReason: result.errorMessage,
-          }
-    })()
-  const now = currentIsoTimestamp()
-  const payload = reviewReadyNotificationPayloadJson({
-    deploymentId: row.deployment_id,
-    emailMessageId: notification.emailMessageId,
-    emailStatus: notification.emailStatus,
-    providerMessageId: notification.providerMessageId,
-    siteId: row.site_id,
-    siteUrl: row.site_url,
-    skipReason: notification.skipReason,
-    softwareOrderId: row.order_id,
-    stage: 'review_ready',
-    versionId: row.version_id,
-  })
-  const summary =
-    notification.emailStatus === 'accepted'
-      ? 'Autopilot customer review-ready email notification was accepted.'
-      : notification.emailStatus === 'failed'
-        ? 'Autopilot customer review-ready email notification failed.'
-        : 'Autopilot customer review-ready email notification is needed.'
-
-  if (row.assignment_id !== null) {
-    const assignmentEventId = compactRandomId('adjutant_assignment_event')
-    await db
-      .prepare(
-        `INSERT INTO adjutant_assignment_events
-           (id,
-            assignment_id,
-            software_order_id,
-            site_id,
-            goal_id,
-            run_id,
-            event_type,
-            visibility,
-            summary,
-            actor_user_id,
-            payload_json,
-            email_message_id,
-            created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'adjutant.notification.review_ready', ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        assignmentEventId,
-        row.assignment_id,
-        row.order_id,
-        row.site_id,
-        row.assignment_goal_id,
-        row.assignment_current_run_id,
-        row.assignment_visibility ?? 'public',
-        summary,
-        'system:review-ready-reconciler',
-        payload,
-        notification.emailMessageId,
-        now,
-      )
-      .run()
-    await supervisionMirror?.mirrorRowsByKey('adjutant_assignment_events', [
-      [assignmentEventId],
-    ])
-  }
-
-  await db
-    .prepare(
-      `INSERT INTO site_events
-         (id,
-          site_id,
-          version_id,
-          deployment_id,
-          type,
-          summary,
-          actor_user_id,
-          actor_run_id,
-          payload_json,
-          email_message_id,
-          created_at)
-       VALUES (?, ?, ?, ?, 'adjutant.notification.review_ready', ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      compactRandomId('site_event'),
-      row.site_id,
-      row.version_id,
-      row.deployment_id,
-      summary,
-      'system:review-ready-reconciler',
-      row.assignment_current_run_id,
-      payload,
-      notification.emailMessageId,
-      now,
-    )
-    .run()
-
-  return notification
-}
-
-const sendPendingReviewReadySiteNotifications = async (
-  env: Parameters<typeof getResendEmailConfig>[0],
-): Promise<void> => {
-  if (getResendEmailConfig(env) === undefined) {
-    return
-  }
-
-  const pending = await readPendingReviewReadyNotifications(
-    openAgentsDatabase(env),
-    identityDbForEnv(env),
-  )
-
-  await Promise.all(
-    pending.map(row =>
-      sendReviewReadySiteNotification(env, row).catch(error => {
-        logWorkerRouteWarning('review_ready_site_notification_failed', {
-          error: errorMessage(error),
-          siteId: row.site_id,
-          versionId: row.version_id,
-        })
-      }),
-    ),
-  )
-}
 
 const readPendingReviewReadyArtifactNotifications = async (
   db: D1Database,
@@ -6938,127 +6454,6 @@ export const handleAdminReissueAgentToken = async (
   }
 }
 
-// Khala FREE API MODE self-serve mint (issue #6228). Mints a rate-limited FREE
-// `oa_agent_` API key that may call the single public model `openagents/khala`
-// (own-infra GPT-OSS / Gemini Flash) with NO funded balance, within a per-key
-// daily quota (the balance-gate bypass + zero-debit metering live in
-// inference-free-tier-key.ts). It REUSES the existing agent-registration auth +
-// token plumbing — a free key is a normal agent credential, just tagged free
-// tier — so there is no parallel auth/inference stack. ABUSE-RESISTANT: minting
-// is bounded per client IP per UTC day (no unbounded minting). The simplest safe
-// option is anonymous + IP-rate-limited (no email required); an optional label is
-// only a display name. The raw IP is hashed (SHA-256), never stored or logged.
-//
-// INERT until INFERENCE_FREE_TIER_ENABLED is on: the endpoint returns 404 so the
-// surface is honestly absent until free mode is armed.
-export const handleFreeKeyMint = async (
-  request: Request,
-  env: OpenAgentsWorkerEnv,
-  agentRegistrationStore?: AgentRegistrationStore,
-): Promise<Response> => {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
-  }
-  if (!isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED)) {
-    return notFound()
-  }
-
-  const body = (await request.json().catch(() => ({}))) as {
-    label?: unknown
-  }
-  const label = sanitizeFreeKeyLabel(
-    typeof body?.label === 'string' ? body.label : null,
-  )
-
-  const db = openAgentsDatabase(env)
-  const clientIp =
-    request.headers.get('cf-connecting-ip') ??
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    'unknown'
-  const ipHash = await sha256Hex(clientIp)
-  const nowIso = currentIsoTimestamp()
-  const mintDay = nowIso.slice(0, 10)
-
-  // ABUSE GUARD: bound the number of free keys one IP can mint per UTC day.
-  // Env-overridable (FREE_KEY_MAX_MINTS_PER_IP_PER_DAY) so the cap can be raised
-  // without a deploy if ops/canaries need fresh keys during an incident (AAR
-  // 2026-06-25).
-  const mintsToday = await readFreeKeyMintsToday(db, ipHash, mintDay)
-  const mintGate = decideFreeKeyMint({
-    mintsToday,
-    maxMintsPerDay: resolveFreeKeyMintCap(env),
-  })
-  if (!mintGate.allowed) {
-    return withAgentRateLimitHeaders(
-      jsonResponse(
-        {
-          error: 'free_key_mint_rate_limited',
-          maxMintsPerDay: mintGate.maxMintsPerDay,
-          reason: mintGate.reasonRef,
-        },
-        { status: 429 },
-      ),
-    )
-  }
-
-  const store = agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env)
-
-  try {
-    const registration = await createProgrammaticAgentRegistration(store, {
-      displayName: label,
-    })
-    const accountRef = `agent:${registration.user.id}`
-    // KS-8.9 (#8320): fire-safe Postgres dual-write mirror for the mint
-    // writes (no-op when the seam is unbound/off).
-    const entitlementsMirror = inferenceEntitlementsMirrorForEnv(env)
-    await markAccountFreeTierAsync(
-      db,
-      {
-        accountRef,
-        mintSource: 'self_serve_anonymous',
-      },
-      entitlementsMirror,
-    )
-    await recordFreeKeyMintAsync(db, { ipHash, mintDay }, entitlementsMirror)
-
-    return withAgentRateLimitHeaders(
-      jsonResponse(
-        {
-          tier: 'free',
-          model: 'openagents/khala',
-          credential: {
-            token: registration.credential.token,
-            tokenPrefix: registration.credential.tokenPrefix,
-            createdAt: registration.credential.createdAt,
-          },
-          quota: {
-            maxRequestsPerDay: resolveFreeTierQuota(env).maxRequestsPerDay,
-            maxTokensPerDay: resolveFreeTierQuota(env).maxTokensPerDay,
-            window: 'utc_day',
-          },
-          usage:
-            'Send this token as the Authorization: Bearer credential to POST /api/v1/chat/completions with {"model":"openagents/khala"}. Free within the daily quota; beyond it, add credits.',
-          // DATA-SHARING DISCLOSURE (#6296). Honest, code-accurate terms for the
-          // free tier: free usage is captured by default as redacted, private
-          // (owner_only) traces that may be used to improve/train models; pay for
-          // privacy (or use confidential compute) to opt out; public sharing is
-          // opt-in only. The same canonical disclosure is served at
-          // GET /api/public/free-tier-data-sharing for agents.
-          dataSharing: freeTierDataSharingDisclosure(),
-        },
-        { status: 201 },
-      ),
-    )
-  } catch (error) {
-    if (isUniqueConstraintError(error)) {
-      return withAgentRateLimitHeaders(
-        jsonResponse({ error: 'free_key_mint_conflict' }, { status: 409 }),
-      )
-    }
-    return serverError()
-  }
-}
-
 const agentBalanceAuthForStore =
   (store: ReturnType<typeof makeD1AgentRegistrationStore>) =>
   async (request: Request): Promise<{ actorRef: string } | undefined> => {
@@ -7402,30 +6797,21 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       : { ok: true, text: result.text, usage }
   }
 
-  // #8555: exact usage metering + credit debit for the hosted lane. The token
-  // ledger writes the exact `token_usage_events` row (+ public tokens-served
-  // projection + Postgres mirror); the live ledger metering hook debits the
-  // owner's credits and best-effort projects the `scope.user.<userId>`
-  // `credit_balance` delta so the mobile balance chip fans out live.
+  // Exact provider usage recording for the hosted lane. This preserves the
+  // historical usage projection without pricing, charging, or settlement.
   const ledger = makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
     onIngestedEvent: makeTokensServedProjectionObserver(env),
     ...tokenLedgerWriteStoreOptionForEnv(env),
   })
-  const meteringHook = stubMeteringHook
-
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   try {
     const summary = await runHostedRuntimeTurnDispatch({
       complete,
-      // Balance gate (#8555, #8467). Refuse a positively-empty owner; a missing
-      // balance row or a read failure is UNDETERMINED (null) and never blocks.
-      readOwnerBalanceMsat: async () => null,
       recordUsage: input =>
-        recordHostedTurnUsageAndCharge(
+        recordHostedTurnUsage(
           {
             ledger,
             log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
-            meteringHook,
           },
           input,
         ),
@@ -7437,7 +6823,6 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       logWorkerRouteWarning('hosted_runtime_dispatch_tick', {
         answered: summary.answered,
         failed: summary.failed,
-        refused: summary.refused,
         scanned: summary.scanned,
         skipped: summary.skipped,
       })
@@ -7702,8 +7087,6 @@ const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
     }),
 })
 
-
-const siteReferralRoutes = makeSiteReferralRoutes()
 
 const syncDependencyErrorReason = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -8072,22 +7455,6 @@ const onboardingRoutes = makeOnboardingRoutes({
   appendRefreshedSessionCookies,
   requireBrowserSession,
   requireUserBearerSession,
-  siteReferralOnboarding: ({ env, orderState, referralResult, session }) =>
-    sendSiteReferralOnboardingForConsumption(openAgentsDatabase(env), {
-      appOrigin: getAppOrigin(env),
-      displayName: session.user.name,
-      email: session.user.email,
-      orderState,
-      referralResult,
-      resend: getResendEmailConfig(env),
-      userId: session.user.userId,
-    }),
-})
-
-const siteReferralInspectionRoutes = makeSiteReferralInspectionRoutes({
-  appendRefreshedSessionCookies,
-  isOpenAgentsAdminEmail,
-  requireBrowserSession,
 })
 
 // Khala Sync mutator registry (KS-3.1, #8291): named server-authoritative
@@ -8288,95 +7655,6 @@ const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
-// Site page form-capture wiring (#5523 / DE-9 #5532; promise
-// autopilot_sites.native_email_sequences.v1, yellow). Default OFF via
-// SITE_FORM_CAPTURE_ENABLED: when the flag is unset the route returns undefined
-// for every request and the omni chain falls through exactly as today. When
-// armed it resolves a page's FormCaptureSpec from the active site version's
-// metadata_json (via site-form-spec-registry) and persists captured leads
-// through the native-lists addSubscriber sink. The registry is the authority on
-// whether a formId is published (spec.id === formId); the SQL only narrows
-// candidate active versions whose metadata_json mentions the form key.
-const sitePageFormCaptureRoutes = makeSitePageFormCaptureRoutes<WorkerBindings>(
-  {
-    isEnabled: env =>
-      isSiteFormCaptureEnabled(
-        (env as unknown as { SITE_FORM_CAPTURE_ENABLED?: string })
-          .SITE_FORM_CAPTURE_ENABLED,
-      ),
-    makeSink: env => ({
-      addSubscriber: async input => {
-        const db = makeCrmEmailDatabaseForEnv(env)
-        const lists = makeNativeListsService(db)
-        const result = await lists.addSubscriber(input)
-
-        if (
-          input.sequenceSlug === undefined ||
-          input.sequenceSlug.trim() === ''
-        ) {
-          return result
-        }
-
-        const sequenceEnrollment = await enrollListSubscriberInSequence(
-          db,
-          {
-            email: result.subscriber.email,
-            listId: input.listId,
-            sequenceSlug: input.sequenceSlug,
-          },
-          'system:site-form-capture',
-        )
-
-        return {
-          ...result,
-          sequenceEnrollment:
-            sequenceEnrollment.status === 'enrolled'
-              ? {
-                  scheduledSendCount: sequenceEnrollment.scheduledSendCount,
-                  status: sequenceEnrollment.status,
-                }
-              : {
-                  reason: sequenceEnrollment.reason,
-                  status: sequenceEnrollment.status,
-                },
-        }
-      },
-    }),
-    readSiteFormMetadata: async (env, formId) => {
-      const row = await openAgentsDatabase(env)
-        .prepare(
-          `SELECT site_versions.metadata_json AS metadata_json
-           FROM site_projects
-           JOIN site_versions
-             ON site_versions.id = site_projects.active_version_id
-            AND site_versions.site_id = site_projects.id
-          WHERE site_projects.archived_at IS NULL
-            AND site_projects.active_version_id IS NOT NULL
-            AND json_extract(site_versions.metadata_json, '$.formSpecs')
-                IS NOT NULL
-            AND instr(site_versions.metadata_json, ?1) > 0
-          ORDER BY site_versions.created_at DESC
-          LIMIT 25`,
-        )
-        .bind(formId)
-        .all<{ metadata_json: string }>()
-        .then(result => result.results)
-
-      // The registry validates spec.id === formId and decodes defensively, so the
-      // first candidate whose metadata actually publishes this formId wins; a
-      // metadata blob that merely mentions the id as a substring resolves to
-      // undefined here and is skipped.
-      for (const candidate of row) {
-        const spec = resolveSiteFormSpec(candidate.metadata_json, formId)
-        if (spec !== undefined) {
-          return candidate.metadata_json
-        }
-      }
-
-      return undefined
-    },
-  },
-)
 
 const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
   makeStore: env =>
@@ -8451,11 +7729,6 @@ const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
   requireBrowserSession,
 })
 
-const sitesOrchestrationRoutes = makeSitesOrchestrationRoutes({
-  appendRefreshedSessionCookies,
-  isOpenAgentsAdminEmail,
-  requireBrowserSession,
-})
 
 const partnerAgreementRoutes = makePartnerAgreementRoutes<WorkerBindings>({
   nowIso: currentIsoTimestamp,
@@ -8980,12 +8253,6 @@ const blueprintProbeContributionRoutes =
       (await requireAdminApiToken(request, env)),
   })
 
-const operatorSitesRoutes = makeOperatorSitesRoutes({
-  appendRefreshedSessionCookies,
-  isOpenAgentsAdminEmail,
-  requireBrowserSession,
-})
-
 const operatorOrderTriageRoutes = makeOperatorOrderTriageRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -9001,79 +8268,6 @@ const operatorEmailInspectionRoutes = makeOperatorEmailInspectionRoutes({
   requireAdminApiToken,
   requireBrowserSession,
 })
-
-const githubRawContentUrl = ({
-  commitSha,
-  path,
-  repositoryName,
-  repositoryOwner,
-}: AdjutantTaskPacketRefValidationInput): string => {
-  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
-
-  return `https://raw.githubusercontent.com/${encodeURIComponent(repositoryOwner)}/${encodeURIComponent(repositoryName)}/${encodeURIComponent(commitSha)}/${encodedPath}`
-}
-
-const githubApiContentUrl = ({
-  commitSha,
-  path,
-  repositoryName,
-  repositoryOwner,
-}: AdjutantTaskPacketRefValidationInput): string => {
-  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
-  const url = new URL(
-    `https://api.github.com/repos/${encodeURIComponent(repositoryOwner)}/${encodeURIComponent(repositoryName)}/contents/${encodedPath}`,
-  )
-  url.searchParams.set('ref', commitSha)
-
-  return url.toString()
-}
-
-const validateAdjutantTaskPacketRef = async (
-  input: AdjutantTaskPacketRefValidationInput,
-): Promise<boolean> => {
-  const githubAccessToken = input.githubAccessToken?.trim()
-
-  if (githubAccessToken !== undefined && githubAccessToken !== '') {
-    const apiResponse = await fetch(githubApiContentUrl(input), {
-      headers: {
-        accept: 'application/vnd.github+json',
-        authorization: `Bearer ${githubAccessToken}`,
-        'cache-control': 'no-store',
-        'user-agent': 'OpenAgents',
-        'x-github-api-version': '2022-11-28',
-      },
-      method: 'GET',
-    })
-
-    if (apiResponse.ok) {
-      return true
-    }
-  }
-
-  const url = githubRawContentUrl(input)
-  const response = await fetch(url, {
-    headers: {
-      'cache-control': 'no-store',
-      'user-agent': 'OpenAgents',
-    },
-    method: 'HEAD',
-  })
-
-  if (response.status !== 405) {
-    return response.ok
-  }
-
-  const fallback = await fetch(url, {
-    headers: {
-      'cache-control': 'no-store',
-      range: 'bytes=0-0',
-      'user-agent': 'OpenAgents',
-    },
-    method: 'GET',
-  })
-
-  return fallback.ok
-}
 
 const omniHandlers = makeOmniHandlers({
   actorJson,
@@ -9107,7 +8301,6 @@ const operatorAdjutantRoutes = makeOperatorAdjutantRoutes({
   launchUserAutopilotMission,
   requireAdminApiToken,
   requireBrowserSession,
-  validateAdjutantTaskPacketRef,
 })
 
 const operatorArtanisConsoleRoutes = makeOperatorArtanisConsoleRoutes({
@@ -11293,20 +10486,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       ).pipe(Effect.map(materializeHttpResult)),
   },
   {
-    path: '/api/public/product-promises',
-    handler: (request, env) =>
-      handlePublicProductPromisesApi(request, openAgentsDatabase(env)),
-  },
-  {
-    // Free-API data-sharing terms / consent disclosure (#6296). Public,
-    // agent-readable: the honest free-tier terms (captured by default, redacted,
-    // private owner_only, may improve/train; pay-for-privacy opt-out; public
-    // sharing opt-in only; reward marker inert). Same canonical disclosure the
-    // free-key mint response embeds. Read-only, no auth, no DB, no secrets.
-    path: '/api/public/free-tier-data-sharing',
-    handler: request => handleFreeTierDataSharingDisclosureApi(request),
-  },
-  {
     // Khala Code download counter (RL-2, #8246). Public-safe and exact-only:
     // reads counted rows from the download ledger, or returns counts: [] with a
     // blocker when the ledger/table has no rows. It never fabricates a public
@@ -13213,20 +12392,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) => handlePublicAdjutantActivityApi(request, env),
   },
   {
-    path: '/api/public/proof/otec',
-    handler: (request, env, ctx) => {
-      recordPublicAgentFunnelRead(
-        request,
-        businessDomainDatabaseForEnv(env),
-        ctx,
-        'public_proof_read',
-        '/api/public/proof/otec',
-      )
-
-      return handlePublicOtecProofApi(request, env)
-    },
-  },
-  {
     path: '/api/github-write/connections',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleGitHubWriteConnectionsApi(request, env, ctx)),
@@ -13267,14 +12432,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/admin/agents/reissue-token',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleAdminReissueAgentToken(request, env, ctx)),
-  },
-  {
-    // Khala FREE API MODE self-serve mint (issue #6228). Mints a rate-limited
-    // free `oa_agent_` key for the free `openagents/khala` lane. INERT (404)
-    // until INFERENCE_FREE_TIER_ENABLED is on.
-    path: '/api/keys/free',
-    handler: (request, env) =>
-      Effect.promise(() => handleFreeKeyMint(request, env)),
   },
   {
     path: '/api/agents/me',
@@ -13551,38 +12708,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // credentials from Worker secrets at call time. INERT regardless: the
       // gateway is gated by INFERENCE_GATEWAY_ENABLED below.
       setInferenceAdapterEnv(env)
-      // Free-tier identity resolver (EPIC #5474 §1/§2): maps an authenticated
-      // account ref to its VERIFIED owner-claim identity (the SAME surface the
-      // #5486 light-KYC gate reads), so the Sybil-resistant free pool and the
-      // premium allowlist both key on one owner across all of that owner's
-      // accounts. INERT regardless — only reached when the gateway is enabled.
-      const ownerClaimStore = makeAgentOwnerClaimStoreForEnv(env)
-      const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
-        ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
-      )
-      // OWNER BALANCE-GATE EXEMPTION (issue #6180). Armed ONLY when
-      // INFERENCE_OPERATOR_EXEMPTION_ENABLED is on (fail-closed, default OFF). When
-      // armed, an EXEMPT verified owner (the `inference_operator_exemption` store)
-      // may call our OWN non-premium lanes (e.g. `openagents/khala`) with a zero
-      // balance: the balance-gate seam admits it and `withOperatorCredit` records
-      // it as `operator_credit` (zero debit + receipt, no referral). A PREMIUM
-      // model is NEVER exempt; Khala stays paid for the public (non-exempt keys
-      // still 402). Inert with the flag off — both seams are simply not wired.
-      const operatorExemptionEnabled = isOperatorExemptionEnabled(
-        env.INFERENCE_OPERATOR_EXEMPTION_ENABLED,
-      )
-      // KHALA FREE API MODE (issue #6228). Armed ONLY when
-      // INFERENCE_FREE_TIER_ENABLED is on (fail-closed, default OFF). When armed,
-      // a self-serve FREE-TIER key (minted at POST /api/keys/free, marked in
-      // `inference_free_tier_keys`) may call the single public model
-      // `openagents/khala` (own-infra GPT-OSS / Gemini Flash) with a zero balance
-      // WITHIN its per-key daily quota: the balance-gate seam admits it and
-      // `withFreeTierKhala` records it as a zero-debit free receipt + accrues the
-      // quota. A PREMIUM model is NEVER free; over-quota / non-free-tier keys
-      // still 402, so paid Khala behavior for funded keys is unchanged. Inert with
-      // the flag off — both seams are simply not wired.
-      const freeTierEnabled = isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED)
-      const freeTierQuota = resolveFreeTierQuota(env)
       // INTERNAL/OPS ACCOUNT ALLOWLIST (#6232 / #6298). Parsed ONCE here so the
       // demand-attribution rule, the free-tier balance-gate quota exemption, and
       // the free-tier metering-wrapper quota exemption all read the SAME set.
@@ -13592,12 +12717,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // (unset/blank) => pure no-op.
       const internalAccountRefs = parseInternalAccountRefs(
         env.INFERENCE_INTERNAL_ACCOUNT_REFS,
-      )
-      // Per-internal-account daily served-token ceilings (#8600 FC-BRAIN).
-      // Parsed ONCE so the balance-gate bypass and the zero-debit metering
-      // wrapper agree on the authoritative cap (Sarah's gateway-side bound).
-      const internalAccountDailyTokenCaps = parseInternalAccountDailyTokenCaps(
-        env.INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS,
       )
       const laneArming = resolveSupplyLaneArming(env)
       const routeAdmission = hydraliskGlm52RouteAdmissionForEnv(env)
@@ -13802,21 +12921,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return link?.openauth_user_id ?? undefined
           },
         },
-        readAvailableMsat: async () => Number.MAX_SAFE_INTEGER,
-        // FREE-ALLOWANCE PRE-FLIGHT (EPIC #5474 §1): read-only mirror of the
-        // gate inside `withFreeAllowance` (wired just above as the metering
-        // hook). It lets the balance gate admit a zero-balance account when the
-        // (account, model) is free-eligible and the resolving owner still has
-        // remaining free allowance, so a genuinely-free request (Gemini Flash
-        // under the owner's Sybil-resistant pool) is reachable WITHOUT a funded
-        // balance — the metering hook then eats and accrues the cost. Uses the
-        // SAME owner-identity resolver as the metering hook so the bypass and
-        // the accrual agree on the owner/pool.
-        checkFreeAllowance: checkFreeAllowancePreflight({
-          db: openAgentsDatabase(env),
-          gateReads: entitlementsRouting?.gateReads,
-          resolveOwnerIdentity,
-        }),
         // Routing & supply selection (#5482): cheapest-viable lane plan per
         // model with bounded-backoff overflow to the next viable lane on a
         // retryable provider failure (429 / 503 / 5xx / transport). INERT
@@ -13849,55 +12953,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // refund credit clawback, `clawbackInferenceCredits`) hangs off the
         // Stripe dispute/refund webhook path, not this hot route.
         //
-        // Premium-model owner-grant gate (EPIC #5474 §2): premium models (Claude
-        // / GPT / partner passthrough) require the requesting account's resolved
-        // OWNER identity to be on the owner-controlled allowlist
-        // (`inference_premium_allowlist`); a non-allowlisted premium request is
-        // denied (403) with an actionable message before any dispatch. Non-premium
-        // models (the Gemini free default, Fireworks open) always pass. INERT on
-        // the flag-off path.
-        checkPremiumAccess: makePremiumAccessGate({
-          db: openAgentsDatabase(env),
-          gateReads: entitlementsRouting?.gateReads,
-          resolveOwnerIdentity,
-        }),
-        // OWNER BALANCE-GATE EXEMPTION SEAM (issue #6180). Wired ONLY when armed
-        // (INFERENCE_OPERATOR_EXEMPTION_ENABLED). Lets an EXEMPT verified owner on
-        // a non-premium / own-infra model bypass the 402 with a zero balance; the
-        // `withOperatorCredit` wrapper above then records the request as
-        // `operator_credit`. The gate refuses premium models + unclaimed accounts,
-        // so the 402 stands for them and Khala stays paid for the public. Left
-        // UNWIRED (=> the gate is closed, normal 402) when the flag is off.
-        ...(operatorExemptionEnabled
-          ? {
-              checkOperatorExemption: makeOperatorExemptionGate({
-                db: openAgentsDatabase(env),
-                gateReads: entitlementsRouting?.gateReads,
-                resolveOwnerIdentity,
-              }),
-            }
-          : {}),
-        // KHALA FREE-TIER SEAM (issue #6228). Wired ONLY when armed
-        // (INFERENCE_FREE_TIER_ENABLED). Lets a self-serve FREE-TIER key on the
-        // free Khala lane within its per-key daily quota bypass the 402 with a
-        // zero balance; the `withFreeTierKhala` wrapper above then records the
-        // request as a zero-debit free receipt + accrues the quota. The gate
-        // refuses premium models, non-free-tier accounts, non-Khala models, and
-        // over-quota keys, so the 402 stands for them and paid Khala for funded
-        // keys is unchanged. Left UNWIRED (=> closed, normal 402) when the flag is
-        // off. Uses the SAME store + quota + UTC-day bucket as the metering
-        // wrapper so the bypass and the zero-debit accrual agree.
-        ...(freeTierEnabled
-          ? {
-              checkFreeTier: makeFreeTierGate({
-                db: openAgentsDatabase(env),
-                gateReads: entitlementsRouting?.gateReads,
-                quota: freeTierQuota,
-                internalAccountRefs,
-                internalAccountDailyTokenCaps,
-              }),
-            }
-          : {}),
         // ACCEPTANCE-DISPATCH (EPIC #6017): when khala-code produces an executable
         // artifact, enqueue an out-of-Worker verification job (a node-side runner —
         // Pylon / sandbox / Cloud Run — runs the headless suite and posts the verdict
@@ -14129,8 +13184,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleModelsList(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
-        freeTierEnabled: isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED),
-        freeTierQuota: resolveFreeTierQuota(env),
         laneArming: resolveSupplyLaneArming(env),
       }),
   },
@@ -14369,13 +13422,10 @@ const routeRequest = makeWorkerRouteRequest({
     khalaChatRoutes.routeKhalaChatRequest(request, env),
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
-  routeCheckoutPageRequest: () => undefined,
-  routeTreasuryPageRequest: () => undefined,
   routeAgentProposalRequest: agentProposalRoutes.routeAgentProposalRequest,
   routeAgentSearchRequest: agentSearchRoutes.routeAgentSearchRequest,
   routeAgentScopedGrantRequest:
     agentScopedGrantRoutes.routeAgentScopedGrantRequest,
-  routeAgentSiteRequest: () => undefined,
   routeForumRequest: (request, env, ctx) =>
     // KS-8.10 (#8321): the forum content dual-write seam — scoped forum
     // table writes read-back-mirror into Postgres (fail-soft).
@@ -14507,8 +13557,6 @@ const routeRequest = makeWorkerRouteRequest({
   routeModelRetrieveRequest: (request, env) =>
     routeModelRetrieveRequest(request, {
       enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
-      freeTierEnabled: isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED),
-      freeTierQuota: resolveFreeTierQuota(env),
       laneArming: resolveSupplyLaneArming(env),
     }),
   // MirrorCode demo: GET /api/gym/mirrorcode/runs/{id} (#6378). The public-safe
@@ -14638,11 +13686,6 @@ const routeRequest = makeWorkerRouteRequest({
     omniBundleRoutes.routeOmniBundleRequest(request, env, ctx) ??
     omniHandoffRoutes.routeOmniHandoffRequest(request, env, ctx) ??
     nativeListsRoutes.routeNativeListsRequest(request, env, ctx) ??
-    sitePageFormCaptureRoutes.routeSitePageFormCaptureRequest(
-      request,
-      env,
-      ctx,
-    ) ??
     prefilledWorkspaceRoutes.routePrefilledWorkspaceRequest(
       request,
       env,
@@ -14664,11 +13707,6 @@ const routeRequest = makeWorkerRouteRequest({
       env,
       ctx,
     ) ??
-    sitesOrchestrationRoutes.routeSitesOrchestrationRequest(
-      request,
-      env,
-      ctx,
-    ) ??
     partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx) ??
     crmImportRoutes.routeCrmImportRequest(request, env, ctx) ??
     crmEmailRoutes.routeCrmEmailRequest(request, env, ctx) ??
@@ -14684,8 +13722,7 @@ const routeRequest = makeWorkerRouteRequest({
     crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??
     crmRoutes.routeCrmRequest(request, env, ctx) ??
     routePublicAgentMcpRequest(request, env, ctx) ??
-    routeWellKnownAgentSurfaceRequest(request, env, ctx) ??
-    routeSiteCrawlSurfaceRequest(request, env, ctx),
+    routeWellKnownAgentSurfaceRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routePublicInferenceReceiptRequest:
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
@@ -14846,9 +13883,6 @@ const routeRequest = makeWorkerRouteRequest({
       requireAdminApiToken: (authRequest, authEnv) =>
         requireAdminApiToken(authRequest, authEnv),
     }).routeForgeControlPlaneRequest(request, env),
-  routeSiteReferralInspectionRequest:
-    siteReferralInspectionRoutes.routeSiteReferralInspectionRequest,
-  routeSiteReferralRequest: siteReferralRoutes.routeSiteReferralRequest,
   routeOperatorAdjutantRequest:
     operatorAdjutantRoutes.routeOperatorAdjutantRequest,
   routeOperatorArtanisChatRequest:
@@ -14898,7 +13932,6 @@ const routeRequest = makeWorkerRouteRequest({
           ),
         )
   },
-  routeOperatorSitesRequest: operatorSitesRoutes.routeOperatorSitesRequest,
   routeProviderAccountRequest:
     providerAccountRoutes.routeProviderAccountRequest,
   routeShareRequest: shareRoutes.routeShareRequest,
@@ -15412,7 +14445,6 @@ export default {
         () => undefined,
       ),
       sendPendingReviewReadyArtifactNotifications(env),
-      sendPendingReviewReadySiteNotifications(env),
       // KS-6.3 (#8304): scheduled tokens-served projection reconcile
       // (SPEC §7 invariant 8), detect-only, every 15 minutes. Drift logs
       // the typed khala_sync_tokens_served_projection_drift diagnostic and
