@@ -497,6 +497,40 @@ never of composer input, global state, or re-render timing.
 Contract:
 `openagents_desktop.chat.details_affordance_visibility_is_pointer_only.v1`.
 
+### Hidden-ref turn checkpoints for the coding workbench
+
+The host captures workspace state at coding-turn boundaries (turn start and
+turn completion, on both local lanes) as hidden Git refs under
+`refs/openagents/checkpoints/<thread>/<turn>`.
+
+- Every snapshot is built through an isolated temporary `GIT_INDEX_FILE`:
+  capture never writes user branches, HEAD, the user index, stashes, or the
+  worktree, and the refs live outside `refs/heads`/`refs/tags`, so no branch
+  UI, `git status`, or default push ever sees them.
+- Capture is bounded to tracked plus non-ignored untracked files, with a
+  per-file size exclusion and a total-file refusal bound. Each capture emits a
+  typed local completion signal.
+- A typed diff query reports turn-over-turn file changes and a bounded patch
+  between any two of a thread's checkpoints.
+- Revert is an explicit staged command: stage (validated, non-mutating),
+  inspect (the plan, the patch, and a mandatory irreversible-effects
+  statement), then commit or clear. Staging refuses dirty conflicting state —
+  uncheckpointed worktree edits in any path the revert would rewrite — and
+  commit re-refuses on post-stage drift. A committed revert restores the
+  checkpoint's exact bytes (text and binary), deletes later-turn artifacts,
+  and still never touches user branches, HEAD, or the user index. A pre-revert
+  baseline snapshot is retained as redo material.
+- Checkpoint snapshots can contain secrets: refs stay in the local repository
+  only and never enter Sync projections, renderer state, or push surfaces.
+  Deleting a thread's checkpoints removes every hidden ref under that thread's
+  namespace and only that thread's.
+- This substrate authorizes no visible renderer affordance under the MVP
+  surface allowlist; it is host-side capability behind the owner-local
+  executor invariant.
+
+Contract:
+`openagents_desktop.workbench.turn_checkpoints.v1`.
+
 ## Desktop safety boundary
 
 The normal desktop test sweep also mechanically enforces these host boundaries:
@@ -594,6 +628,12 @@ The loopback PKCE entry/exit oracle is:
 
 ```sh
 bun test apps/openagents-desktop/tests/desktop-session-pkce.test.ts
+```
+
+The turn-checkpoint oracle is:
+
+```sh
+bun test apps/openagents-desktop/tests/turn-checkpoints.test.ts
 ```
 
 ## Release artifact and update-safety guarantees (#8786)

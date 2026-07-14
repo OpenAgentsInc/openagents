@@ -315,6 +315,7 @@ import {
 import { makeCodexHandoffHost, openCodexHandoffBindings } from "./codex-handoff-host.ts"
 import { GitGithubChannel } from "./git-github-contract.ts"
 import { openGitGithubService } from "./git-github-host.ts"
+import { openTurnCheckpointService } from "./turn-checkpoint-host.ts"
 import { workspaceGitEnvironment } from "./git-process-environment.ts"
 import {
   TerminalCloseChannel,
@@ -1504,6 +1505,34 @@ const gitGithubService = openGitGithubService(
 )
 ipcMain.handle(GitGithubChannel, (_event, value: unknown) => gitGithubService.run(value))
 
+// --- Hidden-ref turn checkpoints (GIT-1, #8781) -----------------------------
+// Workspace state is captured at coding-turn boundaries as hidden Git refs
+// (refs/openagents/checkpoints/<thread>/<turn>) through an isolated temporary
+// GIT_INDEX_FILE — user branches, the user index, and the worktree are never
+// written by capture. Capture failures never fail a turn: a non-git or absent
+// workspace refuses typed and the turn proceeds. Snapshots can contain
+// secrets, so records stay host-local and never enter Sync projections.
+const turnCheckpoints = openTurnCheckpointService({
+  resolveRoot: smokeMode
+    ? () => smokeGitRoot
+    : () => {
+        const workspace = hostLifecycle.workspace()
+        if (workspace === null) return null
+        try { return workspace.summary().root } catch { return null }
+      },
+})
+const captureTurnCheckpoint = async (
+  threadRef: string,
+  turnRef: string,
+  boundary: "turn_start" | "turn_completed",
+): Promise<void> => {
+  try {
+    await turnCheckpoints.capture({ threadRef, turnRef, boundary })
+  } catch {
+    // Typed refusals are the normal path; a defect here must not touch turns.
+  }
+}
+
 // --- Workspace-bounded PTY terminals (CUT-20, #8700) -----------------------
 // A main-only PTY host: each session binds to the currently authorized
 // workspace root + a bounded environment. The renderer steers stdin through
@@ -2266,6 +2295,10 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   // graph before its stream events arrive (duplicate turn refs refuse typed
   // inside the assembler; the chat turn itself is never blocked).
   liveAgentGraph.beginTurn({ turnRef: request.turnRef, threadRef: request.threadRef, lane: "fable_claude" })
+  // GIT-1 (#8781): checkpoint the pre-turn workspace state as a hidden ref
+  // before the model can write files. Awaited so the snapshot cannot race the
+  // turn's first edit; refusals (no workspace / not a repo) cost one probe.
+  await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")
   const result = await fableLocal.runTurn({
     turnRef: request.turnRef,
     threadRef: request.threadRef,
@@ -2424,6 +2457,9 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   }
   const thread = assistantKeys.size === 0 ? null : store.open(request.threadRef)
   localTurnJournal.terminal(turnKey, "completed", "completed")
+  // GIT-1 (#8781): checkpoint the completed turn's workspace state. The
+  // completion ref supersedes the start ref for this turn.
+  await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")
   return thread === null
     ? { ok: false, error: "That conversation no longer exists." }
     : { ok: true, thread }
@@ -2532,6 +2568,8 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   // CUT-11 (#8691): the codex-local root turn joins the same canonical
   // live agent graph contract on its own thread graph.
   liveAgentGraph.beginTurn({ turnRef: request.turnRef, threadRef: request.threadRef, lane: "codex_local" })
+  // GIT-1 (#8781): same hidden-ref pre-turn checkpoint as the fable lane.
+  await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")
   const result = await codexLocal.runTurn({
     turnRef: request.turnRef,
     threadRef: request.threadRef,
@@ -2636,6 +2674,8 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   }
   const thread = assistantKeys.size === 0 ? null : store.open(request.threadRef)
   localTurnJournal.terminal(turnKey, "completed", "completed")
+  // GIT-1 (#8781): completed-turn hidden-ref checkpoint, same as fable lane.
+  await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")
   return thread === null
     ? { ok: false, error: "That conversation no longer exists." }
     : { ok: true, thread }

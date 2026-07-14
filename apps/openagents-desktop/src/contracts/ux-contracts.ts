@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-13.6",
+    version: "2026-07-14.1",
     contracts: [
       {
         contractId: "openagents_desktop.mvp.visible_surface_allowlist.v1",
@@ -3371,6 +3371,47 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop typecheck, tests/startup-contract.test.ts in the normal sweep, scripts/startup-bench.ts receipts (real-profile before: shellMounted 5.4–7.0 s; after: ~0.7 s), and smoke screenshot receipts of the boot frame and mounted shell.",
+      },
+      {
+        contractId: "openagents_desktop.workbench.turn_checkpoints.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Coding workbench turn checkpoints",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "Desktop coding turns mutate the workspace with no cheap per-turn restore point. Capture at turn start/completion via an isolated temp GIT_INDEX_FILE, write hidden refs (refs/openagents/checkpoints/<thread>/<turn>), bounded to tracked + non-ignored files with size exclusions; never touches user branches/index. Typed revert as an explicit command with an irreversible-effects statement: stage, inspect, commit/clear; refuse on dirty conflicting state.",
+        authorityBoundary:
+          "The host-side turn-checkpoint service owns hidden-ref capture, the typed turn-over-turn diff query, and the staged revert command. Every snapshot is built through an isolated temporary GIT_INDEX_FILE: user branches, HEAD, the user index, stashes, and (during capture) the worktree are never written. Capture is bounded to tracked plus non-ignored untracked files with a per-file size exclusion and a total-file refusal. Revert only ever runs as stage then inspect then explicit commit; every staged revert carries the irreversible-effects statement, refuses dirty conflicting state, and retains a pre-revert baseline snapshot. Checkpoint refs and snapshots stay in the local repository only — they can contain secrets and never enter Sync projections, renderer state, or push surfaces. Thread checkpoint deletion removes every hidden ref for that thread. This is an internal post-MVP substrate: it authorizes no visible renderer affordance under the MVP surface allowlist.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/turn-checkpoint-contract.ts",
+          "apps/openagents-desktop/src/turn-checkpoint-host.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "docs/teardowns/2026-07-13-t3-code-teardown.md",
+          "docs/teardowns/2026-07-10-opencode-v2-architecture-teardown.md",
+          "github:OpenAgentsInc/openagents#8781",
+        ],
+        oracles: [
+          {
+            id: "turn_checkpoints.capture_hidden_ref_untouched_user_state",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/turn-checkpoints.test.ts",
+            description:
+              "Against a real fixture repository: capture on a fixture turn creates the hidden ref (ignored and oversized files excluded, typed completion signal emitted) with byte-identical user branches, HEAD, index, status, and stashes before and after.",
+          },
+          {
+            id: "turn_checkpoints.staged_revert_exact_bytes_and_transitions",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/turn-checkpoints.test.ts",
+            description:
+              "Proves the typed diff query reports real turn-over-turn changes; stage/inspect/commit restores exact text and binary bytes (deleting later-turn artifacts) while inspect carries the irreversible-effects statement; clear abandons without mutation; double-stage, commit-without-stage, dirty stage, and post-stage drift all refuse typed; thread deletion removes that thread's refs only.",
+          },
+        ],
+        verification:
+          "Desktop typecheck and tests/turn-checkpoints.test.ts in the normal sweep; the suite also proves main.ts wires capture at turn_start and turn_completed on both local lanes.",
       },
     ],
   };
