@@ -4,6 +4,11 @@ Date: 2026-07-13 (updated same day for upstream v0.21.0/v0.22.0 **Agent Run**,
 verified against `origin/main` `c7250a8` after the founder's "open intent
 harness" announcement post — see §5.1)
 Status: analysis; no implementation claims beyond those named with exact paths
+Historical-status note (2026-07-14): this document preserves the pre-dogfood
+gap snapshot and proposed sequencing. Current implementation and distribution
+truth lives in [`README.md`](./README.md), the admitted MVP Evidence Index, and
+[`assurance-spec-public-registry-receipt.json`](../../assurance/assurance-spec-public-registry-receipt.json);
+do not read the historical "no npm publication" rows below as current state.
 References:
 - Ours, implemented: `packages/assurance-spec/` (`@openagentsinc/assurance-spec`
   0.1.0), `packages/product-spec/`, `apps/openagents-desktop/src/product-spec-workroom*`

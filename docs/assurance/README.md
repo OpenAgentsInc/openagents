@@ -1,7 +1,7 @@
 # OpenAgents Assurance
 
 This directory is the canonical home for OpenAgents proof-design architecture:
-the proposed AssuranceSpec companion standard, Observer, Assurance Manifests,
+the AssuranceSpec companion standard, Observer, Assurance Manifests,
 Environment Profiles, adapter contracts, evidence receipts, and the first
 dogfood plan.
 
@@ -19,12 +19,13 @@ Assurance Receipts may feed the workroom and ProductSpec evidence index by ref.
 Release policy remains separate. The promise registry alone governs claims.
 ```
 
-The bounded proposal profile is implemented in `packages/assurance-spec`: it
-can parse, serialize, structurally validate, assess, and deterministically
-propose criterion-coverage scaffolding. Nothing here claims that richer
-semantic planning, admission, compilation, adapters, execution, receipts, the
-hosted service, or Observatory exists unless a document names exact code and
-current receipts.
+The implemented `packages/assurance-spec` package parses, serializes, validates,
+proposes, reviews, admits, compiles, executes through typed adapters, normalizes
+receipts, projects the eight independent status axes, and exposes CLI, MCP,
+skill, and owned-runner surfaces. The admitted Desktop MVP, immutable evidence
+index, mutation evidence, workroom bridge, and hosted Observatory name their
+exact code and receipts below. Rich semantic planning, release decisions, and
+public-claim authority remain separate and are never inferred from these tools.
 
 ## Read in this order
 

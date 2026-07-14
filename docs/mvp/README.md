@@ -105,6 +105,14 @@ The reviewed Evidence Index projects every obligation across eight independent
 axes without a blended score. Native JUnit and full-gate output remain private
 under ignored `var/assurance` paths.
 
+The reusable tooling is also publicly distributable: npm `latest` resolves to
+`@openagentsinc/product-spec@0.1.0` and
+`@openagentsinc/assurance-spec@0.1.1`. The
+[`public registry receipt`](../../assurance/assurance-spec-public-registry-receipt.json)
+records exact integrity fields, publish-time parity tests, and the no-auth
+clean-checkout `bunx` proof. Publication distributes the proof tooling; it does
+not publish RC9 or grant release/public-claim authority.
+
 The target subject is currently ProductSpec format `0.1`, `spec_revision: 6`,
 SHA-256
 `fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1`, with

@@ -2,10 +2,11 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-13
-- Revision: 109
+- Updated: 2026-07-14
+- Revision: 110
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: AssuranceSpec distribution owner action only; no product-expansion lane
+- Current queue: empty; the AssuranceSpec distribution program is complete and
+  no product-expansion lane is authorized
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: no product-expansion lane; new outcomes require a bounded owner
   decision and live issue under [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -110,14 +111,15 @@ is deployed from `main` and presents mapped, executable, observed, and accepted
 as four independent criterion facts. It reads only reviewed public-safe refs
 and grants no merge, deploy, spend, settlement, or promise authority.
 
-The sole remaining program action is publishing the prerequisite
-`@openagentsinc/product-spec` package and then
-`@openagentsinc/assurance-spec` to npm, followed by a clean-registry `bunx`
-proof. Both packages are publication-ready, but npm currently rejects this
-Mac's configured token and the browser is signed out. That is an owner
-authentication action under #8767, not an engineering or product-expansion
-queue. #8770 closes after the two-package registry receipt; all other children
-are completed.
+The distribution gate is complete. `@openagentsinc/product-spec@0.1.0` was
+published first and `@openagentsinc/assurance-spec@0.1.1` second, both public
+with `latest` bound to those versions. A no-auth, fresh-home, fresh-cache consumer ran
+the registry `bunx` structural validator and owned runner successfully. The
+immutable
+[`registry receipt`](../../assurance/assurance-spec-public-registry-receipt.json)
+binds exact tarball hashes, npm integrity fields, publish-time parity tests, and
+the admitted 18-obligation MVP evidence index. #8767 and #8770 are closed;
+there is no remaining AssuranceSpec program queue.
 
 ## Owner decisions
 
@@ -607,17 +609,16 @@ At this snapshot:
 4. The owner-authorized AssuranceSpec successor proof run passed all 18
    candidate/falsifier/sensitivity rows, the full Desktop gate, mutation
    sensitivity, immutable workroom bridge, and deployed Observatory projection.
-5. The owned-runner starter kit passes a clean offline checkout, and the
-   OpenAgents monorepo now adopts it with a current committed MVP session pin.
-   #8767 remains open only for owner-authenticated publication of ProductSpec
-   followed by AssuranceSpec and the clean-registry `bunx` receipt; #8770
-   closes after that receipt.
+5. The owned-runner starter kit passes both exact-tarball offline checkout and
+   public-registry no-auth checkout. The OpenAgents monorepo adopts it with a
+   current committed MVP session pin. ProductSpec `0.1.0` and AssuranceSpec
+   `0.1.1` are public on npm in dependency order; #8767 and #8770 are closed.
 6. RC9 remains unpublished. Conditional public-language, telemetry, release,
    concurrency, registry, and product-successor gates remain unchanged.
 
 There is no active product queue or successor product queue to claim. The
-remaining npm authentication step is an external distribution owner action,
-not a product-expansion work packet.
+AssuranceSpec distribution lane has no remaining owner action and does not
+create a product-expansion work packet.
 Supported security, privacy, data-loss, accessibility, production-outage, or
 compatibility defects may use new bounded repair issues; product expansion
 waits for owner direction.

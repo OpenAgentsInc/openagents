@@ -90,6 +90,44 @@ describe("AT-6 public package readiness", () => {
     }
   })
 
+  test("the public registry receipt binds the exact tested tarballs and safe runner policy", () => {
+    const distribution = JSON.parse(readFileSync(resolve(
+      repositoryRoot,
+      "assurance/assurance-spec-public-distribution-receipt.json",
+    ), "utf8"))
+    const registry = JSON.parse(readFileSync(resolve(
+      repositoryRoot,
+      "assurance/assurance-spec-public-registry-receipt.json",
+    ), "utf8"))
+    expect(registry.publish_order).toEqual(distribution.publish_order)
+    expect(registry.packages.map((entry: { name: string; version: string; tarball_sha256: string }) => ({
+      name: entry.name,
+      version: entry.version,
+      sha256: entry.tarball_sha256,
+    }))).toEqual(distribution.package_tarballs.map((entry: { name: string; version: string; sha256: string }) => ({
+      name: entry.name,
+      version: entry.version,
+      sha256: entry.sha256,
+    })))
+    expect(registry.clean_registry_consumer).toMatchObject({
+      result: "pass",
+      authentication: "none",
+      workspace_dependency: false,
+      local_tarball_dependency: false,
+      structural_validation: "pass",
+      owned_runner_verdict: "pass",
+      subject_binding: "bound",
+      ledger_policy: "informational_never_threshold",
+      github_hosted_ci: false,
+    })
+    expect(registry.authority).toMatchObject({
+      receipt: "evidence_only",
+      grants_release_authority: false,
+      grants_public_claim_authority: false,
+    })
+    expect(JSON.stringify(registry)).not.toMatch(/password|authToken|credential[^s]/i)
+  })
+
   test("installs exact tarballs offline in a clean checkout and runs the owned gate", () => {
     const receipt = verifyDistribution(repositoryRoot)
     expect(receipt).toMatchObject({

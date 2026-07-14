@@ -1,13 +1,14 @@
 # AssuranceSpec agent tooling — CLI, MCP server, skills, starter kit
 
 Date: 2026-07-13
-Status: design proposal for the AssuranceSpec agent surfaces; nothing in this
-document is implemented unless it names code that exists today
+Status: implemented agent-tooling contract; historical proposed sequencing is
+retained below, while current claims require exact code or receipts
 (`packages/assurance-spec/src/cli.ts` ships `propose`, `validate`, `coverage`,
 `session begin/check`, `inventory`, `obligations`, `obligation`, `graph`,
 `ledgers`, `checklist`, `claim`, `agent-run ingest`, and `mcp`; the stdio MCP server in
-`src/mcp.ts` ships the §3.1 tool table; the repository-installable skills ship,
-while the starter kit remains unimplemented)
+`src/mcp.ts` ships the §3.1 tool table; repository-installable skills, the
+one-commit starter kit, the OpenAgents-owned runner, and public npm packages
+ship)
 Owner directive being served: agents should be able to interact with the spec
 from whatever codebase or workspace they are already active in, with our way
 of doing things loaded — CLI, skill, MCP, whatever — for AssuranceSpec.
@@ -302,15 +303,15 @@ OpenAgents invariant prohibits GitHub-hosted Actions; AssuranceSpec cannot
 grant itself an exception. A downstream adopter may invoke the same command on
 infrastructure it owns, but the starter kit ships no hosted workflow.
 
-The committed kit and exact public tarballs now pass an offline clean-checkout
+The committed kit and exact public tarballs pass an offline clean-checkout
 proof. The OpenAgents monorepo itself adopts the owned runner through
-`assurance/owned-runner.json` and a current committed MVP session pin. npm
-publication still has deliberately **not** happened: it is an owner-
-authenticated registry mutation, and npm currently rejects this machine's
-configured token. The packager resolves `workspace:` and `catalog:` protocols
-to concrete public versions, publishes ProductSpec before AssuranceSpec, and
-records exact tarball digests so readiness is testable without claiming
-publication.
+`assurance/owned-runner.json` and a current committed MVP session pin. Public
+npm publication is complete in dependency order:
+`@openagentsinc/product-spec@0.1.0` followed by
+`@openagentsinc/assurance-spec@0.1.1`. A no-auth clean consumer resolves the
+public package with `bunx`, validates the starter spec, and returns an owned-
+runner pass. Exact registry and publish-time parity evidence lives in
+`assurance/assurance-spec-public-registry-receipt.json`.
 
 ## 6. Sequencing against the AS ladder
 
@@ -324,7 +325,7 @@ them into pretending. Mapping:
 | **AT-3** | Dual-digest sessions: `intent_digest` in pins, `evidence_index_changed` classification in `check_assurance_session`. | PSEL-0 (structured items + intent digest in `packages/product-spec`). | PSEL-0/AS-1 |
 | **AT-4** | `assurancespec-work` skill + Desktop builtin installation; `get_environments` reads real Environment Profiles. | First admitted spec + `ENV-OA-LOCAL-BUN-1` profile (AS-MVP-2/3). | AS-2 |
 | **AT-5** | `check_completion_claim` and `ledgers` consume real receipts; obligation×environment ledger shows actual `CONFIRMED`/`REFUTED`/`INCONCLUSIVE`; staleness/freshness axes go live. | Compiler + first adapter + receipt bridge (AS-2/AS-3, AS-MVP-4…7). | AS-3 |
-| **AT-6** | Public starter kit + typed OpenAgents-owned runner gate + concrete tarball/clean-checkout proof + installable skills. npm publication is the remaining owner-authenticated registry step; GitHub-hosted Actions are prohibited. | Post-dogfood format stability. | AS-5 |
+| **AT-6** | Public starter kit + typed OpenAgents-owned runner gate + concrete offline and public-registry clean-checkout proofs + installable skills + ProductSpec/AssuranceSpec npm publication. GitHub-hosted Actions remain prohibited. | Complete after post-dogfood format stability. | AS-5 |
 
 **The first shippable slice is AT-1**, and its definition of done is concrete:
 `assurance-spec mcp --root .` running against this repo lets an agent pin a

@@ -1,0 +1,110 @@
+{
+  "registry_publication_receipt_format_version": "0.1",
+  "verified_at": "2026-07-14T03:30:27Z",
+  "registry": "https://registry.npmjs.org/",
+  "source_commit": "981e007c7a0bcd260cb6d6b7042ca28cb235830b",
+  "prepared_distribution_receipt": {
+    "path": "assurance/assurance-spec-public-distribution-receipt.json",
+    "sha256": "sha256:bd9ab0868004edd3eacc61b8ff7323e1e25b436d462a90cd0b5fd1d0bb169195"
+  },
+  "publish_order": [
+    "@openagentsinc/product-spec",
+    "@openagentsinc/assurance-spec"
+  ],
+  "packages": [
+    {
+      "name": "@openagentsinc/product-spec",
+      "version": "0.1.0",
+      "dist_tag": "latest",
+      "access": "public",
+      "tarball_sha256": "sha256:4dab97a72f1d65c88ea1bb746321c665408b109230fb001efc2752c15b9306eb",
+      "registry_integrity": "sha512-YRdn9yIKMTWfpRU3W/unbNw0v/URoK/L3tW+PJ+XKz9VEHvJ/PXN1/WWulO0S6GVHDCMuKjuiEeLegDR4JQ1LQ==",
+      "registry_shasum": "41ee7ba41fdbbd6a01facad785a05bd180f37cc3",
+      "registry_tarball": "https://registry.npmjs.org/@openagentsinc/product-spec/-/product-spec-0.1.0.tgz"
+    },
+    {
+      "name": "@openagentsinc/assurance-spec",
+      "version": "0.1.1",
+      "dist_tag": "latest",
+      "access": "public",
+      "tarball_sha256": "sha256:ab8af55072010d86f6c1b1efc7b4379f0c571d04ca133b3d23d8e9b1bb96f4a4",
+      "registry_integrity": "sha512-6Daxt3mSvVKSdeaMatgWi/X9SC/UI9hznOPJ2iJaMDDJQ6EsyamGd79bNc5nLiMTwWHlABbcxF7ll3KobrSJCQ==",
+      "registry_shasum": "7ff64c7063b18b4256dc9468c4efd4175a7b7445",
+      "registry_tarball": "https://registry.npmjs.org/@openagentsinc/assurance-spec/-/assurance-spec-0.1.1.tgz",
+      "dependencies": {
+        "@openagentsinc/product-spec": "0.1.0",
+        "effect": "4.0.0-beta.70"
+      }
+    }
+  ],
+  "publish_time_gates": {
+    "product_spec_tests": {
+      "passed": 95,
+      "failed": 0,
+      "typecheck": "passed"
+    },
+    "assurance_spec_tests": {
+      "passed": 174,
+      "failed": 0,
+      "typecheck": "passed",
+      "schema_parser_parity": "passed"
+    },
+    "mvp_evidence_index": {
+      "path": "assurance/openagents-desktop-mvp.evidence-index.json",
+      "sha256": "sha256:69f69f3995bab9ae87a95473c414f5a312297f41fc53f7670dd69d947731c5f9",
+      "confirmed_obligations": 18,
+      "total_obligations": 18,
+      "full_desktop_gate": "green"
+    }
+  },
+  "clean_registry_consumer": {
+    "result": "pass",
+    "authentication": "none",
+    "workspace_dependency": false,
+    "local_tarball_dependency": false,
+    "fresh_home": true,
+    "fresh_bun_cache": true,
+    "package_command": "bunx --yes @openagentsinc/assurance-spec@0.1.1",
+    "structural_validation": "pass",
+    "owned_runner_verdict": "pass",
+    "subject_binding": "bound",
+    "traceability": {
+      "total_criteria": 1,
+      "traceable_criteria": 1
+    },
+    "ledger_policy": "informational_never_threshold",
+    "github_hosted_ci": false
+  },
+  "post_publication_repository_gates": {
+    "product_spec_tests": {
+      "passed": 95,
+      "failed": 0,
+      "typecheck": "passed"
+    },
+    "assurance_spec_tests": {
+      "passed": 175,
+      "failed": 0,
+      "typecheck": "passed",
+      "registry_receipt_binding": "passed"
+    },
+    "sol_documentation_tests": {
+      "passed": 19,
+      "failed": 0
+    },
+    "registry_latest": {
+      "@openagentsinc/product-spec": "0.1.0",
+      "@openagentsinc/assurance-spec": "0.1.1"
+    }
+  },
+  "authority": {
+    "publication": "owner_authenticated",
+    "receipt": "evidence_only",
+    "grants_release_authority": false,
+    "grants_public_claim_authority": false
+  },
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_credentials": false,
+    "contains_raw_output": false
+  }
+}
