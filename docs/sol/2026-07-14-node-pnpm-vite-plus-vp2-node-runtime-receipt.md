@@ -8,7 +8,7 @@
 - Dispatch: no; use [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796)
 - Parent: [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777)
 - Owner: Sol runtime and toolchain conversion
-- Implementation: `2e00a2741f`
+- Implementation: `a34a4da943`
 - Reference runtime: Node `24.13.1`
 
 ## Result
@@ -91,7 +91,7 @@ API.
 The exact reference-runtime command is:
 
 ```text
-npx -y node@24.13.1 --test \
+NODE_OPTIONS=--max-old-space-size=8192 npx -y node@24.13.1 --test \
   packages/runtime-platform/src/runtime-platform.node-suite.ts \
   packages/sqlite-runtime/src/node-database.node-suite.ts \
   scripts/public-cli-artifacts.node.test.mjs \
@@ -103,6 +103,9 @@ Result: 19 tests passed, zero failed. Coverage includes seven runtime-platform
 tests, nine SQLite tests, one installed-CLI artifact test, the static guard
 fixture, and one compiled retained-service smoke. The standalone QA artifact
 was also built and its real `--help` command exited zero under Node 24.13.1.
+The explicit heap ceiling accommodates the concurrently expanded QA/assurance
+workspace during declaration bundling; the first post-rebase default-heap run
+reached Node's 4 GiB ceiling while compiling the staged assurance artifact.
 
 Focused TypeScript checks pass for the new runtime, PostgreSQL, and SQLite
 packages and for the retained service/CLI consumers changed by the phase. The
