@@ -260,11 +260,13 @@ const sampleQaSwarmRunProjectionFields = {
     {
       href: '/docs/qa/khala-code-mechanical-corpus',
       label: 'Mechanical corpus',
+      lifecycleState: 'landed',
       receiptRef: 'test.qa_swarm.khala_code.mechanical_corpus.20260702',
     },
     {
       href: '/docs/qa/khala-code-error-state-corpus',
       label: 'Error-state corpus',
+      lifecycleState: 'landed',
       receiptRef: 'test.qa_swarm.khala_code.error_states.20260702',
     },
   ],

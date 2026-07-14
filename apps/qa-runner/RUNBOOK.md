@@ -69,8 +69,11 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
   → comparison table + a `/trace/compare` link. **Agent-triggered** (no GitHub Actions — per the no-GHA invariant): an agent runs this and posts the PR comment itself, e.g. PR #6224.
 - **Import an existing Claude Code / Codex session → trace:**
   `bun run src/trace-import.ts <session.jsonl>` (detect → convert → redact → publish).
-- **Distill a session → committed e2e test:** the distiller (`src/distiller.ts`) lowers a
-  recorded session into a re-runnable `*.e2e.test.ts` (the review artifact).
+- **Distill a session → e2e candidate:** the distiller (`src/distiller.ts`)
+  lowers a recorded session into a re-runnable `*.e2e.test.ts` review artifact.
+  `src/discovery-regression-lifecycle.ts` validates and reruns observed
+  discoveries, then stops at `validated` unless SCM authority is explicitly
+  injected. It is `landed` coverage only after exact reviewed merge evidence.
 - **Packaged Khala Code native AX smoke:** build the Electrobun app, arm
   `QA_NATIVE_DESKTOP=1`, then run
   `bun run --cwd apps/qa-runner khala:packaged-native-smoke -- --out ../../var/qa-8023/packaged-native`.

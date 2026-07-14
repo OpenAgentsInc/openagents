@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test"
 
 import {
   QA_SWARM_RUN_PROJECTION_SCHEMA,
+  QaSwarmRegressionCandidate,
   assertResolverBackedQaSwarmProjection,
   buildResolverBackedQaSwarmBoardGraph,
   type QaSwarmProjectionEvidence,
 } from "./index"
+import { Schema as S } from "effect"
 
 const evidence = (): QaSwarmProjectionEvidence => ({
   coverageFrontier: [],
@@ -36,6 +38,50 @@ const evidence = (): QaSwarmProjectionEvidence => ({
 })
 
 describe("QA Swarm shared projection", () => {
+  test("distinguishes validated, proposed, and reviewed-merge-only landed regressions", () => {
+    const decode = S.decodeUnknownSync(QaSwarmRegressionCandidate)
+
+    expect(decode({
+      _tag: "validated",
+      candidateRef: "candidate.example",
+      discoveryRef: "discovery.example",
+      label: "Example",
+      rerunReceiptRef: "receipt.rerun.example",
+      testHref: "generated/example.e2e.test.ts",
+    })._tag).toBe("validated")
+    expect(decode({
+      _tag: "proposed",
+      candidateRef: "candidate.example",
+      commitProposalRef: "commit-proposal:example",
+      discoveryRef: "discovery.example",
+      issueRef: "github.issue:example",
+      label: "Example",
+      pullRequestRef: "github.pr:example",
+      rerunReceiptRef: "receipt.rerun.example",
+      testHref: "generated/example.e2e.test.ts",
+    })._tag).toBe("proposed")
+    expect(() => decode({
+      _tag: "proposed",
+      candidateRef: "candidate.example",
+      commitProposalRef: "commit-proposal:example",
+      discoveryRef: "discovery.example",
+      label: "Example",
+      pullRequestRef: "github.pr:example",
+      rerunReceiptRef: "receipt.rerun.example",
+      testHref: "generated/example.e2e.test.ts",
+    })).toThrow()
+    expect(() => decode({
+      _tag: "landed",
+      candidateRef: "candidate.example",
+      discoveryRef: "discovery.example",
+      label: "Example",
+      mergedCommitRef: "git.commit:example",
+      pullRequestRef: "github.pr:example",
+      rerunReceiptRef: "receipt.rerun.example",
+      testHref: "generated/example.e2e.test.ts",
+    })).toThrow()
+  })
+
   test("missing resolution cannot light an evidence edge and forces inconclusive", () => {
     const source = evidence()
     const resolved = buildResolverBackedQaSwarmBoardGraph(source, {

@@ -2,7 +2,7 @@
 
 [`@openagentsinc/qa-runner`](https://www.npmjs.com/package/@openagentsinc/qa-runner) drives a
 **real browser** against any target, verifies a check the way a person would, and emits a
-**video + a committed e2e test + an honest pass/fail verdict**. If it looks right, it *is*
+**video + a reviewable e2e candidate + an honest pass/fail verdict**. If it looks right, it *is*
 right — and you can prove it by reading the artifacts, without re-running anything.
 
 It's OSS, local-first, and **bring-your-own-model — no OpenAgents login required.** Khala is

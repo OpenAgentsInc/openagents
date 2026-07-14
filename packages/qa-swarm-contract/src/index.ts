@@ -66,8 +66,60 @@ export class QaSwarmDistilledTestRef extends S.Class<QaSwarmDistilledTestRef>(
 )({
   href: S.String,
   label: S.String,
+  lifecycleState: S.Literal("landed"),
   receiptRef: S.String,
 }) {}
+
+export class QaSwarmValidatedRegressionCandidate extends S.TaggedClass<QaSwarmValidatedRegressionCandidate>()(
+  "validated",
+  {
+    candidateRef: S.String,
+    discoveryRef: S.String,
+    label: S.String,
+    rerunReceiptRef: S.String,
+    testHref: S.String,
+  },
+) {}
+
+export class QaSwarmProposedRegressionCandidate extends S.TaggedClass<QaSwarmProposedRegressionCandidate>()(
+  "proposed",
+  {
+    candidateRef: S.String,
+    commitProposalRef: S.String,
+    discoveryRef: S.String,
+    issueRef: S.String,
+    label: S.String,
+    pullRequestRef: S.String,
+    rerunReceiptRef: S.String,
+    testHref: S.String,
+  },
+) {}
+
+export class QaSwarmLandedRegressionCandidate extends S.TaggedClass<QaSwarmLandedRegressionCandidate>()(
+  "landed",
+  {
+    candidateRef: S.String,
+    discoveryRef: S.String,
+    label: S.String,
+    mergedCommitRef: S.String,
+    pullRequestRef: S.String,
+    rerunReceiptRef: S.String,
+    reviewedMergeReceiptRef: S.String,
+    testHref: S.String,
+  },
+) {}
+
+/**
+ * A generated candidate is not a distilled/landed regression. The shared
+ * projection records the review lifecycle explicitly, and the `landed`
+ * variant cannot be represented without reviewed merge evidence.
+ */
+export const QaSwarmRegressionCandidate = S.Union([
+  QaSwarmValidatedRegressionCandidate,
+  QaSwarmProposedRegressionCandidate,
+  QaSwarmLandedRegressionCandidate,
+])
+export type QaSwarmRegressionCandidate = typeof QaSwarmRegressionCandidate.Type
 
 export class QaSwarmEvidenceAdmission extends S.Class<QaSwarmEvidenceAdmission>(
   "QaSwarmEvidenceAdmission",
@@ -125,6 +177,7 @@ export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   perfBudgets: S.Array(QaSwarmPerfBudgetItem),
   projectionRef: S.String,
   publicSafetyRefs: S.Array(S.String),
+  regressionCandidates: S.optional(S.Array(QaSwarmRegressionCandidate)),
   runRef: S.String,
   schemaVersion: S.Literal(QA_SWARM_RUN_PROJECTION_SCHEMA),
   staleness: S.Struct({
@@ -166,6 +219,16 @@ export const qaSwarmClaimedReceiptRefs = (
   ...projection.publicSafetyRefs,
   ...projection.coverageFrontier.map(item => item.receiptRef),
   ...projection.distilledTests.map(item => item.receiptRef),
+  ...(projection.regressionCandidates ?? []).flatMap(candidate => {
+    switch (candidate._tag) {
+      case "validated":
+        return [candidate.rerunReceiptRef]
+      case "proposed":
+        return [candidate.rerunReceiptRef]
+      case "landed":
+        return [candidate.rerunReceiptRef, candidate.reviewedMergeReceiptRef]
+    }
+  }),
   ...projection.perfBudgets.map(item => item.receiptRef),
   ...projection.verdictWall.map(item => item.receiptRef),
 ])

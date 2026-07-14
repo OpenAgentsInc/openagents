@@ -81,6 +81,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   contract and polls only while the optional execution state is `scheduled` or
   `running`, with a hard client-side poll bound. Unknown, invalid, private, and
   unavailable runs retain the same non-disclosing unavailable shell.
+- An observed discovery becomes a regression candidate only when its exact
+  observation receipt is bound into a replayable, public-safe trace and the
+  deterministic distiller accepts it. A candidate is `validated` only after an
+  exact source-digest-bound rerun passes; failed, unavailable, substituted, or
+  non-rerunnable candidates remain `INCONCLUSIVE`.
+- Repository mutation for a validated regression is absent by default and can
+  occur only through explicitly injected SCM authority. A `proposed` projection
+  requires a scoped issue, commit proposal, and pull-request ref bound to the
+  same candidate digest. Only resolver-confirmed reviewed merge evidence for
+  that exact digest and pull request can produce `landed` state or populate the
+  landed-only `distilledTests` projection. Enforced by
+  `apps/qa-runner/src/discovery-regression-lifecycle.test.ts` and
+  `packages/qa-swarm-contract/src/index.test.ts`.
 
 ## QA Swarm Assurance Execution
 

@@ -87,6 +87,20 @@ export type { ChatClient, ChatMessage } from "./khala-driver";
 
 // The distiller — lower a recorded session into a committed e2e test.
 export { distill, assessCandidate, type DistillResult, type CandidateAssessment } from "./distiller";
+export {
+  QA_SWARM_DISCOVERY_SCHEMA,
+  QaSwarmObservedDiscovery,
+  decodeQaSwarmObservedDiscovery,
+  runDiscoveryRegressionLifecycle,
+  type DiscoveryRegressionLifecycleDependencies,
+  type DiscoveryRegressionLifecycleResult,
+  type DiscoveryRegressionRerunner,
+  type DiscoveryRegressionScmAuthority,
+  type RegressionRerunOutcome,
+  type ReviewedMergeEvidenceResolver,
+  type ReviewedMergeResolution,
+  type ScmProposalOutcome,
+} from "./discovery-regression-lifecycle";
 
 // The public-safe run result schema (also imported by the /pro read model).
 export { type QaRunResult, type QaRunStep } from "./result";

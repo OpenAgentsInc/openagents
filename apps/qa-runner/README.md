@@ -11,7 +11,7 @@ headline demo for the **Khala autonomous-QA example flow** (epic #6174).
 > bring (model + base URL + key via flags/env) — **no OpenAgents account or login
 > required**. The fake-model proof needs no key; Khala uses a free `oa_agent_…`
 > key from `POST /api/keys/free`. It records a video + trace + screenshots and distills the
-> session into a **committed e2e test**. Khala / OpenAgents Cloud / `/pro` /
+> session into a **reviewable e2e candidate**. Khala / OpenAgents Cloud / `/pro` /
 > receipts / settlement are **optional add-ons, not dependencies of the core
 > run**. MIT-licensed (`LICENSE`). Full walkthrough:
 > [`docs/oss-quickstart.md`](docs/oss-quickstart.md).
@@ -57,7 +57,7 @@ result and watching the video — *no local run*.
 | Khala driver (`runKhalaSession`): Khala **autonomously** drives via `openagents/khala` | **real now** — `demo:khala`; a prompt-based ReAct/JSON-action loop over `/chat/completions` (plain `fetch`, no native function-calling) |
 | `khalaBrain` (BrainStep seam for `runQaSession`) | **inert seam** — throws "not armed" without an injected driver; the live loop is `runKhalaSession`, not this seam |
 | `KhalaSessionTrace` capture + `assertSessionTracePublicSafe` tripwire | **real now** — deterministic, replayable, public-safe (`session-trace.json`) |
-| session → committed executor-style e2e scenario **distiller** (spec §E.2) | **real now** — `distill(trace)` emits `generated/<slug>.e2e.test.ts` |
+| session → executor-style e2e scenario **candidate distiller** (spec §E.2) | **real now** — `distill(trace)` emits `generated/<slug>.e2e.test.ts`; reviewed lifecycle state is `validated` / `proposed` / `landed` |
 | skill emitter (NIP-SKL marketplace candidate, spec §E.1) | **typed seam + TODO, FUTURE/owner-gated** |
 | `localBackend` (real chromium on this host) | **real now** — the default |
 | `khalaDesktopBackend` (Khala Code Desktop preview + typed RPC) | **real now** — boots headless with fixture Codex app-server by default; live/headed paths remain explicitly armed |
@@ -115,7 +115,7 @@ cd apps/qa-runner && bun pm pack --dry-run
 bun run --cwd apps/qa-runner playwright:install   # or: bunx playwright install chromium
 
 # HEADLINE demo (epic #6174): Khala AUTONOMOUSLY drives the session, records it,
-# and distills it into a COMMITTED executor-style e2e scenario.
+# and distills it into a reviewable executor-style e2e candidate.
 bun run --cwd apps/qa-runner demo:khala
 bun run --cwd apps/qa-runner demo:khala -- --goal "..." --url https://openagents.com --out ./runs/khala
 #   -> writes session.mp4 + trace.zip + screenshots + result.json + session-trace.json,
@@ -124,7 +124,7 @@ bun run --cwd apps/qa-runner demo:khala -- --goal "..." --url https://openagents
 TARGET_URL=https://openagents.com bun test apps/qa-runner/generated/login-verify.e2e.test.ts
 
 # Khala Code flagship native demo (Q3.4): headed packaged app, AX/screenshot
-# seeded-bug hunt, public-safe report, and committed distilled regression.
+# seeded-bug hunt, public-safe report, and distilled regression candidate.
 QA_NATIVE_DESKTOP=1 bun run --cwd apps/qa-runner khala:flagship-demo -- \
   --out ../../var/qa-8026/flagship-demo \
   --seeded-bug-text "Seeded bug: packaged Khala Code fixture response is rendered"
