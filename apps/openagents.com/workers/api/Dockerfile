@@ -15,6 +15,7 @@ WORKDIR /app
 # Vite Plus may split dynamic imports into sibling .mjs chunks. Copy the whole
 # executable module set, not just the two entry files.
 COPY dist-cloudrun/*.mjs ./dist-cloudrun/
+COPY dist-cloudrun/node_modules ./node_modules
 COPY dist-cloudrun/web-dist ./web-dist
 # Sarah removed at owner direction 2026-07-10 (epic #8610): the former
 # sarah-ui / sarah-agent / sarah-clips image layers and SARAH_* env are gone.

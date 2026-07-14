@@ -68,10 +68,16 @@ if [[ ! -f dist-cloudrun/server.mjs || ! -f dist-cloudrun/preload.mjs ]]; then
   echo "FATAL: Vite Plus Cloud Run bundles are incomplete" >&2
   exit 1
 fi
-if grep -R -E -q "from ['\"]@openagentsinc/|import\(['\"]@openagentsinc/" dist-cloudrun/*.mjs; then
-  echo "FATAL: owned workspace dependency escaped the Cloud Run bundle" >&2
-  exit 1
-fi
+
+# T3 Code's `vp pack` pattern bundles selected app packages and ships runtime
+# dependencies with the app. This image is built from workers/api alone, so
+# stage a portable production node_modules tree into the Cloud Build context.
+RUNTIME_DEPLOY_DIR="$(mktemp -d)"
+trap 'rm -rf "$RUNTIME_DEPLOY_DIR"' EXIT
+CI=true pnpm --filter @openagentsinc/api-worker deploy "$RUNTIME_DEPLOY_DIR" \
+  --prod --legacy >/dev/null
+mv "$RUNTIME_DEPLOY_DIR/node_modules" dist-cloudrun/node_modules
+node scripts/cloudrun/assert-self-contained-bundle.mjs dist-cloudrun
 cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
 # Sarah removed at owner direction 2026-07-10 (epic #8610): the former
 # sarah-ui / sarah-agent / sarah-clips bundle steps are gone with apps/sarah.

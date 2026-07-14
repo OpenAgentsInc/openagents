@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 
 import { shouldBundleCloudRunDependency } from '../../vite.config'
+import { externalRuntimeSpecifiers } from './assert-self-contained-bundle.mjs'
 
 describe('Cloud Run Vite Plus bundle contract', () => {
   test('preserves the server bundle while packing preload', () => {
@@ -16,8 +17,9 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     )
     expect(deployScript).toContain('! -f dist-cloudrun/server.mjs')
     expect(deployScript).toContain('! -f dist-cloudrun/preload.mjs')
+    expect(deployScript).toContain('assert-self-contained-bundle.mjs')
     expect(deployScript).toContain(
-      'owned workspace dependency escaped the Cloud Run bundle',
+      'pnpm --filter @openagentsinc/api-worker deploy',
     )
     expect(deployScript).not.toContain('--deps.never-bundle')
   })
@@ -29,6 +31,9 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     )
 
     expect(dockerfile).toContain('COPY dist-cloudrun/*.mjs ./dist-cloudrun/')
+    expect(dockerfile).toContain(
+      'COPY dist-cloudrun/node_modules ./node_modules',
+    )
   })
 
   test('bundles owned workspace packages like the T3 Code pack pattern', () => {
@@ -36,5 +41,17 @@ describe('Cloud Run Vite Plus bundle contract', () => {
       shouldBundleCloudRunDependency('@openagentsinc/khala-sync-server'),
     ).toBe(true)
     expect(shouldBundleCloudRunDependency('effect')).toBe(false)
+  })
+
+  test('rejects packages absent from the slim runtime image', () => {
+    expect(
+      externalRuntimeSpecifiers(`
+        import fs from 'node:fs'
+        import net from 'net'
+        import { Effect } from 'effect'
+        import '@openagentsinc/runtime-platform'
+        import './local.mjs'
+      `),
+    ).toEqual(['@openagentsinc/runtime-platform', 'effect'])
   })
 })

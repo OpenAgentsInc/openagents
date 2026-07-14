@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite-plus'
 
 // Match T3 Code's production pack pattern: owned workspace packages are part
-// of the deployable artifact, never runtime dependencies of the slim image.
+// of the deployable artifact instead of becoming accidental runtime edges.
 export const shouldBundleCloudRunDependency = (id: string): boolean =>
   id.startsWith('@openagentsinc/')
 
