@@ -243,10 +243,10 @@ const validateBillingPolicy = (
       }
     }
 
-    if (billingMode === 'paid_credits' && billingLedgerEntryId === null) {
+    if (billingMode === 'paid_credits') {
       return yield* new AdjutantUsageReceiptUnsafe({
         reason:
-          'Paid Autopilot Site receipts must link an existing billing ledger entry.',
+          'Paid Autopilot Site receipt writes are retired; record no-spend usage with public_beta_free.',
       })
     }
 

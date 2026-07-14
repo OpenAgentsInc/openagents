@@ -20,13 +20,6 @@ import { Schema as S } from 'effect'
 
 import { buildAgentGoalAssignmentContext } from './agent-goal-runtime'
 import {
-  codexUsageDebitInsert,
-  codexUsageDebitMirrorRef,
-  ensureBillingAccount,
-  recordContainerUsageDebitForRun,
-  type BillingRuntime,
-} from './billing'
-import {
   parseJsonStringArray,
   parseJsonUnknown,
   parseJsonWithSchema,
@@ -220,12 +213,6 @@ export type OmniRunStore = Readonly<{
 
 export type OmniRunStoreHooks = Readonly<{
   afterAgentRunMetered?: (run: AgentRunRecord) => Promise<void>
-  /**
-   * KS-8.7 (#8318): billing runtime carrying the fail-soft Postgres mirror
-   * for the codex-usage debits, billing account ensure, and container
-   * usage debits this store writes. Default: plain D1 (no mirror).
-   */
-  billingRuntime?: BillingRuntime | undefined
   /**
    * KS-6.6 event-feed follow-up (#8416): fires with the fresh run row and
    * the events just appended, right after `appendAgentRunSyncChanges` writes
@@ -1412,30 +1399,9 @@ export const makeD1OmniRunStore = (
               (statement): statement is D1PreparedStatement =>
                 statement !== undefined,
             )
-    const codexBillingInserts =
-      runRow === null || runRow === undefined
-        ? []
-        : usageEvents
-            .map(event =>
-              codexUsageDebitInsert(db, {
-                event,
-                teamId: runRow.team_id,
-                userId: runRow.user_id,
-              }),
-            )
-            .filter(
-              (statement): statement is D1PreparedStatement =>
-                statement !== undefined,
-            )
-
-    if (runRow !== null && runRow !== undefined) {
-      await ensureBillingAccount(db, runRow.user_id, hooks.billingRuntime)
-    }
-
     await db.batch([
       ...events.map(event => agentEventInsert(db, event)),
       ...tokenUsageInserts,
-      ...codexBillingInserts,
       db
         .prepare(
           `UPDATE agent_runs
@@ -1466,26 +1432,9 @@ export const makeD1OmniRunStore = (
         ),
     ])
 
-    // KS-8.7: mirror the codex-usage debit ledger rows the batch above
-    // just inserted (fail-soft, by their deterministic idempotency keys).
-    if (
-      runRow !== null &&
-      runRow !== undefined &&
-      hooks.billingRuntime?.mirror !== undefined &&
-      codexBillingInserts.length > 0
-    ) {
-      const refs = usageEvents
-        .map(event => codexUsageDebitMirrorRef(event))
-        .filter(ref => ref !== undefined)
-      if (refs.length > 0) {
-        await hooks.billingRuntime.mirror(db, refs)
-      }
-    }
-
     const run = await readAgentRunById(db, runId)
 
     if (run !== undefined) {
-      await recordContainerUsageDebitForRun(db, run, {}, hooks.billingRuntime)
       await appendAgentRunSyncChanges(db, run, events)
       await callAfterAgentRunSyncChangesHook(hooks, run, events)
       await hooks.afterAgentRunMetered?.(run)

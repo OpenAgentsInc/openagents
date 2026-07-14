@@ -23,7 +23,6 @@ import {
   makeOmniRunStoreForEnv,
 } from './agent-runtime-store'
 import { appendSessionCookies } from './auth-cookies'
-import { requireMinimumRunCredits } from './billing'
 import { identityDbForEnv, type IdentityDb } from './identity-db'
 import type {
   OpenAgentsWorkerConfigEnv,
@@ -1608,23 +1607,6 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       return methodNotAllowed(['GET', 'POST'])
     }
 
-    const billingGate = await requireMinimumRunCredits(
-      openAgentsDatabase(env),
-      targetUser.userId,
-    )
-
-    if (!billingGate.ok) {
-      return noStoreJsonResponse(
-        {
-          billing: billingGate.billing,
-          error: 'insufficient_credits',
-          message: billingGate.message,
-          targetUser,
-        },
-        { status: 402 },
-      )
-    }
-
     const repositoryText =
       firstText(selector.repository, selector.repo) ??
       'OpenAgentsInc/autopilot-omega'
@@ -2516,25 +2498,6 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       repository,
       runId,
     )
-    const billingGate = await requireMinimumRunCredits(
-      openAgentsDatabase(env),
-      input.userId,
-    )
-
-    if (!billingGate.ok) {
-      return {
-        ok: false,
-        response: noStoreJsonResponse(
-          {
-            billing: billingGate.billing,
-            error: 'insufficient_credits',
-            message: billingGate.message,
-          },
-          { status: 402 },
-        ),
-      }
-    }
-
     const providerBundle = await listProviderAccountsForUser(
       makeD1ProviderAccountRepository(openAgentsDatabase(env)),
       input.userId,

@@ -53,13 +53,10 @@ import {
   inferenceChargeReceiptRef,
 } from './inference/metering-hook'
 import {
-  type AccrueMonetizeLayerReferralResult,
-  accrueMonetizeLayerReferral,
-} from './marketplace-monetize-any-layer-accrual'
-import {
   buildLayerMonetizationDefinition,
+  type LayerMonetizationAccrualPlan,
+  planLayerMonetizationAccrual,
 } from './marketplace-monetize-any-layer'
-import type { ReferredPrincipal } from './referral-cross-category-accrual'
 import type { ComposedRunBalance, ComposedRunPlan } from './autopilot-composed-run'
 
 export const AUTOPILOT_COMPOSED_RUN_EXECUTION_SCHEMA =
@@ -237,7 +234,14 @@ export type ComposedRunReferralInput = Readonly<{
   /** Referral cut in basis points of the composed spend. */
   referralBps: number
   /** The paying principal whose PERMANENT attribution decides the real referrer. */
-  principal: ReferredPrincipal
+  principal:
+    | Readonly<{ kind: 'agent'; userId: string }>
+    | Readonly<{ kind: 'user'; userId: string }>
+}>
+
+export type RetiredComposedRunReferral = Readonly<{
+  _tag: 'disabled'
+  plan: LayerMonetizationAccrualPlan
 }>
 
 export class ComposedRunExecutionError extends Error {
@@ -273,7 +277,7 @@ export type ComposedRunExecution = Readonly<{
    * plan and touches NO ledger. (The composed-run flag arms the listing surface;
    * it never arms a real ledger accrual or a real debit.)
    */
-  referral: AccrueMonetizeLayerReferralResult
+  referral: RetiredComposedRunReferral
   /** The blockers this inert composition documents and does NOT clear. */
   unclearedBlockerRefs: ReadonlyArray<string>
 }>
@@ -296,7 +300,7 @@ export type ComposedRunExecution = Readonly<{
  * NEVER accrues a ledger row.
  */
 export const composeRunExecution = async (
-  db: D1Database,
+  _db: D1Database,
   input: {
     plan: ComposedRunPlan
     accountRef: string
@@ -404,17 +408,16 @@ export const composeRunExecution = async (
     return fail(`referral offer invalid: ${offer.error.reason}`)
   }
 
-  const referral = await accrueMonetizeLayerReferral(
-    db,
-    // ALWAYS inert: the composed-run composition never arms a real ledger accrual.
-    { enabled: false },
-    {
+  // VP-1 retired the referral ledger bridge. Keep the useful, pure planning
+  // projection while making it impossible for this composition to accrue or
+  // settle anything.
+  const referral: RetiredComposedRunReferral = {
+    _tag: 'disabled',
+    plan: planLayerMonetizationAccrual({
       definition: offer.definition,
       meteredSpendMsat: composedSpendMsat,
-      eventId: input.referral.eventId,
-      principal: input.referral.principal,
-    },
-  )
+    }),
+  }
 
   return {
     ok: true,
@@ -462,7 +465,7 @@ export type ComposedRunExecutionProjection = Readonly<{
   /** Component receipt refs only — no amounts, keys, or destinations. */
   componentReceiptRefs: ReadonlyArray<string>
   /** The referral bridge tag for the composed spend (always `disabled` here). */
-  referralState: AccrueMonetizeLayerReferralResult['_tag']
+  referralState: RetiredComposedRunReferral['_tag']
   unclearedBlockerRefs: ReadonlyArray<string>
 }>
 

@@ -1,22 +1,27 @@
 import { Context, Effect, Layer } from 'effect'
 
-import {
-  type BillingRuntime,
-  type BillingSummary,
-  recordContainerUsageDebitForRun,
-  requireMinimumRunCredits,
-} from '../billing'
 import type { AgentRunRecord } from '../omni-runs'
-import { OmniBillingError, type OmniError } from './errors'
+import type { OmniError } from './errors'
 
-export type OmniBillingGate =
-  | Readonly<{ ok: true; billing: BillingSummary }>
-  | Readonly<{ ok: false; billing: BillingSummary; message: string }>
+/**
+ * VP-1 retirement contract: Omni run admission is non-monetary. The operator
+ * service remains as a stable Effect boundary for callers, but it neither reads
+ * a credit balance nor writes a debit. Token/runner usage continues to be
+ * recorded by the run store for quota and operations purposes.
+ */
+export type OmniNoSpendAdmission = Readonly<{
+  allowed: true
+  mode: 'no_spend'
+}>
 
 export type OmniOperatorServiceDependencies = Readonly<{
-  requireMinimumRunCredits?: typeof requireMinimumRunCredits | undefined
+  /** Retained only so older composition roots can be upgraded independently. */
+  requireMinimumRunCredits?:
+    | ((...args: ReadonlyArray<unknown>) => unknown)
+    | undefined
+  /** Retained only so older composition roots can be upgraded independently. */
   recordContainerUsageDebitForRun?:
-    | typeof recordContainerUsageDebitForRun
+    | ((...args: ReadonlyArray<unknown>) => unknown)
     | undefined
 }>
 
@@ -24,13 +29,13 @@ export type OmniOperatorServiceShape = Readonly<{
   requireRunCredits: (
     db: D1Database,
     userId: string,
-    runtime?: BillingRuntime,
-  ) => Effect.Effect<BillingSummary, OmniError>
+    runtime?: unknown,
+  ) => Effect.Effect<OmniNoSpendAdmission, OmniError>
   recordContainerUsageDebit: (
     db: D1Database,
     run: AgentRunRecord,
     input?: Readonly<{ billUntil?: string | undefined }>,
-    runtime?: BillingRuntime,
+    runtime?: unknown,
   ) => Effect.Effect<void, OmniError>
 }>
 
@@ -39,46 +44,18 @@ export class OmniOperatorService extends Context.Service<
   OmniOperatorServiceShape
 >()('openagents/OmniOperatorService') {}
 
-const billingFailure = (userId: string, error: unknown): OmniBillingError =>
-  new OmniBillingError({
-    userId,
-    message: error instanceof Error ? error.message : String(error),
-  })
-
 export const makeOmniOperatorService = (
-  dependencies: OmniOperatorServiceDependencies = {},
-): OmniOperatorServiceShape => {
-  const requireCredits =
-    dependencies.requireMinimumRunCredits ?? requireMinimumRunCredits
-  const recordDebit =
-    dependencies.recordContainerUsageDebitForRun ??
-    recordContainerUsageDebitForRun
-
-  return {
-    requireRunCredits: (db, userId, runtime) =>
-      Effect.tryPromise({
-        try: () => requireCredits(db, userId, runtime),
-        catch: error => billingFailure(userId, error),
-      }).pipe(
-        Effect.flatMap(gate =>
-          gate.ok
-            ? Effect.succeed(gate.billing)
-            : Effect.fail(
-                new OmniBillingError({
-                  userId,
-                  message: gate.message,
-                }),
-              ),
-        ),
-        Effect.withSpan('OmniOperatorService.requireRunCredits'),
-      ),
-    recordContainerUsageDebit: (db, run, input, runtime) =>
-      Effect.tryPromise({
-        try: () => recordDebit(db, run, input, runtime),
-        catch: error => billingFailure(run.userId, error),
-      }).pipe(Effect.withSpan('OmniOperatorService.recordContainerUsageDebit')),
-  }
-}
+  _dependencies: OmniOperatorServiceDependencies = {},
+): OmniOperatorServiceShape => ({
+  requireRunCredits: (_db, _userId, _runtime) =>
+    Effect.succeed({ allowed: true as const, mode: 'no_spend' as const }).pipe(
+      Effect.withSpan('OmniOperatorService.requireRunCredits'),
+    ),
+  recordContainerUsageDebit: (_db, _run, _input, _runtime) =>
+    Effect.void.pipe(
+      Effect.withSpan('OmniOperatorService.recordContainerUsageDebit'),
+    ),
+})
 
 export const OmniOperatorServiceLive = Layer.succeed(
   OmniOperatorService,
