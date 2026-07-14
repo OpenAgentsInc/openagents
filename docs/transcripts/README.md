@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`251`
+This directory contains machine-generated transcripts for episodes `001`-`252`
 of the OpenAgents video corpus, plus occasional clearly marked future-episode
 drafts. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
 presentation excerpt from the PlebLab Startup Day 2024 recording,
@@ -21,6 +21,12 @@ OpenAgents Desktop product: predictable recent Codex history, complete and
 clickable subagent inspection, a failure-driven Fleet workbench, and finally a
 Codex-only, local-first, ProductSpec-native workroom MVP with a fast,
 StarCraft-like operator interface.
+
+Episode [`252`](252.md) extends that ProductSpec-native workroom into
+**OpenAgents Assurance**: AssuranceSpec commits how the product should be
+verified, Observer compiles reviewed obligations into immutable manifests, and
+real QA tools execute them into exact receipts tied back to ProductSpec
+evidence.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -49,6 +55,11 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
   harnesses, usage truth, and delegated work while exposing the danger of
   unverified operational prose; and Episode 251 freezes the first deployable
   shape as a local-first Codex workroom that authors and executes ProductSpecs.
+- Episode [`252`](252.md): the QA Swarm sketch becomes a proof-design stack.
+  ProductSpec defines intent and indexes evidence; AssuranceSpec commits how to
+  know; Observer compiles reviewed obligations; and real QA adapters execute
+  them against browser, terminal, and native-window surfaces to emit exact
+  Assurance Receipts.
 
 ## Complete Episode Index
 
@@ -340,7 +351,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-251 - OAPN, Khala, and the OpenAgents Desktop MVP
+### 214-252 - OAPN, Khala, the OpenAgents Desktop MVP, and Assurance
 
 | Episode | Summary |
 | --- | --- |
@@ -382,14 +393,15 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`249` Sub-agent UI](249.md) | Compares Codex and Claude child-agent navigation, studies the teardown evidence, and makes Codex subagents clickable and inspectable through named roster entries, causal cards, independent transcripts, typed activity detail, and a fast StarCraft-like operator surface. |
 | [`250` Ready the Fleet](250.md) | Builds the Desktop Fleet overview, harness-selectable Fable/Codex chat, usage/readiness projections, delegated Codex children, and streaming traces, then turns failures such as invented commands and mislabeled effective models into a demand for typed intents, receipts, and executable owner journeys. |
 | [`251` Desktop MVP Spec](251.md) | Declares the first deployable OpenAgents shape: a Codex-only, local-first Desktop workroom inspired by OpenChamber, with ProductSpec as the native intent and execution unit, visible subagents and evidence, one MVP epic, explicit success metrics, and a clicky power-user UI before broader providers or voice. |
+| [`252` OpenAgents Assurance](252.md) | Extends the ProductSpec evidence loop into a proof-design stack for agent-built software. A coordinated **QA Swarm** drives real browser, terminal, and native-window surfaces and turns discoveries into committed, re-runnable tests with honest CONFIRMED/REFUTED verdicts, videos, accounting, and shareable run views. Introduces **AssuranceSpec** as the framework-neutral record of verification intent and **Observer** as the product that reviews that design, compiles admitted obligations into immutable manifests, and runs them through real QA adapters. Preserves the authority boundary: ProductSpec defines intent and indexes evidence; the workroom executes accepted plans; AssuranceSpec commits how to know; Observer compiles obligations; QA tools execute and emit exact Assurance Receipts. |
 
 ## Major Themes
 
 | Theme | What It Covers | Start With |
 | --- | --- | --- |
 | Open agents versus closed AI capture | OpenAgents is framed as an open alternative to lab-controlled agents, closed marketplaces, regulatory capture, and platform shutdown risk. The 237 launch sharpens this into an explicit "open lane vs. security lane" choice — safety as a market, not a ministry; swarm over singleton; "3D-print rings of power for everyone" rather than fight for the one ring. Episode 241 extends the argument to multi-agent orchestration: a closed orchestrator over closed models is not AI sovereignty, so OpenAgents answers with an open, inspectable Khala. | [`001`](001.md), [`047`](047.md), [`086`](086.md), [`101`](101.md), [`124`](124.md), [`150`](150.md), [`166`](166.md), [`181`](181.md), [`200`](200.md), [`204`](204.md), [`205`](205.md), [`220`](220.md), [`222`](222.md), [`226`](226.md), [`227`](227.md), [`230`](230.md), [`231`](231.md), [`232`](232.md), [`233`](233.md), [`234`](234.md), [`237`](237.md), [`238`](238.md), [`239`](239.md), [`241`](241.md) |
-| Accepted outcomes and the clearing layer | The atomic unit of the agent economy is the accepted outcome — a task scoped in advance, executed wherever cheapest, graded against a rubric, recorded in a receipt, and settled to everyone who contributed — not the skill/capability. Trust comes loose from the employment bundle and must be re-housed in an explicit verification/clearing layer, the "load-bearing wall." Measured as accepted outcomes per kilowatt-hour; confidence (draft vs. verified vs. bonded) becomes priceable. Episode 246 scales the same rigor down to micro-interactions: UX Behavior Contracts as promise-grade, oracle-enforced statements about what the product must do. | [`224`](224.md), [`232`](232.md), [`234`](234.md), [`235`](235.md), [`236`](236.md), [`237`](237.md), [`246`](246.md) |
-| ProductSpec-guided agent work | ProductSpec turns product intent into a revisioned, validator-clean artifact with explicit scope, acceptance criteria, metrics, owner gates, and evidence-linked work packets. Episode 251 makes that contract the native unit OpenAgents helps users author and Codex agents systematically execute. | [`251`](251.md) |
+| Accepted outcomes and the clearing layer | The atomic unit of the agent economy is the accepted outcome — a task scoped in advance, executed wherever cheapest, graded against a rubric, recorded in a receipt, and settled to everyone who contributed — not the skill/capability. Trust comes loose from the employment bundle and must be re-housed in an explicit verification/clearing layer, the "load-bearing wall." Measured as accepted outcomes per kilowatt-hour; confidence (draft vs. verified vs. bonded) becomes priceable. Episode 246 scales the same rigor down to UX Behavior Contracts; episode 252 turns it into explicit proof design through ProductSpec evidence, AssuranceSpec obligations, Observer manifests, real QA execution, and exact receipts. | [`224`](224.md), [`232`](232.md), [`234`](234.md), [`235`](235.md), [`236`](236.md), [`237`](237.md), [`246`](246.md), [`252`](252.md) |
+| ProductSpec-guided agent work and Assurance | ProductSpec turns product intent into a revisioned, validator-clean artifact with explicit scope, acceptance criteria, metrics, owner gates, and evidence-linked work packets. Episode 251 makes that contract the native unit OpenAgents helps users author and Codex agents systematically execute. Episode 252 keeps proof authority separate: AssuranceSpec commits how the team intends to know, Observer compiles reviewed obligations without pretending to execute them, and real QA tools produce receipts. The separation targets false greens from fixtures, mirrored implementations, mocked seams, coverage theater, skips, and stale evidence. | [`251`](251.md), [`252`](252.md) |
 | Agentic group-forming network and Reed's law | Growth is reframed for agent time: agents have no Dunbar limit, onboard by reading a markdown file and calling an API, work while we sleep, and tell other agents about useful work at machine speed, so a freely group-forming network's value scales like 2^n. The most viral artifact is a verifiable record of an agent earning Bitcoin, which recruits humans and agents at once. | [`200`](200.md), [`230`](230.md), [`231`](231.md), [`235`](235.md), [`237`](237.md) |
 | Build in public and ship early | The series repeatedly ships rough software, public demos, live launches, beta access, and worse-is-better product loops instead of closed-lab secrecy. Episode 229's Sites product is built overnight and demoed live; 237 ships a "first and last" human release and openly publishes the gaps between promise and implementation as audited product promises. | [`002`](002.md), [`003`](003.md), [`004`](004.md), [`006`](006.md), [`008`](008.md), [`086`](086.md), [`092`](092.md), [`100`](100.md), [`119`](119.md), [`149`](149.md), [`183`](183.md), [`184`](184.md), [`214`](214.md), [`221`](221.md), [`226`](226.md), [`228`](228.md), [`229`](229.md), [`231`](231.md), [`234`](234.md), [`237`](237.md) |
 | Agent first principles | Agents are treated as concrete software objects: users, chats, plans, actions, tasks, conversations, tools, memory, payments, and inspection logs. | [`005`](005.md), [`006`](006.md), [`007`](007.md), [`020`](020.md), [`033`](033.md), [`038`](038.md), [`040`](040.md), [`090`](090.md), [`132`](132.md), [`138`](138.md), [`199`](199.md), [`230`](230.md), [`231`](231.md) |
@@ -467,8 +479,9 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 
 **Compute, Pylon, Nexus, Psionic, and training:** [`174`](174.md) -> [`178`](178.md) -> [`194`](194.md) -> [`201`](201.md) -> [`203`](203.md) -> [`214`](214.md) -> [`216`](216.md) -> [`217`](217.md) -> [`221`](221.md) -> [`222`](222.md) -> [`223`](223.md) -> [`224`](224.md) -> [`225`](225.md) -> [`227`](227.md) -> [`230`](230.md) -> [`236`](236.md) -> [`237`](237.md) -> [`238`](238.md) -> [`240`](240.md).
 
-**OpenAgents Desktop, subagents, Fleet, and ProductSpec:** [`246`](246.md) ->
-[`248`](248.md) -> [`249`](249.md) -> [`250`](250.md) -> [`251`](251.md).
+**OpenAgents Desktop, subagents, Fleet, ProductSpec, and Assurance:**
+[`246`](246.md) -> [`248`](248.md) -> [`249`](249.md) -> [`250`](250.md) ->
+[`251`](251.md) -> [`252`](252.md).
 
 ## Maintenance Notes
 
