@@ -300,8 +300,9 @@ describe('registry discipline', () => {
   // `mpp_spt_replay`; 25 until CFG-4 (#8519) removed `agent_balances`,
   // `labor_escrows`, and `labor_escrow_receipts` — those are
   // Postgres-AUTHORITATIVE via the payments ledger and must never be
-  // mirrored from D1 again. The lock-step test below pins the exact
-  // relationship with the khala-sync-server backfill registry.
+  // mirrored from D1 again. The retired backfill registry was deleted with
+  // its executable writer; this remaining test pins the immutable table
+  // metadata used to decode historical rows.
   test('covers all 22 domain tables with conflict keys inside key columns', () => {
     const tables = Object.keys(TREASURY_DOMAIN_TABLES)
     expect(tables).toHaveLength(22)
@@ -313,31 +314,4 @@ describe('registry discipline', () => {
     }
   })
 
-  test('stays in lock-step with the khala-sync-server backfill registry', async () => {
-    const backfill = (await import(
-      '../../../../../packages/khala-sync-server/src/treasury-backfill.js'
-    )) as {
-      TREASURY_TABLE_SPECS: Record<
-        string,
-        { columns: ReadonlyArray<string>; conflictKey: string }
-      >
-    }
-    // CFG-4 (#8519): the backfill registry deliberately KEEPS the three
-    // hard-cut credits tables — they are needed for the one-time pre-cutover
-    // converge sweep (and are excluded from routine sweeps in the script) —
-    // so the relationship is worker registry + credits trio = backfill set.
-    const cfg4HardCutTables = [
-      'agent_balances',
-      'labor_escrow_receipts',
-      'labor_escrows',
-    ]
-    expect(Object.keys(backfill.TREASURY_TABLE_SPECS).sort()).toEqual(
-      [...Object.keys(TREASURY_DOMAIN_TABLES), ...cfg4HardCutTables].sort(),
-    )
-    for (const [table, spec] of Object.entries(TREASURY_DOMAIN_TABLES)) {
-      const twin = backfill.TREASURY_TABLE_SPECS[table]!
-      expect(twin.columns, table).toEqual(spec.columns)
-      expect(twin.conflictKey, table).toBe(spec.conflictKey)
-    }
-  })
 })

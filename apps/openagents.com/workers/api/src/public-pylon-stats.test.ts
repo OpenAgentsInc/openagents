@@ -23,12 +23,31 @@ import type {
   PylonApiRegistrationRecord,
   PylonApiRegistrationRow,
 } from './pylon-api'
-import type { TreasuryTransactionRecord } from './treasury-page-routes'
 import {
   buildTrainingRunRecord,
   buildTrainingWindowLeaseRecord,
   buildTrainingWindowRecord,
 } from './training-run-window-authority'
+
+type TreasuryTransactionRecord = Readonly<{
+  id: string
+  direction: 'in' | 'out'
+  amountSat: number
+  state: 'pending' | 'settled' | 'expired' | 'failed'
+  bolt11: string | null
+  paymentRef: string | null
+  failureReasonRef: string | null
+  owedRef: string | null
+  owedSat: number | null
+  recipientConfirmationRef: string | null
+  recipientConfirmationState: 'unconfirmed' | 'confirmed_received'
+  recipientConfirmedAt: string | null
+  recipientRef: string | null
+  redactedDestinationRef: string | null
+  createdAt: string
+  settledAt: string | null
+  expiresAt: string | null
+}>
 
 const nowUnixMs = Date.parse('2026-06-08T14:00:00.000Z')
 
