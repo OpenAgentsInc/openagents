@@ -80,6 +80,10 @@ not current queues:
   public-content, and
   same-origin `/docs` hosting analysis; implementation requires a new bounded
   post-VP-4 issue and claim.
+- [`2026-07-14-vercel-native-sdk-effect-native-desktop-audit.md`](./2026-07-14-vercel-native-sdk-effect-native-desktop-audit.md)
+  — pinned Native SDK architecture, platform, security, and maturity analysis;
+  retains Electron as the shipping Desktop host and scopes any future work to
+  a bounded Effect Native renderer proof rather than a product rewrite.
 - [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
   — durable process/data/authority topology plus a dated delivery baseline.
 - [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)

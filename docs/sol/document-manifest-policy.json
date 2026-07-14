@@ -21,6 +21,12 @@
       "disposition": "retain-historical",
       "dispatch": false
     },
+    "docs/sol/2026-07-14-vercel-native-sdk-effect-native-desktop-audit.md": {
+      "class": "historical-analysis",
+      "owner": "OpenAgents Desktop and Effect Native architecture",
+      "disposition": "retain-historical",
+      "dispatch": false
+    },
     "docs/sol/the-case-against-anthropic.md": {
       "class": "historical-analysis",
       "owner": "Christopher David",
