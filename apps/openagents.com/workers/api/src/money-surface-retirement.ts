@@ -16,6 +16,7 @@ const retiredExactPaths = new Set([
 
 const retiredPrefixes = [
   '/api/admin/credits/',
+  '/api/agent/sites',
   '/api/agents/search/payments/',
   '/api/billing/',
   '/api/mobile/credits/',
@@ -24,6 +25,7 @@ const retiredPrefixes = [
   '/api/operator/business/sarah-checkout',
   '/api/operator/crm/sales/checkout',
   '/api/operator/partners/payout-ledger/',
+  '/api/operator/sites',
   '/api/operator/sites/referrals/payout-ledger/',
   '/api/operator/tips-buffer/',
   '/api/operator/treasury/',
@@ -33,6 +35,7 @@ const retiredPrefixes = [
   '/api/public/markets/',
   '/api/sites/',
   '/checkout',
+  '/r/site/',
   '/v1/inference/privacy/paid-privacy/',
   '/v1/khala-code/plans/purchases',
 ] as const

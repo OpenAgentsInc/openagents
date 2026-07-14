@@ -21,6 +21,9 @@ describe('VP-1 money-surface ingress retirement', () => {
     ['GET', '/api/sites'],
     ['POST', '/api/sites/builder-sessions'],
     ['POST', '/api/sites/site-1/forms/contact/submit'],
+    ['POST', '/api/agent/sites/site-1/previews'],
+    ['GET', '/api/operator/sites/site-1'],
+    ['GET', '/r/site/source-1'],
     ['POST', '/v1/khala-code/plans/purchases'],
   ])('retires %s %s before auth or handler dispatch', (method, pathname) => {
     expect(isRetiredMoneySurfaceRequest(method, pathname)).toBe(true)

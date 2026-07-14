@@ -2,7 +2,18 @@ import { Effect, Schema as S } from 'effect'
 
 import { nestedUnknown, safeJsonRecord } from './json-boundary'
 import type { OmniEventRecord } from './omni-runs'
-import { AutopilotSiteStaticAssetsManifest } from './sites'
+
+// Historical receipt decoder only. The executable Sites product graph is
+// retired, so retain the immutable on-disk manifest shape locally rather than
+// depending on the former Sites authority module.
+const HistoricalSiteStaticManifestAsset = S.Struct({
+  r2Key: S.String,
+  cacheControl: S.optionalKey(S.String),
+  contentType: S.optionalKey(S.String),
+})
+const HistoricalSiteStaticAssetsManifest = S.Struct({
+  assets: S.Record(S.String, HistoricalSiteStaticManifestAsset),
+})
 
 export const ADJUTANT_SITE_ARTIFACT_RECEIPT_SCHEMA_VERSION =
   'openagents.adjutant.site_artifact_receipt.v1'
@@ -11,7 +22,7 @@ export const AdjutantSiteArtifactReceipt = S.Struct({
   schemaVersion: S.Literal(ADJUTANT_SITE_ARTIFACT_RECEIPT_SCHEMA_VERSION),
   siteId: S.String,
   buildStatus: S.Literals(['build_failed', 'saved']),
-  staticAssetsManifest: AutopilotSiteStaticAssetsManifest,
+  staticAssetsManifest: HistoricalSiteStaticAssetsManifest,
   buildCommand: S.optionalKey(S.String),
   buildLogText: S.optionalKey(S.String),
   d1BindingName: S.optionalKey(S.String),
