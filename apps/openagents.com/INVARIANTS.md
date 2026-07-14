@@ -736,33 +736,16 @@ khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
   `workers/api/src/inference/inference-privacy-entitlement.test.ts`.
 
-## Khala Code Plan Seam (catalog honest, purchase default-off)
+## Retired Khala Code Plan Seam
 
-- The Khala Code plan surfaces (`khala_code.free_paid_plans.v1`, #7966:
-  `workers/api/src/inference/khala-code-plan-catalog.ts`,
-  `khala-code-plan-routes.ts`) are projections over the EXISTING
-  privacy-entitlement truth — they never fork it. The paid plan's substance is
-  the capture opt-out entitlement (`inference_privacy_entitlements`); the
-  purchase seam grants it via `grantPaidPrivacyEntitlement` and the receipt
-  dereferences at `/api/public/inference/privacy-receipts/{receiptRef}`. No
-  parallel plan/entitlement store may be introduced.
-- The purchase route (`POST /v1/khala-code/plans/purchases`) is FLAG-GATED,
-  DEFAULT OFF, FAIL-CLOSED on `KHALA_CODE_PAID_PLANS_ENABLED`: unarmed it
-  returns 503 `khala_code_paid_plans_not_enabled` and grants nothing. It
-  collects NO payment in either state; arming, the payment-collection leg,
-  pricing, and public plan copy are owner decisions.
-- The public catalog (`GET /api/public/khala-code/plans`) must report the REAL
-  purchasability state from the fail-closed flag read — never hardcoded
-  purchasable/live copy — and grants no capture, billing, payout, or
-  settlement authority.
-- The plan-status read (`GET /v1/khala-code/plan`) never fabricates a plan: a
-  paid plan is reported only on a real per-account entitlement row;
-  deployment-wide confidential-compute mode reports capture-excluded WITHOUT
-  claiming a purchased plan; an entitlement read error returns 503 rather than
-  guessing (the status surface's analogue of fail-closed-to-private).
-- Regression coverage:
-  `workers/api/src/inference/khala-code-plan-catalog.test.ts`,
-  `workers/api/src/inference/khala-code-plan-routes.test.ts`.
+- The public catalog, plan-status read, and purchase route were removed during
+  the VP-1 non-MVP payment-path retirement. They are not public projections and
+  must not be re-added to the projection ledger without restoring an explicit
+  product invariant, shared staleness contract, and owner-authorized payment
+  phase.
+- The retained `khala-code-plan-catalog.ts` is inert source material only. It
+  grants no capture, billing, payout, or settlement authority. Regression
+  coverage: `workers/api/src/inference/khala-code-plan-catalog.test.ts`.
 
 ## Khala Code Outside-User Run Receipts (opt-in only)
 
@@ -3207,12 +3190,6 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     public-safe run/candidate projections only; grants no promotion
     authority — optimizer candidates stay admission-gated with
     `decisionGrade: false`). `staleness_declared`.
-  - `GET /api/public/khala-code/plans` — live at read over static catalog
-    text plus one deployment-config input (the fail-closed
-    `KHALA_CODE_PAID_PLANS_ENABLED` read; khala_code.free_paid_plans.v1,
-    #7966) — compliant (`generatedAt`, `live_at_read` contract rebuilt on
-    the catalog module / flag change; catalog text only, grants no capture,
-    billing, payout, or settlement authority). `staleness_declared`.
   - `GET /api/public/khala-code/download-counts` — live at read over
     `khala_code_download_events` (khala_code.desktop_codex_wrapper.v1, #8246)
     — compliant (`generatedAt`, `live_at_read` contract rebuilt on the
@@ -3252,6 +3229,12 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     provider payloads, wallet material, checkout creation, hosted-run dispatch,
     first paid delivery, payout, settlement, self-serve, or promise-green
     authority. `staleness_declared`.
+  - `GET /api/public/qa-swarm/runs/{runRef}` — serves the immutable R2 snapshot
+    published for that opaque run ref. The response wrapper carries the
+    snapshot `generatedAt` and the shared `projection_staleness.v1`
+    `stored_snapshot` contract with a 24-hour bound, while corrupt or
+    private-material artifacts fail closed. `staleness_declared`. Regression
+    coverage: `workers/api/src/qa-swarm-projection-routes.test.ts`.
   - `GET /api/public/revenue-loop/first-dollar-evidence/{bundleRef}` — live at
     read over `revenue_event_provenance` (proof.demand_provenance.v1, #8253)
     — compliant (`generatedAt`, top-level `projection_staleness.v1`
@@ -3605,20 +3588,6 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     they do not fabricate `generatedAt` or a staleness contract. Regression
     coverage: `workers/api/src/public-proof-replay-routes.test.ts` and
     `workers/api/src/worker-exact-routes.test.ts`.
-  - `GET /api/public/site-referral-payouts` — live at read over the latest
-    non-archived RL-1 Sites referral payout ledger entry per payout ref (#5458)
-    — compliant (`generatedAt`, top-level `projection_staleness.v1`
-    `live_at_read` contract; count-only per-state counts/sats plus real settled
-    figures, the policy shape, campaign/policy refs, caveat/blocker refs, and a
-    `ledgerWiredInSource` source-wiring flag). It selects ONLY `state` and
-    `amount_sats` from the ledger — no user id, attribution id, payout ref,
-    qualifying event ref, address, preimage, or invoice leaves the Worker — and
-    is honest that no real referral payout has settled (`settledCount` /
-    `settledSats` expected `0` while the wiring is present). The surface grants
-    no attribution, accrual, eligibility, payout, or settlement authority and
-    flips no promise; the `referral.refer_once_earn_forever.v1` promise stays
-    red/owner-gated. Regression coverage:
-    `workers/api/src/site-referral-payout-public-projection.test.ts`.
   - `GET /api/public/product-promises/audit` — live at read over the live
     product-promise registry joined against the promise transition-receipt feed
     (proof.claim_upgrade_receipts.v1) — compliant (`generatedAt`, top-level
@@ -3754,17 +3723,6 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     eligibility, checkout, spend, refund, payout, settlement, wallet, provider,
     revenue, public-claim, or registry authority. Regression coverage:
     `workers/api/src/public-partner-payout-receipt-routes.test.ts`.
-  - `GET /api/public/inference/card-credit-spend-receipts/{receiptRef}` — live
-    at read over the card-credit paid-loop ledger chain for
-    `receipt.inference.card_credit_spend.*` — compliant (`generatedAt`,
-    top-level `projection_staleness.v1` `live_at_read` contract,
-    pending/invalid/ok resolution). It reads the Stripe checkout credit row,
-    the card-origin `usd_credit_grant` row, and future inference charge rows
-    with served-model/token context. Pending means the paid loop is not proven;
-    invalid means the stored chain violates conservation/provenance. Read-only;
-    grants no checkout, spend, refund, payout, settlement, provider,
-    public-claim, or registry authority. Regression coverage:
-    `workers/api/src/public-card-credit-spend-receipt-routes.test.ts`.
   - `GET /api/public/inference/privacy-receipts/{receiptRef}` — live at read
     over paid-privacy entitlement receipts, the opt-out entitlement row, and
     confidential-compute execution receipts — compliant (`generatedAt`,
@@ -3798,9 +3756,6 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     transition evidence only and do not mutate registry state).
   - Wave 1 retrofit (#8377, 2026-07-05): the frozen legacy set is now
     compliant and the architecture guard budget is `0/0`.
-    - `GET /api/public/proof/otec` — live-at-read closeout over the public
-      OTEC order/site/deployment/receipt rows — compliant (`generatedAt`,
-      `projection_staleness.v1`).
     - `GET /api/public/pylon-stats` — rebuilt-on-transition public stats over
       the cached registration/heartbeat/settlement/training aggregate —
       compliant (`generatedAtUnixMs`, 4-second bound; raw ISO timestamps stay
@@ -3811,14 +3766,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
       snapshots — compliant (`generatedAt`, `stored_snapshot` one-hour bound).
     - `GET /api/public/launch-dashboard` — live at read over the static promise
       table plus public stats freshness gate — compliant.
-    - `GET /api/public/treasury/launch-status` and
-      `GET /api/public/treasury` — live at read over treasury health, balances,
-      and public transaction rows — compliant.
     - `GET /api/public/artanis/admin-ticks` — live at read over public-safe
       administrator tick decisions — compliant.
-    - `GET /api/public/nexus-pylon/receipts/{receiptRef}` and
-      `GET /api/public/nip90-market/receipts/{receiptRef}` — live-at-read
-      public receipt projections — compliant.
+    - `GET /api/public/nip90-market/receipts/{receiptRef}` — live-at-read
+      public receipt projection — compliant.
     - `GET /api/public/adjutant/activity` — live at read over public Adjutant
       assignment/site/deployment rows — compliant.
     - `GET /api/public/goals/{goalId}`, `/api/public/goals/{goalId}/snapshot`,

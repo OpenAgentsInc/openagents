@@ -6,6 +6,7 @@ import { Data, Effect, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonUnknown } from './json-boundary'
+import { storedSnapshotStaleness } from './public-projection-staleness'
 
 export const QA_SWARM_PROJECTION_OPERATOR_PREFIX =
   '/api/operator/qa-swarm/runs/' as const
@@ -29,6 +30,15 @@ export class QaSwarmProjectionStoreUnavailable extends Data.TaggedError(
   'QaSwarmProjectionStoreUnavailable',
 )<{ readonly reason: string }> {}
 
+export class QaSwarmProjectionRejected extends S.TaggedErrorClass<QaSwarmProjectionRejected>()(
+  'QaSwarmProjectionRejected',
+  { reason: S.String },
+) {}
+
+const qaSwarmProjectionStaleness = storedSnapshotStaleness(86_400, [
+  'qa_swarm_projection_published',
+])
+
 const objectKey = (runRef: string): string =>
   `public/qa-swarm/run-projections/${encodeURIComponent(runRef)}.json`
 
@@ -40,7 +50,9 @@ export const makeArtifactQaSwarmProjectionStore = (
       try: async () => {
         const object = await bucket.get(objectKey(runRef))
         if (object === null) return null
-        return assertPublicQaSwarmProjection(JSON.parse(await object.text()))
+        return assertPublicQaSwarmProjection(
+          parseJsonUnknown(await object.text()),
+        )
       },
       catch: error =>
         new QaSwarmProjectionStoreUnavailable({ reason: String(error) }),
@@ -62,10 +74,10 @@ export const assertPublicQaSwarmProjection = (
 ): QaSwarmRunProjection => {
   const projection = assertResolverBackedQaSwarmProjection(value)
   if (!runRefPattern.test(projection.runRef)) {
-    throw new Error('QA Swarm projection has an invalid runRef')
+    throw new QaSwarmProjectionRejected({ reason: 'invalid_run_ref' })
   }
   if (privateMaterialPattern.test(JSON.stringify(projection))) {
-    throw new Error('QA Swarm projection contains private material')
+    throw new QaSwarmProjectionRejected({ reason: 'private_material' })
   }
   return projection
 }
@@ -92,7 +104,11 @@ const readProjection = (
     Effect.map(projection =>
       projection === null
         ? noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
-        : noStoreJsonResponse({ projection }),
+        : noStoreJsonResponse({
+            generatedAt: projection.generatedAt,
+            projection,
+            staleness: qaSwarmProjectionStaleness,
+          }),
     ),
     Effect.catchTag('QaSwarmProjectionStoreUnavailable', () =>
       Effect.succeed(
@@ -149,13 +165,13 @@ const publishProjection = (
   )
 }
 
-export const makeQaSwarmProjectionRoutes = <Env>(input: Readonly<{
-  makeStore: (env: Env) => QaSwarmProjectionStore
-  requireAdminApiToken: (request: Request, env: Env) => Promise<boolean>
+export const makeQaSwarmProjectionRoutes = <Bindings>(input: Readonly<{
+  makeStore: (env: Bindings) => QaSwarmProjectionStore
+  requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
 }>) => ({
   routeQaSwarmProjectionRequest: (
     request: Request,
-    env: Env,
+    env: Bindings,
     _ctx: ExecutionContext,
   ): Effect.Effect<Response> | undefined => {
     const pathname = new URL(request.url).pathname

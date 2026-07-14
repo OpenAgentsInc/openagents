@@ -9484,9 +9484,9 @@ const recordPublicAgentFunnelRead = (
     ctx,
     recordViralAgentFunnelEvent(db, request, {
       eventKind,
-      proofRef: route === '/api/public/proof/otec' ? 'proof:otec' : null,
+      proofRef: null,
       route,
-      siteSlug: route === '/api/public/proof/otec' ? 'otec' : null,
+      siteSlug: null,
     }),
   )
 }

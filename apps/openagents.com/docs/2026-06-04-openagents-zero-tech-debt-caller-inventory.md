@@ -207,6 +207,27 @@ Guardrail: `bun run check:architecture` budgets exactly one bridge for this
 file and fails if the count grows or the entry is removed without deleting the
 bridge.
 
+## Effect Native Renderer Host-Callback Boundaries
+
+Date: 2026-07-14
+
+The vendored Effect Native DOM and React Native renderers each terminate typed
+view intents at host callbacks that cannot yield an Effect program:
+
+- `packages/effect-native-render-dom/src/index.ts` has two bridges: the browser
+  media-query change listener updates the motion-preference service, and the
+  DOM clipboard event invokes the injected clipboard service.
+- `packages/effect-native-render-rn/src/index.ts` has one bridge: the React
+  Native clipboard press callback invokes the injected clipboard service.
+
+These are executable renderer edges, not domain or route compatibility
+facades. The architecture allowlist pins the exact counts (DOM `2`, RN `1`)
+and fails on growth. Replacement: express host callbacks through an
+Effect-native renderer runtime that can fork scoped programs directly.
+Deletion condition: remove each `Effect.runPromise` call when that runtime owns
+the corresponding callback, then remove or lower its allowlist entry in the
+same change.
+
 ## Historical Kept Compatibility Paths From Initial Pass
 
 The table below records the original caller inventory from the zero-debt pass.

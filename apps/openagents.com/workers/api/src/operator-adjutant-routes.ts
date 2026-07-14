@@ -119,8 +119,9 @@ import {
 // mirroring database is a passthrough for non-scoped statements and
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
 import { businessDomainDatabaseForEnv } from './business-domain-store'
+import { openAgentsDatabase as workerDatabase } from './runtime'
 const openAgentsDatabase = (env: OperatorAdjutantEnv): D1Database =>
-  env.OPENAGENTS_DB
+  workerDatabase(env)
 import {
   compactRandomId,
   currentEpochMillis,

@@ -1012,6 +1012,13 @@ const runPromiseAllowlist = new Map([
   // neither bridge throws back into the dispatch loop. Ratchet down if the
   // hosted-runtime dispatch loop becomes an Effect program end-to-end.
   ['workers/api/src/khala-hosted-runtime-metering.ts', 2],
+  // Effect Native renderers own the final executable boundary between typed
+  // view intents and host callbacks. DOM media-query/clipboard callbacks and
+  // React Native clipboard callbacks cannot yield Effects, so each bridge is
+  // kept at that callback edge. Ratchet down only if renderer host callbacks
+  // become Effect-native programs.
+  ['packages/effect-native-render-dom/src/index.ts', 2],
+  ['packages/effect-native-render-rn/src/index.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)
@@ -1229,15 +1236,6 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
-    // Khala Code plan catalog (khala_code.free_paid_plans.v1, #7966): static
-    // catalog text plus one deployment-config input (the fail-closed
-    // KHALA_CODE_PAID_PLANS_ENABLED read), recomputed on every read —
-    // live_at_read with generatedAt + the shared staleness contract.
-    module: 'workers/api/src/inference/khala-code-plan-routes.ts',
-    route: '/api/public/khala-code/plans',
-    status: 'staleness_declared',
-  },
-  {
     // Khala Code public install-truth counter (#8246): exact grouped rows from
     // khala_code_download_events only, or an empty response with blocker refs.
     // It is live_at_read with generatedAt + the shared staleness contract.
@@ -1271,6 +1269,14 @@ const publicProjectionSurfaces = [
     // It is live_at_read with generatedAt + the shared staleness contract.
     module: 'workers/api/src/qa-swarm-first-engagement-routes.ts',
     route: '/api/public/qa-swarm/first-engagements/{receiptRef}',
+    status: 'staleness_declared',
+  },
+  {
+    // Published QA Swarm run projections are immutable R2 snapshots at a
+    // runRef. The read wrapper exposes the snapshot's generatedAt plus the
+    // shared 24-hour stored-snapshot contract.
+    module: 'workers/api/src/qa-swarm-projection-routes.ts',
+    route: '/api/public/qa-swarm/runs/{runRef}',
     status: 'staleness_declared',
   },
   {
@@ -1555,11 +1561,6 @@ const publicProjectionSurfaces = [
     status: 'static_contract_exempt',
   },
   {
-    module: 'workers/api/src/site-referral-payout-public-projection.ts',
-    route: '/api/public/site-referral-payouts',
-    status: 'staleness_declared',
-  },
-  {
     module: 'workers/api/src/site-referral-payout-receipts.ts',
     route: '/api/public/site-referral-payout-receipts/{receiptRef}',
     status: 'staleness_declared',
@@ -1620,11 +1621,6 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
-    module: 'workers/api/src/inference/card-credit-spend-receipt-store.ts',
-    route: '/api/public/inference/card-credit-spend-receipts/{receiptRef}',
-    status: 'staleness_declared',
-  },
-  {
     module: 'workers/api/src/inference/inference-privacy-receipt-routes.ts',
     route: '/api/public/inference/privacy-receipts',
     status: 'staleness_declared',
@@ -1653,13 +1649,8 @@ const publicProjectionSurfaces = [
     route: '/api/public/ecommerce-campaign/workspaces',
     status: 'staleness_declared',
   },
-  // Wave 1 retrofit complete: the former legacy surfaces now declare
-  // generatedAt plus the shared projection_staleness.v1 contract.
-  {
-    module: 'workers/api/src/public-otec-proof.ts',
-    route: '/api/public/proof/otec',
-    status: 'staleness_declared',
-  },
+  // Retained Wave 1 surfaces declare generatedAt plus the shared
+  // projection_staleness.v1 contract.
   {
     module: 'workers/api/src/public-pylon-stats.ts',
     route: '/api/public/pylon-stats',
@@ -1681,23 +1672,8 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
-    module: 'workers/api/src/treasury-routes.ts',
-    route: '/api/public/treasury/launch-status',
-    status: 'staleness_declared',
-  },
-  {
-    module: 'workers/api/src/treasury-page-routes.ts',
-    route: '/api/public/treasury',
-    status: 'staleness_declared',
-  },
-  {
     module: 'workers/api/src/artanis-tick-monitor.ts',
     route: '/api/public/artanis/admin-ticks',
-    status: 'staleness_declared',
-  },
-  {
-    module: 'workers/api/src/nexus-pylon-visibility.ts',
-    route: '/api/public/nexus-pylon/receipts/{receiptRef}',
     status: 'staleness_declared',
   },
   {
@@ -1746,8 +1722,8 @@ const discoveredPublicRoutes = [
   ...new Set(
     routeFiles.flatMap(path =>
       Array.from(
-        read(path).matchAll(/\/api\\?\/public(?:\\?\/[A-Za-z0-9_.$-]+)*/g),
-      ).map(match => normalizedPublicRoute(match[0])),
+        read(path).matchAll(/['"`]\/api\\?\/public(?:\\?\/[A-Za-z0-9_.$-]+)*/g),
+      ).map(match => normalizedPublicRoute(match[0].slice(1))),
     ),
   ),
 ].sort()

@@ -1,4 +1,5 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
+import { Schema as S } from 'effect'
 
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 import { parseJsonStringArray } from './json-boundary'
@@ -12,6 +13,11 @@ import {
 } from './public-ref-scanner-safety'
 
 type NullableString = string | null
+
+export class ArtanisAdminCloseoutReceiptRejected extends S.TaggedErrorClass<ArtanisAdminCloseoutReceiptRejected>()(
+  'ArtanisAdminCloseoutReceiptRejected',
+  { reason: S.String },
+) {}
 
 type ArtanisAdminCloseoutReceiptDetail = Readonly<{
   schemaVersion: 'openagents.nexus_pylon.public_receipt.v1'
@@ -407,7 +413,9 @@ export const artanisAdminCloseoutReceiptDetail = (
     containsProviderSecretMaterial(serialized) ||
     privateMaterialPattern.test(serialized)
   ) {
-    throw new Error('Artanis admin closeout public receipt is not public-safe.')
+    throw new ArtanisAdminCloseoutReceiptRejected({
+      reason: 'private_material',
+    })
   }
 
   return detail

@@ -614,9 +614,6 @@ const receiptEvents = async (
           typeof projection?.verificationChallengeRef === 'string'
             ? projection.verificationChallengeRef
             : undefined
-        const apiSourceRef = `${OPENAGENTS_PUBLIC_APP_URL}/api/public/nexus-pylon/receipts/${encodeURIComponent(
-          receipt.receiptRef,
-        )}`
         const baseRefs = uniqueRefs([
           receipt.receiptRef,
           receipt.eventRef,
@@ -642,7 +639,7 @@ const receiptEvents = async (
           refs: baseRefs,
           runRef,
           sourceKind: 'settlement_receipt',
-          sourceRefs: uniqueRefs([receipt.receiptRef, apiSourceRef]),
+          sourceRefs: [receipt.receiptRef],
           state:
             receipt.receiptKind === 'settlement_recorded'
               ? realBitcoinMoved
@@ -673,7 +670,7 @@ const receiptEvents = async (
                 refs: baseRefs,
                 runRef,
                 sourceKind: 'settlement_receipt',
-                sourceRefs: uniqueRefs([receipt.receiptRef, apiSourceRef]),
+                sourceRefs: [receipt.receiptRef],
                 state: event?.status ?? 'confirmed',
                 targetRef: contributorRef,
                 text: 'Receipt-backed real Bitcoin movement confirmed.',

@@ -22,6 +22,7 @@ import {
 } from './public-claim-state'
 import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import { openAgentsDatabase as workerDatabase } from './runtime'
 import {
   makeSupervisionLongtailMirrorForEnv,
   type SupervisionLongtailMirror,
@@ -36,7 +37,7 @@ type CustomerOrderEnv = IdentityDbEnv &
 // and historical Site columns/reads without depending on the removed Sites
 // content mutation proxy.
 const openAgentsDatabase = (env: CustomerOrderEnv): D1Database =>
-  businessDomainDatabaseForEnv(env, { d1: env.OPENAGENTS_DB })
+  businessDomainDatabaseForEnv(env, { d1: workerDatabase(env) })
 
 export type CustomerOrderRuntime = Readonly<{
   makeAdjutantAdjustmentId: () => string

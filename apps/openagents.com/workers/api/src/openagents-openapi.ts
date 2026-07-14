@@ -16494,23 +16494,6 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
-  '/api/public/site-referral-payouts': {
-    get: operation({
-      operationId: 'getPublicSiteReferralPayouts',
-      summary: 'Get public Site referral payout projection',
-      description:
-        'Read-only public-safe count projection of the Site referral payout ledger. The response aggregates current payout states, sats by state, and real settled totals without exposing referrer or referred-user identifiers, payout refs, payout destinations, invoices, preimages, provider payloads, or wallet material. It grants no attribution, payout, settlement, or spend authority.',
-      tags: ['Sites'],
-      security: publicRead,
-      responses: {
-        '200': okJson(
-          'Public count-only Site referral payout ledger projection.',
-          '#/components/schemas/SiteReferralPayoutsPublicProjection',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
   '/api/public/site-referral-payout-receipts/{receiptRef}': {
     get: operation({
       operationId: 'getPublicSiteReferralPayoutReceipt',

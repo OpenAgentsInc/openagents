@@ -16,6 +16,7 @@ import { CustomerOrderStatus } from './customer-orders'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import { openAgentsDatabase as workerDatabase } from './runtime'
 
 type OperatorOrderTriageEnv = IdentityDbEnv &
   Readonly<{
@@ -29,7 +30,7 @@ type OperatorOrderTriageEnv = IdentityDbEnv &
 // non-scoped statements pass through both layers. Degrades to raw D1
 // with no KHALA_SYNC_DB binding.
 const openAgentsDatabase = (env: OperatorOrderTriageEnv): D1Database =>
-  businessDomainDatabaseForEnv(env, { d1: env.OPENAGENTS_DB })
+  businessDomainDatabaseForEnv(env, { d1: workerDatabase(env) })
 
 type HttpResponse = globalThis.Response
 

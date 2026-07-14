@@ -28,6 +28,7 @@ import {
   inspectOperatorEmailDelivery,
 } from './operator-email-inspection'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import { openAgentsDatabase as workerDatabase } from './runtime'
 import {
   makeSupervisionLongtailMirrorForEnv,
   type SupervisionLongtailMirror,
@@ -40,7 +41,7 @@ type OperatorEmailInspectionEnv = IdentityDbEnv &
 type HttpResponse = globalThis.Response
 
 const openAgentsDatabase = (env: OperatorEmailInspectionEnv): D1Database =>
-  env.OPENAGENTS_DB
+  workerDatabase(env)
 
 type OperatorEmailInspectionSession = Readonly<{
   user: Readonly<{

@@ -112,10 +112,17 @@ describe('QA Swarm projection publication routes', () => {
     const read = await Effect.runPromise(readEffect!)
     expect(read.status).toBe(200)
     expect((await read.json()) as unknown).toMatchObject({
+      generatedAt: '2026-07-14T10:01:00.000Z',
       projection: {
         runRef,
         generatedAt: '2026-07-14T10:01:00.000Z',
         execution: { status: 'completed', tiers: [{ status: 'passed' }] },
+      },
+      staleness: {
+        composition: 'stored_snapshot',
+        contractVersion: 'projection_staleness.v1',
+        maxStalenessSeconds: 86_400,
+        rebuildsOn: ['qa_swarm_projection_published'],
       },
     })
   })

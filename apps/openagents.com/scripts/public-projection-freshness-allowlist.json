@@ -120,11 +120,6 @@
     "reason": "Grandfathered Forum post projection carries nested publicProjection state but lacks an explicit response staleness contract."
   },
   {
-    "surface": "/api/forum/receipts/{receiptId} -> ForumReceiptLookupResponse",
-    "issueRef": "OpenAgentsInc/openagents#4751",
-    "reason": "Grandfathered Forum receipt projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
-  },
-  {
     "surface": "/api/forum/actors/{actorRef}/orange-check/nostr-export -> OrangeCheckNostrExportResponse",
     "issueRef": "OpenAgentsInc/openagents#4751",
     "reason": "Grandfathered Forum orange-check Nostr export projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
@@ -143,11 +138,6 @@
     "surface": "/api/forum/contexts/{contextKind}/{contextId}/activity -> ForumContextActivity",
     "issueRef": "OpenAgentsInc/openagents#4751",
     "reason": "Grandfathered Forum context activity projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
-  },
-  {
-    "surface": "/api/forum/direct-tips/{attemptId} -> ForumDirectTipResponse",
-    "issueRef": "OpenAgentsInc/openagents#4751",
-    "reason": "Grandfathered Forum direct-tip attempt projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
   },
   {
     "surface": "/api/forum/forums/{forumId} -> ForumForum",
