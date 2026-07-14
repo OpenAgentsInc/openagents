@@ -58,7 +58,6 @@ type WorkerRouteDependencies = Readonly<{
   routeAgentProposalRequest: OptionalEffectRoute
   routeAgentSearchRequest: OptionalEffectRoute
   routeAgentScopedGrantRequest: OptionalEffectRoute
-  routeAgentSiteRequest: OptionalEffectRoute
   routeForgeGitIntakeRequest: OptionalEffectRoute
   routeForgeControlPlaneRequest: OptionalEffectRoute
   routeForumRequest: OptionalEffectRoute
@@ -97,8 +96,6 @@ type WorkerRouteDependencies = Readonly<{
   routeVerticalFunnelRequest: OptionalEffectRoute
   routeGithubScmAuthBrokerRequest: OptionalEffectRoute
   routePylonApiRequest: OptionalEffectRoute
-  routeSiteReferralInspectionRequest: OptionalEffectRoute
-  routeSiteReferralRequest: OptionalEffectRoute
   routeOperatorAdjutantRequest: OptionalEffectRoute
   routeOperatorArtanisChatRequest: OptionalEffectRoute
   routeOperatorArtanisConsoleRequest: OptionalEffectRoute
@@ -110,7 +107,6 @@ type WorkerRouteDependencies = Readonly<{
   routeOperatorAgentReadinessReportRequest: OptionalEffectRoute
   routePublicAgentReadinessReportRequest: OptionalEffectRoute
   routeOperatorProviderAccountRequest: OptionalEffectRoute
-  routeOperatorSitesRequest: OptionalEffectRoute
   routeProviderAccountRequest: OptionalEffectRoute
   routeShareRequest: OptionalEffectRoute
   routeSyncRequest: (
@@ -455,16 +451,6 @@ export const makeWorkerRouteRequest =
         return yield* agentScopedGrantResponse
       }
 
-      const agentSiteResponse = dependencies.routeAgentSiteRequest(
-        request,
-        env,
-        ctx,
-      )
-
-      if (agentSiteResponse !== undefined) {
-        return yield* agentSiteResponse
-      }
-
       const forgeGitIntakeResponse =
         dependencies.routeForgeGitIntakeRequest(request, env, ctx)
 
@@ -479,23 +465,6 @@ export const makeWorkerRouteRequest =
         return yield* forgeControlPlaneResponse
       }
 
-
-      const siteReferralResponse = dependencies.routeSiteReferralRequest(
-        request,
-        env,
-        ctx,
-      )
-
-      if (siteReferralResponse !== undefined) {
-        return yield* siteReferralResponse
-      }
-
-      const siteReferralInspectionResponse =
-        dependencies.routeSiteReferralInspectionRequest(request, env, ctx)
-
-      if (siteReferralInspectionResponse !== undefined) {
-        return yield* siteReferralInspectionResponse
-      }
 
 
       const githubScmAuthBrokerResponse =
@@ -777,16 +746,6 @@ export const makeWorkerRouteRequest =
 
       if (operatorProviderAccountResponse !== undefined) {
         return yield* operatorProviderAccountResponse
-      }
-
-      const operatorSitesResponse = dependencies.routeOperatorSitesRequest(
-        request,
-        env,
-        ctx,
-      )
-
-      if (operatorSitesResponse !== undefined) {
-        return yield* operatorSitesResponse
       }
 
       const mulletResponse = dependencies.routeMulletRequest(request, env, ctx)

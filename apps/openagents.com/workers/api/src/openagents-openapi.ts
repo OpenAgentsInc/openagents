@@ -197,15 +197,6 @@ const agentSearchEntitlementHeader = (): JsonSchema => ({
   schema: { type: 'string', minLength: 1, maxLength: 300 },
 })
 
-const openAgentsL402Header = (): JsonSchema => ({
-  name: 'X-OpenAgents-L402',
-  in: 'header',
-  required: true,
-  description:
-    'OpenAgents L402 credential pair in the form <credential>:<public-safe-proof-ref>. The proof ref must match the request body l402ProofRef. Do not send raw invoices, preimages, wallet secrets, or provider payloads.',
-  schema: { type: 'string', minLength: 8, maxLength: 1200 },
-})
-
 const mobileRefreshTokenHeader = (): JsonSchema => ({
   name: 'X-OpenAgents-Refresh-Token',
   in: 'header',

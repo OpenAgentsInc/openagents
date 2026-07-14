@@ -599,10 +599,7 @@ import {
   makeHydraliskVllmPoolRuntime,
 } from './inference/hydralisk-adapter'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
-import {
-  isConfidentialComputeEnabled,
-  makePaidPrivacyResolver,
-} from './inference/inference-privacy-entitlement'
+import { isConfidentialComputeEnabled } from './inference/inference-privacy-entitlement'
 import {
   handleConfidentialComputeExecutionReceipt,
   handlePaidPrivacyPurchase,
@@ -947,7 +944,6 @@ import {
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
-import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
 import {
   type OperatorTargetUser,
   readOperatorTargetUser,
@@ -1080,7 +1076,6 @@ import {
   PylonLargestDecentralizedTrainingClaimEndpoint,
   handlePylonLargestDecentralizedTrainingClaimStatusApi,
 } from './pylon-largest-decentralized-training-claim-status-routes'
-import { makePylonMarketplaceJobStoreForEnv } from './pylon-marketplace-service'
 import {
   PylonMultiEarningNodeEndpoint,
   handlePylonMultiEarningNodeApi,
@@ -1104,7 +1099,6 @@ import {
 } from './relay-health'
 import { handlePublicRelayHealthApi } from './relay-health-routes'
 import { handleResendWebhook } from './resend-webhooks'
-import { makePublicFirstDollarEvidenceRoutes } from './revenue-event-provenance-routes'
 import {
   handleOperatorRlmTraces,
   makeD1OperatorRlmTraceStore,
@@ -8205,12 +8199,6 @@ const publicStripeCheckoutReceiptRoutes =
     nowIso: currentIsoTimestamp,
   })
 
-const publicFirstDollarEvidenceRoutes =
-  makePublicFirstDollarEvidenceRoutes<Env>({
-    makeDb: env => openAgentsDatabase(env),
-    nowIso: currentIsoTimestamp,
-  })
-
 const publicSiteReferralPayoutReceiptRoutes =
   makePublicSiteReferralPayoutReceiptRoutes<Env>({
     makeStore: env =>
@@ -8676,14 +8664,6 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       },
     }
   },
-})
-
-const operatorPylonMarketplaceRoutes = makeOperatorPylonMarketplaceRoutes({
-  appendRefreshedSessionCookies,
-  isOpenAgentsAdminEmail,
-  makeStore: env => makePylonMarketplaceJobStoreForEnv(env),
-  requireAdminApiToken,
-  requireBrowserSession,
 })
 
 const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
@@ -12720,11 +12700,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       )
       const laneArming = resolveSupplyLaneArming(env)
       const routeAdmission = hydraliskGlm52RouteAdmissionForEnv(env)
-      // KS-8.9 (#8320): entitlements migration seam. Default flags (dual-write
-      // ON, reads 'd1') give a fire-safe Postgres mirror and NO routed reads
-      // (gates keep their untouched inline D1 reads — zero added hot-path
-      // latency). Undefined when the KHALA_SYNC_DB binding is absent.
-      const entitlementsRouting = makeInferenceEntitlementsRoutingForEnv(env)
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
@@ -13030,34 +13005,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           captureDefaultEnabled: isKhalaFreeTierTraceCaptureDefaultEnabled(
             env.KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT,
           ),
-          // CAPTURE-DEFAULT resolver: `freeTier.free && !paidPrivacy` (#6293 +
-          // #6295). Free-tier is the existing self-serve free signal; paid-privacy
-          // is the confidential-compute / per-account opt-OUT, FAIL-CLOSED-TO-
-          // PRIVATE (an unsafe read => paidPrivacy => NOT captured). The resolver
-          // itself is wrapped fail-soft at the call site (errors => not captured).
-          resolveCaptureDefault: async (accountRef, _model) => {
-            const db = openAgentsDatabase(env)
-            // KS-8.9 (#8320): routed enforcement reads when the migration
-            // seam is in compare/postgres mode; a routed-read error stays
-            // fail-closed (not free => not captured).
-            const free =
-              entitlementsRouting?.gateReads === undefined
-                ? await readAccountFreeTier(db, accountRef)
-                : await entitlementsRouting.gateReads
-                    .freeTierKeyExists(accountRef)
-                    .catch(() => false)
-            if (!free) {
-              return false
-            }
-            const paidPrivacy = await makePaidPrivacyResolver({
-              db,
-              confidentialComputeEnabled: isConfidentialComputeEnabled(
-                env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
-              ),
-              gateReads: entitlementsRouting?.gateReads,
-            })(accountRef)
-            return !paidPrivacy.enabled
-          },
           emit: async input => {
             // The accountRef is `agent:<id>`; the trace owner is that agent.
             const ownerUserId = input.accountRef.startsWith('agent:')
@@ -13732,8 +13679,6 @@ const routeRequest = makeWorkerRouteRequest({
     khalaCodeTracePluginRevenueShareRoutes.routePublicKhalaCodeTracePluginRevenueShareRequest,
   routePublicQaSwarmFirstEngagementRequest:
     qaSwarmFirstEngagementRoutes.routePublicQaSwarmFirstEngagementRequest,
-  routePublicFirstDollarEvidenceRequest:
-    publicFirstDollarEvidenceRoutes.routePublicFirstDollarEvidenceRequest,
   routePublicCloudPrimitiveReceiptRequest:
     publicCloudPrimitiveReceiptRoutes.routePublicCloudPrimitiveReceiptRequest,
   routePublicNip90MarketReceiptRequest:
@@ -13914,8 +13859,6 @@ const routeRequest = makeWorkerRouteRequest({
       OPENAGENTS_DB: openAgentsDatabase(env),
     })
   },
-  routeOperatorPylonMarketplaceRequest:
-    operatorPylonMarketplaceRoutes.routeOperatorPylonMarketplaceRequest,
   routeOperatorProviderAccountRequest: (request, env) => {
     const response =
       operatorProviderAccountRoutes.routeOperatorProviderAccountRequest(

@@ -1,4 +1,3 @@
-import { Runtime } from "@openagentsinc/runtime-platform"
 import { liveAtReadStaleness } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 
