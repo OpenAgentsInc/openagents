@@ -33,6 +33,19 @@ const collectTestFiles = async (directory) => {
   return files.sort()
 }
 
+// Diagnostic messages can embed absolute module paths (e.g. tsc prints
+// `import("/abs/checkout/node_modules/.bun/effect@…/dist/Stream")` when two
+// module instances collide). Those paths are checkout-specific, and the
+// baseline diff keys on the message text, so an un-normalized message reds
+// the gate on every machine except the one that recorded the baseline.
+// Replace the repository checkout prefix after collecting untruncated
+// diagnostics below. Keeping the repository-relative suffix preserves the
+// diagnostic's semantic detail without binding the baseline to one worktree.
+const portableMessage = (root, message) => {
+  const repositoryRoot = normalizePath(resolve(root, "../.."))
+  return message.replaceAll(`${repositoryRoot}/`, "<repo>/")
+}
+
 const formatDiagnostic = (root, diagnostic) => {
   const file = diagnostic.file
   const location = file && diagnostic.start !== undefined
@@ -43,7 +56,10 @@ const formatDiagnostic = (root, diagnostic) => {
     line: location ? location.line + 1 : 0,
     column: location ? location.character + 1 : 0,
     code: diagnostic.code,
-    message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+    message: portableMessage(
+      root,
+      ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+    ),
   }
 }
 
@@ -76,7 +92,12 @@ export const typecheckTests = async ({
     undefined,
     project,
   )
-  const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options })
+  // Truncated nested import types can end in the middle of the checkout path,
+  // before portableMessage has a complete repository prefix to normalize.
+  const program = ts.createProgram({
+    rootNames: parsed.fileNames,
+    options: { ...parsed.options, noErrorTruncation: true },
+  })
   const diagnostics = sortDiagnostics(
     [configResult.error, ...parsed.errors, ...ts.getPreEmitDiagnostics(program)]
       .filter(Boolean)
