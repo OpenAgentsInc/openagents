@@ -2,9 +2,8 @@
 
 - Class: receipt
 - Date: 2026-07-14
-- Status: implementation complete; closure pending pushed receipt;
-  package-manager, test-runner, and production-image authority remain
-  explicitly assigned to VP-3 through VP-6
+- Status: complete and published on `main`; package-manager, test-runner, and
+  production-image authority remain explicitly assigned to VP-3 through VP-6
 - Dispatch: no; use [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796)
 - Parent: [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777)
 - Owner: Sol runtime and toolchain conversion

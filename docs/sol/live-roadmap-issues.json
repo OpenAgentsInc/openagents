@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-14T08:47:53.000Z",
+  "generatedAt": "2026-07-14T10:49:03.557Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -58,20 +58,6 @@
       "state": "OPEN",
       "title": "epic(toolchain): full Node + pnpm + Vite Plus cutover — T3 topology, payments removed",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8777"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "area:runtime",
-        "area:services",
-        "area:pylon",
-        "roadmap:sol"
-      ],
-      "number": 8796,
-      "state": "OPEN",
-      "title": "runtime(VP-2): make retained services and public CLIs Node-native behind owned platform seams",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8796"
     },
     {
       "labels": [

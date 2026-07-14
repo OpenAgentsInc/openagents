@@ -2,8 +2,8 @@
 
 - Class: contract
 - Date: 2026-07-14
-- Status: owner-authorized live issue program; VP-0 and VP-1 complete, VP-2 is
-  the next dependency gate
+- Status: owner-authorized live issue program; VP-0 through VP-2 complete,
+  VP-3 is the next dependency gate
 - Dispatch: only through epic
   [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777), its bounded
   leaves below, and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -27,7 +27,7 @@ are subordinate implementation leaves, not a second program.
 | Epic | [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777) | Full Node/pnpm/Vite Plus cutover; T3 topology; payments removed |
 | VP-0 | [#8794](https://github.com/OpenAgentsInc/openagents/issues/8794) | Freeze, inventory, baselines, pins, and claim ledger |
 | VP-1 | [#8795](https://github.com/OpenAgentsInc/openagents/issues/8795) | Complete: reconciled, archived, decommissioned, and deleted non-MVP money paths; owner wallet recovery is separate |
-| VP-2 | [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796) | Node-native retained runtime and public CLIs |
+| VP-2 | [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796) | Complete: Node-native retained runtime and public CLIs |
 | VP-3 | [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | Effect TSGo and Vite Plus test/typecheck parity |
 | VP-4 | [#8798](https://github.com/OpenAgentsInc/openagents/issues/8798) | Atomic pnpm/Vite Plus workspace-authority replacement |
 | VP-5 | [#8799](https://github.com/OpenAgentsInc/openagents/issues/8799) | Host/release stabilization and Node production images |

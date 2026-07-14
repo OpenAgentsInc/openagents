@@ -602,7 +602,6 @@ the currently unclaimed worker lease.
 | [#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) | VP-3/4 invariant lint; folded TC-2 leaf |
 | [#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) | VP-4b staged hook/gate gradient; folded TC-3 leaf |
 | [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777) | Sole full-cutover epic |
-| [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796) | VP-2 Node-native retained runtime and CLIs |
 | [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | VP-3 Effect TSGo and Vite Plus parity |
 | [#8798](https://github.com/OpenAgentsInc/openagents/issues/8798) | VP-4 atomic pnpm/Vite Plus cutover |
 | [#8799](https://github.com/OpenAgentsInc/openagents/issues/8799) | VP-5 stabilization and Node production images |
@@ -639,8 +638,10 @@ At this snapshot:
    [freeze/ledger receipt](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md),
    and VP-1 #8795 completed money/Sites retirement with its
    [reconciliation/decommission receipt](./2026-07-14-node-pnpm-vite-plus-vp1-reconciliation-decommission-receipt.md).
-   VP-2 #8796 is next. Then execute VP-3 #8797, atomic VP-4 #8798 (including
-   #8772–#8774), VP-5 #8799, and VP-6 #8800 in order.
+   VP-2 #8796 is also closed with its
+   [Node-runtime receipt](./2026-07-14-node-pnpm-vite-plus-vp2-node-runtime-receipt.md).
+   Execute VP-3 #8797 next, then atomic VP-4 #8798 (including #8772–#8774),
+   VP-5 #8799, and VP-6 #8800 in order.
 
 This is an infrastructure-retirement queue, not a successor product queue.
 The completed AssuranceSpec lane has no remaining owner action.
