@@ -19,6 +19,24 @@ export const Sha256Digest = S.String.check(
 )
 export type Sha256Digest = typeof Sha256Digest.Type
 
+/**
+ * ENV-1 vocabulary (docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md,
+ * "Environment and endpoint vocabulary (ENV-1)"): the owner-scoped identity of
+ * one ExecutionEnvironment — a local Pylon, an owner-managed remote
+ * Pylon/oa-node, an OpenAgents Agent Computer, or an audited managed-provider
+ * workspace. The identity binds to the owner scope that enrolled the
+ * environment and to its enrollment/health receipts, never to a bare
+ * hostname, address, or process. How a client currently reaches the
+ * environment (an AccessEndpoint, possibly hinted by an AdvertisedEndpoint)
+ * is a connection-layer fact that never enters this identity, and switching
+ * AccessEndpoint or KnownEnvironment entry must never create, transfer, or
+ * fence execution authority — only the attachment-generation contract does.
+ * Wire shape is exactly `PortableRef`; this alias adds vocabulary, not a
+ * serialization change.
+ */
+export const ExecutionEnvironmentRef = PortableRef
+export type ExecutionEnvironmentRef = typeof ExecutionEnvironmentRef.Type
+
 export const PortableTimestamp = S.String.check(
   S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/),
 )
@@ -50,8 +68,15 @@ export const PortableDataPosture = S.Literals([
 ])
 export type PortableDataPosture = typeof PortableDataPosture.Type
 
+/**
+ * Describes one ExecutionEnvironment (ENV-1): what the environment is and
+ * what it may safely do — never how a client currently reaches it.
+ * AccessEndpoint/AdvertisedEndpoint reachability facts stay at the connection
+ * layer and out of this durable identity (auth-bearing endpoint metadata is
+ * deferred to ENV-2).
+ */
 export const PortableTargetDescriptorSchema = S.Struct({
-  targetRef: PortableRef,
+  targetRef: ExecutionEnvironmentRef,
   targetClass: PortableTargetClass,
   adapterRef: PortableRef,
   ownerRef: PortableRef,
@@ -154,7 +179,7 @@ export type PortableAttachmentState = typeof PortableAttachmentState.Type
 export const PortableAttachmentSchema = S.Struct({
   attachmentRef: PortableRef,
   sessionRef: PortableRef,
-  targetRef: PortableRef,
+  targetRef: ExecutionEnvironmentRef,
   generation: NonNegativeInt,
   state: PortableAttachmentState,
   descendantAgentRefs: S.Array(PortableRef),
@@ -202,7 +227,7 @@ export const PortableCapabilityLeaseSchema = S.Struct({
   sessionRef: PortableRef,
   attachmentRef: PortableRef,
   attachmentGeneration: NonNegativeInt,
-  targetRef: PortableRef,
+  targetRef: ExecutionEnvironmentRef,
   capability: PortableCapabilityKind,
   accountRef: S.optionalKey(PortableRef),
   toolRef: S.optionalKey(PortableRef),
@@ -256,7 +281,8 @@ export const PortableSessionCommandSchema = S.Struct({
   kind: PortableSessionCommandKind,
   expectedAttachmentRef: PortableRef,
   expectedGeneration: NonNegativeInt,
-  destinationTargetRef: S.optionalKey(PortableRef),
+  /** ENV-1: names the destination ExecutionEnvironment for move/attach/failback. */
+  destinationTargetRef: S.optionalKey(ExecutionEnvironmentRef),
   checkpointRef: S.optionalKey(PortableRef),
   expiresAt: PortableTimestamp,
 })

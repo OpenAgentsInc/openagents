@@ -171,6 +171,15 @@ export type PylonProviderDiscoveryFields = {
 
 export type PylonRegistrationRequest = {
   schema: "openagents.pylon.register.v0.3"
+  /**
+   * The Pylon's stable runtime-instance identity — in ENV-1 vocabulary
+   * (docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md,
+   * "Environment and endpoint vocabulary") this names an owner-scoped
+   * ExecutionEnvironment. Registration and heartbeat are the enrollment and
+   * health receipts that identity binds to; it is never a hostname, address,
+   * or AccessEndpoint, and reaching the Pylon a different way never changes
+   * which environment this is.
+   */
   pylonRef: string
   identity: PylonLocalState["identity"]
   lifecycle: PylonRuntimeState["lifecycle"]
@@ -184,6 +193,7 @@ export type PylonRegistrationRequest = {
 
 export type PylonHeartbeatRequest = {
   schema: "openagents.pylon.heartbeat.v0.3"
+  /** Owner-scoped ExecutionEnvironment identity (ENV-1); see PylonRegistrationRequest.pylonRef. */
   pylonRef: string
   sequence: number
   sentAt: string

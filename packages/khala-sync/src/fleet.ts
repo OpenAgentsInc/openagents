@@ -361,17 +361,28 @@ const nonEmptyAttemptUsageRefs = S.Array(FleetPublicRef).check(
   S.isMaxLength(100),
 )
 
+/**
+ * Owner-scoped ExecutionEnvironment identity of a Pylon runtime instance
+ * (ENV-1, docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md,
+ * "Environment and endpoint vocabulary"). It names the enrolled runtime, never
+ * a hostname, address, or AccessEndpoint, and choosing how to reach the Pylon
+ * never creates or transfers authority. Wire key stays `pylonRef`; the shape
+ * is unchanged from the previously inlined checks.
+ */
+export const FleetPylonRef = S.String.check(
+  S.isMinLength(3),
+  S.isMaxLength(120),
+  S.isPattern(/^[a-z0-9][a-z0-9._:-]*$/),
+)
+export type FleetPylonRef = typeof FleetPylonRef.Type
+
 export const FleetAttemptExactUsageEvidence = S.Struct({
   schema: S.Literal("openagents.pylon.fleet_run_usage_evidence.v1"),
   truth: S.Literal("exact"),
   harnessKind: S.Literals(["codex", "claude"]),
   evidenceRef: FleetPublicRef,
   assignmentRef: FleetPublicRef,
-  pylonRef: S.String.check(
-    S.isMinLength(3),
-    S.isMaxLength(120),
-    S.isPattern(/^[a-z0-9][a-z0-9._:-]*$/),
-  ),
+  pylonRef: FleetPylonRef,
   provider: S.Literals([
     "pylon-codex-own-capacity",
     "pylon-claude-own-capacity",
@@ -439,11 +450,7 @@ const FleetAttemptEntityFields = {
   intakeClaimRef: S.String.check(
     S.isPattern(/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/),
   ),
-  pylonRef: S.String.check(
-    S.isMinLength(3),
-    S.isMaxLength(120),
-    S.isPattern(/^[a-z0-9][a-z0-9._:-]*$/),
-  ),
+  pylonRef: FleetPylonRef,
   workerKind: FleetHarnessKind,
   state: FleetAttemptState,
   progressClass: FleetAttemptProgressClass,

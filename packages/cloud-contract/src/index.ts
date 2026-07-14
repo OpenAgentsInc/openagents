@@ -22,6 +22,13 @@ export const PublicSafeRef = S.String.check(
   S.isMaxLength(512),
 )
 
+/**
+ * A placement lane classifies where an ExecutionEnvironment is launched
+ * (ENV-1's launch question, docs/sol/2026-07-11-remote-first-portable-coding-
+ * sessions-pathway.md "Access versus launch are separate questions"). It is
+ * not an environment identity and never carries AccessEndpoint reachability
+ * facts — those stay at the connection layer.
+ */
 export const ComputeLane = S.Literals([
   "auto",
   "cloud_gcp",

@@ -666,6 +666,10 @@ export const KhalaFleetIntent = S.Union([
     // Inline body when public-safe, or an opaque ref to stored body material.
     body: S.optional(S.String),
     bodyRef: S.optional(S.String),
+    // Names the in-flight worker/turn being steered. This is NOT an ENV-1
+    // ExecutionEnvironment ref (docs/sol/2026-07-11-remote-first-portable-
+    // coding-sessions-pathway.md); the applying environment is identified by
+    // `pylonRef` on the steering outcome/completion receipts below.
     targetRef: S.optional(S.String),
   }),
   // select the harness/worker for a run, optionally with an `auto` policy and
@@ -755,6 +759,9 @@ export const FleetSteeringOutcomeRefSchemaLiteral =
 export const fleetSteeringOutcomeRefContent = (input: Readonly<{
   runRef: FleetSteeringRunRef
   claimRef: FleetSteeringClaimRef
+  // The applying Pylon's owner-scoped ExecutionEnvironment identity (ENV-1,
+  // docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md) —
+  // a runtime-instance ref, never a hostname, address, or AccessEndpoint.
   pylonRef: string
   seq: FleetSteeringSequence
   intentId: string
@@ -841,6 +848,8 @@ export const fleetSteeringFollowUpCompletionRefContent = (
   input: Readonly<{
     runRef: FleetSteeringRunRef
     claimRef: FleetSteeringClaimRef
+    // Owner-scoped ExecutionEnvironment identity of the completing Pylon
+    // (ENV-1); see fleetSteeringOutcomeRefContent above.
     pylonRef: string
   }> & Omit<FleetSteeringFollowUpCompletion, "completionRef">,
 ) => ({

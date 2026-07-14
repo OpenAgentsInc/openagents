@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 
 import type {
+  ExecutionEnvironmentRef,
   PortableCapabilityKind,
   PortableCapabilityLease,
   PortableTargetClass,
@@ -58,7 +59,7 @@ export type CapabilityBrokerEvidence = {
   readonly sessionRef: string
   readonly attachmentRef: string
   readonly attachmentGeneration: number
-  readonly targetRef: string
+  readonly targetRef: ExecutionEnvironmentRef
   readonly capability: PortableCapabilityKind
   readonly accountRef?: string
   readonly toolRef?: string
@@ -125,7 +126,7 @@ export type CapabilityTargetAdapter = {
   }) => Promise<{ readonly installationRef: string }>
   readonly wipe: (input: {
     readonly leaseRef: string
-    readonly targetRef: string
+    readonly targetRef: ExecutionEnvironmentRef
     readonly attachmentRef: string
     readonly attachmentGeneration: number
     readonly installationRef?: string
@@ -138,7 +139,7 @@ export type CapabilityAdapterRuntime = {
 }
 
 export type CapabilityTargetBinding = {
-  readonly targetRef: string
+  readonly targetRef: ExecutionEnvironmentRef
   readonly targetClass: PortableTargetClass
   readonly adapterRef: string
   readonly ready: boolean
@@ -210,7 +211,7 @@ export type IssueCapabilityInput = {
   readonly sessionRef: string
   readonly attachmentRef: string
   readonly attachmentGeneration: number
-  readonly targetRef: string
+  readonly targetRef: ExecutionEnvironmentRef
   readonly capability: PortableCapabilityKind
   readonly sourceGrantRef: string
   readonly accountRef?: string
