@@ -10,7 +10,7 @@
  * with a real Chromium keystroke.
  */
 import { describe, expect, test } from "vite-plus/test"
-import { Window } from "../../../openagents.com/apps/web/node_modules/happy-dom"
+import { Window } from "../../../openagents.com/apps/start/node_modules/happy-dom"
 
 import {
   findComposerInput,
