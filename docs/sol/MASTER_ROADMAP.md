@@ -602,7 +602,6 @@ the currently unclaimed worker lease.
 | [#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) | VP-3/4 invariant lint; folded TC-2 leaf |
 | [#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) | VP-4b staged hook/gate gradient; folded TC-3 leaf |
 | [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777) | Sole full-cutover epic |
-| [#8795](https://github.com/OpenAgentsInc/openagents/issues/8795) | VP-1 implementation complete; deployment and issue closeout pending |
 | [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796) | VP-2 Node-native retained runtime and CLIs |
 | [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | VP-3 Effect TSGo and Vite Plus parity |
 | [#8798](https://github.com/OpenAgentsInc/openagents/issues/8798) | VP-4 atomic pnpm/Vite Plus cutover |
