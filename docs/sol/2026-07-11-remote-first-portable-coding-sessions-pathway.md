@@ -1,6 +1,12 @@
 # Remote-first portable coding sessions: pathway and roadmap gap analysis
 
 - Date: 2026-07-11
+- Amended: 2026-07-13 — ENV-1
+  ([#8778](https://github.com/OpenAgentsInc/openagents/issues/8778)) adopts
+  the ExecutionEnvironment / KnownEnvironment / AccessEndpoint /
+  AdvertisedEndpoint vocabulary as this pathway's canonical language. This
+  amendment renames and clarifies authority language only; no contract,
+  requirement, or invariant was weakened, removed, or restated.
 - Class: contract
 - Dispatch: yes; PORT-00 through PORT-08 are live as #8745–#8753
 - Owner: Sol portable sessions
@@ -206,7 +212,8 @@ Remote-first is an authority and portability rule:
 
 - the canonical coding-session identity is independent of the client, host,
   process, workspace path, Pylon home, provider adapter, or current placement;
-- a local machine is one execution target, not the place that defines the
+- a local machine is one execution target — one ExecutionEnvironment among
+  others in the ENV-1 vocabulary below — not the place that defines the
   session;
 - every authorized client can discover the same durable session facts and
   request typed control operations;
@@ -264,6 +271,70 @@ Clients never call a cloud vendor directly. Provider adapters implement one
 OpenAgents lifecycle/capability contract; the session directory projects stable
 OpenAgents refs and honest isolation/capability state.
 
+### Environment and endpoint vocabulary (ENV-1)
+
+This pathway's canonical language for "where a session can run" versus "how a
+client reaches it" adapts T3 Code's remote model. Evidence: the
+[T3 Code teardown §6](../teardowns/2026-07-13-t3-code-teardown.md) and the
+read-only reference clone
+`projects/repos/t3code/docs/architecture/remote.md`. The contract sections
+below use these terms; earlier ad hoc "host", "target", and "connection"
+phrasing means the term defined here.
+
+- **ExecutionEnvironment** — one running runtime instance with a stable
+  identity: a local Pylon, an owner-managed remote Pylon/`oa-node`, an
+  OpenAgents Agent Computer, or an audited managed-provider workspace. It
+  owns provider availability and auth state, work contexts, terminals, git,
+  filesystem access, and runtime settings on that target. Every execution
+  target in §4 names exactly one ExecutionEnvironment. **OpenAgents
+  strengthening:** environment identity is owner-scoped and receipted — an
+  environment ref binds to the owner scope that enrolled it and to its
+  enrollment/health/update receipts, never to a bare hostname, address, or
+  process.
+- **KnownEnvironment** — a client-local saved entry for an environment that
+  device knows how to reach (a saved LAN URL, a paired desktop, an enrolled
+  homelab node's saved record). It is device-local convenience state, never
+  authority: a known environment may not learn the environment identity
+  until first successful connect, and it never substitutes for the
+  owner-scoped directory in §6.
+- **AccessEndpoint** — one concrete way to reach an environment: direct
+  ws/wss, a tunneled/relay route, or a desktop-managed SSH forward that
+  resolves to an ordinary local forwarded URL. One environment may have many
+  endpoints; remoteness lives at the connection layer and never splits the
+  runtime into a different kind of environment.
+- **AdvertisedEndpoint** — a server- or desktop-authored endpoint *hint*
+  carrying a reachability class (loopback / LAN / private / public / tunnel)
+  and hosted-HTTPS compatibility flags. Hints are never proof of
+  reachability; the final connection attempt decides. Endpoint providers
+  (Tailscale first) are plugins that contribute normalized advertised
+  endpoints without entering the core environment model. **OpenAgents
+  strengthening (deferred):** endpoint records will additionally carry auth
+  capability metadata — which scoped, DPoP-bound capability token a client
+  must present — but that belongs to ENV-2's capability-token lane, not this
+  vocabulary adoption.
+
+### Access versus launch are separate questions
+
+**Access** answers: how does an authorized client speak to a running
+ExecutionEnvironment? Direct WebSocket/HTTPS, a tunneled/relay route, or a
+desktop-managed SSH port-forward are access methods; each is just another
+AccessEndpoint to the same environment.
+
+**Launch** answers: how did the environment come to exist on the target
+machine? A pre-existing enrolled runtime, control-plane provisioning of an
+Agent Computer or managed-provider workspace, a desktop-managed remote launch
+over SSH, or publishing a local runtime through a tunnel are launch methods.
+Launch metadata may inform reconnect and lifecycle UX, but it never changes
+the environment's identity or the session protocol.
+
+Neither question is session movement. **OpenAgents strengthening:** moving a
+session between environments is a receipted authority transfer through the §2
+attachment generation and §3 checkpoint contracts — quiesce, checkpoint,
+fenced detach/attach, grant revocation and reissue, cleanup receipts — never
+a client-side bookmark edit. Switching which KnownEnvironment entry or
+AccessEndpoint a client uses reconnects that client to the same attachment;
+it neither moves the session nor transfers execution authority.
+
 ## Existing substrate to preserve
 
 | Existing substrate | What it already contributes | Boundary that remains |
@@ -319,9 +390,15 @@ beneath those refs.
 
 ### 2. Exclusive session attachment
 
-Add a `session_attachment` generation/lease that names the current target,
-runtime, isolation profile, compatibility set, worker epoch, and fencing token.
-At most one generation may accept new execution commands.
+Add a `session_attachment` generation/lease that names the current target
+ExecutionEnvironment, runtime, isolation profile, compatibility set, worker
+epoch, and fencing token. At most one generation may accept new execution
+commands.
+
+Attachment authority binds to the environment, never to the route used to
+reach it: which AccessEndpoint a client resolves — direct, tunneled, or
+SSH-forwarded — is connection-layer state that cannot create, transfer, or
+fence an attachment generation.
 
 Minimum state machine:
 
@@ -397,8 +474,12 @@ event/item. Source cleanup and target activation each emit a receipt.
 ### 4. Provider-neutral execution target
 
 Replace the overloaded `owner_local | managed_remote | auto` product choice
-with a typed target descriptor. Policy may still expose a simple user choice,
-but the durable record separates:
+with a typed target descriptor. An execution target is an
+ExecutionEnvironment in the ENV-1 vocabulary: the descriptor records what the
+environment is and what it may safely do, never how a client currently
+reaches it — AccessEndpoint and AdvertisedEndpoint facts stay at the
+connection layer and out of durable target identity. Policy may still expose
+a simple user choice, but the durable record separates:
 
 ```text
 custody: owner | openagents | third_party
@@ -410,6 +491,10 @@ isolation_profile_ref
 compatibility_set_ref
 health / freshness / capacity / quota
 ```
+
+`target_ref` is the owner-scoped ExecutionEnvironment identity described in
+the ENV-1 vocabulary, bound to enrollment/health receipts rather than to a
+hostname or address.
 
 Required adapters:
 
@@ -450,18 +535,23 @@ new target-scoped grants. Secret bytes never ride inside a checkpoint. Static
 operator token fallbacks remain development/break-glass paths and cannot satisfy
 the R7 product acceptance.
 
-### 6. Authorized host/session directory
+### 6. Authorized environment/session directory
 
-Khala Sync needs owner-scoped projections for enrolled targets, authorized
-sessions, current attachments, capabilities, freshness, isolation, pending
-attention, and durable control outcomes.
+Khala Sync needs owner-scoped projections for enrolled ExecutionEnvironments,
+authorized sessions, current attachments, capabilities, freshness, isolation,
+pending attention, and durable control outcomes. The directory is the
+owner-scoped authority for which environments and sessions exist; a client's
+KnownEnvironment entries remain device-local convenience and never substitute
+for it. Where the directory projects reachability, it projects
+AdvertisedEndpoint hints with their reachability class — hints, never proof
+that a route works from the asking device.
 
 Mobile and Desktop can then answer:
 
 - what sessions exist;
-- where each session is attached;
+- which ExecutionEnvironment each session is attached to;
 - whether it is running, quiescing, detached, moving, stale, or failed;
-- what the target can safely do;
+- what the target environment can safely do;
 - whether a checkpoint is current and compatible;
 - what command or approval needs attention; and
 - what move, stop, resume, or fallback outcome actually occurred.

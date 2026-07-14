@@ -773,20 +773,26 @@ and a preview compiler. OpenAgents takes the contract, not the coupling.
    startup, and resource-finalization gates; patching the framework is a
    last resort with an upstream PR attached.
 
-### Proposed follow-on issue sequence (drafts for owner review — NOT yet opened)
+### Proposed follow-on issue sequence (item 1 opened and landed; items 2–10 remain drafts)
 
-The toolchain lanes above are filed (#8772–#8777); the remaining adapt items
-below are drafted as an ordered issue sequence for owner review and are
+The toolchain lanes above are filed (#8772–#8777). Item 1 below (ENV-1) is
+opened and implemented as
+[#8778](https://github.com/OpenAgentsInc/openagents/issues/8778); items 2–10
+remain drafted as an ordered issue sequence for owner review and are
 deliberately NOT opened yet.
 
 1. **remote(ENV-1): adopt the ExecutionEnvironment/AccessEndpoint vocabulary
-   in the portable-sessions pathway.** Fold T3's
+   in the portable-sessions pathway.** **Opened and implemented as
+   [#8778](https://github.com/OpenAgentsInc/openagents/issues/8778)**
+   (landed on main: the pathway doc now defines the four terms, an explicit
+   access-versus-launch subsection, and the OpenAgents strengthenings).
+   Fold T3's
    environment/endpoint/advertised-endpoint model — access and launch as
    separate concerns, endpoint providers (Tailscale first) as plugins
    outside the core model — into the portable-sessions pathway contracts as
    the canonical language for "where a session can run" versus "how to
    reach it". Owning surfaces:
-   `docs/sol/2026-07-11-remote-first-portable-sessions-pathway.md`-class
+   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`-class
    contracts. T3 reference:
    `projects/repos/t3code/docs/architecture/remote.md`. Dependencies: none;
    vocabulary-first, unblocks ENV-2.
