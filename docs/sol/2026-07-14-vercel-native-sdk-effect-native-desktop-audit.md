@@ -1,7 +1,7 @@
 # Vercel Native SDK, Effect Native, and OpenAgents Desktop audit
 
 - Date: 2026-07-14
-- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; typed headed-gate continuation based on `7d5a8720ae8c4b63fd08f98a4bfc22c0fec862e5`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `412640adbe2979926c64c7aaf29721677638d4ec` (`effect-native/v39`)
+- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; typed headed-gate continuation based on `7d5a8720ae8c4b63fd08f98a4bfc22c0fec862e5`; assurance/real-command continuation integrated after React/Tailwind renderer-host cutover `a75d1ceaef739107711f88a6cdf666085c66151b`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)
 - Class: architecture and dependency audit
 - Status: recommendation with bounded hybrid implementation receipt; no
   migration or release authority
@@ -773,7 +773,11 @@ media, voice, and other specialist widgets.
 
 The current product has two real renderer receipts:
 
-- OpenAgents web/Desktop uses the direct DOM renderer.
+- OpenAgents Desktop now uses a React 19-owned application root and lifecycle,
+  with `@effect-native/render-dom/react` subscribing to the Effect Native View
+  stream and retaining the proven catalog lowering under that host. Vite and
+  Tailwind CSS 4 are build/styling infrastructure, not a second application
+  state or schema authority.
 - OpenAgents mobile mounts the React Native renderer through an explicit
   React/React Native host binding; application screens remain Effect Native
   data and do not author a second React component system.
@@ -785,8 +789,9 @@ particular renderer—the source of truth.
 ### Electron is a host, not the UI model
 
 OpenAgents Desktop `0.1.0-rc.12` uses Electron `43.1.0` and Electron Forge.
-The renderer boot mounts the Effect Native DOM renderer over a `View` stream;
-the Electron main process owns runtime and OS authority. The hardened window
+The renderer boot mounts the React-owned Effect Native DOM adapter over a
+`View` stream; Effect Native remains the application contract and the Electron
+main process owns runtime and OS authority. The hardened window
 uses `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`,
 `webviewTag: false`, `webSecurity: true`, deny-by-default navigation and window
 creation, a restrictive CSP, and a fixed preload bridge.
@@ -887,7 +892,7 @@ language.
 
 ## Integration options
 
-### Option A: host the current DOM renderer in a Native SDK WebView
+### Option A: host the current React-owned DOM renderer in a Native SDK WebView
 
 Native SDK can package the current browser output and load it in WKWebView,
 WebView2, or WebKitGTK; macOS can optionally bundle CEF.
@@ -895,7 +900,8 @@ WebView2, or WebKitGTK; macOS can optionally bundle CEF.
 Advantages:
 
 - lowest UI conversion cost;
-- Effect and the entire Effect Native DOM renderer continue unchanged;
+- Effect, the React-owned root, and the current Effect Native DOM lowering
+  continue unchanged;
 - Native SDK can own native windows, menus, dialogs, credentials, and selected
   capabilities.
 
