@@ -1,53 +1,48 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { describe, expect, test } from 'vitest'
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 
-import { shouldBundleCloudRunDependency } from '../../vite.config'
-import { externalRuntimeSpecifiers } from './assert-self-contained-bundle.mjs'
+import { shouldBundleCloudRunDependency } from "../../vite.config";
+import { externalRuntimeSpecifiers } from "./assert-self-contained-bundle.mjs";
 
-describe('Cloud Run Vite Plus bundle contract', () => {
-  test('preserves the server bundle while packing preload', () => {
+describe("Cloud Run Vite Plus bundle contract", () => {
+  test("preserves the server bundle while packing preload", () => {
     const deployScript = readFileSync(
-      fileURLToPath(new URL('../deploy-cloudrun.sh', import.meta.url)),
-      'utf8',
-    )
+      fileURLToPath(new URL("../deploy-cloudrun.sh", import.meta.url)),
+      "utf8",
+    );
 
     expect(deployScript).toMatch(
       /vp pack src\/cloudrun\/preload\.ts src\/cloudrun\/cloudflare-workers-stub\.ts[\s\S]*?--no-clean/,
-    )
-    expect(deployScript).toContain('! -f dist-cloudrun/server.mjs')
-    expect(deployScript).toContain('! -f dist-cloudrun/preload.mjs')
-    expect(deployScript).toContain(
-      '! -f dist-cloudrun/cloudflare-workers-stub.mjs',
-    )
-    expect(deployScript).toContain('assert-self-contained-bundle.mjs')
-    expect(deployScript).toContain('pnpm --config.node-linker=hoisted')
-    expect(deployScript).toContain('--filter @openagentsinc/api-worker deploy')
-    expect(deployScript).toContain('pnpm install --frozen-lockfile')
-    expect(deployScript).toContain('cd "$REPO_ROOT"')
-    expect(deployScript).not.toContain('--deps.never-bundle')
-  })
+    );
+    expect(deployScript).toContain("! -f dist-cloudrun/server.mjs");
+    expect(deployScript).toContain("! -f dist-cloudrun/preload.mjs");
+    expect(deployScript).toContain("! -f dist-cloudrun/cloudflare-workers-stub.mjs");
+    expect(deployScript).toContain("assert-self-contained-bundle.mjs");
+    expect(deployScript).toContain("pnpm --config.node-linker=hoisted");
+    expect(deployScript).toContain("--filter @openagentsinc/api-worker deploy");
+    expect(deployScript).toContain("pnpm install --frozen-lockfile");
+    expect(deployScript).toContain('cd "$REPO_ROOT"');
+    expect(deployScript).not.toContain("--deps.never-bundle");
+  });
 
-  test('ships Vite Plus split chunks beside the server entry', () => {
+  test("ships Vite Plus split chunks beside the server entry", () => {
     const dockerfile = readFileSync(
-      fileURLToPath(new URL('../../Dockerfile', import.meta.url)),
-      'utf8',
-    )
+      fileURLToPath(new URL("../../Dockerfile", import.meta.url)),
+      "utf8",
+    );
 
-    expect(dockerfile).toContain('COPY dist-cloudrun/*.mjs ./dist-cloudrun/')
-    expect(dockerfile).toContain(
-      'COPY dist-cloudrun/node_modules ./node_modules',
-    )
-  })
+    expect(dockerfile).toContain("COPY dist-cloudrun/*.mjs ./dist-cloudrun/");
+    expect(dockerfile).toContain("COPY dist-cloudrun/node_modules ./node_modules");
+  });
 
-  test('bundles owned workspace packages like the T3 Code pack pattern', () => {
-    expect(
-      shouldBundleCloudRunDependency('@openagentsinc/khala-sync-server'),
-    ).toBe(true)
-    expect(shouldBundleCloudRunDependency('effect')).toBe(false)
-  })
+  test("bundles owned workspace packages like the T3 Code pack pattern", () => {
+    expect(shouldBundleCloudRunDependency("@openagentsinc/khala-sync-server")).toBe(true);
+    expect(shouldBundleCloudRunDependency("effect")).toBe(false);
+    expect(shouldBundleCloudRunDependency("nostr-effect/pure")).toBe(true);
+  });
 
-  test('rejects packages absent from the slim runtime image', () => {
+  test("rejects packages absent from the slim runtime image", () => {
     expect(
       externalRuntimeSpecifiers(`
         import fs from 'node:fs'
@@ -56,6 +51,6 @@ describe('Cloud Run Vite Plus bundle contract', () => {
         import '@openagentsinc/runtime-platform'
         import './local.mjs'
       `),
-    ).toEqual(['@openagentsinc/runtime-platform', 'effect'])
-  })
-})
+    ).toEqual(["@openagentsinc/runtime-platform", "effect"]);
+  });
+});
