@@ -17,6 +17,13 @@
  *   bun scripts/startup-bench.ts [--runs N] [--warmup W] [--out FILE] [--label L] [--no-build]
  *
  * Default receipt: benchmarks/startup/latest.json
+ *
+ * Real-wiring variant (2026-07-13 startup incident): launch the app manually
+ * with OPENAGENTS_DESKTOP_STARTUP_TRACE=<file> (and optionally
+ * OPENAGENTS_DESKTOP_USER_DATA=<profile>, OPENAGENTS_DESKTOP_STARTUP_TRACE_SHOTS=<dir>)
+ * to record the same milestone chain — plus historyHydrated — WITHOUT fixture
+ * substitution, against a real profile and real ~/.codex. Timings only; the
+ * measured profile is never deleted.
  */
 import { mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs"
 import { mkdtempSync } from "node:fs"
@@ -50,13 +57,29 @@ const MARK_ORDER = [
   "mainModuleEvaluated",
   "appWhenReady",
   "windowCreated",
+  "syncHostOpened",
+  "sessionVaultRecovered",
   "windowReadyToShow",
   "rendererBootStart",
   "firstPaint",
   "shellMounted",
+  "historyHydrated",
   "capabilityReady",
 ] as const
 type MarkName = (typeof MARK_ORDER)[number]
+
+/**
+ * Startup budgets (2026-07-13 incident contract
+ * `openagents_desktop.startup.window_first_no_blank_frame.v1`): fixture-mode
+ * medians must stay inside these bounds or the bench exits non-zero. Bounds
+ * carry generous machine headroom over the measured ~500/700 ms medians —
+ * they exist to catch ordering regressions (hydration or network back on the
+ * pre-paint path), not micro-noise.
+ */
+const BUDGETS_MS: Partial<Record<MarkName, number>> = {
+  windowReadyToShow: 1500,
+  shellMounted: 2500,
+}
 type MarkRecord = Partial<Record<MarkName, number | null>>
 
 const electronBin = path.join(appRoot, "node_modules", ".bin", "electron")
@@ -171,6 +194,24 @@ const main = async (): Promise<void> => {
   }
   console.log("")
   console.log(`[startup-bench] receipt written to ${args.out}`)
+
+  // Budget enforcement (2026-07-13 startup incident): an ordering regression
+  // that puts hydration or network back on the pre-paint path blows these by
+  // seconds; honest machine noise does not.
+  const breaches: Array<string> = []
+  for (const [mark, budget] of Object.entries(BUDGETS_MS) as ReadonlyArray<[MarkName, number]>) {
+    const agg = aggregate[mark]
+    if (agg === null || agg === undefined) {
+      breaches.push(`${mark}: no samples (budget ${budget}ms)`)
+      continue
+    }
+    if (agg.median > budget) breaches.push(`${mark}: median ${agg.median}ms > budget ${budget}ms`)
+  }
+  if (breaches.length > 0) {
+    console.error(`[startup-bench] BUDGET BREACH — ${breaches.join("; ")}`)
+    process.exit(1)
+  }
+  console.log(`[startup-bench] budgets OK (windowReadyToShow<${BUDGETS_MS.windowReadyToShow}ms, shellMounted<${BUDGETS_MS.shellMounted}ms medians)`)
 }
 
 if (import.meta.main) {

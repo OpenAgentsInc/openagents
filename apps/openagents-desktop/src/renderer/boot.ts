@@ -1103,6 +1103,20 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const unsubscribeGraph = bridge.liveAgentGraph.onUpdate(applyLocalGraph)
       window.addEventListener("pagehide", () => unsubscribeGraph(), { once: true })
     }
+    // 2026-07-13 startup incident
+    // (`openagents_desktop.startup.window_first_no_blank_frame.v1`):
+    // everything inside hydrateAfterMount previously ran BEFORE
+    // `renderer.mount`, holding the first shell paint hostage to the full
+    // local coding-history scan (measured 5.3–6.5 s against a real ~/.codex).
+    // The shell now mounts first — composer focusable, sidebar showing an
+    // honest scanning state — and this hydration streams the history catalog,
+    // coding sessions, update projection, threads, session view, and deferred
+    // commands into the already-mounted state afterwards.
+    const hydrateAfterMount = Effect.gen(function* () {
+    // The shell is live while this hydration runs: a user selection made in
+    // that window OWNS the workspace. Capture the at-mount workspace so the
+    // persisted-focus restore below never stomps explicit navigation.
+    const workspaceAtMount = (yield* SubscriptionRef.get(state)).workspace
     if (typeof bridge?.liveAgentGraph?.snapshot === "function") {
       const snapshot = yield* Effect.promise(() => bridge.liveAgentGraph!.snapshot!().catch(() => null))
       for (const update of snapshot?.graphs ?? []) applyLocalGraph(update)
@@ -1180,7 +1194,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const ref = IntentRef(resolution.intentName, StaticPayload(resolution.payload))
       yield* registry.dispatch(resolveIntentRef(ref))
     })
-    if (restoredWorkspace !== null) {
+    if (restoredWorkspace !== null && (yield* SubscriptionRef.get(state)).workspace === workspaceAtMount) {
       const commandId = restoredWorkspace === "chat" ? "chat.open" : `workspace.${restoredWorkspace}`
       const definition = desktopCanonicalCommandRegistry.find(value => value.id === commandId)
       if (definition !== undefined) {
@@ -1203,6 +1217,58 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         yield* Effect.promise(bridge.commands.ready)
       }
     }
+    // A Files selection that landed BEFORE the coding catalog hydrated could
+    // not resolve its workspace session ref, so editor recovery was skipped.
+    // Re-dispatch the same typed selection now that the catalog is live —
+    // idempotent (recovery returns early once tabs exist) and it is the same
+    // intent path a user press takes, never a parallel route.
+    if ((yield* SubscriptionRef.get(state)).workspace === "files") {
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspaceSelected", StaticPayload("files")), null))
+    }
+    // History hydration settled (found or honestly absent): the sidebar's
+    // scanning row yields to real rows or the true empty state.
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      history: { ...current.history, hydrated: true },
+    }))
+    // Startup-timing: first instant the mounted shell holds hydrated
+    // thread-list content (read back by the startup marks/trace driver).
+    {
+      const marks = ((globalThis as { __oaStartupMarks?: Record<string, number> }).__oaStartupMarks ??= {})
+      marks.historyHydrated = Date.now()
+    }
+    // Restored history lands where the reader left it: window AROUND the
+    // saved item (scrolled to it) or bottom-anchored at the newest items.
+    if (initialHistoryAnchor !== null) {
+      const anchor = initialHistoryAnchor
+      window.setTimeout(() => { void (anchor.kind === "end" ? anchorHistoryEnd(Effect.runSync(SubscriptionRef.get(state)).history.page?.selectedThreadRef) : anchorHistoryItem(anchor.itemRef)) }, 0)
+    }
+    // First paint must never wait on local rollout parsing. The sidebar gets
+    // metadata immediately; the selected thread receives five recent messages
+    // and then its bounded expanded tail after the DOM is already visible.
+    if (threads.length > 0) {
+      const id = threads[0]!.id
+      window.setTimeout(() => {
+        void (async () => {
+          const detail = await chat.openThread(id)
+          if (typeof detail === "object" && detail !== null && typeof (detail as { id?: unknown }).id === "string") {
+            const selected = detail as DesktopThread
+            await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
+              ? { ...current, threads: [selected, ...current.threads.filter(thread => thread.id !== id)], notes: selected.notes }
+              : current))
+          }
+          if (chat.hydrateThread === undefined) return
+          const hydrated = await chat.hydrateThread(id)
+          if (typeof hydrated === "object" && hydrated !== null && typeof (hydrated as { id?: unknown }).id === "string") {
+            const expanded = hydrated as DesktopThread
+            await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
+              ? { ...current, threads: [expanded, ...current.threads.filter(thread => thread.id !== id)], notes: expanded.notes }
+              : current))
+          }
+        })()
+      }, 0)
+    }
+    })
     const focusComposer = (): void => {
       // Focus must land AFTER the chat view mounts. A New-chat dispatch can
       // clear a loaded history page, which swaps the whole center view and
@@ -1583,42 +1649,18 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const marks = ((globalThis as { __oaStartupMarks?: Record<string, number> }).__oaStartupMarks ??= {})
       marks.shellMounted = Date.now()
     }
+    // The static branded boot frame (index.html) has done its job the moment
+    // the real shell is mounted underneath it.
+    document.getElementById("openagents-boot-frame")?.remove()
     // One boot-time diagnostics gather so the watchdog panel has live health the
     // first time Settings is opened (CUT-24 #8704). Event-driven, not a poll.
     void Effect.runPromise(
       registry.dispatch(resolveIntentRef(IntentRef("DesktopDiagnosticsRefreshRequested", StaticPayload(null)))),
     )
-    // Restored history lands where the reader left it: window AROUND the
-    // saved item (scrolled to it) or bottom-anchored at the newest items.
-    if (initialHistoryAnchor !== null) {
-      const anchor = initialHistoryAnchor
-      window.setTimeout(() => { void (anchor.kind === "end" ? anchorHistoryEnd(Effect.runSync(SubscriptionRef.get(state)).history.page?.selectedThreadRef) : anchorHistoryItem(anchor.itemRef)) }, 0)
-    }
-    // First paint must never wait on local rollout parsing. The sidebar gets
-    // metadata immediately; the selected thread receives five recent messages
-    // and then its bounded expanded tail after the DOM is already visible.
-    if (threads.length > 0) {
-      const id = threads[0]!.id
-      window.setTimeout(() => {
-        void (async () => {
-          const detail = await chat.openThread(id)
-          if (typeof detail === "object" && detail !== null && typeof (detail as { id?: unknown }).id === "string") {
-            const selected = detail as DesktopThread
-            await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
-              ? { ...current, threads: [selected, ...current.threads.filter(thread => thread.id !== id)], notes: selected.notes }
-              : current))
-          }
-          if (chat.hydrateThread === undefined) return
-          const hydrated = await chat.hydrateThread(id)
-          if (typeof hydrated === "object" && hydrated !== null && typeof (hydrated as { id?: unknown }).id === "string") {
-            const expanded = hydrated as DesktopThread
-            await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
-              ? { ...current, threads: [expanded, ...current.threads.filter(thread => thread.id !== id)], notes: expanded.notes }
-              : current))
-          }
-        })()
-      }, 0)
-    }
+    // 2026-07-13 startup incident: the shell above is already mounted and
+    // interactable; the coding-history/catalog/threads hydration streams in
+    // afterwards (see hydrateAfterMount).
+    yield* hydrateAfterMount
   })
 
 const boot = (): void => {

@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-13.5",
+    version: "2026-07-13.6",
     contracts: [
       {
         contractId: "openagents_desktop.mvp.visible_surface_allowlist.v1",
@@ -3305,6 +3305,72 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; adding any stray font family anywhere under apps/openagents-desktop/src fails it.",
+      },
+      {
+        contractId: "openagents_desktop.startup.window_first_no_blank_frame.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "startup / boot process",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-incident", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "Opening the openagents app, via our new oa command or in dev, shows a blank/brown screen for ~5 seconds before opening the UI. This is unacceptable. I thought we had a UX contract somewhere about the need to show initial codex chats in <50 ms. That should be timed from startup. Go look up our ways of testing load times. Startup and everything else. Write full analysis of current situation in openagents/docs/fable/ new doc. This is an incident. Very bad. Need good bootup process. No brown screen. If any loading, show beautiful starcraft version of it, or something. Time to seeing stuff and then interactable elements on bootup is extremely important. Analyze, fix, update analysis, push.",
+        authorityBoundary:
+          "The BrowserWindow is created before any local database open, OS-keychain custody, or session network verification on the production whenReady path, and the post-window network settle is fire-and-forget. The renderer paints a static branded boot frame (khalaTheme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, and streams hydration in afterwards behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/index.html",
+          "apps/openagents-desktop/tests/startup-contract.test.ts",
+          "apps/openagents-desktop/scripts/startup-bench.ts",
+          "apps/openagents-desktop/benchmarks/startup/2026-07-13-window-first-boot-frame.json",
+          "docs/fable/2026-07-13-desktop-startup-incident.md",
+        ],
+        oracles: [
+          {
+            id: "startup.window_first_ordering",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
+            description:
+              "Proves the production whenReady path creates the window before SQLite/keychain/network work, never awaits the network session settle after the window, and keeps the network call confined to the settle helper; falsifier fixtures prove the pre-incident ordering is rejected.",
+          },
+          {
+            id: "startup.shell_mounts_before_hydration",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
+            description:
+              "Proves the renderer mounts the shell before the coding-history hydration effect runs, that the history catalog fetch lives inside hydrateAfterMount, and that the boot frame is removed after mount.",
+          },
+          {
+            id: "startup.boot_frame_token_sync",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
+            description:
+              "Proves the branded boot frame exists in index.html and every color literal in it is an exact khalaTheme token value — no off-palette (brown) frame can ever paint — and the BrowserWindow backgroundColor stays the token background.",
+          },
+          {
+            id: "startup.sidebar_scanning_honesty",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
+            description:
+              "Proves the typed shell view renders the scanning row while history hydration is pending and the empty-history claim only after hydration settles.",
+          },
+          {
+            id: "startup.bench_budgets",
+            kind: "script",
+            mode: "headless",
+            ref: "apps/openagents-desktop/scripts/startup-bench.ts",
+            description:
+              "The fixture-mode startup bench asserts median windowReadyToShow < 1500 ms and median shellMounted < 2500 ms and writes a timings-only receipt to benchmarks/startup/; the real-wiring OPENAGENTS_DESKTOP_STARTUP_TRACE mode records the same milestone chain (plus historyHydrated) against a real profile.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, tests/startup-contract.test.ts in the normal sweep, scripts/startup-bench.ts receipts (real-profile before: shellMounted 5.4–7.0 s; after: ~0.7 s), and smoke screenshot receipts of the boot frame and mounted shell.",
       },
     ],
   };

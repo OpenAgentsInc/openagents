@@ -425,6 +425,13 @@ const argvMvpProofEnvironment = mvpProofEnvironmentFromArgv(process.argv)
 if (argvMvpProofEnvironment !== null) Object.assign(process.env, argvMvpProofEnvironment)
 const startupMarksFile = process.env.OPENAGENTS_DESKTOP_STARTUP_MARKS ?? null
 const startupMarksMode = startupMarksFile !== null
+// Real-wiring startup trace (2026-07-13 startup incident): the SAME milestone
+// driver as startup-marks, but WITHOUT fixture substitution — real userData,
+// real ~/.codex, real session recovery, then exit. Receipts carry timings
+// only (never paths, tokens, or thread content). Ignored when the fixture
+// marks mode is active; the two must not mix wiring.
+const startupTraceFile = startupMarksMode ? null : (process.env.OPENAGENTS_DESKTOP_STARTUP_TRACE ?? null)
+const startupTraceMode = startupTraceFile !== null
 const desktopStartupT0 = performance.timeOrigin
 const desktopMainMarks: Record<string, number> = {}
 const recordMainMark = (name: string): void => {
@@ -4223,18 +4230,40 @@ const launchSmokeSecondInstance = async (): Promise<void> => {
  * then tears down and exits. All marks are ms from process start
  * (`desktopStartupT0`, the main perf origin).
  */
-const runStartupMarks = (window: BrowserWindow, file: string): void => {
+const runStartupMarks = (
+  window: BrowserWindow,
+  file: string,
+  options: Readonly<{ preserveUserData: boolean }>,
+): void => {
   const finish = (code: 0 | 1): void => {
     try { workspaceSearchRegistry.dispose() } catch { /* best-effort teardown */ }
     try { hostLifecycle.dispose() } catch { /* best-effort teardown */ }
     try { desktopCorrelationJournal.dispose() } catch { /* best-effort teardown */ }
-    try { rmSync(app.getPath("userData"), { recursive: true, force: true }) } catch { /* temp userData */ }
+    // Fixture marks runs own a temp profile and wipe it; the real-wiring
+    // trace measured a real profile and must never delete it.
+    if (!options.preserveUserData) {
+      try { rmSync(app.getPath("userData"), { recursive: true, force: true }) } catch { /* temp userData */ }
+    }
     app.exit(code)
   }
   const timeout = setTimeout(() => {
     console.error("[openagents-desktop startup-marks] TIMEOUT waiting for renderer")
     finish(1)
   }, 45_000)
+  // Pixel receipts (2026-07-13 startup incident): when a shots directory is
+  // named, capture the first presentable frame (the branded boot frame) and
+  // the mounted shell. Timings-only receipts stay the default.
+  const shotsDir = process.env.OPENAGENTS_DESKTOP_STARTUP_TRACE_SHOTS
+  const captureShot = (name: string): Promise<void> =>
+    shotsDir === undefined || window.isDestroyed()
+      ? Promise.resolve()
+      : window.webContents.capturePage().then(image => {
+          mkdirSync(shotsDir, { recursive: true })
+          writeFileSync(path.join(shotsDir, name), image.toPNG())
+        }).catch(() => {})
+  if (shotsDir !== undefined) {
+    window.once("ready-to-show", () => { void captureShot("boot-frame.png") })
+  }
   const rendererReadback = `(async () => {
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     const marks = () => globalThis.__oaStartupMarks || {}
@@ -4244,9 +4273,6 @@ const runStartupMarks = (window: BrowserWindow, file: string): void => {
        document.querySelector('[data-en-key="shell-root"]') === null)) {
       await wait(20)
     }
-    const paint = performance.getEntriesByType("paint")
-    const fcp = paint.find((entry) => entry.name === "first-contentful-paint")
-    const fp = paint.find((entry) => entry.name === "first-paint")
     const bridge = globalThis.openagentsDesktop
     let bootstrapWall = null
     if (typeof bridge?.runtimeRequest === "function") {
@@ -4259,9 +4285,20 @@ const runStartupMarks = (window: BrowserWindow, file: string): void => {
       if (result?.result?.lifecycle === "ready") bootstrapWall = Date.now()
       else bootstrapWall = started
     }
+    // Post-mount hydration (2026-07-13 startup incident): the shell above is
+    // already interactable and capabilityReady already measured; now wait
+    // (bounded) for the hydrated thread-list content mark.
+    const hydrateDeadline = Date.now() + 30000
+    while (Date.now() < hydrateDeadline && typeof marks().historyHydrated !== "number") {
+      await wait(50)
+    }
+    const paint = performance.getEntriesByType("paint")
+    const fcp = paint.find((entry) => entry.name === "first-contentful-paint")
+    const fp = paint.find((entry) => entry.name === "first-paint")
     return {
       bootStart: marks().bootStart ?? null,
       shellMounted: marks().shellMounted ?? null,
+      historyHydrated: marks().historyHydrated ?? null,
       shellPresent: document.querySelector('[data-en-key="shell-root"]') !== null,
       timeOrigin: performance.timeOrigin,
       firstPaintOffset: fp ? fp.startTime : null,
@@ -4275,6 +4312,7 @@ const runStartupMarks = (window: BrowserWindow, file: string): void => {
         const readback = await window.webContents.executeJavaScript(rendererReadback, true) as {
           bootStart: number | null
           shellMounted: number | null
+          historyHydrated: number | null
           shellPresent: boolean
           timeOrigin: number
           firstPaintOffset: number | null
@@ -4296,11 +4334,16 @@ const runStartupMarks = (window: BrowserWindow, file: string): void => {
           // Every value is ms since process start (main performance origin).
           mainModuleEvaluated: rel(desktopMainMarks.mainModuleEvaluated ?? null),
           appWhenReady: rel(desktopMainMarks.appWhenReady ?? null),
+          sessionHardened: rel(desktopMainMarks.sessionHardened ?? null),
+          syncHostOpened: rel(desktopMainMarks.syncHostOpened ?? null),
+          sessionVaultRecovered: rel(desktopMainMarks.sessionVaultRecovered ?? null),
+          sessionRecoverySettled: rel(desktopMainMarks.sessionRecoverySettled ?? null),
           windowCreated: rel(desktopMainMarks.windowCreated ?? null),
           windowReadyToShow: rel(desktopMainMarks.windowReadyToShow ?? null),
           rendererBootStart: rel(readback.bootStart),
           firstPaint: rel(paintWall),
           shellMounted: rel(readback.shellMounted),
+          historyHydrated: rel(readback.historyHydrated),
           capabilityReady: rel(readback.bootstrapWall),
         }
         mkdirSync(path.dirname(file), { recursive: true })
@@ -4311,6 +4354,7 @@ const runStartupMarks = (window: BrowserWindow, file: string): void => {
           marks,
         }, null, 2))
         console.log("[openagents-desktop startup-marks] captured", JSON.stringify(marks))
+        await captureShot("shell-mounted.png")
         clearTimeout(timeout)
         finish(0)
       } catch (error) {
@@ -4530,45 +4574,70 @@ void app.whenReady().then(async () => {
     // so production requests the default session only inside this branch.
     hardenSession((await import("electron")).session.defaultSession)
   }
-  try {
-    const syncHost = openDesktopSyncHost({
-      databasePath: path.join(app.getPath("userData"), "sync", "khala-sync.sqlite"),
-      randomId: randomUUID,
-    })
-    hostLifecycle.replaceSync(syncHost)
-    const isolatedWorkspaceRoot = isolatedAppProofWorkspaceRoot({
-      enabled: isolatedAppProofMode,
-      env: process.env,
-    })
-    if (isolatedWorkspaceRoot !== null) syncHost.codingCatalog()?.selectWorkspace(isolatedWorkspaceRoot)
-    if (smokeMode) {
-      // Deterministic CUT-13 built-host fixture: real local SQLite/catalog and
-      // private binding path, without provider or remote authority claims.
-      syncHost.codingCatalog()?.selectWorkspace(path.join(smokeFixtureRoot, "codex-smoke"))
+  recordMainMark("sessionHardened")
+  // Local Sync persistence: synchronous SQLite open + migrations. NEVER on
+  // the pre-createWindow path (2026-07-13 startup incident).
+  const openLocalSyncPersistence = (): void => {
+    try {
+      const syncHost = openDesktopSyncHost({
+        databasePath: path.join(app.getPath("userData"), "sync", "khala-sync.sqlite"),
+        randomId: randomUUID,
+      })
+      hostLifecycle.replaceSync(syncHost)
+      const isolatedWorkspaceRoot = isolatedAppProofWorkspaceRoot({
+        enabled: isolatedAppProofMode,
+        env: process.env,
+      })
+      if (isolatedWorkspaceRoot !== null) syncHost.codingCatalog()?.selectWorkspace(isolatedWorkspaceRoot)
+      if (smokeMode) {
+        // Deterministic CUT-13 built-host fixture: real local SQLite/catalog and
+        // private binding path, without provider or remote authority claims.
+        syncHost.codingCatalog()?.selectWorkspace(path.join(smokeFixtureRoot, "codex-smoke"))
+      }
+      const restoredRoot = syncHost.codingCatalog()?.selectedRoot() ?? null
+      if (restoredRoot !== null && !installAdmittedCodingWorkspace(restoredRoot)) {
+        hostLifecycle.replaceWorkspace(openSelectedWorkspace(restoredRoot))
+      }
+    } catch {
+      console.error("[openagents-desktop] local Sync persistence unavailable")
     }
-    const restoredRoot = syncHost.codingCatalog()?.selectedRoot() ?? null
-    if (restoredRoot !== null && !installAdmittedCodingWorkspace(restoredRoot)) {
-      hostLifecycle.replaceWorkspace(openSelectedWorkspace(restoredRoot))
-    }
-  } catch {
-    console.error("[openagents-desktop] local Sync persistence unavailable")
+    recordMainMark("syncHostOpened")
   }
-  if (isolatedAppProofMode) {
-    desktopSessionVault = null
-    desktopSessionState = "signed_out"
-    console.warn("[openagents-desktop] isolated app proof: native session vault disabled (temporary user data only)")
-  } else try {
-    // Electron's `safeStorage` export can initialize macOS Keychain custody as
-    // soon as the property is resolved. Keep the getter entirely outside the
-    // isolated proof branch so a temp-only local-coding proof never opens OS
-    // authorization UI; ordinary launches still require the native backend.
-    const nativeSafeStorage = (await import("electron")).safeStorage
-    desktopSessionVault = openDesktopSessionVault({
-      filePath: path.join(app.getPath("userData"), "session", "native-session.enc"),
-      safeStorage: nativeSafeStorage,
-    })
-    desktopSessionState = desktopSessionVault.recover().state
-    if (desktopSessionState === "credential_present_unverified") {
+  // OS-keychain custody split (2026-07-13 startup incident): the synchronous
+  // vault recover stays local-only; the network verification is a SEPARATE
+  // step that must never be awaited before the window exists.
+  const recoverSessionVaultLocal = async (): Promise<void> => {
+    if (isolatedAppProofMode) {
+      desktopSessionVault = null
+      desktopSessionState = "signed_out"
+      console.warn("[openagents-desktop] isolated app proof: native session vault disabled (temporary user data only)")
+      return
+    }
+    try {
+      // Electron's `safeStorage` export can initialize macOS Keychain custody as
+      // soon as the property is resolved. Keep the getter entirely outside the
+      // isolated proof branch so a temp-only local-coding proof never opens OS
+      // authorization UI; ordinary launches still require the native backend.
+      const nativeSafeStorage = (await import("electron")).safeStorage
+      desktopSessionVault = openDesktopSessionVault({
+        filePath: path.join(app.getPath("userData"), "session", "native-session.enc"),
+        safeStorage: nativeSafeStorage,
+      })
+      desktopSessionState = desktopSessionVault.recover().state
+      recordMainMark("sessionVaultRecovered")
+    } catch {
+      desktopSessionVault = null
+      desktopSessionState = "unavailable"
+      console.error("[openagents-desktop] OS-encrypted session custody unavailable")
+    }
+  }
+  // Network session verification (https auth-session check + token rotation).
+  // Runs AFTER the window is visible; while it is in flight the renderer sees
+  // the honest typed "unverified" phase and the converging chat facade
+  // re-admits operations once verified Sync connects (CUT-10).
+  const settleSessionRecovery = async (): Promise<void> => {
+    if (desktopSessionVault === null || desktopSessionState !== "credential_present_unverified") return
+    try {
       const recovery = await recoverVerifiedDesktopSession({
         vault: desktopSessionVault,
       })
@@ -4576,14 +4645,17 @@ void app.whenReady().then(async () => {
         ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
         : recovery.state
       if(recovery.state==="denied")hostLifecycle.sync()?.unlinkAccount()
+    } catch {
+      desktopSessionState = "unavailable"
     }
-  } catch {
-    desktopSessionVault = null
-    desktopSessionState = "unavailable"
-    console.error("[openagents-desktop] OS-encrypted session custody unavailable")
+    recordMainMark("sessionRecoverySettled")
   }
-  runtimeGateway.start()
   if (localTurnRestartProbe !== null) {
+    // Windowless probe mode keeps the original fully-settled ordering.
+    openLocalSyncPersistence()
+    await recoverSessionVaultLocal()
+    await settleSessionRecovery()
+    runtimeGateway.start()
     try {
       await localTurnRecovery
       if (localTurnRestartProbe === "seed") {
@@ -4632,17 +4704,33 @@ void app.whenReady().then(async () => {
       return
     }
   }
+  // 2026-07-13 startup incident contract
+  // (`openagents_desktop.startup.window_first_no_blank_frame.v1`): the window
+  // exists — and its branded boot frame can paint — BEFORE any local database
+  // open, OS-keychain custody, or session network verification. Nothing above
+  // `createWindow()` on this path may touch SQLite, safeStorage, or the
+  // network.
+  const window = createWindow()
+  recordMainMark("windowCreated")
+  openLocalSyncPersistence()
+  await recoverSessionVaultLocal()
+  runtimeGateway.start()
+  void settleSessionRecovery()
   // Boot probe round (EP250 preflight): async and non-blocking — results
   // stream into the shared health ordering, the ledger's typed reconnect
   // flags (fleet readiness), and the composer chip's availability call.
   void codexPreflight.probeAll("boot").catch(() => {})
-  const window = createWindow()
-  recordMainMark("windowCreated")
   // Startup-marks mode (scripts/startup-bench.ts): record the milestone chain
   // and exit. Checked first because it implies smokeMode fixture wiring but must
-  // NOT drive the smoke composer flow.
+  // NOT drive the smoke composer flow. The trace variant records the SAME
+  // chain against real wiring (real userData/session/history) and must never
+  // delete the profile it measured.
   if (startupMarksMode && startupMarksFile !== null) {
-    runStartupMarks(window, startupMarksFile)
+    runStartupMarks(window, startupMarksFile, { preserveUserData: false })
+    return
+  }
+  if (startupTraceMode && startupTraceFile !== null) {
+    runStartupMarks(window, startupTraceFile, { preserveUserData: true })
     return
   }
   // Episode 250 live-proof driver (#8712): REAL adapters (no smoke fixtures),

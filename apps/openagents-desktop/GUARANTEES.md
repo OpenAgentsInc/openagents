@@ -439,6 +439,37 @@ unbounded history hydration.
 Contract:
 `openagents_desktop.chat.thread_first_content_under_50ms.v1`.
 
+### Startup: window first, branded boot frame, no blank screen
+
+The application never shows a blank (or off-palette) frame at startup
+(2026-07-13 incident; owner statement recorded verbatim in
+`src/contracts/ux-contracts.ts`).
+
+- Electron main creates the window BEFORE any local database open,
+  OS-keychain custody, or session network verification on the production
+  `whenReady` path. The network session settle after the window is
+  fire-and-forget — never awaited.
+- The renderer paints a static branded boot frame (khala background, psi-bar
+  shimmer; every color an exact `@effect-native/tokens` khalaTheme value)
+  with the first HTML parse, before the bundle even evaluates.
+- The shell mounts interactable — composer focusable, sidebar present —
+  BEFORE the local coding-history scan. Hydration streams in afterwards
+  behind an explicit `Scanning coding history…` row; the
+  `No local Codex history found.` claim renders only after the scan settles.
+- Fixture-mode bench budgets (medians): `windowReadyToShow` < 1500 ms and
+  `shellMounted` < 2500 ms, enforced by `scripts/startup-bench.ts` receipts.
+  Real-wiring numbers come from `OPENAGENTS_DESKTOP_STARTUP_TRACE`
+  (measured on a real profile: shell mount went from 5.4–7.0 s to ~0.7 s;
+  see `docs/fable/2026-07-13-desktop-startup-incident.md`).
+
+This governs boot ordering and honest loading presentation. It does not
+change the post-selection 50 ms projection budget above, and it does not
+bound full history hydration time on arbitrary `~/.codex` sizes (bounding the
+scan itself is follow-up, now off the critical path).
+
+Contract:
+`openagents_desktop.startup.window_first_no_blank_frame.v1`.
+
 ### Transient-visibility affordances are pointer/focus-driven and commit-idempotent
 
 A hover/focus-reveal affordance (the per-message **details** toggle, and any

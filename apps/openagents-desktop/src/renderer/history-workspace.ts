@@ -37,6 +37,13 @@ export type HistoryWorkspaceState = Readonly<{
   localThreads?: ReadonlyArray<DesktopThread>
   resumePickerOpen?: boolean
   actionNotice?: string | null
+  /**
+   * Post-mount hydration truth (2026-07-13 startup incident): the shell now
+   * mounts BEFORE the local coding-history scan finishes. Until this flips
+   * true the sidebar renders an explicit scanning row — never the "no
+   * history found" claim, which would be a lie mid-scan.
+   */
+  hydrated?: boolean
 }>
 export const historyCatalogPageSize = 40
 export const historyItemPageSize = 50

@@ -2992,7 +2992,11 @@ const shellSidebar = (state: DesktopShellState): View => {
       }),
       historySearchField(state.history),
       ...(historySearchActive(state.history) && state.history.searchResults.length === 0 ? [Text({ key: "sidebar-search-empty", content: "No sessions match.", variant: "caption", color: "textMuted" })] : []),
-      ...(visibleHistoryCount === 0 && visibleCodexThreads(state).length === 0 && !historySearchActive(state.history) ? [Text({ key: "sidebar-chats-empty", content: "No local Codex history found.", variant: "body", color: "textMuted" })] : []),
+      // 2026-07-13 startup incident: while the post-mount history scan is
+      // still running, say so — "no history found" is only honest once the
+      // scan has actually settled.
+      ...(state.history.hydrated !== true && visibleHistoryCount === 0 && visibleCodexThreads(state).length === 0 && !historySearchActive(state.history) ? [Text({ key: "sidebar-history-scanning", content: "Scanning coding history…", variant: "caption", color: "textMuted" })] : []),
+      ...(state.history.hydrated === true && visibleHistoryCount === 0 && visibleCodexThreads(state).length === 0 && !historySearchActive(state.history) ? [Text({ key: "sidebar-chats-empty", content: "No local Codex history found.", variant: "body", color: "textMuted" })] : []),
     ],
   )
 }

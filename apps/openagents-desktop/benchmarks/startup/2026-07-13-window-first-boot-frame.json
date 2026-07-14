@@ -1,0 +1,166 @@
+{
+  "schema": "openagents-desktop-startup-bench/v1",
+  "capturedAtIso": "2026-07-14T04:53:35.257Z",
+  "label": "2026-07-13 window-first + boot frame + post-mount hydration (final)",
+  "unit": "ms-from-process-start",
+  "runs": 5,
+  "warmupDiscarded": 1,
+  "mode": "startup-marks (deterministic fixtures)",
+  "platform": "darwin-arm64",
+  "marks": {
+    "mainModuleEvaluated": {
+      "median": 362.03,
+      "p95": 372.98,
+      "min": 338.39,
+      "max": 375.29,
+      "n": 5
+    },
+    "appWhenReady": {
+      "median": 744.72,
+      "p95": 801.24,
+      "min": 674.03,
+      "max": 814.48,
+      "n": 5
+    },
+    "windowCreated": {
+      "median": 1056.72,
+      "p95": 1146.66,
+      "min": 950.03,
+      "max": 1166.48,
+      "n": 5
+    },
+    "syncHostOpened": {
+      "median": 1079.72,
+      "p95": 1173.26,
+      "min": 971.03,
+      "max": 1193.48,
+      "n": 5
+    },
+    "sessionVaultRecovered": {
+      "median": 1089.72,
+      "p95": 1184.06,
+      "min": 981.03,
+      "max": 1204.48,
+      "n": 5
+    },
+    "windowReadyToShow": {
+      "median": 1458.72,
+      "p95": 1605.66,
+      "min": 1354.03,
+      "max": 1627.48,
+      "n": 5
+    },
+    "rendererBootStart": {
+      "median": 1444.72,
+      "p95": 1594.86,
+      "min": 1344.03,
+      "max": 1616.48,
+      "n": 5
+    },
+    "firstPaint": {
+      "median": 1325.42,
+      "p95": 1445.32,
+      "min": 1225.83,
+      "max": 1462.08,
+      "n": 5
+    },
+    "shellMounted": {
+      "median": 1593.29,
+      "p95": 1717.86,
+      "min": 1422.03,
+      "max": 1744.48,
+      "n": 5
+    },
+    "historyHydrated": {
+      "median": 1999.39,
+      "p95": 2196.44,
+      "min": 1846.03,
+      "max": 2236.48,
+      "n": 5
+    },
+    "capabilityReady": {
+      "median": 1615.29,
+      "p95": 1736.66,
+      "min": 1441.03,
+      "max": 1763.48,
+      "n": 5
+    }
+  },
+  "rawSamples": [
+    {
+      "mainModuleEvaluated": 351.48,
+      "appWhenReady": 814.48,
+      "sessionHardened": 1010.48,
+      "syncHostOpened": 1193.48,
+      "sessionVaultRecovered": 1204.48,
+      "sessionRecoverySettled": null,
+      "windowCreated": 1166.48,
+      "windowReadyToShow": 1627.48,
+      "rendererBootStart": 1616.48,
+      "firstPaint": 1462.08,
+      "shellMounted": 1744.48,
+      "historyHydrated": 2236.48,
+      "capabilityReady": 1763.48
+    },
+    {
+      "mainModuleEvaluated": 375.29,
+      "appWhenReady": 748.29,
+      "sessionHardened": 895.29,
+      "syncHostOpened": 1047.29,
+      "sessionVaultRecovered": 1057.29,
+      "sessionRecoverySettled": null,
+      "windowCreated": 1027.29,
+      "windowReadyToShow": 1443.29,
+      "rendererBootStart": 1432.29,
+      "firstPaint": 1301.79,
+      "shellMounted": 1593.29,
+      "historyHydrated": 2036.29,
+      "capabilityReady": 1615.29
+    },
+    {
+      "mainModuleEvaluated": 338.39,
+      "appWhenReady": 698.39,
+      "sessionHardened": 881.39,
+      "syncHostOpened": 1092.39,
+      "sessionVaultRecovered": 1102.39,
+      "sessionRecoverySettled": null,
+      "windowCreated": 1067.39,
+      "windowReadyToShow": 1518.39,
+      "rendererBootStart": 1508.39,
+      "firstPaint": 1378.29,
+      "shellMounted": 1611.39,
+      "historyHydrated": 1999.39,
+      "capabilityReady": 1629.39
+    },
+    {
+      "mainModuleEvaluated": 363.72,
+      "appWhenReady": 744.72,
+      "sessionHardened": 906.72,
+      "syncHostOpened": 1079.72,
+      "sessionVaultRecovered": 1089.72,
+      "sessionRecoverySettled": null,
+      "windowCreated": 1056.72,
+      "windowReadyToShow": 1458.72,
+      "rendererBootStart": 1444.72,
+      "firstPaint": 1325.42,
+      "shellMounted": 1583.72,
+      "historyHydrated": 1931.72,
+      "capabilityReady": 1600.72
+    },
+    {
+      "mainModuleEvaluated": 362.03,
+      "appWhenReady": 674.03,
+      "sessionHardened": 818.03,
+      "syncHostOpened": 971.03,
+      "sessionVaultRecovered": 981.03,
+      "sessionRecoverySettled": null,
+      "windowCreated": 950.03,
+      "windowReadyToShow": 1354.03,
+      "rendererBootStart": 1344.03,
+      "firstPaint": 1225.83,
+      "shellMounted": 1422.03,
+      "historyHydrated": 1846.03,
+      "capabilityReady": 1441.03
+    }
+  ]
+}
