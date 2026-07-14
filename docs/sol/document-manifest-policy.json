@@ -21,6 +21,12 @@
       "disposition": "retain-historical",
       "dispatch": false
     },
+    "docs/sol/the-case-against-anthropic.md": {
+      "class": "historical-analysis",
+      "owner": "Christopher David",
+      "disposition": "retain-historical",
+      "dispatch": false
+    },
     "docs/sol/2026-07-14-node-pnpm-vite-plus-vp0-baseline.md": {
       "class": "receipt",
       "owner": "Sol runtime and toolchain conversion",
