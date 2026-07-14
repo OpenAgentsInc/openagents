@@ -150,6 +150,7 @@ describe("Pylon runtime interaction bridge", () => {
     })
     const rawInput = { command: "private command must stay provider-local" }
     expect(await controller("Bash", rawInput, {
+      requestId: "control_request.claude.1",
       signal: new AbortController().signal,
       toolUseID: "tool_call.claude.1",
     })).toEqual({ behavior: "allow", updatedInput: rawInput })
@@ -183,6 +184,7 @@ describe("Pylon runtime interaction bridge", () => {
         requestFor: () => request,
       })
       expect(await controller("Write", {}, {
+        requestId: "control_request.claude.deny",
         signal: new AbortController().signal,
         toolUseID: "tool_call.claude.deny",
       })).toEqual({ behavior: "deny", message })
@@ -200,6 +202,7 @@ describe("Pylon runtime interaction bridge", () => {
     const abort = new AbortController()
     abort.abort()
     await expect(controller("Bash", {}, {
+      requestId: "control_request.claude.cancelled",
       signal: abort.signal,
       toolUseID: "tool_call.claude.cancelled",
     })).rejects.toBeDefined()
