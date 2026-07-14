@@ -4,8 +4,8 @@
 //
 //   - flag-gated INERT by default (INFERENCE_GATEWAY_ENABLED, default off)
 //   - per-account API-key auth (reuses the agent bearer-token credential)
-//   - read-only credit-balance gate (rejects on insufficient balance; #5477
-//     owns the real decrement/top-up paths, not this route)
+//   - explicit no-spend admission: caller-funded BYOK or the authenticated
+//     org-runtime no-meter channel; platform-funded paid capacity is unavailable
 //   - provider-adapter seam dispatch (registry resolves model -> adapter; ships
 //     wired to the stub/echo adapter so the route works end-to-end in tests)
 //   - metering-hook seam (#5477 decrements credits from provider `usage`;
@@ -85,13 +85,9 @@ import {
   KHALA_FIREWORKS_BACKING_MODEL_ID,
   KHALA_STRONG_CODING_FIREWORKS_MODEL_ID,
 } from './fireworks-adapter'
-import {
-  type FairShareDecision,
-  type SpendCapDecision,
-} from './inference-abuse-controls'
+import { type FairShareDecision } from './inference-abuse-controls'
 import { applyInternalAccountAttribution } from './inference-internal-account'
 import { agentUserIdFromAccountRef } from './inference-owner-identity'
-import { type PremiumAccessDecision } from './inference-premium-allowlist'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
 import {
   KHALA_CODE_VERIFIER_WORKER_ID,
@@ -423,25 +419,6 @@ export type InferenceAuth = (
   request: Request,
 ) => Promise<Readonly<{ accountRef: string }> | undefined>
 
-// BALANCE SEAM ------------------------------------------------------------
-// Read-only available-credit check (msat) for the account. The Worker wires
-// this to `readAgentBalance(...).availableMsat`. #5476 only GATES on balance;
-// it never decrements (that is #5477's metering path).
-export type InferenceBalanceReader = (accountRef: string) => Promise<number>
-
-// FUNDING-KIND SEAM -------------------------------------------------------
-// Resolves how an account funds its balance (card | bitcoin) so the metering
-// hook (#5477) applies the Bitcoin funding discount in `priceRequest`. Defaults
-// to card. A real per-account card-vs-Bitcoin funding preference wires here once
-// the credit top-up paths record it; until then every account is treated as
-// card-funded (the conservative, no-discount default).
-export type InferenceFundingResolver = (
-  accountRef: string,
-) => Promise<FundingKind>
-
-export const defaultCardFundingResolver: InferenceFundingResolver = async () =>
-  'card'
-
 export type KhalaAccountByokResolver = (
   accountRef: string,
 ) => Promise<
@@ -589,7 +566,6 @@ export type ChatCompletionsDeps = Readonly<{
   // env.INFERENCE_GATEWAY_ENABLED parsed as a flag; default OFF.
   enabled: boolean
   authenticate: InferenceAuth
-  readAvailableMsat: InferenceBalanceReader
   registry: InferenceProviderRegistry
   // Single-id router seam. Defaults to the stub router (always selects the
   // stub/echo adapter). Used to gate `model_unavailable` and to dispatch when
@@ -671,9 +647,6 @@ export type ChatCompletionsDeps = Readonly<{
   // internal internal-account request defaults to `internal_account`. A non-
   // internal account is unaffected. Default empty => pure no-op (fail-soft).
   internalAccountRefs?: ReadonlySet<string> | undefined
-  // Resolves the account's funding kind (card | bitcoin) for the metering hook.
-  // Defaults to card (no Bitcoin discount).
-  resolveFundingKind?: InferenceFundingResolver
   // ACCOUNT-ATTACHED BYOK (#7646). Resolves a connected OpenRouter API-key
   // provider account for this authenticated OpenAgents account. Request-specific
   // BYOK headers take precedence and remain ephemeral; this resolver is only
@@ -682,59 +655,6 @@ export type ChatCompletionsDeps = Readonly<{
   // `openagents/khala`, routes through Khala identity/tool/tracing/metering
   // boundaries, and records served tokens with no OpenAgents credit debit.
   resolveAccountByok?: KhalaAccountByokResolver | undefined
-  // Minimum available balance (msat) required to accept a request. Until #5477
-  // prices per-model, any positive balance clears the gate; an account with
-  // zero/negative available balance is rejected.
-  minimumAvailableMsat?: number
-  // FREE-ALLOWANCE PRE-FLIGHT (EPIC #5474 §1). Read-only mirror of the gate
-  // inside `withFreeAllowance`. The balance gate calls this BEFORE rejecting a
-  // zero/insufficient-balance account: if the (account, model) is free-eligible
-  // and the resolving owner still has remaining free allowance, the request is
-  // allowed through (the metering hook then eats the cost and accrues it), so a
-  // genuinely-free request is never falsely 402'd. Default undefined => the gate
-  // is unchanged (a zero-balance account is rejected). Resolution errors return
-  // not-eligible, so the balance gate stands. Wired by the Worker to
-  // `checkFreeAllowancePreflight` against the SAME owner-identity resolver the
-  // metering hook uses, keeping the bypass and the accrual consistent.
-  checkFreeAllowance?: (
-    accountRef: string,
-    model: string,
-  ) => Promise<{ readonly eligible: boolean }>
-  // OWNER BALANCE-GATE EXEMPTION (issue #6180). Read-only seam the balance gate
-  // calls BEFORE the 402: if the (account, model) resolves to an EXEMPT verified
-  // owner AND the model is non-premium / own-infra, the zero-balance request is
-  // allowed through (the `withOperatorCredit` metering wrapper then records it as
-  // `operator_credit` — zero credit debit + receipt, no referral). Lets
-  // approved/internal keys test our OWN lanes (e.g. `openagents/khala` on the
-  // hourly Hydralisk box) WITHOUT funding while Khala stays paid for the public.
-  // HARD GUARDRAIL: a PREMIUM model (`claude`/`unknown`) is NEVER exempt — it
-  // still hits the normal balance + premium gates. Default undefined => the gate
-  // is unchanged (a zero-balance account is rejected). Resolution errors return
-  // not-exempt, so the balance gate stands. Wired by the Worker to
-  // `makeOperatorExemptionGate` ONLY when INFERENCE_OPERATOR_EXEMPTION_ENABLED is
-  // on, against the SAME owner-identity resolver the metering wrapper uses so the
-  // bypass and the zero-debit record agree.
-  checkOperatorExemption?: (
-    accountRef: string,
-    model: string,
-  ) => Promise<{ readonly exempt: boolean }>
-  // KHALA FREE TIER bypass (issue #6228). Read-only seam the balance gate calls
-  // BEFORE the 402: if the (account, model) is a FREE-TIER key on the free Khala
-  // lane (own-infra / non-premium) AND still within its per-key daily quota, the
-  // zero-balance request is allowed through (the `withFreeTierKhala` metering
-  // wrapper then records it as a zero-debit free receipt + accrues the quota).
-  // This is the THIRD balance-gate bypass alongside `checkFreeAllowance` (owner
-  // Sybil pool on Gemini) and `checkOperatorExemption` (owner operator credit);
-  // it is the self-serve one — anyone who mints a free key gets free Khala within
-  // quota. A PREMIUM model is NEVER free; over-quota / non-free-tier / non-Khala
-  // requests fall through to the normal 402. Default undefined => the gate is
-  // unchanged. Wired by the Worker to `makeFreeTierGate` ONLY when
-  // INFERENCE_FREE_TIER_ENABLED is on, against the SAME store + quota the metering
-  // wrapper uses so the bypass and the zero-debit accrual agree.
-  checkFreeTier?: (
-    accountRef: string,
-    model: string,
-  ) => Promise<{ readonly free: boolean }>
   // ABUSE-CONTROL SEAMS (#5486). Both default to undefined => the gate is OPEN
   // (no-op), so the inert/flag-off path and the unconfigured-account path are
   // byte-for-byte unchanged. The decisions are computed by the pure deciders in
@@ -749,25 +669,6 @@ export type ChatCompletionsDeps = Readonly<{
   // bounded counters. Checked AFTER auth (so it is keyed to the account) and
   // BEFORE provider dispatch (so a starve-attempt never reaches a provider).
   checkFairShare?: (accountRef: string) => Promise<FairShareDecision>
-  // PER-ACCOUNT SPEND-CAP GATE. Returns the spend-cap decision for the account in
-  // the current window. When `allowed` is false the route rejects with the
-  // decision's statusCode (402, distinct from the balance gate's
-  // insufficient_credits). Checked after the balance gate; pre-flight it bounds
-  // the already-spent window total (no per-request estimate exists yet).
-  checkSpendCap?: (accountRef: string) => Promise<SpendCapDecision>
-  // PREMIUM-MODEL OWNER-GRANT GATE (free-tier enablement §2). Returns the
-  // premium-access decision for the (account, model) pair. Premium models
-  // (Claude / GPT / partner-passthrough) require the account's resolved OWNER
-  // identity to be on the owner-controlled allowlist; non-allowlisted premium
-  // requests are DENIED (403) with a clear, actionable message. Non-premium
-  // models (Gemini free default, Fireworks open) always pass. Default undefined
-  // => the gate is OPEN (no-op), so the inert/flag-off path is unchanged.
-  // Checked AFTER auth (so it is keyed to the resolved owner) and BEFORE
-  // provider dispatch (so a denied premium request never reaches a provider).
-  checkPremiumAccess?: (
-    accountRef: string,
-    model: string,
-  ) => Promise<PremiumAccessDecision>
   // DEFAULT-ON caller-owned Pylon delegation for typed coding workflows (#6278).
   // When wired, a request classified by `classifyCodingWorkflow` is routed to
   // the caller's linked, heartbeat-fresh Codex Pylon capacity before normal
@@ -2943,155 +2844,40 @@ export const handleChatCompletions = (
       )
     }
 
-    // PREMIUM-MODEL OWNER-GRANT GATE (free-tier enablement §2). Premium models
-    // require the account's resolved OWNER identity to be allowlisted. Checked
-    // here, after auth and before any balance/dispatch work, so a non-allowlisted
-    // premium request is denied with an actionable message and never reaches a
-    // provider. Open (no-op) when unwired; non-premium models always pass.
-    if (deps.checkPremiumAccess !== undefined) {
-      const premium = yield* Effect.promise(() =>
-        deps.checkPremiumAccess!(session.accountRef, requestedModel),
-      )
-      if (!premium.allowed) {
-        return noStoreJsonResponse(
-          {
-            error: 'premium_model_not_allowed',
-            message: premium.message,
-            model: requestedModel,
-            reason: premium.reasonRef,
-          },
-          { status: 403 },
-        )
-      }
-    }
-
-    // BALANCE GATE (read-only). #5477 owns the real per-model decrement.
+    // VP1 retirement: platform-funded inference is unavailable. A request may
+    // reach provider dispatch only when the caller supplies its own provider key
+    // or when the authenticated org-runtime no-meter channel explicitly owns
+    // the upstream capacity. This removes credit/free-tier accounting without
+    // silently converting paid platform capacity into a free public service.
     const callerPaidByok = byok._tag === 'accepted'
-    const minimum = deps.minimumAvailableMsat ?? 1
-    const availableMsat = callerPaidByok
-      ? minimum
-      : yield* Effect.promise(() => deps.readAvailableMsat(session.accountRef))
-    if (!callerPaidByok && !orgCloudRuntimeNoMeter && availableMsat < minimum) {
-      // SINGLE-CHARGE / NO-METER BYPASS (#8503). An internal org-capacity
-      // agent-computer microVM call (its no-meter header matches the configured
-      // secret) is NOT customer-credit-gated: the ONE customer debit for the
-      // dispatched turn is the downstream `/api/khala/cloud/runtime-turn-usage`
-      // receipt attributed to the mobile ownerUserId, never this gateway call.
-      // Since the metering hook + served-token recorder are already suppressed
-      // for this request, gating it on the org agent account's own balance would
-      // wrongly 402 our own org capacity. Fail-closed: with no secret configured
-      // (prod default) `orgCloudRuntimeNoMeter` is always false and the balance
-      // gate runs byte-for-byte as today.
-      // FREE-ALLOWANCE BYPASS (EPIC #5474 §1). A zero/insufficient-balance
-      // account is NOT rejected when the request is free-eligible AND the
-      // resolving owner still has remaining free allowance — that request would
-      // be eaten by `withFreeAllowance` after dispatch, so 402'ing it here would
-      // make the free tier untestable/unreachable without a funded balance. The
-      // pre-flight is read-only and conservative: non-free models, exhausted
-      // pools, and resolution errors all fall through to the normal 402.
-      const freeAllowed =
-        deps.checkFreeAllowance === undefined
-          ? false
-          : (yield* Effect.promise(() =>
-              deps.checkFreeAllowance!(session.accountRef, requestedModel),
-            )).eligible
-      // OWNER BALANCE-GATE EXEMPTION (issue #6180). A zero/insufficient-balance
-      // account is ALSO not rejected when the request resolves to an EXEMPT
-      // verified owner on a NON-premium / own-infra model — that request is
-      // recorded by `withOperatorCredit` after dispatch as `operator_credit`
-      // (zero credit debit + receipt, no referral). Lets approved/internal keys
-      // test our OWN lanes (e.g. `openagents/khala` on the hourly Hydralisk box)
-      // WITHOUT funding while Khala stays paid for the public. The seam itself
-      // refuses premium models + unclaimed accounts, so the 402 stands for them.
-      const operatorExempt =
-        deps.checkOperatorExemption === undefined
-          ? false
-          : (yield* Effect.promise(() =>
-              deps.checkOperatorExemption!(session.accountRef, requestedModel),
-            )).exempt
-      // KHALA FREE TIER bypass (issue #6228). A zero-balance request is ALSO not
-      // rejected when it resolves to a FREE-TIER key on the free Khala lane that
-      // is still within its per-key daily quota — that request is recorded by
-      // `withFreeTierKhala` after dispatch as a zero-debit free receipt (and its
-      // usage accrues against the daily quota). The seam itself refuses premium
-      // models, non-free-tier accounts, non-Khala models, and over-quota keys, so
-      // the 402 stands for them and Khala stays paid for funded keys beyond quota.
-      const freeTier =
-        deps.checkFreeTier === undefined
-          ? false
-          : (yield* Effect.promise(() =>
-              deps.checkFreeTier!(session.accountRef, requestedModel),
-            )).free
-      if (!freeAllowed && !operatorExempt && !freeTier) {
-        return noStoreJsonResponse(
-          {
-            error: 'insufficient_credits',
-            availableMsat,
-            requiredMsat: minimum,
-          },
-          { status: 402 },
-        )
-      }
-    }
-
-    // SPEND-CAP GATE (#5486). DISTINCT from the balance gate above: an account
-    // can be flush with credits yet still be capped at a configurable per-window
-    // spend ceiling so a compromised key cannot drain the whole balance. Open
-    // (no-op) when unwired or when no cap is configured for the account.
-    if (
-      !callerPaidByok &&
-      !orgCloudRuntimeNoMeter &&
-      deps.checkSpendCap !== undefined
-    ) {
-      // SINGLE-CHARGE / NO-METER BYPASS (#8503). Same rationale as the balance
-      // gate above: the internal org-capacity no-meter call is not a customer
-      // debit, so it is not subject to the per-account spend cap. Fail-closed via
-      // `orgCloudRuntimeNoMeter` (never true without the configured secret).
-      const spendCap = yield* Effect.promise(() =>
-        deps.checkSpendCap!(session.accountRef),
+    if (!callerPaidByok && !orgCloudRuntimeNoMeter) {
+      return noStoreJsonResponse(
+        {
+          error: 'platform_funding_unavailable',
+          message:
+            'Platform-funded inference is unavailable. Configure a supported BYOK provider account.',
+          model: requestedModel,
+        },
+        { status: 503 },
       )
-      if (!spendCap.allowed) {
-        return noStoreJsonResponse(
-          {
-            error: 'spend_cap_exceeded',
-            capMsat: spendCap.capMsat,
-            remainingMsat: spendCap.remainingMsat,
-            spentMsatInWindow: spendCap.spentMsatInWindow,
-            windowSeconds: spendCap.windowSeconds,
-          },
-          { status: spendCap.statusCode },
-        )
-      }
     }
 
-    const baseMeteringHook = deps.meteringHook ?? stubMeteringHook
-    const meteringHook: MeteringHook = callerPaidByok
-      ? () =>
-          Effect.succeed({
-            byok: true,
-            metered: false,
-            receiptRef: null,
-          } satisfies MeteringOutcome)
-      : orgCloudRuntimeNoMeter
-        ? // SINGLE-CHARGE (#8503): internal org-capacity microVM call — no debit
-          // here; the runtime-turn-usage receipt is the one customer debit.
-          () =>
-            Effect.succeed({
-              metered: false,
-              receiptRef: null,
-            } satisfies MeteringOutcome)
-        : baseMeteringHook
+    const meteringHook: MeteringHook = () =>
+      Effect.succeed({
+        ...(callerPaidByok ? { byok: true as const } : {}),
+        metered: false,
+        paymentMode: 'no-spend' as const,
+        payoutClaimAllowed: false,
+        receiptRef: null,
+        settlementState: 'not_applicable' as const,
+      } satisfies MeteringOutcome)
     // SINGLE-CHARGE (#8503): suppress the served-token recorder for the same
     // internal call so no second `token_usage_events` row is written here; the
     // receipt path records the one public served-token row.
     const effectiveRecordTokensServed = orgCloudRuntimeNoMeter
       ? undefined
       : deps.recordTokensServed
-    const resolveFundingKind =
-      deps.resolveFundingKind ?? defaultCardFundingResolver
-    const fundingKind = yield* Effect.promise(() =>
-      resolveFundingKind(session.accountRef),
-    )
+    const fundingKind: FundingKind = 'card'
 
     // SUPPLY SELECTION (#5482) -------------------------------------------
     // Resolve the ordered candidate adapter ids for this model. When a

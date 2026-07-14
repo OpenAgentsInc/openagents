@@ -20,7 +20,6 @@
 // margin (`costUsd`) so the estimate never leaks unit economics — it exposes
 // only the customer-facing charge, already implied by the published catalog
 // price. PURE: no D1, no clock, no network, no secrets.
-import { isFreeEligibleModel } from './inference-free-allowance'
 import { type FundingKind, priceRequest } from './pricing'
 import { usdToMsatCeil } from './usd-msat-conversion'
 
@@ -65,11 +64,6 @@ export type CostEstimate = Readonly<{
   model: string
   // True when the model is not in the published catalog (conservative fallback).
   isUnknownModel: boolean
-  // True when this model class is free-tier eligible (Gemini Flash today). When
-  // true, a request that clears under the owner's Sybil-resistant free pool will
-  // cost 0; this estimate is nonetheless the PAID price for when the pool is
-  // exhausted, so a customer can plan deliberate spend conservatively.
-  freeTierEligible: boolean
   // Funding rail the estimate reflects.
   fundingKind: FundingKind
   // The token counts the estimate priced (echoed back, clamped to non-negative).
@@ -143,7 +137,6 @@ export const estimateRequestCost = (input: CostEstimateInput): CostEstimate => {
     estimatedChargeMsat: usdToMsatCeil(priced.chargeUsd),
     estimatedChargeUsd: round(priced.chargeUsd, 6),
     estimatedCredits: round(priced.credits, 4),
-    freeTierEligible: isFreeEligibleModel(outputModel),
     fundingDiscountUsd: round(fundingDiscountUsd, 6),
     fundingKind: input.fundingKind,
     isEstimate: true,

@@ -27,7 +27,6 @@ const entry = (id: string, lane: SupplyLane): ModelCatalogEntry => ({
     reasonRef: 'reason.inference_free_tier.disabled',
     window: null,
   },
-  freeTierEligible: false,
   id,
   lane,
   multiplier: 1,

@@ -35,14 +35,10 @@
 // claimed turn leaves `queued` status immediately, so the next tick's
 // `status = 'queued'` filter never re-selects it.
 //
-// METERING (#8555): a completed turn now records EXACT usage + debits credits.
+// USAGE: a completed turn records exact provider usage without charging.
 // `artanisMindComplete` returns Gemini's `usageMetadata` receipt; on success
 // this consumer writes one exact `token_usage_events` row (owner-attributed,
-// lane `hosted_khala`), debits the owner's credit balance through the live
-// ledger metering hook (which also projects the `scope.user.<userId>`
-// `credit_balance` delta), and emits a `usage.recorded` runtime event. A
-// pre-inference balance gate refuses a zero/negative-credit owner (fail-closed,
-// but never blocking on an undetermined balance). All metering is fail-soft:
+// lane `hosted_khala`) and emits a `usage.recorded` runtime event. Recording is fail-soft:
 // it never drops the assistant answer or wedges the turn. See
 // `khala-hosted-runtime-metering.ts`.
 //
@@ -156,16 +152,7 @@ export type HostedRuntimeCompletion =
     }
   | { readonly ok: false; readonly detail: string }
 
-/** Reads the owner's available (spendable) msat credit balance for the
- * pre-inference balance gate. Returns `null` when the balance is UNDETERMINED
- * (a read failure) — the gate must NOT block on undetermined balance. */
-export type HostedRuntimeReadOwnerBalanceMsatFn = (
-  ownerUserId: string,
-) => Promise<number | null>
-
-/** Records one completed hosted turn's exact usage + debits the owner's
- * credits. Fail-soft by contract (never throws). Default: absent (no metering,
- * used by tests and any deployment without the credits/ledger bindings). */
+/** Records one completed hosted turn's exact usage. Fail-soft by contract. */
 export type HostedRuntimeRecordUsageFn = (
   input: HostedTurnMeteringInput,
 ) => Promise<HostedTurnMeteringOutcome>
@@ -203,13 +190,7 @@ export type HostedRuntimeDispatchDependencies = Readonly<{
   uuid?: (() => string) | undefined
   /** Structured logger for per-turn outcomes. */
   log?: ((line: string, fields?: Record<string, unknown>) => void) | undefined
-  /** Balance gate: read the owner's spendable credit balance before running
-   * inference. Absent => no gate (hosted turns run without a pre-check;
-   * metering still charges after). */
-  readOwnerBalanceMsat?: HostedRuntimeReadOwnerBalanceMsatFn | undefined
-  /** Records exact usage + debits credits on a completed turn. Absent => no
-   * metering (the pre-#8555 free behavior; kept for tests / unconfigured
-   * deployments). */
+  /** Records exact usage on a completed turn. */
   recordUsage?: HostedRuntimeRecordUsageFn | undefined
 }>
 
@@ -219,8 +200,6 @@ export type HostedRuntimeDispatchSummary = Readonly<{
   answered: number
   failed: number
   skipped: number
-  /** Turns claimed then refused by the zero-balance gate (never ran inference). */
-  refused: number
 }>
 
 type ResolvedDeps = Readonly<{
@@ -235,7 +214,6 @@ type ResolvedDeps = Readonly<{
   now: () => string
   uuid: () => string
   log: (line: string, fields?: Record<string, unknown>) => void
-  readOwnerBalanceMsat: HostedRuntimeReadOwnerBalanceMsatFn | undefined
   recordUsage: HostedRuntimeRecordUsageFn | undefined
 }>
 
@@ -255,7 +233,6 @@ const resolveDeps = (deps: HostedRuntimeDispatchDependencies): ResolvedDeps => (
   log: deps.log ?? (() => undefined),
   model: deps.model ?? DEFAULT_HOSTED_RUNTIME_MODEL,
   now: deps.now ?? currentIsoTimestamp,
-  readOwnerBalanceMsat: deps.readOwnerBalanceMsat,
   recordUsage: deps.recordUsage,
   registry: deps.registry ?? makeMutatorRegistry([...runtimeMutators]),
   sql: deps.sql,
@@ -515,7 +492,7 @@ export const recoverStaleRunningHostedTurns = async (
 export const dispatchHostedRuntimeTurn = async (
   deps: HostedRuntimeDispatchDependencies,
   turn: QueuedHostedTurn,
-): Promise<'answered' | 'failed' | 'skipped' | 'refused'> => {
+): Promise<'answered' | 'failed' | 'skipped'> => {
   const resolved = resolveDeps(deps)
   const ownerId = turn.ownerUserId
   // Owner-scoped client group so different owners never collide on one group
@@ -547,31 +524,6 @@ export const dispatchHostedRuntimeTurn = async (
     return 'skipped'
   }
   seq += 1
-
-  // 1b. BALANCE GATE (#8555). Everything on this lane uses credits (#8467), so
-  // a user with zero/negative spendable credit must be refused, not served for
-  // free. Fail-CLOSED on a determinable zero balance, but NEVER block on an
-  // UNDETERMINED balance (a read failure => `null` => proceed), per the
-  // onboarding contract. The gate is skipped entirely when no balance reader is
-  // wired (tests / unconfigured deployments).
-  if (resolved.readOwnerBalanceMsat !== undefined) {
-    const balanceMsat = await resolved.readOwnerBalanceMsat(ownerId).catch(() => null)
-    if (balanceMsat !== null && balanceMsat <= 0) {
-      resolved.log('hosted_runtime_dispatch_refused', {
-        reason: 'insufficient_credit',
-        turnId: turn.turnId,
-      })
-      const refusedResult = await record(
-        2,
-        buildRuntimeEvent(resolved, turn, seq, {
-          finishReason: 'error' satisfies KhalaRuntimeFinishReason,
-          kind: 'turn.finished',
-        }),
-      )
-      if (refusedResult.status !== 'applied') return 'skipped'
-      return 'refused'
-    }
-  }
 
   // 2. Resolve the prompt and drive inference.
   let completion: HostedRuntimeCompletion
@@ -639,10 +591,8 @@ export const dispatchHostedRuntimeTurn = async (
     mutationId += 1
   }
 
-  // 5. METERING (#8555). With exact Gemini `usageMetadata`, record the exact
-  // `token_usage_events` row + debit the owner's credits + project the balance
-  // delta, then emit a `usage.recorded` runtime event so the client sees the
-  // exact usage (and its charge receipt) live. All fail-soft — a metering
+  // 5. USAGE. With exact Gemini `usageMetadata`, record the exact
+  // `token_usage_events` row, then emit a `usage.recorded` runtime event. All fail-soft — a recording
   // failure never drops the assistant answer or wedges the turn. A turn with no
   // provider usage records no row (exact-only; never a fabricated receipt).
   const usage = completion.usage
@@ -666,7 +616,6 @@ export const dispatchHostedRuntimeTurn = async (
         })
       }
     }
-    const chargeReceiptRef = meterOutcome?.chargeReceiptRef ?? null
     const usageResult = await record(
       mutationId,
       buildRuntimeEvent(resolved, turn, seq, {
@@ -675,7 +624,6 @@ export const dispatchHostedRuntimeTurn = async (
           ...(usage.cacheReadTokens > 0
             ? { cacheReadInputTokens: usage.cacheReadTokens }
             : {}),
-          ...(chargeReceiptRef === null ? {} : { costRef: chargeReceiptRef }),
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
           reasoningTokens: usage.reasoningTokens,
@@ -687,11 +635,8 @@ export const dispatchHostedRuntimeTurn = async (
     if (usageResult.status !== 'applied') return 'skipped'
     seq += 1
     mutationId += 1
-    resolved.log('hosted_runtime_dispatch_metered', {
-      chargeUsdCents: meterOutcome?.chargeUsdCents,
-      failureReason: meterOutcome?.failureReason,
+    resolved.log('hosted_runtime_dispatch_usage_recorded', {
       insertedTokenUsage: meterOutcome?.insertedTokenUsage,
-      metered: meterOutcome?.metered,
       tokensServed: meterOutcome?.tokensServed,
       turnId: turn.turnId,
     })
@@ -742,7 +687,6 @@ export const runHostedRuntimeTurnDispatch = async (
   let failed = 0
   let claimed = 0
   let skipped = 0
-  let refused = 0
   for (const turn of turns) {
     try {
       const outcome = await dispatchHostedRuntimeTurn(deps, turn)
@@ -752,8 +696,6 @@ export const runHostedRuntimeTurnDispatch = async (
       } else if (outcome === 'failed') {
         failed += 1
         claimed += 1
-      } else if (outcome === 'refused') {
-        refused += 1
         claimed += 1
       } else {
         skipped += 1
@@ -768,5 +710,5 @@ export const runHostedRuntimeTurnDispatch = async (
       })
     }
   }
-  return { answered, claimed, failed, refused, scanned: turns.length, skipped }
+  return { answered, claimed, failed, scanned: turns.length, skipped }
 }

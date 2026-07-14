@@ -142,6 +142,5 @@ describe('estimateBudgetCapacity', () => {
       model: 'gemini-3.5-flash',
       promptTokens: 100,
     })
-    expect(free.perRequest.freeTierEligible).toBe(true)
   })
 })

@@ -90,7 +90,6 @@ describe('estimateRequestCost', () => {
       model: 'gemini-3.5-flash',
       promptTokens: 4000,
     })
-    expect(estimate.freeTierEligible).toBe(true)
     // The estimate is the PAID price (for when the free pool is exhausted).
     expect(estimate.estimatedChargeUsd).toBeGreaterThan(0)
   })
@@ -103,7 +102,6 @@ describe('estimateRequestCost', () => {
       promptTokens: 100,
     })
     expect(estimate.isUnknownModel).toBe(true)
-    expect(estimate.freeTierEligible).toBe(false)
     expect(estimate.estimatedChargeUsd).toBeGreaterThan(0)
   })
 

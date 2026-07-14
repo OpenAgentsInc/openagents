@@ -29,11 +29,6 @@ import {
   khalaRequestForAdapter,
 } from './chat-completions-routes'
 import { KHALA_FIREWORKS_BACKING_MODEL_ID } from './fireworks-adapter'
-import {
-  decideFreeTierLane,
-  isFreeTierLaneModel,
-  parseInternalAccountDailyTokenCaps,
-} from './inference-free-tier-key'
 import { isPremiumModel } from './inference-premium-allowlist'
 import {
   KHALA_IDENTITY_STATEMENT,
@@ -201,13 +196,11 @@ describe('internal-neutral: routing parity with the khala lane (pure)', () => {
     ).toBe(KHALA_FIREWORKS_BACKING_MODEL_ID)
   })
 
-  test('classifies open / never premium / free-lane eligible', () => {
+  test('classifies open and never premium', () => {
     expect(classifyModel(INTERNAL_NEUTRAL_MODEL_ID)).toBe(
       classifyModel(KHALA_MODEL_ID),
     )
     expect(isPremiumModel(INTERNAL_NEUTRAL_MODEL_ID)).toBe(false)
-    expect(isFreeTierLaneModel(INTERNAL_NEUTRAL_MODEL_ID)).toBe(true)
-    expect(decideFreeTierLane(INTERNAL_NEUTRAL_MODEL_ID).freeLane).toBe(true)
   })
 
   test('NEVER public: absent from the pricing table, catalog, and named servability', () => {
@@ -400,21 +393,5 @@ describe('internal-neutral: PERSONA PROBE fixtures (the 2026-07-09 bleed class)'
     // streaming transport reads from the terminal frame) is present for the
     // neutral lane, not khala-persona-gated.
     expect(body.openagents?.telemetry?.totalTokens).toBe(50)
-  })
-})
-
-describe('parseInternalAccountDailyTokenCaps (#8600 Sarah-specific caps)', () => {
-  test('parses ref=tokens pairs; drops malformed entries', () => {
-    const caps = parseInternalAccountDailyTokenCaps(
-      'agent:user_a=5000000, agent:user_b=100, bad, =7, agent:user_c=-1, agent:user_d=abc',
-    )
-    expect(caps.get('agent:user_a')).toBe(5_000_000)
-    expect(caps.get('agent:user_b')).toBe(100)
-    expect(caps.size).toBe(2)
-  })
-
-  test('unset/blank => empty map (pure no-op)', () => {
-    expect(parseInternalAccountDailyTokenCaps(undefined).size).toBe(0)
-    expect(parseInternalAccountDailyTokenCaps('').size).toBe(0)
   })
 })
