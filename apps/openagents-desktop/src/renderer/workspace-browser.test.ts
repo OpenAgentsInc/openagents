@@ -185,11 +185,11 @@ describe("workspace browser state", () => {
 describe("workspace browser Effect Native view", () => {
   test("idle and unavailable states are explicit and withhold the file controls", () => {
     const idle = workspaceBrowserView(emptyWorkspaceBrowserState())
-    expect(nodeByKey(idle, "workspace-browser-idle")?.content).toContain("Choose a local folder")
+    expect(nodeByKey(idle, "workspace-browser-idle")?.title).toContain("Choose a local folder")
     expect(nodeByKey(idle, "workspace-browser-tree-list")).toBeUndefined()
 
     const unavailable = workspaceBrowserView(withWorkspaceBrowserRoot(readyState(), { state: "unavailable", message: "Permission ended." }))
-    expect(nodeByKey(unavailable, "workspace-browser-unavailable-reason")?.content).toBe("Permission ended.")
+    expect(nodeByKey(unavailable, "workspace-browser-unavailable")?.description).toBe("Permission ended.")
     expect(nodeByKey(unavailable, "workspace-browser-unavailable-retry")).toBeDefined()
     expect(nodeByKey(unavailable, "workspace-browser-tree-list")).toBeUndefined()
   })
@@ -208,7 +208,7 @@ describe("workspace browser Effect Native view", () => {
   test("search mode, cancellation, bounded result, and pagination states are visible", () => {
     const searching = workspaceBrowserView({ ...readyState(), query: "needle", searchState: "searching" })
     expect(nodeByKey(searching, "workspace-browser-search-submit")?.label).toBe("Cancel")
-    expect((nodeByKey(searching, "workspace-browser-mode-path")?.a11y as { selected?: boolean }).selected).toBe(true)
+    expect(nodeByKey(searching, "workspace-browser-search-mode")?.value).toBe("path")
 
     const result = workspaceBrowserView({
       ...readyState(),

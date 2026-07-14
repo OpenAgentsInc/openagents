@@ -8,11 +8,15 @@ import {
   Button,
   ComponentValueBinding,
   Divider,
+  EmptyMessage,
   Icon,
   IconButton,
   IntentRef,
   List,
+  SegmentedControl,
+  ShimmerText,
   Spacer,
+  Spinner,
   Stack,
   StaticPayload,
   Text,
@@ -625,7 +629,8 @@ const treeRow =(state: WorkspaceBrowserState, row: WorkspaceBrowserRow): View =>
       Button({
         key: `workspace-browser-select-${entry.pathRef}`,
         label: entry.name,
-        variant: state.selectedRef === entry.pathRef ? "secondary" : "ghost",
+        variant: "ghost",
+        selected: state.selectedRef === entry.pathRef,
         onPress: IntentRef("WorkspaceBrowserEntrySelected", StaticPayload(entry.pathRef)),
         style: { flex: 1, minWidth: 0 },
         a11y: {
@@ -635,7 +640,7 @@ const treeRow =(state: WorkspaceBrowserState, row: WorkspaceBrowserRow): View =>
           level: depth + 1,
         },
       }),
-      ...(loading ? [Text({ key: `workspace-browser-loading-${entry.pathRef}`, content: "Loading…", variant: "caption", color: "textMuted" })] : []),
+      ...(loading ? [Spinner({ key: `workspace-browser-loading-${entry.pathRef}`, size: "sm", label: "Loading" })] : []),
     ],
   )
 }
@@ -657,11 +662,10 @@ const treeView = (state: WorkspaceBrowserState): View => {
     }
   }
   if (rootPage !== undefined && rootPage.entries.length === 0) {
-    items.push(Text({
+    items.push(EmptyMessage({
       key: "workspace-browser-tree-empty",
-      content: "This folder has no visible files. Hidden, ignored, secret-shaped, and unsafe entries stay withheld.",
-      variant: "body",
-      color: "textMuted",
+      icon: { name: "FolderOpen", tone: "secondary" },
+      title: "This folder has no visible files. Hidden, ignored, secret-shaped, and unsafe entries stay withheld.",
     }) as KeyedView)
   }
   if (visible.truncated) {
@@ -683,14 +687,22 @@ const treeView = (state: WorkspaceBrowserState): View => {
 
 const searchResultsView = (state: WorkspaceBrowserState): View => {
   if (state.searchState === "searching") {
-    return Text({ key: "workspace-browser-searching", content: "Searching the selected workspace…", variant: "body", color: "textMuted" })
+    return ShimmerText({ key: "workspace-browser-searching", text: "Searching the selected workspace…", typeScale: "body", style: { color: "textMuted" } })
   }
   if (state.searchPage?.state !== "available") {
-    return Text({ key: "workspace-browser-search-empty", content: "Search paths or bounded text content. Results never expose the selected root.", variant: "body", color: "textMuted" })
+    return EmptyMessage({
+      key: "workspace-browser-search-empty",
+      icon: { name: "Search", tone: "secondary" },
+      title: "Search paths or bounded text content. Results never expose the selected root.",
+    })
   }
   const page = state.searchPage
   if (page.matches.length === 0) {
-    return Text({ key: "workspace-browser-search-none", content: `No ${page.mode} matches for “${page.query}”.`, variant: "body", color: "textMuted" })
+    return EmptyMessage({
+      key: "workspace-browser-search-none",
+      icon: { name: "Search", tone: "secondary" },
+      title: `No ${page.mode} matches for “${page.query}”.`,
+    })
   }
   return Stack(
     { key: "workspace-browser-search-results", direction: "column", gap: "2", style: { flex: 1, minHeight: 0 } },
@@ -746,18 +758,32 @@ export const workspaceBrowserView = (state: WorkspaceBrowserState): View => {
         Button({ key: "workspace-browser-refresh", label: "Refresh", variant: "ghost", disabled: state.phase === "loading", onPress: IntentRef("WorkspaceBrowserRefreshRequested"), a11y: { label: "Refresh workspace files" } }),
         Button({ key: "workspace-browser-choose", label: state.phase === "idle" ? "Choose folder" : "Change folder", variant: "secondary", onPress: IntentRef("DesktopWorkspacePickerRequested"), a11y: { label: state.phase === "idle" ? "Choose a local workspace folder" : "Change the local workspace folder" } }),
       ]),
-      ...(state.phase === "idle" ? [Text({ key: "workspace-browser-idle", content: "Choose a local folder to browse a safe, grant-scoped tree. Hidden, ignored, secret-shaped, binary, and escaping entries remain unavailable.", variant: "body", color: "textMuted" })]
-        : state.phase === "loading" ? [Text({ key: "workspace-browser-loading", content: "Loading the selected workspace…", variant: "body", color: "textMuted" })]
-        : state.phase === "unavailable" ? [Stack({ key: "workspace-browser-unavailable", direction: "column", gap: "2" }, [
-            Text({ key: "workspace-browser-unavailable-title", content: "Workspace unavailable", variant: "title", color: "warning" }),
-            Text({ key: "workspace-browser-unavailable-reason", content: state.reason ?? "The selected workspace could not be read.", variant: "body", color: "textMuted" }),
-            Button({ key: "workspace-browser-unavailable-retry", label: "Try again", variant: "secondary", onPress: IntentRef("WorkspaceBrowserRefreshRequested"), a11y: { label: "Try loading workspace files again" } }),
-          ])]
+      ...(state.phase === "idle" ? [EmptyMessage({
+            key: "workspace-browser-idle",
+            icon: { name: "Folder", tone: "secondary" },
+            title: "Choose a local folder to browse a safe, grant-scoped tree. Hidden, ignored, secret-shaped, binary, and escaping entries remain unavailable.",
+          })]
+        : state.phase === "loading" ? [ShimmerText({ key: "workspace-browser-loading", text: "Loading the selected workspace…", typeScale: "body", style: { color: "textMuted" } })]
+        : state.phase === "unavailable" ? [EmptyMessage({
+            key: "workspace-browser-unavailable",
+            icon: { name: "AlertTriangle", tone: "warning" },
+            title: "Workspace unavailable",
+            description: state.reason ?? "The selected workspace could not be read.",
+            action: Button({ key: "workspace-browser-unavailable-retry", label: "Try again", variant: "secondary", onPress: IntentRef("WorkspaceBrowserRefreshRequested"), a11y: { label: "Try loading workspace files again" } }),
+          })]
         : [
             Stack({ key: "workspace-browser-search-controls", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
               TextField({ key: "workspace-browser-query", value: state.query, placeholder: state.searchMode === "path" ? "Search file and folder names" : "Search bounded text content", onChange: IntentRef("WorkspaceBrowserQueryChanged", ComponentValueBinding()), onSubmit: IntentRef("WorkspaceBrowserSearchRequested"), disabled: state.searchState === "searching", a11y: { label: state.searchMode === "path" ? "Search workspace paths" : "Search workspace file content" }, style: { flex: 1, minWidth: 0 } }),
-              Button({ key: "workspace-browser-mode-path", label: "Path", variant: state.searchMode === "path" ? "secondary" : "ghost", onPress: IntentRef("WorkspaceBrowserSearchModeSelected", StaticPayload("path")), a11y: { label: "Search workspace paths", selected: state.searchMode === "path" } }),
-              Button({ key: "workspace-browser-mode-content", label: "Content", variant: state.searchMode === "content" ? "secondary" : "ghost", onPress: IntentRef("WorkspaceBrowserSearchModeSelected", StaticPayload("content")), a11y: { label: "Search workspace file content", selected: state.searchMode === "content" } }),
+              SegmentedControl({
+                key: "workspace-browser-search-mode",
+                options: [
+                  { id: "path", label: "Path" },
+                  { id: "content", label: "Content" },
+                ],
+                value: state.searchMode,
+                onChange: IntentRef("WorkspaceBrowserSearchModeSelected", ComponentValueBinding()),
+                a11y: { label: "Workspace search mode" },
+              }),
               Button({ key: "workspace-browser-search-submit", label: state.searchState === "searching" ? "Cancel" : "Search", variant: "primary", disabled: state.searchState !== "searching" && state.query.trim() === "", onPress: IntentRef(state.searchState === "searching" ? "WorkspaceBrowserSearchCancelled" : "WorkspaceBrowserSearchRequested"), a11y: { label: state.searchState === "searching" ? "Cancel workspace search" : "Search workspace" } }),
             ]),
             ...operationNotice(state.operation),
