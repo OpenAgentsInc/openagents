@@ -139,7 +139,7 @@ export const AssuranceSpecFrontmatterSchema = S.Struct({
   assurance_revision: PositiveInteger,
   title: NonEmptyString,
   artifact_type: S.Literal("product_assurance"),
-  lifecycle_state: S.Literal("proposed"),
+  lifecycle_state: S.Literals(["proposed", "admitted", "superseded", "retired"]),
   author: NonEmptyString,
 })
 export type AssuranceSpecFrontmatter = typeof AssuranceSpecFrontmatterSchema.Type
@@ -182,7 +182,7 @@ export type RepositoryInventory = typeof RepositoryInventorySchema.Type
 
 export const AssuranceEnvironmentProfileSchema = S.Struct({
   id: StableRef,
-  status: S.Literal("proposed"),
+  status: S.Literals(["proposed", "admitted"]),
 })
 export type AssuranceEnvironmentProfile = typeof AssuranceEnvironmentProfileSchema.Type
 
