@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'vitest'
 
 import { renderBusinessNewHtml } from './business-new-routes'
-import { LANDER_SHELL_CSS } from './lander-shell'
 import { renderLander2Html } from './lander2-routes'
 import { renderLander3Html } from './lander3-routes'
 import { renderLander4Html } from './lander4-routes'
 import { renderLander5Html } from './lander5-routes'
+import { LANDER_SHELL_CSS } from './lander-shell'
+import { openAgentsDesktopMvpPublicTrace } from './observatory-public-trace'
+import { renderObservatoryTraceHtml } from './observatory-routes'
 import { renderObserverHtml } from './observer-routes'
 
 // Guard for the 2026-07-02 incident class: a `padding`/`margin` SHORTHAND on
@@ -51,6 +53,10 @@ const pages: ReadonlyArray<readonly [string, string]> = [
   ['lander5', renderLander5Html(1)],
   ['business-new', renderBusinessNewHtml(1)],
   ['observer', renderObserverHtml()],
+  [
+    'observatory-trace',
+    renderObservatoryTraceHtml(openAgentsDesktopMvpPublicTrace),
+  ],
 ]
 
 describe('lander CSS policy (specificity-collision guard)', () => {
@@ -74,8 +80,12 @@ describe('lander CSS policy (specificity-collision guard)', () => {
     // footer.site{padding-inline:0} beat .shell's inline padding on
     // 2026-07-02 and knocked the footer out of alignment).
     for (const section of ['header\\.site', 'main\\.shell', 'footer\\.site']) {
-      expect(LANDER_SHELL_CSS).toMatch(new RegExp(`${section}\\{[^}]*padding-block:`))
-      expect(LANDER_SHELL_CSS).not.toMatch(new RegExp(`${section}\\{[^}]*padding-inline`))
+      expect(LANDER_SHELL_CSS).toMatch(
+        new RegExp(`${section}\\{[^}]*padding-block:`),
+      )
+      expect(LANDER_SHELL_CSS).not.toMatch(
+        new RegExp(`${section}\\{[^}]*padding-inline`),
+      )
     }
   })
 })

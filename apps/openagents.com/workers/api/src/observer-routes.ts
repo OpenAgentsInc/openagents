@@ -107,7 +107,8 @@ ${OBSERVER_PAGE_CSS}</style>
 <p class="sub rise d1">Proof-design for software built by agents. Observer turns an accepted product spec into a <strong>reviewed proof design</strong>, compiles it into an <strong>immutable verification manifest</strong>, and runs it through real QA tools — so when the checks go green, the green <strong>means what it claims</strong>.</p>
 <p class="trust rise d2">Built on <strong>AssuranceSpec</strong>, a framework-neutral standard for committed verification intent. In development at OpenAgents — designed in the open, dogfooded on our own desktop app before anyone else's code.</p>
 <div class="cta rise d3">
-<a class="primary" href="https://github.com/OpenAgentsInc/openagents/blob/main/docs/assurance/ASSURANCE_SPEC.md" rel="noopener">Read the AssuranceSpec design</a>
+<a class="primary" href="/observer/traces/openagents-desktop-codex-workroom-mvp">Open the MVP Observatory trace</a>
+<a class="secondary" href="https://github.com/OpenAgentsInc/openagents/blob/main/docs/assurance/ASSURANCE_SPEC.md" rel="noopener">Read the AssuranceSpec design</a>
 <a class="secondary" href="https://github.com/OpenAgentsInc/openagents/blob/main/docs/assurance/OBSERVER_PRODUCT_PLAN.md" rel="noopener">Observer product plan</a>
 </div>
 
@@ -289,9 +290,9 @@ ${OBSERVER_PAGE_CSS}</style>
 </div>
 <div class="row">
 <span class="ref">observatory</span>
-<div class="what"><strong>Hosted Observatory</strong>
-<p>A possible multi-project evidence surface — named here as an idea, not a current product claim.</p></div>
-<span class="chip planned">PLANNED</span>
+<div class="what"><strong>First public Observatory trace</strong>
+<p>The Desktop MVP now has a reviewed public-safe criterion trace. It reports the current missing proof honestly; multi-project hosting remains planned.</p></div>
+<span class="chip live">REAL TODAY</span>
 </div>
 </div>
 <p class="reg-note">This page holds itself to the standard it describes: planned surfaces stay visibly unbuilt, and nothing here is a public product promise. Public claims live only in the <a href="/docs/product-promises">product-promise registry</a>.</p>

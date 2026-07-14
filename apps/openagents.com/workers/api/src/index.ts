@@ -345,6 +345,10 @@ import {
   handleBusinessAgentGuide,
   handleBusinessNewPage,
 } from './business-new-routes'
+import {
+  OPENAGENTS_DESKTOP_MVP_OBSERVATORY_PATH,
+  handleObservatoryTracePage,
+} from './observatory-routes'
 import { handleObserverPage } from './observer-routes'
 import { makeD1BusinessOutreachStore } from './business-outreach'
 import {
@@ -15684,6 +15688,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/observer',
     handler: request => handleObserverPage(request),
+  },
+  {
+    path: OPENAGENTS_DESKTOP_MVP_OBSERVATORY_PATH,
+    handler: request => handleObservatoryTracePage(request),
   },
   // Lowercase aliases for the served agent-doc set. Cloudflare static assets
   // are case-sensitive, so a typed /install.md previously fell through to the
