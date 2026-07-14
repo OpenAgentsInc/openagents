@@ -1,4 +1,4 @@
-import { Badge, Button, ComponentValueBinding, IconButton, IntentRef, NavRail, SplitPane, Stack, StaticPayload, Table, Text, TextField, Timeline, Tooltip, defineIntent, type IconName, type TimelineEvent, type View } from "@effect-native/core"
+import { Badge, Button, ComponentValueBinding, EmptyMessage, IconButton, IntentRef, NavRail, ShimmerText, SplitPane, Stack, StaticPayload, Table, Text, TextField, Timeline, Tooltip, defineIntent, type IconName, type TimelineEvent, type View } from "@effect-native/core"
 import { Schema } from "@effect-native/core/effect"
 import type { CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage, CodexHistorySearchResult, CodexHistorySource } from "../codex-history-contract.ts"
 import type { DesktopThread } from "../chat-contract.ts"
@@ -549,7 +549,13 @@ const inspector = (state: HistoryWorkspaceState): View => {
 
 export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
   const page = state.page
-  if (!page) return Stack({ key: "history-workspace-empty", direction: "column", gap: "2", style: { flex: 1, minWidth: 0 } }, [Text({ key: "history-empty-title", content: "Select a Codex conversation", variant: "heading", color: "textPrimary" }), Text({ key: "history-empty-copy", content: "Historical conversations and every discovered subagent are available without a 24-hour cutoff.", variant: "body", color: "textMuted" })])
+  if (!page) return EmptyMessage({
+    key: "history-workspace-empty",
+    icon: { name: "History", tone: "secondary" },
+    title: "Select a Codex conversation",
+    description: "Historical conversations and every discovered subagent are available without a 24-hour cutoff.",
+    style: { flex: 1, minWidth: 0 },
+  })
   const localThreads = state.localThreads ?? []
   const selectedSequence = state.selectedItemRef === null
     ? page.items.at(-1)?.sequence ?? null
@@ -598,7 +604,7 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
       // No Previous/Next pager: older pages auto-load as the reader scrolls
       // up (EP250 bottom-anchored flow).
       ...(state.loadingEdge === "top"
-        ? [Text({ key: "history-fetch-earlier", content: "Fetching earlier items…", variant: "caption", color: "textFaint" })]
+        ? [ShimmerText({ key: "history-fetch-earlier", text: "Fetching earlier items…", typeScale: "caption", style: { color: "textFaint" } })]
         : page.offset > 0
           ? [Text({ key: "history-position-caption", content: historyPositionCaption(page), variant: "caption", color: "textFaint" })]
           : []),
@@ -607,7 +613,7 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
           ? proseRow(entry.item)
           : Timeline({ key: `history-seg-${entry.key}`, ...(state.selectedItemRef === null ? {} : { selectedId: state.selectedItemRef }), onEventSelect: IntentRef("HistoryItemSelected", ComponentValueBinding()), events: entry.events })),
       ...(state.loadingEdge === "bottom"
-        ? [Text({ key: "history-fetch-newer", content: "Fetching newer items…", variant: "caption", color: "textFaint" })]
+        ? [ShimmerText({ key: "history-fetch-newer", text: "Fetching newer items…", typeScale: "caption", style: { color: "textFaint" } })]
         : []),
     ]),
   ])

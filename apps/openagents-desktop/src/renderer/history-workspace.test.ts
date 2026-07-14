@@ -297,9 +297,9 @@ describe("history workspace",()=>{
       expect(idle.find(n=>n.key==="history-page-next")).toBeUndefined()
       expect(idle.find(n=>n.key==="history-position-caption")?.content).toContain("of 1,000")
       const loadingTop=nodes(historyWorkspaceView({...stateWith(windowed),loadingEdge:"top"})) as any[]
-      expect(loadingTop.find(n=>n.key==="history-fetch-earlier")).toMatchObject({content:"Fetching earlier items…",color:"textFaint"})
+      expect(loadingTop.find(n=>n.key==="history-fetch-earlier")).toMatchObject({_tag:"ShimmerText",text:"Fetching earlier items…"})
       const loadingBottom=nodes(historyWorkspaceView({...stateWith(windowed),loadingEdge:"bottom"})) as any[]
-      expect(loadingBottom.find(n=>n.key==="history-fetch-newer")).toMatchObject({content:"Fetching newer items…"})
+      expect(loadingBottom.find(n=>n.key==="history-fetch-newer")).toMatchObject({_tag:"ShimmerText",text:"Fetching newer items…"})
       // A fully-loaded conversation from item 0 shows no top caption/pager.
       const whole=nodes(historyWorkspaceView(stateWith(windowPage(0,30,30)))) as any[]
       expect(whole.find(n=>n.key==="history-position-caption")).toBeUndefined()
