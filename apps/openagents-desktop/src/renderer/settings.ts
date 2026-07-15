@@ -74,7 +74,7 @@ export type CodexConnectStatusView =
 // channel, and advisory only; never paths or command output.
 // ---------------------------------------------------------------------------
 
-export type HarnessMaintenanceHarnessName = "codex" | "claude_code" | "opencode"
+export type HarnessMaintenanceHarnessName = "codex"
 
 export type HarnessMaintenanceItemView = Readonly<{
   harness: HarnessMaintenanceHarnessName
@@ -443,7 +443,7 @@ export const decodeOpenAgentsSessionView = (
 
 // Renderer mirror of the gateway maintenance responses (the same both-sides
 // schema pattern as the session/connect contracts above).
-const harnessNameSchema = Schema.Literals(["codex", "claude_code", "opencode"])
+const harnessNameSchema = Schema.Literal("codex")
 const RendererHarnessMaintenanceStatusSchema = Schema.Struct({
   kind: Schema.Literal("harness_maintenance_status"),
   observedAt: Schema.String,
@@ -547,8 +547,7 @@ export const decodeHarnessMaintenanceOutcomeText = (value: unknown): string => {
   }
 }
 
-export const harnessDisplayName = (harness: HarnessMaintenanceHarnessName): string =>
-  harness === "codex" ? "Codex CLI" : harness === "claude_code" ? "Claude Code" : "OpenCode"
+export const harnessDisplayName = (_harness: HarnessMaintenanceHarnessName): string => "Codex CLI"
 
 // ---------------------------------------------------------------------------
 // Typed bridge surface the settings handlers need (injected from boot.ts;
@@ -556,7 +555,7 @@ export const harnessDisplayName = (harness: HarnessMaintenanceHarnessName): stri
 // ---------------------------------------------------------------------------
 
 export type HarnessMaintenanceSettingsBridge = Readonly<{
-  status: (harness?: HarnessMaintenanceHarnessName) => Promise<unknown>
+  status: () => Promise<unknown>
   update: (harness: HarnessMaintenanceHarnessName) => Promise<unknown>
 }>
 
@@ -705,7 +704,7 @@ export const DesktopHarnessUpdateRequested = defineIntent(
 )
 export const DesktopHarnessMaintenanceRefreshRequested = defineIntent(
   "DesktopHarnessMaintenanceRefreshRequested",
-  Schema.NullOr(harnessNameSchema),
+  Schema.Null,
 )
 
 // User-configured MCP servers (I2, EP250 wave-2). Field edits carry the raw
@@ -774,9 +773,9 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
   const update = (transform: (current: S) => S) => SubscriptionRef.update(state, transform)
 
   /** Re-read per-harness version/channel truth through the gateway. */
-  const refreshHarnessMaintenance = (harness?: HarnessMaintenanceHarnessName) => Effect.gen(function* () {
+  const refreshHarnessMaintenance = Effect.gen(function* () {
     const decoded = decodeHarnessMaintenanceStatus(
-      yield* Effect.promise(() => maintenanceBridge.status(harness).catch(() => null)),
+      yield* Effect.promise(() => maintenanceBridge.status().catch(() => null)),
     )
     yield* update((next) => ({
       ...next,
@@ -929,7 +928,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         }))
         yield* refreshMcpServers
         yield* refreshPlugins
-        yield* refreshHarnessMaintenance()
+        yield* refreshHarnessMaintenance
       }),
     DesktopCodexConnectRequested: () => runConnectFlow(null, () => bridge.connectStart()),
     DesktopCodexReconnectRequested: (ref: string) =>
@@ -992,7 +991,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
     // -----------------------------------------------------------------------
     // Typed per-harness maintenance (MAINT-1, #8785).
     // -----------------------------------------------------------------------
-    DesktopHarnessMaintenanceRefreshRequested: (harness: HarnessMaintenanceHarnessName | null) => refreshHarnessMaintenance(harness ?? undefined),
+    DesktopHarnessMaintenanceRefreshRequested: () => refreshHarnessMaintenance,
     DesktopHarnessUpdateRequested: (raw: string) =>
       Effect.gen(function* () {
         const current = yield* SubscriptionRef.get(state)
@@ -1030,7 +1029,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         }))
         // RE-PROBE truth reaches the row through a full status re-read: the
         // displayed version is always a fresh detection, never an assumption.
-        yield* refreshHarnessMaintenance()
+        yield* refreshHarnessMaintenance
       }),
     // -----------------------------------------------------------------------
     // User-configured MCP servers (I2, EP250 wave-2).
@@ -1763,7 +1762,7 @@ const harnessMaintenanceRow = (
 export const harnessMaintenanceSection = (maintenance: HarnessMaintenanceState): View[] => [
   Text({
     key: "settings-harness-maintenance-title",
-    content: "Coding harnesses",
+    content: "Codex CLI",
     variant: "label",
     color: "textMuted",
   }),
@@ -1785,7 +1784,7 @@ export const harnessMaintenanceSection = (maintenance: HarnessMaintenanceState):
             color: "textMuted",
           }),
         ]
-      : maintenance.view.harnesses.map((item) =>
+      : maintenance.view.harnesses.filter(item => item.harness === "codex").map((item) =>
           harnessMaintenanceRow(item, maintenance.updating),
         )),
   ...(maintenance.lastOutcome === null

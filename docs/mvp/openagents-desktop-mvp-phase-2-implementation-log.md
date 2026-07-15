@@ -459,16 +459,28 @@ the first reinstall attempt. The complete immutable receipt is
 
 ### Codex update advisory and release-notes flow
 
-The React workbench now promotes the existing typed harness-maintenance
-authority into a Codex-only launch advisory shaped after the local T3 Code
+The React workbench now promotes the app-owned Codex runtime authority into a
+Codex-only launch advisory shaped after the local T3 Code
 reference. The check begins after first interactive paint, the top-right card
 can be dismissed, and Settings or Update remain explicit user actions. Update
 opens a shadcn/Khala dialog that preserves the official Codex GitHub release
-notes while the operation runs and reports the existing channel-pinned,
-auth-home-scrubbed, re-probed receipt outcome.
+notes while the operation runs. Repair is application-owned: Desktop checks
+the OpenAgents update path and never discovers or mutates an ambient PATH/NVM
+Codex installation.
 
-Runtime Gateway v12 adds an optional harness filter to the status query and a
-bounded, nullable Codex release-notes projection. The npm registry and local
-binary probe remain version authority; GitHub notes are best-effort display
-content. This source change is a rapid dev iteration and does not relabel RC16
+Runtime Gateway v12 now requires the literal `codex` on the maintenance status
+query and update command and exposes a bounded, nullable Codex release-notes
+projection. The app bundle pin and bundled binary probe remain version
+authority; GitHub notes are best-effort display content. This source change is
+a rapid dev iteration and does not relabel RC16
 or claim a new release candidate.
+
+The same boundary now removes Claude Code and OpenCode from Desktop Settings
+entirely: opening Settings performs no non-Codex maintenance probe and the
+renderer cannot decode a non-Codex maintenance result. The Codex account row
+uses a reusable shadcn/Khala sensitive-text primitive adapted from the local
+T3 Code reference: deterministic same-length fake text is blurred and
+unselectable by default, click toggles the actual value, and tooltip guidance
+never contains the secret. Focused component and gateway tests cover the
+redaction transition and Codex-only projection; no release build or broad
+assurance run was performed during this rapid dev iteration.

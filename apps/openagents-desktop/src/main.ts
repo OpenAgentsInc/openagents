@@ -357,12 +357,6 @@ import {
 } from "./runtime-gateway-contract.ts"
 import { createDesktopRuntimeGateway } from "./runtime-gateway.ts"
 import { desktopRuntimeCapabilities } from "./runtime-gateway.ts"
-import {
-  collectHarnessMaintenanceStatus,
-  persistHarnessMaintenanceReceipt,
-  runHarnessMaintenanceUpdate,
-} from "@openagentsinc/pylon-core/custody/harness-maintenance"
-import { resolvePylonHome } from "@openagentsinc/pylon-core/shared/bootstrap"
 import { fetchCodexReleaseNotes } from "./codex-release-notes.ts"
 import { createDesktopRuntimeLiveSubscriptions } from "./runtime-live-subscriptions.ts"
 import {
@@ -841,23 +835,14 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
   }
 }, () => hostLifecycle.voice(), {
   // Desktop Codex is application-owned: status comes from the exact authority
-  // used by turns and repair means updating/reinstalling OpenAgents. The
-  // ambient CLI maintenance engine remains valid for Claude/OpenCode only;
-  // it must never discover or mutate a different PATH/NVM Codex here.
-  status: async harness => {
-    const includeCodex = harness === undefined || harness === "codex"
-    const ambientHarnesses = harness === undefined
-      ? ["claude_code", "opencode"] as const
-      : harness === "codex" ? [] : [harness]
-    const [projection, codexResolution] = await Promise.all([
-      collectHarnessMaintenanceStatus({}, ambientHarnesses),
-      includeCodex ? codexRuntimeAuthority.inspect() : Promise.resolve(null),
-    ])
-    const codex = codexResolution === null ? null : publicCodexRuntimeProjection(codexResolution)
+  // used by turns and repair means updating/reinstalling OpenAgents. Desktop
+  // never probes the ambient Claude/OpenCode maintenance catalog.
+  status: async () => {
+    const codexResolution = await codexRuntimeAuthority.inspect()
+    const codex = publicCodexRuntimeProjection(codexResolution)
     return {
-      observedAt: projection.observedAt,
-      harnesses: [
-        ...(codexResolution === null || codex === null ? [] : [{
+      observedAt: new Date().toISOString(),
+      harnesses: [{
           harness: "codex" as const,
           installed: codexResolution.executablePath !== null,
           installedVersion: codex.observedVersion,
@@ -867,18 +852,8 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
           updateSupported: !codex.compatible,
           runtimeState: codex.state,
           recoveryMessage: codex.recoveryMessage,
-        }]),
-        ...projection.harnesses.map(entry => ({
-          harness: entry.harness,
-          installed: entry.installed,
-          installedVersion: entry.installedVersion,
-          latestVersion: entry.latestVersion,
-          channel: entry.channel,
-          advisory: entry.advisory,
-          updateSupported: entry.updateSupported,
-        })),
-      ],
-      codexReleaseNotes: codex === null ? null : await fetchCodexReleaseNotes(codex.expectedVersion).then(notes =>
+        }],
+      codexReleaseNotes: await fetchCodexReleaseNotes(codex.expectedVersion).then(notes =>
         notes === null ? null : {
           version: notes.version,
           title: notes.title,
@@ -887,35 +862,19 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
         }),
     }
   },
-  update: async harness => {
-    if (harness === "codex") {
-      const resolution = await codexRuntimeAuthority.inspect()
-      const update = resolution.state === "ready" ? null : await desktopUpdateHost.check()
-      return {
-        outcome: resolution.state === "ready" ? "already_current" as const : "failed" as const,
-        failureReason: resolution.state === "ready"
-          ? null
-          : update?.phase === "available" || update?.phase === "staged"
-            ? "repair_openagents_update_available"
-            : "repair_openagents",
-        beforeVersion: resolution.observedVersion,
-        afterVersion: resolution.observedVersion,
-        receiptId: null,
-      }
-    }
-    const receipt = await runHarnessMaintenanceUpdate({ harness })
-    try {
-      await persistHarnessMaintenanceReceipt({ paths: resolvePylonHome(process.env) }, receipt)
-    } catch {
-      // Receipt persistence failure never converts a finished maintenance
-      // outcome into a phantom success/failure; the typed outcome stands.
-    }
+  update: async () => {
+    const resolution = await codexRuntimeAuthority.inspect()
+    const update = resolution.state === "ready" ? null : await desktopUpdateHost.check()
     return {
-      outcome: receipt.outcome,
-      failureReason: receipt.failureReason,
-      beforeVersion: receipt.before.installedVersion,
-      afterVersion: receipt.after?.installedVersion ?? null,
-      receiptId: receipt.receiptId,
+      outcome: resolution.state === "ready" ? "already_current" as const : "failed" as const,
+      failureReason: resolution.state === "ready"
+        ? null
+        : update?.phase === "available" || update?.phase === "staged"
+          ? "repair_openagents_update_available"
+          : "repair_openagents",
+      beforeVersion: resolution.observedVersion,
+      afterVersion: resolution.observedVersion,
+      receiptId: null,
     }
   },
 })
@@ -3104,7 +3063,7 @@ const smokeReactSidebarDestinations = `(async () => {
   const homeSelected = document.querySelector('[data-sidebar-destination-id="workspace-home"]')?.getAttribute('aria-current') === 'page'
   click('shell-settings-toggle')
   const settings = await waitFor('[data-react-workspace="settings"]')
-  const settingsVisible = settings !== null && (settings.textContent ?? '').includes('Coding harnesses')
+  const settingsVisible = settings !== null && (settings.textContent ?? '').includes('Codex CLI')
   const settingsSelected = document.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.getAttribute('aria-current') === 'page'
   click('workspace-chat')
   const chat = await waitFor('[data-react-workspace="chat"]')

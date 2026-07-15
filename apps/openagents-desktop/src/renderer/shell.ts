@@ -1884,7 +1884,7 @@ export const makeDesktopShellHandlers = (
           },
         },
       }))
-      yield* settingsHandlers.DesktopHarnessMaintenanceRefreshRequested(null)
+      yield* settingsHandlers.DesktopHarnessMaintenanceRefreshRequested()
     }
     const committed = yield* SubscriptionRef.get(state)
     yield* recordNavigation(currentDesktopNavigationDestination(committed))

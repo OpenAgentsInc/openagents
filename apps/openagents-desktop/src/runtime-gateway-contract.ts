@@ -70,10 +70,12 @@ export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-ga
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
 export const DesktopRuntimeGatewayProtocolVersion = 12 as const
 
-// Typed per-harness maintenance (MAINT-1, #8785). The renderer projection is
+// Typed Codex maintenance (MAINT-1, #8785). The renderer projection is
 // public-safe by construction: bounded runtime state and recovery copy in
 // addition to versions/channel/advisory — never paths, homes, or raw output.
-export const DesktopMaintenanceHarnessSchema = Schema.Literals(["codex", "claude_code", "opencode"])
+// Desktop MVP is Codex-only. Pylon core may retain broader maintenance
+// definitions for future/CLI use, but they are not admitted across this UI.
+export const DesktopMaintenanceHarnessSchema = Schema.Literal("codex")
 export type DesktopMaintenanceHarness = typeof DesktopMaintenanceHarnessSchema.Type
 export const DesktopHarnessMaintenanceEntrySchema = Schema.Struct({
   harness: DesktopMaintenanceHarnessSchema,
@@ -181,7 +183,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     query: Schema.Struct({ id: Schema.Literal("conversation.catalog") }),
   }),
   Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("codex.history.catalog") }) }),
-  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("maintenance.harness_status"), harness: Schema.optional(DesktopMaintenanceHarnessSchema) }) }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("maintenance.harness_status"), harness: DesktopMaintenanceHarnessSchema }) }),
   Schema.Struct({
     ...OperationContextField,
     kind: Schema.Literal("query"), requestId: Schema.String,

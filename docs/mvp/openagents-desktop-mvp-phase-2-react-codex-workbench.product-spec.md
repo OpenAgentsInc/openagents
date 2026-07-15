@@ -150,13 +150,23 @@ primary journey never asks the user to understand ProductSpec, Fleet, account
 rotation, or internal renderer architecture.
 
 After the interactive frame mounts, Desktop performs one Codex-only version
-check. When the detected CLI channel is behind the npm registry target, a
+check against the exact app-owned runtime used for turns. When that bundled
+runtime is missing or incompatible with the version pinned by OpenAgents, a
 dismissible top-right advisory offers Settings and Update without taking
 focus. Update opens a focused progress surface that keeps bounded official
-Codex release notes readable while the main process pins, updates on the
-detected install channel, and re-probes the binary. Missing release notes,
-offline registry state, unsupported install channels, and failed re-probes are
+Codex release notes readable while the main process directs repair through the
+OpenAgents application update and re-probes the bundled binary. Missing release
+notes, unavailable app updates, incompatible bundles, and failed re-probes are
 named honestly and never become optimistic success.
+
+The launch Settings surface is Codex-only by contract, not merely by copy. Its
+Runtime Gateway admits only a Codex maintenance query or update, and the React
+projection renders only Codex maintenance and Codex account identity. Generic
+Pylon support for other harnesses remains dormant backend capability and must
+not trigger checks, rows, or actions in this MVP. Sensitive Codex account text
+is replaced by stable same-length fake text and blurred by default; an explicit
+click reveals or hides the real value without changing layout, while hover and
+keyboard focus expose guidance rather than the secret itself.
 
 On a narrow desktop window, the session rail becomes a dismissible overlay and
 the review drawer becomes a full-height sheet; the conversation and composer

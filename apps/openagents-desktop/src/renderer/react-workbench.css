@@ -54,6 +54,33 @@
 .oa-react-codex-release-body { max-height: 22rem; overflow: auto; padding: 1rem; }
 .oa-react-codex-release-fallback { margin: 0; padding: 1rem; color: var(--muted-foreground); font-size: .82rem; line-height: 1.5; }
 
+.oa-react-sensitive-text {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: .2rem;
+  color: var(--en-color-textMuted);
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 120ms ease, filter 120ms ease;
+}
+.oa-react-sensitive-text:hover,
+.oa-react-sensitive-text:focus-visible { color: var(--en-color-textPrimary); }
+.oa-react-sensitive-text:focus-visible { outline: 2px solid var(--en-color-focusRing); outline-offset: 2px; }
+.oa-react-sensitive-text[data-revealed="false"] {
+  filter: blur(2px);
+  user-select: none;
+}
+.oa-react-sensitive-text[data-revealed="true"] { filter: none; }
+.oa-react-provider-email { display: inline-flex; min-width: 0; align-items: center; gap: .4rem; color: var(--en-color-textMuted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-react-sensitive-text { transition: none; }
+}
+
 .oa-react-session-rail {
   position: relative;
   z-index: 3;

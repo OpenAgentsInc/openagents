@@ -106,9 +106,16 @@ describe("gateway contract", () => {
       decodeDesktopRuntimeGatewayRequest({
         kind: "query",
         requestId: "r1",
-        query: { id: "maintenance.harness_status" },
+        query: { id: "maintenance.harness_status", harness: "codex" },
       }),
     ).not.toBeNull()
+    expect(
+      decodeDesktopRuntimeGatewayRequest({
+        kind: "query",
+        requestId: "r2",
+        query: { id: "maintenance.harness_status", harness: "claude_code" },
+      }),
+    ).toBeNull()
     expect(
       decodeDesktopRuntimeGatewayRequest({
         kind: "command",
@@ -133,7 +140,7 @@ describe("gateway dispatch", () => {
     const response = await gateway.request({
       kind: "query",
       requestId: "r1",
-      query: { id: "maintenance.harness_status" },
+      query: { id: "maintenance.harness_status", harness: "codex" },
     })
     expect(response.kind).toBe("harness_maintenance_status")
     if (response.kind !== "harness_maintenance_status") return
@@ -205,7 +212,7 @@ describe("gateway dispatch", () => {
     const status = await gateway.request({
       kind: "query",
       requestId: "r1",
-      query: { id: "maintenance.harness_status" },
+      query: { id: "maintenance.harness_status", harness: "codex" },
     })
     expect(status.kind).toBe("request_rejected")
     const outcome = await gateway.request({
@@ -284,34 +291,14 @@ describe("settings surface", () => {
       harnessMaintenance: {
         view: {
           state: "loaded",
-          harnesses: [
-            { ...codexEntry },
-            {
-              harness: "claude_code",
-              installed: true,
-              installedVersion: "1.0.63",
-              latestVersion: "1.0.63",
-              channel: "native",
-              advisory: "current",
-              updateSupported: true,
-            },
-            {
-              harness: "opencode",
-              installed: false,
-              installedVersion: null,
-              latestVersion: null,
-              channel: "unknown",
-              advisory: "unknown",
-              updateSupported: false,
-            },
-          ],
+          harnesses: [{ ...codexEntry }],
         },
         updating: null,
         lastOutcome: null,
       },
     })
     const view = settingsView(settings)
-    expect(nodeByKey(view, "settings-harness-maintenance-title")?.content).toBe("Coding harnesses")
+    expect(nodeByKey(view, "settings-harness-maintenance-title")?.content).toBe("Codex CLI")
     expect(nodeByKey(view, "settings-harness-codex-version")?.content).toBe(
       "0.44.0 via npm — 0.45.0 available",
     )
@@ -323,11 +310,6 @@ describe("settings surface", () => {
     const resolved = resolveIntentRef(updateButton?.onPress as never)
     expect(resolved.name).toBe("DesktopHarnessUpdateRequested")
     expect(resolved.payload).toBe("codex")
-    expect(nodeByKey(view, "settings-harness-claude_code-version")?.content).toBe(
-      "1.0.63 via native installer — up to date",
-    )
-    expect(nodeByKey(view, "settings-harness-opencode-version")?.content).toBe("Not installed")
-    expect(nodeByKey(view, "settings-harness-opencode-update")).toBeUndefined()
   })
 
   test("while updating, the affordance shows progress and blocks a second click", () => {

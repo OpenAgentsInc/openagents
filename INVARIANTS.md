@@ -1648,6 +1648,10 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   fresh binary version probe. Official GitHub release notes are bounded,
   optional presentation data; registry/version-probe truth remains update
   authority, and missing notes never fabricate failure or success.
+  Runtime Gateway maintenance schemas admit only `codex`; Desktop Settings
+  must never query, project, or offer Claude Code/OpenCode maintenance during
+  the Codex-only MVP. Broader Pylon-core maintenance definitions are dormant
+  backend capability, not Desktop product scope.
 - Mobile recovery may send the refresh token only to
   `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
   header. The existing OpenAuth verifier owns rotation; replacement tokens are

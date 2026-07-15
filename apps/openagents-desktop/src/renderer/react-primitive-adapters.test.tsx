@@ -7,6 +7,7 @@ import { resolveIntentRef, type IntentReporter } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts"
 import { WorkbenchShell, projectReactSessionRows } from "./react-primitive-adapters.tsx"
+import { RedactedSensitiveText, redactedSensitivePlaceholder } from "./react-sensitive-text.tsx"
 
 const restores: Array<() => void> = []
 const roots = new Set<Root>()
@@ -111,6 +112,79 @@ const fixtureState = (): DesktopShellState => {
 }
 
 describe("React workbench shell", () => {
+  test("keeps sensitive account text redacted until an explicit click", async () => {
+    const value = "owner.name@example.com"
+    const placeholder = redactedSensitivePlaceholder(value)
+    expect(placeholder).not.toBe(value)
+    expect(placeholder).toHaveLength(value.length)
+    expect(placeholder[placeholder.indexOf("@")] ?? null).toBe("@")
+    expect(redactedSensitivePlaceholder(value)).toBe(placeholder)
+
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    await render(root, <RedactedSensitiveText
+      value={value}
+      ariaLabel="Toggle account email visibility"
+      revealTooltip="Click to reveal email"
+      hideTooltip="Click to hide email"
+    />)
+    const toggle = container.querySelector<HTMLButtonElement>(".oa-react-sensitive-text")
+    expect(toggle?.dataset.revealed).toBe("false")
+    expect(toggle?.textContent).toBe(placeholder)
+    expect(container.textContent).not.toContain(value)
+
+    await interact(() => toggle?.click())
+    expect(toggle?.dataset.revealed).toBe("true")
+    expect(toggle?.textContent).toBe(value)
+    await interact(() => toggle?.click())
+    expect(toggle?.dataset.revealed).toBe("false")
+    expect(toggle?.textContent).toBe(placeholder)
+  })
+
+  test("settings projects only Codex maintenance and Codex account identity", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const base = fixtureState()
+    const state: DesktopShellState = {
+      ...base,
+      workspace: "settings",
+      fleet: {
+        ...base.fleet,
+        phase: "ready",
+        accounts: [
+          { ref: "codex", provider: "codex", email: "owner@example.com", readiness: "ready" },
+          { ref: "claude", provider: "claude_agent", email: "claude@example.com", readiness: "ready" },
+        ],
+      },
+      settings: {
+        ...base.settings,
+        harnessMaintenance: {
+          view: {
+            state: "loaded",
+            harnesses: [{
+              harness: "codex",
+              installed: true,
+              installedVersion: "0.144.1",
+              latestVersion: "0.144.4",
+              channel: "npm-global",
+              advisory: "behind_latest",
+              updateSupported: true,
+            }],
+          },
+          updating: null,
+          lastOutcome: null,
+          codexReleaseNotes: null,
+        },
+      },
+    }
+    await render(root, <WorkbenchShell state={state} report={() => Effect.void} />)
+    expect([...container.querySelectorAll("[data-harness]")].map(node => node.getAttribute("data-harness"))).toEqual(["codex"])
+    expect([...container.querySelectorAll("[data-provider-account]")].map(node => node.getAttribute("data-provider-account"))).toEqual(["codex"])
+    expect(container.textContent).not.toContain("Claude")
+    expect(container.textContent).not.toContain("claude@example.com")
+    expect(container.querySelector(".oa-react-sensitive-text")?.getAttribute("data-revealed")).toBe("false")
+  })
+
   test("shows the Codex-only update advisory and dispatches the typed update intent", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []

@@ -48,6 +48,7 @@ import { formatRelativeTimestamp } from "./shell.ts"
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
 import { ReviewSurface, StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
+import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 import "./react-workbench.css"
 
@@ -401,16 +402,40 @@ export const WorkbenchShell = ({ state, report }: {
       ? <main className="oa-react-workspace-surface" data-react-workspace="settings">
           <header><div><p>OpenAgents</p><h1>Settings</h1></div><Button type="button" variant="outline" onClick={() => dispatch(report, "DesktopHarnessMaintenanceRefreshRequested")}>Refresh</Button></header>
           <section aria-labelledby="react-runtime-maintenance-title">
-            <h2 id="react-runtime-maintenance-title">Coding harnesses</h2>
-            <p>Installed version, channel, and update truth from this Mac.</p>
+            <h2 id="react-runtime-maintenance-title">Codex CLI</h2>
+            <p>Installed Codex version, channel, and update truth from this Mac.</p>
             {state.settings.harnessMaintenance.view.state === "loading" ? <p role="status">Checking harnesses…</p>
               : state.settings.harnessMaintenance.view.state === "unavailable" ? <p role="alert">{state.settings.harnessMaintenance.view.message}</p>
-              : state.settings.harnessMaintenance.view.harnesses.map(harness => <article key={harness.harness} data-harness={harness.harness}>
-                  <div><strong>{harness.harness.replaceAll("_", " ")}</strong><span>{harness.installedVersion ?? "Not installed"} · {harness.channel}</span>{harness.recoveryMessage == null ? null : <small>{harness.recoveryMessage}</small>}</div>
+              : state.settings.harnessMaintenance.view.harnesses.filter(harness => harness.harness === "codex").map(harness => <article key={harness.harness} data-harness={harness.harness}>
+                  <div><strong>Codex</strong><span>{harness.installedVersion ?? "Not installed"} · {harness.channel}</span>{harness.recoveryMessage == null ? null : <small>{harness.recoveryMessage}</small>}</div>
                   <span>{harness.advisory.replaceAll("_", " ")}</span>
                   {harness.updateSupported ? <Button type="button" size="sm" disabled={state.settings.harnessMaintenance.updating !== null} onClick={() => dispatch(report, "DesktopHarnessUpdateRequested", harness.harness)}>Update</Button> : null}
                 </article>)}
             {state.settings.harnessMaintenance.lastOutcome === null ? null : <p>{state.settings.harnessMaintenance.lastOutcome}</p>}
+          </section>
+          <section aria-labelledby="react-provider-accounts-title">
+            <h2 id="react-provider-accounts-title">Codex account</h2>
+            <p>Your Codex account identity is blurred until you explicitly reveal it.</p>
+            {state.fleet.phase === "loading" || state.fleet.phase === "idle"
+              ? <p role="status">Checking provider accounts…</p>
+              : state.fleet.accounts.filter(account => account.provider === "codex").length === 0
+                ? <p>No Codex account connected.</p>
+                : state.fleet.accounts.filter(account => account.provider === "codex").map(account => <article key={account.ref} data-provider-account={account.ref}>
+                    <div>
+                      <strong>Codex</strong>
+                      <span>{account.ref}</span>
+                    </div>
+                    <span>{account.readiness.replaceAll("-", " ")}</span>
+                    {account.email === null ? null : <span className="oa-react-provider-email">
+                      <span>Authenticated as</span>
+                      <RedactedSensitiveText
+                        value={account.email}
+                        ariaLabel="Toggle account email visibility"
+                        revealTooltip="Click to reveal email"
+                        hideTooltip="Click to hide email"
+                      />
+                    </span>}
+                  </article>)}
           </section>
         </main>
       : null
