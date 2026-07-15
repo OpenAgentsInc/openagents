@@ -17,7 +17,23 @@ test('human landing navigation uses docs rather than product promises', () => {
   assert.doesNotMatch(page, />Product promises</)
   assert.match(layout, /class="brand" href="\/"/)
   assert.match(layout, /href=\{DOCS_URL\}>Docs</)
+  assert.match(layout, /href=\{INSTALL_URL\}>Install</)
   assert.match(page, /href=\{DOCS_URL\}>\s*Read the docs/)
+  assert.match(page, /href=\{INSTALL_URL\}>\s*Download for Mac/)
+})
+
+test('the install page links the exact published macOS release candidate', () => {
+  const page = readSource('pages', 'install.astro')
+  const site = readSource('lib', 'site.ts')
+
+  assert.match(page, /canonicalUrl="https:\/\/openagents\.com\/install"/)
+  assert.match(page, /href=\{MAC_RELEASE\.downloadUrl\}/)
+  assert.match(page, />\s*Download for Mac\s*</)
+  assert.match(site, /version: '0\.1\.0-rc\.12'/)
+  assert.match(
+    site,
+    /OpenAgents-0\.1\.0-rc\.12-arm64\.dmg/,
+  )
 })
 
 test('the landing foundation uses the canonical Khala theme background', () => {

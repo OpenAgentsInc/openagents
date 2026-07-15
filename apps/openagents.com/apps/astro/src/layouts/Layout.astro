@@ -1,15 +1,17 @@
 ---
-import { DOCS_URL, GITHUB_REPOSITORY_URL } from '../lib/site'
+import { DOCS_URL, GITHUB_REPOSITORY_URL, INSTALL_URL } from '../lib/site'
 
 interface Props {
   title?: string
   description?: string
+  canonicalUrl?: string
 }
 
 const {
   title = 'OpenAgents Desktop',
   description =
     'A local-first desktop workroom for durable, reviewable Codex work.',
+  canonicalUrl = 'https://openagents.com/astro',
 } = Astro.props
 ---
 
@@ -23,7 +25,8 @@ const {
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://openagents.com/astro" />
+    <meta property="og:url" content={canonicalUrl} />
+    <link rel="canonical" href={canonicalUrl} />
     <title>{title}</title>
   </head>
   <body>
@@ -43,6 +46,7 @@ const {
           </div>
 
           <div class="nav-links">
+            <a href={INSTALL_URL}>Install</a>
             <a href={DOCS_URL}>Docs</a>
             <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">
               Source <span aria-hidden="true">↗</span>
@@ -266,7 +270,7 @@ const {
       display: none;
     }
 
-    .nav-links a:first-child {
+    .nav-links a:last-child {
       display: none;
     }
 

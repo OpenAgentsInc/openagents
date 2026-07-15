@@ -126,9 +126,14 @@ const main = async (): Promise<void> => {
         )
       }
 
-      // The Astro landing candidate is intentionally isolated at /astro until
-      // the owner replaces the root holding page and retires the old documents.
-      if (url.pathname === '/astro' || url.pathname.startsWith('/astro/')) {
+      // The Astro landing candidate stays isolated at /astro until root
+      // cutover. /install is the owner-approved standalone download page.
+      if (
+        url.pathname === '/astro' ||
+        url.pathname.startsWith('/astro/') ||
+        url.pathname === '/install' ||
+        url.pathname === '/install/'
+      ) {
         const astroResponse = await handleAstroUiRequest(request)
         if (astroResponse !== undefined) {
           return astroResponse

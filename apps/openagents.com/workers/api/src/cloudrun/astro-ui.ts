@@ -1,4 +1,4 @@
-/** Static Astro landing candidate mounted at /astro by the Cloud Run monolith. */
+/** Static Astro public pages mounted by the Cloud Run monolith. */
 import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -48,6 +48,9 @@ const astroFileForPath = (
   if (pathname === '/astro' || pathname === '/astro/') {
     return path.join(astroUiDir, 'index.html')
   }
+  if (pathname === '/install' || pathname === '/install/') {
+    return path.join(astroUiDir, 'install', 'index.html')
+  }
   if (!pathname.startsWith('/astro/')) {
     return undefined
   }
@@ -83,7 +86,12 @@ export const handleAstroUiRequest = async (
   astroUiDir: string = DEFAULT_ASTRO_UI_DIR,
 ): Promise<Response | undefined> => {
   const url = new URL(request.url)
-  if (url.pathname !== '/astro' && !url.pathname.startsWith('/astro/')) {
+  if (
+    url.pathname !== '/astro' &&
+    !url.pathname.startsWith('/astro/') &&
+    url.pathname !== '/install' &&
+    url.pathname !== '/install/'
+  ) {
     return undefined
   }
   if (request.method !== 'GET' && request.method !== 'HEAD') {

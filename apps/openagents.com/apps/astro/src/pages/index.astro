@@ -3,8 +3,9 @@ import Layout from '../layouts/Layout.astro'
 import {
   DOCS_URL,
   GITHUB_REPOSITORY_URL,
+  INSTALL_URL,
+  MAC_RELEASE,
   PRODUCT_BOUNDARIES,
-  PRODUCT_SPEC_URL,
 } from '../lib/site'
 
 const workroomSteps = [
@@ -39,15 +40,15 @@ const workroomSteps = [
           and resume without losing the thread.
         </p>
         <div class="hero-actions">
-          <a class="button button-primary" href={PRODUCT_SPEC_URL} target="_blank" rel="noreferrer">
-            Read the product spec <span aria-hidden="true">↗</span>
+          <a class="button button-primary" href={INSTALL_URL}>
+            Download for Mac
           </a>
           <a class="button button-secondary" href={DOCS_URL}>
             Read the docs
           </a>
         </div>
         <p class="release-note">
-          macOS candidate · public download follows release approval
+          {MAC_RELEASE.version} · {MAC_RELEASE.architecture} release candidate
         </p>
       </div>
 
