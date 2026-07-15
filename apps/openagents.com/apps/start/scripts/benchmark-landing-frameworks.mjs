@@ -25,8 +25,8 @@ const summarize = (samples) => {
     fcpP75Ms: percentile(metric("fcpMs"), 0.75),
     lcpMedianMs: median(metric("lcpMs")),
     loadMedianMs: median(metric("loadMs")),
-    transferMedianBytes: median(metric("transferBytes")),
-    resourceMedianBytes: median(metric("resourceBytes")),
+    networkTransferMedianBytes: median(metric("networkTransferBytes")),
+    payloadMedianBytes: median(metric("payloadBytes")),
     scriptMedianBytes: median(metric("scriptBytes")),
     cssMedianBytes: median(metric("cssBytes")),
     requestMedianCount: median(metric("requestCount")),
@@ -71,11 +71,10 @@ const measure = async (route, mode) => {
     const styles = resources.filter(
       (entry) => entry.initiatorType === "css" || entry.name.endsWith(".css"),
     );
-    const bytes = (entries) =>
-      entries.reduce(
-        (total, entry) => total + (entry.transferSize || entry.encodedBodySize || 0),
-        0,
-      );
+    const transferredBytes = (entries) =>
+      entries.reduce((total, entry) => total + (entry.transferSize || 0), 0);
+    const encodedBytes = (entries) =>
+      entries.reduce((total, entry) => total + (entry.encodedBodySize || 0), 0);
     const shell = document.querySelector(".site-shell");
     return {
       ttfbMs: navigation.responseStart - navigation.requestStart,
@@ -85,11 +84,11 @@ const measure = async (route, mode) => {
         firstContentfulPaint?.startTime ||
         navigation.loadEventEnd,
       loadMs: navigation.loadEventEnd,
-      transferBytes:
-        (navigation.transferSize || navigation.encodedBodySize || 0) + bytes(resources),
-      resourceBytes: bytes(resources),
-      scriptBytes: bytes(scripts),
-      cssBytes: bytes(styles),
+      networkTransferBytes:
+        (navigation.transferSize || 0) + transferredBytes(resources),
+      payloadBytes: navigation.encodedBodySize + encodedBytes(resources),
+      scriptBytes: encodedBytes(scripts),
+      cssBytes: encodedBytes(styles),
       requestCount: resources.length + 1,
       scriptRequestCount: scripts.length,
       shellHtml: shell?.outerHTML ?? "",
