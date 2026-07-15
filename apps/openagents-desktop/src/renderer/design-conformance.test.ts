@@ -147,6 +147,19 @@ describe("design conformance (b): style values come from the shared scales", () 
 })
 
 describe("design conformance (b2): app.css is a token bridge and host physics, not a component recipe layer", () => {
+  test("React shell keeps the T3-proportioned rail and topbar hierarchy", () => {
+    const css = readFileSync(path.join(rendererDir, "react-workbench.css"), "utf8")
+    const rule = (selector: string): string =>
+      css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]+)\\}`))?.[1] ?? ""
+    expect(rule(".oa-react-conversation-header")).toContain("height: 52px")
+    expect(rule(".oa-react-conversation-heading h1")).toContain("font-size: 14px")
+    expect(rule(".oa-react-rail-titlebar strong")).toContain("font-size: 14px")
+    expect(rule(".oa-react-primary-destination")).toContain("height: 30px")
+    expect(rule(".oa-react-session-row")).toContain("height: 32px")
+    expect(rule(".oa-react-section-label")).toContain("font-size: 10px")
+    expect(rule(".oa-react-conversation-header .oa-react-review-trigger")).toContain("width: 28px")
+  })
+
   test("the stylesheet stays within the bounded token-bridge/host-physics payload budget", () => {
     // Bytes are formatting-invariant enough to prevent blank-line/minification
     // games while expressing the issue's approximate 300-line target. The old

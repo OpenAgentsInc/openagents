@@ -9,6 +9,8 @@
   overflow: hidden;
   background: var(--en-color-background);
   color: var(--en-color-textPrimary);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .oa-react-codex-update-notice {
@@ -61,7 +63,7 @@
   border-radius: .2rem;
   color: var(--en-color-textMuted);
   background: transparent;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: monospace;
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -88,8 +90,8 @@
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  gap: var(--en-spacing-2);
-  padding: var(--en-spacing-3) var(--en-spacing-2);
+  gap: 4px;
+  padding: var(--en-spacing-2);
   overflow: hidden;
   border-right: 1px solid var(--en-color-borderSubtle);
   background: var(--en-color-surface);
@@ -118,6 +120,11 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   justify-content: flex-start;
 }
 
+.oa-react-rail-titlebar {
+  min-height: 32px;
+  padding: 0 var(--en-spacing-2);
+}
+
 .oa-react-history-controls {
   display: flex;
   align-items: center;
@@ -128,7 +135,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: var(--en-spacing-1);
+  gap: 4px;
 }
 
 .oa-react-rail-stage {
@@ -152,13 +159,24 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textMuted);
 }
 
-.oa-react-rail-titlebar strong,
 .oa-react-conversation-heading h1,
 .oa-react-workspaces h2 {
   margin: 0;
   font-family: "Geist Variable", "Oxanium Variable", sans-serif;
   font-size: var(--en-type-heading-fontSize);
   line-height: var(--en-type-heading-lineHeight);
+}
+
+.oa-react-rail-titlebar strong {
+  margin: 0;
+  overflow: hidden;
+  font-family: "Geist Variable", "Oxanium Variable", sans-serif;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .oa-react-sidebar-expand {
@@ -184,12 +202,18 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   align-items: center;
   gap: var(--en-spacing-2);
   justify-content: flex-start;
+  height: 30px;
+  min-height: 30px;
   padding: 0 var(--en-spacing-2);
   border-color: transparent;
   background: transparent;
   color: var(--en-color-textPrimary);
   text-align: left;
+  font-size: 13px;
+  font-weight: 450;
 }
+
+.oa-react-primary-destination svg { width: 15px; height: 15px; }
 
 .oa-react-primary-destination:hover { background: var(--en-color-stateHover); }
 .oa-react-primary-destination[data-selected="true"] { background: var(--en-color-stateSelected); }
@@ -207,9 +231,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-section-label {
-  margin: var(--en-spacing-3) var(--en-spacing-2) var(--en-spacing-1);
+  margin: var(--en-spacing-3) var(--en-spacing-2) 4px;
   color: var(--en-color-textFaint);
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 
 .oa-react-search {
@@ -257,7 +284,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   width: 100%;
   min-width: 0;
   gap: 2px;
-  padding: var(--en-spacing-2);
+  padding: 0 var(--en-spacing-2);
   border: 0;
   border-radius: var(--en-radius-md);
   background: transparent;
@@ -268,9 +295,13 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-session-row {
+  height: 32px;
+  min-height: 32px;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--en-spacing-2);
+  font-size: 12px;
+  font-weight: 450;
 }
 
 .oa-react-session-row:hover,
@@ -333,7 +364,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-workspace-row small,
 .oa-react-conversation-meta {
   color: var(--en-color-textMuted);
-  font-size: 11px;
+  font-size: 10px;
   text-transform: capitalize;
 }
 
@@ -382,17 +413,24 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-conversation-header {
   display: flex;
-  min-height: 58px;
+  height: 52px;
+  min-height: 52px;
   align-items: center;
-  padding: var(--en-spacing-2) var(--en-spacing-4);
+  padding: 0 var(--en-spacing-5);
   border-bottom: 1px solid var(--en-color-borderSubtle);
   -webkit-app-region: drag;
 }
 
 .oa-react-conversation-header .oa-react-review-trigger {
+  width: 28px;
+  height: 28px;
   margin-left: auto;
+  color: var(--en-color-textMuted);
   -webkit-app-region: no-drag;
 }
+
+.oa-react-conversation-header .oa-react-review-trigger:hover { color: var(--en-color-textPrimary); }
+.oa-react-conversation-header .oa-react-review-trigger svg { width: 14px; height: 14px; }
 
 .oa-react-conversation-body {
   position: relative;
@@ -567,18 +605,28 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-conversation-heading {
+  display: flex;
   min-width: 0;
+  align-items: baseline;
+  gap: var(--en-spacing-2);
 }
 
 .oa-react-conversation-heading h1 {
+  margin: 0;
   overflow: hidden;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.25;
+  letter-spacing: -.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .oa-react-conversation-meta {
   justify-content: flex-start;
-  margin-top: 2px;
+  margin-top: 0;
+  color: var(--en-color-textFaint);
+  font-size: 10px;
 }
 
 .oa-react-conversation-meta [data-lifecycle="running"] {

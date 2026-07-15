@@ -123,6 +123,17 @@ describe("React workbench shell", () => {
     expect(stage?.getAttribute("data-app-stage")).toBe("dev")
   })
 
+  test("uses a compact accessible diff action instead of a text-heavy review button", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={fixtureState()} report={() => Effect.void} />)
+    const review = container.querySelector<HTMLButtonElement>('.oa-react-review-trigger')
+    expect(review?.getAttribute("aria-label")).toBe("Review changes")
+    expect(review?.getAttribute("title")).toBe("Review changes")
+    expect(review?.textContent).toBe("")
+    expect(review?.querySelector('[data-icon-name="ReviewChanges"]')).not.toBeNull()
+  })
+
   test("keeps sensitive account text redacted until an explicit click", async () => {
     const value = "owner.name@example.com"
     const placeholder = redactedSensitivePlaceholder(value)

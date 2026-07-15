@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Folder,
+  FileDiff,
   House,
   CircleAlert,
   Download,
@@ -43,6 +44,7 @@ import {
 import { Input } from "#components/ui/input"
 import { ScrollArea } from "#components/ui/scroll-area"
 import { Separator } from "#components/ui/separator"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
 import type { DesktopShellState } from "./shell.ts"
 import { formatRelativeTimestamp } from "./shell.ts"
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
@@ -173,10 +175,15 @@ export const ConversationHeader = ({ state, report, reviewTriggerRef, onReviewOp
         {selectedCoding === undefined ? null : <span>{selectedCoding.repositoryLabel}</span>}
       </div>
     </div>
-    <Button ref={reviewTriggerRef} className="oa-react-review-trigger" type="button" variant="outline" size="sm" onClick={() => {
-      dispatch(report, "GitPanelRefreshRequested")
-      onReviewOpen()
-    }}>Review changes</Button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger render={<Button ref={reviewTriggerRef} className="oa-react-review-trigger" type="button" variant="ghost" size="icon-sm" aria-label="Review changes" title="Review changes" onClick={() => {
+          dispatch(report, "GitPanelRefreshRequested")
+          onReviewOpen()
+        }}><FileDiff aria-hidden="true" data-icon-name="ReviewChanges" /></Button>} />
+        <TooltipContent>Review changes</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   </header>
 }
 

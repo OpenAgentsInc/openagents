@@ -495,3 +495,15 @@ production renderer assets resolve to `Alpha`. The visible pill is uppercase,
 mode resolver test covers both labels and the mounted React test proves the
 development badge remains attached to the brand rather than becoming an
 unrelated status notice.
+
+### T3-proportioned sidebar and conversation header
+
+The React workbench now adopts the reference shell's structural type and
+spacing rhythm without changing Khala color authority or the owner-selected
+Oxanium/Geist font families. The conversation topbar is a fixed 52px row with
+a 14px medium title and inline 10px lifecycle context. The rail brand is 14px,
+primary destinations are compact 30px rows, recent-session titles are 12px in
+32px rows, and section labels use the reference's 10px uppercase tracking.
+The former text-heavy `Review changes` outline control is now a quiet 28px
+ghost button with a diff icon, accessible label, title, and hover/focus
+tooltip. The existing typed refresh/open-review actions are unchanged.
