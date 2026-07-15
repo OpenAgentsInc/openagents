@@ -13,8 +13,20 @@ import {
 } from "./react-timeline.tsx"
 
 const restores: Array<() => void> = []
+const resizeObservers = new Set<{ callback: ResizeObserverCallback }>()
+const flushResizeObservers = async (): Promise<void> => {
+  for (const observer of resizeObservers) observer.callback([], observer as unknown as ResizeObserver)
+  await new Promise(resolve => setTimeout(resolve, 20))
+}
 const installDom = () => {
   const window = new Window({ url: "http://localhost/" })
+  class TestResizeObserver {
+    readonly callback: ResizeObserverCallback
+    constructor(callback: ResizeObserverCallback) { this.callback = callback; resizeObservers.add(this) }
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void { resizeObservers.delete(this) }
+  }
   const values = {
     window,
     document: window.document,
@@ -24,6 +36,7 @@ const installDom = () => {
     HTMLElement: window.HTMLElement,
     Event: window.Event,
     MouseEvent: window.MouseEvent,
+    ResizeObserver: TestResizeObserver,
   }
   const previous = new Map<string, PropertyDescriptor | undefined>()
   for (const [name, value] of Object.entries(values)) {
@@ -31,18 +44,27 @@ const installDom = () => {
     Object.defineProperty(globalThis, name, { configurable: true, writable: true, value })
   }
   const originalRect = window.HTMLElement.prototype.getBoundingClientRect
+  const originalScrollTo = window.HTMLElement.prototype.scrollTo
+  window.HTMLElement.prototype.scrollTo = function(this: HTMLElement, options?: ScrollToOptions | number, y?: number) {
+    this.scrollTop = typeof options === "number" ? (y ?? 0) : (options?.top ?? this.scrollTop)
+  }
   window.HTMLElement.prototype.getBoundingClientRect = function(this: unknown) {
     const element = this as unknown as HTMLElement
-    if (!element.dataset.timelineKey) return { x: 0, y: 0, top: 0, left: 0, right: 720, bottom: 100, width: 720, height: 100, toJSON: () => ({}) } as unknown as DOMRect
+    const key = element.dataset.timelineKey ?? element.dataset.messageId
+    if (!key) return { x: 0, y: 0, top: 0, left: 0, right: 720, bottom: 100, width: 720, height: 100, toJSON: () => ({}) } as unknown as DOMRect
     const scroll = element.closest<HTMLElement>(".oa-react-timeline-scroll")
-    const rows = scroll === null ? [] : [...scroll.querySelectorAll<HTMLElement>("[data-timeline-key]")]
-    const rowHeight = (row: HTMLElement): number => row.dataset.timelineKey === "a" ? 60 : row.dataset.timelineKey === "c" ? 80 : 40
-    const height = rowHeight(element)
-    const top = rows.slice(0, rows.indexOf(element)).reduce((total, row) => total + rowHeight(row), 0) - (scroll?.scrollTop ?? 0)
+    const rows = scroll === null ? [] : [...scroll.querySelectorAll<HTMLElement>("[data-message-id]")]
+    const rowKey = (row: HTMLElement): string | undefined => row.dataset.messageId ?? row.dataset.timelineKey
+    const rowHeight = (row: HTMLElement): number => rowKey(row) === "a" ? 60 : rowKey(row) === "c" ? 80 : 40
+    const measured = element.dataset.messageId ? element : element.closest<HTMLElement>("[data-message-id]") ?? element
+    const height = rowHeight(measured)
+    const top = rows.slice(0, rows.indexOf(measured)).reduce((total, row) => total + rowHeight(row), 0) - (scroll?.scrollTop ?? 0)
     return { x: 0, y: top, top, left: 0, right: 720, bottom: top + height, width: 720, height, toJSON: () => ({}) } as unknown as DOMRect
   } as typeof window.HTMLElement.prototype.getBoundingClientRect
   restores.push(() => {
+    resizeObservers.clear()
     window.HTMLElement.prototype.getBoundingClientRect = originalRect
+    window.HTMLElement.prototype.scrollTo = originalScrollTo
     for (const [name, descriptor] of previous) {
       if (descriptor === undefined) delete (globalThis as Record<string, unknown>)[name]
       else Object.defineProperty(globalThis, name, descriptor)
@@ -182,6 +204,27 @@ describe("React typed timeline projection", () => {
     expect(container.querySelector('[data-timeline-key="answer"]')?.textContent).toContain("answer")
     root.unmount()
   })
+
+  test("composes the shadcn scroller accessibility and stable turn-anchor contract", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const user = { ...record("prompt", 0), kind: "user_message" as const, label: "You" }
+    root.render(<ReactTimeline sessionKey="thread-1" records={[user, record("answer", 1)]}
+      loadedItemCount={2} offset={0} totalItems={2} loadingEdge={null} working report={report} />)
+    await settle()
+    const viewport = container.querySelector('[data-slot="message-scroller-viewport"]')
+    const content = container.querySelector('[data-slot="message-scroller-content"]')
+    const prompt = container.querySelector('[data-message-id="prompt"]')
+    expect(viewport?.getAttribute("role")).toBe("region")
+    expect(viewport?.getAttribute("tabindex")).toBe("0")
+    expect(content?.getAttribute("role")).toBe("log")
+    expect(content?.getAttribute("aria-relevant")).toBe("additions")
+    expect(content?.getAttribute("aria-busy")).toBe("true")
+    expect(prompt?.getAttribute("data-scroll-anchor")).toBe("true")
+    expect(container.querySelector('[data-icon-name="ArrowDown"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull()
+    root.unmount()
+  })
 })
 
 describe("React timeline scroll contract", () => {
@@ -215,6 +258,7 @@ describe("React timeline scroll contract", () => {
     scroll.scrollTop = 20
     root.render(<ReactTimeline sessionKey="thread-1" records={[record("a", 0), record("b", 1), record("c", 2)]} loadedItemCount={3} offset={0} totalItems={3} loadingEdge={null} report={report} />)
     await settle()
+    await flushResizeObservers()
     expect(scroll.scrollTop).toBe(80)
     root.unmount()
   })
@@ -235,6 +279,9 @@ describe("React timeline scroll contract", () => {
     Object.defineProperty(scroll, "clientHeight", { configurable: true, value: 100 })
     Object.defineProperty(scroll, "scrollHeight", { configurable: true, get: () => scroll.querySelectorAll("[data-timeline-key]").length * 40 })
     scroll.scrollTop = 20
+    scroll.dispatchEvent(new window.Event("wheel", { bubbles: true }) as unknown as Event)
+    scroll.dispatchEvent(new window.Event("scroll", { bubbles: true }) as unknown as Event)
+    await settle()
     render([record("a", 0), record("b", 1), record("c", 2), record("d", 3), record("e", 4)])
     await settle()
     expect(scroll.scrollTop).toBe(20)
@@ -242,11 +289,12 @@ describe("React timeline scroll contract", () => {
     expect(container.querySelector(".oa-react-new-activity")?.textContent).toContain("Jump to latest")
     ;(container.querySelector(".oa-react-new-activity") as HTMLButtonElement).click()
     await settle()
-    expect(scroll.scrollTop).toBe(scroll.scrollHeight)
+    expect(scroll.scrollTop).toBe(scroll.scrollHeight - scroll.clientHeight)
     render([record("a", 0), record("b", 1), record("c", 2), record("d", 3), record("e", 4), record("f", 5)])
     await settle()
-    expect(scroll.scrollTop).toBe(scroll.scrollHeight)
-    expect(container.querySelector(".oa-react-new-activity")).toBeNull()
+    await flushResizeObservers()
+    expect(scroll.scrollTop).toBe(scroll.scrollHeight - scroll.clientHeight)
+    expect(container.querySelector(".oa-react-new-activity")?.getAttribute("data-active")).toBe("false")
     root.unmount()
   })
 
@@ -310,11 +358,12 @@ describe("React timeline scroll contract", () => {
     const before = scroll.querySelector('[data-timeline-key="stream"]')
     root.render(<ReactTimeline sessionKey="thread-1" records={[streaming("hello")]} loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
     await settle()
+    await flushResizeObservers()
     const rows = scroll.querySelectorAll('[data-timeline-key="stream"]')
     expect(rows).toHaveLength(1)
     expect(rows[0]).toBe(before)
     expect(rows[0]?.textContent).toContain("hello")
-    expect(scroll.scrollTop).toBe(150)
+    expect(scroll.scrollTop).toBe(scroll.scrollHeight - scroll.clientHeight)
     root.unmount()
   })
 })

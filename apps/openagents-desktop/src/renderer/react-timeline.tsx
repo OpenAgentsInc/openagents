@@ -1,8 +1,16 @@
 import { Button } from "#components/ui/button"
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "#components/ui/message-scroller"
 import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload, type MarkdownBlock, type MarkdownInline } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import type { ReactElement, ReactNode } from "react"
-import { Component, createElement } from "react"
+import { Component, createElement, useEffect, useRef } from "react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
@@ -276,20 +284,6 @@ type TimelineProps = Readonly<{
   working?: boolean
   report: IntentReporter
 }>
-type TimelineState = Readonly<{ newActivity: boolean; announcement: string }>
-type ScrollSnapshot = Readonly<{
-  sessionChanged: boolean
-  atEnd: boolean
-  scrollTop: number
-  anchorKey: string | null
-  anchorOffset: number
-  recordsChanged: boolean
-  appended: boolean
-}> | null
-
-const atLiveEdge = (element: HTMLElement): boolean =>
-  element.scrollHeight - element.scrollTop - element.clientHeight <= 2
-
 const TimelineRecords = ({ records, report }: {
   readonly records: ReadonlyArray<ReactTimelineRecord>
   readonly report: IntentReporter
@@ -298,139 +292,93 @@ const TimelineRecords = ({ records, report }: {
   for (let index = 0; index < records.length;) {
     const record = records[index]!
     if (!isWorkRecord(record)) {
-      output.push(<TimelineItemBoundary key={record.key} record={record} report={report} />)
+      output.push(<MessageScrollerItem key={record.key} messageId={record.key} scrollAnchor={isUserRecord(record)}>
+        <TimelineItemBoundary record={record} report={report} />
+      </MessageScrollerItem>)
       index += 1
       continue
     }
     const group: Array<ReactTimelineRecord> = []
     while (index < records.length && isWorkRecord(records[index]!)) group.push(records[index++]!)
     if (group.length === 1) {
-      output.push(<TimelineItemBoundary key={group[0]!.key} record={group[0]!} report={report} />)
+      output.push(<MessageScrollerItem key={group[0]!.key} messageId={group[0]!.key}>
+        <TimelineItemBoundary record={group[0]!} report={report} />
+      </MessageScrollerItem>)
       continue
     }
     const running = group.some(entry => entry.status === "running")
     const visible = running ? group.slice(-1) : []
     const folded = running ? group.slice(0, -1) : group
-    output.push(<div className="oa-react-work-group" key={`work:${group[0]!.key}:${group.at(-1)!.key}`} role="listitem">
-      <details>
-        <summary className="oa-react-work-group-summary"><strong>{running ? `+${folded.length} previous` : "Worked"}</strong><span>{folded.length} {folded.length === 1 ? "activity" : "activities"}</span></summary>
-        <div role="list">{folded.map(entry => <TimelineItemBoundary key={entry.key} record={entry} report={report} />)}</div>
-      </details>
-      {visible.map(entry => <TimelineItemBoundary key={entry.key} record={entry} report={report} />)}
-    </div>)
+    const groupKey = `work:${group[0]!.key}:${group.at(-1)!.key}`
+    output.push(<MessageScrollerItem key={groupKey} messageId={groupKey}>
+      <div className="oa-react-work-group" role="listitem">
+        <details>
+          <summary className="oa-react-work-group-summary"><strong>{running ? `+${folded.length} previous` : "Worked"}</strong><span>{folded.length} {folded.length === 1 ? "activity" : "activities"}</span></summary>
+          <div role="list">{folded.map(entry => <TimelineItemBoundary key={entry.key} record={entry} report={report} />)}</div>
+        </details>
+        {visible.map(entry => <TimelineItemBoundary key={entry.key} record={entry} report={report} />)}
+      </div>
+    </MessageScrollerItem>)
   }
   return <>{output}</>
 }
 
-/** getSnapshotBeforeUpdate captures old geometry before React mutates rows. */
-export class ReactTimeline extends Component<TimelineProps, TimelineState> {
-  state: TimelineState = { newActivity: false, announcement: "" }
-  private scrollElement: HTMLDivElement | null = null
-  private requestedEdge: "top" | "bottom" | null = null
-
-  componentDidMount(): void {
-    if (this.scrollElement !== null) this.scrollElement.scrollTop = this.scrollElement.scrollHeight
-  }
-
-  getSnapshotBeforeUpdate(previous: TimelineProps): ScrollSnapshot {
-    const element = this.scrollElement
-    if (element === null) return null
-    const previousKeys = previous.records.map(record => record.key)
-    const nextKeys = this.props.records.map(record => record.key)
-    const signature = (record: ReactTimelineRecord): string =>
-      `${record.key}:${record.status ?? ""}:${record.body.length}:${record.resultStatus ?? ""}:${record.resultBody?.length ?? 0}`
-    const previousSignatures = previous.records.map(signature)
-    const nextSignatures = this.props.records.map(signature)
-    const recordsChanged = previousSignatures.join("\u0000") !== nextSignatures.join("\u0000")
-    const viewport = element.getBoundingClientRect()
-    const rows = [...element.querySelectorAll<HTMLElement>("[data-timeline-key]")]
-    const anchor = rows.find(row => row.getBoundingClientRect().bottom > viewport.top) ?? null
-    return {
-      sessionChanged: previous.sessionKey !== this.props.sessionKey,
-      atEnd: atLiveEdge(element),
-      scrollTop: element.scrollTop,
-      anchorKey: anchor?.dataset.timelineKey ?? null,
-      anchorOffset: anchor === null ? 0 : anchor.getBoundingClientRect().top - viewport.top,
-      recordsChanged,
-      appended: recordsChanged && previousKeys.length > 0 &&
-        (nextKeys.at(-1) !== previousKeys.at(-1) || nextSignatures.at(-1) !== previousSignatures.at(-1)),
-    }
-  }
-
-  componentDidUpdate(previous: TimelineProps, _state: TimelineState, snapshot: ScrollSnapshot): void {
-    const element = this.scrollElement
-    if (element === null || snapshot === null) return
-    if (previous.loadingEdge !== this.props.loadingEdge && this.props.loadingEdge === null) this.requestedEdge = null
-    if (!snapshot.recordsChanged && !snapshot.sessionChanged) return
-    if (snapshot.sessionChanged) {
-      element.scrollTop = element.scrollHeight
-      if (this.state.newActivity) this.setState({ newActivity: false, announcement: "Conversation changed" })
+const TimelineScroller = (props: TimelineProps): ReactElement => {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const requestedEdge = useRef<"top" | "bottom" | null>(null)
+  const previousLoadingEdge = useRef(props.loadingEdge)
+  useEffect(() => {
+    if (previousLoadingEdge.current !== props.loadingEdge && props.loadingEdge === null) requestedEdge.current = null
+    previousLoadingEdge.current = props.loadingEdge
+  }, [props.loadingEdge])
+  const onScroll = (): void => {
+    const element = viewportRef.current
+    if (element === null || props.loadingEdge !== null || requestedEdge.current !== null) return
+    if (props.offset > 0 && element.scrollTop < element.clientHeight * 1.5) {
+      requestedEdge.current = "top"
+      dispatch(props.report, "HistoryOlderRequested")
       return
     }
-    const anchor = snapshot.anchorKey === null
-      ? null
-      : [...element.querySelectorAll<HTMLElement>("[data-timeline-key]")].find(row => row.dataset.timelineKey === snapshot.anchorKey) ?? null
-    const prepended = previous.records.length > 0 && this.props.records.some(record => record.key === previous.records[0]?.key) &&
-      this.props.records[0]?.key !== previous.records[0]?.key
-    if ((prepended || !snapshot.atEnd) && anchor !== null) {
-      element.scrollTop += anchor.getBoundingClientRect().top - element.getBoundingClientRect().top - snapshot.anchorOffset
-      if (snapshot.appended && !this.state.newActivity) this.setState({ newActivity: true, announcement: "New activity available" })
-      return
+    const windowEnd = props.offset + props.loadedItemCount
+    if (windowEnd < props.totalItems && element.scrollHeight - element.scrollTop - element.clientHeight < element.clientHeight * 1.5) {
+      requestedEdge.current = "bottom"
+      dispatch(props.report, "HistoryNewerRequested")
     }
-    if (snapshot.appended && snapshot.atEnd) {
-      element.scrollTop = element.scrollHeight
-      this.setState({ newActivity: false, announcement: "Conversation updated" })
-      return
-    }
-    element.scrollTop = snapshot.scrollTop
-    if (snapshot.appended && !this.state.newActivity) this.setState({ newActivity: true, announcement: "New activity available" })
   }
-
-  private readonly onScroll = (): void => {
-    const element = this.scrollElement
+  const releaseReaderIntent = (): void => {
+    const element = viewportRef.current
     if (element === null) return
-    if (atLiveEdge(element) && this.state.newActivity) this.setState({ newActivity: false, announcement: "At latest activity" })
-    if (this.props.loadingEdge !== null || this.requestedEdge !== null) return
-    if (this.props.offset > 0 && element.scrollTop < element.clientHeight * 1.5) {
-      this.requestedEdge = "top"
-      dispatch(this.props.report, "HistoryOlderRequested")
-      return
-    }
-    const windowEnd = this.props.offset + this.props.loadedItemCount
-    if (windowEnd < this.props.totalItems && element.scrollHeight - element.scrollTop - element.clientHeight < element.clientHeight * 1.5) {
-      this.requestedEdge = "bottom"
-      dispatch(this.props.report, "HistoryNewerRequested")
-    }
+    const event = typeof WheelEvent === "function"
+      ? new WheelEvent("wheel", { bubbles: true, deltaY: 0 })
+      : new Event("wheel", { bubbles: true })
+    element.dispatchEvent(event)
   }
-
-  private readonly jumpToLatest = (): void => {
-    const element = this.scrollElement
-    if (element === null) return
-    element.scrollTop = element.scrollHeight
-    this.setState({ newActivity: false, announcement: "At latest activity" })
-  }
-
-  render(): ReactElement {
-    return <section className="oa-react-timeline-region" aria-label="Conversation timeline">
-      <div className="oa-react-sr-only" aria-live="polite" aria-atomic="true">{this.state.announcement}</div>
-      <div ref={element => { this.scrollElement = element }} className="oa-react-timeline-scroll"
-        data-timeline-session={this.props.sessionKey} onScroll={this.onScroll} role="list"
-        aria-label={`${this.props.records.length} loaded conversation items of ${this.props.totalItems}`}>
-        {this.props.loadingEdge === "top"
+  return <MessageScroller className="oa-react-timeline-region" aria-label="Conversation timeline">
+    <MessageScrollerViewport ref={viewportRef} className="oa-react-timeline-scroll"
+      data-timeline-session={props.sessionKey} onScroll={onScroll}
+      onPointerDownCapture={releaseReaderIntent} onSelect={releaseReaderIntent}
+      aria-label={`${props.records.length} loaded conversation items of ${props.totalItems}`}>
+      <MessageScrollerContent className="oa-react-timeline-content" aria-busy={props.working === true}>
+        {props.loadingEdge === "top"
           ? <p className="oa-react-timeline-loading" role="status">Fetching earlier items…</p>
-          : this.props.offset > 0
-            ? <p className="oa-react-timeline-position">Showing items {this.props.offset + 1}–{this.props.offset + this.props.loadedItemCount} of {this.props.totalItems}</p>
+          : props.offset > 0
+            ? <p className="oa-react-timeline-position">Showing items {props.offset + 1}–{props.offset + props.loadedItemCount} of {props.totalItems}</p>
             : null}
-        <TimelineRecords records={this.props.records} report={this.props.report} />
-        {this.props.working ? <div className="oa-react-working" role="listitem" aria-label="Codex is working">
+        <TimelineRecords records={props.records} report={props.report} />
+        {props.working ? <MessageScrollerItem messageId="working-indicator"><div className="oa-react-working" role="status" aria-label="Codex is working">
           <span>Working</span><i /><i /><i />
-        </div> : null}
-        {this.props.loadingEdge === "bottom" ? <p className="oa-react-timeline-loading" role="status">Fetching newer items…</p> : null}
-      </div>
-      {this.state.newActivity ? <Button className="oa-react-new-activity" size="sm" type="button" onClick={this.jumpToLatest}>Jump to latest</Button> : null}
-    </section>
-  }
+        </div></MessageScrollerItem> : null}
+        {props.loadingEdge === "bottom" ? <p className="oa-react-timeline-loading" role="status">Fetching newer items…</p> : null}
+      </MessageScrollerContent>
+    </MessageScrollerViewport>
+    <MessageScrollerButton className="oa-react-new-activity" behavior="auto" aria-label="Jump to latest" title="Jump to latest" />
+  </MessageScroller>
 }
+
+export const ReactTimeline = (props: TimelineProps): ReactElement =>
+  <MessageScrollerProvider key={props.sessionKey} autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={64}>
+    <TimelineScroller {...props} />
+  </MessageScrollerProvider>
 
 export const ConversationTimeline = ({ page, notes, loadingEdge, working, report }: {
   readonly page: CodexHistoryPage | null

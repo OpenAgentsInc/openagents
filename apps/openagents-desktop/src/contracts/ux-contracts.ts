@@ -6,8 +6,49 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-15.1",
+    version: "2026-07-15.2",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.shadcn_message_scroller_and_composer.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "React transcript scrolling and message composer",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-component-review", statedBy: "owner", statedOn: "2026-07-15" },
+        statement:
+          "Use the supplied Message Scroller ideas throughout the message area and make the input bar match its compact icon-led quality.",
+        authorityBoundary:
+          "The registry-installed shadcn MessageScroller owns viewport-only mechanics: last-user-turn opening, stable row IDs, user-turn anchoring with previous-context peek, live-edge following, reader-interaction release, prepend preservation, jump controls, scrollability attributes, accessibility, and offscreen paint containment. Effect-owned DesktopShellState remains the sole message/stream/history authority and typed intents retain paging and composer actions. The composer remains the admitted shadcn Textarea/Button composition but replaces painted Commands, Stop, and Send labels with closed-catalog icon slots plus accessible names; Steer and Queue stay textual because they are mutually exclusive behavior choices. No attachment, model, transport, branching, or persistence authority is added.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/components/ui/message-scroller.tsx",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "apps/openagents-desktop/src/renderer/react-composer.tsx",
+          "apps/openagents-desktop/src/renderer/react-workbench.css",
+          "apps/openagents-desktop/src/renderer/react-timeline.test.tsx",
+          "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+        ],
+        oracles: [
+          {
+            id: "message_scroller.reader_intent_and_composition",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-timeline.test.tsx",
+            description:
+              "Exercises stable turn anchors, last-edge following, wheel-release/manual-position hold, prepend preservation, same-row streaming resize, jump-to-latest re-engagement, typed edge paging, keyboard-focusable region plus additions-only log semantics, busy state, and the 500-row bounded corpus.",
+          },
+          {
+            id: "message_composer.compact_icon_actions",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+            description:
+              "Proves Commands, Stop, and Send/Steer/Queue submission use catalog-marked icon controls with accessible labels while preserving exact intents, focus, autosize, duplicate-send defense, IME composition, and pending-mode behavior.",
+          },
+        ],
+        verification:
+          "Desktop typecheck plus focused React timeline/composer, contract-validation, renderer-boundary, and design-conformance suites.",
+      },
       {
         contractId: "openagents_desktop.sidebar.codex_shaped_react_anatomy.v1",
         state: "enforced",

@@ -330,7 +330,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
 
   test("generated shadcn sources remain renderer-only components without host or domain authority", () => {
     const componentDir = path.join(appRoot, "src/components/ui")
-    const allowedImport = /^(react|@base-ui\/react(?:\/[a-z-]+)?|class-variance-authority|cmdk|lucide-react|#lib\/utils|#components\/ui\/[a-z-]+)$/
+    const allowedImport = /^(react|@base-ui\/react(?:\/[a-z-]+)?|@shadcn\/react\/message-scroller|class-variance-authority|cmdk|lucide-react|#lib\/utils|#components\/ui\/[a-z-]+)$/
     for (const name of readdirSync(componentDir).filter(value => value.endsWith(".tsx"))) {
       const source = stripComments(read(`src/components/ui/${name}`))
       const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map(match => match[1]!)

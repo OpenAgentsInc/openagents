@@ -1058,6 +1058,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   border width, type metrics, grid/flex geometry, or display. The removed
   message-top metadata bar must not return; message metadata remains available
   through the stable details inspector without moving message prose.
+- Desktop React transcripts use the admitted shadcn MessageScroller as a
+  viewport-scoped behavior primitive, never as message, model, transport, or
+  persistence authority. Stable item IDs and explicit user-turn anchors drive
+  last-turn reopening, prior-context peek, prepend preservation, direct jumps,
+  and streamed follow-at-live-edge behavior. Wheel, touch, keyboard scrolling,
+  text/link interaction, or leaving the live edge releases automatic movement;
+  new output may arrive offscreen behind a reachable Jump to latest control.
+  The viewport remains a keyboard-focusable labelled region, its content is a
+  polite additions-only log with streaming busy state, and offscreen rows use
+  content visibility without virtualization or removing selectable DOM.
 - Desktop New Chat is never a silent no-op. The dock action, command palette,
   and platform Command-N chord dispatch one typed `DesktopNewChat` intent. A
   new thread is created first through the app-owned durable local store and

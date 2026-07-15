@@ -21,11 +21,13 @@ import { Textarea } from "#components/ui/textarea";
 import {
   ComponentValueBinding,
   IntentRef,
+  type IconName,
   type IntentError,
   type IntentReporter,
   type JsonPayload,
 } from "@effect-native/core";
 import { Effect } from "@effect-native/core/effect";
+import { ArrowUp, Command as CommandIcon, Square } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -42,6 +44,12 @@ import {
   type DesktopCommand,
 } from "./command-registry.ts";
 import type { DesktopNoteEntry, DesktopShellState, QuestionCardInteraction } from "./shell.ts";
+
+const composerIconNames = {
+  commands: "Command",
+  stop: "Stop",
+  submit: "ArrowUp",
+} as const satisfies Readonly<Record<string, IconName>>;
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(
@@ -193,7 +201,7 @@ export const ReactComposer = ({
     const textarea = textareaRef.current;
     if (textarea === null) return;
     textarea.style.height = "auto";
-    const next = Math.min(180, Math.max(64, textarea.scrollHeight));
+    const next = Math.min(180, Math.max(52, textarea.scrollHeight));
     textarea.style.height = `${next}px`;
     textarea.style.overflowY = textarea.scrollHeight > 180 ? "auto" : "hidden";
   }, [state.input]);
@@ -221,6 +229,7 @@ export const ReactComposer = ({
             : "Message Codex…"
         }
         aria-label={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
+        title={`Enter to ${submitLabel.toLocaleLowerCase()} · Shift+Enter for a new line`}
         onInput={(event) => dispatch(report, "DesktopInputChanged", event.currentTarget.value)}
         onCompositionStart={() => {
           composingRef.current = true;
@@ -234,10 +243,12 @@ export const ReactComposer = ({
         <Button
           type="button"
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           onClick={() => dispatch(report, "DesktopCommandPaletteToggled")}
+          aria-label="Open commands"
+          title="Commands"
         >
-          Commands
+          <CommandIcon data-icon-name={composerIconNames.commands} aria-hidden="true" />
         </Button>
         {state.pending ? (
           <div className="oa-react-submit-mode" aria-label="Pending message behavior">
@@ -269,20 +280,24 @@ export const ReactComposer = ({
         ) : null}
         {state.pending ? (
           <Button
+            className="oa-react-stop"
             type="button"
-            variant="outline"
+            variant="ghost"
+            size="icon-sm"
             onClick={() => dispatch(report, "DesktopTurnInterrupted")}
+            aria-label="Stop current turn"
+            title="Stop"
           >
-            Stop
+            <Square data-icon-name={composerIconNames.stop} aria-hidden="true" />
+            <span className="sr-only">Stop</span>
           </Button>
         ) : null}
-        <Button type="button" disabled={!canSubmit} onClick={submit}>
-          {submitLabel}
+        <Button className="oa-react-submit" size="icon-sm" type="button" disabled={!canSubmit} onClick={submit}
+          aria-label={submitLabel} title={submitLabel}>
+          <ArrowUp data-icon-name={composerIconNames.submit} aria-hidden="true" />
+          <span className="sr-only">{submitLabel}</span>
         </Button>
       </div>
-      <span className="oa-react-composer-hint">
-        Enter to {submitLabel.toLocaleLowerCase()} · Shift+Enter for a new line
-      </span>
     </section>
   );
 };

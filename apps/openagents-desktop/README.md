@@ -127,6 +127,15 @@ build plus Electron teardown receipt.
     token-identical to the shared OpenAgents theme values.
   - `boot.ts` — `SubscriptionRef` + `makeViewProgramFromState` +
     `makeIntentRegistry` + the React-owned Effect Native DOM surface.
+  - `react-timeline.tsx` composes the registry-installed shadcn
+    `MessageScroller` around Effect-owned records. Stable row IDs and explicit
+    user-turn anchors provide last-turn reopening, streamed live-edge follow,
+    reader-intent release, prepend preservation, direct-jump support, and the
+    accessible region/log boundary without moving message or transport
+    authority into React.
+  - `react-composer.tsx` uses the admitted shadcn Textarea/Button layer with
+    closed-catalog icon actions for Commands, Stop, and Send while retaining
+    typed Effect intents and textual Steer/Queue mode choices.
 - `scripts/build.ts` — Vite Plus bundles main (ESM), preload (CJS, sandboxed),
   and workers; Vite + the React and Tailwind plugins emit the fixed signed
   renderer assets `index.html`, `boot.js`, and `app.css`.
@@ -135,7 +144,7 @@ The deliberate omissions from T3's stack are architectural: Desktop does not
 need TanStack Router because navigation is already typed application state,
 and it does not need Zustand or Effect Atom React because `SubscriptionRef`
 and the Effect Native `ViewProgram` remain the single state/projection owner.
-Base UI, Lexical, LegendList, Pierre, and xterm are deferred until their
+Lexical, LegendList, Pierre, and xterm are deferred until their
 corresponding catalog component or typed Host driver actually uses them. The system/SF Pro
 font contract, closed OpenAI Apps SDK icon catalog, khala theme, boot frame,
 and tokenless Electron boundary remain unchanged.

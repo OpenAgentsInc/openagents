@@ -111,6 +111,8 @@ describe("React Codex composer", () => {
     );
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
     expect(container.querySelector('[data-en-key="shell-input"] textarea')).toBe(textarea);
+    expect(container.querySelector('[data-icon-name="Command"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
     Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 240 });
     await render(
       root,
@@ -154,7 +156,6 @@ describe("React Codex composer", () => {
         report={report}
       />,
     );
-
     expect(window.document.activeElement).toBe(textarea);
   });
 
@@ -192,6 +193,7 @@ describe("React Codex composer", () => {
         report={report}
       />,
     );
+    expect(container.querySelector('[data-icon-name="Stop"]')).not.toBeNull();
     const click = (label: string, last = false) => {
       const buttons = [...container.querySelectorAll("button")].filter(
         (button) => button.textContent === label,

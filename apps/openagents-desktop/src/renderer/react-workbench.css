@@ -485,6 +485,10 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   scroll-behavior: auto;
 }
 
+.oa-react-timeline-content {
+  gap: 0;
+}
+
 .oa-react-timeline-item {
   position: relative;
   width: min(720px, 100%);
@@ -647,8 +651,11 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-new-activity {
   position: absolute;
-  right: var(--en-spacing-4);
+  right: auto;
+  left: 50%;
   bottom: var(--en-spacing-3);
+  border-radius: var(--en-radius-full);
+  transform: translateX(-50%);
   box-shadow: var(--en-elevation-overlay-shadow);
 }
 
@@ -665,20 +672,21 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-composer {
   display: grid;
-  gap: var(--en-spacing-2);
+  gap: var(--en-spacing-1);
   margin: var(--en-spacing-3) auto var(--en-spacing-4);
-  width: min(720px, calc(100% - var(--en-spacing-6)));
+  width: min(760px, calc(100% - var(--en-spacing-6)));
   padding: var(--en-spacing-2);
   border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-lg);
-  background: var(--en-color-surface);
+  border-radius: var(--en-radius-xl);
+  background: var(--en-color-surfaceRaised);
   box-shadow: var(--en-elevation-raised-shadow);
 }
 
 .oa-react-composer textarea {
   width: 100%;
-  min-height: 64px;
+  min-height: 52px;
   max-height: 180px;
+  padding: var(--en-spacing-1) var(--en-spacing-2);
   resize: none;
   border: 0;
   outline: none;
@@ -699,18 +707,22 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   gap: var(--en-spacing-1);
 }
 
+.oa-react-composer-bar {
+  min-height: var(--en-control-sm-height);
+}
+
+.oa-react-submit,
+.oa-react-stop {
+  border-radius: var(--en-radius-full);
+}
+
 .oa-react-composer-spacer {
   flex: 1 1 auto;
 }
 
-.oa-react-composer-status,
-.oa-react-composer-hint {
+.oa-react-composer-status {
   color: var(--en-color-textFaint);
   font-size: 11px;
-}
-
-.oa-react-composer-hint {
-  padding: 0 var(--en-spacing-1);
 }
 
 .oa-react-decision {
