@@ -3823,13 +3823,16 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "fleet(MAINT-1): one-click provider install/update with ledger pinning and provenance receipts — typed per-harness maintenance actions: detect installed version + channel, resolve latest per channel, execute update via the harness's native path, then RE-PROBE the harness before reporting success; version pinning (record expected version/hash before update; refuse silent channel jumps); a provenance receipt for the swapped binary; one click in Desktop Settings per connected harness driving the typed action through the existing command path; CLI parity via pylon command; NEVER touch the default ~/.codex login home during update flows.",
         authorityBoundary:
-          "The maintenance engine lives in @openagentsinc/pylon-core (custody/harness-maintenance) and updates BINARIES only: every probe and update spawn scrubs CODEX_HOME/CLAUDE_CONFIG_DIR/GROK_HOME from its environment, login/auth-flow arguments are refused by a typed guard, and the default ~/.codex home is never read or written. Success is only reported after a post-update version RE-PROBE answers on the same channel (launch-receipt lesson 4); a failed re-probe, a channel change, or an unchanged version is a typed maintenance failure with the previous state recorded intact. A pre-update pin (expected version + binary sha256 + channel) and a provenance receipt (source, command, output excerpt, before/after states, re-probe result) persist append-only under the shared Pylon home; the renderer projection carries versions/channel/advisory only — never paths, tokens, or raw command output. Settings renders the per-harness rows and the update affordance driving the typed gateway command; Electron main wires the actions post-window and adds nothing to the pre-window startup path.",
+          "The ambient maintenance engine lives in @openagentsinc/pylon-core (custody/harness-maintenance) and updates Claude/OpenCode binaries only for Desktop. Desktop Codex projects the immutable package-owned CodexRuntimeResolution used by turns; it never discovers or mutates a PATH/NVM/npm/Homebrew Codex. Because changing a nested binary invalidates the signed app, its typed recovery is an OpenAgents update/reinstall that preserves ~/.codex. Generic maintenance spawns scrub provider homes and reject auth arguments. The renderer receives only bounded state/provenance/versions/recovery — never paths, tokens, homes, or raw output. Signed makes prove unpacked Codex signature, architecture, executable bit, pinned version, and minimal-PATH launch before release success.",
         evidenceRefs: [
           "packages/pylon-core/src/custody/harness-maintenance.ts",
           "packages/pylon-core/src/custody/harness-maintenance.test.ts",
           "apps/openagents-desktop/src/runtime-gateway-contract.ts",
           "apps/openagents-desktop/src/runtime-gateway.ts",
           "apps/openagents-desktop/src/renderer/settings.ts",
+          "apps/openagents-desktop/src/provider-runtime-host.ts",
+          "apps/openagents-desktop/scripts/codex-runtime-artifact-smoke.ts",
+          "apps/openagents-desktop/tests/package-macos.test.ts",
           "apps/pylon/tests/accounts-maintenance-cli.test.ts",
           "docs/fable/2026-07-13-chatgpt-codex-launch-failure-analysis.md",
           "docs/receipts/2026-07-14-harness-maintenance/README.md",

@@ -100,6 +100,17 @@ and ambient-authority denial, replaceable exactly-once host lifecycle,
 public-safe operation correlation through Sync causality, and a real bundle
 build plus Electron teardown receipt.
 
+For a packaged macOS app, the focused runtime oracle is:
+
+```bash
+pnpm --dir apps/openagents-desktop run smoke:artifact:codex-runtime -- \
+  --app /path/to/OpenAgents.app --signed
+```
+
+It probes the exact unpacked, signed Codex under a minimal GUI PATH and prints
+a public-safe identity receipt. Signed Forge makes run the same oracle after
+notarization and Gatekeeper verification.
+
 ## Architecture
 
 - `src/main.ts` — Electron main process (plain TS). Hardened per #8574:
@@ -116,6 +127,10 @@ build plus Electron teardown receipt.
   capabilities over fixed IPC channels. No raw token, Node capability,
   arbitrary command/channel, generic event subscription, or `MessagePort`
   reaches the renderer.
+- `src/provider-runtime-host.ts` — the one main-private, immutable bundled
+  Codex authority shared by every Desktop consumer. It resolves only the
+  dependency graph or `app.asar.unpacked`; PATH/NVM/global installs are never
+  fallback authority, and renderer projections are bounded and path-free.
 - `src/fleet-control.ts` — main-process adapter for the existing local Pylon
   `intent.submit` command. It resolves the loopback control token locally and
   returns only `accepted | rejected | unavailable` status.

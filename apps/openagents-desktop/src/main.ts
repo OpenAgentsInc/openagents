@@ -200,7 +200,10 @@ import {
   makeCodexLocalRuntime,
 } from "./codex-local-runtime.ts"
 import { makeCodexPreflight, type CodexProbeResult } from "./codex-preflight.ts"
-import { resolveBundledCodexExecutable } from "./provider-runtime-host.ts"
+import {
+  codexRuntimeAuthority,
+  publicCodexRuntimeProjection,
+} from "./provider-runtime-host.ts"
 import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture.ts"
 import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
@@ -837,30 +840,45 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     decide: command => Number(Effect.runSync(service.decide(command))),
   }
 }, () => hostLifecycle.voice(), {
-  // Typed per-harness maintenance (MAINT-1, #8785). Runs entirely on user
-  // action through the gateway — nothing here touches the pre-window startup
-  // path. Updates BINARIES only: the engine scrubs CODEX_HOME/CLAUDE_CONFIG_DIR
-  // from every spawn and never runs a login flow, so the default ~/.codex
-  // login home stays untouched. Receipts persist to the shared Pylon home so
-  // Desktop and `pylon accounts maintenance` project one provenance ledger.
+  // Desktop Codex is application-owned: status comes from the exact authority
+  // used by turns and repair means updating/reinstalling OpenAgents. The
+  // ambient CLI maintenance engine remains valid for Claude/OpenCode only;
+  // it must never discover or mutate a different PATH/NVM Codex here.
   status: async harness => {
-    const projection = await collectHarnessMaintenanceStatus(
-      {},
-      harness === undefined ? undefined : [harness],
-    )
-    const codex = projection.harnesses.find(entry => entry.harness === "codex")
+    const includeCodex = harness === undefined || harness === "codex"
+    const ambientHarnesses = harness === undefined
+      ? ["claude_code", "opencode"] as const
+      : harness === "codex" ? [] : [harness]
+    const [projection, codexResolution] = await Promise.all([
+      collectHarnessMaintenanceStatus({}, ambientHarnesses),
+      includeCodex ? codexRuntimeAuthority.inspect() : Promise.resolve(null),
+    ])
+    const codex = codexResolution === null ? null : publicCodexRuntimeProjection(codexResolution)
     return {
       observedAt: projection.observedAt,
-      harnesses: projection.harnesses.map(entry => ({
-        harness: entry.harness,
-        installed: entry.installed,
-        installedVersion: entry.installedVersion,
-        latestVersion: entry.latestVersion,
-        channel: entry.channel,
-        advisory: entry.advisory,
-        updateSupported: entry.updateSupported,
-      })),
-      codexReleaseNotes: await fetchCodexReleaseNotes(codex?.latestVersion ?? null).then(notes =>
+      harnesses: [
+        ...(codexResolution === null || codex === null ? [] : [{
+          harness: "codex" as const,
+          installed: codexResolution.executablePath !== null,
+          installedVersion: codex.observedVersion,
+          latestVersion: codex.expectedVersion,
+          channel: "desktop-bundle" as const,
+          advisory: codex.compatible ? "current" as const : "unknown" as const,
+          updateSupported: !codex.compatible,
+          runtimeState: codex.state,
+          recoveryMessage: codex.recoveryMessage,
+        }]),
+        ...projection.harnesses.map(entry => ({
+          harness: entry.harness,
+          installed: entry.installed,
+          installedVersion: entry.installedVersion,
+          latestVersion: entry.latestVersion,
+          channel: entry.channel,
+          advisory: entry.advisory,
+          updateSupported: entry.updateSupported,
+        })),
+      ],
+      codexReleaseNotes: codex === null ? null : await fetchCodexReleaseNotes(codex.expectedVersion).then(notes =>
         notes === null ? null : {
           version: notes.version,
           title: notes.title,
@@ -870,6 +888,21 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     }
   },
   update: async harness => {
+    if (harness === "codex") {
+      const resolution = await codexRuntimeAuthority.inspect()
+      const update = resolution.state === "ready" ? null : await desktopUpdateHost.check()
+      return {
+        outcome: resolution.state === "ready" ? "already_current" as const : "failed" as const,
+        failureReason: resolution.state === "ready"
+          ? null
+          : update?.phase === "available" || update?.phase === "staged"
+            ? "repair_openagents_update_available"
+            : "repair_openagents",
+        beforeVersion: resolution.observedVersion,
+        afterVersion: resolution.observedVersion,
+        receiptId: null,
+      }
+    }
     const receipt = await runHarnessMaintenanceUpdate({ harness })
     try {
       await persistHarnessMaintenanceReceipt({ paths: resolvePylonHome(process.env) }, receipt)
@@ -1849,7 +1882,7 @@ const codexChildren = makeCodexChildRuntime({
     : {}),
 })
 const codexAppServerConfig = {
-  binary: resolveBundledCodexExecutable,
+  binary: codexRuntimeAuthority.executable,
   installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
     if (account.source === "current_session") {
       const verified = verifyBuiltinProductSpecWorkSkill(builtinSkillsRoot)

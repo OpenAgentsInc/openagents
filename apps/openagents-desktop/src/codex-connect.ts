@@ -32,7 +32,7 @@ import {
   type CodexConnectStatus,
   unavailableCodexAccountsResult,
 } from "./codex-connect-contract.ts"
-import { resolveBundledCodexExecutable } from "./provider-runtime-host.ts"
+import { codexRuntimeAuthority } from "./provider-runtime-host.ts"
 
 // ---------------------------------------------------------------------------
 // Legacy smoke-child stdout parser (pure; retained for deterministic fixture
@@ -284,7 +284,7 @@ export const makeInstalledCodexCustody = (
       capabilityRefs: [],
     },
   }
-  const resolveCodex = dependencies.resolveCodex ?? resolveBundledCodexExecutable
+  const resolveCodex = dependencies.resolveCodex ?? codexRuntimeAuthority.executable
   const spawnCodex = dependencies.spawnCodex ?? defaultSpawnInstalledCodex
   let disposed = false
   let active: ChildLike | null = null

@@ -17,6 +17,7 @@ import {
   unsignedDevArtifactName,
 } from "./scripts/macos-gatekeeper.ts"
 import { desktopReleaseArtifactName } from "./scripts/release-artifact-name.ts"
+import { verifyPackagedCodexRuntime } from "./scripts/codex-runtime-artifact-smoke.ts"
 
 
 export const OPENAGENTS_DESKTOP_BUNDLE_ID = "com.openagents.desktop"
@@ -227,6 +228,15 @@ const config: ForgeConfig = {
         for (const artifact of result.artifacts.filter((file) => file.endsWith(".dmg"))) {
           notarizeAndStapleDmg(artifact, appPath, notarizeCredentials)
           assertGatekeeperGreen([...gatekeeperImageChecks(artifact), ...gatekeeperAppChecks(appPath)])
+          // A signed shell is insufficient: prove the exact unpacked native
+          // runtime is signed, executable, target-correct, and version-pinned
+          // with no global Codex/NVM resolution available.
+          verifyPackagedCodexRuntime({
+            appPath,
+            platform: result.platform,
+            arch: result.arch,
+            requireSignature: true,
+          })
         }
       }
       return makeResults.map(result => ({

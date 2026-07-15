@@ -84,6 +84,8 @@ export type HarnessMaintenanceItemView = Readonly<{
   channel: string
   advisory: "current" | "behind_latest" | "unknown"
   updateSupported: boolean
+  runtimeState?: string
+  recoveryMessage?: string | null
 }>
 
 export type CodexReleaseNotesView = Readonly<{
@@ -453,6 +455,8 @@ const RendererHarnessMaintenanceStatusSchema = Schema.Struct({
     channel: Schema.String,
     advisory: Schema.Literals(["current", "behind_latest", "unknown"]),
     updateSupported: Schema.Boolean,
+    runtimeState: Schema.optional(Schema.String),
+    recoveryMessage: Schema.optional(Schema.NullOr(Schema.String)),
   })),
   codexReleaseNotes: Schema.optional(Schema.NullOr(Schema.Struct({
     version: Schema.String,
@@ -499,6 +503,8 @@ export const decodeHarnessMaintenanceStatus = (value: unknown): Readonly<{
         channel: entry.channel.slice(0, 20),
         advisory: entry.advisory,
         updateSupported: entry.updateSupported,
+        ...(entry.runtimeState === undefined ? {} : { runtimeState: entry.runtimeState.slice(0, 40) }),
+        ...(entry.recoveryMessage === undefined ? {} : { recoveryMessage: entry.recoveryMessage?.slice(0, 160) ?? null }),
       })),
     },
     codexReleaseNotes: decoded.value.codexReleaseNotes == null ? null : {
@@ -532,6 +538,11 @@ export const decodeHarnessMaintenanceOutcomeText = (value: unknown): string => {
     case "channel_jump_refused":
       return `${name}: refused a channel change. Updates stay on the detected install channel.`
     default:
+      if (result.harness === "codex" && result.failureReason?.startsWith("repair_openagents") === true) {
+        return result.failureReason === "repair_openagents_update_available"
+          ? "An OpenAgents update is available. Install it from App updates below to repair bundled Codex; your sign-in is preserved."
+          : "Codex is bundled with OpenAgents. Update or reinstall OpenAgents to repair it; your Codex sign-in is preserved."
+      }
       return `${name} update failed: ${(result.failureReason ?? "unknown").slice(0, 80)}. Previous install left intact.`
   }
 }
@@ -1653,7 +1664,9 @@ export const settingsView = (settings: SettingsState): View => {
 // ---------------------------------------------------------------------------
 
 const harnessChannelLabel = (channel: string): string =>
-  channel === "npm-global"
+  channel === "desktop-bundle"
+    ? "OpenAgents bundle"
+    : channel === "npm-global"
     ? "npm"
     : channel === "bun-global"
       ? "bun"
@@ -1704,6 +1717,14 @@ const harnessMaintenanceRow = (
             variant: "label",
             color: "textMuted",
           }),
+          ...(item.recoveryMessage === undefined || item.recoveryMessage === null
+            ? []
+            : [Text({
+                key: `settings-harness-${item.harness}-recovery`,
+                content: item.recoveryMessage,
+                variant: "label",
+                color: "textMuted",
+              })]),
         ],
       ),
       Spacer({ key: `settings-harness-${item.harness}-fill`, flex: true }),
@@ -1717,19 +1738,21 @@ const harnessMaintenanceRow = (
             }),
           ]
         : []),
-      ...(item.installed && item.updateSupported
+      ...(item.updateSupported
         ? [
             Button({
               key: `settings-harness-${item.harness}-update`,
               label: isUpdating
                 ? "Updating…"
-                : item.advisory === "behind_latest" && item.latestVersion !== null
+                : item.channel === "desktop-bundle"
+                  ? "Repair OpenAgents"
+                  : item.advisory === "behind_latest" && item.latestVersion !== null
                   ? `Update to ${item.latestVersion}`
                   : "Check & update",
               variant: item.advisory === "behind_latest" ? "primary" : "ghost",
               disabled: isUpdating || updating !== null,
               onPress: IntentRef("DesktopHarnessUpdateRequested", StaticPayload(item.harness)),
-              a11y: { label: `Update ${harnessDisplayName(item.harness)}` },
+              a11y: { label: item.channel === "desktop-bundle" ? "Repair OpenAgents bundled Codex" : `Update ${harnessDisplayName(item.harness)}` },
             }),
           ]
         : []),

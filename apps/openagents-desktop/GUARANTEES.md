@@ -534,10 +534,12 @@ Contract:
 ### One-click harness maintenance with re-probe, pinning, and provenance receipts
 
 Settings shows per-harness version/channel truth for the local coding
-harnesses (Codex CLI, Claude Code, OpenCode) and a one-click update that
-drives a typed Runtime Gateway command into the shared
-`@openagentsinc/pylon-core` maintenance engine (`pylon accounts maintenance`
-is the CLI parity surface over the same engine).
+harnesses (Codex CLI, Claude Code, OpenCode). Claude Code and OpenCode updates
+drive the shared `@openagentsinc/pylon-core` maintenance engine. Desktop Codex
+instead reports the same immutable package-owned authority used by turns and
+never discovers or updates a PATH/NVM/npm/Homebrew Codex. Its recovery action
+directs an OpenAgents update/reinstall because swapping a nested binary would
+invalidate the signed app; the ordinary `~/.codex` sign-in remains untouched.
 
 - Detection classifies the installed binary's channel (npm/bun/pnpm global,
   Homebrew, or the harness's native installer) and updates only through that
@@ -560,6 +562,9 @@ is the CLI parity surface over the same engine).
   home is never read or written.
 - One update per harness runs at a time, and Electron main wires the actions
   post-window — nothing is added to the pre-window startup path.
+- Signed/notarized macOS makes prove the exact unpacked Codex is a signed
+  executable of the expected architecture and pinned version under a minimal
+  GUI PATH. The public receipt contains no binary path or probe output.
 
 Contract:
 `openagents_desktop.settings.harness_maintenance_one_click.v1`.

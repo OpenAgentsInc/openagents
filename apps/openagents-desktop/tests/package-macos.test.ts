@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vite-plus/test"
-import { readFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import path from "node:path"
 
 import config, { OPENAGENTS_DESKTOP_BUNDLE_ID, OPENAGENTS_DESKTOP_PROTOCOL } from "../forge.config.ts"
 import { desktopReleaseArtifactName } from "../scripts/release-artifact-name.ts"
+import { packagedCodexPath, verifyPackagedCodexRuntime } from "../scripts/codex-runtime-artifact-smoke.ts"
 
 const root = path.resolve(import.meta.dirname, "..")
 const mainSource = readFileSync(path.join(root, "src", "main.ts"), "utf8")
@@ -160,5 +162,40 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(source).toContain('"ShipIt"')
     expect(source).not.toContain("appleIdPassword")
     expect(source).not.toContain("@openagents.com")
+  })
+
+  test("signed release gate proves the exact bundled Codex under minimal PATH", () => {
+    const fixture = mkdtempSync(path.join(tmpdir(), "openagents-codex-artifact-"))
+    try {
+      const executable = packagedCodexPath(fixture, "darwin", "arm64")
+      mkdirSync(path.dirname(executable), { recursive: true })
+      writeFileSync(executable, "fixture-codex", { mode: 0o755 })
+      chmodSync(executable, 0o755)
+      const calls: Array<{ file: string; args: ReadonlyArray<string>; path: string | undefined }> = []
+      const receipt = verifyPackagedCodexRuntime({
+        appPath: fixture,
+        platform: "darwin",
+        arch: "arm64",
+        requireSignature: true,
+        exec: (file, args, options) => {
+          calls.push({ file, args, path: options?.env?.PATH })
+          if (file === "/usr/bin/file") return "Mach-O 64-bit executable arm64"
+          if (file === "/usr/bin/codesign") return ""
+          return "codex-cli 0.144.1"
+        },
+      })
+      expect(receipt).toMatchObject({ state: "ready", source: "desktop-bundle", minimalPath: true, signatureVerified: true })
+      expect(calls.at(-1)).toMatchObject({ file: executable, path: "/usr/bin:/bin:/usr/sbin:/sbin" })
+      expect(JSON.stringify(receipt)).not.toContain(fixture)
+      expect(JSON.stringify(receipt)).not.toContain("fixture-codex")
+      expect(() => verifyPackagedCodexRuntime({
+        appPath: fixture,
+        platform: "darwin",
+        arch: "arm64",
+        exec: file => file === "/usr/bin/file" ? "Mach-O x86_64" : "codex-cli 0.144.1",
+      })).toThrow("wrong architecture")
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
+    }
   })
 })

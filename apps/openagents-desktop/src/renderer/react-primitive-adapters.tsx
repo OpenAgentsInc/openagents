@@ -406,7 +406,7 @@ export const WorkbenchShell = ({ state, report }: {
             {state.settings.harnessMaintenance.view.state === "loading" ? <p role="status">Checking harnesses…</p>
               : state.settings.harnessMaintenance.view.state === "unavailable" ? <p role="alert">{state.settings.harnessMaintenance.view.message}</p>
               : state.settings.harnessMaintenance.view.harnesses.map(harness => <article key={harness.harness} data-harness={harness.harness}>
-                  <div><strong>{harness.harness.replaceAll("_", " ")}</strong><span>{harness.installedVersion ?? "Not installed"} · {harness.channel}</span></div>
+                  <div><strong>{harness.harness.replaceAll("_", " ")}</strong><span>{harness.installedVersion ?? "Not installed"} · {harness.channel}</span>{harness.recoveryMessage == null ? null : <small>{harness.recoveryMessage}</small>}</div>
                   <span>{harness.advisory.replaceAll("_", " ")}</span>
                   {harness.updateSupported ? <Button type="button" size="sm" disabled={state.settings.harnessMaintenance.updating !== null} onClick={() => dispatch(report, "DesktopHarnessUpdateRequested", harness.harness)}>Update</Button> : null}
                 </article>)}

@@ -71,8 +71,8 @@ export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gat
 export const DesktopRuntimeGatewayProtocolVersion = 12 as const
 
 // Typed per-harness maintenance (MAINT-1, #8785). The renderer projection is
-// public-safe by construction: versions, channel, and advisory only — never
-// binary paths, home paths, or command output.
+// public-safe by construction: bounded runtime state and recovery copy in
+// addition to versions/channel/advisory — never paths, homes, or raw output.
 export const DesktopMaintenanceHarnessSchema = Schema.Literals(["codex", "claude_code", "opencode"])
 export type DesktopMaintenanceHarness = typeof DesktopMaintenanceHarnessSchema.Type
 export const DesktopHarnessMaintenanceEntrySchema = Schema.Struct({
@@ -80,9 +80,15 @@ export const DesktopHarnessMaintenanceEntrySchema = Schema.Struct({
   installed: Schema.Boolean,
   installedVersion: Schema.NullOr(Schema.String),
   latestVersion: Schema.NullOr(Schema.String),
-  channel: Schema.Literals(["npm-global", "bun-global", "pnpm-global", "homebrew", "native", "unknown"]),
+  channel: Schema.Literals(["desktop-bundle", "npm-global", "bun-global", "pnpm-global", "homebrew", "native", "unknown"]),
   advisory: Schema.Literals(["current", "behind_latest", "unknown"]),
   updateSupported: Schema.Boolean,
+  runtimeState: Schema.optional(Schema.Literals([
+    "ready", "unsupported_target", "missing_package", "wrong_target",
+    "wrong_architecture", "not_file", "not_executable", "spawn_failed",
+    "timeout", "malformed_version", "incompatible_version",
+  ])),
+  recoveryMessage: Schema.optional(Schema.NullOr(Schema.String.check(Schema.isMaxLength(160)))),
 })
 export type DesktopHarnessMaintenanceEntry = typeof DesktopHarnessMaintenanceEntrySchema.Type
 export const DesktopCodexReleaseNotesSchema = Schema.Struct({

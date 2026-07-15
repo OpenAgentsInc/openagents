@@ -242,6 +242,20 @@ snapshot fuse and RC2 failed because Chromium could not admit the renderer from
 inside ASAR while the hardened file-protocol fuse was disabled. Never relax
 `GrantFileProtocolExtraPrivileges=false` to repair this.
 
+Before lifecycle acceptance, prove provider execution cannot drift to a
+global Codex or NVM shim. Run the artifact oracle against the mounted signed
+app; it supplies the minimal macOS GUI PATH to the exact unpacked binary:
+
+```sh
+pnpm --dir apps/openagents-desktop run smoke:artifact:codex-runtime -- \
+  --app /tmp/openagents-release-mount/OpenAgents.app --signed
+```
+
+Require `state:"ready"`, `source:"desktop-bundle"`, `minimalPath:true`,
+`signatureVerified:true`, and equal expected/observed versions. The receipt
+contains an identity SHA-256 but no path or raw output. Signed Forge makes run
+this same gate after notarization.
+
 Then run the clean-install lifecycle and record first launch, account
 readiness, a coding turn, update interruption/resume, rollback,
 uninstall/reinstall, and diagnostics export.

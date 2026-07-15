@@ -1128,6 +1128,13 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Desktop provider runtimes are package-owned, version-explicit capabilities.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
+  one immutable main-process `CodexRuntimeResolution` authority selects that
+  absolute identity once per application lifetime and is shared by app-server,
+  local/preflight, child, connect, status, and maintenance consumers. NVM/PATH
+  changes cannot alter it. Discovery and probing preserve typed missing-package,
+  wrong-target/architecture, non-file/non-executable, spawn, timeout,
+  malformed-version, and incompatible-version failures. Paths and raw probe
+  output remain main-private; public projections are bounded and path-free.
   Claude execution imports the exact pinned Agent SDK. The compatibility
   catalog fails closed unless observed versions equal the bundled/tested lock
   versions, and reports missing, malformed, or unverified updates without
@@ -1151,6 +1158,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   fixture-path, startup-trace, and isolated-profile environment controls are
   host-only and must be removed from every Codex provider subprocess; a proof
   turn must see the same provider environment as an ordinary user turn.
+  Desktop maintenance must not call the ambient Codex npm/brew updater: its
+  Codex row observes the same bundled authority, and repair is an OpenAgents
+  update/reinstall that preserves the auth home. Signed macOS makes fail closed
+  unless the exact unpacked Codex is executable, target-correct, signed, and
+  version-compatible under `PATH=/usr/bin:/bin:/usr/sbin:/sbin`.
   ProductSpec skills and dynamic tools are advertised to Codex only while the
   host owns an admitted ProductSpec work context; an ordinary coding chat must
   not inherit proposal workflow instructions or tools.

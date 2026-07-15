@@ -356,7 +356,12 @@ describe("installed package Codex custody", () => {
       )
       expect(await service.listAccounts()).toEqual({ state: "ok", accounts: [] })
       expect(service.start()).toEqual({ state: "starting" })
-      await new Promise(resolve => setTimeout(resolve, 20))
+      // The custody write and service projection cross multiple microtask/
+      // filesystem turns. Poll the typed terminal state instead of asserting
+      // a scheduler-speed-dependent 20 ms deadline under the full suite.
+      for (let attempt = 0; attempt < 100 && service.status().state !== "connected"; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
       expect(service.status()).toEqual({ state: "connected", ref: "codex" })
       expect(await service.listAccounts()).toEqual({
         state: "ok",
