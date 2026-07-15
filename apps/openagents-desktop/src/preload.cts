@@ -195,6 +195,7 @@ import {
 } from "./codex-ecosystem-contract.ts"
 import { CodexHostRequestChannel, CodexHostSnapshotChannel, decodeCodexHostRequest } from "./codex-host-contract.ts"
 import { CodexExperimentalRequestChannel, CodexExperimentalSnapshotChannel, decodeCodexExperimentalRequest } from "./codex-experimental-contract.ts"
+import { CodexConformanceSnapshotChannel } from "./codex-conformance-contract.ts"
 import {
   CodexHandoffOpenChannel,
   decodeCodexHandoffOpenRequest,
@@ -794,6 +795,9 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       const request = decodeCodexExperimentalRequest(value)
       return request === null ? Promise.resolve({ ok: false, reason: "invalid_request" }) : ipcRenderer.invoke(CodexExperimentalRequestChannel, request)
     },
+  },
+  codexConformance: {
+    snapshot: () => ipcRenderer.invoke(CodexConformanceSnapshotChannel),
   },
   codexHandoff: {
     open: async (value: unknown) => {

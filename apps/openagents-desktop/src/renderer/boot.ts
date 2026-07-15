@@ -233,6 +233,9 @@ type DesktopBridge = Readonly<{
     snapshot?: () => Promise<unknown>
     request?: (value: unknown) => Promise<unknown>
   }>
+  codexConformance?: Readonly<{
+    snapshot?: () => Promise<unknown>
+  }>
   codexHandoff?: Readonly<{
     open?: (value: unknown) => Promise<unknown>
   }>

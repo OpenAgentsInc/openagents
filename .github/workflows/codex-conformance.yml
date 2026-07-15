@@ -1,0 +1,67 @@
+name: Codex app-server conformance
+
+on:
+  pull_request:
+    paths:
+      - "apps/openagents-desktop/**"
+      - "packages/codex-app-server-protocol/**"
+      - "packages/composer-state/**"
+      - "docs/receipts/2026-07-15-codex-app-server-conformance.json"
+      - ".github/workflows/codex-conformance.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/openagents-desktop/**"
+      - "packages/codex-app-server-protocol/**"
+      - "packages/composer-state/**"
+      - "docs/receipts/2026-07-15-codex-app-server-conformance.json"
+      - ".github/workflows/codex-conformance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wire-and-fault-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec vp test apps/openagents-desktop/src/codex*.test.ts packages/composer-state/src/index.test.ts packages/composer-state/src/coding-draft.test.ts packages/codex-app-server-protocol/src/protocol.test.ts
+      - run: pnpm exec tsc -p apps/openagents-desktop/tsconfig.json --noEmit
+      - run: node packages/codex-app-server-protocol/scripts/check-generated.ts
+      - run: node --import tsx apps/openagents-desktop/scripts/generate-codex-conformance-report.ts && git diff --exit-code -- docs/receipts/2026-07-15-codex-app-server-conformance.json
+
+  exact-bundled-arm64-binary:
+    runs-on: macos-14-xlarge
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Exact binary family smokes (stdio and WebSocket)
+        shell: bash
+        run: |
+          export CODEX_BIN="$PWD/node_modules/.pnpm/@openai+codex@0.144.1-darwin-arm64/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex"
+          node --import tsx apps/openagents-desktop/scripts/codex-app-server-supervisor-smoke.ts
+          node --import tsx apps/openagents-desktop/scripts/codex-control-plane-smoke.ts
+          node --import tsx apps/openagents-desktop/scripts/codex-thread-lifecycle-smoke.ts
+          node --import tsx apps/openagents-desktop/scripts/codex-turn-control-smoke.ts
+          node --import tsx apps/openagents-desktop/scripts/codex-ecosystem-smoke.ts
+          node --import tsx apps/openagents-desktop/scripts/codex-host-services-smoke.ts
+          node --import tsx apps/openagents-desktop/scripts/codex-experimental-runtime-smoke.ts
+          node --import tsx apps/openagents-desktop/scripts/codex-binary-manifest-smoke.ts

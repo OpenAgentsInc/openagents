@@ -211,6 +211,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   bounded, revocable, and cleaned on disconnect; destructive experimental
   controls consume one-shot confirmation-bound authority and emit hashed
   private receipts.
+- Codex release authority is multi-column and fail-closed. Transport counts,
+  handler disposition, native projection, product/policy presentation,
+  authority, fixtures, and compatible real-binary family proofs are reported
+  independently. Binary/schema mismatch, decode drift or unknown messages,
+  overload, non-ready supervision, unsettled reverse RPC, queue corruption, or
+  recovery corruption blocks release. A method-count dashboard, generic raw
+  RPC, or one surface's success cannot waive another column or surface.
 - Payments, markets, Sites, tipping, wallet custody, payout, billing credits,
   and settlement are not part of the accepted MVP. VP-1 retires rather than
   ports them: mutation surfaces return typed `money_surface_retired`, runtime

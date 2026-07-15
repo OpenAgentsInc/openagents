@@ -365,6 +365,38 @@ and exact revocation. Memory reset requires the literal `RESET`; elicitation
 increment/decrement, remote enable/disable, and all other dangerous mutations
 consume confirmation-bound authority and append hashed private receipts.
 
+### Implementation status: CAP-11
+
+CAP-11 closes the program with a machine-derived conformance ledger rather
+than a single method-count claim. The reviewed current-source target reports
+126/1/11/72 at transport and fixture layers. The actual packaged release target
+is independently reported at 125/1/11/69. Its smoke asks the exact executable
+to export experimental JSON Schema, compares every upstream-generated method
+identity in all four directions, verifies the executable hash, and then adds
+only the three reviewed deprecated request shims and one runtime notification
+compatibility member. Current-source-only members remain explicit
+`requires-binary-upgrade` policy states; no generic RPC makes them callable.
+
+Every one of the 210 selected-target and 206 bundled-target rows names transport
+decode, handler disposition, native projection, product/policy presentation,
+authority, deterministic fixture class, family smoke, CAP owner, generation,
+and support policy. The generated receipt keeps transport, handler, native,
+product, authority, fixture, and real-binary coverage separate. Desktop owns
+typed local projections/intents; web and mobile explicitly have no local
+app-server authority; operator diagnostics expose state/count/method/reason
+only; composer surfaces share the same Effect admission machine.
+
+The release evaluator fails closed for binary/schema mismatch, family-smoke
+failure, any compatibility receipt (including unknown methods), non-ready
+supervisors, unsettled reverse RPC, queue-journal corruption, recovery
+corruption, or transport overload. Cross-family tests retain multi-generation
+and early-notification races, exactly-once reverse decisions, queue/steer stable
+identity, bounded private diagnostics, and authority equivalence. Upgrade,
+rollback, degraded-mode, and on-call procedure is documented in
+`docs/ops/2026-07-15-codex-app-server-upgrade-rollback-oncall.md`; generated
+evidence lives at
+`docs/receipts/2026-07-15-codex-app-server-conformance.json`.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these

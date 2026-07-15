@@ -217,6 +217,8 @@ import { makeCodexHostServiceRegistry } from "./codex-host-services.ts"
 import { CodexHostRequestChannel, CodexHostSnapshotChannel, decodeCodexHostRequest } from "./codex-host-contract.ts"
 import { makeCodexExperimentalRuntimeRegistry } from "./codex-experimental-runtime.ts"
 import { CodexExperimentalRequestChannel, CodexExperimentalSnapshotChannel, decodeCodexExperimentalRequest } from "./codex-experimental-contract.ts"
+import { makeCodexConformanceReport } from "./codex-conformance.ts"
+import { CodexConformanceSnapshotChannel } from "./codex-conformance-contract.ts"
 import {
   CodexEcosystemMutationChannel,
   CodexEcosystemSnapshotChannel,
@@ -2898,6 +2900,7 @@ ipcMain.handle(CodexExperimentalSnapshotChannel, async event => {
   if (!isTrustedRuntimeGatewaySender(event)) return null
   try { return (await currentCodexExperimentalRuntime()).snapshot() } catch { return null }
 })
+ipcMain.handle(CodexConformanceSnapshotChannel, event => isTrustedRuntimeGatewaySender(event) ? makeCodexConformanceReport() : null)
 ipcMain.handle(CodexExperimentalRequestChannel, async (event, value: unknown) => {
   if (!isTrustedRuntimeGatewaySender(event)) return { ok: false, reason: "untrusted_sender" }
   const request = decodeCodexExperimentalRequest(value)
