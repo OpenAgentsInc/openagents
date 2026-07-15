@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop MVP Phase 2 — React-backed Codex Workbench"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-14T00:00:00Z"
 updated_at: "2026-07-14T00:00:00Z"
@@ -42,6 +42,7 @@ tool_metadata:
   openagents_parent_spec: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md@6"
   openagents_architecture_audit: "docs/effect-native/2026-07-14-react-web-renderer-harmonization-gap-analysis.md"
   openagents_reference_code: "projects/repos/t3code@c1ec1915fc16f3dc1ec5d47d9a97f6210a574526"
+  openagents_supersedes: "docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md@de1180b2da937922c2a8724915cf761f8fb78617"
 ---
 
 ## Problem
@@ -580,6 +581,12 @@ release receipts through the owning promise registry.
   restart are the completion path. ProductSpec and broader platform machinery
   remain available under their existing contracts but are not required to
   begin useful work.
+- **2026-07-14 — Reconcile the unversioned shadcn and AI SDK scope additions
+  as proposed revision 2.** Revision 1 remains immutable at commit
+  `de1180b2da937922c2a8724915cf761f8fb78617`. Later owner-directed component
+  and runtime-boundary additions changed intent-bearing bytes without the
+  required revision bump. This revision repairs that identity error; it does
+  not transfer the separate revision-1 owner admission to revision 2.
 - **Adoption state: proposed.** This checked-in document records requested
   product intent. It has no ProductSpec host admission receipt in this change
   and therefore cannot dispatch work, admit an invariant exception, verify an

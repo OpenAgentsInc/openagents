@@ -4,9 +4,15 @@ Date: 2026-07-14
 
 ProductSpec: `openagents-desktop-mvp-phase-2-react-codex-workbench`
 
-ProductSpec revision: `1`
+ProductSpec declared revision at cutover: `1` (subsequently reconciled as
+proposed revision 2 because intent-bearing bytes had changed without a bump)
 
-ProductSpec SHA-256: `f5116b388df35752aacb5c8fe87bad6f60f92b5363e4e13fadc3b998d365c862`
+Cutover working-snapshot SHA-256:
+`f5116b388df35752aacb5c8fe87bad6f60f92b5363e4e13fadc3b998d365c862`
+
+MVP candidate acceptance contract: commit-pinned ProductSpec revision 1 at
+`de1180b2da937922c2a8724915cf761f8fb78617`, SHA-256
+`b88456951753e5a69b9a2390ad18d0fdecd1e1fbfcf65f2f6ddd7a5f1f060d41`
 
 ## Disposition
 
@@ -18,9 +24,11 @@ The two backends never render the same authoritative surface together.
 This is an implementation and deterministic integration receipt. The exact
 signed/notarized artifact and reversible release lifecycle are recorded in
 `2026-07-14-openagents-desktop-react-rc13-release-receipt.md`. Neither receipt
-is a real-account acceptance record, an owner ProductSpec admission, an
-independent visual-review acceptance, or publication authority. Those external
-gates remain open on issue #8823.
+is a real-account acceptance record, an independent visual-review acceptance,
+or publication authority. The owner subsequently admitted the exact
+commit-pinned revision-1 ProductSpec in
+`2026-07-14-openagents-desktop-react-productspec-admission-receipt.md`; the
+remaining external gates stay open on issue #8823.
 
 ## Integrated default-backend proof
 
@@ -100,7 +108,7 @@ revision 6 binding. The session remained unchanged against both pins:
   `sha256:afd25a5d9f9a8442773d3d18dbda1b4feae4a29e4181a9afc8f1d9cc72cbdb17`;
   and
 - current evidence index:
-  `sha256:36cd0908f517501648c990d10271831856f7e5fb2bc85643e515acb7f9e61053`.
+  `sha256:bb4c6c7aa4795730d2bce63a926fe00b0b393df1d126dabc10729b13d5366259`.
 
 The runtime lock rejected an initial invocation under Node 25.8.2 before it
 could produce evidence. The admitted Node 24.13.1 runtime was then used for
@@ -129,9 +137,10 @@ semantically evaluate it or grant publication authority. The full Desktop gate
 is separately `green`; it is not collapsed into criterion observations.
 
 This is re-execution of the admitted first-workroom contract plus the current
-Desktop gate. The Phase 2 React ProductSpec still has no separately admitted
-AssuranceSpec, so this result is not a Phase 2 admission or a substitute for
-the external gates below.
+Desktop gate. The commit-pinned Phase 2 React ProductSpec revision 1 is now
+owner-admitted as this candidate's acceptance contract, but it has no
+separately admitted AssuranceSpec. This result is not an AssuranceSpec
+admission or a substitute for the external gates below.
 
 ## Authoritative decision follow-up
 
@@ -155,7 +164,6 @@ private-provider run.
 The following #8823 close-rule evidence is not produced by this packet:
 
 - a real ordinary-session Codex run with private evidence handling;
-- owner/admission disposition for ProductSpec revision 1;
 - independent visual and interaction reviewer acceptance;
 - full VoiceOver/keyboard-only and measured WCAG contrast receipt;
 - admitted-device warm-launch/session-switch/input-latency/memory percentiles;

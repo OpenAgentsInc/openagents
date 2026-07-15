@@ -1,7 +1,7 @@
 # OpenAgents MVP ProductSpecs
 
 This directory is the canonical product-definition package for the closed
-first deployable OpenAgents shape and the proposed next Desktop phase. Phase 1
+first deployable OpenAgents shape and the next Desktop phase. Phase 1
 remains the ProductSpec-native, local-first Codex workroom and its immutable
 proof chain. Phase 2 narrows the next intent to a React-backed basic Codex
 workbench without rewriting that history. The package keeps intent,
@@ -10,46 +10,52 @@ supporting audits, and evidence boundaries separate and easy to read.
 ## Read in this order
 
 1. [`openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md)
-   — the proposed Phase 2 ProductSpec for the React-backed basic Codex
+   — the proposed revision-2 Phase 2 ProductSpec for the React-backed basic Codex
    workbench. It defines the focused shell, session, timeline, composer,
    decision, read-only review, accessibility, performance, React/Effect Native
    ownership, the owner-selected shadcn/Kahla component extension,
    reference-code, and installed-journey boundary. It depends on
-   the closed Phase 1 product but creates a new intent and proof chain; it is
-   not admitted work or release authority.
-2. [`openagents-codex-workroom-mvp.product-spec.md`](./openagents-codex-workroom-mvp.product-spec.md)
+   the closed Phase 1 product but creates a new intent and proof chain. The
+   revision reconciles later owner-directed shadcn and explicit AI SDK scope
+   additions that had changed the file without a revision bump. It is not the
+   admitted acceptance identity and has no release or publication authority.
+2. [`2026-07-14-openagents-desktop-react-productspec-admission-receipt.md`](./2026-07-14-openagents-desktop-react-productspec-admission-receipt.md)
+   — the authoritative owner disposition admitting the exact commit-pinned
+   revision-1 ProductSpec bytes linked from #8823 for candidate construction,
+   with explicit non-waiver and non-publication boundaries.
+3. [`openagents-codex-workroom-mvp.product-spec.md`](./openagents-codex-workroom-mvp.product-spec.md)
    — the exact ProductSpec v0.1 intent artifact. It owns the MVP problem,
    hypothesis, in/out/cut scope, user experience, solution, stable acceptance
    criteria, success metrics, risks, owner gates, and required receipts.
-3. [`2026-07-13-openagents-codex-workroom-mvp-audit.md`](./2026-07-13-openagents-codex-workroom-mvp-audit.md)
+4. [`2026-07-13-openagents-codex-workroom-mvp-audit.md`](./2026-07-13-openagents-codex-workroom-mvp-audit.md)
    — the dated OpenChamber/OpenCode/Codex/OpenAgents evidence and option analysis
    behind that spec. It does not dispatch work or manufacture current proof.
-4. [`../sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) — the sequencing,
+5. [`../sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) — the sequencing,
    priority, live-gate, and issue-triage authority.
-5. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
+6. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
    — the closed-completed implementation/evidence ledger for this MVP.
-6. [`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md)
+7. [`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md)
    — the original first-dogfood plan. The live admitted companion and its
    reviewed receipts now execute that plan without changing MVP intent,
    release state, or promise authority.
-7. [`2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md)
+8. [`2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md)
    — the narrow signed/notarized RC6 build, installed-smoke, restore, cleanup,
    and remaining-gates receipt.
-8. [`2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md)
+9. [`2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md)
    — the signed/notarized RC7 artifact, source-launched real-Codex journey, and
    installed-driver falsifier for the ordinary logged-in-session MVP boundary.
-9. [`2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md)
+10. [`2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md)
    — the signed/notarized RC8 artifact, exact installed 12-step real-Codex
    journey, renderer/app restart, and exact RC7-to-RC8 signed-update,
    rollback, diagnostics, reinstall, and cleanup receipt.
-10. [`2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md)
+11. [`2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md)
    — the superseding signed/notarized candidate containing the distinct quota,
    rate-limit, authentication-revocation, and policy-denial states, plus exact
    installed real-Codex and RC8-to-RC9 lifecycle proof.
-11. [`2026-07-13-openagents-codex-workroom-rc9-completion-audit.md`](./2026-07-13-openagents-codex-workroom-rc9-completion-audit.md)
+12. [`2026-07-13-openagents-codex-workroom-rc9-completion-audit.md`](./2026-07-13-openagents-codex-workroom-rc9-completion-audit.md)
     — the criterion-by-criterion implementation/evidence matrix and the exact
     boundary between accepted implementation and conditional rollout gates.
-12. [`2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md`](./2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md)
+13. [`2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md`](./2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md)
     — the exact owner acceptance, close-rule disposition, and boundaries that
     permit #8756 to close without implying publication or broader rollout.
 

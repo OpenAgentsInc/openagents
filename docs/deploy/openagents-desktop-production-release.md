@@ -29,11 +29,15 @@ Never reuse the retired Khala Code or Autopilot Desktop identities or feeds.
 Confirm the signing identity and the clean source revision:
 
 ```sh
-security find-identity -v -p codesigning | grep HQWSG26L43
 git fetch origin main
 test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 test -z "$(git status --porcelain)"
 ```
+
+The release scripts verify the identity supplied through
+`OA_DEVELOPER_ID_APPLICATION`. Do not probe the macOS keychain from an
+unattended agent session: `security` can trigger an interactive keychain
+prompt. Confirm identity access through the gated signed packaging step.
 
 ## Candidate and installed-app safety
 
@@ -67,17 +71,19 @@ Set the intended version in `apps/openagents-desktop/package.json`, run the
 release-contract tests, commit it to `main`, and then build:
 
 ```sh
-bun test apps/openagents-desktop/tests/release-preflight.test.ts \
+pnpm exec vp test --run --max-concurrency 1 \
+  apps/openagents-desktop/tests/release-preflight.test.ts \
   apps/openagents-desktop/tests/update-contract.test.ts \
   apps/openagents-desktop/tests/publish-release.test.ts \
   apps/openagents-desktop/tests/package-macos.test.ts \
   apps/openagents-desktop/tests/macos-gatekeeper.test.ts \
   apps/openagents-desktop/tests/launch-receipt.test.ts \
   apps/openagents-desktop/tests/update-rollback.test.ts
-bun run --cwd apps/openagents-desktop typecheck
-bun run --cwd apps/openagents-desktop build
+pnpm --dir apps/openagents-desktop run typecheck
+pnpm --dir apps/openagents-desktop run build
 set -a; source ~/work/.secrets/appstoreconnect.env; set +a
-bun apps/openagents-desktop/scripts/release-preflight.ts --channel rc --json
+node --import tsx apps/openagents-desktop/scripts/release-preflight.ts \
+  --channel rc --latest-released <latest-version> --json
 ```
 
 The preflight is fail-closed on signing credentials (#8786): with no
@@ -85,24 +91,13 @@ The preflight is fail-closed on signing credentials (#8786): with no
 `signing_credentials_present` row is RED and the lane refuses. For a
 non-release dev iteration only, pass `--allow-unsigned-dev`.
 
-Electron Forge's DMG tool reaches two native addons through Bun's isolated
-dependency store. `make:mac` runs `prepare-macos-maker.ts`, which builds both
-before Forge starts. For a manual diagnosis, the equivalent commands are:
-
-```sh
-(cd node_modules/.bun/macos-alias@0.2.12/node_modules/macos-alias && \
-  npm exec --yes --package=node-gyp -- node-gyp rebuild)
-(cd node_modules/.bun/fs-xattr@0.3.1/node_modules/fs-xattr && \
-  npm exec --yes --package=node-gyp -- node-gyp rebuild)
-```
-
 Then sign, package, notarize, and staple in one gated step (#8786):
 
 ```sh
 set -a
 source ~/work/.secrets/appstoreconnect.env
 set +a
-bun run --cwd apps/openagents-desktop make:mac
+pnpm --dir apps/openagents-desktop run make:mac
 ```
 
 `make:mac` is fail-closed (Gatekeeper release oracles, issue #8786; from the
@@ -127,7 +122,8 @@ Re-run the preflight against the built artifacts to record the oracle table
 ```sh
 DMG=apps/openagents-desktop/out/make/OpenAgents-<version>-arm64.dmg
 APP=apps/openagents-desktop/out/OpenAgents-darwin-arm64/OpenAgents.app
-bun apps/openagents-desktop/scripts/release-preflight.ts --channel rc \
+node --import tsx apps/openagents-desktop/scripts/release-preflight.ts \
+  --channel rc --latest-released <latest-version> \
   --dmg "$DMG" --app "$APP" --json
 ```
 
@@ -148,7 +144,7 @@ Stage the production-signed manifest with the exact final DMG bytes:
 DIST=/tmp/openagents-desktop-release-dist
 rm -rf "$DIST" && mkdir -p "$DIST"
 OPENAGENTS_RELEASE_SECRETS_PATH=~/work/.secrets/openagents-release-signing.env \
-  bun apps/openagents-desktop/scripts/publish-release.ts \
+  node --import tsx apps/openagents-desktop/scripts/publish-release.ts \
   --channel rc --version <version> --artifact "$DMG" \
   --dist-dir "$DIST" --notes-ref release.notes.<version>
 cp "$DIST"/*.json apps/oa-updates/openagents-desktop-dist/

@@ -311,9 +311,10 @@ effects authority.
 
 ## MVP-02F — Default React cutover and integrated receipt (#8823)
 
-Status: implementation cutover and signed release-boundary proof complete;
-release-proof issue remains open for real-account, owner/admission,
-accessibility/performance, and independent-review evidence.
+Status: implementation cutover, signed release-boundary proof, and exact
+commit-pinned revision-1 owner admission complete; release-proof issue remains
+open for real-account, accessibility/performance, and independent-review
+evidence.
 
 Ordinary Desktop launches now install the React workbench by default. The
 catalog renderer remains available only through the explicit exclusive
@@ -332,6 +333,23 @@ Effect Native resolver rather than recording the unvalidated second argument.
 
 The normalized receipt and explicit non-claims live in
 `docs/mvp/2026-07-14-openagents-desktop-react-cutover-receipt.md`.
+
+### ProductSpec admission and RC14 source freeze
+
+The owner directly admitted the commit-pinned revision 1 of the OpenAgents
+Desktop React Codex Workbench ProductSpec as the acceptance contract for this
+MVP candidate. The immutable authority record is
+`docs/mvp/2026-07-14-openagents-desktop-react-productspec-admission-receipt.md`,
+bound to commit `de1180b2da937922c2a8724915cf761f8fb78617` and SHA-256
+`b88456951753e5a69b9a2390ad18d0fdecd1e1fbfcf65f2f6ddd7a5f1f060d41`.
+
+Later shadcn and explicit Vercel AI SDK scope additions had changed the
+canonical file without changing its revision. That identity defect is now
+reconciled by marking the current expanded document as proposed revision 2;
+the admission is not silently transferred. The disposition authorizes RC14
+construction and evaluation against the pinned revision 1. It does not accept
+an installed candidate, waive evidence, admit an AssuranceSpec, or authorize
+publication.
 
 ### Provider-originated decision closeout (#8821)
 
