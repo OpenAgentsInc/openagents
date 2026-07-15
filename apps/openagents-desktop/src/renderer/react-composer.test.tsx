@@ -6,7 +6,6 @@ import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
-import { desktopCommandRegistry } from "./command-registry.ts";
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts";
 
 const restores: Array<() => void> = [];
@@ -259,7 +258,7 @@ describe("React Codex composer", () => {
 });
 
 describe("React command and decision surfaces", () => {
-  test("renders the canonical registry and dispatches the exact command identity", async () => {
+  test("groups only available OpenAgents actions and real recent sessions in the T3-shaped palette", async () => {
     const { window, container } = installDom();
     const { ReactCommandPalette } = await import("./react-composer.tsx");
     const { received, report } = recorder();
@@ -268,13 +267,25 @@ describe("React command and decision surfaces", () => {
       root,
       <ReactCommandPalette state={fixtureState({ commandPaletteOpen: true })} report={report} />,
     );
-    expect(window.document.querySelectorAll("[data-slot=command-item]").length).toBe(
-      desktopCommandRegistry.length,
+    expect(window.document.querySelector('[data-command-palette="true"]')).not.toBeNull();
+    const paletteInput = window.document.querySelector('[data-slot="command-input"]') as unknown as HTMLInputElement | null;
+    expect(paletteInput?.placeholder).toBe(
+      "Search commands and sessions…",
+    );
+    const headings = [...window.document.querySelectorAll("[cmdk-group-heading]")].map(
+      (heading) => heading.textContent,
+    );
+    expect(headings).toEqual(["Actions", "Recent Sessions"]);
+    expect(window.document.querySelector('[data-slot="command-footer"]')?.textContent).toContain(
+      "NavigateEnterSelectEscClose",
     );
     const commandItems = [
       ...window.document.querySelectorAll("[data-slot=command-item]"),
     ] as unknown as Array<HTMLElement>;
     const newChat = commandItems.find((item) => item.textContent?.includes("New chat"));
+    expect(newChat?.querySelector("svg")).not.toBeNull();
+    expect(container.textContent).not.toContain("Add project");
+    expect(container.textContent).not.toContain("New thread in");
     await interact(() => newChat?.click());
     expect(received).toEqual(
       expect.arrayContaining([

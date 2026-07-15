@@ -160,6 +160,18 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(rule(".oa-react-conversation-header .oa-react-review-trigger")).toContain("width: 28px")
   })
 
+  test("command palette keeps the T3 search/results/footer structure", () => {
+    const source = readFileSync(path.resolve(rendererDir, "../components/ui/command.tsx"), "utf8")
+    expect(source).toContain('data-command-palette="true"')
+    expect(source).toContain("top-[10vh]")
+    expect(source).toContain("max-w-xl")
+    expect(source).toContain("h-11!")
+    expect(source).toContain("max-h-[min(28rem,70vh)]")
+    expect(source).toContain("min-h-9")
+    expect(source).toContain('data-slot="command-footer"')
+    expect(source).toContain("min-h-12")
+  })
+
   test("the stylesheet stays within the bounded token-bridge/host-physics payload budget", () => {
     // Bytes are formatting-invariant enough to prevent blank-line/minification
     // games while expressing the issue's approximate 300-line target. The old

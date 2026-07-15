@@ -3,9 +3,11 @@ import {
   Command,
   CommandDialog,
   CommandEmpty,
+  CommandFooter,
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandKey,
   CommandList,
   CommandShortcut,
 } from "#components/ui/command";
@@ -27,7 +29,28 @@ import {
   type JsonPayload,
 } from "@effect-native/core";
 import { Effect } from "@effect-native/core/effect";
-import { ArrowUp, Command as CommandIcon, ImagePlus, Square, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  CheckCircle2,
+  Command as CommandIcon,
+  FileDiff,
+  Files,
+  FolderOpen,
+  House,
+  ImagePlus,
+  ListPlus,
+  Maximize,
+  MessageCircle,
+  RefreshCw,
+  Send,
+  Settings,
+  Square,
+  SquarePen,
+  X,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -50,7 +73,7 @@ import {
   composerImageDataUrl,
   formatImageSize,
 } from "./composer-images.ts";
-import type { DesktopNoteEntry, DesktopShellState, QuestionCardInteraction } from "./shell.ts";
+import { formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 
 const composerIconNames = {
   commands: "Command",
@@ -97,6 +120,23 @@ const commandAvailable = (command: DesktopCommand, state: DesktopShellState): bo
   return true;
 };
 
+const commandIcon = (command: DesktopCommand): LucideIcon => {
+  if (command.id === "chat.new") return SquarePen;
+  if (command.id === "chat.send") return Send;
+  if (command.id === "chat.stop") return Square;
+  if (command.id === "chat.queue_next") return ListPlus;
+  if (command.id === "window.fullscreen_toggle") return Maximize;
+  if (command.id === "chat.open") return MessageCircle;
+  if (command.id === "workspace.files") return Files;
+  if (command.id === "workspace.home") return House;
+  if (command.id === "workspace.review") return FileDiff;
+  if (command.id === "workspace.choose") return FolderOpen;
+  if (command.id === "settings.open") return Settings;
+  if (command.id.includes("deny") || command.id.includes("request_changes")) return XCircle;
+  if (command.id.includes("approve") || command.id.includes("accept") || command.id.includes("submit")) return CheckCircle2;
+  return RefreshCw;
+};
+
 export const ReactCommandPalette = ({
   state,
   report,
@@ -108,13 +148,34 @@ export const ReactCommandPalette = ({
   const normalized = query.trim().toLocaleLowerCase();
   const commands = useMemo(
     () =>
-      desktopCommandRegistry.filter(
+      desktopCommandRegistry.filter((command) => commandAvailable(command, state)).filter(
         (command) =>
           normalized === "" ||
           `${command.label} ${command.id}`.toLocaleLowerCase().includes(normalized),
       ),
-    [normalized],
+    [normalized, state],
   );
+  const recentSessions = useMemo(() => {
+    const candidates = [
+      ...state.threads.map(thread => ({
+        id: thread.id,
+        title: thread.title || "Untitled session",
+        updatedAt: thread.updatedAt,
+        intent: "DesktopChatSelected",
+      })),
+      ...state.history.catalog.roots.filter(thread => thread.source === "codex").map(thread => ({
+        id: thread.threadRef,
+        title: thread.title || "Untitled session",
+        updatedAt: thread.updatedAt,
+        intent: "HistoryConversationSelected",
+      })),
+    ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    const seen = new Set<string>();
+    return candidates
+      .filter(session => seen.has(session.id) ? false : (seen.add(session.id), true))
+      .filter(session => normalized === "" || session.title.toLocaleLowerCase().includes(normalized))
+      .slice(0, 6);
+  }, [normalized, state.history.catalog.roots, state.threads]);
   useEffect(() => {
     if (!state.commandPaletteOpen) setQuery("");
   }, [state.commandPaletteOpen]);
@@ -124,43 +185,60 @@ export const ReactCommandPalette = ({
       onOpenChange={(open) => {
         if (!open) dispatch(report, "DesktopCommandPaletteDismissed");
       }}
-      title="Commands"
-      description="Search the canonical Desktop command registry"
+      title="Command palette"
+      description="Search OpenAgents actions and recent sessions"
     >
       <Command shouldFilter={false} label="Desktop commands">
         <CommandInput
           value={query}
           onValueChange={setQuery}
-          placeholder="Type a command…"
+          placeholder="Search commands and sessions…"
           autoFocus
         />
         <CommandList>
           <CommandEmpty>No matching commands.</CommandEmpty>
-          <CommandGroup heading="Commands">
+          <CommandGroup heading="Actions">
             {commands.map((command) => {
-              const available = commandAvailable(command, state);
+              const Icon = commandIcon(command);
               const chord = formatCommandChord(command.chords, state.host.includes("darwin"));
               return (
                 <CommandItem
                   key={command.id}
                   value={command.id}
-                  disabled={!available}
-                  aria-disabled={!available}
                   onSelect={() => {
-                    if (!available) return;
                     dispatch(report, command.intentName, command.payload);
                     dispatch(report, "DesktopCommandPaletteDismissed");
                   }}
                 >
+                  <Icon aria-hidden="true" />
                   <span>{command.label}</span>
                   {chord === null ? null : <CommandShortcut>{chord}</CommandShortcut>}
                 </CommandItem>
               );
             })}
           </CommandGroup>
+          {recentSessions.length === 0 ? null : <CommandGroup heading="Recent Sessions">
+            {recentSessions.map(session => <CommandItem
+              key={`session:${session.id}`}
+              value={`session:${session.id}:${session.title}`}
+              onSelect={() => {
+                dispatch(report, session.intent, session.id);
+                dispatch(report, "DesktopCommandPaletteDismissed");
+              }}
+            >
+              <MessageCircle aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">{session.title}</span>
+              <CommandShortcut>{formatRelativeTimestamp(session.updatedAt)}</CommandShortcut>
+            </CommandItem>)}
+          </CommandGroup>}
         </CommandList>
+        <CommandFooter>
+          <span className="inline-flex items-center gap-1.5"><CommandKey><ArrowUp /></CommandKey><CommandKey><ArrowDown /></CommandKey>Navigate</span>
+          <span className="inline-flex items-center gap-1.5"><CommandKey>Enter</CommandKey>Select</span>
+          <span className="inline-flex items-center gap-1.5"><CommandKey>Esc</CommandKey>Close</span>
+        </CommandFooter>
         <span className="oa-react-sr-only" role="status" aria-live="polite">
-          {commands.length} commands
+          {commands.length} actions and {recentSessions.length} recent sessions
         </span>
       </Command>
     </CommandDialog>

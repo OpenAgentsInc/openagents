@@ -507,3 +507,18 @@ primary destinations are compact 30px rows, recent-session titles are 12px in
 The former text-heavy `Review changes` outline control is now a quiet 28px
 ghost button with a diff icon, accessible label, title, and hover/focus
 tooltip. The existing typed refresh/open-review actions are unchanged.
+
+### T3-structured command palette
+
+The Cmd-K surface now follows the local T3 Code command-palette composition
+while retaining Khala colors, the owner-selected fonts, and OpenAgents icons.
+A dimmed blurred window backdrop contains a top-positioned `max-w-xl` panel:
+a 44px search-leading header, a bounded bordered results region with compact
+icon rows grouped under `Actions` and `Recent Sessions`, and a persistent
+Navigate / Enter / Esc keyboard footer. Actions come only from the existing
+typed Desktop command registry and are hidden when unavailable in the current
+state. Recent rows come only from the actual local/Codex session catalogs.
+No T3-only project, clone, submenu, provider, or thread action was introduced.
+Component tests prove the groups, icon action, footer, exact intent dispatch,
+and absence of copied T3-only labels; the design oracle pins the structural
+geometry.
