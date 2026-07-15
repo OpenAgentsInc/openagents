@@ -182,10 +182,12 @@ export const ReactComposer = ({
     lastSubmitRef.current = { value: state.input, at: now };
     dispatch(report, submitIntent, state.input);
   };
-  useEffect(() => {
-    const active = textareaRef.current?.ownerDocument.activeElement;
-    if (active === null || active === textareaRef.current?.ownerDocument.body)
-      textareaRef.current?.focus();
+  useLayoutEffect(() => {
+    // A session transition is an explicit keyboard-flow reset. Focus may
+    // still be owned by the New session button when this commit lands, so the
+    // guarded "unowned focus" rule used for background hydration is wrong
+    // here: the composer must synchronously take focus for immediate typing.
+    textareaRef.current?.focus();
   }, [sessionKey]);
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -202,7 +204,11 @@ export const ReactComposer = ({
     submit();
   };
   return (
-    <section className="oa-react-composer" aria-label="Message composer">
+    <section
+      className="oa-react-composer"
+      data-en-key="shell-input"
+      aria-label="Message composer"
+    >
       <Textarea
         ref={textareaRef}
         value={state.input}

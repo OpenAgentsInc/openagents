@@ -110,6 +110,7 @@ describe("React Codex composer", () => {
       <ReactComposer state={fixtureState({ input: "Ship it" })} report={report} />,
     );
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
+    expect(container.querySelector('[data-en-key="shell-input"] textarea')).toBe(textarea);
     Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 240 });
     await render(
       root,
@@ -129,6 +130,32 @@ describe("React Codex composer", () => {
     expect(received.filter((value) => value.name === "DesktopNoteSubmitted")).toEqual([
       { name: "DesktopNoteSubmitted", payload: "Ship it now" },
     ]);
+  });
+
+  test("focuses the composer after a new-session transition even when the trigger owns focus", async () => {
+    const { window, container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactComposer state={fixtureState()} report={report} />);
+    const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
+    const trigger = window.document.createElement("button");
+    window.document.body.appendChild(trigger);
+    trigger.focus();
+    expect(window.document.activeElement).toBe(trigger);
+
+    await render(
+      root,
+      <ReactComposer
+        state={fixtureState({ activeThreadId: null, threads: [], history: {
+          ...fixtureState().history,
+          page: null,
+        } })}
+        report={report}
+      />,
+    );
+
+    expect(window.document.activeElement).toBe(textarea);
   });
 
   test("does not submit during IME composition and preserves Shift+Enter", async () => {
