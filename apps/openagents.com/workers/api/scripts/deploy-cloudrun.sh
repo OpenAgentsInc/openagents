@@ -50,6 +50,12 @@ fi
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$(cd "$API_DIR/../.." && pwd)"   # apps/openagents.com
 REPO_ROOT="$(cd "$API_DIR/../../../.." && pwd)"
+VP_BIN="$REPO_ROOT/node_modules/.bin/vp"
+
+if [[ ! -x "$VP_BIN" ]]; then
+  echo "FATAL: repository-local Vite Plus binary is missing: $VP_BIN" >&2
+  exit 1
+fi
 
 node "$REPO_ROOT/scripts/google-cloud-authority-guard.mjs"
 
@@ -60,7 +66,7 @@ pnpm run build:start >/dev/null
 cd "$API_DIR"
 echo "==> Bundling Node server (Vite Plus pack)"
 rm -rf dist-cloudrun
-vp pack src/cloudrun/server.ts --out-dir dist-cloudrun --format esm \
+"$VP_BIN" pack src/cloudrun/server.ts --out-dir dist-cloudrun --format esm \
   --platform node --target node24 >/dev/null
 if [[ ! -f dist-cloudrun/server.mjs ]]; then
   echo "FATAL: Vite Plus Cloud Run bundles are incomplete" >&2
@@ -93,13 +99,13 @@ cp -R "$APP_DIR/apps/start/dist/server" dist-cloudrun/start-server
 # sarah-ui / sarah-agent / sarah-clips bundle steps are gone with apps/sarah.
 # #8652 PORTAL-1: /portal Effect Native bundle (authored in apps/start).
 mkdir -p dist-cloudrun/portal-ui
-(cd "$APP_DIR" && vp pack apps/start/src/portal-entry.ts --platform browser \
+(cd "$APP_DIR" && "$VP_BIN" pack apps/start/src/portal-entry.ts --platform browser \
   --format iife --target es2022 --minify \
   --out-dir "$API_DIR/dist-cloudrun/portal-ui") >/dev/null
 mv dist-cloudrun/portal-ui/portal-entry.iife.js dist-cloudrun/portal-ui/app.js
 # #8634/#8635 scope 5: /forum* Effect Native bundle (authored in apps/start).
 mkdir -p dist-cloudrun/forum-ui
-(cd "$APP_DIR" && vp pack apps/start/src/forum-entry.ts --platform browser \
+(cd "$APP_DIR" && "$VP_BIN" pack apps/start/src/forum-entry.ts --platform browser \
   --format iife --target es2022 --minify \
   --out-dir "$API_DIR/dist-cloudrun/forum-ui") >/dev/null
 mv dist-cloudrun/forum-ui/forum-entry.iife.js dist-cloudrun/forum-ui/app.js
