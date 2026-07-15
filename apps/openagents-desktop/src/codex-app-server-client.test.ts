@@ -14,6 +14,7 @@ import {
   type CodexAppServerSpawn,
 } from "./codex-app-server-client.ts"
 import { runCodexAppServerTurn, type CodexAppServerTurnControl } from "./codex-app-server-turn.ts"
+import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import {
   AssuranceSpecWorkSkillSha256,
   ProductSpecWorkSkillSha256,
@@ -163,6 +164,46 @@ describe("Codex app-server native integration", () => {
     client.close()
   })
 
+  test("fails closed on malformed JSON and retains bounded stderr evidence", async () => {
+    const fake = fakeServer()
+    const closed: string[] = []
+    const stderr: string[] = []
+    const client = openCodexAppServerClient({
+      binary: "/packaged/codex",
+      env: {},
+      cwd: "/workspace",
+      spawnImpl: fake.spawn,
+      onClose: error => closed.push(error.reason),
+      onStderr: chunk => stderr.push(chunk),
+    })
+    const pending = client.request("thread/read", { threadId: "thread-1" })
+    fake.child.stderr.write("bounded diagnostic")
+    fake.child.stdout.write("not-json\n")
+    await expect(pending).rejects.toMatchObject({ reason: "invalid_message" })
+    expect(stderr.join("")).toContain("bounded diagnostic")
+    expect(closed).toEqual(["invalid_message"])
+    expect(client.isClosed()).toBe(true)
+  })
+
+  test("supports request cancellation and bounded write overload", async () => {
+    const fake = fakeServer()
+    const client = openCodexAppServerClient({
+      binary: "/packaged/codex",
+      env: {},
+      cwd: "/workspace",
+      spawnImpl: fake.spawn,
+      maxQueuedWriteBytes: 64,
+    })
+    const abort = new AbortController()
+    const cancelled = client.request("thread/read", {}, { signal: abort.signal })
+    abort.abort()
+    await expect(cancelled).rejects.toMatchObject({ reason: "cancelled" })
+    await expect(client.request("thread/read", { value: "x".repeat(100) })).rejects.toMatchObject({
+      reason: "overloaded",
+    })
+    client.close()
+  })
+
   test("uses method-correct fail-closed server request responses", () => {
     expect(declineCodexServerRequest({ id: 1, method: "item/tool/requestUserInput", params: {} })).toEqual({ answers: {} })
     expect(declineCodexServerRequest({ id: 2, method: "mcpServer/elicitation/request", params: {} })).toEqual({
@@ -224,7 +265,7 @@ describe("Codex app-server native integration", () => {
       params: { threadId: "codex-thread-1", clientUserMessageId: "oa-turn-1" },
     })
     fake.respond(6, { turn: { id: "codex-turn-1", status: "inProgress" } })
-    await waitForMessages(fake.messages, 7)
+    await sleep(0)
     const steer = (control as CodexAppServerTurnControl).steer?.("Focus on CW-AC-12")
     await waitForMessages(fake.messages, 8)
     expect(fake.messages[7]).toMatchObject({
@@ -344,6 +385,51 @@ describe("Codex app-server native integration", () => {
     }))
   })
 
+  test("settles an active turn as reconnect-required when its supervised generation dies", async () => {
+    const fake = fakeServer()
+    const supervisor = createCodexAppServerSupervisor({ maxReconnectAttempts: 0 })
+    const turn = runCodexAppServerTurn({
+      binary: "/packaged/codex",
+      env: { CODEX_HOME: "/isolated/codex-home" },
+      workspace: "/workspace",
+      runtimeCwd: "/workspace",
+      hostTarget: "local-desktop",
+      supervisor,
+      threadRef: "oa-thread-crash",
+      turnRef: "oa-turn-crash",
+      accountRef: "codex-work",
+      prompt: "Keep working",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.6-sol",
+      reasoningEffort: "medium",
+      productSpecSkill: {
+        skillRoot: "/isolated/codex-home/skills",
+        skillPath: "/isolated/codex-home/skills/productspec-work/SKILL.md",
+      },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: () => undefined,
+      spawnImpl: fake.spawn,
+      requestTimeoutMs: 1_000,
+    })
+    await waitForMessages(fake.messages, 1)
+    fake.respond(1, {})
+    await waitForMessages(fake.messages, 3)
+    fake.respond(2, { thread: { id: "codex-thread-crash" } })
+    await waitForMessages(fake.messages, 4)
+    fake.respond(3, { turn: { id: "codex-turn-crash", status: "inProgress" } })
+    await sleep(0)
+    fake.child.emit("close", 17)
+
+    await expect(turn).resolves.toMatchObject({
+      outcome: "reconnect_required",
+      threadId: "codex-thread-crash",
+      preContent: true,
+    })
+    supervisor.close()
+  })
+
   test("projects current Codex agent states into one causal child lifecycle", async () => {
     const fake = fakeServer()
     const events: FableLocalEvent[] = []
@@ -370,10 +456,11 @@ describe("Codex app-server native integration", () => {
     })
     await waitForMessages(fake.messages, 1)
     fake.respond(1, {})
-    await waitForMessages(fake.messages, 2)
-    fake.respond(2, { thread: { id: "codex-thread-agent-state" } })
     await waitForMessages(fake.messages, 3)
+    fake.respond(2, { thread: { id: "codex-thread-agent-state" } })
+    await waitForMessages(fake.messages, 4)
     fake.respond(3, { turn: { id: "codex-turn-agent-state", status: "inProgress" } })
+    await sleep(0)
     fake.notify("item/started", {
       threadId: "codex-thread-agent-state",
       turnId: "codex-turn-agent-state",

@@ -1160,6 +1160,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   capability advertisement remains disabled until the matching generated
   manifest has complete handlers and projections. Generated drift fails CI
   until the manifest is reviewed; supported six-method behavior is unchanged.
+  Desktop owns one long-lived Codex app-server supervisor per reviewed binary
+  hash, effective `CODEX_HOME`/account, and host target. Turns and preflight
+  acquire leases from that process-owned supervisor; releasing the last turn
+  does not kill the connection. Every connection installs the complete
+  generated reverse-request registry before its single initialize handshake,
+  and thread/turn identities route interactive handlers without cross-thread
+  substitution. Replacement increments a generation before spawn, fences all
+  stale responses/notifications, resumes registered non-ephemeral visible
+  threads, and exposes degraded/repairing state. Transport loss never
+  automatically replays a mutating RPC. JSONL writes are byte-bounded and
+  cancellation, timeout, malformed input, stderr evidence, overload, and
+  shutdown all fail closed.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
   one immutable main-process `CodexRuntimeResolution` authority selects that

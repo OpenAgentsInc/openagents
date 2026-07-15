@@ -11,9 +11,10 @@ export type CodexAppServerRequest = Readonly<{
 
 export type CodexAppServerClient = Readonly<{
   initialize: () => Promise<void>
-  request: (method: string, params: unknown) => Promise<unknown>
-  notify: (method: string, params: unknown) => void
+  request: (method: string, params: unknown, options?: Readonly<{ signal?: AbortSignal }>) => Promise<unknown>
+  notify: (method: string, params: unknown) => Promise<void>
   onNotification: (listener: (message: CodexAppServerMessage) => void) => () => void
+  isClosed: () => boolean
   close: () => void
 }>
 
@@ -33,7 +34,7 @@ export class CodexAppServerError extends Error {
   readonly _tag = "CodexAppServerError"
   override readonly name = "CodexAppServerError"
   constructor(
-    readonly reason: "closed" | "invalid_message" | "request_failed" | "timeout",
+    readonly reason: "cancelled" | "closed" | "invalid_message" | "overloaded" | "request_failed" | "timeout",
     message: string,
   ) { super(message) }
 }
@@ -67,7 +68,10 @@ export const openCodexAppServerClient = (input: Readonly<{
   cwd: string
   spawnImpl?: CodexAppServerSpawn
   requestTimeoutMs?: number
+  maxQueuedWriteBytes?: number
   onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>
+  onClose?: (error: CodexAppServerError) => void
+  onStderr?: (chunk: string) => void
 }>): CodexAppServerClient => {
   const child = (input.spawnImpl ?? defaultSpawn)({ binary: input.binary, env: input.env, cwd: input.cwd })
   const pending = new Map<number, Readonly<{
@@ -77,13 +81,37 @@ export const openCodexAppServerClient = (input: Readonly<{
   }>>()
   const listeners = new Set<(message: CodexAppServerMessage) => void>()
   const timeoutMs = input.requestTimeoutMs ?? 30_000
+  const maxQueuedWriteBytes = input.maxQueuedWriteBytes ?? 4 * 1024 * 1024
   let sequence = 0
   let closed = false
+  let closeReported = false
   let initialized: Promise<void> | null = null
+  let queuedWriteBytes = 0
+  let writeChain = Promise.resolve()
 
-  const write = (message: unknown): void => {
-    if (closed || !child.stdin.writable) throw new CodexAppServerError("closed", "Codex app-server is closed")
-    child.stdin.write(`${JSON.stringify(message)}\n`)
+  const write = (message: unknown): Promise<void> => {
+    const line = `${JSON.stringify(message)}\n`
+    const bytes = Buffer.byteLength(line)
+    if (closed || !child.stdin.writable) return Promise.reject(new CodexAppServerError("closed", "Codex app-server is closed"))
+    if (bytes > maxQueuedWriteBytes || queuedWriteBytes + bytes > maxQueuedWriteBytes) {
+      return Promise.reject(new CodexAppServerError("overloaded", "Codex app-server write queue is full"))
+    }
+    queuedWriteBytes += bytes
+    const operation = writeChain.then(() => new Promise<void>((resolve, reject) => {
+      if (closed || !child.stdin.writable) {
+        reject(new CodexAppServerError("closed", "Codex app-server is closed"))
+        return
+      }
+      const onError = (): void => reject(new CodexAppServerError("closed", "Codex app-server write failed"))
+      child.stdin.once("error", onError)
+      const accepted = child.stdin.write(line, () => {
+        child.stdin.off("error", onError)
+        resolve()
+      })
+      if (!accepted) child.stdin.once("drain", () => undefined)
+    })).finally(() => { queuedWriteBytes -= bytes })
+    writeChain = operation.catch(() => undefined)
+    return operation
   }
   const rejectPending = (error: Error): void => {
     for (const operation of pending.values()) {
@@ -92,19 +120,37 @@ export const openCodexAppServerClient = (input: Readonly<{
     }
     pending.clear()
   }
-  const request = (method: string, params: unknown): Promise<unknown> => {
+  const request = (
+    method: string,
+    params: unknown,
+    options: Readonly<{ signal?: AbortSignal }> = {},
+  ): Promise<unknown> => {
     const id = ++sequence
     return new Promise((resolve, reject) => {
+      if (options.signal?.aborted === true) {
+        reject(new CodexAppServerError("cancelled", `${method} cancelled`))
+        return
+      }
       const timer = setTimeout(() => {
         pending.delete(id)
         reject(new CodexAppServerError("timeout", `${method} timed out`))
       }, timeoutMs)
-      pending.set(id, { resolve, reject, timer })
-      try { write({ method, id, params }) } catch (error) {
+      const abort = (): void => {
+        clearTimeout(timer)
+        pending.delete(id)
+        reject(new CodexAppServerError("cancelled", `${method} cancelled`))
+      }
+      options.signal?.addEventListener("abort", abort, { once: true })
+      pending.set(id, {
+        resolve: value => { options.signal?.removeEventListener("abort", abort); resolve(value) },
+        reject: error => { options.signal?.removeEventListener("abort", abort); reject(error) },
+        timer,
+      })
+      void write({ method, id, params }).catch(error => {
         clearTimeout(timer)
         pending.delete(id)
         reject(error)
-      }
+      })
     })
   }
   const lineReader = createInterface({ input: child.stdout })
@@ -115,7 +161,11 @@ export const openCodexAppServerClient = (input: Readonly<{
       if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object")
       message = parsed as CodexAppServerMessage
     } catch {
-      rejectPending(new CodexAppServerError("invalid_message", "Codex app-server emitted invalid JSONL"))
+      const error = new CodexAppServerError("invalid_message", "Codex app-server emitted invalid JSONL")
+      closed = true
+      rejectPending(error)
+      if (!closeReported) { closeReported = true; input.onClose?.(error) }
+      child.kill("SIGTERM")
       return
     }
     if (typeof message.id === "number" && ("result" in message || "error" in message)) {
@@ -139,21 +189,24 @@ export const openCodexAppServerClient = (input: Readonly<{
         .catch(error => write({
           id: serverRequest.id,
           error: { code: -32_000, message: error instanceof Error ? error.message : "request refused" },
-        }))
+        }).catch(() => undefined))
       return
     }
     if (typeof message.method === "string") {
-      for (const listener of listeners) listener(message)
+      for (const listener of listeners) {
+        try { listener(message) } catch { /* isolate observers from transport */ }
+      }
     }
   })
-  child.on("error", () => {
+  child.stderr.on("data", chunk => input.onStderr?.(String(chunk).slice(0, 4_096)))
+  const reportClosed = (message: string): void => {
     closed = true
-    rejectPending(new CodexAppServerError("closed", "Codex app-server failed to start"))
-  })
-  child.on("close", () => {
-    closed = true
-    rejectPending(new CodexAppServerError("closed", "Codex app-server exited"))
-  })
+    const error = new CodexAppServerError("closed", message)
+    rejectPending(error)
+    if (!closeReported) { closeReported = true; input.onClose?.(error) }
+  }
+  child.on("error", () => reportClosed("Codex app-server failed to start"))
+  child.on("close", () => reportClosed("Codex app-server exited"))
 
   return {
     initialize: () => {
@@ -161,21 +214,24 @@ export const openCodexAppServerClient = (input: Readonly<{
       initialized = request("initialize", {
         clientInfo: { name: "openagents_desktop", title: "OpenAgents Desktop", version: "0.1.0" },
         capabilities: { experimentalApi: false },
-      }).then(() => { write({ method: "initialized", params: {} }) })
+      }).then(() => write({ method: "initialized", params: {} }))
       return initialized
     },
     request,
-    notify: write,
+    notify: (method, params) => write({ method, params }),
     onNotification: listener => {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
+    isClosed: () => closed,
     close: () => {
       if (closed) return
       closed = true
       lineReader.close()
       child.kill("SIGTERM")
-      rejectPending(new CodexAppServerError("closed", "Codex app-server closed"))
+      const error = new CodexAppServerError("closed", "Codex app-server closed")
+      rejectPending(error)
+      if (!closeReported) { closeReported = true; input.onClose?.(error) }
     },
   }
 }

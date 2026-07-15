@@ -61,6 +61,29 @@ target/version/hash tuple has no matching manifest before returning it to a
 thread-start consumer. This is the protocol foundation only; handler and native
 projection fields intentionally remain pending for the sequenced CAP issues.
 
+### Implementation status: CAP-01
+
+CAP-01 replaces production's one-process-per-turn ownership with a host-owned
+`CodexAppServerSupervisor`. Its pool identity includes the reviewed executable
+hash, effective account/`CODEX_HOME`, and host target. Preflight and ordinary
+Desktop work share this supervisor; turn leases release their listeners and
+reverse routes while the initialized app-server remains alive between turns.
+
+Each connection generation installs all 11 bundled reverse-request methods
+before its one initialize handshake. Safe methods have typed deny fallbacks;
+methods without a valid deny-shaped result fail as JSON-RPC errors. Active
+thread/turn IDs route approvals and questions to the owning lease. Writes are
+byte-bounded and requests support cancellation, timeout, overload, malformed
+stream shutdown, and bounded stderr evidence.
+
+Unexpected transport close immediately publishes degraded/repairing state,
+increments the generation before replacement, rejects stale notifications,
+reinitializes, and resumes registered non-ephemeral visible threads. The
+failed RPC is never retained or replayed. A real bundled-0.144.1 smoke proves
+two simultaneous thread starts over one initialized generation; deterministic
+fault tests cover stale-generation fencing, bounded reconnect, resumption,
+reverse routing, and idempotent shutdown.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these

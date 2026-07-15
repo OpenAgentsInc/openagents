@@ -105,6 +105,7 @@ import {
   type CodexAppServerTurnControl,
 } from "./codex-app-server-turn.ts"
 import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-server-client.ts"
+import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
 
 export type CodexLocalTurnInput = Readonly<{
@@ -164,6 +165,7 @@ export type CodexLocalRuntimeOptions = Readonly<{
    */
   appServer?: Readonly<{
     binary: () => string | null
+    supervisor?: CodexAppServerSupervisor
     installProductSpecSkill: (account: CodexChildAccount) => Readonly<{
       skillRoot: string
       skillPath: string
@@ -567,10 +569,15 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         ? codexProviderEnvironment(env, { clearCodexHome: true })
         : pylonAccountEnvironment(codexProviderEnvironment(env), selection)
       const productSpecEnabled = options.appServer.productSpecEnabled?.() === true
+      const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime")
+      mkdirSync(runtimeCwd, { recursive: true })
       return runCodexAppServerTurn({
         binary,
         env: appServerEnv,
         workspace: input.workspace,
+        runtimeCwd,
+        hostTarget: "local-desktop",
+        ...(options.appServer.supervisor === undefined ? {} : { supervisor: options.appServer.supervisor }),
         threadRef: input.threadRef,
         turnRef: input.turnRef,
         accountRef: input.account.ref,

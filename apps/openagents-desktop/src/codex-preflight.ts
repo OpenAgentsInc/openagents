@@ -62,6 +62,7 @@ import {
 import { CODEX_LOCAL_MODEL } from "./codex-local-contract.ts"
 import { runCodexAppServerTurn } from "./codex-app-server-turn.ts"
 import type { CodexAppServerSpawn } from "./codex-app-server-client.ts"
+import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import {
   formatCodexConfigurationIssue,
   type CodexConfigurationHealth,
@@ -127,6 +128,7 @@ export type CodexPreflightOptions = Readonly<{
   /** Production path: probe through the same pinned app-server used for work. */
   appServer?: Readonly<{
     binary: () => string | null
+    supervisor?: CodexAppServerSupervisor
     installProductSpecSkill: (account: CodexChildAccount) => Readonly<{
       skillRoot: string
       skillPath: string
@@ -240,10 +242,15 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
               return current
             })()
           : pylonAccountEnvironment(env, selection)
+        const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime")
+        mkdirSync(runtimeCwd, { recursive: true })
         const outcome = await runCodexAppServerTurn({
           binary,
           env: appServerEnv,
           workspace,
+          runtimeCwd,
+          hostTarget: "local-desktop",
+          ...(options.appServer.supervisor === undefined ? {} : { supervisor: options.appServer.supervisor }),
           threadRef: `preflight.${account.ref}`,
           turnRef: `preflight.${account.ref}.${startedAt}`,
           accountRef: account.ref,

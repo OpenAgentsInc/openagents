@@ -205,6 +205,7 @@ import {
   publicCodexRuntimeProjection,
 } from "./provider-runtime-host.ts"
 import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture.ts"
+import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
   LiveAgentGraphSnapshotChannel,
@@ -1847,8 +1848,10 @@ const codexChildren = makeCodexChildRuntime({
       }
     : {}),
 })
+const codexAppServerSupervisor = createCodexAppServerSupervisor()
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
+  supervisor: codexAppServerSupervisor,
   installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
     if (account.source === "current_session") {
       const verified = verifyBuiltinProductSpecWorkSkill(builtinSkillsRoot)
@@ -5604,6 +5607,7 @@ app.on("before-quit", () => {
   providerAccounts.dispose()
   fableLocal.dispose()
   codexLocal.dispose()
+  codexAppServerSupervisor.close()
   usageLedger.dispose()
   desktopCorrelationJournal.dispose()
 })

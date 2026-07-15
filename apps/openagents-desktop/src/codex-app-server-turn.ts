@@ -1,12 +1,16 @@
 import type { CodexChildUsage } from "./codex-child-contract.ts"
 import {
-  openCodexAppServerClient,
   registerProductSpecSkill,
   type CodexAppServerClient,
   type CodexAppServerMessage,
   type CodexAppServerRequest,
   type CodexAppServerSpawn,
 } from "./codex-app-server-client.ts"
+import {
+  createCodexAppServerSupervisor,
+  type CodexAppServerLease,
+  type CodexAppServerSupervisor,
+} from "./codex-app-server-supervisor.ts"
 import type { FableLocalEvent } from "./fable-local-contract.ts"
 
 export type CodexAppServerTurnOutcome = Readonly<{
@@ -34,6 +38,9 @@ export type RunCodexAppServerTurnInput = Readonly<{
   binary: string
   env: NodeJS.ProcessEnv
   workspace: string
+  runtimeCwd?: string
+  hostTarget?: string
+  supervisor?: CodexAppServerSupervisor
   threadRef: string
   turnRef: string
   accountRef: string
@@ -166,6 +173,12 @@ export const runCodexAppServerTurn = async (
   const sandbox = input.sandbox ?? "danger-full-access"
   const approvalPolicy = input.approvalPolicy ?? "on-request"
   let client: CodexAppServerClient | null = null
+  let lease: CodexAppServerLease | null = null
+  const supervisor = input.supervisor ?? createCodexAppServerSupervisor()
+  const ownsSupervisor = input.supervisor === undefined
+  let releaseState: (() => void) | null = null
+  let releaseNotification: (() => void) | null = null
+  let releaseReverseHandler: (() => void) | null = null
   let threadId: string | null = input.resumeThreadId
   let turnId: string | null = null
   let text = ""
@@ -436,24 +449,55 @@ export const runCodexAppServerTurn = async (
   }
 
   try {
-    client = openCodexAppServerClient({
+    const target = {
       binary: input.binary,
       env: input.env,
-      cwd: input.workspace,
+      cwd: input.runtimeCwd ?? input.workspace,
+      accountRef: input.accountRef,
+      hostTarget: input.hostTarget ?? "local-desktop",
       ...(input.spawnImpl === undefined ? {} : { spawnImpl: input.spawnImpl }),
       ...(input.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: input.requestTimeoutMs }),
-      ...((input.onProductSpecToolCall === undefined && input.onServerRequest === undefined) ? {} : {
-        onServerRequest: async (request: CodexAppServerRequest) => {
-          if (request.method === "item/tool/call" && input.onProductSpecToolCall !== undefined) {
-            const result = await input.onProductSpecToolCall(request)
-            if (result !== null) return result
-          }
-          if (input.onServerRequest !== undefined) return input.onServerRequest(request)
-          throw new Error(`Unsupported Codex server request: ${request.method}`)
-        },
-      }),
+    }
+    lease = await supervisor.acquire(target)
+    const activeLease = lease
+    client = {
+      initialize: async () => undefined,
+      request: (method, params, options) => activeLease.request(method, params, options),
+      notify: (method, params) => activeLease.notify(method, params),
+      onNotification: listener => activeLease.subscribe(notification => listener(notification.message)),
+      isClosed: () => activeLease.state().status === "closed",
+      close: () => activeLease.release(),
+    }
+    releaseState = supervisor.subscribeState((identity, state) => {
+      if (identity.binary !== activeLease.identity.binary ||
+        identity.binarySha256 !== activeLease.identity.binarySha256 ||
+        identity.codexHome !== activeLease.identity.codexHome ||
+        identity.accountRef !== activeLease.identity.accountRef ||
+        identity.hostTarget !== activeLease.identity.hostTarget ||
+        state.status === "ready") return
+      if (state.status === "degraded" || state.status === "repairing") {
+        finish({
+          outcome: "reconnect_required",
+          text,
+          usage,
+          threadId,
+          detail: state.status === "degraded" ? state.reason : "Codex app-server connection is repairing",
+          preContent: text === "",
+          policyDenied: false,
+          quotaExhausted: false,
+          rateLimited: false,
+        })
+      }
     })
-    const release = client.onNotification(handleNotification)
+    releaseReverseHandler = lease.registerReverseHandler(async (request: CodexAppServerRequest) => {
+      if (request.method === "item/tool/call" && input.onProductSpecToolCall !== undefined) {
+        const result = await input.onProductSpecToolCall(request)
+        if (result !== null) return result
+      }
+      if (input.onServerRequest !== undefined) return input.onServerRequest(request)
+      throw new Error(`Unsupported Codex server request: ${request.method}`)
+    })
+    releaseNotification = client.onNotification(handleNotification)
     if (input.includeProductSpecSkill !== false) {
       await registerProductSpecSkill({
         client,
@@ -488,6 +532,7 @@ export const runCodexAppServerTurn = async (
     threadId = string(thread?.id)
     if (threadId === null) throw new Error("Codex app-server omitted thread identity")
     input.onProviderSession?.(threadId)
+    if (input.ephemeral !== true) lease.registerVisibleThread(threadId)
 
     const userInput: Array<Record<string, unknown>> = [
       { type: "text", text: input.prompt, text_elements: [] },
@@ -546,13 +591,16 @@ export const runCodexAppServerTurn = async (
       }, input.turnTimeoutMs)
     }
     const outcome = await completion
-    release()
     return outcome
   } catch (error) {
     return classifyFailure(error instanceof Error ? error.message : "Codex app-server failed", text, usage, threadId)
   } finally {
     input.control.interrupt = null
     input.control.steer = null
+    releaseNotification?.()
+    releaseReverseHandler?.()
+    releaseState?.()
     client?.close()
+    if (ownsSupervisor) supervisor.close()
   }
 }
