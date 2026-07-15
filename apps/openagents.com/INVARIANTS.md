@@ -21,15 +21,22 @@ This is the invariant ledger for `openagents`.
   implementations are superseded historical records. They do not authorize a
   current code path. New and changed code must follow this section.
 
-## 2026-07-14 retained web application cutover
+## 2026-07-15 Astro public-site candidate
 
-- `apps/start` is the only retained `openagents.com` document application.
-  `apps/web` and its Foldkit SPA fallback are deleted and must not be revived.
+- `apps/astro` is the owner-selected destination for the minimal public
+  OpenAgents Desktop MVP site. The candidate is reachable only at `/astro`
+  until a separate owner-directed root cutover replaces the holding page.
+- `apps/start` remains the current document host during that bounded migration.
+  New landing work must not expand it. The future root cutover retires its
+  non-infrastructure documents and ports only explicitly retained surfaces,
+  including product promises and required legal/auth entry points.
+- `apps/web` and its Foldkit SPA fallback are deleted and must not be revived.
 - The Cloud Run monolith gives first refusal to infrastructure health,
-  retired-path tombstones, Portal, the dedicated Effect Native Forum mount,
-  and the root holding-page interception. It then serves exact Start client
-  assets and delegates only Start-owned document routes to the built Start SSR
-  handler. API, auth, and unknown paths remain owned by the Cloud Run API.
+  retired-path tombstones, the isolated Astro candidate, Portal, the dedicated
+  Effect Native Forum mount, and the root holding-page interception. It then
+  serves exact Start client assets and delegates only Start-owned document
+  routes to the built Start SSR handler. API, auth, and unknown paths remain
+  owned by the Cloud Run API.
 - `/`, `/forum` and supported descendants, `/promises`, legal/auth documents,
   and companion agent files remain available. Legacy Sites, billing, credits,
   checkout, and other non-MVP Foldkit documents are not Start-owned.

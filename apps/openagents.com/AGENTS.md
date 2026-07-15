@@ -32,6 +32,21 @@ the Cloud Run monolith. Do not recreate an SPA fallback or a Foldkit route.
 React, TanStack Start, and DOM remain renderer/host machinery, not the product
 architecture.
 
+## 2026-07-15 Astro landing destination
+
+`apps/astro` is the owner-selected destination for the minimal public
+OpenAgents Desktop MVP site. Its candidate is mounted only at `/astro` until
+the owner explicitly replaces the root homepage. New landing-page work belongs
+there, not in `apps/start`. Keep the candidate static, minimal, Khala-themed,
+and centered on the accepted Desktop MVP; do not revive retired product areas.
+
+At the eventual root cutover, retire the remaining non-infrastructure Start
+documents rather than carrying them forward wholesale. Port only explicitly
+retained public material such as product promises, required legal/auth entry,
+and companion agent documents. Until that cutover is separately implemented,
+`apps/start` continues serving its current routes and `/` remains under the
+holding-page interception.
+
 <!-- effect-solutions:start -->
 
 ## Effect Best Practices
@@ -213,15 +228,19 @@ For DOM operations (focus, scroll, modals, scroll lock), Foldkit ships a `Dom` m
 
 This directory is part of the pnpm workspace and uses the Vite Plus toolchain:
 
-- `apps/web/` is the Foldkit/Vite browser app.
+- `apps/astro/` is the static public-site destination, isolated at `/astro`
+  until root cutover.
+- `apps/start/` is the current retained document host during the bounded Astro
+  migration.
+- `apps/web/` source is deleted; ignored build remnants are not an application.
 - `workers/api/` is the retained directory name for the Node API deployed to
   Google Cloud Run. It has no Cloudflare runtime or deploy authority.
 - `packages/sync-schema/` holds Effect Schema protocol models shared by browser and API code.
 - `packages/sync-client/` holds browser-side sync helpers.
 - `packages/sync-worker/` is a retained package name for server-side sync helpers.
 
-Keep server runtime code out of `apps/web/`. Keep browser/Foldkit code out
-of `workers/api/`. Shared code belongs in `packages/*` and must stay Effect
+Keep server runtime code out of browser apps. Keep browser code out of
+`workers/api/`. Shared code belongs in `packages/*` and must stay Effect
 Schema-first at every external boundary.
 
 A Foldkit app lives in two files. `src/main.ts` holds the pure definitions (Model, Messages, init, update, view). `src/entry.ts` imports them and boots the runtime with `Runtime.makeProgram` and `Runtime.run`. `index.html` references `entry.ts`. The split keeps `main.ts` importable from tests without booting a runtime as a side effect. Never call `Runtime.run` from `main.ts`.

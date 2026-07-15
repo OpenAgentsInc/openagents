@@ -1,4 +1,5 @@
-import { Runtime } from "@openagentsinc/runtime-platform"
+import { Runtime } from '@openagentsinc/runtime-platform'
+
 /**
  * CFG-9 (#8524): the openagents.com monolith on Google Cloud Run.
  *
@@ -18,21 +19,24 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 
 import worker from '../index'
 import { assertAssetsDirExists } from './assets'
-import { holdingPageInterception } from './holding-page'
+import { assertAstroUiArtifactsExist, handleAstroUiRequest } from './astro-ui'
 import {
   isBindingUnavailableError,
   responseForBindingUnavailable,
 } from './binding-unavailable'
 import { buildCloudRunRuntime } from './env'
-import {
-  makeBackgroundTasks,
-  makeExecutionContext,
-} from './execution-context'
+import { makeBackgroundTasks, makeExecutionContext } from './execution-context'
+// #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
+import { handleForumUiRequest } from './forum-ui'
+import { holdingPageInterception } from './holding-page'
 import {
   cronAuthorized,
   withForwardedHost,
   withForwardedProto,
 } from './http-utils'
+// #8652 PORTAL-1: client portal mounts at openagents.com/portal (EN surface).
+import { handlePortalUiRequest } from './portal-ui'
+import { assertStartUiArtifactsExist, handleStartUiRequest } from './start-ui'
 import {
   type SyncBridgeData,
   isSyncConnectUpgrade,
@@ -40,26 +44,27 @@ import {
   makeSyncBridgeWebSocketHandlers,
   withoutUpgradeHeaders,
 } from './sync-connect-bridge'
-// #8652 PORTAL-1: client portal mounts at openagents.com/portal (EN surface).
-import { handlePortalUiRequest } from './portal-ui'
-// #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
-import { handleForumUiRequest } from './forum-ui'
-import { assertStartUiArtifactsExist, handleStartUiRequest } from './start-ui'
 
 const log = (event: string, detail: Record<string, unknown> = {}): void => {
   console.log(
-    JSON.stringify({ event: `cloudrun.${event}`, ...detail, at: new Date().toISOString() }),
+    JSON.stringify({
+      event: `cloudrun.${event}`,
+      ...detail,
+      at: new Date().toISOString(),
+    }),
   )
 }
-
 
 const main = async (): Promise<void> => {
   const runtime = buildCloudRunRuntime(process.env)
   assertAssetsDirExists(runtime.webDistDir)
+  assertAstroUiArtifactsExist()
   assertStartUiArtifactsExist()
 
   const tasks = makeBackgroundTasks((event, error) => {
-    log(event, { error: error instanceof Error ? error.message : String(error) })
+    log(event, {
+      error: error instanceof Error ? error.message : String(error),
+    })
   })
   const ctx = makeExecutionContext(tasks)
   const cronToken = process.env['CLOUD_RUN_CRON_TOKEN']
@@ -112,13 +117,22 @@ const main = async (): Promise<void> => {
       // Sarah removed at owner direction 2026-07-10 (epic #8610; supersedes
       // the #8594 SM-5 path mount): the web surface AND every /sarah/api/*
       // route are gone (apps/sarah deleted). Explicit 404 tombstone so the
-        // application's unknown-document 302-to-home never resurrects a /sarah
+      // application's unknown-document 302-to-home never resurrects a /sarah
       // page and stale clients get a typed not_found instead of HTML.
       if (url.pathname === '/sarah' || url.pathname.startsWith('/sarah/')) {
         return Response.json(
           { error: 'not_found', path: url.pathname },
           { status: 404 },
         )
+      }
+
+      // The Astro landing candidate is intentionally isolated at /astro until
+      // the owner replaces the root holding page and retires the old documents.
+      if (url.pathname === '/astro' || url.pathname.startsWith('/astro/')) {
+        const astroResponse = await handleAstroUiRequest(request)
+        if (astroResponse !== undefined) {
+          return astroResponse
+        }
       }
 
       // #8652 PORTAL-1: client portal page + bundle at openagents.com/portal.
@@ -223,7 +237,10 @@ const main = async (): Promise<void> => {
           return responseForBindingUnavailable(error)
         }
         log('fetch_unhandled_error', {
-          error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+          error:
+            error instanceof Error
+              ? (error.stack ?? error.message)
+              : String(error),
           path: url.pathname,
         })
         return Response.json(

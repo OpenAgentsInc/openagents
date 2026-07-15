@@ -8,10 +8,11 @@ set -euo pipefail
 #   scripts/deploy-cloudrun.sh production   # openagents-monolith
 #
 # Build happens here on the deploy machine (aiur/oa-updates pattern):
-#   1. pnpm run build:start (TanStack Start client + server artifacts)
-#   2. vp pack src/cloudrun/server.ts → dist-cloudrun/
-#   3. use the committed target-specific Cloud Run env YAML
-#   4. gcloud run deploy --source . (Dockerfile in this directory)
+#   1. pnpm run build:astro (static landing candidate)
+#   2. pnpm run build:start (TanStack Start client + server artifacts)
+#   3. vp pack src/cloudrun/server.ts → dist-cloudrun/
+#   4. use the committed target-specific Cloud Run env YAML
+#   5. gcloud run deploy --source . (Dockerfile in this directory)
 #
 # Secrets ride --set-secrets from GCP Secret Manager (created out of band —
 # never from tracked files; see the CFG-9 secret map on issue #8524):
@@ -60,6 +61,8 @@ fi
 node "$REPO_ROOT/scripts/google-cloud-authority-guard.mjs"
 
 cd "$APP_DIR"
+echo "==> Building Astro landing candidate (apps/astro/dist)"
+pnpm run build:astro >/dev/null
 echo "==> Building retained Start application (apps/start/dist)"
 pnpm run build:start >/dev/null
 
@@ -100,6 +103,7 @@ rsync -a "$START_RUNTIME_DEPLOY_DIR/node_modules/" dist-cloudrun/node_modules/
 node scripts/cloudrun/assert-self-contained-bundle.mjs dist-cloudrun
 cp -R "$APP_DIR/apps/start/dist/client" dist-cloudrun/start-client
 cp -R "$APP_DIR/apps/start/dist/server" dist-cloudrun/start-server
+cp -R "$APP_DIR/apps/astro/dist" dist-cloudrun/astro-ui
 # Sarah removed at owner direction 2026-07-10 (epic #8610): the former
 # sarah-ui / sarah-agent / sarah-clips bundle steps are gone with apps/sarah.
 # #8652 PORTAL-1: /portal Effect Native bundle (authored in apps/start).
