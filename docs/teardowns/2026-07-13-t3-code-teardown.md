@@ -252,6 +252,73 @@ implement a full command/event/projection pipeline [schema] [source]:
   becoming fully quiescent") so tests and orchestration code wait on receipts
   instead of polling internal state. [docs] [source]
 
+### 4.1 The composer is a single-turn submitter, not a steer/queue composer
+
+T3's queue vocabulary needs a precise boundary. The server has queues, but the
+chat composer does not expose the interaction model now common in agent hosts:
+one control for **steering** an active turn and another for **queueing** a
+follow-up turn. The pinned commit has no `turn/steer` or equivalent command, no
+queued-message entity/projection, no FIFO follow-up list, and no queue-count
+indicator in the web composer. [source] [schema] [inferred]
+
+The web path is structurally simple:
+
+```text
+Lexical composer + local draft/context state
+          |
+          | onSend: snapshot text, images, terminal/file/review/preview context
+          v
+thread.turn.start (one client orchestration command)
+          |
+          +--> thread.message-sent (durable user message)
+          +--> thread.turn-start-requested (durable intent)
+                         |
+                         v
+              ProviderCommandReactor -> provider.sendTurn()
+```
+
+`ChatView.onSend` refuses while local dispatch is busy or the environment is
+connecting/unavailable, snapshots the Lexical prompt and attachments/contexts,
+adds an optimistic user row, clears the draft, and submits exactly one
+`thread.turn.start` command. The command schema contains the message,
+model/runtime/interaction-mode settings, and optional bootstrap worktree data;
+it contains no delivery mode, expected active turn, or queue position. The
+decider then emits `thread.message-sent` and `thread.turn-start-requested`, and
+the provider reactor calls the adapter's `sendTurn` in a forked effect. [source]
+[schema]
+
+While the provider is running, the primary control is interrupt. `onInterrupt`
+submits `thread.turn.interrupt`; the decider emits
+`thread.turn-interrupt-requested`, and the reactor calls provider
+`interruptTurn({ threadId })`. T3 therefore models correction as cancellation
+followed by a later new turn, not as same-turn user input. [source] [schema]
+
+This is materially different from Codex app-server's explicit
+`turn/steer` operation, which accepts additional user input only for the
+currently active regular turn and requires an `expectedTurnId`; Codex also
+keeps `turn/interrupt` separate. [public] The absence in T3 is not an
+accidental UI omission: its shared orchestration union and provider adapter
+contract have only `thread.turn.start`/`sendTurn` and
+`thread.turn.interrupt`/`interruptTurn` at this boundary. [schema] [source]
+
+The queues that do exist are infrastructural and should not be presented as
+composer behavior:
+
+- `serverRuntimeStartup` queues commands until readiness and then drains them;
+- `DrainableWorker` and `KeyedCoalescingWorker` serialize or coalesce internal
+  work such as terminal persistence;
+- WebSocket subscriptions bridge replay/catch-up to live streams through an
+  in-memory queue; and
+- the client runtime queues outbound RPC work while disconnected, but this is
+  transport recovery, not a visible list of pending user prompts. [source]
+
+The practical product consequence is a clean but limited state machine:
+`draft -> submitted -> running -> interrupted/completed/failed`. There is no
+`queued` composer state to recover, reorder, cancel independently, or render
+after reconnect. T3's durable event/projection core is therefore a good base
+for adding these semantics, but the addition needs new typed commands/events
+and projections rather than a renderer-only pending array. [inferred]
+
 Token accounting is a first-class typed snapshot
 (`ThreadTokenUsageSnapshot`: used/max/input/cached-input/output/reasoning
 tokens, tool uses, duration) delivered through `thread.token-usage.updated`
@@ -265,7 +332,7 @@ RPC; NDJSON provider event logs exist for diagnostics. [source]
 
 Read against the teardown set: this is OpenCode V2's central lesson
 (durable facts, projections, one owner, receipts as signals) independently
-reinvented — but **without** V2's durable-admission inbox, steer/queue
+reinvented — but **without** V2's durable-admission inbox, composer steer/queue
 delivery semantics, or replay-to-live synchronization marker, and with
 volatile ordered pushes as the only live stream. Reconnect repair leans on
 the replay RPC plus projections. [inferred]
@@ -1659,6 +1726,7 @@ All paths relative to the pinned clone at `projects/repos/t3code`.
 | Release engineering | `.github/workflows/{ci,release,pr-vouch}.yml`; `docs/operations/release.md`; `scripts/` |
 
 Public sources: [T3 Code repository](https://github.com/pingdotgg/t3code),
+[Codex app-server protocol](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md),
 [t3.codes](https://t3.codes/), [T3 Code docs](https://pingdotgg-t3code.mintlify.app/),
 [Better Stack guide](https://betterstack.com/community/guides/ai/t3-code/),
 launch/community coverage (BestofAI, daily.dev, FOSSHUNTER, addROM) fetched
