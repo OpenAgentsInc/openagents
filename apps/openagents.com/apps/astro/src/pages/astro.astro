@@ -26,6 +26,71 @@ const workroomSteps = [
     body: 'Interrupted work reconciles explicitly. Nothing silently reruns or substitutes another session.',
   },
 ] as const
+
+const capabilityItems = [
+  {
+    title: 'Stable thread identity',
+    body: 'Sessions remain the same sessions across navigation, reloads, and desktop restarts.',
+  },
+  {
+    title: 'Live turn state',
+    body: 'Streaming, waiting, blocked, complete, and interrupted states stay visible while work happens.',
+  },
+  {
+    title: 'Tool evidence',
+    body: 'Commands, file reads, approvals, and results appear where they belong in the conversation.',
+  },
+  {
+    title: 'Plans and steering',
+    body: 'See the current plan, redirect the active turn, and understand what the agent will do next.',
+  },
+  {
+    title: 'Bounded change review',
+    body: 'Inspect repository status and exact diffs without turning the review surface into a second editor.',
+  },
+  {
+    title: 'Explicit recovery',
+    body: 'Interrupted work reconciles into an honest state instead of silently replaying side effects.',
+  },
+  {
+    title: 'Workspace context',
+    body: 'The active repository, branch, and working directory remain attached to the work they explain.',
+  },
+  {
+    title: 'Local-first operation',
+    body: 'Your ordinary Codex login stays authoritative. OpenAgents does not require another account.',
+  },
+] as const
+
+const operatingFacts = [
+  { value: 'Local', label: 'Codex remains the runtime authority' },
+  { value: 'Live', label: 'Turn state stays visible as it changes' },
+  { value: 'Read-only', label: 'Repository review never mutates the tree' },
+  { value: 'Explicit', label: 'Recovery never guesses or silently reruns' },
+] as const
+
+const questions = [
+  {
+    question: 'Does OpenAgents replace Codex?',
+    answer: 'No. Codex remains the engine and source of truth. OpenAgents Desktop adds a durable workroom around the session you already use.',
+  },
+  {
+    question: 'Do I need an OpenAgents account?',
+    answer: 'Not for the Desktop MVP. It uses your ordinary logged-in Codex session and keeps the core workroom local-first.',
+  },
+  {
+    question: 'Can the review UI change my files?',
+    answer: 'No. Repository status and diff views are deliberately read-only. Changes still happen through the active agent turn, where the cause and result remain visible.',
+  },
+  {
+    question: 'What happens after a restart or interrupted turn?',
+    answer: 'OpenAgents restores stable session identity, then reconciles the latest known turn state. It does not silently replay tools or pretend interrupted work completed.',
+  },
+  {
+    question: 'What is available today?',
+    answer: `The current ${MAC_RELEASE.version} release candidate is available for Apple silicon Macs. The product is still an MVP, so the download and docs describe the supported boundary precisely.`,
+  },
+] as const
 ---
 
 <Layout>
@@ -152,6 +217,25 @@ const workroomSteps = [
     </div>
   </section>
 
+  <section class="capabilities-section" aria-labelledby="capabilities-title">
+    <div class="container">
+      <div class="centered-heading">
+        <p>Built for the whole agent loop</p>
+        <h2 id="capabilities-title">Everything around the turn.<br />Nothing between you and Codex.</h2>
+      </div>
+
+      <div class="capability-grid">
+        {capabilityItems.map((item, index) => (
+          <article class="capability-item">
+            <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+            <h3>{item.title}</h3>
+            <p>{item.body}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
   <section class="system-section" aria-labelledby="system-title">
     <div class="container system-layout">
       <div class="system-intro">
@@ -177,11 +261,41 @@ const workroomSteps = [
     </div>
   </section>
 
+  <section class="facts-section" aria-label="Operating principles">
+    <div class="container facts-grid">
+      {operatingFacts.map((fact) => (
+        <div class="fact">
+          <strong>{fact.value}</strong>
+          <p>{fact.label}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+
   <section class="boundary-section" aria-label="Product boundaries">
     <div class="container boundary-strip">
       {PRODUCT_BOUNDARIES.map((boundary) => (
         <p><span aria-hidden="true">✓</span>{boundary}</p>
       ))}
+    </div>
+  </section>
+
+  <section class="faq-section" aria-labelledby="faq-title">
+    <div class="container faq-layout">
+      <div class="faq-intro">
+        <p>Questions and answers</p>
+        <h2 id="faq-title">The important boundaries, plainly.</h2>
+        <a href={DOCS_URL}>Read the full documentation <span aria-hidden="true">→</span></a>
+      </div>
+
+      <div class="question-list">
+        {questions.map((item, index) => (
+          <details open={index === 0}>
+            <summary>{item.question}<span aria-hidden="true">＋</span></summary>
+            <p>{item.answer}</p>
+          </details>
+        ))}
+      </div>
     </div>
   </section>
 
@@ -191,9 +305,12 @@ const workroomSteps = [
         <p>Open source. Local first. Evidence backed.</p>
         <h2>The work should survive the window.</h2>
       </div>
-      <a class="source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">
-        Explore the source <span aria-hidden="true">↗</span>
-      </a>
+      <div class="closing-actions">
+        <a class="button button-primary" href={INSTALL_URL}>Download for Mac</a>
+        <a class="source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">
+          Explore the source <span aria-hidden="true">↗</span>
+        </a>
+      </div>
     </div>
   </section>
 </Layout>
@@ -653,6 +770,67 @@ const workroomSteps = [
     border-bottom: 1px solid var(--border-subtle);
   }
 
+  .capabilities-section {
+    padding-block: clamp(6rem, 12vw, 10rem);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .centered-heading {
+    max-width: 54rem;
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .centered-heading > p,
+  .faq-intro > p {
+    margin-bottom: 1rem;
+    color: var(--energy-cyan);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+  }
+
+  .centered-heading h2,
+  .faq-intro h2 {
+    font-size: clamp(2rem, 4vw, 3.8rem);
+    font-weight: 540;
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+  }
+
+  .capability-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin-top: clamp(3rem, 7vw, 5.5rem);
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border-subtle);
+  }
+
+  .capability-item {
+    min-height: 15rem;
+    padding: 1.4rem;
+    border-right: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .capability-item > span {
+    color: var(--energy-cyan);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+  }
+
+  .capability-item h3 {
+    margin-top: 3.5rem;
+    font-size: 0.96rem;
+    font-weight: 580;
+  }
+
+  .capability-item p {
+    margin-top: 0.65rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    line-height: 1.7;
+  }
+
   .system-layout {
     display: grid;
     grid-template-columns: minmax(0, 0.9fr) minmax(26rem, 1fr);
@@ -698,6 +876,41 @@ const workroomSteps = [
     background: var(--surface-muted);
   }
 
+  .facts-section {
+    background: var(--surface-muted);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .facts-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-left: 1px solid var(--border-subtle);
+  }
+
+  .fact {
+    min-height: 11rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 1.5rem;
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .fact strong {
+    color: var(--energy-soft);
+    font-size: clamp(1.6rem, 3vw, 2.6rem);
+    font-weight: 520;
+    letter-spacing: -0.035em;
+  }
+
+  .fact p {
+    max-width: 13rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    line-height: 1.6;
+  }
+
   .boundary-strip {
     min-height: 6.5rem;
     display: grid;
@@ -726,6 +939,78 @@ const workroomSteps = [
 
   .closing-section {
     padding-block: clamp(6rem, 12vw, 10rem);
+  }
+
+  .faq-section {
+    padding-block: clamp(6rem, 12vw, 10rem);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .faq-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.72fr) minmax(30rem, 1fr);
+    gap: clamp(4rem, 10vw, 9rem);
+  }
+
+  .faq-intro a {
+    display: inline-flex;
+    gap: 0.5rem;
+    margin-top: 2rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--energy);
+    color: var(--energy-soft);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+  }
+
+  .question-list {
+    border-top: 1px solid var(--border);
+  }
+
+  .question-list details {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .question-list summary {
+    min-height: 4.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 0.94rem;
+    font-weight: 560;
+    list-style: none;
+  }
+
+  .question-list summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .question-list summary span {
+    color: var(--energy-cyan);
+    font-family: var(--font-mono);
+    font-weight: 400;
+    transition: transform 180ms ease-out;
+  }
+
+  .question-list details[open] summary span {
+    transform: rotate(45deg);
+  }
+
+  .question-list details > p {
+    max-width: 41rem;
+    padding: 0 3rem 1.5rem 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.75;
+  }
+
+  .closing-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
   }
 
   .closing-layout {
@@ -769,6 +1054,15 @@ const workroomSteps = [
     .system-layout {
       grid-template-columns: 1fr;
     }
+
+    .capability-grid,
+    .facts-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .faq-layout {
+      grid-template-columns: 1fr;
+    }
   }
 
   @media (max-width: 700px) {
@@ -778,6 +1072,29 @@ const workroomSteps = [
 
     .section-heading,
     .closing-layout {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .capability-grid,
+    .facts-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .capability-item {
+      min-height: auto;
+    }
+
+    .capability-item h3 {
+      margin-top: 2rem;
+    }
+
+    .fact {
+      min-height: 8.5rem;
+    }
+
+    .closing-actions {
+      width: 100%;
       align-items: flex-start;
       flex-direction: column;
     }

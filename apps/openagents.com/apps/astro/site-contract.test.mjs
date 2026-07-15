@@ -22,6 +22,18 @@ test('human landing navigation uses docs rather than product promises', () => {
   assert.match(page, /href=\{INSTALL_URL\}>\s*Download for Mac/)
 })
 
+test('the Astro landing carries the full Desktop MVP content cadence without a client runtime', () => {
+  const page = readSource('pages', 'astro.astro')
+
+  assert.match(page, /Everything around the turn/)
+  assert.match(page, /Stable thread identity/)
+  assert.match(page, /Repository review never mutates the tree/)
+  assert.match(page, /The important boundaries, plainly/)
+  assert.match(page, /<details open=\{index === 0\}>/)
+  assert.doesNotMatch(page, /client:(?:load|idle|visible|media|only)/)
+  assert.doesNotMatch(page, /Launch UI/)
+})
+
 test('the public root preserves the current holding page', () => {
   const page = readSource('pages', 'index.astro')
 
