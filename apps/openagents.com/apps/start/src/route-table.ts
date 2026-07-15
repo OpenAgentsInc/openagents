@@ -27,6 +27,7 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/onboarding$/,
   /^\/portal\/?$/,
   /^\/preview\/(?:landing|sales-landing)$/,
+  /^\/tanstack$/,
   /^\/(?:privacy|promises|pylons|run|stage1|stats|tassadar|terms)$/,
   /^\/share\/[^/]+$/,
   /^\/training\/runs(?:\/[^/]+)?\/?$/,

@@ -29,6 +29,10 @@ This is the invariant ledger for `openagents`.
   The exact `/install` route is also Astro-owned and serves the owner-approved
   public Mac download page for the latest published release candidate; this
   narrow mount does not cut over `/` or revive other retired documents.
+  `/tanstack` is a bounded, public TanStack Start comparison of the exact
+  `/astro` landing snapshot. It exists only for same-origin framework
+  performance measurement, owns no product or release authority, and may be
+  removed after the comparison is complete.
 - `apps/start` remains the current document host during that bounded migration.
   New landing work must not expand it. The future root cutover retires its
   non-infrastructure documents and ports only explicitly retained surfaces,

@@ -1,0 +1,4 @@
+[data-tanstack-landing-comparison] {
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+}

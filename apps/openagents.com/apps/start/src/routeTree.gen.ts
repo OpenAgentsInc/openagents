@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TassadarRouteImport } from './routes/tassadar'
+import { Route as TanstackRouteImport } from './routes/tanstack'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as Stage1RouteImport } from './routes/stage1'
 import { Route as RunRouteImport } from './routes/run'
@@ -65,6 +66,11 @@ const TermsRoute = TermsRouteImport.update({
 const TassadarRoute = TassadarRouteImport.update({
   id: '/tassadar',
   path: '/tassadar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TanstackRoute = TanstackRouteImport.update({
+  id: '/tanstack',
+  path: '/tanstack',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StatsRoute = StatsRouteImport.update({
@@ -314,6 +320,7 @@ export interface FileRoutesByFullPath {
   '/run': typeof RunRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
+  '/tanstack': typeof TanstackRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
@@ -363,6 +370,7 @@ export interface FileRoutesByTo {
   '/run': typeof RunRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
+  '/tanstack': typeof TanstackRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
@@ -413,6 +421,7 @@ export interface FileRoutesById {
   '/run': typeof RunRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
+  '/tanstack': typeof TanstackRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
@@ -464,6 +473,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/stage1'
     | '/stats'
+    | '/tanstack'
     | '/tassadar'
     | '/terms'
     | '/agents/$agentRef'
@@ -513,6 +523,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/stage1'
     | '/stats'
+    | '/tanstack'
     | '/tassadar'
     | '/terms'
     | '/agents/$agentRef'
@@ -562,6 +573,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/stage1'
     | '/stats'
+    | '/tanstack'
     | '/tassadar'
     | '/terms'
     | '/agents/$agentRef'
@@ -612,6 +624,7 @@ export interface RootRouteChildren {
   RunRoute: typeof RunRoute
   Stage1Route: typeof Stage1Route
   StatsRoute: typeof StatsRoute
+  TanstackRoute: typeof TanstackRoute
   TassadarRoute: typeof TassadarRoute
   TermsRoute: typeof TermsRoute
   AgentsAgentRefRoute: typeof AgentsAgentRefRoute
@@ -657,6 +670,13 @@ declare module '@tanstack/react-router' {
       path: '/tassadar'
       fullPath: '/tassadar'
       preLoaderRoute: typeof TassadarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tanstack': {
+      id: '/tanstack'
+      path: '/tanstack'
+      fullPath: '/tanstack'
+      preLoaderRoute: typeof TanstackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/stats': {
@@ -996,6 +1016,7 @@ const rootRouteChildren: RootRouteChildren = {
   RunRoute: RunRoute,
   Stage1Route: Stage1Route,
   StatsRoute: StatsRoute,
+  TanstackRoute: TanstackRoute,
   TassadarRoute: TassadarRoute,
   TermsRoute: TermsRoute,
   AgentsAgentRefRoute: AgentsAgentRefRoute,

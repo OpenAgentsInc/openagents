@@ -32,7 +32,7 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
     '/forum/receipts/receipt-1',
     '/privacy',
     '/terms',
-    '/docs/product-promises',
+    '/tanstack',
     '/agents/artanis',
     '/training/runs/run-1',
   ])('retained Start document %s is admitted by the Worker', pathname => {
