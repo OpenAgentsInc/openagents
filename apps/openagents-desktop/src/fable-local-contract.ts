@@ -493,6 +493,12 @@ export const FableLocalStartRequestSchema = Schema.Struct({
   reasoningEffort: Schema.optional(CodexReasoningEffortSchema),
   /** Exact owner-selected model. The runtime refuses provider substitution. */
   model: Schema.optional(LocalModelSchema),
+  /** Reconciled Codex ecosystem identities. Main admits them before turn/start. */
+  extensions: Schema.optional(Schema.Struct({
+    skillIds: Schema.optional(Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))).check(Schema.isMaxLength(32))),
+    appIds: Schema.optional(Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))).check(Schema.isMaxLength(32))),
+    pluginIds: Schema.optional(Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))).check(Schema.isMaxLength(32))),
+  })),
 })
 export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
 

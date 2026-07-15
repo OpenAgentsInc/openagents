@@ -262,6 +262,37 @@ decorative motion. This follows T3's useful generated-effect architecture,
 while explicitly rejecting its second-`turn/start` queue behavior and local
 store authority.
 
+### Implementation status: CAP-08
+
+CAP-08 adds one main-owned `CodexEcosystem` per exact supervisor pool identity.
+Its explicit disposition table is generated from every bundled skills, hooks,
+marketplace, plugin, app, and MCP request/notification identity; the pooled
+client's strict generated decoders remain the wire authority. Initialization
+reconciles skills plus extra roots, hook definitions, marketplace/plugin state,
+apps/connectors, and full MCP status without restarting app-server.
+`skills/changed`, hook started/completed, app-list updates, MCP startup changes,
+and OAuth completion update or invalidate that same snapshot.
+
+Extension mutations consume one-shot, revision-bound WorkContext authority.
+Absolute marketplace, plugin-share, install, and extra-root paths must remain
+inside the admitted root. Plugin install/uninstall/checkout reconciles plugin,
+app, and MCP catalogs in dependency order before returning, so a plugin-created
+connector or server cannot appear as a phantom half-install. Plugin read,
+installed, skill-read, and all share operations are preserved as main-private
+native results while the public catalog strips source paths, local icons,
+resource URIs, tool schemas, marketplace paths, and private error text.
+
+Connector OAuth is keyed by server plus thread and only the matching completion
+settles it. MCP resources cross the renderer boundary as hashed refs; main maps
+them back to private URIs. MCP tool calls require a reconciled server/tool pair.
+Reverse `mcpServer/elicitation/request` receives a stable causal ref, and
+dynamic tools require both a declared namespace/name and an exact namespace
+grant. Turn extension selection fails before `turn/start` unless every chosen
+skill, app, and plugin is reconciled and authorized. The exact packaged-binary
+smoke added a temporary skill root, observed live invalidation/reload, started
+an ephemeral read-only thread, and called a declared read-only MCP tool through
+app-server against the ordinary local installation.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these

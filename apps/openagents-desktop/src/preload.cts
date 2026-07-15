@@ -189,6 +189,11 @@ import {
   CodexLocalSteerTurnChannel,
 } from "./codex-local-contract.ts"
 import {
+  CodexEcosystemMutationChannel,
+  CodexEcosystemSnapshotChannel,
+  decodeCodexEcosystemMutationRequest,
+} from "./codex-ecosystem-contract.ts"
+import {
   CodexHandoffOpenChannel,
   decodeCodexHandoffOpenRequest,
   decodeCodexHandoffOpenResult,
@@ -765,6 +770,13 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(CodexLocalEventChannel, handler)
       return () => ipcRenderer.removeListener(CodexLocalEventChannel, handler)
+    },
+  },
+  codexEcosystem: {
+    snapshot: () => ipcRenderer.invoke(CodexEcosystemSnapshotChannel),
+    mutate: (value: unknown) => {
+      const request = decodeCodexEcosystemMutationRequest(value)
+      return request === null ? Promise.resolve({ ok: false, reason: "invalid_request" }) : ipcRenderer.invoke(CodexEcosystemMutationChannel, request)
     },
   },
   codexHandoff: {

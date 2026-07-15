@@ -1215,6 +1215,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   clears only after typed acceptance. Main-owned queue rows expose lifecycle,
   order, and revision-safe edit/cancel only before promotion transfers dispatch
   ownership; Stop is always a distinct intent.
+  Codex extension state is owned by one main-process ecosystem service per
+  exact app-server pool. Every generated skills/hooks/marketplace/plugin/app/MCP
+  identity has an explicit product disposition; catalog notifications reconcile
+  without restart. Mutations consume revision-bound WorkContext authority and
+  absolute extension roots must remain inside that grant. Plugin lifecycle
+  reconciles plugin, app, and MCP catalogs before acceptance. Renderer
+  projections omit private paths, resource URIs, tool schemas, connector/MCP
+  secrets, and raw provider errors. OAuth and elicitations retain exact causal
+  thread/server identity; dynamic tools require declared namespace grants; a
+  turn cannot select an unreconciled or unauthorized extension.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
   one immutable main-process `CodexRuntimeResolution` authority selects that

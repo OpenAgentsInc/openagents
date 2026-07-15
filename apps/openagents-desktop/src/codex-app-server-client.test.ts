@@ -288,6 +288,7 @@ describe("Codex app-server native integration", () => {
   test("runs a native app-server thread and streams its exact terminal outcome", async () => {
     const fake = fakeServer()
     const events: unknown[] = []
+    const admittedExtensions: unknown[] = []
     const control = { interrupted: false, interrupt: null, steer: null }
     const turn = runCodexAppServerTurn({
       binary: "/packaged/codex",
@@ -298,6 +299,8 @@ describe("Codex app-server native integration", () => {
       accountRef: "codex-work",
       prompt: "Implement criterion CW-AC-04",
       imagePaths: [],
+      extensionSelection: { skillIds: ["skill-1"], appIds: ["app-1"], pluginIds: ["plugin-1"] },
+      admitExtensions: selection => { admittedExtensions.push(selection) },
       resumeThreadId: null,
       model: "gpt-5.6-sol",
       reasoningEffort: "medium",
@@ -328,6 +331,7 @@ describe("Codex app-server native integration", () => {
       enabled: true,
     }] }] })
     await waitForMessages(fake.messages, 6)
+    expect(admittedExtensions).toEqual([{ skillIds: ["skill-1"], appIds: ["app-1"], pluginIds: ["plugin-1"] }])
     expect(fake.messages[5]).toMatchObject({ method: "thread/start", params: { ephemeral: false, dynamicTools: ProductSpecDynamicTools } })
     fake.respond(5, { thread: { id: "codex-thread-1" }, model: "gpt-5.6-sol" })
     await waitForMessages(fake.messages, 7)

@@ -221,6 +221,10 @@ type DesktopBridge = Readonly<{
     queueEdit?: (value: unknown) => Promise<unknown>
     queueCancel?: (value: unknown) => Promise<unknown>
   }>
+  codexEcosystem?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    mutate?: (value: unknown) => Promise<unknown>
+  }>
   codexHandoff?: Readonly<{
     open?: (value: unknown) => Promise<unknown>
   }>

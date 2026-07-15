@@ -108,6 +108,7 @@ import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-ser
 import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import type { CodexControlPlaneRegistry } from "./codex-control-plane.ts"
 import type { CodexDurableQueue } from "./codex-durable-queue.ts"
+import type { CodexEcosystem, CodexEcosystemRegistry } from "./codex-ecosystem.ts"
 import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
 
 export type CodexLocalTurnInput = Readonly<{
@@ -120,6 +121,7 @@ export type CodexLocalTurnInput = Readonly<{
   accountRef?: string
   model?: CodexModel
   reasoningEffort?: CodexReasoningEffort
+  extensionSelection?: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>
   /**
    * Optional image attachments (capability I1). `codex exec` accepts images
    * via `-i, --image <FILE>...` (local file paths), so the runtime writes each
@@ -173,6 +175,7 @@ export type CodexLocalRuntimeOptions = Readonly<{
     supervisor?: CodexAppServerSupervisor
     /** Main-owned app-server truth and managed-policy gate for this exact account target. */
     controlPlanes?: CodexControlPlaneRegistry
+    ecosystems?: CodexEcosystemRegistry
     turnReceiptPath?: (account: CodexChildAccount, threadRef: string) => string
     installProductSpecSkill: (account: CodexChildAccount) => Readonly<{
       skillRoot: string
@@ -404,13 +407,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     reasoningEffort?: CodexReasoningEffort
     model: CodexModel
     clientUserMessageId?: string
+    extensionSelection?: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>
     onProviderTurn?: (turnId: string) => void
     emit: (event: FableLocalEvent) => void
     control: {
       interrupted: boolean
       child: ChildLike | null
       interrupt: (() => void) | null
-      steer: ((message: string) => Promise<boolean>) | null
+      steer: ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null
     }
   }>): Promise<ParsedTurnAttempt> => {
     if (options.appServer !== undefined) {
@@ -612,6 +616,18 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           }
         }
       }
+      let ecosystem: CodexEcosystem | null = null
+      if (options.appServer.ecosystems !== undefined && options.appServer.supervisor !== undefined) {
+        ecosystem = await options.appServer.ecosystems.forTarget({
+          binary,
+          env: appServerEnv,
+          cwd: runtimeCwd,
+          ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+          ...(timeoutMs === undefined ? {} : { requestTimeoutMs: timeoutMs }),
+          accountRef: input.account.ref,
+          hostTarget: "local-desktop",
+        })
+      }
       return runCodexAppServerTurn({
         binary,
         env: appServerEnv,
@@ -623,6 +639,13 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         turnRef: input.turnRef,
         accountRef: input.account.ref,
         prompt: input.prompt,
+        ...(input.extensionSelection === undefined ? {} : {
+          extensionSelection: input.extensionSelection,
+          admitExtensions: (selection: NonNullable<typeof input.extensionSelection>) => {
+            if (ecosystem === null) throw new Error("Codex ecosystem authority is unavailable")
+            ecosystem.admitTurnExtensions(selection)
+          },
+        }),
         imagePaths: input.imagePaths,
         resumeThreadId: input.resumeThreadId,
         model: input.model,
@@ -1105,6 +1128,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           reasoningEffort: input.reasoningEffort,
           model: requestedModel,
           ...(input.clientUserMessageId === undefined ? {} : { clientUserMessageId: input.clientUserMessageId }),
+          ...(input.extensionSelection === undefined ? {} : { extensionSelection: input.extensionSelection }),
           onProviderTurn: id => {
             providerTurnId = id
             activeThreadTurn.providerTurnId = id

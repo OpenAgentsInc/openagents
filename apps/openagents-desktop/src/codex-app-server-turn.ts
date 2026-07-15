@@ -54,6 +54,9 @@ export type RunCodexAppServerTurnInput = Readonly<{
   reasoningEffort: string
   /** Generated protocol extensions: apps/plugins/mentions/remote images/extra skills. */
   additionalInput?: ReadonlyArray<Readonly<Record<string, unknown>>>
+  /** Reconciled extension identities; admission is main-owned and must fail before turn/start. */
+  extensionSelection?: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>
+  admitExtensions?: (selection: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>) => void | Promise<void>
   /** Full current thread/start option surface; canonical identity/cwd fields below win. */
   threadStartOptions?: Readonly<Record<string, unknown>>
   /** Full current turn/start controls (schema, tier, personality, collaboration, roots, context, metadata). */
@@ -493,6 +496,10 @@ export const runCodexAppServerTurn = async (
       onNotification: listener => activeLease.subscribe(notification => listener(notification.message)),
       isClosed: () => activeLease.state().status === "closed",
       close: () => activeLease.release(),
+    }
+    if (input.extensionSelection !== undefined) {
+      if (input.admitExtensions === undefined) throw new Error("Codex extension authority is unavailable")
+      await input.admitExtensions(input.extensionSelection)
     }
     releaseState = supervisor.subscribeState((identity, state) => {
       if (identity.binary !== activeLease.identity.binary ||

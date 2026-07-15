@@ -21,6 +21,7 @@
     "release-acceptance": "node --import tsx scripts/run-release-acceptance.ts",
     "smoke:artifact:codex-runtime": "node --import tsx scripts/codex-runtime-artifact-smoke.ts",
     "smoke:codex-supervisor": "node --import tsx scripts/codex-app-server-supervisor-smoke.ts",
+    "smoke:codex-ecosystem": "node --import tsx scripts/codex-ecosystem-smoke.ts",
     "smoke:codex-control-plane": "node --import tsx scripts/codex-control-plane-smoke.ts",
     "smoke:codex-thread-lifecycle": "node --import tsx scripts/codex-thread-lifecycle-smoke.ts",
     "smoke:codex-turn-control": "node --import tsx scripts/codex-turn-control-smoke.ts",

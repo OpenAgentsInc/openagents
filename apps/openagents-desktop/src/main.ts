@@ -212,6 +212,12 @@ import {
 import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture.ts"
 import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import { makeCodexControlPlaneRegistry } from "./codex-control-plane.ts"
+import { makeCodexEcosystemRegistry } from "./codex-ecosystem.ts"
+import {
+  CodexEcosystemMutationChannel,
+  CodexEcosystemSnapshotChannel,
+  decodeCodexEcosystemMutationRequest,
+} from "./codex-ecosystem-contract.ts"
 import { makeCodexThreadLifecycleRegistry, type CodexThreadLifecycle } from "./codex-thread-lifecycle.ts"
 import { openCodexDurableQueue } from "./codex-durable-queue.ts"
 import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
@@ -1888,6 +1894,21 @@ const codexThreadLifecycles = makeCodexThreadLifecycleRegistry({
   supervisor: codexAppServerSupervisor,
   receiptRoot: path.join(app.getPath("userData"), "codex-thread-lifecycle"),
 })
+const codexEcosystems = makeCodexEcosystemRegistry({
+  supervisor: codexAppServerSupervisor,
+  roots: () => {
+    const authority = currentProductSpecWorkroom()
+    return authority === null ? [] : [authority.workspaceRoot]
+  },
+  authorizeWorkContext: workContextRef => currentProductSpecWorkroom()?.workContextRef === workContextRef,
+  authorizeRoot: (root, workContextRef) => {
+    const authority = currentProductSpecWorkroom()
+    if (authority === null || authority.workContextRef !== workContextRef) return false
+    const relative = path.relative(path.resolve(authority.workspaceRoot), path.resolve(root))
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+  },
+  authorizeNamespace: namespace => namespace === "productspec",
+})
 codexLifecycleAuthority = async () => {
   const binary = codexRuntimeAuthority.executable()
   if (binary === null) throw new Error("Codex runtime is unavailable")
@@ -1901,10 +1922,18 @@ codexLifecycleAuthority = async () => {
     hostTarget: "local-desktop",
   })
 }
+const currentCodexEcosystem = async () => {
+  const binary = codexRuntimeAuthority.executable()
+  if (binary === null) throw new Error("Codex runtime is unavailable")
+  const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
+  mkdirSync(runtimeCwd, { recursive: true })
+  return codexEcosystems.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" })
+}
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
   supervisor: codexAppServerSupervisor,
   ...(!smokeMode ? { controlPlanes: codexControlPlanes } : {}),
+  ...(!smokeMode ? { ecosystems: codexEcosystems } : {}),
   turnReceiptPath: (account: import("./codex-child-runtime.ts").CodexChildAccount, threadRef: string) =>
     path.join(app.getPath("userData"), "codex-turn-admission", `${createHash("sha256").update(`${account.ref}\0${threadRef}`).digest("hex")}.json`),
   installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
@@ -2548,6 +2577,7 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     ...(request.clientUserMessageId === undefined ? {} : { clientUserMessageId: request.clientUserMessageId }),
     ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
     ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+    ...(request.extensions === undefined ? {} : { extensionSelection: request.extensions }),
     model: requestedModel,
     ...(selectedSkill === null ? {} : { skillName: selectedSkill.name }),
     ...(request.permissionMode === "plan_only" ? { planMode: true } : {}),
@@ -2763,6 +2793,37 @@ ipcMain.handle(CodexLocalQueueCancelChannel, (_event, value: unknown) => {
   if (request === null) return { ok: false, reason: "invalid" }
   try { return { ok: true, entry: codexDurableQueue.cancel(request.queueRef, request.expectedRevision) } }
   catch (error) { return { ok: false, reason: error instanceof Error ? error.message : "Queue cancellation failed" } }
+})
+ipcMain.handle(CodexEcosystemSnapshotChannel, async event => {
+  if (!isTrustedRuntimeGatewaySender(event)) return null
+  try { return (await currentCodexEcosystem()).snapshot() } catch { return null }
+})
+ipcMain.handle(CodexEcosystemMutationChannel, async (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { ok: false, reason: "untrusted_sender" }
+  const request = decodeCodexEcosystemMutationRequest(value)
+  const workroom = currentProductSpecWorkroom()
+  if (request === null || workroom === null) return { ok: false, reason: "work_context_required" }
+  try {
+    const ecosystem = await currentCodexEcosystem()
+    const authority = ecosystem.authorize(request.operation, workroom.workContextRef, ecosystem.snapshot().revision)
+    switch (request.operation) {
+      case "skill_config": await ecosystem.configureSkill({ id: request.id, enabled: request.enabled }, authority); break
+      case "marketplace_add": await ecosystem.addMarketplace({ source: request.source, ...(request.refName === undefined ? {} : { refName: request.refName }) }, authority); break
+      case "marketplace_remove": await ecosystem.removeMarketplace(request.name, authority); break
+      case "marketplace_upgrade": await ecosystem.upgradeMarketplace(request.name, authority); break
+      case "plugin_install": await ecosystem.installPlugin({ pluginName: request.pluginName, ...(request.remoteMarketplaceName === undefined ? {} : { remoteMarketplaceName: request.remoteMarketplaceName }) }, authority); break
+      case "plugin_uninstall": await ecosystem.uninstallPlugin(request.id, authority); break
+      case "mcp_reload": await ecosystem.reloadMcp(authority); break
+      case "mcp_oauth": {
+        const response = await ecosystem.startMcpOauth(request.name, request.threadId, authority)
+        const row = typeof response === "object" && response !== null ? response as Record<string, unknown> : {}
+        const url = typeof row.authorizationUrl === "string" ? row.authorizationUrl : typeof row.url === "string" ? row.url : null
+        if (url !== null && /^https:\/\//u.test(url)) await shell.openExternal(url)
+        break
+      }
+    }
+    return { ok: true, snapshot: ecosystem.snapshot() }
+  } catch (error) { return { ok: false, reason: typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string" ? error.reason : "ecosystem_request_failed" } }
 })
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
@@ -5701,6 +5762,7 @@ app.on("before-quit", () => {
   codexLocal.dispose()
   codexControlPlanes.close()
   codexThreadLifecycles.close()
+  codexEcosystems.close()
   codexDurableQueue.close()
   codexAppServerSupervisor.close()
   usageLedger.dispose()
