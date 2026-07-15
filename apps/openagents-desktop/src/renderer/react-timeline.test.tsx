@@ -171,6 +171,17 @@ describe("React typed timeline projection", () => {
     expect(container.innerHTML).not.toContain("<script")
     root.unmount()
   })
+
+  test("message rows never render the removed top metadata bar", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline sessionKey="thread-1" records={[record("answer", 0)]}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    expect(container.querySelector(".oa-react-message-meta")).toBeNull()
+    expect(container.querySelector('[data-timeline-key="answer"]')?.textContent).toContain("answer")
+    root.unmount()
+  })
 })
 
 describe("React timeline scroll contract", () => {

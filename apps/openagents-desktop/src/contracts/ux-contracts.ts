@@ -482,6 +482,45 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "pnpm --dir apps/openagents-desktop run verify runs the details-affordance-stable-on-composer-input Electron smoke step; pnpm exec vp test at apps/openagents.com/packages/effect-native-render-dom runs the commit-idempotency guard.",
       },
       {
+        contractId: "openagents_desktop.chat.reading_flow_layout_stability.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript reading stability",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-15" },
+        statement:
+          "hovering over a message shows its metadata along the top row but this changes the positioning of the message because the height of the metadata bar was never included before ... i dont want that top metadata bar at all ... content the user should be able to read easily jumps around because of hidden elements",
+        authorityBoundary:
+          "The React transcript never renders the removed top metadata row. Message metadata remains available through the existing stable details inspector and accessible item label. More generally, hover and focus selectors within readable transcript rows are paint-only: they may alter opacity, color, visibility, or an out-of-flow overlay, but may not change box dimensions, margin, padding, border width, type metrics, display, grid, or flex geometry. A hidden in-flow element may never become layout-bearing on hover/focus, so pointer movement cannot move prose, change the reader's scroll anchor, or shift neighboring messages.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "apps/openagents-desktop/src/renderer/react-workbench.css",
+          "apps/openagents-desktop/src/react-conversation-assurance.test.ts",
+          "apps/openagents-desktop/src/renderer/react-timeline.test.tsx",
+        ],
+        oracles: [
+          {
+            id: "reading_flow.no_top_metadata_bar",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-timeline.test.tsx",
+            description:
+              "Renders a real React message row and proves the removed metadata-bar node is absent while authored prose remains readable.",
+          },
+          {
+            id: "reading_flow.hover_geometry_static_guard",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/react-conversation-assurance.test.ts",
+            description:
+              "Scans every transcript hover/focus CSS rule for layout-bearing declarations, rejects the former height:auto plus margin defect, includes a known-bad falsifier, and proves paint-only opacity/color reveals remain eligible.",
+          },
+        ],
+        verification:
+          "Focused React timeline and conversation assurance suites enforce the absent metadata node and the generalized no-hover-geometry rule; the normal Desktop verify sweep retains both tests.",
+      },
+      {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
         state: "enforced",
         surface: "openagents-desktop",

@@ -242,7 +242,6 @@ export const TimelineItem = ({ record, report }: {
     role="listitem"
     aria-label={`${record.label}. Item ${record.sequence + 1}`}
   >
-    <div className="oa-react-message-meta"><strong>{record.label}</strong><span>{record.timestamp}</span></div>
     <SafeReactMarkdown value={record.body} />
     {record.kind === "local_message" || record.kind === "question" ? null
       : <Button className="oa-react-item-details" type="button" variant="ghost" size="xs"

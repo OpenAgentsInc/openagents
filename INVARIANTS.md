@@ -1041,6 +1041,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   unique keyed inspector marker after generic scroll restoration. This is a
   one-shot reveal per changed selection: it never moves the transcript scroll
   owner and never continuously re-pins against later manual reader scrolling.
+- Readable Desktop transcript content never changes layout geometry because of
+  hover or focus. Hidden/revealed message affordances may change paint-only
+  properties such as opacity or color on already allocated boxes, or use an
+  out-of-flow overlay; they may not change height, width, margin, padding,
+  border width, type metrics, grid/flex geometry, or display. The removed
+  message-top metadata bar must not return; message metadata remains available
+  through the stable details inspector without moving message prose.
 - Desktop New Chat is never a silent no-op. The dock action, command palette,
   and platform Command-N chord dispatch one typed `DesktopNewChat` intent. A
   new thread is created first through the app-owned durable local store and

@@ -10,6 +10,13 @@ const shell = read("apps/openagents-desktop/src/renderer/react-primitive-adapter
 const releaseAcceptance = read("apps/openagents-desktop/scripts/run-release-acceptance.ts")
 const gates = read("docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md")
 
+const transcriptHoverGeometryViolations = (css: string): ReadonlyArray<string> => {
+  const geometry = /(?:^|;)\s*(?:display|height|min-height|max-height|width|min-width|max-width|margin(?:-[a-z]+)?|padding(?:-[a-z]+)?|border(?:-[a-z]+)?-width|font-size|line-height|gap|grid-template(?:-[a-z]+)?|flex-basis)\s*:/imu
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/gu)]
+    .filter(match => /\.oa-react-timeline-item(?::hover|:focus-within)/u.test(match[1] ?? "") && geometry.test(match[2] ?? ""))
+    .map(match => (match[1] ?? "").trim())
+}
+
 describe("revision 3 conversation-first assurance gates", () => {
   test("suppresses accounting and scaffolding from the primary history projection", () => {
     expect(timeline).toContain('["session", "context", "metadata", "usage"]')
@@ -22,8 +29,18 @@ describe("revision 3 conversation-first assurance gates", () => {
     expect(timeline).toContain('<details className="oa-react-work-entry"')
     expect(timeline).toContain('"Worked"')
     expect(timeline).toContain('aria-label="Codex is working"')
-    expect(styles).toContain('.oa-react-message-meta')
-    expect(styles).toContain('opacity: 0')
+    expect(timeline).not.toContain('oa-react-message-meta')
+    expect(styles).not.toContain('.oa-react-message-meta')
+    expect(transcriptHoverGeometryViolations(styles)).toEqual([])
+  })
+
+  test("falsifier: hover-revealed transcript content may not change readable layout geometry", () => {
+    expect(transcriptHoverGeometryViolations(`
+      .oa-react-timeline-item:hover .hidden-meta { opacity: 1; height: auto; margin-bottom: 4px; }
+    `)).toEqual([".oa-react-timeline-item:hover .hidden-meta"])
+    expect(transcriptHoverGeometryViolations(`
+      .oa-react-timeline-item:hover .stable-control { opacity: 1; color: white; }
+    `)).toEqual([])
   })
 
   test("binds active streaming state and the actual rail scroll viewport", () => {
