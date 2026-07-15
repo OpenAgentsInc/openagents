@@ -143,6 +143,11 @@ describe("React workbench shell", () => {
     const searchTrigger = container.querySelector<HTMLButtonElement>('[aria-label="Search sessions"]')
     expect(searchTrigger?.querySelector('[data-icon-name="Search"]')).not.toBeNull()
     await interact(() => searchTrigger?.click())
+    const searchState = fixtureState()
+    await render(root, <WorkbenchShell state={{
+      ...searchState,
+      presentation: { ...searchState.presentation, sessionSearchOpen: true },
+    }} report={report} />)
     const sessionRows = [...container.querySelectorAll<HTMLButtonElement>('[data-session-row]')]
     expect(sessionRows.length).toBeGreaterThan(0)
     for (const row of sessionRows) {
@@ -163,6 +168,7 @@ describe("React workbench shell", () => {
       ;(container.querySelector('[data-session-row][data-selected="true"]') as HTMLButtonElement).click()
     })
     expect(received).toEqual(expect.arrayContaining([
+      { name: "DesktopSessionSearchDisclosureChanged", payload: true },
       { name: "DesktopNewChat", payload: null },
       { name: "HistorySearchChanged", payload: "earlier" },
       { name: "DesktopChatSelected", payload: "local-1" },
@@ -235,7 +241,7 @@ describe("React workbench shell", () => {
   })
 
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {
-    const { window, container } = installDom()
+    const { container } = installDom()
     const report: IntentReporter = () => Effect.void
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={fixtureState()} report={report} />)
@@ -263,6 +269,44 @@ describe("React workbench shell", () => {
     expect(container.querySelector('[aria-current="page"]')?.textContent).toContain("Chat")
     expect(container.querySelector(".oa-react-section-label")?.textContent).toBe("Recent")
     expect(container.textContent).not.toContain("Search sessionsSearch Codex sessions")
+  })
+
+  test("renders the exact shared destination order, real workspace roots, and recoverable collapse", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const root = createTestRoot(container)
+    const chat = fixtureState()
+    await render(root, <WorkbenchShell state={chat} report={report} />)
+    const destinations = () => [...container.querySelectorAll<HTMLButtonElement>("[data-sidebar-destination-id]")]
+    expect(destinations().map(row => row.dataset.sidebarDestinationId)).toEqual([
+      "workspace-new-chat",
+      "workspace-chat",
+      "workspace-home",
+      "shell-settings-toggle",
+    ])
+    expect(destinations().map(row => row.querySelector("[data-icon-name]")?.getAttribute("data-icon-name"))).toEqual([
+      "ChatCompose", "Chats", "Home", "Settings",
+    ])
+    await interact(() => destinations()[2]?.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopWorkspaceSelected", payload: "home" })
+    await render(root, <WorkbenchShell state={{ ...chat, workspace: "home" }} report={report} />)
+    expect(container.querySelector('[data-react-workspace="home"] h1')?.textContent).toBe("Coding sessions")
+    expect(container.querySelector('[data-sidebar-destination-id="workspace-home"]')?.getAttribute("aria-current")).toBe("page")
+    await interact(() => destinations()[3]?.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopSettingsToggled", payload: null })
+    await render(root, <WorkbenchShell state={{ ...chat, workspace: "settings" }} report={report} />)
+    expect(container.querySelector('[data-react-workspace="settings"] h1')?.textContent).toBe("Settings")
+
+    await interact(() => container.querySelector<HTMLButtonElement>(".oa-react-rail-collapse")?.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopSidebarCollapsedChanged", payload: true })
+    await render(root, <WorkbenchShell state={{
+      ...chat,
+      presentation: { sidebarCollapsed: true, sessionSearchOpen: false },
+    }} report={report} />)
+    expect(container.querySelector(".oa-react-workbench")?.getAttribute("data-rail-collapsed")).toBe("true")
+    expect(container.querySelector<HTMLButtonElement>(".oa-react-sidebar-expand")).not.toBeNull()
+    expect(container.querySelector('input[type="search"]')).toBeNull()
   })
 
   test("projects authoritative back/forward availability and dispatches one typed intent per click", async () => {

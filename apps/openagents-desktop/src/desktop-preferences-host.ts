@@ -92,6 +92,7 @@ export const openDesktopPreferencesStore = (filePath: string): DesktopPreference
         privacy: { ...current.privacy, ...(patch.privacy ?? {}) },
         notifications: { ...current.notifications, ...(patch.notifications ?? {}) },
         updates: { ...current.updates, ...(patch.updates ?? {}) },
+        presentation: { ...current.presentation, ...(patch.presentation ?? {}) },
       }
       const normalized = migrateDesktopPreferences(merged).preferences
       writeDocument(normalized)

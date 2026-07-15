@@ -55,6 +55,7 @@ import { khalaTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
 import { desktopCanonicalCommandRegistry } from "../desktop-command-contract.ts"
+import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 
 const { makeIntentRegistry } = await import("@effect-native/core")
 
@@ -84,6 +85,18 @@ test("delegated-card selection resolves the same child transcript used by the ag
     "agent.local.turn-1.child.child-1",
   )).toEqual(transcript)
   expect(delegateTranscriptForAgent(notes, "agent.local.turn-1")).toBeNull()
+})
+
+test("sidebar presentation changes remain Effect-owned and search disclosure is ephemeral state", async () => {
+  const state = await Effect.runPromise(SubscriptionRef.make(initialDesktopShellState("test")))
+  const handlers = makeDesktopShellHandlers(state)
+  const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, handlers))
+  await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopSidebarCollapsedChanged", StaticPayload(true)))))
+  await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopSessionSearchDisclosureChanged", StaticPayload(true)))))
+  expect((await Effect.runPromise(SubscriptionRef.get(state))).presentation).toEqual({
+    sidebarCollapsed: true,
+    sessionSearchOpen: true,
+  })
 })
 
 describe("EP250 chat contracts are registered and enforced (#8712)", () => {
@@ -384,8 +397,27 @@ describe("desktopShellView (state -> component tree)", () => {
       "workspace-home",
       "shell-settings-toggle",
     ])
-    expect(navItemById(view, "workspace-new-chat")).toMatchObject({ icon: "ChatCompose", accessibilityLabel: "New chat" })
+    expect(navItemById(view, "workspace-new-chat")).toMatchObject({ icon: "ChatCompose", accessibilityLabel: "New session" })
     expect((navItemById(view, "workspace-new-chat")?.onSelect as { name?: string })?.name).toBe("DesktopNewChat")
+    const expected = projectDesktopSidebarDestinations("chat")
+    expect(dock?.items.map(item => {
+      const resolved = resolveIntentRef(item.onSelect as never)
+      return {
+        id: item.id,
+        label: item.label,
+        icon: item.icon,
+        selected: item.selected ?? false,
+        accessibilityLabel: item.accessibilityLabel,
+        intent: { name: resolved.name, payload: resolved.payload },
+      }
+    })).toEqual(expected.map(destination => ({
+      id: destination.id,
+      label: destination.label,
+      icon: destination.icon,
+      selected: destination.selected,
+      accessibilityLabel: destination.accessibilityLabel,
+      intent: destination.intent,
+    })))
     expect(navItemById(view, "workspace-fleet")).toBeUndefined()
     expect(navItemById(view, "workspace-files")).toBeUndefined()
     expect(navItemById(view, "workspace-product-spec")).toBeUndefined()

@@ -7,6 +7,7 @@ import {
   DESKTOP_PREFERENCES_SCHEMA_ID,
   DESKTOP_PREFERENCES_VERSION,
   decodeDesktopPreferences,
+  decodeDesktopPreferencesPatch,
   defaultDesktopPreferences,
   migrateDesktopPreferences,
 } from "../src/desktop-preferences-contract.ts"
@@ -32,6 +33,13 @@ afterEach(() => {
 })
 
 describe("preferences migration", () => {
+  test("hostile patches retain only plain known sections", () => {
+    expect(decodeDesktopPreferencesPatch({
+      presentation: "collapsed",
+      appearance: { density: "compact" },
+      unknown: { secret: "drop-me" },
+    })).toEqual({ appearance: { density: "compact" } })
+  })
   test("a valid current-version document is accepted unchanged", () => {
     const doc = defaultDesktopPreferences()
     const result = migrateDesktopPreferences(doc)
@@ -54,7 +62,7 @@ describe("preferences migration", () => {
     }
   })
 
-  test("a legacy pre-versioned flat blob is lifted into the v1 shape, preserving values", () => {
+  test("a legacy pre-versioned flat blob is lifted into the current shape, preserving values", () => {
     const legacy = { density: "compact", reducedMotion: "always", fontScale: "large" }
     const result = migrateDesktopPreferences(legacy)
     expect(result.origin).toBe("legacy_v0")
@@ -69,17 +77,37 @@ describe("preferences migration", () => {
     })
     // Fields the legacy blob never had fall back to defaults.
     expect(result.preferences.updates).toEqual(defaultDesktopPreferences().updates)
+    expect(result.preferences.presentation).toEqual({ sidebarCollapsed: false })
   })
 
-  test("a dirty v1 document is field-normalized (bad enum → default) and marked changed", () => {
+  test("a v1 document preserves its nested values and gains presentation defaults", () => {
+    const v1 = {
+      schema: "openagents.desktop.preferences.store.v1",
+      version: 1,
+      appearance: { density: "compact", fontScale: "large", reducedMotion: "always" },
+      providerDefaults: { defaultProvider: "codex", defaultCodexAccountRef: "codex-2", defaultClaudeAccountRef: null },
+      privacy: { redactDiagnosticsExport: true, shareCrashDiagnostics: false },
+      notifications: { attentionBadge: false, taskCompletion: true, onlyWhenUnfocused: true },
+      updates: { channel: "rc", autoCheck: true, autoDownload: false },
+    }
+    const result = migrateDesktopPreferences(v1)
+    expect(result).toMatchObject({ origin: "legacy_v1", changed: true, fromVersion: 1 })
+    expect(result.preferences.version).toBe(2)
+    expect(result.preferences.appearance).toEqual(v1.appearance)
+    expect(result.preferences.providerDefaults).toEqual(v1.providerDefaults)
+    expect(result.preferences.presentation).toEqual({ sidebarCollapsed: false })
+  })
+
+  test("a dirty v2 document is field-normalized (bad enum → default) and marked changed", () => {
     const dirty = {
       schema: DESKTOP_PREFERENCES_SCHEMA_ID,
-      version: 1,
+      version: DESKTOP_PREFERENCES_VERSION,
       appearance: { density: "ENORMOUS", fontScale: "large", reducedMotion: "always" },
       providerDefaults: { defaultProvider: "codex", defaultCodexAccountRef: "codex-2", defaultClaudeAccountRef: null },
       privacy: { redactDiagnosticsExport: true, shareCrashDiagnostics: "yes" },
       notifications: { attentionBadge: false, taskCompletion: true, onlyWhenUnfocused: true },
       updates: { channel: "rc", autoCheck: true, autoDownload: false },
+      presentation: { sidebarCollapsed: "sometimes" },
     }
     const result = migrateDesktopPreferences(dirty)
     expect(result.origin).toBe("merged")
@@ -93,6 +121,7 @@ describe("preferences migration", () => {
     expect(result.preferences.providerDefaults.defaultProvider).toBe("codex")
     expect(result.preferences.providerDefaults.defaultCodexAccountRef).toBe("codex-2")
     expect(result.preferences.updates.channel).toBe("rc")
+    expect(result.preferences.presentation.sidebarCollapsed).toBe(false)
   })
 
   test("a future version is downgraded — unknown fields dropped, known ones kept", () => {
@@ -104,6 +133,7 @@ describe("preferences migration", () => {
       privacy: { redactDiagnosticsExport: true, shareCrashDiagnostics: false },
       notifications: { attentionBadge: true, taskCompletion: true, onlyWhenUnfocused: false },
       updates: { channel: "stable", autoCheck: false, autoDownload: false },
+      presentation: { sidebarCollapsed: true, futureDockMode: "floating" },
       quantumTunneling: { enabled: true },
     }
     const result = migrateDesktopPreferences(future)
@@ -113,6 +143,7 @@ describe("preferences migration", () => {
     expect(result.preferences.version).toBe(DESKTOP_PREFERENCES_VERSION)
     expect(result.preferences.appearance).toEqual({ density: "cozy", fontScale: "small", reducedMotion: "never" })
     expect(result.preferences.providerDefaults.defaultProvider).toBe("claude")
+    expect(result.preferences.presentation).toEqual({ sidebarCollapsed: true })
     expect("quantumTunneling" in result.preferences).toBe(false)
   })
 
@@ -145,6 +176,10 @@ describe("preferences host", () => {
       fontScale: "large",
       reducedMotion: "always",
     })
+
+    const presentation = store.update({ presentation: { sidebarCollapsed: true } })
+    expect(presentation.presentation.sidebarCollapsed).toBe(true)
+    expect(openDesktopPreferencesStore(file).snapshot().presentation.sidebarCollapsed).toBe(true)
   })
 
   test("an update with a bad value is normalized, never persisted raw", () => {
@@ -155,6 +190,10 @@ describe("preferences host", () => {
     expect(next.appearance.density).toBe("comfortable")
     const onDisk = JSON.parse(readFileSync(file, "utf8"))
     expect(onDisk.appearance.density).toBe("comfortable")
+
+    const presentation = store.update({ presentation: { sidebarCollapsed: "yes" as never } })
+    expect(presentation.presentation.sidebarCollapsed).toBe(false)
+    expect(JSON.parse(readFileSync(file, "utf8")).presentation.sidebarCollapsed).toBe(false)
   })
 
   test("the persisted file is owner-only (mode 0600)", () => {
@@ -172,7 +211,7 @@ describe("preferences host", () => {
     expect(snap.version).toBe(DESKTOP_PREFERENCES_VERSION)
     expect(snap.appearance.density).toBe("cozy")
     expect(store.lastOrigin()).toBe("legacy_v0")
-    // The bytes were rewritten to the normalized v1 form.
+    // The bytes were rewritten to the normalized current form.
     const onDisk = JSON.parse(readFileSync(file, "utf8"))
     expect(onDisk.version).toBe(DESKTOP_PREFERENCES_VERSION)
     expect(onDisk.schema).toBe(DESKTOP_PREFERENCES_SCHEMA_ID)

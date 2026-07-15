@@ -912,6 +912,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   Fleet, OpenAgents/Pylon account controls, Terminal, Inbox, MCP, plugins,
   provider/model/reasoning selection, attachments, and voice are absent from
   dock, sidebar, composer, Settings, command palette, and native Commands menu.
+- The compatibility shell and React workbench consume one typed primary-sidebar
+  projection in this exact order: New session, Chat, Project home, Settings.
+  The rows reuse canonical command identities and typed intents; New session is
+  an action, while Chat, Project home, and Settings project current selection.
+  A typed current indicator is allowed only for the selected destination;
+  unread counts or status badges may not appear until a real authority supplies
+  them. ProductSpec and AssuranceSpec remain excluded under the preceding
+  allowlist rule.
 - AUDIO-0 #8733 is a planned, not-yet-live exception for the future Mic path.
   When AUDIO-4 #8737 lands, native capture/playback may run only in the signed
   process-opaque `crates/oa-desktop-audio` Rust helper authorized by the
@@ -1058,8 +1066,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   stale target cannot advance the cursor, move focus, or invent transcript
   scroll. The collision review leaves default key chords unassigned rather
   than conflicting with editable controls or Electron native menu commands.
-  The full admitted destination and persisted presentation-state model remains
-  tracked in #8826.
+  Sidebar collapse is Effect-owned presentation state and its boolean is the
+  only sidebar state persisted in the versioned main-process preferences
+  document. Restore reuses the existing pre-mount preference read, preserves
+  content geometry, and always leaves an expander reachable. Session-search
+  disclosure is launch-ephemeral and starts closed after reload/restart; the
+  query stays exclusively in history state and closing search clears it through
+  the existing typed history intent. A restored collapsed rail never focuses
+  search or steals the composer focus established at shell-interactable. The
+  built React Electron smoke activates all four admitted entries, captures
+  expanded/collapsed receipts, and proves collapse restoration, closed search,
+  and composer focus after reload (#8826).
 - Desktop React repository review consumes only grant-scoped, root-relative
   paths plus opaque repository/status correlation already held by the Effect
   Git state. It remains read-only: no edit, discard, stage, commit, branch,

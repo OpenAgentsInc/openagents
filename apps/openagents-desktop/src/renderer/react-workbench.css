@@ -73,7 +73,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   display: none;
 }
 
-.oa-react-new-session,
+.oa-react-primary-destination,
 .oa-react-load-more,
 .oa-react-workspace-actions button,
 .oa-react-sidebar-expand {
@@ -85,8 +85,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   cursor: pointer;
 }
 
-.oa-react-new-session {
+.oa-react-primary-destination {
   width: 100%;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 8px;
+  align-items: center;
+  gap: var(--en-spacing-2);
   justify-content: flex-start;
   padding: 0 var(--en-spacing-2);
   border-color: transparent;
@@ -95,25 +99,15 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   text-align: left;
 }
 
-.oa-react-new-session:hover { background: var(--en-color-stateHover); }
+.oa-react-primary-destination:hover { background: var(--en-color-stateHover); }
+.oa-react-primary-destination[data-selected="true"] { background: var(--en-color-stateSelected); }
 
 .oa-react-primary-nav {
   display: grid;
   gap: 2px;
 }
 
-.oa-react-primary-current {
-  display: grid;
-  min-height: var(--en-control-md-height);
-  grid-template-columns: 16px minmax(0, 1fr) 8px;
-  align-items: center;
-  gap: var(--en-spacing-2);
-  padding: 0 var(--en-spacing-2);
-  color: var(--en-color-textPrimary);
-  text-align: left;
-}
-
-.oa-react-primary-current i {
+.oa-react-primary-destination i[data-destination-indicator="current"] {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -195,6 +189,33 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-session-row[data-selected="true"] {
   background: var(--en-color-stateSelected);
 }
+
+.oa-react-workspace-surface {
+  min-width: 0;
+  min-height: 0;
+  padding: 64px clamp(24px, 6vw, 88px);
+  overflow: auto;
+}
+
+.oa-react-workspace-surface > header,
+.oa-react-workspace-surface article,
+.oa-react-workspace-surface article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-3);
+}
+
+.oa-react-workspace-surface h1,
+.oa-react-workspace-surface h2,
+.oa-react-workspace-surface p { margin-top: 0; }
+.oa-react-workspace-surface header p,
+.oa-react-workspace-surface small,
+.oa-react-workspace-surface article span { color: var(--en-color-textMuted); }
+.oa-react-workspace-surface section { display: grid; gap: var(--en-spacing-2); margin-top: var(--en-spacing-5); }
+.oa-react-workspace-surface section > button { display: grid; height: auto; justify-items: start; padding: var(--en-spacing-3); text-align: left; }
+.oa-react-workspace-surface article { padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); }
+.oa-react-workspace-surface article > div { align-items: flex-start; flex-direction: column; gap: 2px; }
 
 .oa-react-session-row span,
 .oa-react-session-row small,
@@ -707,7 +728,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-empty-working-directory code {
   min-width: 0;
   overflow: hidden;
-  font-family: "Geist Mono Variable", monospace;
+  font-family: monospace;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;

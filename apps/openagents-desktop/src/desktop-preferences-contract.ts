@@ -29,7 +29,7 @@
 import { Schema } from "effect"
 
 export const DESKTOP_PREFERENCES_SCHEMA_ID =
-  "openagents.desktop.preferences.store.v1" as const
+  "openagents.desktop.preferences.store.v2" as const
 
 /** Additive IPC channels (main ↔ renderer). Public-safe payloads only. */
 export const DesktopPreferencesGetChannel = "openagents-desktop/preferences-get" as const
@@ -37,7 +37,7 @@ export const DesktopPreferencesUpdateChannel = "openagents-desktop/preferences-u
 export const DesktopPreferencesResetChannel = "openagents-desktop/preferences-reset" as const
 
 /** Current on-disk document version. Bump + add a migration when the shape changes. */
-export const DESKTOP_PREFERENCES_VERSION = 1 as const
+export const DESKTOP_PREFERENCES_VERSION = 2 as const
 
 // ---------------------------------------------------------------------------
 // Field vocabularies (bounded enums — never free text).
@@ -124,8 +124,14 @@ export const DesktopUpdatePreferencesSchema = Schema.Struct({
 })
 export type DesktopUpdatePreferences = typeof DesktopUpdatePreferencesSchema.Type
 
+/** Durable shell presentation preferences. Domain navigation remains elsewhere. */
+export const DesktopPresentationPreferencesSchema = Schema.Struct({
+  sidebarCollapsed: Schema.Boolean,
+})
+export type DesktopPresentationPreferences = typeof DesktopPresentationPreferencesSchema.Type
+
 // ---------------------------------------------------------------------------
-// Root document (v1).
+// Root document (v2).
 // ---------------------------------------------------------------------------
 
 export const DesktopPreferencesSchema = Schema.Struct({
@@ -136,6 +142,7 @@ export const DesktopPreferencesSchema = Schema.Struct({
   privacy: DesktopPrivacyPreferencesSchema,
   notifications: DesktopNotificationPreferencesSchema,
   updates: DesktopUpdatePreferencesSchema,
+  presentation: DesktopPresentationPreferencesSchema,
 })
 export type DesktopPreferences = typeof DesktopPreferencesSchema.Type
 
@@ -167,11 +174,14 @@ export const defaultDesktopPreferences = (): DesktopPreferences => ({
     autoCheck: true,
     autoDownload: false,
   },
+  presentation: {
+    sidebarCollapsed: false,
+  },
 })
 
 const decodeExit = Schema.decodeUnknownExit(DesktopPreferencesSchema)
 
-/** Decode a fully-formed v1 document, or null if it is not exactly valid. */
+/** Decode a fully-formed current document, or null if it is not exactly valid. */
 export const decodeDesktopPreferences = (value: unknown): DesktopPreferences | null => {
   const decoded = decodeExit(value)
   return decoded._tag === "Success" ? decoded.value : null
@@ -190,7 +200,8 @@ export type DesktopPreferencesMigrationOrigin =
   | "current" // already a valid current-version document
   | "defaults" // unusable input → seeded from defaults
   | "merged" // partial/dirty current-version input → per-field defaults filled
-  | "legacy_v0" // pre-versioned flat blob lifted into the v1 shape
+  | "legacy_v0" // pre-versioned flat blob lifted into the current shape
+  | "legacy_v1" // nested v1 document lifted into v2 with presentation defaults
   | "downgraded" // future version → unknown fields dropped, known ones kept
 
 export type DesktopPreferencesMigrationResult = Readonly<{
@@ -220,8 +231,8 @@ const ref = (value: unknown): string | null =>
   typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(value) ? value : null
 
 /**
- * Field-wise normalize an arbitrary record into a full v1 document, filling
- * every missing/invalid field from defaults. Used for both `merged` (dirty v1)
+ * Field-wise normalize an arbitrary record into a full v2 document, filling
+ * every missing/invalid field from defaults. Used for both `merged` (dirty current)
  * and `legacy_v0` (flat blob) paths — the difference is only WHERE we look for
  * each field, handled by the two accessor sets below.
  */
@@ -231,6 +242,7 @@ const normalize = (
   privacy: Record<string, unknown>,
   notifications: Record<string, unknown>,
   updates: Record<string, unknown>,
+  presentation: Record<string, unknown>,
 ): DesktopPreferences => {
   const d = defaultDesktopPreferences()
   return {
@@ -260,6 +272,9 @@ const normalize = (
       autoCheck: bool(updates.autoCheck, d.updates.autoCheck),
       autoDownload: bool(updates.autoDownload, d.updates.autoDownload),
     },
+    presentation: {
+      sidebarCollapsed: bool(presentation.sidebarCollapsed, d.presentation.sidebarCollapsed),
+    },
   }
 }
 
@@ -274,9 +289,10 @@ export type DesktopPreferencesPatch = {
   readonly privacy?: Record<string, unknown>
   readonly notifications?: Record<string, unknown>
   readonly updates?: Record<string, unknown>
+  readonly presentation?: Record<string, unknown>
 }
 
-const sectionKeys = ["appearance", "providerDefaults", "privacy", "notifications", "updates"] as const
+const sectionKeys = ["appearance", "providerDefaults", "privacy", "notifications", "updates", "presentation"] as const
 
 /** Decode an untrusted patch: keep only known sections that are plain objects. */
 export const decodeDesktopPreferencesPatch = (value: unknown): DesktopPreferencesPatch => {
@@ -304,13 +320,14 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
     if (clean !== null) {
       return { preferences: clean, origin: "current", changed: false, fromVersion: rawVersion }
     }
-    // Dirty v1: normalize per-field, mark changed so the host rewrites it.
+    // Dirty current document: normalize per-field so the host rewrites it.
     const normalized = normalize(
       asRecord(record.appearance) ?? {},
       asRecord(record.providerDefaults) ?? {},
       asRecord(record.privacy) ?? {},
       asRecord(record.notifications) ?? {},
       asRecord(record.updates) ?? {},
+      asRecord(record.presentation) ?? {},
     )
     return { preferences: normalized, origin: "merged", changed: true, fromVersion: rawVersion }
   }
@@ -324,18 +341,34 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
       asRecord(record.privacy) ?? {},
       asRecord(record.notifications) ?? {},
       asRecord(record.updates) ?? {},
+      asRecord(record.presentation) ?? {},
     )
     return { preferences: normalized, origin: "downgraded", changed: true, fromVersion: rawVersion }
   }
 
+  // Version 1 used the same nested sections but had no presentation section.
+  // Preserve every valid v1 value and seed the new bounded presentation state.
+  if (rawVersion === 1) {
+    const normalized = normalize(
+      asRecord(record.appearance) ?? {},
+      asRecord(record.providerDefaults) ?? {},
+      asRecord(record.privacy) ?? {},
+      asRecord(record.notifications) ?? {},
+      asRecord(record.updates) ?? {},
+      {},
+    )
+    return { preferences: normalized, origin: "legacy_v1", changed: true, fromVersion: rawVersion }
+  }
+
   // Legacy pre-versioned (v0 or no version): a flat blob where appearance keys
-  // may live at the top level. Lift them into the v1 nested shape.
+  // may live at the top level. Lift them into the current nested shape.
   const normalized = normalize(
     { ...(asRecord(record.appearance) ?? {}), density: record.density, fontScale: record.fontScale, reducedMotion: record.reducedMotion },
     asRecord(record.providerDefaults) ?? {},
     asRecord(record.privacy) ?? {},
     asRecord(record.notifications) ?? {},
     asRecord(record.updates) ?? {},
+    asRecord(record.presentation) ?? {},
   )
   return { preferences: normalized, origin: "legacy_v0", changed: true, fromVersion: rawVersion }
 }

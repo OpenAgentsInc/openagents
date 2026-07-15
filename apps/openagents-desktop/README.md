@@ -64,6 +64,15 @@ never enters the renderer. An accepted intent is not a FleetRun receipt:
 repository pins, verifier, named account, and authority-backed closeout remain
 the Pylon contract.
 
+The primary sidebar is one Effect-owned typed projection shared by the
+compatibility and React renderers: **New session**, **Chat**, **Project home**,
+and **Settings**, in that exact order. ProductSpec and AssuranceSpec remain
+internal tooling rather than visible destinations. Collapse/expand is typed
+shell state whose boolean preference persists in the main-owned versioned
+preferences document; session-search disclosure deliberately starts closed on
+each launch, while the query remains in the existing history authority. A
+restored collapsed launch keeps the composer focused and the expander reachable.
+
 ## Verify it
 
 ```bash
@@ -124,6 +133,8 @@ build plus Electron teardown receipt.
 - `src/renderer/` — the application is Effect Native; React is its DOM target:
   - `shell.ts` — typed state, `defineIntent` intents, pure transitions,
     pure `state -> View` over the shared catalog.
+  - `sidebar-destinations.ts` — the closed four-entry primary projection shared
+    by compatibility and React, reusing canonical commands and typed intents.
   - `theme.ts` — the one Protoss-blue theme via `@effect-native/tokens`,
     token-identical to the shared OpenAgents theme values.
   - `boot.ts` — `SubscriptionRef` + `makeViewProgramFromState` +

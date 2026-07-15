@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-15.6",
+    version: "2026-07-15.7",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -131,24 +131,53 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Lay out the OpenAgents sidebar like Codex: left-aligned menus, OpenAgents identity, icon-only search, sidebar expander, back/forward positions, and appropriate icons from the existing Apps SDK catalog.",
         authorityBoundary:
-          "Presentation and already-admitted interaction only. The React sidebar renders native-chrome-aligned controls, an OpenAgents identity row with an icon-only search disclosure, left-aligned New session and current Chat rows, a truthful Recent section, and single-line conversation rows whose truncated title stays left while timestamp/status metadata is right-justified on that same line. Every glyph is a closed @effect-native/core IconName lowered through the renderer-private shadcn/Lucide adapter. Search, new-session, session selection, collapse, and Back/Forward dispatch only typed intents. The Effect-owned bounded navigation authority projects exact enabled state; missing MVP destinations and persisted presentation state remain absent until #8826. No enabled placeholder or React-owned domain navigation is authorized.",
+          "Presentation over already-admitted authority only. One Effect-owned typed projection supplies the compatibility shell and React workbench with exactly four ordered primary entries: New session, Chat, Project home, and Settings. Each entry reuses its canonical command identity and typed intent, carries a closed @effect-native/core IconName, and projects selected/current state without inventing an unread count or status when no such authority exists. React lowers that projection into native-chrome-aligned controls beneath the OpenAgents identity row and icon-only search disclosure, with left-aligned primary rows, a truthful Recent section, and single-line conversation rows whose truncated title stays left while timestamp/status metadata is right-justified on that same line. Chat, Project home, and Settings reach real admitted workspace roots; New session remains the primary action rather than a selected destination. Sidebar collapse is Effect-owned presentation state and only its boolean preference persists through the versioned main-process preferences boundary. Session-search disclosure is deliberately launch-ephemeral and starts closed after reload or restart; its query remains exclusively in the existing history authority and closing search clears it through HistorySearchChanged. Restoring a collapsed rail reuses the preferences read already required before shell mount, adds no new startup read, leaves a reachable expander, and never steals focus from the composer. Search, destination selection, collapse, and Back/Forward dispatch only typed intents. No enabled placeholder, React-owned navigation store, parallel query store, or fabricated destination is authorized.",
         evidenceRefs: [
+          "apps/openagents-desktop/src/desktop-preferences-contract.ts",
+          "apps/openagents-desktop/src/renderer/sidebar-destinations.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
           "apps/openagents-desktop/src/renderer/react-workbench.css",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/main.ts",
           "github:OpenAgentsInc/openagents#8826",
         ],
         oracles: [
+          {
+            id: "react_sidebar.shared_destination_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/sidebar-destinations.test.ts",
+            description:
+              "Pins the exact four-entry order, labels, closed-catalog icons, canonical command identities, typed intents, selected/current projection, and truthful absence of unread/status indicators without backing state.",
+          },
           {
             id: "react_sidebar.anatomy_icons_search_and_alignment",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
             description:
-              "The real React workbench proves search is absent until its catalog icon is activated, focus moves into the disclosed field, New session and every session title are left aligned, timestamp/status metadata has its dedicated right-justified same-line slot, the current Chat row and Recent section are explicit, and chrome/new/chat/navigation glyphs resolve through data-icon-name values from the closed catalog adapter.",
+              "The real React workbench proves the shared four-entry order and icons, real Chat/Project home/Settings roots, selected state, left alignment, dedicated right-justified same-line timestamp/status metadata, icon-only search disclosure and close, and collapse recovery through the always-reachable expander.",
+          },
+          {
+            id: "react_sidebar.collapse_preference_migration_and_roundtrip",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/desktop-preferences.test.ts",
+            description:
+              "Proves the v1-to-v2 migration preserves every prior preference while defaulting sidebar collapse to false, validates hostile patches, persists the boolean owner-only, restores it through a fresh store, and resets it to the canonical default.",
+          },
+          {
+            id: "react_sidebar.built_destination_and_restart_smoke",
+            kind: "visual-smoke",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built default React Electron journey activates every admitted destination, asserts its real root and selection, discloses and closes search, captures expanded and collapsed sidebar receipts, persists collapse through typed preferences, reloads, and proves collapsed-at-mount plus closed search and retained composer focus.",
           },
         ],
         verification:
-          "Desktop typecheck, focused React workbench DOM suite, and built React Electron smoke enforce the presentation slice; #8826 retains the deliberately unimplemented destination and persistence expansion.",
+          "Desktop preferences, shared destination projection, compatibility shell, focused React workbench DOM, contract-validation, and built React Electron smoke/reload suites enforce the completed #8826 projection and presentation-state boundary.",
       },
       {
         contractId: "openagents_desktop.navigation.authoritative_history.v1",
@@ -273,12 +302,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "remove from the interface everything not in the MVP spec.",
         authorityBoundary:
-          "The ProductSpec Scope and User Experience sections, plus the owner's subsequent explicit AssuranceSpec document-format visualization direction and the owner-issued MAINT-1 harness-maintenance surface (#8785: per-harness version/channel truth with a one-click binary update in Settings), are the visible-surface allowlist. UX-4 (#8790) reconciles the rendered composition to it: the sidebar dock is exactly New chat, Chat, ProductSpec, AssuranceSpec, Project home, and Settings (the machine-checkable list with per-item spec citations lives in apps/openagents-desktop/src/renderer/mvp-visible-surfaces.ts). Bounded files and read-only Git review stay reachable through their closed CW-AC-12 command identities (palette, native Commands menu, ⌘K, deep link), not through dock icons, because the spec places file/Git review beside the conversation. The review surface renders no Git mutation affordance (no commit, push, stage/unstage, discard, branch switch/create, or issue/PR authoring), and the Files browser renders no file create/rename/delete/reveal affordance (CW-AC-14 forbids exposing filesystem or Git mutation authority). Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
+          "The accepted ProductSpec Scope and User Experience, plus the owner-issued MAINT-1 harness-maintenance surface (#8785: per-harness version/channel truth with a one-click binary update in Settings), are the visible-surface allowlist. UX-4 (#8790) and #8826 reconcile both renderers to one typed primary projection: exactly New session, Chat, Project home, and Settings, in that order, with per-item authority in apps/openagents-desktop/src/renderer/sidebar-destinations.ts and composition enforcement in mvp-visible-surfaces.ts. ProductSpec and AssuranceSpec remain internal authoring/verification tooling with no user-facing route, screen, dock item, command, or native-menu destination. Bounded Files and read-only Git review stay reachable through their closed CW-AC-12 command identities, not through dock icons, because the spec places file/Git review beside the conversation. The review surface renders no Git mutation affordance, and the Files browser renders no file create/rename/delete/reveal affordance. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
         evidenceRefs: [
           "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
           "apps/openagents-desktop/src/desktop-command-contract.ts",
+          "apps/openagents-desktop/src/renderer/sidebar-destinations.ts",
           "apps/openagents-desktop/src/renderer/mvp-visible-surfaces.ts",
           "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
           "apps/openagents-desktop/src/renderer/settings.ts",
           "apps/openagents-desktop/src/main.ts",
           "github:OpenAgentsInc/openagents#8756",
@@ -291,7 +322,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Proves the dock contains the MVP affordances plus the explicitly owner-directed AssuranceSpec document inspector, while the shell rejects Fleet, accounts, provider/model/reasoning selection, attachments, and voice.",
+              "Proves the compatibility dock consumes the exact shared four-entry projection while rejecting ProductSpec, AssuranceSpec, Fleet, accounts, provider/model/reasoning selection, attachments, and voice.",
           },
           {
             id: "mvp_surface.rendered_composition",
@@ -327,7 +358,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "Desktop typecheck, shell/settings/command/composition suites, build, and built-host smoke enforce the ProductSpec-visible allowlist against the actual rendered dock and screens.",
+          "Desktop typecheck, shared projection, shell/React/settings/command/composition suites, build, and built-host smoke enforce the ProductSpec-visible allowlist against both actual rendered docks and screens.",
       },
       {
         contractId: "openagents_desktop.mvp.visible_surface_sweep.v1",

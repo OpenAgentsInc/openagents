@@ -203,6 +203,10 @@ import type { FableLocalImageAttachment, LocalProviderTarget } from "../fable-lo
 import type { LocalSkillInvocation } from "../plugin-config-contract.ts"
 import type { CodexHandoffOpenResult } from "../codex-handoff-contract.ts"
 import { parseExplicitSkillInvocation } from "./skill-invocation.ts"
+import {
+  projectDesktopSidebarDestinations,
+  type DesktopSidebarDestination,
+} from "./sidebar-destinations.ts"
 
 export type DesktopNoteEntry = Readonly<{
   key: string
@@ -374,6 +378,12 @@ export type DesktopShellState = Readonly<{
   /** Main-owned absolute cwd for the active WorkContext; display-only. */
   workingDirectory: string | null
   workspace: DesktopWorkspaceName
+  /** Effect-owned shell presentation; only sidebar collapse is durable. */
+  presentation: Readonly<{
+    sidebarCollapsed: boolean
+    /** Deliberately ephemeral; the history query remains history authority. */
+    sessionSearchOpen: boolean
+  }>
   /** Read-only projection of the Effect-owned ephemeral navigation stack. */
   navigation: DesktopNavigationProjection
   /** Grant-scoped, root-relative Files workspace projection. */
@@ -471,6 +481,7 @@ export const initialDesktopShellState = (
   codingSessionDeleteConfirmRef: null,
   workingDirectory: null,
   workspace: "chat",
+  presentation: { sidebarCollapsed: false, sessionSearchOpen: false },
   navigation: emptyDesktopNavigationProjection(),
   workspaceBrowser: emptyWorkspaceBrowserState(),
   workspaceEditor: emptyWorkspaceEditorState(),
@@ -566,6 +577,8 @@ export const DesktopFleetDeploymentRequested = defineIntent(
   Schema.Null,
 )
 export const DesktopNewChat = defineIntent("DesktopNewChat", Schema.Null)
+export const DesktopSidebarCollapsedChanged = defineIntent("DesktopSidebarCollapsedChanged", Schema.Boolean)
+export const DesktopSessionSearchDisclosureChanged = defineIntent("DesktopSessionSearchDisclosureChanged", Schema.Boolean)
 export const DesktopHarnessSelected = defineIntent(
   "DesktopHarnessSelected",
   Schema.Literals(desktopHarnessNames),
@@ -689,6 +702,8 @@ export const desktopShellIntents = [
   DesktopFleetObjectiveChanged,
   DesktopFleetDeploymentRequested,
   DesktopNewChat,
+  DesktopSidebarCollapsedChanged,
+  DesktopSessionSearchDisclosureChanged,
   DesktopHarnessSelected,
   DesktopCodexReasoningSelected,
   DesktopModelSelected,
@@ -1457,6 +1472,9 @@ export type DesktopVoiceRendererHost = Readonly<{
 export type CodexHandoffRendererHost = Readonly<{
   open: (request: Readonly<{ threadRef: string; turnRef: string }>) => Promise<CodexHandoffOpenResult>
 }>
+export type DesktopPresentationRendererHost = Readonly<{
+  setSidebarCollapsed: (collapsed: boolean) => Promise<void>
+}>
 
 export const makeDesktopShellHandlers = (
   state: SubscriptionRef.SubscriptionRef<DesktopShellState>,
@@ -1503,6 +1521,7 @@ export const makeDesktopShellHandlers = (
   },
   updateHost: DesktopUpdateRendererHost = unavailableDesktopUpdateRendererHost,
   harnessMaintenanceBridge: HarnessMaintenanceSettingsBridge = unavailableHarnessMaintenanceSettingsBridge,
+  presentationHost: DesktopPresentationRendererHost = { setSidebarCollapsed: async () => {} },
 ): IntentHandlers<typeof desktopShellIntents> => {
   const initialNavigation = currentDesktopNavigationDestination(Effect.runSync(SubscriptionRef.get(state)))
   const navigationState = Effect.runSync(
@@ -1794,6 +1813,18 @@ export const makeDesktopShellHandlers = (
   ...gitPanelHandlers,
   ...workspaceBrowserHandlers,
   ...workspaceEditorHandlers,
+  DesktopSidebarCollapsedChanged: (sidebarCollapsed) => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      presentation: { ...current.presentation, sidebarCollapsed },
+    }))
+    yield* Effect.promise(() => presentationHost.setSidebarCollapsed(sidebarCollapsed))
+  }),
+  DesktopSessionSearchDisclosureChanged: (sessionSearchOpen) =>
+    SubscriptionRef.update(state, current => ({
+      ...current,
+      presentation: { ...current.presentation, sessionSearchOpen },
+    })),
   WorkspaceBrowserEntrySelected: (pathRef) => Effect.gen(function* () {
     const before = yield* SubscriptionRef.get(state)
     const knownEntry = Object.values(before.workspaceBrowser.pages)
@@ -3225,17 +3256,18 @@ const shellSidebar = (state: DesktopShellState): View => {
           //   - shell-command-palette-toggle — the palette remains a CW-AC-12
           //     entry point via ⌘K and the native Commands menu; no dock icon
           //     is called for.
-          {id:"sidebar-workspace-dock",layout:"row",items:[
-            // Session create — ProductSpec Scope: "new, resume, fork, archive, delete".
-            {id:"workspace-new-chat",label:"New chat",icon:"ChatCompose",accessibilityLabel:"New chat",onSelect:IntentRef("DesktopNewChat")},
-            // Session navigation + typed timeline — ProductSpec Scope/CW-AC-10/11.
-            {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
-            // Repository grant + session home — CW-AC-03.
-            {id:"workspace-home",label:"Project home",icon:"Home",selected:state.workspace==="home",accessibilityLabel:"Project home",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("home"))},
-            // Settings — CW-AC-01/02 session truth, CW-AC-18 update/rollback,
-            // CW-AC-17 diagnostics, CW-AC-12 keyboard bindings, MAINT-1 #8785.
-            {id:"shell-settings-toggle",label:"Settings",icon:"Settings",selected:state.workspace==="settings",accessibilityLabel:state.workspace==="settings"?"Close Settings":"Open Settings",onSelect:IntentRef("DesktopSettingsToggled")},
-          ]},
+          {id:"sidebar-workspace-dock",layout:"row",items:projectDesktopSidebarDestinations(
+            state.workspace === "home" || state.workspace === "settings" ? state.workspace : "chat",
+          ).map((destination: DesktopSidebarDestination) => ({
+            id: destination.id,
+            label: destination.label,
+            icon: destination.icon,
+            selected: destination.selected,
+            accessibilityLabel: destination.accessibilityLabel,
+            onSelect: destination.intent.payload === null
+              ? IntentRef(destination.intent.name)
+              : IntentRef(destination.intent.name, StaticPayload(destination.intent.payload)),
+          }))},
           historySearchActive(state.history)
             ? {id:"sidebar-history-list",label:`Search · ${visibleSearchCount} result${visibleSearchCount===1?"":"s"}${state.history.searchTruncated?" (bounded)":""}`,items:historySearchResultSidebarItems(state.history)}
             : {id:"sidebar-history-list",label:desktopSidebarHistoryLabel(state),items:sidebarConversationItems(state)},

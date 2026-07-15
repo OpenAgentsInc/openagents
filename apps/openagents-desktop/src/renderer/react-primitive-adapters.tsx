@@ -17,9 +17,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Folder,
+  House,
   MessageCircle,
   PanelLeft,
   Search,
+  Settings,
   SquarePen,
   type LucideIcon,
 } from "lucide-react"
@@ -38,11 +40,12 @@ import { formatRelativeTimestamp } from "./shell.ts"
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
 import { ReviewSurface, StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline } from "./react-timeline.tsx"
+import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 import "./react-workbench.css"
 
 type ReactSidebarIconName = Extract<
   IconName,
-  "ChatCompose" | "Chats" | "ChevronLeft" | "ChevronRight" | "Folder" | "Menu" | "Search"
+  "ChatCompose" | "Chats" | "ChevronLeft" | "ChevronRight" | "Folder" | "Home" | "Menu" | "Search" | "Settings"
 >
 
 const sidebarIconAssets: Readonly<Record<ReactSidebarIconName, LucideIcon>> = {
@@ -51,8 +54,10 @@ const sidebarIconAssets: Readonly<Record<ReactSidebarIconName, LucideIcon>> = {
   ChevronLeft,
   ChevronRight,
   Folder,
+  Home: House,
   Menu: PanelLeft,
   Search,
+  Settings,
 }
 
 /** Closed-catalog React lowering; Lucide remains a renderer-private asset implementation. */
@@ -183,15 +188,18 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
   readonly railRef: RefObject<HTMLElement | null>
 }): ReactElement => {
   const rows = projectReactSessionRows(state)
+  const destinations = projectDesktopSidebarDestinations(
+    state.workspace === "home" || state.workspace === "settings" ? state.workspace : "chat",
+  )
   const shown = state.history.visibleRootCount
-  const [searchOpen, setSearchOpen] = useState(state.history.searchQuery.trim() !== "")
+  const searchOpen = state.presentation.sessionSearchOpen
   const searchRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (searchOpen) searchRef.current?.focus()
   }, [searchOpen])
   const closeSearch = (): void => {
     if (state.history.searchQuery !== "") dispatch(report, "HistorySearchChanged", "")
-    setSearchOpen(false)
+    dispatch(report, "DesktopSessionSearchDisclosureChanged", false)
   }
   return <aside
     ref={railRef}
@@ -236,7 +244,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
         variant="ghost"
         size="icon-xs"
         type="button"
-        onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}
+        onClick={() => searchOpen ? closeSearch() : dispatch(report, "DesktopSessionSearchDisclosureChanged", true)}
         aria-label={searchOpen ? "Close session search" : "Search sessions"}
         aria-expanded={searchOpen}
         title={searchOpen ? "Close search" : "Search sessions"}
@@ -260,15 +268,24 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
         />
       </label> : null}
     <nav className="oa-react-primary-nav" aria-label="Primary">
-      <Button className="oa-react-new-session justify-start text-left" variant="ghost" type="button" onClick={() => dispatch(report, "DesktopNewChat") }>
-        <ReactCatalogIcon name="ChatCompose" />
-        <span>New session</span>
-      </Button>
-      <div className="oa-react-primary-current" aria-current="page">
-        <ReactCatalogIcon name="Chats" />
-        <span>Chat</span>
-        <i aria-hidden="true" />
-      </div>
+      {destinations.map(destination => <Button
+        key={destination.id}
+        className="oa-react-primary-destination justify-start text-left"
+        variant="ghost"
+        type="button"
+        data-sidebar-destination-id={destination.id}
+        data-selected={destination.selected ? "true" : "false"}
+        aria-current={destination.accessibilityCurrent}
+        aria-label={destination.accessibilityLabel}
+        onClick={() => {
+          dispatch(report, destination.intent.name, destination.intent.payload)
+          onDismiss()
+        }}
+      >
+        <ReactCatalogIcon name={destination.icon} />
+        <span>{destination.label}</span>
+        {destination.indicator === null ? null : <i data-destination-indicator={destination.indicator.kind} aria-hidden="true" />}
+      </Button>)}
     </nav>
     <p className="oa-react-section-label">Recent</p>
     <ScrollArea className="oa-react-session-scroll">
@@ -328,8 +345,8 @@ export const WorkbenchShell = ({ state, report }: {
   readonly report: IntentReporter
 }): ReactElement => {
   const [railOpen, setRailOpen] = useState(false)
-  const [railCollapsed, setRailCollapsed] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
+  const railCollapsed = state.presentation.sidebarCollapsed
   const railRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   const reviewTriggerRef = useRef<HTMLButtonElement>(null)
@@ -346,13 +363,47 @@ export const WorkbenchShell = ({ state, report }: {
     if (railOpen) railRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
   }, [railOpen])
   const openRail = (): void => {
-    setRailCollapsed(false)
+    dispatch(report, "DesktopSidebarCollapsedChanged", false)
     setRailOpen(true)
   }
   const closeRail = (): void => {
-    setRailCollapsed(true)
+    dispatch(report, "DesktopSidebarCollapsedChanged", true)
     setRailOpen(false)
   }
+  const workspaceSurface = state.workspace === "home"
+    ? <main className="oa-react-workspace-surface" data-react-workspace="home">
+        <header><div><p>Project home</p><h1>Coding sessions</h1></div><span>{state.codingCatalog.authorityLabel}</span></header>
+        <p>Resume the exact project, repository, worktree, and task context from this Mac.</p>
+        <Button type="button" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}>Open project folder</Button>
+        <section aria-label="Coding sessions">
+          {state.codingCatalog.sessions.length === 0
+            ? <p>No coding sessions yet.</p>
+            : state.codingCatalog.sessions.map(session => <Button
+                key={session.sessionRef}
+                type="button"
+                variant="outline"
+                data-coding-session-ref={session.sessionRef}
+                onClick={() => dispatch(report, "DesktopCodingSessionOpened", session.sessionRef)}
+              ><span>{session.projectLabel}</span><small>{session.repositoryLabel} · {session.worktreeLabel} · {session.state}</small></Button>)}
+        </section>
+      </main>
+    : state.workspace === "settings"
+      ? <main className="oa-react-workspace-surface" data-react-workspace="settings">
+          <header><div><p>OpenAgents</p><h1>Settings</h1></div><Button type="button" variant="outline" onClick={() => dispatch(report, "DesktopHarnessMaintenanceRefreshRequested")}>Refresh</Button></header>
+          <section aria-labelledby="react-runtime-maintenance-title">
+            <h2 id="react-runtime-maintenance-title">Coding harnesses</h2>
+            <p>Installed version, channel, and update truth from this Mac.</p>
+            {state.settings.harnessMaintenance.view.state === "loading" ? <p role="status">Checking harnesses…</p>
+              : state.settings.harnessMaintenance.view.state === "unavailable" ? <p role="alert">{state.settings.harnessMaintenance.view.message}</p>
+              : state.settings.harnessMaintenance.view.harnesses.map(harness => <article key={harness.harness} data-harness={harness.harness}>
+                  <div><strong>{harness.harness.replaceAll("_", " ")}</strong><span>{harness.installedVersion ?? "Not installed"} · {harness.channel}</span></div>
+                  <span>{harness.advisory.replaceAll("_", " ")}</span>
+                  {harness.updateSupported ? <Button type="button" size="sm" disabled={state.settings.harnessMaintenance.updating !== null} onClick={() => dispatch(report, "DesktopHarnessUpdateRequested", harness.harness)}>Update</Button> : null}
+                </article>)}
+            {state.settings.harnessMaintenance.lastOutcome === null ? null : <p>{state.settings.harnessMaintenance.lastOutcome}</p>}
+          </section>
+        </main>
+      : null
   return <div className="oa-react-workbench" data-en-react-surface="true" data-review-open={reviewOpen ? "true" : "false"} data-rail-collapsed={railCollapsed ? "true" : "false"}>
     <ReactCommandPalette state={state} report={report} />
     <DecisionSurface state={state} report={report} />
@@ -369,14 +420,14 @@ export const WorkbenchShell = ({ state, report }: {
     ><ReactCatalogIcon name="Menu" /></Button>
     <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} />
     {railOpen ? <button className="oa-react-rail-scrim" aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
-    <main className="oa-react-conversation">
-      <ConversationHeader state={state} report={report} reviewTriggerRef={reviewTriggerRef} onReviewOpen={() => setReviewOpen(true)} />
-      <div className="oa-react-conversation-body">
-        <StatusNotices state={state} report={report} />
-        <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.pending} workingDirectory={state.workingDirectory} report={report} />
-      </div>
-      <ReactComposer state={state} report={report} />
-    </main>
+    {workspaceSurface ?? <main className="oa-react-conversation" data-react-workspace="chat">
+        <ConversationHeader state={state} report={report} reviewTriggerRef={reviewTriggerRef} onReviewOpen={() => setReviewOpen(true)} />
+        <div className="oa-react-conversation-body">
+          <StatusNotices state={state} report={report} />
+          <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.pending} workingDirectory={state.workingDirectory} report={report} />
+        </div>
+        <ReactComposer state={state} report={report} />
+      </main>}
     <ReviewSurface state={state} report={report} open={reviewOpen} onOpenChange={setReviewOpen} triggerRef={reviewTriggerRef} />
   </div>
 }

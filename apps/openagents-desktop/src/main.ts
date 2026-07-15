@@ -3040,6 +3040,57 @@ const smokeReactFirstInput = `(async () => {
   return { ok: textarea instanceof HTMLTextAreaElement && textarea.value.toLowerCase().includes("k"), value: textarea?.value ?? null, probe: globalThis.__oaReactInputProbe ?? null, intent: document.documentElement.dataset.reactInputIntent ?? null }
 })()`
 
+const smokeReactSidebarDestinations = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 30000
+  const rows = () => [...document.querySelectorAll('[data-sidebar-destination-id]')]
+  const ids = () => rows().map(row => row.getAttribute('data-sidebar-destination-id'))
+  const expected = ['workspace-new-chat', 'workspace-chat', 'workspace-home', 'shell-settings-toggle']
+  const click = (id) => document.querySelector('[data-sidebar-destination-id="' + id + '"]')?.click()
+  const waitFor = async (selector) => {
+    while (Date.now() < deadline && document.querySelector(selector) === null) await wait(50)
+    return document.querySelector(selector)
+  }
+  if (JSON.stringify(ids()) !== JSON.stringify(expected)) return { ok: false, reason: 'destination order', ids: ids() }
+  const icons = rows().map(row => row.querySelector('[data-icon-name]')?.getAttribute('data-icon-name'))
+  click('workspace-home')
+  const home = await waitFor('[data-react-workspace="home"]')
+  const homeVisible = home !== null && (home.textContent ?? '').includes('Coding sessions')
+  const homeSelected = document.querySelector('[data-sidebar-destination-id="workspace-home"]')?.getAttribute('aria-current') === 'page'
+  click('shell-settings-toggle')
+  const settings = await waitFor('[data-react-workspace="settings"]')
+  const settingsVisible = settings !== null && (settings.textContent ?? '').includes('Coding harnesses')
+  const settingsSelected = document.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.getAttribute('aria-current') === 'page'
+  click('workspace-chat')
+  const chat = await waitFor('[data-react-workspace="chat"]')
+  const searchTrigger = document.querySelector('[aria-label="Search sessions"]')
+  searchTrigger?.click()
+  const search = await waitFor('input[type="search"]')
+  search?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  while (Date.now() < deadline && document.querySelector('input[type="search"]') !== null) await wait(50)
+  const chatVisible = chat !== null
+  const searchClosed = document.querySelector('input[type="search"]') === null
+  return {
+    ok: homeVisible && homeSelected && settingsVisible && settingsSelected && chatVisible && searchClosed,
+    ids: ids(), icons, homeSelected, settingsSelected, homeVisible, settingsVisible, chatVisible, searchClosed,
+  }
+})()`
+
+const smokeReactCollapseForReload = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 10000
+  document.querySelector('.oa-react-rail-collapse')?.click()
+  while (Date.now() < deadline && document.querySelector('.oa-react-workbench')?.getAttribute('data-rail-collapsed') !== 'true') await wait(50)
+  const preferences = await globalThis.openagentsDesktop?.preferences?.get?.()
+  return {
+    ok: document.querySelector('.oa-react-workbench')?.getAttribute('data-rail-collapsed') === 'true' &&
+      document.querySelector('.oa-react-sidebar-expand') !== null &&
+      preferences?.presentation?.sidebarCollapsed === true,
+    persisted: preferences?.presentation?.sidebarCollapsed ?? null,
+    searchOpen: document.querySelector('input[type="search"]') !== null,
+  }
+})()`
+
 const smokeReactArmInputProbe = `(() => {
   const textarea = document.querySelector('.oa-react-composer textarea')
   if (!(textarea instanceof HTMLTextAreaElement)) return false
@@ -3167,6 +3218,10 @@ const smokeReactReloadRestoration = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 15000
   while (Date.now() < deadline && document.querySelector('[data-en-react-surface="true"]') === null) await wait(50)
+  const collapsedAtMount = document.querySelector('.oa-react-workbench')?.getAttribute('data-rail-collapsed') === 'true'
+  const searchClosedAtMount = document.querySelector('input[type="search"]') === null
+  const composerAtMount = document.querySelector('.oa-react-composer textarea')
+  const composerFocusedAtMount = composerAtMount !== null && document.activeElement === composerAtMount
   const automaticDeadline = Date.now() + 2000
   while (Date.now() < automaticDeadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
     .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
@@ -3187,9 +3242,13 @@ const smokeReactReloadRestoration = `(async () => {
       .some((item) => item.textContent?.toLowerCase().includes("k"))
   }
   return {
-    ok: restored && document.documentElement.dataset.desktopRenderer === "react" &&
+    ok: restored && collapsedAtMount && searchClosedAtMount && composerFocusedAtMount &&
+      document.documentElement.dataset.desktopRenderer === "react" &&
       document.querySelector('[data-en-key="shell-root"]') === null,
     restored,
+    collapsedAtMount,
+    searchClosedAtMount,
+    composerFocusedAtMount,
     backend: document.documentElement.dataset.desktopRenderer,
     heading: document.querySelector('.oa-react-conversation-heading h1')?.textContent ?? null,
     timeline: [...document.querySelectorAll('.oa-react-timeline-item')].map((item) => item.textContent),
@@ -4980,6 +5039,8 @@ const runSmoke = (window: BrowserWindow): void => {
             return
           }
           await step("react-workbench-exclusive", smokeReactWorkbench)
+          await step("react-sidebar-destinations", smokeReactSidebarDestinations)
+          await captureShot(window, "react-sidebar-expanded")
           await step("react-input-probe-armed", smokeReactArmInputProbe)
           window.webContents.focus()
           window.webContents.sendInputEvent({ type: "keyDown", keyCode: "K" })
@@ -4999,6 +5060,8 @@ const runSmoke = (window: BrowserWindow): void => {
           )
           await step("react-navigation-history", smokeReactNavigationHistory)
           await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
+          await step("react-sidebar-collapse-persisted", smokeReactCollapseForReload)
+          await captureShot(window, "react-sidebar-collapsed")
           tracePass = 1
           window.webContents.reload()
           return

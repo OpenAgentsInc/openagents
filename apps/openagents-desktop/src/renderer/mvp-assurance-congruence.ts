@@ -30,8 +30,16 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     interaction: "Search the full coding-history catalog by session title or workspace",
     criterionRefs: ["CW-AC-10"],
     assuranceItemRefs: ["AO-CW-AC-10-01"],
-    contractRefs: ["openagents_desktop.history.session_search_filters.v1"],
-    oracleRefs: ["apps/openagents-desktop/src/renderer/shell.test.ts", "apps/openagents-desktop/tests/history-catalog-scale.test.ts"],
+    contractRefs: ["openagents_desktop.history.session_search_filters.v1", "openagents_desktop.sidebar.codex_shaped_react_anatomy.v1"],
+    oracleRefs: ["apps/openagents-desktop/src/renderer/shell.test.ts", "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx", "apps/openagents-desktop/tests/history-catalog-scale.test.ts"],
+  },
+  {
+    surfaceId: "workspace-chat",
+    interaction: "Restore sidebar collapse while search stays closed and composer focus stays owned",
+    criterionRefs: ["CW-AC-10", "CW-AC-15"],
+    assuranceItemRefs: ["AO-CW-AC-10-01", "AO-CW-AC-15-01"],
+    contractRefs: ["openagents_desktop.sidebar.codex_shaped_react_anatomy.v1", "openagents_desktop.composer.focused_on_open.v1"],
+    oracleRefs: ["apps/openagents-desktop/tests/desktop-preferences.test.ts", "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx", "apps/openagents-desktop/src/main.ts"],
   },
   {
     surfaceId: "workspace-chat",

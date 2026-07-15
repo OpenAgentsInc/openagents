@@ -989,7 +989,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             message: "The Open in Codex response was invalid.",
           }
         },
-      }, updateRendererHost, harnessMaintenanceSettingsBridge),
+      }, updateRendererHost, harnessMaintenanceSettingsBridge, {
+        setSidebarCollapsed: async (sidebarCollapsed) => {
+          await readBridge()?.preferences?.update?.({ presentation: { sidebarCollapsed } })
+        },
+      }),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({
@@ -1644,6 +1648,15 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // to a root data attribute the app CSS honors. Defaults are identity, so the
     // common path (and the no-preload smoke path) is unchanged.
     const preferences = yield* Effect.promise(loadDesktopPreferences)
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      presentation: {
+        sidebarCollapsed: preferences.presentation.sidebarCollapsed,
+        // Disclosure is intentionally launch-ephemeral. The authoritative
+        // query remains in history state and is never duplicated in prefs.
+        sessionSearchOpen: false,
+      },
+    }))
     for (const [name, value] of Object.entries(preferencesRootAttributes(preferences))) {
       document.documentElement.setAttribute(name, value)
     }
