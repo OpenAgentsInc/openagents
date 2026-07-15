@@ -76,6 +76,10 @@ textarea {
   font: inherit;
 }
 
+[data-slot="command-key"] {
+  font-size: 10px;
+}
+
 #openagents-desktop-root {
   display: flex;
   isolation: isolate;

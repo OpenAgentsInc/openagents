@@ -10,7 +10,7 @@ supporting audits, and evidence boundaries separate and easy to read.
 ## Read in this order
 
 1. [`openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md)
-   — the proposed revision-2 Phase 2 ProductSpec for the React-backed basic Codex
+   — the proposed revision-4 Phase 2 ProductSpec for the React-backed basic Codex
    workbench. It defines the focused shell, session, timeline, composer,
    decision, read-only review, accessibility, performance, React/Effect Native
    ownership, the owner-selected shadcn/Kahla component extension,
@@ -27,7 +27,17 @@ supporting audits, and evidence boundaries separate and easy to read.
    [`2026-07-14-openagents-desktop-react-rc15-release-receipt.md`](./2026-07-14-openagents-desktop-react-rc15-release-receipt.md): signed and
    notarized RC15, mounted React/decision smoke, full assurance, and reversible
    RC13-to-RC15 lifecycle acceptance without publication.
-   The owner-directed conversation-first revision is specified and mechanically
+   Revision 4 reconciles the post-RC16 workspace, image, packaged-runtime,
+   compact-shell, event-storm, and dual-control requirements without
+   relabeling RC16 or inheriting revision-3 admission. Its parser-valid,
+   unadmitted companion is
+   [`openagents-desktop-mvp-phase-2-react-codex-workbench.rev4-proposed.assurance-spec.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.rev4-proposed.assurance-spec.md).
+   The proposal binds all 20 criteria; AC-15 through AC-20 have complete
+   proposed proof design for the post-RC16 changes, while AC-1 through AC-14
+   remain explicitly `needs_design`. That honest 6/20 readiness state blocks
+   admission or execution of the full Phase 2 proof until the earlier criteria
+   are reconciled.
+   The owner-directed gates are specified and mechanically
    gated in
    [`openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md).
    The exact passing signed candidate is recorded in

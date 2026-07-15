@@ -1,10 +1,11 @@
-# OpenAgents Desktop React Codex Workbench — revision 3 assurance gates
+# OpenAgents Desktop React Codex Workbench — revision 4 assurance gates
 
-Date: 2026-07-14
+Date: 2026-07-15
 
 ProductSpec: `openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md`
-revision 3. Owner disposition: accepted for RC16 candidate construction and
-verification; publication remains separately gated.
+revision 4. Lifecycle: proposed. Revision 3 remains the accepted RC16
+construction identity; this revision has no inherited admission, release, or
+publication authority.
 
 ## Reference boundary
 
@@ -62,16 +63,57 @@ theme, and host authority.
     destinations without React or `window.history` ownership. Disabled means
     no reachable target; enabled clicks dispatch exactly one typed intent.
 
+## Post-RC16 interaction gates
+
+12. **Launch and WorkContext are coherent.** Ordinary launch fills the active
+    display work area without fullscreen, adopts launcher cwd, focuses the
+    composer, and centers the current directory plus one accessible Change
+    action in an empty chat. Cancel/failure retains context; confirmation
+    updates every workspace consumer.
+13. **The shell is exact, not aspirational.** The primary rail is exactly New
+    session, Chat, Project home, and Settings. Compact rows do not move on
+    hover; status/timestamps stay inline; the command palette contains only
+    currently available registry actions and real recent sessions.
+14. **Images remain bounded capabilities.** Picker, paste, and drop accept only
+    PNG/JPEG/WebP/GIF, at most eight and 10 MB each. Removable previews are
+    named, image-only idle send works, failure restores, Steer/Queue stay
+    text-only, and renderer props carry neither arbitrary paths nor base64.
+15. **Codex custody is app-owned and private.** The packaged pinned runtime is
+    the sole turn/maintenance authority under minimal PATH. Settings are
+    Codex-only, identity stays fake-and-blurred until explicit reveal, config
+    repair is narrowly verified, and advisory/update failure is honest and
+    non-focus-stealing.
+16. **High-volume sources are cadence-bounded.** Provider text, PTY output, and
+    workspace events retain exact order/content while avoiding 1:1 state
+    publication. Ten-thousand-event candidate and falsifier corpora cover
+    ignored trees, 256-ref overflow, bounded queues/tails, hidden-view scoping,
+    teardown, input latency, idle CPU, and RSS growth.
+17. **Programmatic and visible steering are congruent.** Every expected-working
+    action maps to one canonical typed identity and one visible accessible
+    keyboard or pointer route. Headed Electron proof drives real Chromium
+    focus/accessibility/input semantics suitable for external Computer Use;
+    DOM mutation and test-only state injection are not visible-route proof.
+
+## Proposed AssuranceSpec binding
+
+The parser-valid proposal bound to revision 4 is
+`openagents-desktop-mvp-phase-2-react-codex-workbench.rev4-proposed.assurance-spec.md`.
+Its obligations are proof design only until separately reviewed and admitted.
+The admitted Phase 1 AssuranceSpec and RC16 receipts remain immutable history
+and cannot be retargeted to this ProductSpec.
+
 ## Release gates
 
-RC16 must pass the complete Node 24 Desktop verification suite, the focused
+Any candidate built from revision 4 must pass the complete Node 24 Desktop verification suite, the focused
 revision-3 hierarchy oracles, the 18-obligation admitted Phase 1 assurance run,
 production build, signed hardened-runtime packaging, Apple notarization,
 stapler/Gatekeeper/deep-signature checks, mounted-DMG React smoke, monotonic
-RC15-to-RC16 update with interruption recovery, downgrade refusal, rollback,
+prior-candidate update with interruption recovery, downgrade refusal, rollback,
 diagnostic export, uninstall, reinstall, cleanup, and zero-owner teardown.
+For the historical accepted path this includes the exact RC15-to-RC16 update;
+revision 4 must bind its own monotonic prior-candidate lifecycle receipt.
 
-The receipt must bind the exact source commit, ProductSpec digest, artifact
+The receipt must bind the exact source commit, revision-4 ProductSpec and proposed/admitted AssuranceSpec digests, artifact
 bytes and SHA-256, Apple submission result, test counts, residuals, and all
-AC-1 through AC-14 dispositions. A passing candidate does not publish a feed,
+AC-1 through AC-20 dispositions. A passing candidate does not publish a feed,
 tag, GitHub release, artifact, or public claim.

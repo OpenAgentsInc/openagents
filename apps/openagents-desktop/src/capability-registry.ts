@@ -168,9 +168,10 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     uiOracleRef: SHELL, uiOracleWiring: "existing_suite",
     programmaticOracleRef: EVALS, programmaticOracleWiring: "headless_wired",
     rung: "live",
-    // The Stop button landed in THIS lane; the interrupt IPC path is wired and
-    // proven. Residual partial: no queued-follow-up steering (see A3).
-    blocker: "audit A2: interrupt now UI-driven via the composer Stop button; queued follow-up steering remains unbuilt (A3)",
+    // Stop and typed current-turn steer are wired. Residual partial: provider
+    // support differs by lane, while A3 is queue-until-idle rather than true
+    // injection into an already-running provider turn.
+    blocker: "audit A2: Stop and current-turn steer are typed and UI-driven; true mid-stream injection remains provider-dependent, while A3 is queue-until-idle",
   },
   {
     id: "A3", group: "A", capability: "Queue follow-up while turn runs", status: "partial",

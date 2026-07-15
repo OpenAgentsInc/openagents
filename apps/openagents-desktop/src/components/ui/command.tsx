@@ -182,8 +182,9 @@ function CommandFooter({ className, ...props }: React.ComponentProps<"footer">) 
 function CommandKey({ className, ...props }: React.ComponentProps<"kbd">) {
   return (
     <kbd
+      data-slot="command-key"
       className={cn(
-        "inline-flex h-5 min-w-5 items-center justify-center rounded bg-muted px-1 font-sans text-[10px] font-medium text-muted-foreground",
+        "inline-flex h-5 min-w-5 items-center justify-center rounded bg-muted px-1 font-sans font-medium text-muted-foreground",
         className,
       )}
       {...props}

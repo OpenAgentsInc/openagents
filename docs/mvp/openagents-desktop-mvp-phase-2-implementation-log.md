@@ -522,3 +522,54 @@ No T3-only project, clone, submenu, provider, or thread action was introduced.
 Component tests prove the groups, icon action, footer, exact intent dispatch,
 and absence of copied T3-only labels; the design oracle pins the structural
 geometry.
+
+### Post-RC16 launch, control, custody, and performance reconciliation
+
+The next UI pass made the ordinary empty-chat path workspace-aware: Desktop
+adopts the launcher directory, sizes to the active display work area, focuses
+the composer, and centers the current directory with one accessible Change
+action whose cancel path is non-mutating. The primary rail is now exactly New
+session, Chat, Project home, and Settings; Back/Forward use the bounded typed
+history; timestamps and active work status stay inline; hover no longer shifts
+row geometry; Files and read-only review remain registry-reachable supporting
+views rather than primary destinations.
+
+The React composer restored the bounded image capability through picker,
+paste, and drop. It admits PNG/JPEG/WebP/GIF only, caps count and bytes, supports
+image-only idle turns, restores attachments on failed send, and lowers content
+through the main-owned Codex boundary without granting renderer path
+authority. Settings and maintenance now use the exact packaged Codex runtime,
+stay Codex-only, default sensitive identity to fake blurred text, diagnose
+configuration precisely, and restrict repair to a verified inert defect.
+
+Provider text, PTY output, and workspace watch updates are cadence-bounded and
+flush at semantic completion/teardown boundaries instead of publishing one
+renderer state change per source event. The React timeline now memoizes stable
+rows and the command palette performs no filtering or session sorting while
+closed; reduced-motion preference also stops the update spinner. These are
+renderer-work reductions, not a second state authority.
+
+ProductSpec revision 4 and its proposed AssuranceSpec make these additions
+explicit as AC-15 through AC-20. The assurance design requires both canonical
+typed programmatic dispatch and a built headed Electron keyboard/pointer/
+accessibility journey suitable for external Computer Use. This revision and
+its evidence remain proposed: they do not relabel RC16, inherit revision-3
+admission, publish an artifact, or authorize a public claim.
+
+The 2026-07-15 verification pass validated the ProductSpec under both
+OpenAgents and upstream profiles and validated the parser-bound AssuranceSpec
+with all 20 criteria mapped. Six post-RC16 obligations are proof-design ready;
+the earlier fourteen remain explicitly `needs_design`, so no full Phase 2
+admission is implied. The focused ProductSpec/AssuranceSpec suite passed 208
+tests, the complete Desktop sweep passed 1,422 tests with 39 intentional skips,
+and production build succeeded. Seven measured warm launches reached the
+interactive shell at 444.38 ms median and 504.76 ms p95, below the 1,500 ms
+median and 2,500 ms p95 ProductSpec budgets.
+
+A headed isolated-profile Computer Use pass then exercised real Chromium and
+native macOS semantics. The empty composer owned accessibility focus; Cmd-K
+opened the registry-only palette; typing `settings` and pressing Enter opened
+Codex-only Settings; pointer input opened the native Change working directory
+dialog; and Cancel returned to the same exact WorkContext. No DOM mutation,
+test-only state injection, provider turn, or filesystem selection was used as
+visible-route evidence.

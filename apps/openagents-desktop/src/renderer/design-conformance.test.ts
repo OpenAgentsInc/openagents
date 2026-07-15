@@ -172,6 +172,12 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(source).toContain("min-h-12")
   })
 
+  test("every Codex update spinner stops under reduced motion", () => {
+    const css = readFileSync(path.join(rendererDir, "react-workbench.css"), "utf8")
+    const reducedMotion = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ""
+    expect(reducedMotion).toContain(".oa-react-codex-update-spinner { animation: none; }")
+  })
+
   test("the stylesheet stays within the bounded token-bridge/host-physics payload budget", () => {
     // Bytes are formatting-invariant enough to prevent blank-line/minification
     // games while expressing the issue's approximate 300-line target. The old

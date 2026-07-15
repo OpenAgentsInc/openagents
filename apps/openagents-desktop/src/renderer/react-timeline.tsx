@@ -296,6 +296,19 @@ class TimelineItemBoundary extends Component<Readonly<{
   }
 }
 
+const sameTimelineRecord = (left: ReactTimelineRecord, right: ReactTimelineRecord): boolean =>
+  left.key === right.key && left.itemRef === right.itemRef && left.sequence === right.sequence &&
+  left.kind === right.kind && left.label === right.label && left.body === right.body &&
+  left.timestamp === right.timestamp && left.status === right.status && left.redacted === right.redacted &&
+  left.resultRef === right.resultRef && left.resultBody === right.resultBody && left.resultStatus === right.resultStatus &&
+  left.fields.length === right.fields.length && left.fields.every((field, index) => {
+    const candidate = right.fields[index]
+    return candidate !== undefined && field.label === candidate.label && field.value === candidate.value
+  })
+
+const MemoTimelineItemBoundary = memo(TimelineItemBoundary, (left, right) =>
+  left.report === right.report && sameTimelineRecord(left.record, right.record))
+
 type TimelineProps = Readonly<{
   sessionKey: string
   records: ReadonlyArray<ReactTimelineRecord>
@@ -315,7 +328,7 @@ const TimelineRecords = ({ records, report }: {
     const record = records[index]!
     if (!isWorkRecord(record)) {
       output.push(<MessageScrollerItem key={record.key} messageId={record.key} scrollAnchor={isUserRecord(record)}>
-        <TimelineItemBoundary record={record} report={report} />
+        <MemoTimelineItemBoundary record={record} report={report} />
       </MessageScrollerItem>)
       index += 1
       continue
@@ -324,7 +337,7 @@ const TimelineRecords = ({ records, report }: {
     while (index < records.length && isWorkRecord(records[index]!)) group.push(records[index++]!)
     if (group.length === 1) {
       output.push(<MessageScrollerItem key={group[0]!.key} messageId={group[0]!.key}>
-        <TimelineItemBoundary record={group[0]!} report={report} />
+        <MemoTimelineItemBoundary record={group[0]!} report={report} />
       </MessageScrollerItem>)
       continue
     }
@@ -336,9 +349,9 @@ const TimelineRecords = ({ records, report }: {
       <div className="oa-react-work-group" role="listitem">
         <details>
           <summary className="oa-react-work-group-summary"><strong>{running ? `+${folded.length} previous` : "Worked"}</strong><span>{folded.length} {folded.length === 1 ? "activity" : "activities"}</span></summary>
-          <div role="list">{folded.map(entry => <TimelineItemBoundary key={entry.key} record={entry} report={report} />)}</div>
+          <div role="list">{folded.map(entry => <MemoTimelineItemBoundary key={entry.key} record={entry} report={report} />)}</div>
         </details>
-        {visible.map(entry => <TimelineItemBoundary key={entry.key} record={entry} report={report} />)}
+        {visible.map(entry => <MemoTimelineItemBoundary key={entry.key} record={entry} report={report} />)}
       </div>
     </MessageScrollerItem>)
   }

@@ -653,11 +653,12 @@ for in the MVP. You need to clean all this up and make a pass to remove
 everything from the sidebar and all UI that's not specifically called for in
 our MVP spec."
 
-- The sidebar dock renders EXACTLY the cited allowlist, in order: New chat,
-  Chat, ProductSpec, AssuranceSpec, Project home, Settings. Each entry carries
+- The sidebar dock renders EXACTLY the cited allowlist, in order: New session,
+  Chat, Project home, Settings. Each entry carries
   its ProductSpec/owner-directive citation in
   `src/renderer/mvp-visible-surfaces.ts`.
-- Files and the command palette have no dock icon. They stay reachable only
+- ProductSpec and AssuranceSpec are internal tooling with no MVP route. Files,
+  read-only review, and the command palette have no dock icon. They stay reachable only
   through their closed CW-AC-12 command identities (⌘K palette, native
   Commands menu, deep link) because the spec places file/Git review "beside
   the conversation" and calls for no dock affordances.

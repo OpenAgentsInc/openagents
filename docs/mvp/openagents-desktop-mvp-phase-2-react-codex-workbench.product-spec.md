@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop MVP Phase 2 — React-backed Codex Workbench"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-14T00:00:00Z"
-updated_at: "2026-07-14T00:00:00Z"
+updated_at: "2026-07-15T00:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-desktop/"
@@ -98,9 +98,14 @@ in:
   - repository context summary plus bounded read-only status and exact diff review reachable without turning the workbench into an editor
   - explicit empty, loading, hydrating, streaming, blocked, offline, incompatible, signed-out, quota, rate-limit, policy-denied, revoked, interrupted, and failed states
   - keyboard, pointer, screen-reader, reduced-motion, narrow-window, renderer-reload, and app-restart behavior for the core workbench
+  - launch-directory WorkContext, active-display work-area sizing, empty-chat directory disclosure and switching, and immediate new-session composer focus
+  - bounded PNG, JPEG, WebP, and GIF attachments through picker, paste, and drop, including image-only idle turns
+  - exact packaged Codex runtime custody, Codex-only maintenance and privacy, configuration diagnosis, and narrowly verified repair
+  - cadence-bounded provider, terminal, and workspace event projection with explicit stress, memory, CPU, interaction-latency, and teardown budgets
+  - control congruence between canonical programmatic intents and the visible accessible keyboard and pointer paths used by external Computer Use
   - compatibility mounting for non-converted Effect Native surfaces while the focused React lowering set is completed and proven
 out:
-  - a full editor, interactive terminal, preview server, browser, voice, or computer-use surface
+  - a full editor, interactive terminal, preview server, browser, voice, or product-operated computer-use surface; external Computer Use remains a required assurance technique for visible UI operability
   - Git discard, commit, branch, push, pull request, merge, or arbitrary command execution
   - ProductSpec authoring, criterion boards, AssuranceSpec inspection, child-agent topology, Fleet, multi-account controls, or remote workrooms as Phase 2 completion requirements
   - mobile, web, React Native, server rendering, or hydration completion as a condition for this Desktop phase
@@ -167,6 +172,32 @@ not trigger checks, rows, or actions in this MVP. Sensitive Codex account text
 is replaced by stable same-length fake text and blurred by default; an explicit
 click reveals or hides the real value without changing layout, while hover and
 keyboard focus expose guidance rather than the secret itself.
+
+Ordinary launch fills the active display's usable work area without entering
+fullscreen and adopts the launcher directory as the canonical WorkContext.
+An empty new chat centers that directory with one accessible Change action;
+cancel or picker failure preserves the current context, while a confirmed
+selection updates Files, review, Git, and the next turn together. The composer
+is focused before pointer use. The compact rail contains exactly New session,
+Chat, Project home, and Settings, with Back/Forward and a registry-only command
+palette providing the remaining navigation without placeholder destinations.
+
+The composer accepts bounded local images through picker, paste, and drop. It
+shows removable previews, permits an image-only idle send, restores attachments
+after failure, and keeps Steer/Queue text-only. Renderer state never receives an
+arbitrary local path or base64 payload; the main-owned bridge validates and
+translates admitted attachments for the exact Codex app-server turn.
+
+High-volume sources are quiet by construction. Provider text and PTY output
+publish no more than once per renderer cadence and flush before semantic
+boundaries or completion. Workspace watches ignore dot/generated trees,
+deduplicate for 75 ms, carry at most 256 exact relative refs, and otherwise
+emit one explicit overflow invalidation. Hidden Files views perform no tree
+reload work, open matching editor tabs stay current, and teardown prevents late
+publication. The same actions remain steerable through canonical typed intents
+and through visible, named keyboard/pointer controls so programmatic drivers
+and external Computer Use observe one command identity rather than parallel UI
+authority.
 
 On a narrow desktop window, the session rail becomes a dismissible overlay and
 the review drawer becomes a full-height sheet; the conversation and composer
@@ -382,7 +413,45 @@ the need and a separate dependency decision records the cost and boundary.
   criterion: Non-converted surfaces use the existing compatibility backend without rendering the same workbench state through two backends, and the Phase 2 release does not require catalog-wide React-DOM coverage, web hydration, mobile changes, or compatibility-backend removal.
 - id: AC-14
   criterion: The React workbench meets the existing signed artifact and security gates, has a median warm launch-to-interactive time no greater than 1500 ms and p95 no greater than 2500 ms on the admitted macOS ARM64 profile, and switches a metadata-ready session to its first stable transcript paint within 400 ms at p95 for the acceptance corpus.
+- id: AC-15
+  criterion: Ordinary launch fills the active display work area without entering fullscreen, adopts the launcher directory as the canonical WorkContext, centers that directory and one accessible Change action in an empty new chat, preserves the current context on cancel or failure, updates all workspace consumers after confirmation, and focuses the new-session composer before pointer use.
+- id: AC-16
+  criterion: The compact shell exposes exactly New session, Chat, Project home, and Settings as primary destinations; keeps titles, status, and timestamps aligned without hover layout shift; records one bounded successful-navigation Back/Forward history; and opens a registry-only command palette whose pointer and keyboard selection dispatch the exact same typed command while unavailable or copied reference-only actions remain absent.
+- id: AC-17
+  criterion: The composer admits PNG, JPEG, WebP, and GIF attachments through picker, paste, and drop with at most 8 images and 10 MB per image, renders removable accessible previews, permits image-only send only while idle, keeps Steer and Queue text-only, restores attachments after failed send, translates admitted content to Codex localImage input, and exposes no arbitrary renderer path or base64 authority.
+- id: AC-18
+  criterion: The exact packaged pinned Codex runtime is the sole turn and maintenance authority under a minimal PATH; Desktop neither discovers nor mutates ambient PATH or NVM installations, Settings and maintenance remain Codex-only, sensitive identity is same-length fake and blurred until explicit reveal, configuration diagnostics name exact defects, repair changes only narrowly verified keys, and launch advisory or update failure never steals focus or claims optimistic success.
+- id: AC-19
+  criterion: Provider text and PTY output publish at renderer cadence with semantic-boundary, completion, and teardown flush laws; workspace watching ignores dot/generated trees, deduplicates for 75 ms, carries at most 256 exact refs before one explicit overflow, and refreshes only visible loaded directories or matching open tabs; 10,000-event corpora preserve exact order and bounded tails without 10,000 state publications, unbounded queue growth, late post-dispose work, or loss of input responsiveness.
+- id: AC-20
+  criterion: Every expected-working scoped action has one canonical programmatic intent or command route and one visible accessible keyboard or pointer route that dispatch the same identity exactly once; a built headed Electron journey proves the visible route with real Chromium focus, accessibility, keyboard, and pointer semantics suitable for external Computer Use without adding product-operated computer-use authority.
 ```
+
+The OpenAgents executable profile consumes author-visible top-level criterion
+bullets, while the upstream profile consumes the structured block above. The
+following projection repeats the same criterion identities and requirements so
+one exact document is executable under both profiles:
+
+- **AC-1:** The shipped Desktop workbench mounts through one React 19 root and renders the scoped shell, session rail, conversation header, timeline, composer, command palette, decision surface, review drawer, and status notices as ordinary React elements produced by declared renderer-private Effect Native lowerings.
+- **AC-2:** The React surface consumes one synchronous Effect-owned snapshot subscription and dispatches only existing registered typed intent keys; Strict Mode, rerender, reload, remount, and recovery tests observe no duplicate host subscription, command, or terminal outcome.
+- **AC-3:** A supported user can launch locally, use the ordinary logged-in Codex session, grant one repository, and start an ordinary new chat without an OpenAgents account, ProductSpec artifact, accepted plan, Fleet setup, account selector, or provider selector.
+- **AC-4:** The React session rail paints bounded top-level metadata before transcript hydration and supports new, search, select, resume, archive, delete, and paging while preserving stable ordering, titles, status, attention, selection, and restart restoration.
+- **AC-5:** The React timeline renders stable keyed authored text plus compact plan, tool, change, blocker, error, interruption, gap, and terminal treatments in causal order; transport, metadata, context, and token-accounting events do not appear as conversation messages, settled consecutive work folds behind a bounded disclosure, active work and streaming state remain visible without duplicating or reordering items, and prepending older variable-height content preserves the first visible item without a stale intermediate frame.
+- **AC-6:** The React composer captures the first keystroke, preserves IME composition, grows within its bound, and exposes the correct send, stop, steer, or queue action for the current state; pointer, keyboard, command-palette, and native-menu entry points resolve to the same registered command identity.
+- **AC-7:** Question, approval, and plan-review requests open an accessible focused decision surface with complete choices, explicit pending, stale, failed, and resolved states, predictable Escape behavior, and focus restoration; prose or optimistic UI never records the decision.
+- **AC-8:** Repository context and read-only status or exact diff review remain bounded to the current WorkContext and correlated timeline refs; stale, revoked, secret-shaped, binary, oversized, or unavailable output fails visibly and no Git mutation or absolute path enters React props or state.
+- **AC-9:** The scoped workbench is fully operable by keyboard at 760 by 520 CSS pixels, restores focus across overlays, provides bounded screen-reader announcements, meets WCAG 2.2 AA contrast for text and controls, and honors reduced-motion preference.
+- **AC-10:** Empty, loading, hydrating, streaming, blocked, offline, incompatible, signed-out, quota, rate-limit, policy-denied, revoked, interrupted, and failed states are visually distinct, have actionable copy where recovery exists, and never masquerade as success or completion.
+- **AC-11:** React, Tailwind, Base UI, DOM APIs, hooks, and JSX remain in declared renderer or Desktop-host modules; portable Effect Native modules remain React-free and schema fields contain no arbitrary component, callback, ReactNode, className, credential, raw provider payload, absolute path, Node handle, generic IPC, process handle, or filesystem handle.
+- **AC-12:** One installed-app journey creates a chat, submits a real Codex turn, streams typed content, resolves one blocker or review request, opens one exact read-only change, stops or steers a running turn, switches away and back, reloads the renderer, restarts the app, and resumes the same durable session without duplicate execution or silent rerun.
+- **AC-13:** Non-converted surfaces use the existing compatibility backend without rendering the same workbench state through two backends, and the Phase 2 release does not require catalog-wide React-DOM coverage, web hydration, mobile changes, or compatibility-backend removal.
+- **AC-14:** The React workbench meets the existing signed artifact and security gates, has a median warm launch-to-interactive time no greater than 1500 ms and p95 no greater than 2500 ms on the admitted macOS ARM64 profile, and switches a metadata-ready session to its first stable transcript paint within 400 ms at p95 for the acceptance corpus.
+- **AC-15:** Ordinary launch fills the active display work area without entering fullscreen, adopts the launcher directory as the canonical WorkContext, centers that directory and one accessible Change action in an empty new chat, preserves the current context on cancel or failure, updates all workspace consumers after confirmation, and focuses the new-session composer before pointer use.
+- **AC-16:** The compact shell exposes exactly New session, Chat, Project home, and Settings as primary destinations; keeps titles, status, and timestamps aligned without hover layout shift; records one bounded successful-navigation Back/Forward history; and opens a registry-only command palette whose pointer and keyboard selection dispatch the exact same typed command while unavailable or copied reference-only actions remain absent.
+- **AC-17:** The composer admits PNG, JPEG, WebP, and GIF attachments through picker, paste, and drop with at most 8 images and 10 MB per image, renders removable accessible previews, permits image-only send only while idle, keeps Steer and Queue text-only, restores attachments after failed send, translates admitted content to Codex localImage input, and exposes no arbitrary renderer path or base64 authority.
+- **AC-18:** The exact packaged pinned Codex runtime is the sole turn and maintenance authority under a minimal PATH; Desktop neither discovers nor mutates ambient PATH or NVM installations, Settings and maintenance remain Codex-only, sensitive identity is same-length fake and blurred until explicit reveal, configuration diagnostics name exact defects, repair changes only narrowly verified keys, and launch advisory or update failure never steals focus or claims optimistic success.
+- **AC-19:** Provider text and PTY output publish at renderer cadence with semantic-boundary, completion, and teardown flush laws; workspace watching ignores dot/generated trees, deduplicates for 75 ms, carries at most 256 exact refs before one explicit overflow, and refreshes only visible loaded directories or matching open tabs; 10,000-event corpora preserve exact order and bounded tails without 10,000 state publications, unbounded queue growth, late post-dispose work, or loss of input responsiveness.
+- **AC-20:** Every expected-working scoped action has one canonical programmatic intent or command route and one visible accessible keyboard or pointer route that dispatch the same identity exactly once; a built headed Electron journey proves the visible route with real Chromium focus, accessibility, keyboard, and pointer semantics suitable for external Computer Use without adding product-operated computer-use authority.
 
 ## Success Metrics
 
@@ -411,6 +480,14 @@ the need and a separate dependency decision records the cost and boundary.
   metric: supported_warm_launches_reaching_interactive_workbench
   target: "median <= 1500 ms and p95 <= 2500 ms"
   window: every Phase 2 release candidate on the admitted macOS ARM64 profile
+- id: SM-7
+  metric: high_volume_renderer_sources_staying_within_publication_memory_cpu_and_input_latency_budgets
+  target: "100% of 10,000-event stress runs; no 1:1 publication, unbounded queue/RSS growth, sustained idle CPU storm, or p95 input latency above 100 ms"
+  window: every Phase 2 release candidate and event-pipeline change
+- id: SM-8
+  metric: expected_working_actions_with_programmatic_and_visible_control_congruence
+  target: "100%"
+  window: every Phase 2 release candidate
 ```
 
 ## Success Metric Context
@@ -428,6 +505,11 @@ the need and a separate dependency decision records the cost and boundary.
   keyboard, accessibility-tree, focus, and native interaction receipts.
 - **SM-6** segment: admitted macOS ARM64 release profile; source: existing
   startup benchmark harness with exact artifact binding.
+- **SM-7** segment: deterministic 10,000-event provider, PTY, and filesystem
+  corpora plus headed Electron RSS/CPU/input-latency sampling; source: bounded
+  local receipts containing counts and timings, never prompt or path content.
+- **SM-8** segment: the expected-working surface matrix; source: typed intent
+  dispatch tests and a headed accessibility/pointer/keyboard journey.
 
 Metrics remain absent when consent is off. They collect no prompt, transcript,
 repository content, absolute path, credential, stable account, or stable
@@ -548,8 +630,16 @@ assurance record.
 - Composer receipt covering first keystroke, IME, dynamic height, send, stop,
   steer, queue, question, approval, plan review, stale decision, and retry.
 - Performance receipt for bundle size, warm launch, session-switch paint,
-  long-timeline update, input latency, memory, and teardown on the admitted
-  artifact and corpus.
+  long-timeline update, 10,000-event publication bounds, input latency, idle
+  CPU, RSS growth, queue bounds, and teardown on the admitted artifact and
+  corpus.
+- Workspace and attachment receipt covering launch cwd, active-display work
+  area, empty-chat Change cancel/select, picker/paste/drop image admission,
+  image-only send, failure restoration, and absence of renderer path authority.
+- Control-congruence receipt mapping every expected-working action to its exact
+  programmatic identity and visible accessible route, plus a headed Electron
+  Computer Use journey driven through real keyboard, pointer, focus, and
+  accessibility semantics rather than DOM or test-only mutation.
 - Installed signed-artifact journey covering local-first launch, repository
   grant, new chat, real Codex stream, blocker or review, exact read-only change,
   stop or steer, session switch, renderer reload, app restart, and same-session
@@ -620,3 +710,10 @@ release receipts through the owning promise registry.
   transition issues. That is the current owner disposition for revision 3 and
   authorizes RC16 candidate construction and verification. It is not a public
   release, feed-publication, or public-claim authorization.
+- **2026-07-15 — Reconcile post-RC16 usability, custody, and performance work
+  as proposed revision 4.** Owner-directed launch/workspace behavior, compact
+  navigation, image input, packaged Codex custody, Codex-only maintenance,
+  event-storm bounds, and programmatic/visible control congruence materially
+  extend acceptance beyond revision 3. Revision 4 creates a new proposed
+  identity and AssuranceSpec binding; it does not relabel RC16, inherit its
+  admission, admit itself, publish an artifact, or authorize a public claim.

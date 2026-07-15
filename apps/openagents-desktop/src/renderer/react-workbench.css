@@ -80,6 +80,7 @@
 .oa-react-provider-email { display: inline-flex; min-width: 0; align-items: center; gap: .4rem; color: var(--en-color-textMuted); }
 
 @media (prefers-reduced-motion: reduce) {
+  .oa-react-codex-update-spinner { animation: none; }
   .oa-react-sensitive-text { transition: none; }
 }
 
