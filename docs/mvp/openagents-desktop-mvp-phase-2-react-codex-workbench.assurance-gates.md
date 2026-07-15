@@ -55,6 +55,12 @@ theme, and host authority.
 10. **Khala color authority is preserved.** The approved dark Khala semantic
     tokens remain canonical. shadcn/Base UI consume token aliases and introduce
     no independent zinc, state, typography, radius, or motion system.
+11. **Navigation history stays authoritative.** Back and Forward reflect one
+    bounded Effect-owned stack, record only successful opens, deduplicate
+    adjacent destinations, preserve forward history until a successful branch,
+    and traverse local, Codex-history, coding-session, and admitted workspace
+    destinations without React or `window.history` ownership. Disabled means
+    no reachable target; enabled clicks dispatch exactly one typed intent.
 
 ## Release gates
 

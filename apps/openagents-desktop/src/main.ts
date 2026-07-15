@@ -3106,6 +3106,58 @@ const smokeReactTurnAndReview = `(async () => {
   }
 })()`
 
+const smokeReactNavigationHistory = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 30000
+  const snapshot = () => ({
+    title: document.querySelector('.oa-react-conversation-heading h1')?.textContent?.trim() ?? null,
+    transcript: [...document.querySelectorAll('.oa-react-timeline-item')].map(item => item.textContent?.trim() ?? ""),
+  })
+  const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right)
+  const waitFor = async (expected) => {
+    while (Date.now() < deadline && !equal(snapshot(), expected)) await wait(50)
+    return equal(snapshot(), expected)
+  }
+  const first = snapshot()
+  const alternate = [...document.querySelectorAll('[data-session-row]')]
+    .find(row => row.getAttribute('data-selected') !== 'true')
+  if (!(alternate instanceof HTMLButtonElement)) return { ok: false, reason: "alternate destination missing", first }
+  alternate.click()
+  while (Date.now() < deadline && equal(snapshot(), first)) await wait(50)
+  const second = snapshot()
+  const newSession = [...document.querySelectorAll('button')]
+    .find(button => button.textContent?.trim() === 'New session')
+  if (!(newSession instanceof HTMLButtonElement)) return { ok: false, reason: "new-session destination missing", first, second }
+  newSession.click()
+  while (Date.now() < deadline && equal(snapshot(), second)) await wait(50)
+  const third = snapshot()
+  const clickNavigation = async (direction, expected) => {
+    const button = [...document.querySelectorAll('button')]
+      .find(candidate => candidate.getAttribute('aria-label')?.startsWith(direction))
+    if (!(button instanceof HTMLButtonElement) || button.disabled) return false
+    button.click()
+    return waitFor(expected)
+  }
+  const backSecond = await clickNavigation('Back', second)
+  const backFirst = await clickNavigation('Back', first)
+  const forwardSecond = await clickNavigation('Forward', second)
+  const forwardThird = await clickNavigation('Forward', third)
+  const forwardAtEnd = [...document.querySelectorAll('button')]
+    .find(candidate => candidate.getAttribute('aria-label')?.startsWith('Forward'))
+  return {
+    ok: !equal(first, second) && !equal(second, third) && backSecond && backFirst &&
+      forwardSecond && forwardThird && forwardAtEnd instanceof HTMLButtonElement && forwardAtEnd.disabled,
+    first,
+    second,
+    third,
+    backSecond,
+    backFirst,
+    forwardSecond,
+    forwardThird,
+    forwardDisabledAtEnd: forwardAtEnd instanceof HTMLButtonElement ? forwardAtEnd.disabled : null,
+  }
+})()`
+
 const smokeReactReloadRestoration = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 15000
@@ -4940,6 +4992,7 @@ const runSmoke = (window: BrowserWindow): void => {
             "[openagents-desktop smoke] react-authoritative-decision OK",
             JSON.stringify(authoritativeDecision),
           )
+          await step("react-navigation-history", smokeReactNavigationHistory)
           await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
           tracePass = 1
           window.webContents.reload()
@@ -5088,7 +5141,10 @@ const nativeCommandAccelerator = (bindings: ReadonlyArray<string>): string | und
 }
 
 const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): void => {
-  const commandItems: MenuItemConstructorOptions[] = desktopCanonicalCommandRegistry.map(command => ({
+  const commandItems: MenuItemConstructorOptions[] = desktopCanonicalCommandRegistry
+    .filter(command => command.palette || command.defaultBindings.length > 0 ||
+      (bindings !== undefined && commandBindingForNativeMenu(bindings, command.id) !== undefined))
+    .map(command => ({
     label: command.label,
     ...(nativeCommandAccelerator(
       bindings === undefined
@@ -5106,7 +5162,7 @@ const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): 
     click: () => {
       desktopCommandHost.enqueue(deferredDesktopCommand(command, "native_menu"))
     },
-  }))
+    }))
   const template: MenuItemConstructorOptions[] = [
     ...(process.platform === "darwin"
       ? [{ label: app.name, submenu: [{ role: "about" as const }, { type: "separator" as const }, { role: "quit" as const }] }]

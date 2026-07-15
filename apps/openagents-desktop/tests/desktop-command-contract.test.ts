@@ -24,6 +24,8 @@ describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
     expect(desktopCanonicalCommandRegistry.map(value => value.id)).toEqual(expect.arrayContaining([
       "chat.new",
       "chat.open",
+      "navigation.back",
+      "navigation.forward",
       "palette.toggle",
       "settings.open",
       "workspace.choose",
@@ -36,6 +38,14 @@ describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
       "workspace.inbox",
       "workspace.terminal",
     ]))
+    expect(desktopCanonicalCommandRegistry.filter(value => value.id.startsWith("navigation.")).map(value => ({
+      id: value.id,
+      bindings: value.defaultBindings,
+      palette: value.palette,
+    }))).toEqual([
+      { id: "navigation.back", bindings: [], palette: false },
+      { id: "navigation.forward", bindings: [], palette: false },
+    ])
   })
 
   test("normalizes aliases and removes every conflicted chord until the user recovers it", () => {

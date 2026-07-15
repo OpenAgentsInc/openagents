@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-15.3",
+    version: "2026-07-15.4",
     contracts: [
       {
         contractId: "openagents_desktop.window.launch_fills_work_area.v1",
@@ -89,11 +89,10 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Lay out the OpenAgents sidebar like Codex: left-aligned menus, OpenAgents identity, icon-only search, sidebar expander, back/forward positions, and appropriate icons from the existing Apps SDK catalog.",
         authorityBoundary:
-          "Presentation and already-admitted interaction only. The React sidebar renders native-chrome-aligned controls, an OpenAgents identity row with an icon-only search disclosure, left-aligned New session and current Chat rows, a truthful Recent section, and conversation rows. Every glyph is a closed @effect-native/core IconName lowered through the renderer-private shadcn/Lucide adapter. Search, new-session, session selection, and collapse dispatch or retain only their existing authority. Back/forward are visibly disabled until #8825 supplies Effect-owned navigation history; missing MVP destinations and persisted presentation state remain absent until #8826. No enabled placeholder or React-owned domain navigation is authorized.",
+          "Presentation and already-admitted interaction only. The React sidebar renders native-chrome-aligned controls, an OpenAgents identity row with an icon-only search disclosure, left-aligned New session and current Chat rows, a truthful Recent section, and conversation rows. Every glyph is a closed @effect-native/core IconName lowered through the renderer-private shadcn/Lucide adapter. Search, new-session, session selection, collapse, and Back/Forward dispatch only typed intents. The Effect-owned bounded navigation authority projects exact enabled state; missing MVP destinations and persisted presentation state remain absent until #8826. No enabled placeholder or React-owned domain navigation is authorized.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
           "apps/openagents-desktop/src/renderer/react-workbench.css",
-          "github:OpenAgentsInc/openagents#8825",
           "github:OpenAgentsInc/openagents#8826",
         ],
         oracles: [
@@ -107,7 +106,55 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "Desktop typecheck and the focused React workbench DOM suite enforce the current presentation slice; issues #8825 and #8826 retain the deliberately unimplemented domain behavior.",
+          "Desktop typecheck, focused React workbench DOM suite, and built React Electron smoke enforce the presentation slice; #8826 retains the deliberately unimplemented destination and persistence expansion.",
+      },
+      {
+        contractId: "openagents_desktop.navigation.authoritative_history.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "workbench navigation history",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-15" },
+        statement:
+          "Disabled means no reachable target; enabled controls always perform one visible traversal.",
+        authorityBoundary:
+          "One ephemeral bounded stack is owned by the Effect shell SubscriptionRef and records admitted workspace, local-session, Codex-history, and coding-session destinations only after their authoritative open succeeds. Adjacent duplicates collapse; Back/Forward preserve the forward branch until a new successful navigation replaces it; failed and stale targets cannot advance the cursor. DesktopShellState exposes only enabled state and optional public-safe target titles. React dispatches DesktopNavigationBackRequested or DesktopNavigationForwardRequested exactly once and owns no stack, window.history mutation, filesystem authority, provider authority, persistence, composer focus, or transcript scroll behavior. Default key chords remain unassigned after the editable-control and Electron native-menu collision review; user rebindings remain available through the canonical command contract.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/navigation-history.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+          "apps/openagents-desktop/src/desktop-command-contract.ts",
+          "github:OpenAgentsInc/openagents#8825",
+        ],
+        oracles: [
+          {
+            id: "navigation_history.stack_semantics",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/navigation-history.test.ts",
+            description:
+              "Proves bounded push, adjacent deduplication, Back, Forward, forward preservation, successful branch truncation, and unreachable-target removal.",
+          },
+          {
+            id: "navigation_history.effect_commit_and_react_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+            description:
+              "The shell registry proves failed session opens do not record or move selection, and the React DOM suite proves projected disabled/enabled state plus exactly one typed intent per enabled click.",
+          },
+          {
+            id: "navigation_history.built_react_electron_traversal",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built installed-default React Electron smoke traverses three committed destinations backward and forward while checking the visible title and transcript at every stop.",
+          },
+        ],
+        verification:
+          "Focused navigation, shell, React DOM, and command-contract suites plus Desktop typecheck, build, smoke:react, and the repository pnpm run check gate.",
       },
       {
         contractId: "openagents_desktop.design.apps_sdk_starcraft_harmonization.v1",

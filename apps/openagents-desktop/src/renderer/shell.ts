@@ -147,6 +147,18 @@ import {
   parseDesktopCodingCatalogQuery,
   type DesktopCodingCatalogProjection,
 } from "../coding-catalog-contract.ts"
+import {
+  commitDesktopNavigationTraversal,
+  desktopNavigationTarget,
+  dropUnreachableDesktopNavigationTarget,
+  emptyDesktopNavigationProjection,
+  initialDesktopNavigationHistory,
+  projectDesktopNavigation,
+  pushDesktopNavigationDestination,
+  type DesktopNavigationDestination,
+  type DesktopNavigationHistory,
+  type DesktopNavigationProjection,
+} from "./navigation-history.ts"
 
 import {
   initialSettingsState,
@@ -360,6 +372,8 @@ export type DesktopShellState = Readonly<{
   codingSessionQuery: string
   codingSessionDeleteConfirmRef: string | null
   workspace: DesktopWorkspaceName
+  /** Read-only projection of the Effect-owned ephemeral navigation stack. */
+  navigation: DesktopNavigationProjection
   /** Grant-scoped, root-relative Files workspace projection. */
   workspaceBrowser: WorkspaceBrowserState
   /** Effect Native document tabs and conflict-safe draft lifecycle. */
@@ -454,6 +468,7 @@ export const initialDesktopShellState = (
   codingSessionQuery: "",
   codingSessionDeleteConfirmRef: null,
   workspace: "chat",
+  navigation: emptyDesktopNavigationProjection(),
   workspaceBrowser: emptyWorkspaceBrowserState(),
   workspaceEditor: emptyWorkspaceEditorState(),
   commandPaletteOpen: false,
@@ -636,6 +651,8 @@ export const DesktopWorkspaceSelected = defineIntent(
   Schema.Literals(desktopWorkspaceNames),
 )
 export const DesktopWorkspacePickerRequested = defineIntent("DesktopWorkspacePickerRequested", Schema.Null)
+export const DesktopNavigationBackRequested = defineIntent("DesktopNavigationBackRequested", Schema.Null)
+export const DesktopNavigationForwardRequested = defineIntent("DesktopNavigationForwardRequested", Schema.Null)
 export const DesktopCommandPaletteToggled = defineIntent("DesktopCommandPaletteToggled", Schema.Null)
 export const DesktopCommandPaletteDismissed = defineIntent("DesktopCommandPaletteDismissed", Schema.Null)
 export const DesktopCommandBindingSelected = defineIntent("DesktopCommandBindingSelected", Schema.String)
@@ -710,6 +727,8 @@ export const desktopShellIntents = [
   DesktopUpdateRolledBack,
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
+  DesktopNavigationBackRequested,
+  DesktopNavigationForwardRequested,
   DesktopCommandPaletteToggled,
   DesktopCommandPaletteDismissed,
   DesktopCommandBindingSelected,
@@ -997,6 +1016,47 @@ export const withWorkspace = (
   state: DesktopShellState,
   workspace: DesktopWorkspaceName,
 ): DesktopShellState => ({ ...state, workspace, commandPaletteOpen: false })
+
+const workspaceNavigationDestination = (
+  workspace: "chat" | "home" | "files" | "review" | "settings",
+): DesktopNavigationDestination => ({
+  kind: "workspace",
+  workspace,
+  title: workspace === "chat"
+    ? "Chat"
+    : workspace === "home"
+      ? "Project home"
+      : workspace === "files"
+        ? "Files"
+        : workspace === "review"
+          ? "Review changes"
+          : "Settings",
+})
+
+const currentDesktopNavigationDestination = (
+  state: DesktopShellState,
+): DesktopNavigationDestination => {
+  if (state.workspace === "chat" && state.history.page !== null) {
+    const threadRef = state.history.page.rootThreadRef
+    return {
+      kind: "codex_history",
+      threadRef,
+      title: state.history.catalog.roots.find(root => root.threadRef === threadRef)?.title || "Codex session",
+    }
+  }
+  if (state.workspace === "chat" && state.activeThreadId !== null) {
+    return {
+      kind: "local_session",
+      threadRef: state.activeThreadId,
+      title: state.threads.find(thread => thread.id === state.activeThreadId)?.title || "Local session",
+    }
+  }
+  return workspaceNavigationDestination(
+    state.workspace === "home" || state.workspace === "files" || state.workspace === "review" || state.workspace === "settings"
+      ? state.workspace
+      : "chat",
+  )
+}
 
 export const withCommandPalette = (
   state: DesktopShellState,
@@ -1439,6 +1499,19 @@ export const makeDesktopShellHandlers = (
   updateHost: DesktopUpdateRendererHost = unavailableDesktopUpdateRendererHost,
   harnessMaintenanceBridge: HarnessMaintenanceSettingsBridge = unavailableHarnessMaintenanceSettingsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
+  const initialNavigation = currentDesktopNavigationDestination(Effect.runSync(SubscriptionRef.get(state)))
+  const navigationState = Effect.runSync(
+    SubscriptionRef.make<DesktopNavigationHistory>(initialDesktopNavigationHistory(initialNavigation)),
+  )
+  const publishNavigation = (history: DesktopNavigationHistory) =>
+    SubscriptionRef.update(state, current => ({ ...current, navigation: projectDesktopNavigation(history) }))
+  const recordNavigation = (destination: DesktopNavigationDestination) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(navigationState)
+    const next = pushDesktopNavigationDestination(current, destination)
+    if (next === current) return
+    yield* SubscriptionRef.set(navigationState, next)
+    yield* publishNavigation(next)
+  })
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge, harnessMaintenanceBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
@@ -1578,6 +1651,130 @@ export const makeDesktopShellHandlers = (
       yield* SubscriptionRef.update(state, next => next.input === "" ? withInput(next, message) : next)
     }
   })
+  const commitLocalSession = (threadRef: string) => Effect.gen(function* () {
+    const thread = yield* Effect.promise(() => chat.openThread(threadRef))
+    if (thread === null) return false
+    yield* SubscriptionRef.update(state, current => withChatSelected({
+      ...current,
+      history: {
+        ...current.history,
+        page: null,
+        selectedItemRef: null,
+        pendingThreadRef: null,
+        expandedThreadRefs: [],
+      },
+    }, thread))
+    if (chat.hydrateThread !== undefined) {
+      const hydrated = yield* Effect.promise(() => chat.hydrateThread!(threadRef))
+      if (hydrated !== null) {
+        yield* SubscriptionRef.update(state, current =>
+          current.activeThreadId === threadRef ? withChatSelected(current, hydrated) : current)
+      }
+    }
+    return true
+  })
+  const commitCodexHistory = (threadRef: string) => Effect.gen(function* () {
+    const probe = yield* Effect.promise(() => historyHost.page(threadRef, 0, 1))
+    const page = probe === null
+      ? null
+      : yield* Effect.promise(() => historyHost.page(threadRef, historyTailOffset(probe.totalItems), historyItemPageSize))
+    if (page === null) return false
+    yield* SubscriptionRef.update(state, current => {
+      const expandedThreadRefs = page.agents.filter(agent => agent.descendantCount > 0).map(agent => agent.threadRef)
+      const history = {
+        ...current.history,
+        page,
+        selectedItemRef: null,
+        expandedThreadRefs,
+        pendingThreadRef: null,
+        loadingEdge: null,
+      }
+      historyHost.save?.({
+        rootThreadRef: page.rootThreadRef,
+        selectedThreadRef: page.selectedThreadRef,
+        offset: page.offset,
+        selectedItemRef: null,
+        railCollapsed: history.railCollapsed,
+        anchorItemRef: page.items[0]?.itemRef ?? null,
+        expandedThreadRefs,
+      })
+      return { ...current, workspace: "chat" as const, history }
+    })
+    return true
+  })
+  const commitWorkspace = (workspace: "chat" | "home" | "files" | "review" | "settings") => Effect.gen(function* () {
+    if (workspace === "settings") {
+      yield* SubscriptionRef.update(state, current => withWorkspace(current, "settings"))
+      const bindings = yield* Effect.promise(commandBindingHost.snapshot)
+      yield* SubscriptionRef.update(state, current => ({ ...current, commandBindings: bindings }))
+      return true
+    }
+    if (workspace === "chat") {
+      yield* SubscriptionRef.update(state, current => ({
+        ...withWorkspace(current, "chat"),
+        activeThreadId: null,
+        notes: [],
+        history: {
+          ...current.history,
+          page: null,
+          selectedItemRef: null,
+          pendingThreadRef: null,
+          expandedThreadRefs: [],
+        },
+      }))
+      return true
+    }
+    yield* SubscriptionRef.update(state, current => withWorkspace(current, workspace))
+    if (workspace === "files") {
+      yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
+      yield* recoverWorkspaceEditor
+    } else if (workspace === "home") {
+      const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
+      yield* SubscriptionRef.update(state, current => ({ ...current, codingCatalog }))
+    } else {
+      yield* SubscriptionRef.update(state, current => ({ ...current, git: { ...current.git, causalItemRef: null } }))
+      yield* refreshGitPanel(state, gitBridge)
+    }
+    return true
+  })
+  const commitCodingSession = (sessionRef: string) => Effect.gen(function* () {
+    const codingCatalog = yield* Effect.promise(() => codingCatalogHost.open(sessionRef))
+    if (codingCatalog.selectedSessionRef !== sessionRef) return false
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      codingCatalog,
+      workspace: desktopWorkspaceForCodingFocus(codingCatalog.focus),
+    }))
+    return true
+  })
+  const commitNavigationDestination = (destination: DesktopNavigationDestination) => {
+    switch (destination.kind) {
+      case "workspace": return commitWorkspace(destination.workspace)
+      case "local_session": return commitLocalSession(destination.threadRef)
+      case "codex_history": return commitCodexHistory(destination.threadRef)
+      case "coding_session": return commitCodingSession(destination.sessionRef)
+    }
+  }
+  const traverseNavigation = (direction: "back" | "forward") => Effect.gen(function* () {
+    while (true) {
+      const history = yield* SubscriptionRef.get(navigationState)
+      const target = desktopNavigationTarget(history, direction)
+      if (target === null) {
+        yield* publishNavigation(history)
+        return
+      }
+      const committed = yield* commitNavigationDestination(target)
+      if (committed) {
+        const next = commitDesktopNavigationTraversal(history, direction)
+        yield* SubscriptionRef.set(navigationState, next)
+        yield* publishNavigation(next)
+        return
+      }
+      const pruned = dropUnreachableDesktopNavigationTarget(history, direction)
+      yield* SubscriptionRef.set(navigationState, pruned)
+      yield* publishNavigation(pruned)
+    }
+  })
   return ({
   ...settingsHandlers,
   ...diagnosticsHandlers,
@@ -1647,6 +1844,8 @@ export const makeDesktopShellHandlers = (
       }))
       yield* settingsHandlers.DesktopHarnessMaintenanceRefreshRequested()
     }
+    const committed = yield* SubscriptionRef.get(state)
+    yield* recordNavigation(currentDesktopNavigationDestination(committed))
   }),
   DesktopCommandBindingSelected: (commandId) => SubscriptionRef.update(state, current => {
     const row = current.commandBindings?.rows.find(value => value.commandId === commandId)
@@ -1882,7 +2081,12 @@ export const makeDesktopShellHandlers = (
       const result = yield* Effect.promise(() => stageFleet({ objective: dispatching.fleetObjective }))
       yield* SubscriptionRef.update(state, (next) => withFleetDeploymentResult(next, result, now()))
     }),
-  DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
+  DesktopNewChat: () => Effect.gen(function* () {
+    const thread = yield* Effect.promise(chat.newThread)
+    if (thread === null) return
+    yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
+    yield* recordNavigation({ kind: "local_session", threadRef: thread.id, title: thread.title || "New session" })
+  }),
   DesktopHarnessSelected: (harness) =>
     SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
   DesktopCodexReasoningSelected: (reasoningEffort) =>
@@ -2043,12 +2247,11 @@ export const makeDesktopShellHandlers = (
     }))
   }),
   DesktopCodingSessionOpened: (sessionRef) => Effect.gen(function* () {
-    const codingCatalog = yield* Effect.promise(() => codingCatalogHost.open(sessionRef))
-    yield* SubscriptionRef.update(state, current => ({
-      ...current,
-      codingCatalog,
-      workspace: desktopWorkspaceForCodingFocus(codingCatalog.focus),
-    }))
+    const committed = yield* commitCodingSession(sessionRef)
+    if (!committed) return
+    const current = yield* SubscriptionRef.get(state)
+    const title = current.codingCatalog.sessions.find(session => session.sessionRef === sessionRef)?.repositoryLabel || "Coding session"
+    yield* recordNavigation({ kind: "coding_session", sessionRef, title })
   }),
   DesktopCodingSessionArchived: (sessionRef) => Effect.gen(function* () {
     const codingCatalog = yield* Effect.promise(() => codingCatalogHost.archive(sessionRef))
@@ -2109,50 +2312,35 @@ export const makeDesktopShellHandlers = (
     yield* SubscriptionRef.update(state, current => ({ ...current, update }))
   }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
-    yield* SubscriptionRef.update(state, current => ({
-      ...current,
-      activeThreadId: id,
-      notes: current.threads.find(thread => thread.id === id)?.notes ?? [],
-      expandedToolCards: [],
-      questionCards: {},
-      agentGraph: null,
-      agentGraphExpanded: false,
-      selectedAgentRef: null,
-      // Runtime/app-local rows and provider-history rows share one sidebar,
-      // but they render through different center views. Selecting a runtime
-      // row must explicitly unmount the prior provider-history page.
-      history: {
-        ...current.history,
-        page: null,
-        selectedItemRef: null,
-        pendingThreadRef: null,
-        expandedThreadRefs: [],
-      },
-    }))
-    const thread = yield* Effect.promise(() => chat.openThread(id)); if (!thread) return
-    yield* SubscriptionRef.update(state, current => current.activeThreadId === id
-      ? withChatSelected(current, thread)
-      : current)
-    if (chat.hydrateThread !== undefined) {
-      const hydrated = yield* Effect.promise(() => chat.hydrateThread!(id))
-      if (hydrated) yield* SubscriptionRef.update(state, current => current.activeThreadId === id ? withChatSelected(current, hydrated) : current)
-    }
+    const committed = yield* commitLocalSession(id)
+    if (!committed) return
+    const current = yield* SubscriptionRef.get(state)
+    yield* recordNavigation({
+      kind: "local_session",
+      threadRef: id,
+      title: current.threads.find(thread => thread.id === id)?.title || "Local session",
+    })
   }),
   HistoryConversationSelected: (id) => Effect.gen(function* () {
     yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:id}}))
-    // Open at the END (EP250 bottom-anchored flow): probe the total, then
-    // fetch the LAST page so the newest items render first; older pages
-    // auto-load as the reader scrolls up. Fetch order only — the
-    // completeness equation and counted gaps are whole-conversation truth.
-    const probe = yield* Effect.promise(() => historyHost.page(id, 0, 1))
-    const page = probe === null ? null : yield* Effect.promise(() => historyHost.page(id, historyTailOffset(probe.totalItems), historyItemPageSize))
-    if (page) { yield* SubscriptionRef.update(state, (current): DesktopShellState => { if(current.history.pendingThreadRef!==id)return current; const expandedThreadRefs=page.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef); const history={ ...current.history, page, selectedItemRef: null, expandedThreadRefs, pendingThreadRef:null, loadingEdge:null }; historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs}); return { ...current, workspace: "chat", history } }) }
-    else yield* SubscriptionRef.update(state,current=>current.history.pendingThreadRef===id?({...current,history:{...current.history,pendingThreadRef:null}}):current)
+    const committed = yield* commitCodexHistory(id)
+    if (!committed) {
+      yield* SubscriptionRef.update(state,current=>current.history.pendingThreadRef===id?({...current,history:{...current.history,pendingThreadRef:null}}):current)
+      return
+    }
+    const current = yield* SubscriptionRef.get(state)
+    yield* recordNavigation({
+      kind: "codex_history",
+      threadRef: id,
+      title: current.history.catalog.roots.find(root => root.threadRef === id)?.title || "Codex session",
+    })
   }),
   HistoryAgentSelected: (id) => Effect.gen(function* () {
-    const probe = yield* Effect.promise(() => historyHost.page(id, 0, 1))
-    const page = probe === null ? null : yield* Effect.promise(() => historyHost.page(id, historyTailOffset(probe.totalItems), historyItemPageSize))
-    if (page) { yield* SubscriptionRef.update(state, current => { const history={ ...current.history, page, selectedItemRef: null, loadingEdge:null }; historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs:history.expandedThreadRefs}); return { ...current, history } }) }
+    const committed = yield* commitCodexHistory(id)
+    if (!committed) return
+    const current = yield* SubscriptionRef.get(state)
+    const agent = current.history.catalog.agents.find(candidate => candidate.threadRef === id)
+    yield* recordNavigation({ kind: "codex_history", threadRef: id, title: agent?.nickname || agent?.role || "Codex agent" })
   }),
   HistoryItemSelected: (id) => SubscriptionRef.update(state, current => { const selectedItemRef=id===""||current.history.selectedItemRef===id?null:id; const page=current.history.page;if(page){const selectedSequence=selectedItemRef===null?null:page.items.find(item=>item.itemRef===selectedItemRef)?.sequence??null;historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:selectedSequence===null?page.offset:historyItemPageOffset(selectedSequence),selectedItemRef,railCollapsed:current.history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs:current.history.expandedThreadRefs})}return { ...current, history: { ...current.history, selectedItemRef } } }),
   // Auto-load on scroll (EP250): no pager — the loaded window extends up
@@ -2224,6 +2412,7 @@ export const makeDesktopShellHandlers = (
       return
     }
     yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
+    yield* recordNavigation({ kind: "local_session", threadRef: thread.id, title: thread.title || "Local session" })
   }),
   // H2: payload contains refs/cutoff only. Main re-reads and bounds the source
   // window, creates a fresh UUID, and returns the new local thread. The loaded
@@ -2240,6 +2429,7 @@ export const makeDesktopShellHandlers = (
     // A fork has bounded history but no SDK continuity yet, so it must not
     // enter the H1 picker until its first successful Fable turn.
     yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
+    yield* recordNavigation({ kind: "local_session", threadRef: thread.id, title: thread.title || "Forked session" })
   }),
   // Open a ranked result: window the session on its matching item (content
   // result) or at its end (title result), reusing the bottom-anchored flow.
@@ -2261,6 +2451,8 @@ export const makeDesktopShellHandlers = (
       historyHost.save?.({ rootThreadRef: page.rootThreadRef, selectedThreadRef: page.selectedThreadRef, offset: page.offset, selectedItemRef, railCollapsed: history.railCollapsed, anchorItemRef: page.items[0]?.itemRef ?? null, expandedThreadRefs })
       return { ...current, workspace: "chat", history }
     })
+    const current = yield* SubscriptionRef.get(state)
+    yield* recordNavigation({ kind: "codex_history", threadRef, title: result.title || "Codex session" })
   }),
   DesktopWorkspaceSelected: (workspace) =>
     Effect.gen(function* () {
@@ -2278,6 +2470,8 @@ export const makeDesktopShellHandlers = (
         yield* SubscriptionRef.update(state, current => ({ ...current, git: { ...current.git, causalItemRef: null } }))
         yield* refreshGitPanel(state, gitBridge)
       }
+      const committed = yield* SubscriptionRef.get(state)
+      yield* recordNavigation(currentDesktopNavigationDestination(committed))
     }),
   DesktopWorkspacePickerRequested: () =>
     Effect.gen(function* () {
@@ -2292,6 +2486,8 @@ export const makeDesktopShellHandlers = (
       yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
       yield* recoverWorkspaceEditor
     }),
+  DesktopNavigationBackRequested: () => traverseNavigation("back"),
+  DesktopNavigationForwardRequested: () => traverseNavigation("forward"),
   DesktopCommandPaletteToggled: () =>
     SubscriptionRef.update(state, (current) => withCommandPalette(current, !current.commandPaletteOpen)),
   DesktopCommandPaletteDismissed: () =>

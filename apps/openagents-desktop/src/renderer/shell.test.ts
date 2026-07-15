@@ -2001,6 +2001,67 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     }))
   })
 
+  test("records only successful session opens and traverses three visible destinations back and forward", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const thread = (id: string, title: string) => ({
+        ...testThread,
+        id,
+        title,
+        updatedAt: `2026-07-15T12:0${id.at(-1)}:00.000Z`,
+        notes: [{ key: `note-${id}`, role: "assistant" as const, text: `Transcript ${title}`, timestamp: "12:00" }],
+      })
+      const first = thread("thread-1", "First")
+      const second = thread("thread-2", "Second")
+      const third = thread("thread-3", "Third")
+      const byId = new Map([first, second, third].map(value => [value.id, value]))
+      const initial: DesktopShellState = {
+        ...baseState,
+        threads: [first, second, third],
+        activeThreadId: first.id,
+        notes: first.notes,
+      }
+      const state = yield* SubscriptionRef.make(initial)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(
+        state,
+        fixedNow,
+        undefined,
+        {
+          listThreads: async () => [...byId.values()],
+          newThread: async () => null,
+          openThread: async id => byId.get(id) ?? null,
+          sendMessage: async () => ({ ok: false }),
+        },
+      ))
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(second.id))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload("missing-thread"))))
+      let current = yield* SubscriptionRef.get(state)
+      expect(current.activeThreadId).toBe(second.id)
+      expect(current.notes[0]?.text).toBe("Transcript Second")
+      expect(current.navigation).toMatchObject({ canGoBack: true, canGoForward: false, backTitle: "First" })
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(third.id))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNavigationBackRequested", StaticPayload(null))))
+      current = yield* SubscriptionRef.get(state)
+      expect(current.activeThreadId).toBe(second.id)
+      expect(current.notes[0]?.text).toBe("Transcript Second")
+      expect(current.navigation).toMatchObject({ canGoBack: true, canGoForward: true, forwardTitle: "Third" })
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNavigationBackRequested", StaticPayload(null))))
+      current = yield* SubscriptionRef.get(state)
+      expect(current.activeThreadId).toBe(first.id)
+      expect(current.notes[0]?.text).toBe("Transcript First")
+      expect(current.navigation.canGoBack).toBe(false)
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNavigationForwardRequested", StaticPayload(null))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNavigationForwardRequested", StaticPayload(null))))
+      current = yield* SubscriptionRef.get(state)
+      expect(current.activeThreadId).toBe(third.id)
+      expect(current.notes[0]?.text).toBe("Transcript Third")
+      expect(current.navigation).toMatchObject({ canGoBack: true, canGoForward: false })
+    }))
+  })
+
   test("H1 resume-picker action opens the exact existing local thread and exits history", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const resumable = { id: "local-resume-1", title: "Continue parser", updatedAt: "2026-07-12T02:00:00Z", notes: [{ key: "u1", role: "user" as const, text: "Remember kestrel", timestamp: "02:00" }] }

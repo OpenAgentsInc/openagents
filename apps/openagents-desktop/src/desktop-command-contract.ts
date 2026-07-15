@@ -7,6 +7,8 @@ export const DesktopCommandId = Schema.Literals([
   "chat.stop",
   "chat.queue_next",
   "window.fullscreen_toggle",
+  "navigation.back",
+  "navigation.forward",
   "chat.open",
   "palette.toggle",
   "interaction.question.submit",
@@ -64,6 +66,12 @@ export const desktopCanonicalCommandRegistry: ReadonlyArray<DesktopCommandDefini
   { id: "chat.stop", label: "Stop turn", intentName: "DesktopTurnInterrupted", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "session", availability: "session_ready", authorization: "local_user", defaultBindings: ["Meta+.", "Control+."], palette: true },
   { id: "chat.queue_next", label: "Queue next turn", intentName: "DesktopQueueNextRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "session", availability: "session_ready", authorization: "local_user", defaultBindings: ["Meta+Alt+Enter", "Control+Alt+Enter"], palette: true },
   { id: "window.fullscreen_toggle", label: "Toggle full screen", intentName: "DesktopFullscreenToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "session", availability: "always", authorization: "local_user", defaultBindings: ["Meta+F", "Control+F"], palette: true },
+  // Collision review (#8825): arrows collide with editable/native movement,
+  // brackets are reserved by common tab/menu conventions, and Electron menu
+  // accelerators cannot honor the renderer's editable guard. Keep these typed,
+  // discoverable, and rebindable without claiming an unsafe default chord.
+  { id: "navigation.back", label: "Back", intentName: "DesktopNavigationBackRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: [], palette: false },
+  { id: "navigation.forward", label: "Forward", intentName: "DesktopNavigationForwardRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: [], palette: false },
   { id: "chat.open", label: "Open chat", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "chat" }, result: "workspace_selected", scope: "session", availability: "always", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "workspace.files", label: "Open Files", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "files" }, result: "workspace_selected", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "workspace.home", label: "Open Project Home", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "home" }, result: "workspace_selected", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },

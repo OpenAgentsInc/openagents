@@ -205,10 +205,26 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
         <ReactCatalogIcon name="Menu" />
       </Button>
       <div className="oa-react-history-controls" aria-label="Session navigation">
-        <Button variant="ghost" size="icon-xs" type="button" disabled aria-label="Back unavailable" title="Back navigation is not implemented yet">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          type="button"
+          disabled={!state.navigation.canGoBack}
+          aria-label={state.navigation.backTitle === null ? "Back" : `Back to ${state.navigation.backTitle}`}
+          title={state.navigation.backTitle === null ? "Back" : `Back to ${state.navigation.backTitle}`}
+          onClick={() => dispatch(report, "DesktopNavigationBackRequested")}
+        >
           <ReactCatalogIcon name="ChevronLeft" />
         </Button>
-        <Button variant="ghost" size="icon-xs" type="button" disabled aria-label="Forward unavailable" title="Forward navigation is not implemented yet">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          type="button"
+          disabled={!state.navigation.canGoForward}
+          aria-label={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
+          title={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
+          onClick={() => dispatch(report, "DesktopNavigationForwardRequested")}
+        >
           <ReactCatalogIcon name="ChevronRight" />
         </Button>
       </div>

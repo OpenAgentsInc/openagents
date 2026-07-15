@@ -1031,9 +1031,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   remain left aligned beneath it. Search never occupies a permanent field when
   closed. Every glyph is named by the closed Effect Native `IconName` catalog
   and lowered by a renderer-private adapter; enabled controls may never be
-  no-ops. Back/forward remain explicitly unavailable until typed Effect-owned
-  navigation authority lands in #8825, and the full admitted destination and
-  persisted presentation-state model remains tracked in #8826.
+  no-ops. Back/forward read one ephemeral bounded stack owned by the Effect
+  shell SubscriptionRef. Admitted workspace, local-session, Codex-history,
+  and coding-session destinations enter only after their authoritative open
+  succeeds; adjacent duplicates collapse, traversal preserves the forward
+  branch, and only a new successful navigation truncates it. DesktopShellState
+  projects exact can-go flags and public-safe target titles. React dispatches
+  typed Back/Forward intents and owns no stack or `window.history`; a failed or
+  stale target cannot advance the cursor, move focus, or invent transcript
+  scroll. The collision review leaves default key chords unassigned rather
+  than conflicting with editable controls or Electron native menu commands.
+  The full admitted destination and persisted presentation-state model remains
+  tracked in #8826.
 - Desktop React repository review consumes only grant-scoped, root-relative
   paths plus opaque repository/status correlation already held by the Effect
   Git state. It remains read-only: no edit, discard, stage, commit, branch,

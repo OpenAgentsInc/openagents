@@ -71,7 +71,8 @@ pnpm --dir apps/openagents-desktop run verify
 ```
 
 `verify` is the canonical clean-tree gate: typecheck, the complete package test
-sweep, bundle build, and real headless Electron smoke/reload. The smoke uses a
+sweep, bundle build, the specialist compatibility smoke/reload, and the
+installed-default React Electron smoke/reload. The smokes use a
 checked-in privacy-safe Codex history fixture and scripted account-connect
 child, never ambient `~/.codex` history or a default provider home. Set
 `OPENAGENTS_DESKTOP_CODEX_SESSIONS` only for a separately identified real-

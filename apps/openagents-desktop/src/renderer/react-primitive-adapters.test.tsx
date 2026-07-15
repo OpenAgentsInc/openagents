@@ -248,4 +248,41 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-section-label")?.textContent).toBe("Recent")
     expect(container.textContent).not.toContain("Search sessionsSearch Codex sessions")
   })
+
+  test("projects authoritative back/forward availability and dispatches one typed intent per click", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={fixtureState()} report={report} />)
+    const disabledBack = container.querySelector<HTMLButtonElement>('[aria-label="Back"]')
+    const disabledForward = container.querySelector<HTMLButtonElement>('[aria-label="Forward"]')
+    expect(disabledBack?.disabled).toBe(true)
+    expect(disabledForward?.disabled).toBe(true)
+    await interact(() => disabledBack?.click())
+    expect(received).toEqual([])
+
+    const enabled: DesktopShellState = {
+      ...fixtureState(),
+      navigation: {
+        canGoBack: true,
+        canGoForward: true,
+        backTitle: "Earlier session",
+        forwardTitle: "Project home",
+      },
+    }
+    await render(root, <WorkbenchShell state={enabled} report={report} />)
+    const back = container.querySelector<HTMLButtonElement>('[aria-label="Back to Earlier session"]')
+    const forward = container.querySelector<HTMLButtonElement>('[aria-label="Forward to Project home"]')
+    expect(back?.disabled).toBe(false)
+    expect(forward?.disabled).toBe(false)
+    expect(back?.title).toBe("Back to Earlier session")
+    expect(forward?.title).toBe("Forward to Project home")
+    await interact(() => back?.click())
+    await interact(() => forward?.click())
+    expect(received).toEqual([
+      { name: "DesktopNavigationBackRequested", payload: null },
+      { name: "DesktopNavigationForwardRequested", payload: null },
+    ])
+  })
 })
