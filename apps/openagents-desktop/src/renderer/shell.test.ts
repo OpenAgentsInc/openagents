@@ -367,7 +367,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "sidebar-navigation")?._tag).toBe("NavRail")
-    expect(navItemById(view, "workspace-chat")).toMatchObject({icon:"Chats",accessibilityLabel:"Chat"})
+    expect(navItemById(view, "workspace-chat")).toBeUndefined()
     // UX-4 (#8790): the palette keeps only its ⌘K / native-menu entry points —
     // no dock icon renders for it.
     expect(navItemById(view, "shell-command-palette-toggle")).toBeUndefined()
@@ -406,7 +406,6 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(dock?.items[0]?.id).toBe("workspace-new-chat")
     expect(dock?.items.map(item => item.id)).toEqual([
       "workspace-new-chat",
-      "workspace-chat",
       "workspace-home",
       "shell-settings-toggle",
     ])

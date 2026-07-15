@@ -702,8 +702,9 @@ for in the MVP. You need to clean all this up and make a pass to remove
 everything from the sidebar and all UI that's not specifically called for in
 our MVP spec."
 
-- The sidebar dock renders EXACTLY the cited allowlist, in order: New session,
-  Chat, Project home, Settings. Each entry carries
+- The sidebar renders EXACTLY the cited controls: New session and Project home
+  above Recent sessions, with Settings pinned alone at the bottom. The dead
+  Chat destination and the coding Workspaces box never render. Each retained entry carries
   its ProductSpec/owner-directive citation in
   `src/renderer/mvp-visible-surfaces.ts`.
 - ProductSpec and AssuranceSpec are internal tooling with no MVP route. Files,

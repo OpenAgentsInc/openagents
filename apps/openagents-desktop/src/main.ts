@@ -3434,7 +3434,7 @@ const smokeReactSidebarDestinations = `(async () => {
   const deadline = Date.now() + 30000
   const rows = () => [...document.querySelectorAll('[data-sidebar-destination-id]')]
   const ids = () => rows().map(row => row.getAttribute('data-sidebar-destination-id'))
-  const expected = ['workspace-new-chat', 'workspace-chat', 'workspace-home', 'shell-settings-toggle']
+  const expected = ['workspace-new-chat', 'workspace-home', 'shell-settings-toggle']
   const click = (id) => document.querySelector('[data-sidebar-destination-id="' + id + '"]')?.click()
   const waitFor = async (selector) => {
     while (Date.now() < deadline && document.querySelector(selector) === null) await wait(50)
@@ -3450,7 +3450,7 @@ const smokeReactSidebarDestinations = `(async () => {
   const settings = await waitFor('[data-react-workspace="settings"]')
   const settingsVisible = settings !== null && (settings.textContent ?? '').includes('Codex CLI')
   const settingsSelected = document.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.getAttribute('aria-current') === 'page'
-  click('workspace-chat')
+  click('workspace-new-chat')
   const chat = await waitFor('[data-react-workspace="chat"]')
   const searchTrigger = document.querySelector('[aria-label="Search sessions"]')
   searchTrigger?.click()
@@ -3872,7 +3872,7 @@ const smokeWorkspaceFilesUi = `(async () => {
   // UX-4 (#8790): the browser renders no filesystem mutation affordance.
   const mutationAffordance = ["workspace-browser-new-file", "workspace-browser-new-folder", "workspace-browser-rename", "workspace-browser-delete", "workspace-browser-reveal"]
     .find((key) => document.querySelector('[data-en-key="' + key + '"]') !== null) ?? null
-  const chat = document.querySelector('[data-en-key="workspace-chat"]')
+  const chat = document.querySelector('[data-en-key="shell-transcript"]')
   return {
     ok: browser !== null && tree !== null && search !== null && boundary !== null &&
       legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot && chat !== null &&
@@ -3901,7 +3901,7 @@ const smokeWorkspaceEditorRecovery = `(async () => {
   // UX-4 (#8790): no Files dock icon — after the reload mounts, re-enter the
   // Files workspace exactly like a keyboard user: canonical ⌘K palette chord,
   // then the closed "Open Files" command row (CW-AC-12 identity).
-  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-chat"]') === null) {
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-transcript"]') === null) {
     await wait(50)
   }
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
@@ -3927,7 +3927,7 @@ const smokeWorkspaceEditorRecovery = `(async () => {
   document.querySelector('[data-en-key="workspace-editor-close"]')?.click()
   await wait(50)
   document.querySelector('[data-en-key="workspace-editor-close"]')?.click()
-  document.querySelector('[data-en-key="workspace-chat"]')?.click()
+  document.querySelector('[data-en-key="workspace-new-chat"]')?.click()
   return {
     ok: recovered,
     recovered,
@@ -4350,9 +4350,9 @@ const smokeSettingsHarnessMaintenance = `(async () => {
 // UX-4 (#8790) pixel receipt for the return-to-chat hop.
 const smokeBackToChat = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const chat = document.querySelector('[data-en-key="workspace-chat"]')
-  if (chat === null) return { ok: false, reason: "Chat dock item missing" }
-  chat.click()
+  const newChat = document.querySelector('[data-en-key="workspace-new-chat"]')
+  if (newChat === null) return { ok: false, reason: "New session control missing" }
+  newChat.click()
   const deadline = Date.now() + 5000
   while (Date.now() < deadline && document.querySelector('[data-en-key="shell-transcript"]') === null) {
     await wait(50)
@@ -4371,6 +4371,7 @@ const smokeMvpSurfaceAllowlist = `(() => {
     "shell-voice-toggle",
     // UX-4 (#8790): swept dock affordances and Git mutation controls.
     "workspace-files",
+    "workspace-chat",
     "workspace-product-spec",
     "workspace-assurance-spec",
     "product-spec-workspace",
@@ -4386,7 +4387,7 @@ const smokeMvpSurfaceAllowlist = `(() => {
   // UX-4 (#8790): the rendered dock is EXACTLY the MVP allowlist, in order.
   const dockIds = Array.from(document.querySelectorAll('[data-en-key="sidebar-workspace-dock"] > button[data-en-key]'))
     .map((item) => item.getAttribute("data-en-key"))
-  const expectedDock = ["workspace-new-chat", "workspace-chat", "workspace-home", "shell-settings-toggle"]
+  const expectedDock = ["workspace-new-chat", "workspace-home", "shell-settings-toggle"]
   const dockExact = JSON.stringify(dockIds) === JSON.stringify(expectedDock)
   const codex = document.querySelector('[data-en-key="shell-codex-engine"]')
   return { ok: present.length === 0 && dockExact && codex?.textContent === "Codex", present, dockIds, dockExact, codex: codex?.textContent ?? null }
@@ -4667,8 +4668,8 @@ const smokeVoiceMode = `(async () => {
   }
   while (Date.now() < deadline && find("workspace-home-panel") === null) await wait(25)
   const registeredFocus = find("workspace-home-panel") !== null
-  const chat = find("workspace-chat")
-  if (chat instanceof HTMLElement) { chat.click(); await wait(50) }
+  const newChat = find("workspace-new-chat")
+  if (newChat instanceof HTMLElement) { newChat.click(); await wait(50) }
   while (Date.now() < deadline && find("shell-voice-playback-outcome") === null) await wait(25)
   const bargeInOutcome = find("shell-voice-playback-outcome")?.textContent?.includes("outcome.smoke.interrupt.1") === true
   const stop = find("shell-voice-toggle")

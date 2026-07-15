@@ -32,10 +32,6 @@ export const mvpDockSurfaces = [
     authority: "ProductSpec Scope: session catalog with new, resume, fork, archive, delete",
   },
   {
-    id: "workspace-chat",
-    authority: "ProductSpec Scope + CW-AC-10/CW-AC-11: session navigation and the typed causal timeline",
-  },
-  {
     id: "workspace-home",
     authority: "CW-AC-03: explicit repository grant and stable coding-session home",
   },
@@ -53,6 +49,9 @@ export const mvpAllowedDockItemIds: ReadonlyArray<string> = mvpDockSurfaces.map(
  * identities) or must not render at all.
  */
 export const mvpRemovedDockItemIds: ReadonlyArray<string> = [
+  // The session list itself is the chat navigator; a second Chat destination
+  // was inert and duplicated the currently visible workspace.
+  "workspace-chat",
   // ProductSpec and AssuranceSpec remain internal authoring/verification
   // tooling for the MVP; neither is a user-facing destination.
   "workspace-product-spec",

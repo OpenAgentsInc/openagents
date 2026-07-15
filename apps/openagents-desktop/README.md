@@ -156,7 +156,7 @@ notarization and Gatekeeper verification.
 - `src/renderer/` — the application is Effect Native; React is its DOM target:
   - `shell.ts` — typed state, `defineIntent` intents, pure transitions,
     pure `state -> View` over the shared catalog.
-  - `sidebar-destinations.ts` — the closed four-entry primary projection shared
+  - `sidebar-destinations.ts` — the closed three-control primary projection shared
     by compatibility and React, reusing canonical commands and typed intents.
   - `theme.ts` — the one Protoss-blue theme via `@effect-native/tokens`,
     token-identical to the shared OpenAgents theme values.

@@ -65,7 +65,6 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
     }
     expect(mvpAllowedDockItemIds).toEqual([
       "workspace-new-chat",
-      "workspace-chat",
       "workspace-home",
       "shell-settings-toggle",
     ])

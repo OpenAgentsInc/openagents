@@ -304,7 +304,7 @@ describe("React workbench shell", () => {
     expect(selected).toHaveLength(1)
     expect(selected[0]?.getAttribute("data-session-row")).not.toBeNull()
     expect(selected[0]?.textContent).toContain("Earlier session")
-    expect(container.querySelector('[data-sidebar-destination-id="workspace-chat"]')?.getAttribute("aria-current")).toBeNull()
+    expect(container.querySelector('[data-sidebar-destination-id="workspace-chat"]')).toBeNull()
   })
 
   test("dispatches new, search, and select through the existing intent authority", async () => {
@@ -451,7 +451,7 @@ describe("React workbench shell", () => {
     await render(root, <WorkbenchShell state={fixtureState()} report={() => Effect.void} />)
     expect(container.querySelector('[data-icon-name="Menu"]')).not.toBeNull()
     expect(container.querySelector('[data-icon-name="ChatCompose"]')).not.toBeNull()
-    expect(container.querySelector('[data-icon-name="Chats"]')).not.toBeNull()
+    expect(container.querySelector('[data-icon-name="Chats"]')).toBeNull()
     expect(container.querySelector('[data-icon-name="ChevronLeft"]')).not.toBeNull()
     expect(container.querySelector('[data-icon-name="ChevronRight"]')).not.toBeNull()
     const newSession = [...container.querySelectorAll<HTMLButtonElement>("button")]
@@ -474,19 +474,20 @@ describe("React workbench shell", () => {
     const destinations = () => [...container.querySelectorAll<HTMLButtonElement>("[data-sidebar-destination-id]")]
     expect(destinations().map(row => row.dataset.sidebarDestinationId)).toEqual([
       "workspace-new-chat",
-      "workspace-chat",
       "workspace-home",
       "shell-settings-toggle",
     ])
     expect(destinations().map(row => row.querySelector("[data-icon-name]")?.getAttribute("data-icon-name"))).toEqual([
-      "ChatCompose", "Chats", "Home", "Settings",
+      "ChatCompose", "Home", "Settings",
     ])
-    await interact(() => destinations()[2]?.click())
+    expect(container.querySelector(".oa-react-sidebar-footer [data-sidebar-destination-id=\"shell-settings-toggle\"]")).not.toBeNull()
+    expect(container.textContent).not.toContain("Workspaces")
+    await interact(() => destinations()[1]?.click())
     expect(received.at(-1)).toEqual({ name: "DesktopWorkspaceSelected", payload: "home" })
     await render(root, <WorkbenchShell state={{ ...chat, workspace: "home" }} report={report} />)
     expect(container.querySelector('[data-react-workspace="home"] h1')?.textContent).toBe("Coding sessions")
     expect(container.querySelector('[data-sidebar-destination-id="workspace-home"]')?.getAttribute("aria-current")).toBe("page")
-    await interact(() => destinations()[3]?.click())
+    await interact(() => destinations()[2]?.click())
     expect(received.at(-1)).toEqual({ name: "DesktopSettingsToggled", payload: null })
     await render(root, <WorkbenchShell state={{ ...chat, workspace: "settings" }} report={report} />)
     expect(container.querySelector('[data-react-workspace="settings"] h1')?.textContent).toBe("Settings")

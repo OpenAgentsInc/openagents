@@ -14,7 +14,6 @@ import {
   Frame,
   IntentRef,
   type FrameView,
-  type IconName,
   type IntentError,
   type IntentReporter,
   type JsonPayload,
@@ -22,12 +21,10 @@ import {
 import { Effect, Scope, Stream } from "@effect-native/core/effect"
 import { mountDomThemeStyleSheet } from "@effect-native/render-dom"
 import {
-  Folder,
   CircleAlert,
   Download,
   LoaderCircle,
   X,
-  type LucideIcon,
 } from "lucide-react"
 import {
   DesktopConversation,
@@ -50,7 +47,6 @@ import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "#components/ui/dialog"
-import { Separator } from "#components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
 import type { DesktopShellState } from "./shell.ts"
 import { desktopConversationShortcutLabel, formatRelativeTimestamp } from "./shell.ts"
@@ -60,18 +56,6 @@ import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
-
-type ReactSidebarIconName = Extract<IconName, "Folder">
-
-const sidebarIconAssets: Readonly<Record<ReactSidebarIconName, LucideIcon>> = {
-  Folder,
-}
-
-/** Closed-catalog React lowering; Lucide remains a renderer-private asset implementation. */
-const ReactCatalogIcon = ({ name }: { readonly name: ReactSidebarIconName }): ReactElement => {
-  const Asset = sidebarIconAssets[name]
-  return <Asset aria-hidden="true" data-icon-name={name} focusable="false" />
-}
 
 export type ReactSessionRow = Readonly<{
   id: string
@@ -190,6 +174,8 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     state.workspace === "home" || state.workspace === "settings" ? state.workspace : "chat",
     rows.some(row => row.selected),
   )
+  const primaryDestinations = destinations.filter(destination => destination.id !== "shell-settings-toggle")
+  const settingsDestination = destinations.find(destination => destination.id === "shell-settings-toggle")
   const shown = state.history.visibleRootCount
   const searchOpen = state.presentation.sessionSearchOpen
   const closeSearch = (): void => {
@@ -201,7 +187,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     canGoBack={state.navigation.canGoBack}
     canGoForward={state.navigation.canGoForward}
     canLoadMore={state.history.searchQuery.trim() === "" && shown < state.history.catalog.roots.length}
-    destinations={destinations.map(destination => ({
+    destinations={primaryDestinations.map(destination => ({
       accessibilityLabel: destination.accessibilityLabel,
       current: destination.accessibilityCurrent,
       icon: sharedRailIcon(destination.icon),
@@ -210,28 +196,6 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       label: destination.label,
       selected: destination.selected,
     }))}
-    footer={state.codingCatalog.sessions.length === 0 ? null : <section className="oa-react-workspaces" aria-label="Coding workspaces">
-      <Separator />
-      <h2><ReactCatalogIcon name="Folder" /> <span>Workspaces</span></h2>
-      {state.codingCatalog.sessions.map(session => <div className="oa-react-workspace-row" key={session.sessionRef}>
-        <Button variant="ghost" type="button" onClick={() => dispatch(report, "DesktopCodingSessionOpened", session.sessionRef)}>
-          <span>{session.repositoryLabel}</span><small>{session.state}</small>
-        </Button>
-        <div className="oa-react-workspace-actions">
-          {session.state === "recovery_required"
-            ? <Button variant="outline" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionRecovered", session.sessionRef)}>Recover</Button>
-            : <Button variant="outline" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionArchived", session.sessionRef)}>Archive</Button>}
-          {state.codingSessionDeleteConfirmRef === session.sessionRef
-            ? <>
-                <Button variant="destructive" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionDeleteConfirmed", session.sessionRef)}>Confirm delete</Button>
-                <Button variant="ghost" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionDeleteCancelled")}>Cancel</Button>
-              </>
-            : <Button variant="ghost" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionDeleteRequested", session.sessionRef)}>Delete</Button>}
-        </div>
-      </div>)}
-      {state.codingCatalog.nextOffset === null ? null
-        : <Button type="button" variant="outline" size="sm" className="oa-react-load-more" onClick={() => dispatch(report, "DesktopCodingCatalogMoreRequested")}>Load more workspaces</Button>}
-    </section>}
     forwardLabel={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
     hydrated={state.history.hydrated}
     onBack={() => dispatch(report, "DesktopNavigationBackRequested")}
@@ -260,6 +224,15 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     searchPending={state.history.searchPending}
     searchQuery={state.history.searchQuery}
     sessions={rows.map(row => ({ id: row.id, meta: row.meta, selected: row.selected, title: row.title }))}
+    settingsDestination={settingsDestination === undefined ? undefined : {
+      accessibilityLabel: settingsDestination.accessibilityLabel,
+      current: settingsDestination.accessibilityCurrent,
+      icon: sharedRailIcon(settingsDestination.icon),
+      id: settingsDestination.id,
+      indicator: settingsDestination.indicator?.kind ?? null,
+      label: settingsDestination.label,
+      selected: settingsDestination.selected,
+    }}
     stageLabel={DESKTOP_STAGE_LABEL}
   />
 }
