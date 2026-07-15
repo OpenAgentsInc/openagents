@@ -106,6 +106,7 @@ import {
 } from "./codex-app-server-turn.ts"
 import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-server-client.ts"
 import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
+import type { CodexControlPlaneRegistry } from "./codex-control-plane.ts"
 import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
 
 export type CodexLocalTurnInput = Readonly<{
@@ -166,6 +167,8 @@ export type CodexLocalRuntimeOptions = Readonly<{
   appServer?: Readonly<{
     binary: () => string | null
     supervisor?: CodexAppServerSupervisor
+    /** Main-owned app-server truth and managed-policy gate for this exact account target. */
+    controlPlanes?: CodexControlPlaneRegistry
     installProductSpecSkill: (account: CodexChildAccount) => Readonly<{
       skillRoot: string
       skillPath: string
@@ -571,6 +574,35 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       const productSpecEnabled = options.appServer.productSpecEnabled?.() === true
       const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime")
       mkdirSync(runtimeCwd, { recursive: true })
+      if (options.appServer.controlPlanes !== undefined && options.appServer.supervisor !== undefined) {
+        const controlPlane = await options.appServer.controlPlanes.forTarget({
+          binary,
+          env: appServerEnv,
+          cwd: runtimeCwd,
+          ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+          ...(timeoutMs === undefined ? {} : { requestTimeoutMs: timeoutMs }),
+          accountRef: input.account.ref,
+          hostTarget: "local-desktop",
+        })
+        const denials = [
+          controlPlane.gate({ type: "model", value: input.model }),
+          controlPlane.gate({ type: "approvalPolicy", value: "on-request" }),
+          controlPlane.gate({ type: "sandboxMode", value: "danger-full-access" }),
+        ].filter(result => !result.allowed)
+        if (denials.length > 0) {
+          return {
+            outcome: "incompatible_workflow",
+            text: "",
+            usage: null,
+            threadId: input.resumeThreadId,
+            detail: `Codex managed policy denied this turn: ${denials.map(result => `${result.source}: ${result.reason}`).join("; ")}`,
+            preContent: true,
+            policyDenied: true,
+            quotaExhausted: false,
+            rateLimited: false,
+          }
+        }
+      }
       return runCodexAppServerTurn({
         binary,
         env: appServerEnv,

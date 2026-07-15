@@ -21,6 +21,7 @@
     "release-acceptance": "node --import tsx scripts/run-release-acceptance.ts",
     "smoke:artifact:codex-runtime": "node --import tsx scripts/codex-runtime-artifact-smoke.ts",
     "smoke:codex-supervisor": "node --import tsx scripts/codex-app-server-supervisor-smoke.ts",
+    "smoke:codex-control-plane": "node --import tsx scripts/codex-control-plane-smoke.ts",
     "smoke": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
     "smoke:react": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_SMOKE_REACT=1 electron .",
     "smoke:headed": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_HEADED=1 electron .",

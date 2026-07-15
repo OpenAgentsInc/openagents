@@ -206,6 +206,7 @@ import {
 } from "./provider-runtime-host.ts"
 import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture.ts"
 import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
+import { makeCodexControlPlaneRegistry } from "./codex-control-plane.ts"
 import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
   LiveAgentGraphSnapshotChannel,
@@ -1854,9 +1855,14 @@ const codexAppServerSupervisor = createCodexAppServerSupervisor({
   reverseRpcJournalPath: path.join(app.getPath("userData"), "codex-reverse-rpc", "receipts.json"),
   strictGeneratedDecoding: true,
 })
+const codexControlPlanes = makeCodexControlPlaneRegistry({
+  supervisor: codexAppServerSupervisor,
+  receiptRoot: path.join(app.getPath("userData"), "codex-control-plane"),
+})
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
   supervisor: codexAppServerSupervisor,
+  ...(!smokeMode ? { controlPlanes: codexControlPlanes } : {}),
   installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
     if (account.source === "current_session") {
       const verified = verifyBuiltinProductSpecWorkSkill(builtinSkillsRoot)
@@ -5616,6 +5622,7 @@ app.on("before-quit", () => {
   providerAccounts.dispose()
   fableLocal.dispose()
   codexLocal.dispose()
+  codexControlPlanes.close()
   codexAppServerSupervisor.close()
   usageLedger.dispose()
   desktopCorrelationJournal.dispose()

@@ -136,6 +136,37 @@ Unix seconds even while experimental advertising remains disabled. The
 supervisor exposes private attention and receipt subscriptions for host UI and
 diagnostics without passing privileged payloads into renderer props.
 
+### Implementation status: CAP-04
+
+CAP-04 adds a main-process `CodexControlPlane` for each exact supervisor pool
+identity. It reads account state, optional account rate/usage/workspace data,
+the app-server model catalog and provider capabilities, config and managed
+requirements, permission profiles, experimental features, and collaboration
+modes from the same long-lived connection used by turns. Account-scoped reads
+that legitimately reject an isolated or signed-out account are retained as
+method-specific degraded state; they do not erase the model/config/policy
+snapshot or masquerade as empty success.
+
+The app-server remains the authority. OpenAgents does not mirror config or
+account values into a second database. A mutation is admitted only by a
+short-lived, one-shot owner-intent token bound to the current snapshot
+revision. Login start/cancel/logout, reset-credit consumption, account nudge,
+single/batch config writes, MCP reload, and experimental-feature enablement
+then reconcile from app-server truth. Durable `0600` receipts contain only a
+hashed intent identity, mutation kind/method, revisions, outcome, and time;
+auth URLs, device codes, config values, paths, account identifiers, and
+workspace-message bodies stay private and are not journaled.
+
+Managed requirements are now an admission gate, not renderer advice. Before
+an ordinary Codex turn starts, Desktop checks the requested model against
+`model/list` and the effective approval/sandbox choices against
+`configRequirements/read`. The same gate covers provider capabilities,
+permission profiles, experimental features, web-search modes, and remote
+control for later surfaces. A denied control fails before provider work begins.
+An exact bundled-binary smoke uses an isolated `CODEX_HOME` to prove model,
+config, requirements, profile, and feature discovery while explicitly
+accounting for unauthenticated optional reads.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these
