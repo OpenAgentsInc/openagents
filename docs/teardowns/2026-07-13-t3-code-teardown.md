@@ -252,72 +252,143 @@ implement a full command/event/projection pipeline [schema] [source]:
   becoming fully quiescent") so tests and orchestration code wait on receipts
   instead of polling internal state. [docs] [source]
 
-### 4.1 The composer is a single-turn submitter, not a steer/queue composer
+### 4.1 Composer concurrency: draft-ahead, implicit Codex steering, and no product queue
 
-T3's queue vocabulary needs a precise boundary. The server has queues, but the
-chat composer does not expose the interaction model now common in agent hosts:
-one control for **steering** an active turn and another for **queueing** a
-follow-up turn. The pinned commit has no `turn/steer` or equivalent command, no
-queued-message entity/projection, no FIFO follow-up list, and no queue-count
-indicator in the web composer. [source] [schema] [inferred]
+The first useful distinction is between four things that are easy to collapse
+under the word "queue":
 
-The web path is structurally simple:
+| Mechanism | Present in T3? | Owner | What it means |
+| --- | --- | --- | --- |
+| Draft-ahead while a turn runs | Yes | renderer-local Zustand draft store | The user can keep typing one unsent draft while generation continues |
+| Same-turn steering | Not as a T3 command or UI state | Codex can perform it implicitly if T3 sends another `turn/start` while Codex is active | Add input to the active inference/tool loop |
+| Durable follow-up queue | No | would need to be orchestration-owned | Run prompt B as a new turn after prompt A reaches quiescence |
+| Runtime/transport work queues | Yes | server workers, startup, subscriptions, RPC reconnect logic | Internal serialization and recovery, not user-visible admission |
+
+That makes the accurate conclusion subtler than "send is disabled while
+running." The composer editor remains enabled during a normal running turn:
+its `disabled` predicate covers connection, approval, and unavailable-
+environment states, but not `phase === "running"`. The draft therefore remains
+editable and persists in `composerDraftStore`. This is a useful **draft-ahead**
+behavior, but it is one mutable local draft, not an admitted prompt with an ID,
+position, delivery policy, or restart guarantee. [source] [schema]
+
+The intended pointer-driven state machine is still single-flight. When
+`ComposerPrimaryActions` receives `isRunning`, it replaces the send button
+with the red `Stop generation` control. Clicking it issues
+`thread.turn.interrupt`; the decider persists
+`thread.turn-interrupt-requested`, and the provider reactor calls
+`interruptTurn({ threadId })`. Mobile's collapsed composer likewise treats a
+running phase as a disabled primary action. Pending approvals and user-input
+requests take over the primary-action region, while a completed plan produces
+the special `Refine`/`Implement` choice. None of those states renders an
+admitted follow-up list. [source]
+
+The ordinary send path is:
 
 ```text
-Lexical composer + local draft/context state
-          |
-          | onSend: snapshot text, images, terminal/file/review/preview context
-          v
-thread.turn.start (one client orchestration command)
-          |
-          +--> thread.message-sent (durable user message)
-          +--> thread.turn-start-requested (durable intent)
+Lexical editor + one local draft
+        |
+        | snapshot text, images, file/terminal/preview/review context
+        v
+ChatView.onSend
+        |
+        | one ClientOrchestrationCommand
+        v
+thread.turn.start
+        |
+        +--> thread.message-sent             durable visible user message
+        +--> thread.turn-start-requested      durable provider intent
                          |
                          v
-              ProviderCommandReactor -> provider.sendTurn()
+ProviderCommandReactor -> ProviderAdapter.sendTurn()
+                         |
+                         v
+CodexAdapter -> app-server turn/start
 ```
 
-`ChatView.onSend` refuses while local dispatch is busy or the environment is
-connecting/unavailable, snapshots the Lexical prompt and attachments/contexts,
-adds an optimistic user row, clears the draft, and submits exactly one
-`thread.turn.start` command. The command schema contains the message,
-model/runtime/interaction-mode settings, and optional bootstrap worktree data;
-it contains no delivery mode, expected active turn, or queue position. The
-decider then emits `thread.message-sent` and `thread.turn-start-requested`, and
-the provider reactor calls the adapter's `sendTurn` in a forked effect. [source]
-[schema]
+`ChatView.onSend` guards connection state, environment availability, a local
+dispatch flag, and `sendInFlightRef`; it snapshots the draft and contexts,
+adds an optimistic user row, clears the draft, and dispatches exactly one
+`thread.turn.start`. The command carries model/runtime/interaction settings
+and optional worktree bootstrap data. It does **not** carry a delivery mode,
+an expected active-turn ID, a queue item ID, a position, or a deduplication key
+owned by the orchestration model. The decider immediately commits both the
+message and provider-start intent. [source] [schema]
 
-While the provider is running, the primary control is interrupt. `onInterrupt`
-submits `thread.turn.interrupt`; the decider emits
-`thread.turn-interrupt-requested`, and the reactor calls provider
-`interruptTurn({ threadId })`. T3 therefore models correction as cancellation
-followed by a later new turn, not as same-turn user input. [source] [schema]
+#### The keyboard path exposes an unintended second-send seam
 
-This is materially different from Codex app-server's explicit
-`turn/steer` operation, which accepts additional user input only for the
-currently active regular turn and requires an `expectedTurnId`; Codex also
-keeps `turn/interrupt` separate. [public] The absence in T3 is not an
-accidental UI omission: its shared orchestration union and provider adapter
-contract have only `thread.turn.start`/`sendTurn` and
-`thread.turn.interrupt`/`interruptTurn` at this boundary. [schema] [source]
+The running-state replacement is only enforced by the primary action. The
+Lexical `Enter` command calls `submitComposer()` whenever Enter is pressed
+without Shift. `submitComposer()` calls `onSend()`, and `ChatView.onSend` does
+not test `phase === "running"`. Because the editor is still enabled, an
+expanded/desktop composer can source-reach a second `thread.turn.start` while
+the provider turn is active. The same file explicitly blocks running-state
+checkpoint reverts, which makes this omission unlikely to be a deliberate
+queue contract. [source] [inferred]
 
-The queues that do exist are infrastructural and should not be presented as
-composer behavior:
+For Codex specifically, this has surprising behavior. T3's generated
+app-server package **does include** `turn/steer`, but the T3 provider interface
+does not expose it. If a second T3 `thread.turn.start` reaches current Codex
+while a regular turn is active, Codex core's `user_input_or_turn_inner` first
+tries `steer_input`; the new input is appended to the active turn's pending
+input instead of becoming a FIFO next turn. That path lacks the public
+`turn/steer` method's required `expectedTurnId` guard and can return a newly
+allocated `turn/start` submission ID even though the input was attached to the
+already-active turn. T3 has no native event or projection that explains this
+semantic collapse to its UI. [source] [inferred]
 
-- `serverRuntimeStartup` queues commands until readiness and then drains them;
+This is not portable provider behavior. T3's shared `ProviderAdapterShape`
+offers only `sendTurn` and `interruptTurn`; its shared orchestration union has
+only `thread.turn.start` and `thread.turn.interrupt`. Claude, Cursor, Grok, and
+OpenCode adapters are therefore free to reject, serialize, conflate, or race a
+second `sendTurn` differently. A keyboard path that happens to steer Codex is
+not a provider-neutral steering feature. [schema] [inferred]
+
+Codex's explicit public operation remains the correct same-turn primitive:
+`turn/steer` requires `expectedTurnId`, only accepts an active regular turn,
+does not emit a second `turn/started`, and rejects review or manual-compaction
+turns. `turn/interrupt` is separate. App-server does not expose a durable
+"run this later as another turn" FIFO; that admission policy belongs above the
+provider protocol. See the separate
+[Codex app-server client support analysis](./2026-07-15-codex-app-server-client-support-analysis.md)
+for the broader T3/OpenCode protocol comparison. [public] [source]
+
+#### What T3 would need for honest steer and queue semantics
+
+This needs an orchestration change, not a renderer pending array:
+
+1. Add distinct `thread.turn.steer` and `thread.turn.enqueue` commands. Steer
+   must include `expectedProviderTurnId`; enqueue must include a stable queue
+   item/message ID and ordering metadata.
+2. Persist admitted queue items and their transitions (`queued`, `promoted`,
+   `cancelled`, `failed`) in the event log and projections before acknowledging
+   them to the UI.
+3. Let one thread-owned scheduler promote only the queue head after a receipt
+   proves the active turn is quiescent. The provider reactor must never infer
+   queue order from concurrent `sendTurn` effects.
+4. Extend the provider contract with explicit capability negotiation. Codex
+   steering maps to `turn/steer`; providers without native steering must reject
+   it or apply a declared fallback, never silently reinterpret it.
+5. Render draft, steering submission, and queued follow-ups as different
+   states. Queue items need reconnect recovery and independent cancel/reorder
+   controls; the local draft does not.
+6. Use client message IDs/idempotency receipts so reconnect or retry cannot
+   duplicate either a steer or a queued turn.
+
+The queues that already exist do not satisfy that contract:
+
+- `serverRuntimeStartup` buffers commands until server readiness;
 - `DrainableWorker` and `KeyedCoalescingWorker` serialize or coalesce internal
-  work such as terminal persistence;
-- WebSocket subscriptions bridge replay/catch-up to live streams through an
-  in-memory queue; and
-- the client runtime queues outbound RPC work while disconnected, but this is
-  transport recovery, not a visible list of pending user prompts. [source]
+  work such as provider effects and terminal persistence;
+- WebSocket subscription code bridges replay/catch-up to live pushes through
+  an in-memory queue; and
+- the client runtime buffers outbound RPC work through disconnects.
 
-The practical product consequence is a clean but limited state machine:
-`draft -> submitted -> running -> interrupted/completed/failed`. There is no
-`queued` composer state to recover, reorder, cancel independently, or render
-after reconnect. T3's durable event/projection core is therefore a good base
-for adding these semantics, but the addition needs new typed commands/events
-and projections rather than a renderer-only pending array. [inferred]
+Those are important infrastructure queues. None is a durable, visible,
+thread-owned list of user intentions. T3's event store and projection system
+are strong raw material for adding that list, but the current product state is
+`draft -> submitted -> running -> interrupted/completed/failed`, plus one
+renderer-local draft that may be edited during `running`. [source] [inferred]
 
 Token accounting is a first-class typed snapshot
 (`ThreadTokenUsageSnapshot`: used/max/input/cached-input/output/reasoning
@@ -1699,7 +1770,7 @@ All paths relative to the pinned clone at `projects/repos/t3code`.
 | Product identity, installs | `README.md`; `AGENTS.md`; `apps/server/package.json` |
 | Architecture overview | `docs/architecture/overview.md`; `docs/architecture/providers.md` |
 | Provider drivers/adapters | `apps/server/src/provider/Drivers/`; `apps/server/src/provider/Layers/` |
-| Codex protocol client | `packages/effect-codex-app-server/src/client.ts` + `_generated/` |
+| Codex protocol client | `packages/effect-codex-app-server/scripts/generate.ts`; `packages/effect-codex-app-server/src/{client,protocol}.ts` + `_generated/`; `apps/server/src/provider/Layers/{CodexProvider,CodexSessionRuntime}.ts`; `apps/server/src/provider/CodexAdapter.ts` |
 | ACP implementation | `packages/effect-acp/src/{agent,client,protocol,terminal}.ts` |
 | Orchestration contracts | `packages/contracts/src/orchestration.ts`, `providerRuntime.ts`, `provider.ts`, `rpc.ts`, `git.ts` |
 | Engine pipeline | `apps/server/src/orchestration/` (`decider.ts`, `projector.ts`, `commandInvariants.ts`) |
@@ -1712,7 +1783,7 @@ All paths relative to the pinned clone at `projects/repos/t3code`.
 | Web domain and local state | `apps/web/src/state/`; `apps/web/src/rpc/atomRegistry.ts`; `apps/web/src/composerDraftStore.ts`; `apps/web/src/rightPanelStore.ts`; `apps/web/src/uiStateStore.ts` |
 | Web persistence | `apps/web/src/connection/storage.ts`; `apps/desktop/src/app/DesktopConnectionCatalogStore.ts`; `apps/desktop/src/electron/ElectronSafeStorage.ts` |
 | Web components / styling | `apps/web/src/components/ui/`; `apps/web/components.json`; `apps/web/src/index.css`; `apps/web/src/hooks/useTheme.ts`; `apps/web/src/rightPanelLayout.ts` |
-| Conversation rendering | `apps/web/src/components/{ChatView,ChatMarkdown,ComposerPromptEditor,DiffWorkerPoolProvider,ThreadTerminalDrawer}.tsx`; `apps/web/src/components/chat/MessagesTimeline.tsx` |
+| Conversation rendering | `apps/web/src/components/{ChatView,ChatMarkdown,ComposerPromptEditor,DiffWorkerPoolProvider,ThreadTerminalDrawer}.tsx`; `apps/web/src/components/chat/{ChatComposer,ComposerPrimaryActions,MessagesTimeline}.tsx`; `apps/web/src/composerDraftStore.ts` |
 | Environment auth | `docs/cloud/environment-auth.md`; `apps/server/src/auth/dpop.ts` |
 | Relay / T3 Connect | `infra/relay/`; `docs/cloud/t3-connect-clerk.md`; `apps/server/src/cloud/ManagedEndpointRuntime.ts` |
 | Desktop security | `apps/desktop/src/window/DesktopWindow.ts`; `apps/desktop/src/preview/WebviewPreferences.ts` |
