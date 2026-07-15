@@ -1,4 +1,4 @@
-import type { IntentReporter } from "@effect-native/core";
+import { resolveIntentRef, type IntentReporter } from "@effect-native/core";
 import { Effect } from "@effect-native/core/effect";
 import { Window } from "happy-dom";
 import { createRoot } from "react-dom/client";
@@ -72,7 +72,7 @@ const fixtureState = (extra: Partial<DesktopShellState> = {}): DesktopShellState
 const recorder = () => {
   const received: Array<{ name: string; payload: unknown }> = [];
   const report: IntentReporter = (ref, payload) =>
-    Effect.sync(() => received.push({ name: ref.name, payload }));
+    Effect.sync(() => received.push(resolveIntentRef(ref, payload)));
   return { received, report };
 };
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));

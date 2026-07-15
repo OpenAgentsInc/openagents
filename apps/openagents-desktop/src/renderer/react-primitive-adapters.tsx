@@ -10,7 +10,7 @@ import {
   type ReactElement,
 } from "react"
 import { createRoot, type Root } from "react-dom/client"
-import { IntentRef, type IntentError, type IntentReporter, type JsonPayload } from "@effect-native/core"
+import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload } from "@effect-native/core"
 import { Effect, Scope, Stream } from "@effect-native/core/effect"
 import { mountDomThemeStyleSheet } from "@effect-native/render-dom"
 import {
@@ -86,7 +86,9 @@ export const projectReactSessionRows = (
 }
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
-  void Effect.runPromise(report(IntentRef(name), payload) as Effect.Effect<void, IntentError>).catch(() => {})
+  void Effect.runPromise(report(
+    payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload,
+  ) as Effect.Effect<void, IntentError>).catch(() => {})
 }
 
 const selectedTitle = (state: DesktopShellState): string => {

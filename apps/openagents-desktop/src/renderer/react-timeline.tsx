@@ -1,5 +1,5 @@
 import { Button } from "#components/ui/button"
-import { IntentRef, type IntentError, type IntentReporter, type JsonPayload, type MarkdownBlock, type MarkdownInline } from "@effect-native/core"
+import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload, type MarkdownBlock, type MarkdownInline } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import type { ReactElement, ReactNode } from "react"
 import { Component, createElement } from "react"
@@ -157,7 +157,9 @@ const recordTone = (record: ReactTimelineRecord): string => {
 }
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
-  void Effect.runPromise(report(IntentRef(name), payload) as Effect.Effect<void, IntentError>).catch(() => {})
+  void Effect.runPromise(report(
+    payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload,
+  ) as Effect.Effect<void, IntentError>).catch(() => {})
 }
 
 export const TimelineItem = ({ record, report }: {

@@ -252,6 +252,9 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
   test("Desktop mounts the shared React-owned Effect Native surface", () => {
     const boot = read("src/renderer/boot.ts")
     expect(boot).toContain('from "@effect-native/render-dom/react"')
+    expect(boot).toContain("compatibilityRequested")
+    expect(boot).toContain('dataset.desktopRenderer = compatibilityRequested ? "compatibility" : "react"')
+    expect(boot).toContain("mountReactWorkbench(root, SubscriptionRef.changes(state), report, { theme })")
     expect(boot).toContain("makeReactDomRenderer({")
     expect(boot).toContain('backend: "compatibility"')
     expect(boot).not.toContain("makeDomRenderer({")

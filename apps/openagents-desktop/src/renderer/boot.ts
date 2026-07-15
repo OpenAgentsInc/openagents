@@ -633,7 +633,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     }
     const localChat = {
       listThreads: async () => {
-        const raw = await bridge?.listThreads?.()
+        const raw = await bridge?.historyThreads?.listLocal?.()
         return Array.isArray(raw) ? raw as DesktopThread[] : []
       },
       newThread: async () => {
@@ -641,11 +641,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
       },
       openThread: async (id: string) => {
-        const raw = await bridge?.openThread?.({ id })
+        const raw = await bridge?.historyThreads?.resumeLocal?.({ threadRef: id })
         return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
       },
       hydrateThread: async (id: string) => {
-        const raw = await bridge?.hydrateThread?.({ id })
+        const raw = await bridge?.historyThreads?.resumeLocal?.({ threadRef: id })
         return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
       },
       sendMessage: async (input: Readonly<{ id: string; message: string }>) => {
@@ -1638,20 +1638,20 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       document.documentElement.setAttribute(name, value)
     }
     const theme = themeForPreferences(preferences)
-    const reactShellRequested = new URLSearchParams(window.location.search).get("renderer") === "react-shell"
-    document.documentElement.dataset.desktopRenderer = reactShellRequested ? "react-shell" : "compatibility"
-    if (reactShellRequested) {
-      // MVP-02B trial path: ordinary React components subscribe directly to
-      // the authoritative Effect state. The complete default cutover waits
-      // for the timeline/composer/review packets and the integrated proof.
-      yield* mountReactWorkbench(root, SubscriptionRef.changes(state), report, { theme })
-    } else {
+    const compatibilityRequested = new URLSearchParams(window.location.search).get("renderer") === "compatibility"
+    document.documentElement.dataset.desktopRenderer = compatibilityRequested ? "compatibility" : "react"
+    if (compatibilityRequested) {
       const renderer = makeReactDomRenderer({
         backend: "compatibility",
         theme,
         hostDrivers: [makeStubCodeEditorDriver()],
       })
       yield* renderer.mount(root, program.viewStream, report)
+    } else {
+      // MVP-02F: ordinary Desktop launches install the React Codex workbench.
+      // It still consumes the one Effect-owned snapshot stream and typed intent
+      // registry; the compatibility catalog is an explicit exclusive fallback.
+      yield* mountReactWorkbench(root, SubscriptionRef.changes(state), report, { theme })
     }
     // Startup-timing instrumentation (measure-constantly discipline; see
     // scripts/startup-bench.ts + docs/fable/2026-07-11-desktop-startup-speed-audit.md).

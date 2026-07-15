@@ -456,6 +456,7 @@ const localTurnRestartProbe = process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_
   ? process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE
   : null
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null
+const reactSmokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE_REACT === "1"
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
 // Automated smoke/benchmark/proof drivers must never steal the operator's
@@ -493,7 +494,12 @@ const isolatedAppProofMode = isIsolatedAppProof({
   userDataPath: desktopUserDataPath,
   temporaryDirectory: app.getPath("temp"),
 })
-const desktopRendererEntry = desktopRendererEntryUrl
+// The installed application uses React by default. Existing broad smoke keeps
+// the explicit compatibility oracle until its specialist surfaces are ported;
+// `smoke:react` exercises the installed default backend itself.
+const desktopRendererEntry = smokeMode && !reactSmokeMode
+  ? `${desktopRendererEntryUrl}?renderer=compatibility`
+  : desktopRendererEntryUrl
 for (const chromiumSwitch of isolatedAppProofChromiumSwitches(isolatedAppProofMode)) {
   // Chromium normally initializes macOS cookie encryption when its default
   // session is created. The signed, signed-out acceptance candidate uses an
@@ -2557,6 +2563,10 @@ const smokeCodexAvailabilityGate: Promise<void> | null = smokeMode
       releaseSmokeCodexAvailability = resolve
     })
   : null
+// The compatibility smoke deliberately observes the intermediate disabled
+// chip before releasing this gate. The React-only smoke begins at the installed
+// Codex workbench and can release immediately.
+if (reactSmokeMode) (releaseSmokeCodexAvailability as (() => void) | null)?.()
 ipcMain.handle(CodexLocalAvailabilityChannel, async () => {
   if (smokeCodexAvailabilityGate !== null) await smokeCodexAvailabilityGate
   return codexLocal.availability()
@@ -2913,6 +2923,142 @@ const smokeWaitForShell = `(async () => {
     await wait(100)
   }
   return document.querySelector('[data-en-key="shell-root"]') !== null
+})()`
+
+const smokeReactWorkbench = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline && document.querySelector('[data-en-react-surface="true"]') === null) {
+    await wait(50)
+  }
+  const surface = document.querySelector('[data-en-react-surface="true"]')
+  let textarea = document.querySelector('.oa-react-composer textarea')
+  while (Date.now() < deadline && (textarea === null || textarea.disabled)) {
+    await wait(50)
+    textarea = document.querySelector('.oa-react-composer textarea')
+  }
+  const marks = () => globalThis.__oaStartupMarks || {}
+  while (Date.now() < deadline && typeof marks().historyHydrated !== "number") await wait(50)
+  const newSession = [...document.querySelectorAll('button')]
+    .find((button) => button.textContent?.trim() === "New session")
+  newSession?.click()
+  await wait(200)
+  textarea = document.querySelector('.oa-react-composer textarea')
+  textarea?.focus()
+  await wait(200)
+  return {
+    ok: surface !== null && textarea !== null &&
+      document.documentElement.dataset.desktopRenderer === "react" &&
+      document.querySelector('[data-en-key="shell-root"]') === null &&
+      document.querySelectorAll('#openagents-desktop-root > *').length === 1,
+    backend: document.documentElement.dataset.desktopRenderer,
+    reactSurfaces: document.querySelectorAll('[data-en-react-surface="true"]').length,
+    compatibilityRoots: document.querySelectorAll('[data-en-key="shell-root"]').length,
+    composerFocused: document.activeElement === textarea,
+    newSession: newSession !== undefined,
+  }
+})()`
+
+const smokeReactFirstInput = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const textarea = document.querySelector('.oa-react-composer textarea')
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && textarea instanceof HTMLTextAreaElement && !textarea.value.toLowerCase().includes("k")) {
+    await wait(50)
+  }
+  return { ok: textarea instanceof HTMLTextAreaElement && textarea.value.toLowerCase().includes("k"), value: textarea?.value ?? null, probe: globalThis.__oaReactInputProbe ?? null, intent: document.documentElement.dataset.reactInputIntent ?? null }
+})()`
+
+const smokeReactArmInputProbe = `(() => {
+  const textarea = document.querySelector('.oa-react-composer textarea')
+  if (!(textarea instanceof HTMLTextAreaElement)) return false
+  globalThis.__oaReactInputProbe = { keydown: 0, input: 0, change: 0, inputValue: null }
+  textarea.addEventListener("keydown", () => globalThis.__oaReactInputProbe.keydown++)
+  textarea.addEventListener("input", (event) => {
+    globalThis.__oaReactInputProbe.input++
+    globalThis.__oaReactInputProbe.inputValue = event.currentTarget.value
+  })
+  textarea.addEventListener("change", () => globalThis.__oaReactInputProbe.change++)
+  textarea.focus()
+  return true
+})()`
+
+const smokeReactTurnAndReview = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const buttons = () => [...document.querySelectorAll('button')]
+  const deadline = Date.now() + 60000
+  let send = buttons().find((button) => button.textContent?.trim() === "Send" && !button.disabled)
+  while (Date.now() < deadline && send === undefined) {
+    await wait(50)
+    send = buttons().find((button) => button.textContent?.trim() === "Send" && !button.disabled)
+  }
+  if (send === undefined) return {
+    ok: false,
+    reason: "Send never became available",
+    buttons: buttons().map((button) => ({ text: button.textContent?.trim(), disabled: button.disabled })),
+    composerStatus: document.querySelector('.oa-react-composer-status')?.textContent ?? null,
+    heading: document.querySelector('.oa-react-conversation-heading h1')?.textContent ?? null,
+    input: document.querySelector('.oa-react-composer textarea')?.value ?? null,
+  }
+  send.click()
+  while (Date.now() < deadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
+    .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
+  const turnVisible = [...document.querySelectorAll('.oa-react-timeline-item')]
+    .some((item) => item.textContent?.toLowerCase().includes("k"))
+  const reviewTrigger = buttons().find((button) => button.textContent?.trim() === "Review changes")
+  reviewTrigger?.click()
+  while (Date.now() < deadline && document.querySelector('.oa-react-review-file') === null) await wait(50)
+  const reviewButton = buttons().find((button) => button.textContent?.trim() === "Review")
+  reviewButton?.click()
+  while (Date.now() < deadline && document.querySelector('.oa-react-exact-diff') === null) await wait(50)
+  const reviewSurface = document.querySelector('.oa-react-review-drawer, [data-slot="sheet-content"]')
+  const leakedAbsolutePath = [...document.querySelectorAll('.oa-react-review-file span, .oa-react-exact-diff strong')]
+    .some((node) => node.textContent?.startsWith("/"))
+  const forbidden = ["Stage", "Discard", "Commit", "Push", "Terminal"]
+    .filter((label) => buttons().some((button) => button.textContent?.trim() === label))
+  return {
+    ok: turnVisible && reviewSurface !== null && document.querySelector('.oa-react-exact-diff') !== null &&
+      !leakedAbsolutePath && forbidden.length === 0,
+    turnVisible,
+    reviewOpen: reviewSurface !== null,
+    diffVisible: document.querySelector('.oa-react-exact-diff') !== null,
+    leakedAbsolutePath,
+    forbidden,
+  }
+})()`
+
+const smokeReactReloadRestoration = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline && document.querySelector('[data-en-react-surface="true"]') === null) await wait(50)
+  const automaticDeadline = Date.now() + 2000
+  while (Date.now() < automaticDeadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
+    .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
+  let restored = [...document.querySelectorAll('.oa-react-timeline-item')]
+    .some((item) => item.textContent?.toLowerCase().includes("k"))
+  if (!restored) {
+    let resumed = [...document.querySelectorAll('[data-session-row]')]
+      .find((row) => row.textContent?.toLowerCase().includes("new chat"))
+    while (Date.now() < deadline && resumed === undefined) {
+      await wait(50)
+      resumed = [...document.querySelectorAll('[data-session-row]')]
+        .find((row) => row.textContent?.toLowerCase().includes("new chat"))
+    }
+    resumed?.click()
+    while (Date.now() < deadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
+      .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
+    restored = [...document.querySelectorAll('.oa-react-timeline-item')]
+      .some((item) => item.textContent?.toLowerCase().includes("k"))
+  }
+  return {
+    ok: restored && document.documentElement.dataset.desktopRenderer === "react" &&
+      document.querySelector('[data-en-key="shell-root"]') === null,
+    restored,
+    backend: document.documentElement.dataset.desktopRenderer,
+    heading: document.querySelector('.oa-react-conversation-heading h1')?.textContent ?? null,
+    timeline: [...document.querySelectorAll('.oa-react-timeline-item')].map((item) => item.textContent),
+    sessions: [...document.querySelectorAll('[data-session-row]')].map((item) => item.textContent),
+  }
 })()`
 
 const smokeRuntimeGatewayBootstrap = `(async () => {
@@ -4660,7 +4806,7 @@ const runSmoke = (window: BrowserWindow): void => {
   const timeout = setTimeout(() => {
     console.error("[openagents-desktop smoke] TIMEOUT waiting for renderer")
     finish(1)
-  }, 45_000)
+  }, reactSmokeMode ? 90_000 : 45_000)
   let tracePass = 0
   window.webContents.on("did-finish-load", () => {
     void (async () => {
@@ -4677,6 +4823,27 @@ const runSmoke = (window: BrowserWindow): void => {
         console.log(`[openagents-desktop smoke] ${name} OK`, JSON.stringify(result))
       }
       try {
+        if (reactSmokeMode) {
+          if (tracePass === 1) {
+            await step("react-reload-restoration", smokeReactReloadRestoration)
+            clearTimeout(timeout)
+            console.log("[openagents-desktop smoke] REACT OK")
+            finish(0)
+            return
+          }
+          await step("react-workbench-exclusive", smokeReactWorkbench)
+          await step("react-input-probe-armed", smokeReactArmInputProbe)
+          window.webContents.focus()
+          window.webContents.sendInputEvent({ type: "keyDown", keyCode: "K" })
+          window.webContents.sendInputEvent({ type: "char", keyCode: "k" })
+          window.webContents.sendInputEvent({ type: "keyUp", keyCode: "K" })
+          await step("react-first-keystroke", smokeReactFirstInput)
+          await step("react-turn-and-review", smokeReactTurnAndReview)
+          await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
+          tracePass = 1
+          window.webContents.reload()
+          return
+        }
         if (tracePass === 1) {
           await step("workspace-editor-reload-recovery", smokeWorkspaceEditorRecovery)
           await step("codex-trace-reload-restoration", traceAcceptanceReload)

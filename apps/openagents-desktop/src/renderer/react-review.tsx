@@ -4,7 +4,7 @@ import { Button } from "#components/ui/button"
 import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "#components/ui/sheet"
-import { IntentRef, type IntentError, type IntentReporter, type JsonPayload } from "@effect-native/core"
+import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import { useEffect, useState, type ReactElement, type RefObject } from "react"
 
@@ -20,7 +20,9 @@ import type { GitPanelState } from "./git-panel.ts"
 import type { DesktopShellState } from "./shell.ts"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
-  void Effect.runPromise(report(IntentRef(name), payload) as Effect.Effect<void, IntentError>).catch(() => {})
+  void Effect.runPromise(report(
+    payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload,
+  ) as Effect.Effect<void, IntentError>).catch(() => {})
 }
 
 export type ReactStatusKind =

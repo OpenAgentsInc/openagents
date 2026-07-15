@@ -1007,7 +1007,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   token system, or Vercel AI SDK/model-stream authority. One authoritative
   surface selects exactly one whole-surface backend for its lifetime: declared
   React lowerings or the proven direct catalog compatibility backend, never
-  both. The Effect-owned stream opens once outside React effects; Strict Mode
+  both. Desktop selects React for an ordinary launch; the catalog backend is
+  reachable only through the explicit `renderer=compatibility` fallback for
+  retained specialist surfaces and their acceptance oracle. The Effect-owned
+  stream opens once outside React effects; Strict Mode
   replay may reattach React listeners but cannot duplicate the host
   subscription, command effect, or terminal outcome. Unmount closes the
   selected backend, subscription, root, and token stylesheet. Tailwind and any

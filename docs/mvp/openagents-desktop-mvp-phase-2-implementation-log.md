@@ -308,3 +308,27 @@ The Vercel AI SDK remains intentionally absent: it would duplicate the current
 Codex Runtime Gateway/app-server stream, tool, approval, and persistence
 authority. shadcn/Base UI is the presentation layer; Effect remains state and
 effects authority.
+
+## MVP-02F — Default React cutover and integrated receipt (#8823)
+
+Status: implementation cutover complete; release-proof issue remains open for
+external signed-artifact, real-account, owner/admission, and independent-review
+evidence.
+
+Ordinary Desktop launches now install the React workbench by default. The
+catalog renderer remains available only through the explicit exclusive
+`?renderer=compatibility` selection and is used by the retained broad
+specialist-surface smoke. A separate production-built `smoke:react` journey
+proves one React root, first Chromium input, exact Effect intent payloads, new
+local chat, typed Codex fixture turn, bounded real Git diff, backend
+exclusivity, renderer reload, exact durable prefix restoration, Runtime
+Gateway continuity, and zero-owner teardown.
+
+The cutover smoke caught two genuine contract defects: value-bearing React
+commands lacked `ComponentValueBinding`, and local chats reloaded from provider
+history instead of their own durable store. Both were corrected at the
+authority boundary and regression tests now resolve React refs with the real
+Effect Native resolver rather than recording the unvalidated second argument.
+
+The normalized receipt and explicit non-claims live in
+`docs/mvp/2026-07-14-openagents-desktop-react-cutover-receipt.md`.

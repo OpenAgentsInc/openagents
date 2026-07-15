@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vite-plus/test"
 import { Window } from "happy-dom"
 import { createRoot } from "react-dom/client"
-import type { IntentReporter } from "@effect-native/core"
+import { resolveIntentRef, type IntentReporter } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts"
 import { WorkbenchShell, projectReactSessionRows } from "./react-primitive-adapters.tsx"
@@ -95,7 +95,7 @@ describe("React workbench shell", () => {
   test("dispatches new, search, and select through the existing intent authority", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
-    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push({ name: ref.name, payload }))
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
     const root = createRoot(container)
     root.render(<WorkbenchShell state={fixtureState()} report={report} />)
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -117,7 +117,7 @@ describe("React workbench shell", () => {
   test("keeps paging, archive, recovery, and confirmed delete on existing intents", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
-    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push({ name: ref.name, payload }))
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
     const base = fixtureState()
     const session = {
       sessionRef: "session-1",

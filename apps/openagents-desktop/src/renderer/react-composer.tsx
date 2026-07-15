@@ -19,6 +19,7 @@ import {
 } from "#components/ui/dialog";
 import { Textarea } from "#components/ui/textarea";
 import {
+  ComponentValueBinding,
   IntentRef,
   type IntentError,
   type IntentReporter,
@@ -44,7 +45,7 @@ import type { DesktopNoteEntry, DesktopShellState, QuestionCardInteraction } fro
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(
-    report(IntentRef(name), payload) as Effect.Effect<void, IntentError>,
+    report(payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload) as Effect.Effect<void, IntentError>,
   ).catch(() => {});
 };
 
@@ -214,7 +215,7 @@ export const ReactComposer = ({
             : "Message Codex…"
         }
         aria-label={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
-        onChange={(event) => dispatch(report, "DesktopInputChanged", event.currentTarget.value)}
+        onInput={(event) => dispatch(report, "DesktopInputChanged", event.currentTarget.value)}
         onCompositionStart={() => {
           composingRef.current = true;
         }}
