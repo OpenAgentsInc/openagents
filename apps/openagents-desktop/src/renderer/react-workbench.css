@@ -848,6 +848,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-composer {
+  position: relative;
   display: grid;
   gap: var(--en-spacing-1);
   margin: var(--en-spacing-3) auto var(--en-spacing-4);
@@ -857,6 +858,96 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   border-radius: var(--en-radius-xl);
   background: var(--en-color-surfaceRaised);
   box-shadow: var(--en-elevation-raised-shadow);
+  transition: border-color var(--en-motion-fast) var(--en-ease-basic),
+    background-color var(--en-motion-fast) var(--en-ease-basic);
+}
+
+.oa-react-composer[data-drag-active="true"] {
+  border-color: var(--en-color-accent);
+  background: var(--en-color-stateSelected);
+}
+
+.oa-react-composer-input {
+  display: grid;
+  gap: var(--en-spacing-1);
+  min-width: 0;
+}
+
+.oa-react-composer-images {
+  display: flex;
+  gap: var(--en-spacing-2);
+  padding: 0 var(--en-spacing-1) var(--en-spacing-1);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.oa-react-composer-image {
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px minmax(72px, 112px);
+  flex: 0 0 auto;
+  gap: var(--en-spacing-1);
+  align-items: center;
+  margin: 0;
+  padding: var(--en-spacing-1);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surface);
+}
+
+.oa-react-composer-image img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--en-radius-sm);
+}
+
+.oa-react-composer-image figcaption {
+  display: grid;
+  min-width: 0;
+  color: var(--en-color-textSecondary);
+  font-size: 11px;
+}
+
+.oa-react-composer-image figcaption span {
+  overflow: hidden;
+  color: var(--en-color-textPrimary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-composer-image figcaption small {
+  color: var(--en-color-textFaint);
+  font-size: 10px;
+}
+
+.oa-react-composer-image-remove {
+  position: absolute;
+  top: calc(var(--en-spacing-1) * -1);
+  right: calc(var(--en-spacing-1) * -1);
+  border-radius: var(--en-radius-full);
+}
+
+.oa-react-composer-image-notice {
+  margin: 0;
+  padding: 0 var(--en-spacing-2);
+  color: var(--en-color-danger);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.oa-react-composer-drop-target {
+  position: absolute;
+  z-index: 1;
+  inset: var(--en-spacing-2);
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--en-color-accent);
+  border-radius: var(--en-radius-lg);
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .oa-react-composer textarea {
@@ -900,6 +991,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-composer-status {
   color: var(--en-color-textFaint);
   font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-react-composer {
+    transition: none;
+  }
 }
 
 .oa-react-decision {

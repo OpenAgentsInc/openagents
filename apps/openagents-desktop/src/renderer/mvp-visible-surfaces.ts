@@ -69,7 +69,7 @@ export const mvpRemovedDockItemIds: ReadonlyArray<string> = [
  * Screen-root keys that must never appear anywhere in a rendered shell tree.
  * These are the root keys of internal or post-MVP substrates (the ProductSpec
  * Scope "out"/"cut" sections): Fleet, Terminal, sidebar accounts, provider/
- * model/reasoning selection, image attachment, voice controls, MCP/plugin
+ * model/reasoning selection, voice controls, MCP/plugin
  * configuration, and visible Git mutation authority (CW-AC-14: review exposes
  * no "general filesystem or Git mutation authority"; commit/push/branch/PR
  * authoring are outside the MVP cut).
@@ -86,8 +86,8 @@ export const forbiddenVisibleSurfaceKeys: ReadonlyArray<string> = [
   // Terminal / Inbox (Scope out: "interactive PTY"; no Inbox in the MVP)
   "workspace-terminal-panel",
   "workspace-inbox-panel",
-  // Composer affordances outside the MVP cut
-  "shell-attach-image",
+  // Composer affordances outside the MVP cut (#8828 explicitly admits the
+  // already-authorized bounded image attachment control, and only that one).
   "shell-harness-select",
   "shell-model-select",
   "shell-reasoning-select",

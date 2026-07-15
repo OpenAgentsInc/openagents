@@ -8,6 +8,7 @@
  * projection.
  */
 import { describe, expect, test } from "vite-plus/test"
+import { decodeFableLocalPickedImages } from "../fable-local-contract.ts"
 import {
   COMPOSER_IMAGE_BYTES_LIMIT,
   COMPOSER_IMAGE_COUNT_LIMIT,
@@ -128,5 +129,22 @@ describe("composer image state helpers (capability I1)", () => {
   test("formatImageSize renders KB and MB", () => {
     expect(formatImageSize(2048)).toBe("2 KB")
     expect(formatImageSize(3 * 1024 * 1024)).toBe("3.0 MB")
+  })
+})
+
+describe("native picker result boundary (capability I1)", () => {
+  test("decodes accepted images together with the first typed rejection", () => {
+    expect(decodeFableLocalPickedImages({
+      images: [{ mediaType: "image/png", data: "aGVsbG8=", name: "shot.png" }],
+      rejection: "count_limit",
+    }))?.toEqual({
+      images: [{ mediaType: "image/png", data: "aGVsbG8=", name: "shot.png" }],
+      rejection: "count_limit",
+    })
+  })
+
+  test("rejects the legacy untyped array and unknown rejection reasons", () => {
+    expect(decodeFableLocalPickedImages([])).toBeNull()
+    expect(decodeFableLocalPickedImages({ images: [], rejection: "mystery" })).toBeNull()
   })
 })

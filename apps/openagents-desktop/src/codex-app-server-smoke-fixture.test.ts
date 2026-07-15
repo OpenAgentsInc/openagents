@@ -50,12 +50,16 @@ describe("Codex app-server installed-smoke peer", () => {
     try {
       await client.initialize();
       await client.request("thread/start", {});
-      await client.request("turn/start", {});
+      await client.request("turn/start", {
+        input: [{ type: "text", text: "" }, { type: "localImage", path: "/private/fixture.png" }],
+      });
       await waitFor(() => harness.receipt().requestId === 91 && answer.current !== undefined);
       expect(harness.receipt()).toEqual({
         requestId: 91,
         decision: null,
         completionEmitted: false,
+        localImageTurns: 1,
+        maxLocalImageCount: 1,
       });
       expect(notifications).not.toContain("turn/completed");
 
@@ -66,6 +70,8 @@ describe("Codex app-server installed-smoke peer", () => {
         requestId: 91,
         decision: "accept",
         completionEmitted: true,
+        localImageTurns: 1,
+        maxLocalImageCount: 1,
       });
       expect(notifications).toContain("item/agentMessage/delta");
       expect(notifications).toContain("turn/completed");

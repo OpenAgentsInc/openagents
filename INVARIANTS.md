@@ -900,9 +900,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   local-only mode.
 - The first ProductSpec-native Desktop MVP composer is fixed to the ordinary
   logged-in Codex session. It exposes no provider/account, model,
-  reasoning-effort, image-attachment, plugin, MCP, or voice selector. Internal
-  post-MVP provider/media substrates do not authorize visible affordances and
-  may never silently substitute another provider for Codex.
+  reasoning-effort, plugin, MCP, or voice selector. Its sole admitted media
+  affordance is the bounded image picker/paste/drop path; it adds no provider
+  choice or arbitrary filesystem authority. Internal post-MVP provider/media
+  substrates do not authorize other visible affordances and may never silently
+  substitute another provider for Codex.
 - The MVP visible-surface allowlist is the exact owner-approved User
   Experience: chat/session navigation, repository grant/session home, bounded
   files/review, typed question/approval/plan controls, Open in Codex, commands,
@@ -910,8 +912,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   AssuranceSpec remain internal authoring/verification tooling and have no
   user-facing route, screen, dock item, command, or native-menu destination.
   Fleet, OpenAgents/Pylon account controls, Terminal, Inbox, MCP, plugins,
-  provider/model/reasoning selection, attachments, and voice are absent from
-  dock, sidebar, composer, Settings, command palette, and native Commands menu.
+  provider/model/reasoning selection, arbitrary attachments, and voice are
+  absent from dock, sidebar, composer, Settings, command palette, and native
+  Commands menu. The bounded composer-image path is the only attachment
+  exception.
+- Desktop composer images accept only PNG/JPEG/WebP/GIF, at most eight per
+  turn and 10 MB each. Picker, paste, and drop converge on one serialized typed
+  classifier; ordinary text paste falls through, and wrong-type, empty,
+  oversized, unreadable, or over-count inputs fail with accessible copy.
+  Pending Steer/Queue actions remain text-only. An idle image-only turn is
+  valid; successful sends clear attachments and failed sends restore the exact
+  retry set. Native picker paths never cross preload. Default Codex app-server
+  delivery uses bounded `localImage` inputs, while the retained exec fallback
+  keeps its isolated `-i` lowering proof. Logs, public-safe projections, and
+  analytics contain neither attachment bytes nor paths.
 - The compatibility shell and React workbench consume one typed primary-sidebar
   projection in this exact order: New session, Chat, Project home, Settings.
   The rows reuse canonical command identities and typed intents; New session is

@@ -30,7 +30,8 @@ private primitive seam rather than an unused dependency in this cut.
 It projects recent local
 Codex chats read-only, renders assistant and owner transcript roles, clears the
 composer after a submitted turn, provides New Chat and a closed command
-palette, supports a user-selected workspace with bounded read/edit/save plus
+palette, accepts bounded PNG/JPEG/WebP/GIF attachments from its picker,
+clipboard, or drop target, supports a user-selected workspace with bounded read/edit/save plus
 typed read-only Git status/diff, and opens an explicit Fleet deployment brief
 without pretending that local UI has authority to create a FleetRun.
 
@@ -86,6 +87,9 @@ checked-in privacy-safe Codex history fixture and scripted account-connect
 child, never ambient `~/.codex` history or a default provider home. Set
 `OPENAGENTS_DESKTOP_CODEX_SESSIONS` only for a separately identified real-
 history acceptance run; that evidence is not the deterministic CI gate.
+The React smoke also drops and submits a one-pixel image-only turn, then checks
+the Codex app-server request through a privacy-safe count receipt. The receipt
+never records the temporary path or attachment bytes.
 
 Automated smoke, startup-benchmark, live-proof, and MVP-proof runs keep their
 Electron window hidden and hide the macOS Dock tile, including during
@@ -161,8 +165,9 @@ notarization and Gatekeeper verification.
     accessible region/log boundary without moving message or transport
     authority into React.
   - `react-composer.tsx` uses the admitted shadcn Textarea/Button layer with
-    closed-catalog icon actions for Commands, Stop, and Send while retaining
-    typed Effect intents and textual Steer/Queue mode choices.
+    closed-catalog icon actions for Attach, Remove, Commands, Stop, and Send.
+    Its bounded preview tray, picker, paste, and drop routes retain typed Effect
+    intents; textual Steer/Queue choices remain text-only while a turn is pending.
 - `scripts/build.ts` — Vite Plus bundles main (ESM), preload (CJS, sandboxed),
   and workers; Vite + the React and Tailwind plugins emit the fixed signed
   renderer assets `index.html`, `boot.js`, and `app.css`.

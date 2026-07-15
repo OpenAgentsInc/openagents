@@ -38,7 +38,7 @@ export type ImageClassification =
   | Readonly<{ ok: true; mediaType: FableLocalImageMediaType }>
   | Readonly<{ ok: false; reason: ImageRejectionReason }>
 
-export type ImageRejectionReason = "wrong_type" | "too_large" | "count_limit"
+export type ImageRejectionReason = "wrong_type" | "too_large" | "count_limit" | "unreadable"
 
 /**
  * Classify a file-like descriptor by media type and size. Pure — no I/O — so
@@ -70,6 +70,8 @@ export const composerImageRejectionMessage = (reason: ImageRejectionReason): str
       return `That image is larger than the ${Math.round(COMPOSER_IMAGE_BYTES_LIMIT / (1024 * 1024))} MB limit.`
     case "count_limit":
       return `You can attach at most ${COMPOSER_IMAGE_COUNT_LIMIT} images per message.`
+    case "unreadable":
+      return "That image could not be read. Choose another file."
   }
 }
 

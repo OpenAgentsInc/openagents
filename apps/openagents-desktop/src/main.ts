@@ -2290,17 +2290,17 @@ ipcMain.handle(DiagnosticsActionChannel, (_event, value: unknown) => {
 ipcMain.handle(FableLocalAvailabilityChannel, () => fableLocal.availability())
 // Image file picker (capability I1): open the native dialog in MAIN, read the
 // chosen images from disk here (never the renderer), bound size + count, and
-// return decoded base64 attachments matching the boundary contract. Smoke and
-// live-proof headless runs cannot open a dialog; the picker simply returns [].
+// return decoded base64 attachments plus the first honest rejection. Smoke and
+// live-proof headless runs cannot open a dialog; the picker returns no images.
 ipcMain.handle(FableLocalPickImagesChannel, async (event) => {
-  if (smokeMode || liveProofDriverMode) return []
+  if (smokeMode || liveProofDriverMode) return { images: [], rejection: null }
   const window = BrowserWindow.fromWebContents(event.sender)
   const extensions = FABLE_LOCAL_IMAGE_MEDIA_TYPES.map(type =>
     type === "image/jpeg" ? "jpg" : type.slice("image/".length))
   const result = await (window === null
     ? dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: [...extensions, "jpeg"] }] })
     : dialog.showOpenDialog(window, { properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: [...extensions, "jpeg"] }] }))
-  if (result.canceled) return []
+  if (result.canceled) return { images: [], rejection: null }
   const mediaTypeForPath = (filePath: string): (typeof FABLE_LOCAL_IMAGE_MEDIA_TYPES)[number] | null => {
     const lower = filePath.toLowerCase()
     if (lower.endsWith(".png")) return "image/png"
@@ -2310,19 +2310,31 @@ ipcMain.handle(FableLocalPickImagesChannel, async (event) => {
     return null
   }
   const attachments: Array<{ mediaType: string; data: string; name: string }> = []
+  let rejection: "wrong_type" | "too_large" | "count_limit" | "unreadable" | null =
+    result.filePaths.length > FABLE_LOCAL_IMAGE_COUNT_LIMIT ? "count_limit" : null
   for (const filePath of result.filePaths.slice(0, FABLE_LOCAL_IMAGE_COUNT_LIMIT)) {
     const mediaType = mediaTypeForPath(filePath)
-    if (mediaType === null) continue
+    if (mediaType === null) {
+      rejection ??= "wrong_type"
+      continue
+    }
     try {
-      if (statSync(filePath).size > FABLE_LOCAL_IMAGE_BYTES_LIMIT) continue
+      const sizeBytes = statSync(filePath).size
+      if (sizeBytes <= 0 || sizeBytes > FABLE_LOCAL_IMAGE_BYTES_LIMIT) {
+        rejection ??= "too_large"
+        continue
+      }
       const bytes = readFileSync(filePath)
-      if (bytes.length === 0 || bytes.length > FABLE_LOCAL_IMAGE_BYTES_LIMIT) continue
+      if (bytes.length === 0 || bytes.length > FABLE_LOCAL_IMAGE_BYTES_LIMIT) {
+        rejection ??= "too_large"
+        continue
+      }
       attachments.push({ mediaType, data: bytes.toString("base64"), name: path.basename(filePath).slice(0, 256) })
     } catch {
-      // Skip an unreadable file rather than failing the whole pick.
+      rejection ??= "unreadable"
     }
   }
-  return attachments
+  return { images: attachments, rejection }
 })
 ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
   const request = decodeFableLocalInterruptRequest(value)
@@ -3107,6 +3119,59 @@ const smokeReactArmInputProbe = `(() => {
   textarea.addEventListener("change", () => globalThis.__oaReactInputProbe.change++)
   textarea.focus()
   return true
+})()`
+
+const smokeReactImageAttachment = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 60000
+  const composer = document.querySelector('[data-en-key="shell-composer"]')
+  const textarea = composer?.querySelector('textarea')
+  if (!(composer instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+    return { ok: false, reason: 'composer unavailable' }
+  }
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+  valueSetter?.call(textarea, '')
+  textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
+  await wait(0)
+  const imageOnlyComposer = textarea.value.trim() === ''
+  const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xj6mAAAAAElFTkSuQmCC'), char => char.charCodeAt(0))
+  const transfer = new DataTransfer()
+  transfer.items.add(new File([bytes], 'smoke-image.png', { type: 'image/png' }))
+  composer.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+  let preview = document.querySelector('[data-en-key^="composer-image-preview-"]')
+  while (Date.now() < deadline && preview === null) {
+    await wait(50)
+    preview = document.querySelector('[data-en-key^="composer-image-preview-"]')
+  }
+  const dataUrlRendered = preview instanceof HTMLImageElement && preview.src.startsWith('data:image/png;base64,')
+  const base64Leaked = (composer.textContent ?? '').includes('iVBORw0KGgo')
+  let send = composer.querySelector('button[aria-label="Send"]')
+  while (Date.now() < deadline && (!(send instanceof HTMLButtonElement) || send.disabled)) {
+    await wait(50)
+    send = composer.querySelector('button[aria-label="Send"]')
+  }
+  if (!(send instanceof HTMLButtonElement) || send.disabled) {
+    return { ok: false, reason: 'image-only send unavailable', preview: preview !== null, dataUrlRendered, base64Leaked }
+  }
+  send.click()
+  while (Date.now() < deadline && document.querySelector('.oa-react-decision') === null) await wait(50)
+  const decision = document.querySelector('.oa-react-decision')
+  const approve = decision === null ? undefined : [...decision.querySelectorAll('button')]
+    .find((button) => button.querySelector('span')?.textContent?.trim() === 'Approve')
+  approve?.click()
+  while (Date.now() < deadline && document.querySelector('.oa-react-decision') !== null) await wait(50)
+  while (Date.now() < deadline && document.querySelector('[data-en-key^="composer-image-preview-"]') !== null) await wait(50)
+  const previewCleared = document.querySelector('[data-en-key^="composer-image-preview-"]') === null
+  return {
+    ok: imageOnlyComposer && preview !== null && dataUrlRendered && !base64Leaked && approve !== undefined &&
+      document.querySelector('.oa-react-decision') === null && previewCleared,
+    imageOnlyComposer,
+    previewRendered: preview !== null,
+    dataUrlRendered,
+    base64Leaked,
+    approved: approve !== undefined,
+    previewCleared,
+  }
 })()`
 
 const smokeReactTurnAndReview = `(async () => {
@@ -5045,6 +5110,16 @@ const runSmoke = (window: BrowserWindow): void => {
           await step("react-workbench-exclusive", smokeReactWorkbench)
           await step("react-sidebar-destinations", smokeReactSidebarDestinations)
           await captureShot(window, "react-sidebar-expanded")
+          await step("react-image-attachment", smokeReactImageAttachment)
+          const imageReceipt = codexAppServerSmoke?.receipt()
+          if (imageReceipt?.localImageTurns !== 1 ||
+              imageReceipt.maxLocalImageCount !== 1) {
+            throw new Error(`react-image-attachment-receipt failed: ${JSON.stringify(imageReceipt)}`)
+          }
+          console.log(
+            "[openagents-desktop smoke] react-image-attachment-receipt OK",
+            JSON.stringify(imageReceipt),
+          )
           await step("react-input-probe-armed", smokeReactArmInputProbe)
           window.webContents.focus()
           window.webContents.sendInputEvent({ type: "keyDown", keyCode: "K" })

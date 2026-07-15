@@ -194,6 +194,7 @@ import {
   addComposerImage,
   canAttachMoreImages,
   composerImageDataUrl,
+  composerImageRejectionMessage,
   formatImageSize,
   removeComposerImage,
   toStartImages,
@@ -1279,7 +1280,7 @@ export type QuestionHost = Readonly<{
  * host resolves to no attachments (drop/paste still work in-renderer).
  */
 export type ComposerImagePickerHost = Readonly<{
-  pick: () => Promise<ReadonlyArray<FableLocalImageAttachment>>
+  pick: () => Promise<import("../fable-local-contract.ts").FableLocalPickedImagesResult>
 }>
 
 export type WorkspaceHost = Readonly<{
@@ -1504,7 +1505,7 @@ export const makeDesktopShellHandlers = (
   gitBridge: GitGithubBridge = unavailableGitGithubBridge,
   mcpConfigBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
   pluginConfigBridge: PluginConfigSettingsBridge = unavailablePluginConfigSettingsBridge,
-  imagePickerHost: ComposerImagePickerHost = { pick: async () => [] },
+  imagePickerHost: ComposerImagePickerHost = { pick: async () => ({ images: [], rejection: null }) },
   terminalBridge: TerminalRendererBridge = unavailableTerminalBridge,
   // Shared transient command-notice controller. Boot creates one instance and
   // threads it here AND into its own deferred-command dispatch so a duplicate
@@ -1998,6 +1999,7 @@ export const makeDesktopShellHandlers = (
       if (message.trim() === "" && current.composerImages.length === 0 &&
         current.composerReviewContext === null && current.composerFileContext === null) return
       // Capture the pending attachments BEFORE withNote clears them.
+      const pendingImages = current.composerImages
       const images = toStartImages(current.composerImages)
       // Explicit slash routing is selected from the user's message first;
       // bounded untrusted context is lowered only after that semantic/program
@@ -2028,7 +2030,19 @@ export const makeDesktopShellHandlers = (
               : next))
         },
       }))
-      yield* SubscriptionRef.update(state, (next) => withTurnResult(next, result, now()))
+      yield* SubscriptionRef.update(state, (next) => {
+        const settled = withTurnResult(next, result, now())
+        if (result.ok) return settled
+        return {
+          ...settled,
+          // Acquisition is disabled while pending, so this exact failed-turn
+          // set can be restored without overwriting a newer user selection.
+          composerImages: pendingImages.reduce(
+            (images, attachment) => addComposerImage(images, attachment),
+            settled.composerImages,
+          ),
+        }
+      })
       if (result.ok && result.thread) {
         const previousKeys = new Set(current.notes.map(note => note.key))
         const reply = [...result.thread.notes].reverse().find(note => note.role === "assistant" && note.text.trim() !== "" && !previousKeys.has(note.key))
@@ -2092,10 +2106,14 @@ export const makeDesktopShellHandlers = (
       const current = yield* SubscriptionRef.get(state)
       if (current.pending || !canAttachMoreImages(current.composerImages)) return
       const picked = yield* Effect.promise(() => imagePickerHost.pick())
-      if (picked.length === 0) return
+      if (picked.images.length === 0 && picked.rejection === null) return
       yield* SubscriptionRef.update(state, (value) => {
         let next = value
-        for (const image of picked) {
+        for (const image of picked.images) {
+          if (!canAttachMoreImages(next.composerImages)) {
+            next = withComposerImageNotice(next, composerImageRejectionMessage("count_limit"))
+            break
+          }
           next = withComposerImageAdded(next, {
             id: globalThis.crypto.randomUUID(),
             mediaType: image.mediaType,
@@ -2105,6 +2123,7 @@ export const makeDesktopShellHandlers = (
             sizeBytes: Math.floor((image.data.length * 3) / 4),
           })
         }
+        if (picked.rejection !== null) next = withComposerImageNotice(next, composerImageRejectionMessage(picked.rejection))
         return next
       })
     }),

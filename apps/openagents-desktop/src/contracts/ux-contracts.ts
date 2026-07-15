@@ -90,7 +90,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Use the supplied Message Scroller ideas throughout the message area and make the input bar match its compact icon-led quality.",
         authorityBoundary:
-          "The registry-installed shadcn MessageScroller owns viewport-only mechanics: last-user-turn opening, stable row IDs, user-turn anchoring with previous-context peek, live-edge following, reader-interaction release, prepend preservation, jump controls, scrollability attributes, accessibility, and offscreen paint containment. Effect-owned DesktopShellState remains the sole message/stream/history authority and typed intents retain paging and composer actions. The composer remains the admitted shadcn Textarea/Button composition but replaces painted Commands, Stop, and Send labels with closed-catalog icon slots plus accessible names; Steer and Queue stay textual because they are mutually exclusive behavior choices. No attachment, model, transport, branching, or persistence authority is added.",
+          "The registry-installed shadcn MessageScroller owns viewport-only mechanics: last-user-turn opening, stable row IDs, user-turn anchoring with previous-context peek, live-edge following, reader-interaction release, prepend preservation, jump controls, scrollability attributes, accessibility, and offscreen paint containment. Effect-owned DesktopShellState remains the sole message/stream/history authority and typed intents retain paging and composer actions. The composer remains the admitted shadcn Textarea/Button composition with closed-catalog icon slots plus accessible names; Steer and Queue stay textual because they are mutually exclusive behavior choices. #8828 restores the already-authorized bounded image picker/paste/drop projection without adding model, transport, branching, or persistence authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/components/ui/message-scroller.tsx",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
@@ -302,7 +302,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "remove from the interface everything not in the MVP spec.",
         authorityBoundary:
-          "The accepted ProductSpec Scope and User Experience, plus the owner-issued MAINT-1 harness-maintenance surface (#8785: per-harness version/channel truth with a one-click binary update in Settings), are the visible-surface allowlist. UX-4 (#8790) and #8826 reconcile both renderers to one typed primary projection: exactly New session, Chat, Project home, and Settings, in that order, with per-item authority in apps/openagents-desktop/src/renderer/sidebar-destinations.ts and composition enforcement in mvp-visible-surfaces.ts. ProductSpec and AssuranceSpec remain internal authoring/verification tooling with no user-facing route, screen, dock item, command, or native-menu destination. Bounded Files and read-only Git review stay reachable through their closed CW-AC-12 command identities, not through dock icons, because the spec places file/Git review beside the conversation. The review surface renders no Git mutation affordance, and the Files browser renders no file create/rename/delete/reveal affordance. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
+          "The accepted ProductSpec Scope and User Experience, plus owner-issued MAINT-1 and #8828 bounded composer-image authority, are the visible-surface allowlist. UX-4 (#8790) and #8826 reconcile both renderers to one typed primary projection: exactly New session, Chat, Project home, and Settings, in that order, with per-item authority in apps/openagents-desktop/src/renderer/sidebar-destinations.ts and composition enforcement in mvp-visible-surfaces.ts. ProductSpec and AssuranceSpec remain internal authoring/verification tooling with no user-facing route, screen, dock item, command, or native-menu destination. Bounded Files and read-only Git review stay reachable through their closed CW-AC-12 command identities, not through dock icons. The review surface renders no Git mutation affordance, and Files renders no file create/rename/delete/reveal affordance. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, and voice controls remain absent. The sole admitted attachment affordance is the existing typed image picker/paste/drop path; it adds no arbitrary filesystem or provider authority.",
         evidenceRefs: [
           "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
           "apps/openagents-desktop/src/desktop-command-contract.ts",
@@ -322,7 +322,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Proves the compatibility dock consumes the exact shared four-entry projection while rejecting ProductSpec, AssuranceSpec, Fleet, accounts, provider/model/reasoning selection, attachments, and voice.",
+              "Proves the compatibility dock consumes the exact shared four-entry projection while rejecting ProductSpec, AssuranceSpec, Fleet, accounts, provider/model/reasoning selection, and voice; #8828 separately admits only bounded composer images.",
           },
           {
             id: "mvp_surface.rendered_composition",
@@ -1194,7 +1194,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       },
       {
         contractId: "openagents_desktop.chat.composer_image_input.v1",
-        state: "retired",
+        state: "enforced",
         surface: "openagents-desktop",
         productArea: "composer image input",
         enforcementTier: "test-sweep",
@@ -1203,9 +1203,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "attach a screenshot to a coding turn (image input)",
         authorityBoundary:
-          "The composer carries a leading attach affordance plus drag-drop and paste-from-clipboard image attach. Accepted images are PNG/JPEG/WebP/GIF, bounded to at most 8 per message and 10 MB each; oversize or wrong-type files are rejected honestly with transient copy (no standing caption). The renderer holds each attachment as bounded base64 and NEVER reads an arbitrary filesystem path — bytes come only from an in-renderer drop/paste File or a main-mediated native file picker. Attachments thread through the additive fable-local start `images` field to BOTH lanes: Fable sends them as SDK base64 image content blocks in a streaming-input user message (a bare string prompt cannot carry an image), and Codex writes them into the turn workspace and passes `codex exec -i <path>`. Attaching grants no new authority: it starts no turn on its own, routes to no other lane, and reads no file the user did not hand the app.",
+          "The active React composer carries a leading attach affordance plus drag-drop and paste-from-clipboard image attach. Accepted images are PNG/JPEG/WebP/GIF, bounded to at most 8 per message and 10 MB each; oversize, wrong-type, or unreadable files are rejected honestly with transient accessible copy (no standing caption). Acquisition batches are serialized so concurrent paste/drop cannot race the count bound. The renderer holds each attachment as bounded base64 and NEVER reads an arbitrary filesystem path — bytes come only from an in-renderer drop/paste File or a main-mediated native file picker. An idle image-only turn is valid; Steer and Queue remain text-only, and a failed send restores the attachments for retry. Fable sends images as SDK base64 image content blocks. The default Codex app-server lane writes bounded temporary files and sends `localImage` inputs; its exec fallback retains `-i <path>` lowering. Attaching grants no new authority: it starts no turn on its own, routes to no other lane, and reads no file the user did not hand the app.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/composer-images.ts",
+          "apps/openagents-desktop/src/renderer/composer-image-acquisition.ts",
+          "apps/openagents-desktop/src/renderer/react-composer.tsx",
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
           "apps/openagents-desktop/src/fable-local-contract.ts",
@@ -1229,7 +1231,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Proves the composer renders the attach affordance and thumbnails with remove, disables attach at the 8-image limit, surfaces the rejection notice, and that add/remove/submit through the real intent registry thread the base64 image into the chat host (including an images-only turn).",
+              "Proves the active React composer renders the attach affordance and bounded thumbnails with remove, disables attach at the 8-image limit and while pending, surfaces accessible rejection copy and drag state, and that add/remove/submit through the real intent registry thread the image into the chat host (including image-only and failure-retry turns).",
           },
           {
             id: "composer_image_input.fable_sdk_block",
@@ -1245,7 +1247,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
             description:
-              "Proves the Codex lane writes each attachment into the turn workspace and passes it as `-i <path>`, terminated by `-C` before the positional prompt so the variadic --image never swallows the prompt.",
+              "Proves the retained Codex exec fallback writes each attachment into the turn workspace and passes it as `-i <path>`, terminated by `-C` before the positional prompt so the variadic --image never swallows the prompt; the built smoke separately receipts default app-server `localImage` lowering.",
           },
           {
             id: "composer_image_input.smoke_step",
@@ -1253,7 +1255,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The image-attach smoke step drops a fixture PNG onto the composer in the real Electron renderer, asserts the thumbnail renders, submits, and asserts the assistant reply carries the fixture's image-received marker — proving the image reached the SDK query payload end-to-end.",
+              "The built React image-attach smoke drops a fixture PNG onto the real Electron composer, asserts its data-URL thumbnail without visible base64, submits an image-only turn, approves the provider request, verifies the preview clears, and requires a privacy-safe app-server receipt of exactly one localImage input without retaining its path or bytes.",
           },
         ],
         verification:

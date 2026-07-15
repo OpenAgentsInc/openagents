@@ -666,11 +666,11 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
      * Image file picker (capability I1): opens the native dialog in main and
      * returns decoded base64 attachments. The response is schema-decoded here
      * so a malformed/oversize payload can never cross into the renderer; an
-     * invalid or absent response resolves to an empty array.
+     * invalid response resolves to a typed unreadable rejection.
      */
     pickImages: async () => {
       const raw = await ipcRenderer.invoke(FableLocalPickImagesChannel)
-      return decodeFableLocalPickedImages(raw) ?? []
+      return decodeFableLocalPickedImages(raw) ?? { images: [], rejection: "unreadable" }
     },
     /**
      * EP250 question flow: answers a pending AskUserQuestion

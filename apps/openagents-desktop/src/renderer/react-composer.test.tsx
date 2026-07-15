@@ -100,6 +100,49 @@ const interact = async (interaction: () => void): Promise<void> => {
 };
 
 describe("React Codex composer", () => {
+  test("attaches, previews, removes, reports rejection, and sends an image-only turn", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    const image = { id: "image-1", mediaType: "image/png" as const, data: "aGVsbG8=", name: "screen.png", sizeBytes: 5 };
+    await render(root, <ReactComposer state={fixtureState({ composerImages: [image], composerImageNotice: "That image is too large." })} report={report} />);
+    expect(container.querySelector('[data-en-key="shell-composer"] [data-en-key="shell-input"] textarea')).not.toBeNull();
+    expect(container.querySelector('img[src="data:image/png;base64,aGVsbG8="]')).not.toBeNull();
+    expect(container.textContent).toContain("screen.png");
+    expect(container.textContent).not.toContain("aGVsbG8=");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("too large");
+    const attach = container.querySelector('[aria-label="Attach images"]') as HTMLButtonElement;
+    const remove = container.querySelector('[aria-label="Remove screen.png"]') as HTMLButtonElement;
+    const send = container.querySelector('[aria-label="Send"]') as HTMLButtonElement;
+    expect(send.disabled).toBe(false);
+    await interact(() => { attach.click(); remove.click(); send.click(); });
+    expect(received).toEqual(expect.arrayContaining([
+      { name: "DesktopComposerImagePickRequested", payload: null },
+      { name: "DesktopComposerImageRemoved", payload: "image-1" },
+      { name: "DesktopNoteSubmitted", payload: "" },
+    ]));
+  });
+
+  test("disables acquisition while pending and at the limit, and exposes drag-over state", async () => {
+    const { window, container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactComposer state={fixtureState({ pending: true })} report={report} />);
+    expect((container.querySelector('[aria-label*="current turn"]') as HTMLButtonElement).disabled).toBe(true);
+    const images = Array.from({ length: 8 }, (_, index) => ({ id: `i${index}`, mediaType: "image/png" as const, data: "YQ==", name: `${index}.png`, sizeBytes: 1 }));
+    await render(root, <ReactComposer state={fixtureState({ composerImages: images })} report={report} />);
+    expect((container.querySelector('[aria-label="Image limit reached (8 max)"]') as HTMLButtonElement).disabled).toBe(true);
+    await render(root, <ReactComposer state={fixtureState()} report={report} />);
+    const composer = container.querySelector('[data-en-key="shell-composer"]') as HTMLElement;
+    const drag = new window.Event("dragenter", { bubbles: true });
+    Object.defineProperty(drag, "dataTransfer", { configurable: true, value: { types: ["Files"] } });
+    await interact(() => composer.dispatchEvent(drag as unknown as Event));
+    expect(composer.dataset.dragActive).toBe("true");
+    expect(container.textContent).toContain("Drop images to attach");
+  });
+
   test("focuses on entry, grows within bounds, and sends one exact intent", async () => {
     const { window, container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");

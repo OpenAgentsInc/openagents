@@ -937,6 +937,29 @@ describe("composer image input (capability I1)", () => {
     )
   })
 
+  test("a failed image turn restores the exact attachments for retry", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const attachment = png("retry")
+        const chatHost = {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async () => ({ ok: false as const, error: "Temporary image send failure." }),
+        }
+        const state = yield* SubscriptionRef.make(withComposerImageAdded(baseState, attachment))
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(null))))
+        const next = yield* SubscriptionRef.get(state)
+        expect(next.composerImages).toEqual([attachment])
+        expect(next.notes.at(-1)?.text).toBe("Temporary image send failure.")
+      }),
+    )
+  })
+
   test("a refused mid-turn queue restores the cleared draft; an accepted queue keeps it cleared (CUT-16)", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {

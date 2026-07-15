@@ -27,13 +27,14 @@ import {
   type JsonPayload,
 } from "@effect-native/core";
 import { Effect } from "@effect-native/core/effect";
-import { ArrowUp, Command as CommandIcon, Square } from "lucide-react";
+import { ArrowUp, Command as CommandIcon, ImagePlus, Square, X } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent,
   type ReactElement,
 } from "react";
@@ -43,12 +44,20 @@ import {
   formatCommandChord,
   type DesktopCommand,
 } from "./command-registry.ts";
+import {
+  COMPOSER_IMAGE_COUNT_LIMIT,
+  canAttachMoreImages,
+  composerImageDataUrl,
+  formatImageSize,
+} from "./composer-images.ts";
 import type { DesktopNoteEntry, DesktopShellState, QuestionCardInteraction } from "./shell.ts";
 
 const composerIconNames = {
   commands: "Command",
   stop: "Stop",
   submit: "ArrowUp",
+  attach: "Image",
+  remove: "X",
 } as const satisfies Readonly<Record<string, IconName>>;
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
@@ -167,11 +176,24 @@ export const ReactComposer = ({
 }): ReactElement => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
+  const [dragActive, setDragActive] = useState(false);
   const lastSubmitRef = useRef<Readonly<{ value: string; at: number }> | null>(null);
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
   const lane = state.harnessLanes[state.selectedHarness];
-  const canSubmit =
-    state.activeThreadId !== null && state.input.trim() !== "" && (state.pending || lane.available);
+  const hasText = state.input.trim() !== "";
+  const canSubmit = state.activeThreadId !== null && (state.pending
+    ? hasText
+    : lane.available && (hasText || state.composerImages.length > 0));
+  const atImageLimit = !canAttachMoreImages(state.composerImages);
+  const attachmentDisabled = state.pending || atImageLimit;
+  const attachmentLabel = state.pending
+    ? "Attach images after the current turn finishes"
+    : atImageLimit
+      ? `Image limit reached (${COMPOSER_IMAGE_COUNT_LIMIT} max)`
+      : "Attach images";
+  useEffect(() => {
+    if (attachmentDisabled) setDragActive(false);
+  }, [attachmentDisabled]);
   const submitIntent = state.pending
     ? state.pendingSubmitMode === "steer"
       ? "DesktopSteerCurrentRequested"
@@ -211,35 +233,90 @@ export const ReactComposer = ({
     event.preventDefault();
     submit();
   };
+  const showDragTarget = (event: ReactDragEvent<HTMLElement>): void => {
+    if (!attachmentDisabled && [...event.dataTransfer.types].includes("Files")) setDragActive(true);
+  };
+  const hideDragTarget = (event: ReactDragEvent<HTMLElement>): void => {
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+    setDragActive(false);
+  };
   return (
     <section
       className="oa-react-composer"
-      data-en-key="shell-input"
+      data-en-key="shell-composer"
+      data-drag-active={dragActive ? "true" : "false"}
       aria-label="Message composer"
+      onDragEnter={showDragTarget}
+      onDragOver={showDragTarget}
+      onDragLeave={hideDragTarget}
+      onDrop={() => setDragActive(false)}
     >
-      <Textarea
-        ref={textareaRef}
-        value={state.input}
-        rows={2}
-        placeholder={
-          state.pending
-            ? state.pendingSubmitMode === "steer"
-              ? "Steer the current turn…"
-              : "Queue a follow-up…"
-            : "Message Codex…"
-        }
-        aria-label={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
-        title={`Enter to ${submitLabel.toLocaleLowerCase()} · Shift+Enter for a new line`}
-        onInput={(event) => dispatch(report, "DesktopInputChanged", event.currentTarget.value)}
-        onCompositionStart={() => {
-          composingRef.current = true;
-        }}
-        onCompositionEnd={() => {
-          composingRef.current = false;
-        }}
-        onKeyDown={onKeyDown}
-      />
-      <div className="oa-react-composer-bar">
+      {state.composerImages.length === 0 ? null : (
+        <div className="oa-react-composer-images" role="list" aria-label="Attached images">
+          {state.composerImages.map((attachment) => (
+            <figure className="oa-react-composer-image" role="listitem" key={attachment.id}>
+              <img data-en-key={`composer-image-preview-${attachment.id}`} src={composerImageDataUrl(attachment)} alt="" />
+              <figcaption>
+                <span title={attachment.name}>{attachment.name}</span>
+                <small>{formatImageSize(attachment.sizeBytes)}</small>
+              </figcaption>
+              <Button
+                className="oa-react-composer-image-remove"
+                type="button"
+                variant="secondary"
+                size="icon-sm"
+                onClick={() => dispatch(report, "DesktopComposerImageRemoved", attachment.id)}
+                aria-label={`Remove ${attachment.name}`}
+                title={`Remove ${attachment.name}`}
+              >
+                <X data-icon-name={composerIconNames.remove} aria-hidden="true" />
+              </Button>
+            </figure>
+          ))}
+        </div>
+      )}
+      {state.composerImageNotice === null ? null : (
+        <p className="oa-react-composer-image-notice" role="alert" aria-live="polite">
+          {state.composerImageNotice}
+        </p>
+      )}
+      {dragActive ? <span className="oa-react-composer-drop-target" role="status">Drop images to attach</span> : null}
+      <div className="oa-react-composer-input" data-en-key="shell-input">
+        <Textarea
+          ref={textareaRef}
+          value={state.input}
+          rows={2}
+          placeholder={
+            state.pending
+              ? state.pendingSubmitMode === "steer"
+                ? "Steer the current turn…"
+                : "Queue a follow-up…"
+              : "Message Codex…"
+          }
+          aria-label={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
+          title={`Enter to ${submitLabel.toLocaleLowerCase()} · Shift+Enter for a new line`}
+          onInput={(event) => dispatch(report, "DesktopInputChanged", event.currentTarget.value)}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+          }}
+          onKeyDown={onKeyDown}
+        />
+        <div className="oa-react-composer-bar">
+        <Button
+          data-en-key="shell-attach-image"
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={attachmentDisabled}
+          onClick={() => dispatch(report, "DesktopComposerImagePickRequested")}
+          aria-label={attachmentLabel}
+          title={attachmentLabel}
+        >
+          <ImagePlus data-icon-name={composerIconNames.attach} aria-hidden="true" />
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -297,6 +374,7 @@ export const ReactComposer = ({
           <ArrowUp data-icon-name={composerIconNames.submit} aria-hidden="true" />
           <span className="sr-only">{submitLabel}</span>
         </Button>
+      </div>
       </div>
     </section>
   );

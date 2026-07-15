@@ -613,6 +613,23 @@ delivers.
 Contract:
 `openagents_desktop.history.sidebar_header_truthful_scope.v1`.
 
+### Composer image attachments stay bounded and explicit
+
+- The active React composer accepts PNG, JPEG, WebP, and GIF files only, with
+  at most eight attachments per turn and at most 10 MB per attachment.
+- Picker, paste, and drop converge on one serialized classifier. Ordinary text
+  paste remains native, unsupported or oversized files receive an accessible
+  rejection notice, and pending Steer/Queue submissions stay text-only.
+- The renderer previews only the bytes the user handed it. Native picker paths
+  remain in the main process; the renderer receives a bounded typed result.
+- An idle image-only turn is valid. Failed sends restore the exact attachment
+  state for retry; successful sends clear it.
+- Codex app-server turns lower images to `localImage` inputs. The retained exec
+  fallback still proves `-i <path>` lowering in its isolated runtime tests.
+  Built React smoke evidence records counts only and never paths or bytes.
+
+Contract: `openagents_desktop.chat.composer_image_input.v1`.
+
 ### The MVP visible surface is mechanically enforced against the rendered shell
 
 Owner statement (rc.10 review, 2026-07-14, verbatim): "This menu, when I click

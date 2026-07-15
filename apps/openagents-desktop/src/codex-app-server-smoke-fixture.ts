@@ -19,6 +19,8 @@ export type CodexAppServerSmokeReceipt = Readonly<{
   requestId: number | null;
   decision: "accept" | null;
   completionEmitted: boolean;
+  localImageTurns: number;
+  maxLocalImageCount: number;
 }>;
 
 export const makeCodexAppServerSmokeHarness = (): Readonly<{
@@ -28,6 +30,8 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
   let requestId: number | null = null;
   let decision: "accept" | null = null;
   let completionEmitted = false;
+  let localImageTurns = 0;
+  let maxLocalImageCount = 0;
   const spawn: CodexAppServerSpawn = () => {
     const stdin = new PassThrough();
     const stdout = new PassThrough();
@@ -104,6 +108,13 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
         ) {
           write({ id: message.id, result: { thread: { id: THREAD_ID } } });
         } else if (message.method === "turn/start" && typeof message.id === "number") {
+          const params = message.params as { input?: unknown } | undefined;
+          const entries = Array.isArray(params?.input) ? params.input : [];
+          const localImageCount = entries.filter(entry =>
+            entry !== null && typeof entry === "object" && (entry as { type?: unknown }).type === "localImage"
+          ).length;
+          if (localImageCount > 0) localImageTurns += 1;
+          maxLocalImageCount = Math.max(maxLocalImageCount, localImageCount);
           write({ id: message.id, result: { turn: { id: TURN_ID } } });
           notify("item/completed", {
             threadId: THREAD_ID,
@@ -158,6 +169,12 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
   };
   return {
     spawn,
-    receipt: () => ({ requestId, decision, completionEmitted }),
+    receipt: () => ({
+      requestId,
+      decision,
+      completionEmitted,
+      localImageTurns,
+      maxLocalImageCount,
+    }),
   };
 };

@@ -93,7 +93,7 @@ import {
   type FableLocalEventEnvelope,
   type FableLocalImageAttachment,
 } from "../fable-local-contract.ts"
-import { readImageFile, composerImageRejectionMessage } from "./composer-images.ts"
+import { installComposerImageAcquisition } from "./composer-image-acquisition.ts"
 import {
   codexHarnessLaneFromAvailability,
   decodeCodexLocalAvailability,
@@ -206,7 +206,7 @@ type DesktopBridge = Readonly<{
     steerChild?: (value: unknown) => Promise<unknown>
     queueFollowup?: (value: unknown) => Promise<unknown>
     /** Image file picker (capability I1) — main-mediated, returns attachments. */
-    pickImages?: () => Promise<ReadonlyArray<FableLocalImageAttachment>>
+    pickImages?: () => Promise<import("../fable-local-contract.ts").FableLocalPickedImagesResult>
   }>
   /** Codex local lane (EP250 codex-first-class): same bridge shape. */
   codexLocal?: Readonly<{
@@ -967,7 +967,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         // bridge degrades to no attachments (drop/paste still work in-renderer).
         pick: async () => {
           const pick = readBridge()?.fableLocal?.pickImages
-          return typeof pick === "function" ? await pick() : []
+          return typeof pick === "function" ? await pick() : { images: [], rejection: null }
         },
       }, terminalRendererBridge, noticeController, {
         // Diagnostics/watchdog bridge (CUT-24 #8704). Absent preload degrades to
@@ -1555,69 +1555,18 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       if((bridge?.platform==="darwin"&&event.key==="Meta")||(bridge?.platform!=="darwin"&&event.key==="Control"))setHistoryShortcutHints(false)
     }
     const onHistoryWindowBlur=():void=>setHistoryShortcutHints(false)
-    // Capability I1: drag-drop + paste-from-clipboard image attach, scoped to
-    // the composer. Both feed the SAME renderer-side decode/validation path
-    // (readImageFile) and dispatch the SAME DesktopComposerImageAdded intent
-    // the picker uses — File bytes already live in the renderer (a user drop or
-    // clipboard item), so nothing here reads the filesystem.
-    const targetInComposer = (target: EventTarget | null): boolean =>
-      target instanceof HTMLElement && target.closest('[data-en-key="shell-composer"]') !== null
-    const addImagesFromFiles = async (files: ReadonlyArray<File>): Promise<void> => {
-      const snapshot = await Effect.runPromise(SubscriptionRef.get(state))
-      if (snapshot.pending) return
-      let count = snapshot.composerImages.length
-      let firstRejection: string | null = null
-      for (const file of files) {
-        const result = await readImageFile(file, count)
-        if (result.ok) {
-          count += 1
-          await Effect.runPromise(
-            registry.dispatch(resolveIntentRef(IntentRef("DesktopComposerImageAdded", StaticPayload(result.attachment)))),
-          )
-        } else if (firstRejection === null) {
-          firstRejection = composerImageRejectionMessage(result.reason)
-        }
-      }
-      if (firstRejection !== null) {
-        await Effect.runPromise(
-          registry.dispatch(resolveIntentRef(IntentRef("DesktopComposerImagesRejected", StaticPayload(firstRejection)))),
-        )
-      }
-    }
-    const imageFilesFrom = (list: FileList | null | undefined): File[] =>
-      list === null || list === undefined
-        ? []
-        : [...list].filter((file) => file.type.startsWith("image/"))
-    const onComposerDragOver = (event: DragEvent): void => {
-      if (!targetInComposer(event.target)) return
-      // Signal a copy drop so the browser shows the drop affordance.
-      event.preventDefault()
-    }
-    const onComposerDrop = (event: DragEvent): void => {
-      if (!targetInComposer(event.target)) return
-      const files = imageFilesFrom(event.dataTransfer?.files)
-      if (files.length === 0) return
-      event.preventDefault()
-      void addImagesFromFiles(files)
-    }
-    const onComposerPaste = (event: ClipboardEvent): void => {
-      if (!targetInComposer(event.target)) return
-      const items = event.clipboardData?.items
-      if (items === undefined) return
-      const files: File[] = []
-      for (const item of items) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-          const file = item.getAsFile()
-          if (file !== null) files.push(file)
-        }
-      }
-      if (files.length === 0) return // plain-text paste falls through unchanged
-      event.preventDefault()
-      void addImagesFromFiles(files)
-    }
-    window.addEventListener("dragover", onComposerDragOver)
-    window.addEventListener("drop", onComposerDrop)
-    window.addEventListener("paste", onComposerPaste)
+    const removeComposerImageAcquisition = installComposerImageAcquisition(window, {
+      readSnapshot: () => Effect.runPromise(SubscriptionRef.get(state)).then(snapshot => ({
+        pending: snapshot.pending,
+        imageCount: snapshot.composerImages.length,
+      })),
+      add: attachment => Effect.runPromise(
+        registry.dispatch(resolveIntentRef(IntentRef("DesktopComposerImageAdded", StaticPayload(attachment)))),
+      ),
+      reject: message => Effect.runPromise(
+        registry.dispatch(resolveIntentRef(IntentRef("DesktopComposerImagesRejected", StaticPayload(message)))),
+      ),
+    })
     window.addEventListener("keydown", onNewChatShortcut)
     window.addEventListener("keydown", onFullscreenShortcut)
     window.addEventListener("keydown", onCommandPaletteShortcut)
@@ -1629,9 +1578,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // Scroll events do not bubble; capture phase observes the history region.
     window.addEventListener("scroll", onHistoryTimelineScroll, true)
     window.addEventListener("pagehide", () => {
-      window.removeEventListener("dragover", onComposerDragOver)
-      window.removeEventListener("drop", onComposerDrop)
-      window.removeEventListener("paste", onComposerPaste)
+      removeComposerImageAcquisition()
       window.removeEventListener("keydown", onNewChatShortcut)
       window.removeEventListener("keydown", onFullscreenShortcut)
       window.removeEventListener("keydown", onCommandPaletteShortcut)

@@ -530,10 +530,16 @@ export const FableLocalPickedImagesSchema = Schema.Array(FableLocalImageAttachme
 )
 export type FableLocalPickedImages = typeof FableLocalPickedImagesSchema.Type
 
+export const FableLocalPickedImagesResultSchema = Schema.Struct({
+  images: FableLocalPickedImagesSchema,
+  rejection: Schema.NullOr(Schema.Literals(["wrong_type", "too_large", "count_limit", "unreadable"])),
+})
+export type FableLocalPickedImagesResult = typeof FableLocalPickedImagesResultSchema.Type
+
 export const decodeFableLocalPickedImages = (
   value: unknown,
-): ReadonlyArray<FableLocalImageAttachment> | null =>
-  decode(FableLocalPickedImagesSchema, value) as ReadonlyArray<FableLocalImageAttachment> | null
+): FableLocalPickedImagesResult | null =>
+  decode(FableLocalPickedImagesResultSchema, value) as FableLocalPickedImagesResult | null
 
 export const decodeFableLocalInterruptRequest = (
   value: unknown,
