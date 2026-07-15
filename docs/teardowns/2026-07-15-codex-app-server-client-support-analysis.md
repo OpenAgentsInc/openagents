@@ -167,6 +167,36 @@ An exact bundled-binary smoke uses an isolated `CODEX_HOME` to prove model,
 config, requirements, profile, and feature discovery while explicitly
 accounting for unauthenticated optional reads.
 
+### Implementation status: CAP-05
+
+CAP-05 makes a pooled `CodexThreadLifecycle` the healthy Desktop history and
+lifecycle authority. It pages `thread/list`, `thread/search`, loaded threads,
+turns, and items with cursor-loop detection and exact-ID deduplication; reads
+full threads; and exposes start, resume, fork, naming, metadata, settings,
+goals, memory mode, compaction, unsubscribe, archive/unarchive/delete,
+rollback, raw item injection, and Guardian approval on their native methods.
+The existing rollout worker is now reachable only in smoke fixtures or through
+the explicit `OPENAGENTS_DESKTOP_CODEX_ROLLOUT_FALLBACK=1` migration/diagnostic
+switch, which logs that weaker evidence source.
+
+Visible persistent threads register with the supervisor. When a new connection
+generation is observed, lifecycle state becomes `repairing`, loaded and visible
+threads are reread, durable items are repaged, and state returns to `current`
+or an explicit `degraded` result. Because app-server has no notification ACK,
+sequence, or replay cursor, every repaired visible thread receives a
+`transient_gap` limitation; no missing delta or completion is fabricated.
+Ephemeral threads are never registered for reconnect resume and visibly carry
+`ephemeral_history`. If experimental turn/item pagination is unavailable,
+the host uses complete `thread/read` state and records
+`experimental_pagination_unavailable` rather than claiming parity.
+
+Dangerous lifecycle calls consume one-shot, revision-bound authority and write
+only hashed thread/authority identities to bounded `0600` receipts. Startup
+turn recovery now asks app-server durable turn state first: confirmed
+completion closes the local journal, while running/unknown state becomes an
+explicit retryable transient gap. Production no longer sends a synthetic
+“continue after restart” prompt when app-server state is available.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these

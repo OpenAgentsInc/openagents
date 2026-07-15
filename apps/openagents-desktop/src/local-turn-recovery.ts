@@ -104,6 +104,8 @@ export const reconcileLocalTurns = async (input: Readonly<{
   journal: LocalTurnJournal
   store: ThreadStore
   codex: Pick<CodexLocalRuntime, "runTurn">
+  /** Healthy production path: app-server durable state decides recovery; no synthetic continuation prompt. */
+  codexState?: (threadId: string) => Promise<"completed" | "running" | "interrupted" | "unknown">
   onThread?: (thread: DesktopThread) => void
 }>): Promise<ReadonlyArray<LocalTurnRecoveryOutcome>> => {
   const publish = (threadRef: string): void => {
@@ -143,6 +145,23 @@ export const reconcileLocalTurns = async (input: Readonly<{
       "Recovering the interrupted Codex turn on its recorded account and thread…",
     )
     publish(claimed.threadRef)
+    if (input.codexState !== undefined) {
+      const nativeState = await input.codexState(providerSessionRef).catch(() => "unknown" as const)
+      if (nativeState === "completed") {
+        const completed = input.journal.terminal(key, "completed", "resumed_after_restart") ?? claimed
+        upsertAssistant(input.store, completed, "completed", "resumed_after_restart")
+        upsertRecoveryNotice(input.store, completed, "completed", "Codex app-server confirmed the turn completed before restart.", "resumed_after_restart")
+        publish(completed.threadRef)
+        outcomes.push({ key, state: "completed" })
+      } else {
+        outcomes.push(interrupt(input.journal, input.store, claimed))
+        upsertRecoveryNotice(input.store, claimed, "interrupted", nativeState === "running"
+          ? "Codex app-server restored durable thread state, but transient output has no replay cursor. Retry explicitly."
+          : "Codex app-server did not confirm completion. Retry explicitly; no continuation was fabricated.", "interrupted_by_restart")
+        publish(claimed.threadRef)
+      }
+      continue
+    }
     const result = await input.codex.runTurn({
       turnRef: claimed.turnRef,
       threadRef: claimed.threadRef,

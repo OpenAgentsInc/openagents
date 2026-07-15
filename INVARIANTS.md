@@ -882,13 +882,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   Composer review context is one explicit removable next-turn attachment,
   labeled untrusted before provider delivery and cleared on accepted submit;
   receipts never contain its path or diff content.
-- Provider-native Codex history remains owner-local and read-only. Desktop main
-  indexes active and archived rollouts off the main thread and Runtime Gateway
-  v4 projects only bounded catalog/page data: stable thread relationships,
-  source-order typed items, explicit redactions, and explicit gaps. Raw JSONL,
-  rollout paths, encrypted/raw reasoning, credentials, and filesystem/provider
-  authority never cross preload; local history is never uploaded to Khala Sync
-  by default. For every decoded thread, source records equal rendered source
+- Provider-native Codex history remains owner-local and read-only. On the
+  healthy path Desktop pages catalog/thread/turn/item truth from the pooled
+  app-server and projects only bounded catalog/page data: stable native
+  relationships, source-order typed items, explicit redactions, and explicit
+  gaps. Rollout JSONL parsing is available only as a labeled smoke,
+  migration, or diagnostic fallback. Raw provider payloads, rollout paths,
+  encrypted/raw reasoning, credentials, and filesystem/provider authority
+  never cross preload; local history is never uploaded to Khala Sync by
+  default. For every decoded thread, source records equal rendered source
   records plus wholly redacted records plus explicit gap records.
 - Windowed history prepends preserve the first visible keyed row synchronously
   inside the shared DOM commit. Variable-height rows added above the viewport
@@ -994,10 +996,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   one terminal disposition. Checkpoint writes are cadence-bounded and atomic,
   and deterministic message keys preserve live text/tool ordering without
   duplicate prompt or assistant segments after reload. Startup reconciles each
-  nonterminal record once. Codex may issue one continuation on the exact
-  recorded account/thread and marks `resumed_after_restart`; this is semantic
-  same-thread continuation, not byte-level attachment to the dead process's
-  stream. The current Claude Agent SDK cannot reattach an interrupted query,
+  nonterminal record once. Codex consults app-server durable turn state and may
+  mark `resumed_after_restart` only when that state confirms completion; a
+  running or unknown turn becomes an explicit transient gap and requires an
+  owner retry because the protocol has no replay cursor. Production never
+  fabricates a continuation prompt to replace lost deltas. The current Claude Agent SDK cannot reattach an interrupted query,
   so Fable records `interrupted_by_restart` and requires an explicit retry
   instead of silently replaying the prompt. Renderer process state is never
   recovery authority, and restart never auto-starts microphone capture.

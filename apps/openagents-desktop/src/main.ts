@@ -173,6 +173,7 @@ import {
   fixtureCodexRevokedStderr,
   fixtureCodexRevokedStdout,
   fixtureCodexSuccessStdout,
+  codexProviderEnvironment,
   discoverRegisteredCodexAccounts,
   defaultSpawnCodex,
   makeCodexAccountHealth,
@@ -207,6 +208,7 @@ import {
 import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture.ts"
 import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import { makeCodexControlPlaneRegistry } from "./codex-control-plane.ts"
+import { makeCodexThreadLifecycleRegistry, type CodexThreadLifecycle } from "./codex-thread-lifecycle.ts"
 import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
   LiveAgentGraphSnapshotChannel,
@@ -1012,10 +1014,25 @@ const codexHistoryHost = makeCodexHistoryHost(makeCodexHistoryUtilityFactory(
   codexHistoryWorkerUrl,
   utilityProcess.fork,
 ))
+let codexLifecycleAuthority: (() => Promise<CodexThreadLifecycle>) | null = null
+const authoritativeCodexHistoryHost: import("./codex-history-host.ts").CodexHistoryHost = {
+  run: request => {
+    if (smokeMode) return codexHistoryHost.run(request)
+    const authority = codexLifecycleAuthority
+    if (authority !== null) return authority().then(lifecycle => lifecycle.runHistory(request)).catch(error => {
+      console.error("[openagents-desktop] app-server history unavailable", error instanceof Error ? error.name : "unknown")
+      return process.env.OPENAGENTS_DESKTOP_CODEX_ROLLOUT_FALLBACK === "1"
+        ? (console.warn("[openagents-desktop] using labeled Codex rollout migration fallback"), codexHistoryHost.run(request))
+        : null
+    })
+    return Promise.resolve(null)
+  },
+  dispose: () => codexHistoryHost.dispose(),
+}
 const hostLifecycle = makeDesktopHostLifecycle({
   runtime: runtimeGateway,
   account: codexConnect,
-  history: codexHistoryHost,
+  history: authoritativeCodexHistoryHost,
 })
 const voiceMedia: VoiceNativeMedia = smokeMode
   ? {
@@ -1859,6 +1876,23 @@ const codexControlPlanes = makeCodexControlPlaneRegistry({
   supervisor: codexAppServerSupervisor,
   receiptRoot: path.join(app.getPath("userData"), "codex-control-plane"),
 })
+const codexThreadLifecycles = makeCodexThreadLifecycleRegistry({
+  supervisor: codexAppServerSupervisor,
+  receiptRoot: path.join(app.getPath("userData"), "codex-thread-lifecycle"),
+})
+codexLifecycleAuthority = async () => {
+  const binary = codexRuntimeAuthority.executable()
+  if (binary === null) throw new Error("Codex runtime is unavailable")
+  const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
+  mkdirSync(runtimeCwd, { recursive: true })
+  return codexThreadLifecycles.forTarget({
+    binary,
+    env: codexProviderEnvironment(process.env, { clearCodexHome: true }),
+    cwd: runtimeCwd,
+    accountRef: "codex-current",
+    hostTarget: "local-desktop",
+  })
+}
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
   supervisor: codexAppServerSupervisor,
@@ -2085,6 +2119,22 @@ const localTurnRecovery = reconcileLocalTurns({
   journal: localTurnJournal,
   store: threads(),
   codex: codexLocal,
+  codexState: async threadId => {
+    const lifecycle = await (codexLifecycleAuthority?.() ?? Promise.reject(new Error("Codex lifecycle unavailable")))
+    await lifecycle.read(threadId, true)
+    const turns = await lifecycle.pageTurns(threadId)
+    const last = turns.at(-1)
+    const statusValue = last !== null && typeof last === "object" ? (last as Record<string, unknown>).status : null
+    const status = typeof statusValue === "string"
+      ? statusValue
+      : statusValue !== null && typeof statusValue === "object" && typeof (statusValue as Record<string, unknown>).type === "string"
+        ? (statusValue as Record<string, unknown>).type as string
+        : "unknown"
+    return status === "completed" ? "completed"
+      : status === "inProgress" || status === "running" ? "running"
+        : status === "interrupted" || status === "failed" || status === "cancelled" ? "interrupted"
+          : "unknown"
+  },
   onThread: thread => {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) window.webContents.send(DesktopLocalTurnRecoveryUpdateChannel, thread)
@@ -5623,6 +5673,7 @@ app.on("before-quit", () => {
   fableLocal.dispose()
   codexLocal.dispose()
   codexControlPlanes.close()
+  codexThreadLifecycles.close()
   codexAppServerSupervisor.close()
   usageLedger.dispose()
   desktopCorrelationJournal.dispose()
