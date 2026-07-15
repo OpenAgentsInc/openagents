@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "vite-plus/test"
 import { Window } from "happy-dom"
+import { act, type ReactNode } from "react"
+import type { Root } from "react-dom/client"
 import { createRoot } from "react-dom/client"
 import { resolveIntentRef, type IntentReporter } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
@@ -7,6 +9,7 @@ import { initialDesktopShellState, type DesktopShellState } from "./shell.ts"
 import { WorkbenchShell, projectReactSessionRows } from "./react-primitive-adapters.tsx"
 
 const restores: Array<() => void> = []
+const roots = new Set<Root>()
 const installDom = () => {
   const window = new Window({ url: "http://localhost/" })
   const values = {
@@ -19,6 +22,7 @@ const installDom = () => {
     Event: window.Event,
     KeyboardEvent: window.KeyboardEvent,
     MouseEvent: window.MouseEvent,
+    IS_REACT_ACT_ENVIRONMENT: true,
   }
   const previous = new Map<string, PropertyDescriptor | undefined>()
   for (const [name, value] of Object.entries(values)) {
@@ -37,9 +41,32 @@ const installDom = () => {
 }
 
 afterEach(async () => {
-  await new Promise(resolve => setTimeout(resolve, 0))
-  restores.splice(0).reverse().forEach(restore => restore())
+  await act(async () => {
+    for (const root of roots) root.unmount()
+    roots.clear()
+    await new Promise(resolve => setTimeout(resolve, 0))
+  })
+  while (restores.length > 0) restores.pop()?.()
 })
+
+const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 20))
+const createTestRoot = (container: HTMLDivElement): Root => {
+  const root = createRoot(container)
+  roots.add(root)
+  return root
+}
+const render = async (root: Root, node: ReactNode): Promise<void> => {
+  await act(async () => {
+    root.render(node)
+    await settle()
+  })
+}
+const interact = async (interaction: () => void): Promise<void> => {
+  await act(async () => {
+    interaction()
+    await settle()
+  })
+}
 
 const historyRoot = (threadRef: string, title: string, updatedAt: string) => ({
   threadRef,
@@ -96,22 +123,23 @@ describe("React workbench shell", () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
-    const root = createRoot(container)
-    root.render(<WorkbenchShell state={fixtureState()} report={report} />)
-    await new Promise(resolve => setTimeout(resolve, 0))
-    ;[...container.querySelectorAll("button")].find(button => button.textContent === "New session")?.click()
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={fixtureState()} report={report} />)
+    await interact(() => {
+      ;[...container.querySelectorAll("button")].find(button => button.textContent === "New session")?.click()
+    })
     const search = container.querySelector('input[type="search"]') as HTMLInputElement
     const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set
     valueSetter?.call(search, "earlier")
-    search.dispatchEvent(new window.Event("input", { bubbles: true }))
-    ;(container.querySelector('[data-session-row][data-selected="true"]') as HTMLButtonElement).click()
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await interact(() => search.dispatchEvent(new window.Event("input", { bubbles: true })))
+    await interact(() => {
+      ;(container.querySelector('[data-session-row][data-selected="true"]') as HTMLButtonElement).click()
+    })
     expect(received).toEqual(expect.arrayContaining([
       { name: "DesktopNewChat", payload: null },
       { name: "HistorySearchChanged", payload: "earlier" },
       { name: "DesktopChatSelected", payload: "local-1" },
     ]))
-    root.unmount()
   })
 
   test("keeps paging, archive, recovery, and confirmed delete on existing intents", async () => {
@@ -155,23 +183,20 @@ describe("React workbench shell", () => {
         nextOffset: 100,
       },
     }
-    const root = createRoot(container)
-    root.render(<WorkbenchShell state={state} report={report} />)
-    await new Promise(resolve => setTimeout(resolve, 0))
-    const click = (label: string): void => {
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={state} report={report} />)
+    const click = async (label: string): Promise<void> => {
       const button = [...container.querySelectorAll("button")].find(value => value.textContent === label)
       expect(button, label).toBeDefined()
-      button?.click()
+      await interact(() => button?.click())
     }
-    click("Load more sessions")
-    click("Load more workspaces")
-    click("Archive")
-    click("Recover")
-    click("Delete")
-    root.render(<WorkbenchShell state={{ ...state, codingSessionDeleteConfirmRef: session.sessionRef }} report={report} />)
-    await new Promise(resolve => setTimeout(resolve, 0))
-    click("Confirm delete")
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await click("Load more sessions")
+    await click("Load more workspaces")
+    await click("Archive")
+    await click("Recover")
+    await click("Delete")
+    await render(root, <WorkbenchShell state={{ ...state, codingSessionDeleteConfirmRef: session.sessionRef }} report={report} />)
+    await click("Confirm delete")
     expect(received).toEqual(expect.arrayContaining([
       { name: "HistoryCatalogMoreRequested", payload: null },
       { name: "DesktopCodingCatalogMoreRequested", payload: null },
@@ -180,23 +205,18 @@ describe("React workbench shell", () => {
       { name: "DesktopCodingSessionDeleteRequested", payload: "session-1" },
       { name: "DesktopCodingSessionDeleteConfirmed", payload: "session-1" },
     ]))
-    root.unmount()
   })
 
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {
     const { window, container } = installDom()
     const report: IntentReporter = () => Effect.void
-    const root = createRoot(container)
-    root.render(<WorkbenchShell state={fixtureState()} report={report} />)
-    await new Promise(resolve => setTimeout(resolve, 0))
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={fixtureState()} report={report} />)
     const trigger = container.querySelector(".oa-react-mobile-session-trigger") as HTMLButtonElement
-    trigger.click()
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await interact(() => trigger.click())
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
-    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }))
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await interact(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" })))
     expect(trigger.getAttribute("aria-expanded")).toBe("false")
     expect(window.document.activeElement).toBe(trigger)
-    root.unmount()
   })
 })

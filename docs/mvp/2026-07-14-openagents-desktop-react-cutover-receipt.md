@@ -107,8 +107,9 @@ revision 6 binding. The session remained unchanged against both pins:
 - manifest:
   `sha256:afd25a5d9f9a8442773d3d18dbda1b4feae4a29e4181a9afc8f1d9cc72cbdb17`;
   and
-- current evidence index:
-  `sha256:bb4c6c7aa4795730d2bce63a926fe00b0b393df1d126dabc10729b13d5366259`.
+- current evidence index: the source-bound digest is recorded directly in
+  `assurance/openagents-desktop-mvp.evidence-index.json` to avoid creating a
+  circular digest dependency in this source input.
 
 The runtime lock rejected an initial invocation under Node 25.8.2 before it
 could produce evidence. The admitted Node 24.13.1 runtime was then used for

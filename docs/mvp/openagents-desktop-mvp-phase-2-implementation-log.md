@@ -351,6 +351,14 @@ construction and evaluation against the pinned revision 1. It does not accept
 an installed candidate, waive evidence, admit an AssuranceSpec, or authorize
 publication.
 
+The RC14 source-bound assurance rerun also exposed an intermittent React shell
+test race under the complete Desktop gate: a confirm-delete rerender could be
+asserted after the test restored its DOM globals. The harness now owns every
+root, wraps renders and interactions in React `act`, and unmounts before global
+restoration. Typecheck passed, the focused shell test passed 20 consecutive
+runs, and the complete assurance rerun then returned all 18 observations and
+18 falsifiers green with the full Desktop build and smoke gate.
+
 ### Provider-originated decision closeout (#8821)
 
 The decision boundary now follows the reference architecture in
