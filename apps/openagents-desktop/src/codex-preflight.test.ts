@@ -39,6 +39,29 @@ const account = (ref: string): CodexChildAccount => ({
 })
 
 describe("makeCodexPreflight", () => {
+  test("stops before provider work and preserves an exact Codex configuration diagnostic", async () => {
+    let spawned = 0
+    const issue = {
+      path: "/Users/owner/.codex/config.toml",
+      line: 408,
+      column: 1,
+      message: "invalid transport",
+    }
+    const preflight = makeCodexPreflight({
+      scratchRoot: scratch,
+      hasAuthImpl: () => true,
+      discoverImpl: async () => [account("codex-current")],
+      spawnImpl: input => { spawned += 1; return makeFixtureCodexChildSpawn([])(input) },
+      configCheck: async () => ({ state: "invalid", issue }),
+    })
+    expect(await preflight.probeAll("test")).toEqual([expect.objectContaining({
+      state: "config_invalid",
+      detail: "/Users/owner/.codex/config.toml:408:1: invalid transport",
+      configuration: { issue, repaired: false },
+    })])
+    expect(spawned).toBe(0)
+  })
+
   test("production preflight uses an ephemeral read-only native app-server turn", async () => {
     const stdin = new PassThrough()
     const stdout = new PassThrough()

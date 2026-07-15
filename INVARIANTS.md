@@ -765,6 +765,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   scope. Only live confirmed run state and the newest 500 ordered event facts
   may project; owner/objective/repository/runtime/backend, event source, raw
   payload JSON, external callback refs, and non-live cached rows stay hidden.
+- Desktop Codex preflight validates the current account configuration with the
+  bundled Codex parser before a provider probe turn. Automatic repair is
+  limited to an explicitly disabled MCP stanza whose only field is
+  `enabled = false`: main backs up the source, removes only that inert stanza,
+  and requires a successful second parse. Every other parse failure remains
+  untouched and projects exact path, line, column, and a bounded parser
+  message into the typed React status notice. The renderer receives no config
+  contents and has no config filesystem authority.
 - Desktop Runtime Gateway is the only renderer path to conversation and agent-
   timeline and provider-native history capabilities. Protocol v7 retains v4's
   bounded confirmed catalog/thread/history queries and exact-run timeline, and

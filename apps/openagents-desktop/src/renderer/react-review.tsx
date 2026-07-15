@@ -37,6 +37,7 @@ export type ReactStatusKind =
   | "stream_gap"
   | "interrupted"
   | "failed"
+  | "invalid_config"
 
 export type ReactStatusNotice = Readonly<{
   key: string
@@ -49,6 +50,15 @@ export type ReactStatusNotice = Readonly<{
 const codexLaneNotice = (state: DesktopShellState): ReactStatusNotice | null => {
   const lane = state.harnessLanes.codex
   if (lane.available || lane.reason === null) return null
+  if (lane.diagnostic?.kind === "invalid_config") {
+    return {
+      key: "codex-config-invalid",
+      kind: "invalid_config",
+      title: "Codex configuration error",
+      detail: lane.diagnostic.detail,
+      action: null,
+    }
+  }
   if (lane.reason === CODEX_CHIP_REASON_VERIFYING) {
     return { key: "codex-checking", kind: "checking", title: "Checking Codex", detail: lane.reason, action: null }
   }
@@ -125,7 +135,7 @@ export const StatusNotices = ({ state, report }: {
   if (notices.length === 0) return null
   return <section className="oa-react-status-notices" aria-label="Session status notices" aria-live="polite">
     {notices.map(notice => <Alert key={notice.key} data-status-kind={notice.kind}
-      variant={["failed", "policy_denied", "revoked_grant"].includes(notice.kind) ? "destructive" : "default"}>
+      variant={["failed", "policy_denied", "revoked_grant", "invalid_config"].includes(notice.kind) ? "destructive" : "default"}>
       <AlertTitle>{notice.title}</AlertTitle>
       <AlertDescription>{notice.detail}</AlertDescription>
       {notice.action === null ? null : <Button type="button" variant="outline" size="sm"

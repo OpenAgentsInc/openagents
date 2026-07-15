@@ -329,10 +329,16 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       ? discovered
       : discovered.filter(account => account.source === "current_session")
     const verifiedRefs = new Set(options.preflight?.verifiedRefs() ?? [])
+    const configurationInvalidRefs = new Set(
+      (options.preflight?.results() ?? [])
+        .filter(result => result.state === "config_invalid")
+        .map(result => result.ref),
+    )
     return {
       accounts,
       verified: accounts.filter(account =>
-        account.source === "current_session" || verifiedRefs.has(account.ref)),
+        !configurationInvalidRefs.has(account.ref) &&
+        (account.source === "current_session" || verifiedRefs.has(account.ref))),
     }
   }
 
@@ -355,6 +361,15 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         .some(result => result.state === "quota_exhausted")
       const rateLimited = options.preflight.results()
         .some(result => result.state === "rate_limited")
+      const invalidConfiguration = options.preflight.results()
+        .find(result => result.state === "config_invalid" && result.configuration !== undefined)
+      if (invalidConfiguration?.configuration !== undefined) {
+        return {
+          state: "unavailable",
+          reason: "invalid_config",
+          detail: invalidConfiguration.detail,
+        }
+      }
       return {
         state: "unavailable",
         reason: policyDenied ? "policy_denied" : quotaExhausted ? "quota_exhausted" : rateLimited ? "rate_limited" : "no_verified_account",

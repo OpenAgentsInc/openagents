@@ -134,6 +134,21 @@ describe("React status projection", () => {
       ...base,
       harnessLanes: { ...base.harnessLanes, codex: { available: false, reason: "opaque host failure" } },
     })[0]?.kind).toBe("failed")
+    expect(projectReactStatusNotices({
+      ...base,
+      harnessLanes: { ...base.harnessLanes, codex: {
+        available: false,
+        reason: "Codex — configuration error",
+        diagnostic: {
+          kind: "invalid_config",
+          detail: "/Users/me/.codex/config.toml:408:1: invalid transport",
+        },
+      } },
+    })[0]).toMatchObject({
+      kind: "invalid_config",
+      title: "Codex configuration error",
+      detail: "/Users/me/.codex/config.toml:408:1: invalid transport",
+    })
   })
 
   test("projects workspace loss and incomplete history without claiming success", async () => {

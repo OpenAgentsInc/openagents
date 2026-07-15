@@ -74,6 +74,11 @@ export const CodexLocalAvailabilitySchema = Schema.Union([
      */
     reason: Schema.Literals(["no_codex_account", "no_verified_account", "policy_denied", "quota_exhausted", "rate_limited"]),
   }),
+  Schema.Struct({
+    state: Schema.Literal("unavailable"),
+    reason: Schema.Literal("invalid_config"),
+    detail: Schema.String,
+  }),
 ])
 export type CodexLocalAvailability = typeof CodexLocalAvailabilitySchema.Type
 
@@ -101,6 +106,8 @@ export const CODEX_CHIP_REASON_QUOTA_EXHAUSTED =
   "Codex — usage quota exhausted · wait for reset or add credits"
 export const CODEX_CHIP_REASON_POLICY_DENIED =
   "Codex — blocked by the active policy · review the task policy"
+export const CODEX_CHIP_REASON_INVALID_CONFIG =
+  "Codex — configuration error"
 
 /**
  * Pure chip projection from typed availability (unit-tested lifecycle
@@ -109,9 +116,20 @@ export const CODEX_CHIP_REASON_POLICY_DENIED =
  */
 export const codexHarnessLaneFromAvailability = (
   availability: CodexLocalAvailability | null,
-): Readonly<{ available: boolean; reason: string | null }> => {
+): Readonly<{
+  available: boolean
+  reason: string | null
+  diagnostic?: Readonly<{ kind: "invalid_config"; detail: string }>
+}> => {
   if (availability === null) return { available: false, reason: CODEX_CHIP_REASON_VERIFYING }
   if (availability.state === "available") return { available: true, reason: null }
+  if (availability.reason === "invalid_config") {
+    return {
+      available: false,
+      reason: CODEX_CHIP_REASON_INVALID_CONFIG,
+      diagnostic: { kind: "invalid_config", detail: availability.detail },
+    }
+  }
   return {
     available: false,
     reason: availability.reason === "policy_denied"

@@ -62,6 +62,11 @@ import {
 import { CODEX_LOCAL_MODEL } from "./codex-local-contract.ts"
 import { runCodexAppServerTurn } from "./codex-app-server-turn.ts"
 import type { CodexAppServerSpawn } from "./codex-app-server-client.ts"
+import {
+  formatCodexConfigurationIssue,
+  type CodexConfigurationHealth,
+  type CodexConfigurationIssue,
+} from "./codex-config-health.ts"
 
 /** Receipted probe spawn config (see module docstring). */
 export const CODEX_PREFLIGHT_MODEL = CODEX_LOCAL_MODEL
@@ -84,6 +89,8 @@ export type CodexProbeState =
   | "quota_exhausted"
   /** Transient provider throttling distinct from exhausted usage/credits. */
   | "rate_limited"
+  /** Codex rejected its own configuration before account verification. */
+  | "config_invalid"
   /** Anything else (network, malformed home, timeout, spawn failure). */
   | "probe_failed"
 
@@ -95,6 +102,11 @@ export type CodexProbeResult = Readonly<{
   /** Session-scoped observation instant (ISO). */
   observedAt: string
   durationMs: number
+  configuration?: Readonly<{
+    issue: CodexConfigurationIssue
+    repaired: boolean
+    backupPath?: string
+  }>
 }>
 
 export type CodexPreflightOptions = Readonly<{
@@ -110,6 +122,8 @@ export type CodexPreflightOptions = Readonly<{
   /** Streamed per-account results (ledger/fleet/log feeds). */
   onResult?: (result: CodexProbeResult) => void
   now?: () => Date
+  /** Bundled Codex parser check; production enables conservative auto-repair. */
+  configCheck?: (account: CodexChildAccount) => Promise<CodexConfigurationHealth>
   /** Production path: probe through the same pinned app-server used for work. */
   appServer?: Readonly<{
     binary: () => string | null
@@ -149,13 +163,23 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
 
   const probeOne = async (account: CodexChildAccount): Promise<CodexProbeResult> => {
       const startedAt = Date.now()
-      const finishWith = (state: CodexProbeState, detail: string): CodexProbeResult =>
+      const finishWith = (
+        state: CodexProbeState,
+        detail: string,
+        configuration?: CodexProbeResult["configuration"],
+      ): CodexProbeResult =>
         ({
           ref: account.ref,
           state,
-          detail: bounded(redactChildText(detail, "")),
+          // Configuration diagnostics intentionally retain their exact local
+          // file location for the owner-facing repair UI. Other provider
+          // failures keep the established home/workspace redaction.
+          detail: state === "config_invalid"
+            ? bounded(detail)
+            : bounded(redactChildText(detail, "")),
           observedAt: now().toISOString(),
           durationMs: Date.now() - startedAt,
+          ...(configuration === undefined ? {} : { configuration }),
         })
 
       // Fast path: no auth.json means no credential at all — spawning would
@@ -169,6 +193,24 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
         mkdirSync(workspace, { recursive: true })
       } catch {
         return finishWith("probe_failed", "probe scratch workspace unavailable")
+      }
+      let repairedConfiguration: CodexProbeResult["configuration"] | undefined
+      if (options.configCheck !== undefined) {
+        const configuration = await options.configCheck(account)
+        if (configuration.state === "invalid") {
+          return finishWith(
+            "config_invalid",
+            formatCodexConfigurationIssue(configuration.issue),
+            { issue: configuration.issue, repaired: false },
+          )
+        }
+        if (configuration.state === "repaired") {
+          repairedConfiguration = {
+            issue: configuration.issue,
+            repaired: true,
+            backupPath: configuration.backupPath,
+          }
+        }
       }
       if (options.appServer !== undefined) {
         const binary = options.appServer.binary()
@@ -221,7 +263,13 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
           requestTimeoutMs: timeoutMs,
           turnTimeoutMs: timeoutMs,
         })
-        if (outcome.outcome === "success") return finishWith("verified", "app-server probe turn completed")
+        if (outcome.outcome === "success") return finishWith(
+          "verified",
+          repairedConfiguration === undefined
+            ? "app-server probe turn completed"
+            : `app-server probe turn completed after repairing ${formatCodexConfigurationIssue(repairedConfiguration.issue)}`,
+          repairedConfiguration,
+        )
         if (outcome.outcome === "reconnect_required") return finishWith("reconnect_required", outcome.detail)
         if (outcome.policyDenied) return finishWith("policy_denied", outcome.detail)
         if (outcome.quotaExhausted) return finishWith("quota_exhausted", outcome.detail)
@@ -308,7 +356,9 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
           return
         }
         if (exitCode === 0 && agentText.trim() !== "") {
-          settle("verified", "probe turn completed")
+          settle("verified", repairedConfiguration === undefined
+            ? "probe turn completed"
+            : `probe turn completed after repairing ${formatCodexConfigurationIssue(repairedConfiguration.issue)}`)
           return
         }
         const failureText = `${errorMessage ?? ""}\n${stderrText}`

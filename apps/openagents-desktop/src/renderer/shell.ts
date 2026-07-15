@@ -247,6 +247,7 @@ export type LocalPermissionMode = "owner_full" | "plan_only"
 export type HarnessLaneAvailability = Readonly<{
   available: boolean
   reason: string | null
+  diagnostic?: Readonly<{ kind: "invalid_config"; detail: string }>
 }>
 export type HarnessLanes = Readonly<{
   fable: HarnessLaneAvailability

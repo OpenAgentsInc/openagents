@@ -46,10 +46,13 @@ const collect = () => {
   return { events, emit: (event: FableLocalEvent) => events.push(event) }
 }
 
-const verifiedPreflight = (refs: ReadonlyArray<string>) => ({
+const verifiedPreflight = (
+  refs: ReadonlyArray<string>,
+  results: ReadonlyArray<CodexProbeResult> = [],
+) => ({
   probeAll: async () => [] as ReadonlyArray<CodexProbeResult>,
   ensureProbed: async () => [] as ReadonlyArray<CodexProbeResult>,
-  results: () => [] as ReadonlyArray<CodexProbeResult>,
+  results: () => results,
   verifiedRefs: () => refs,
 })
 
@@ -850,6 +853,34 @@ describe("makeCodexLocalRuntime.availability (chip-verified-evidence rule)", () 
     expect(await runtime.availability()).toEqual({
       state: "unavailable",
       reason: "no_codex_account",
+    })
+  })
+
+  test("an invalid Codex config exposes its exact parser diagnostic", async () => {
+    const issue = {
+      path: "/Users/owner/.codex/config.toml",
+      line: 408,
+      column: 1,
+      message: "invalid transport",
+    }
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      spawnImpl: makeFixtureCodexChildSpawn([{ stdout: "", exitCode: 0 }]),
+      discoverImpl: async () => [{ ref: "codex", home: "/Users/owner/.codex", source: "current_session" }],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight([], [{
+        ref: "codex",
+        state: "config_invalid",
+        detail: "/Users/owner/.codex/config.toml:408:1: invalid transport",
+        observedAt: "2026-07-15T10:00:00.000Z",
+        durationMs: 5,
+        configuration: { issue, repaired: false },
+      }]),
+    })
+    expect(await runtime.availability()).toEqual({
+      state: "unavailable",
+      reason: "invalid_config",
+      detail: "/Users/owner/.codex/config.toml:408:1: invalid transport",
     })
   })
 })

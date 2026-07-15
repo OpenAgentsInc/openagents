@@ -2451,10 +2451,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "add thorough fucking tests or whatever to prevent this category of codex connection error PLEASE I HATE ALL THEF UCKING SPEEDBUMPS HERE",
         authorityBoundary:
-          "The corpus is table-driven over checked-in verbatim failure fixtures (live-captured where available): LONG revoked, SHORT auth variant, 401 token_invalidated, refresh_token_invalidated, missing auth.json, malformed auth.json, quota/429, network-refused, timeout. Every row asserts classification (auth/rate-limit/generic), rotation behavior, health-map effect, the UI-facing reason string, and the fleet readiness projection — one new signature is ONE new row. The preflight prober (a real minimal read-only `codex exec` turn per account; `codex login status` is receipted presence-only and never a probe) runs on boot, fleet Refresh, reconnect completion, and lazily before first dispatch, and its session-scoped results supersede presence-based ready state.",
+          "The corpus is table-driven over checked-in verbatim failure fixtures (live-captured where available): LONG revoked, SHORT auth variant, 401 token_invalidated, refresh_token_invalidated, missing auth.json, malformed auth.json, quota/429, network-refused, timeout, and Codex configuration parser failures. Before spending a probe turn, the bundled Codex parser validates the current account configuration. One narrowly provable repair is automatic: a disabled MCP server stanza whose only field is `enabled = false` and therefore has no transport; the original file is backed up, only that inert stanza is removed, and Codex must parse successfully afterward. Every other configuration failure is left untouched and crosses the typed availability projection as exact path, line, column, and bounded parser message for the React status notice. Renderer code never reads or writes the config file.",
         evidenceRefs: [
           "apps/openagents-desktop/src/codex-connection-signatures.test.ts",
           "apps/openagents-desktop/src/codex-preflight.ts",
+          "apps/openagents-desktop/src/codex-config-health.ts",
+          "apps/openagents-desktop/src/codex-config-health.test.ts",
           "apps/openagents-desktop/src/codex-child-runtime.ts",
           "github:OpenAgentsInc/openagents#8712",
         ],
@@ -2473,7 +2475,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/codex-preflight.test.ts",
             description:
-              "Proves the receipted minimal probe recipe, verified/reconnect/rate-limit/missing/failed classification, the credentials_missing no-spawn fast path, the host-side timeout bound, health + ledger feeds, and ensureProbed session-cache semantics.",
+              "Proves the receipted minimal probe recipe, configuration-invalid classification, exact diagnostic projection, verified/reconnect/rate-limit/missing/failed classification, the credentials_missing no-spawn fast path, the host-side timeout bound, health + ledger feeds, and ensureProbed session-cache semantics. The companion config-health suite proves backup, narrow repair, re-parse, and ambiguous-file refusal.",
           },
         ],
         verification:

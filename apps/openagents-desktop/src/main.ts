@@ -174,10 +174,12 @@ import {
   fixtureCodexRevokedStdout,
   fixtureCodexSuccessStdout,
   discoverRegisteredCodexAccounts,
+  defaultSpawnCodex,
   makeCodexAccountHealth,
   makeCodexChildRuntime,
   makeFixtureCodexChildSpawn,
 } from "./codex-child-runtime.ts"
+import { checkCodexConfiguration } from "./codex-config-health.ts"
 import { CODEX_CHILD_MODEL } from "./codex-child-contract.ts"
 import {
   CodexLocalAvailabilityChannel,
@@ -1898,6 +1900,19 @@ const smokeProbeSpawnByHome: Record<string, ReturnType<typeof makeFixtureCodexCh
 const codexPreflight = makeCodexPreflight({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
   onResult: recordProbeEvidence,
+  ...(!smokeMode ? {
+      configCheck: async (account: { home: string; source?: "current_session" | "pylon" }) => {
+        const configEnv = { ...process.env } as Record<string, string | undefined>
+        if (account.source === "current_session") delete configEnv.CODEX_HOME
+        else configEnv.CODEX_HOME = account.home
+        return checkCodexConfiguration({
+          spawn: defaultSpawnCodex,
+          env: configEnv,
+          cwd: account.home,
+          autoRepair: true,
+        })
+      },
+    } : {}),
   ...(!smokeMode ? {
       discoverImpl: async () => (await discoverRegisteredCodexAccounts())
         .filter(account => account.source === "current_session"),
