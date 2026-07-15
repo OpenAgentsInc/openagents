@@ -16,7 +16,7 @@ import { Folder } from "lucide-react"
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
 import { parseChatMarkdown } from "./markdown.ts"
-import { humanizeToolInvocation } from "./tool-cards.ts"
+import { humanizeToolInvocation, projectToolCardEntries } from "./tool-cards.ts"
 
 const terminalStatuses = new Set([
   "canceled", "cancelled", "completed", "errored", "failed", "interrupted", "shutdown",
@@ -113,7 +113,26 @@ export const projectReactTimelineRecords = (
 
 export const projectLocalTimelineRecords = (
   notes: ReadonlyArray<DesktopNoteEntry>,
-): ReadonlyArray<ReactTimelineRecord> => notes.flatMap((note, index) => {
+): ReadonlyArray<ReactTimelineRecord> => projectToolCardEntries(notes).flatMap((entry, index): ReadonlyArray<ReactTimelineRecord> => {
+  if (entry.kind === "tool") {
+    const humanized = humanizeToolInvocation(entry.card.toolName, entry.card.argsSummary)
+    return [{
+      key: entry.card.key,
+      itemRef: entry.card.key,
+      sequence: index,
+      kind: "tool_call" as const,
+      label: humanized.title,
+      body: humanized.detail || entry.card.argsSummary || entry.card.toolName,
+      timestamp: entry.card.timestamp,
+      status: entry.card.status === "ok" ? "completed" : entry.card.status,
+      redacted: false,
+      fields: [],
+      resultRef: entry.card.resultSummary === null ? null : `${entry.card.key}:result`,
+      resultBody: entry.card.resultSummary,
+      resultStatus: entry.card.status === "failed" ? "failed" : entry.card.status === "ok" ? "completed" : null,
+    }]
+  }
+  const note = entry.note
   if (note.role === "system" && /^(Usage|Connected)\s*·/i.test(note.text)) return []
   const kind: ReactTimelineRecord["kind"] = note.question !== undefined
     ? "question"
@@ -217,7 +236,7 @@ export const TimelineItem = ({ record, report }: {
     data-timeline-key={record.key} data-kind={record.kind} role="listitem">
     <summary>
       <span className="oa-react-work-label">{record.label}</span>
-      <span className="oa-react-work-preview">{compact(record.resultBody || record.body)}</span>
+      <span className="oa-react-work-preview">{compact(record.body || record.resultBody || record.label)}</span>
       <span className="oa-react-work-status" data-status={record.status ?? "completed"}>
         {["failed", "errored", "interrupted"].includes(record.status ?? "") ? "Failed" : record.status === "running" ? "Running" : "Done"}
       </span>

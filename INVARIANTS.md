@@ -999,6 +999,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   numbering never restarts at a source boundary. Selecting a runtime/app-local
   row always unmounts any provider-history page before projecting that row's
   transcript, so a successful selection cannot leave stale chat content visible.
+- A local tool invocation renders as one stable transcript row. Its started
+  event establishes the row identity and command preview; matching completion
+  or failure updates that row's status and bounded result in place. React and
+  the compatibility renderer must share the same lifecycle reconciler and may
+  not expose raw start/result transport events as separate conversation rows.
 - Desktop's application, component, state, projection, and typed-intent model
   remain Effect Native. React 19 owns the renderer root, lifecycle, synchronous
   snapshot consumption, and declared ordinary-element lowerings through the

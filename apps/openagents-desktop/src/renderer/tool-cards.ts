@@ -70,6 +70,8 @@ export type TranscriptEntry =
   | Readonly<{ kind: "tool"; card: ToolCardModel }>
   | Readonly<{ kind: "context-group"; group: ContextGroupModel }>
 
+export type ToolCardTranscriptEntry = Exclude<TranscriptEntry, Readonly<{ kind: "context-group" }>>
+
 /** Typed trace facts for a note: typed meta first, text-parse fallback. */
 export const toolTraceFromNote = (note: DesktopNoteEntry): DesktopToolTrace | null => {
   if (note.role !== "system") return null
@@ -135,8 +137,8 @@ export const projectTranscriptEntries = (
 /** The ungrouped per-invocation projection (one card per tool invocation). */
 export const projectToolCardEntries = (
   notes: ReadonlyArray<DesktopNoteEntry>,
-): ReadonlyArray<TranscriptEntry> => {
-  const entries: Array<TranscriptEntry> = []
+): ReadonlyArray<ToolCardTranscriptEntry> => {
+  const entries: Array<ToolCardTranscriptEntry> = []
   // Open (still-running) cards by entries index, FIFO per toolName.
   const openByTool = new Map<string, Array<number>>()
   for (const note of notes) {

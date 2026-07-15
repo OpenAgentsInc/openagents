@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-15.4",
+    version: "2026-07-15.5",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -762,6 +762,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/tool-cards.ts",
           "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
           "apps/openagents-desktop/src/fable-local-contract.ts",
           "github:OpenAgentsInc/openagents#8712",
         ],
@@ -783,6 +784,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Proves the transcript renders one role=tool card per invocation with humanized title/detail, toned status chip, result line, no SYSTEM sender label, collapsed-by-default raw details behind the compact toggle, and the expand intent loop through the real registry.",
           },
           {
+            id: "tool_cards.react_lifecycle_reconciliation",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-timeline.test.tsx",
+            description:
+              "Proves the React timeline consumes the shared tool-card reconciler: a local started+ok/failed pair retains the started-note key and command preview while updating one row's terminal status and result.",
+          },
+          {
             id: "tool_cards.smoke",
             kind: "bun-test",
             mode: "e2e",
@@ -792,7 +801,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "pnpm --dir apps/openagents-desktop run verify runs the tool-card projector suite, the shell view suite, and the Electron smoke tool-card assertions.",
+          "pnpm --dir apps/openagents-desktop run verify runs the shared tool-card projector, React timeline, shell view, and Electron smoke tool-card assertions.",
       },
       {
         contractId: "openagents_desktop.chat.interactive_question_cards.v1",

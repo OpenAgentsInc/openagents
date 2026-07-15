@@ -8,6 +8,7 @@ import type { CodexHistoryItem } from "../codex-history-contract.ts"
 import {
   ReactTimeline,
   SafeReactMarkdown,
+  projectLocalTimelineRecords,
   projectReactTimelineRecords,
   type ReactTimelineRecord,
 } from "./react-timeline.tsx"
@@ -120,6 +121,34 @@ const report: IntentReporter = () => Effect.void
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
 
 describe("React typed timeline projection", () => {
+  test("merges local tool lifecycle updates into one stable command row", () => {
+    const notes = [
+      {
+        key: "bash-start",
+        role: "system" as const,
+        text: 'Bash · started · {"command":"mkdir Misc"}',
+        timestamp: "05:41",
+      },
+      {
+        key: "bash-result",
+        role: "system" as const,
+        text: "Bash · ok · directory created",
+        timestamp: "05:42",
+      },
+    ]
+    const records = projectLocalTimelineRecords(notes)
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      key: "bash-start",
+      kind: "tool_call",
+      label: "Bash",
+      body: "mkdir Misc",
+      status: "completed",
+      resultBody: "directory created",
+      resultStatus: "completed",
+    })
+  })
+
   test("deduplicates and sorts typed items while preserving assistant segmentation", () => {
     const records = projectReactTimelineRecords([
       historyItem(2, "assistant_message", "after tool"),
