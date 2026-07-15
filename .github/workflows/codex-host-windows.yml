@@ -1,0 +1,33 @@
+name: Codex host services (Windows)
+
+on:
+  pull_request:
+    paths:
+      - "apps/openagents-desktop/src/codex-host-**"
+      - ".github/workflows/codex-host-windows.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/openagents-desktop/src/codex-host-**"
+      - ".github/workflows/codex-host-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-host-contract:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec vp test apps/openagents-desktop/src/codex-host-contract.test.ts apps/openagents-desktop/src/codex-host-services.test.ts
+      - run: pnpm exec tsc -p apps/openagents-desktop/tsconfig.json --noEmit

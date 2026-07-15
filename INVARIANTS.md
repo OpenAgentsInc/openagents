@@ -196,6 +196,13 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 - Public UI does not own settlement, payout, runtime promotion, or accepted
   outcome authority.
+- Desktop Codex host services accept only canonical WorkContext-relative
+  filesystem paths and typed capability operations. Filesystem mutation,
+  command execution, external import, Windows setup, and feedback upload each
+  consume a one-shot revision-and-payload-bound main-process authority; the
+  renderer has no raw app-server, absolute-path, shell, environment, or generic
+  process capability. Watches, command processes, searches, and imports belong
+  to one app-server generation and must surface disconnect/overflow explicitly.
 - Payments, markets, Sites, tipping, wallet custody, payout, billing credits,
   and settlement are not part of the accepted MVP. VP-1 retires rather than
   ports them: mutation surfaces return typed `money_surface_retired`, runtime

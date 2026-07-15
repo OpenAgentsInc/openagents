@@ -213,6 +213,8 @@ import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture
 import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import { makeCodexControlPlaneRegistry } from "./codex-control-plane.ts"
 import { makeCodexEcosystemRegistry } from "./codex-ecosystem.ts"
+import { makeCodexHostServiceRegistry } from "./codex-host-services.ts"
+import { CodexHostRequestChannel, CodexHostSnapshotChannel, decodeCodexHostRequest } from "./codex-host-contract.ts"
 import {
   CodexEcosystemMutationChannel,
   CodexEcosystemSnapshotChannel,
@@ -1909,6 +1911,11 @@ const codexEcosystems = makeCodexEcosystemRegistry({
   },
   authorizeNamespace: namespace => namespace === "productspec",
 })
+const codexHostServices = makeCodexHostServiceRegistry({
+  supervisor: codexAppServerSupervisor,
+  spoolRoot: path.join(app.getPath("userData"), "codex-host-spool"),
+  receiptRoot: path.join(app.getPath("userData"), "codex-host-receipts"),
+})
 codexLifecycleAuthority = async () => {
   const binary = codexRuntimeAuthority.executable()
   if (binary === null) throw new Error("Codex runtime is unavailable")
@@ -1928,6 +1935,14 @@ const currentCodexEcosystem = async () => {
   const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
   return codexEcosystems.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" })
+}
+const currentCodexHostServices = async () => {
+  const binary = codexRuntimeAuthority.executable()
+  const workroom = currentProductSpecWorkroom()
+  if (binary === null || workroom === null) throw new Error("Codex runtime and WorkContext are required")
+  const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
+  mkdirSync(runtimeCwd, { recursive: true })
+  return codexHostServices.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" }, workroom.workspaceRoot)
 }
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
@@ -2824,6 +2839,46 @@ ipcMain.handle(CodexEcosystemMutationChannel, async (event, value: unknown) => {
     }
     return { ok: true, snapshot: ecosystem.snapshot() }
   } catch (error) { return { ok: false, reason: typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string" ? error.reason : "ecosystem_request_failed" } }
+})
+ipcMain.handle(CodexHostSnapshotChannel, async event => {
+  if (!isTrustedRuntimeGatewaySender(event)) return null
+  try { return (await currentCodexHostServices()).snapshot() } catch { return null }
+})
+ipcMain.handle(CodexHostRequestChannel, async (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { ok: false, reason: "untrusted_sender" }
+  const request = decodeCodexHostRequest(value)
+  if (request === null) return { ok: false, reason: "invalid_request" }
+  try {
+    const host = await currentCodexHostServices()
+    const authorize = (kind: Parameters<typeof host.authorize>[0], payload: unknown) => host.authorize(kind, payload, host.snapshot().revision)
+    let result: unknown
+    switch (request.operation) {
+      case "fs_read": result = await host.readFile(request.path); break
+      case "fs_write": { const payload = { relativePath: request.path, dataBase64: request.dataBase64 }; await host.writeFile(request.path, request.dataBase64, authorize("fs_mutation", payload)); break }
+      case "fs_mkdir": { const payload = { relativePath: request.path, recursive: request.recursive }; await host.createDirectory(request.path, request.recursive, authorize("fs_mutation", payload)); break }
+      case "fs_list": result = await host.readDirectory(request.path); break
+      case "fs_metadata": result = await host.metadata(request.path); break
+      case "fs_remove": { const payload = { relativePath: request.path, recursive: request.recursive }; await host.remove(request.path, request.recursive, authorize("fs_mutation", payload)); break }
+      case "fs_copy": { const payload = { sourceRelativePath: request.sourcePath, destinationRelativePath: request.destinationPath, recursive: request.recursive }; await host.copy(request.sourcePath, request.destinationPath, request.recursive, authorize("fs_mutation", payload)); break }
+      case "fs_watch": result = await host.watch(request.path); break
+      case "fs_unwatch": await host.unwatch(request.watchId); break
+      case "command_exec": { const input = { command: request.command, ...(request.cwd === undefined ? {} : { cwd: request.cwd }), ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }), ...(request.tty === undefined ? {} : { tty: request.tty }), ...(request.rows === undefined ? {} : { rows: request.rows }), ...(request.cols === undefined ? {} : { cols: request.cols }) }; result = await host.exec(input, authorize("command", input)); break }
+      case "command_write": await host.writeCommand(request.processId, request.deltaBase64, request.closeStdin); break
+      case "command_resize": await host.resizeCommand(request.processId, request.rows, request.cols); break
+      case "command_terminate": await host.terminateCommand(request.processId); break
+      case "search_fuzzy": result = await host.fuzzySearch(request.query); break
+      case "search_start": result = await host.startSearch(); break
+      case "search_update": await host.updateSearch(request.sessionId, request.query); break
+      case "search_stop": await host.stopSearch(request.sessionId); break
+      case "external_detect": result = await host.detectExternalConfig(); break
+      case "external_histories": result = await host.readExternalHistories(); break
+      case "external_import": { const payload = { migrationItems: request.migrationItems, source: request.source }; result = await host.importExternalConfig(request.migrationItems, request.source, authorize("external_import", payload)); break }
+      case "windows_readiness": result = await host.windowsReadiness(); break
+      case "windows_setup": await host.startWindowsSetup(request.mode, authorize("windows_setup", { mode: request.mode })); break
+      case "feedback_upload": { const input = { classification: request.classification, reason: request.reason, attachments: request.attachments, includeLogs: request.includeLogs }; await host.uploadFeedback(input, authorize("feedback", input)); break }
+    }
+    return { ok: true, result, snapshot: host.snapshot() }
+  } catch (error) { return { ok: false, reason: typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string" ? error.reason : "host_request_failed" } }
 })
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
@@ -5763,6 +5818,7 @@ app.on("before-quit", () => {
   codexControlPlanes.close()
   codexThreadLifecycles.close()
   codexEcosystems.close()
+  codexHostServices.close()
   codexDurableQueue.close()
   codexAppServerSupervisor.close()
   usageLedger.dispose()

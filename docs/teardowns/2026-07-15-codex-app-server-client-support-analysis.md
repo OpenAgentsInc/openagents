@@ -293,6 +293,37 @@ smoke added a temporary skill root, observed live invalidation/reload, started
 an ephemeral read-only thread, and called a declared read-only MCP tool through
 app-server against the ordinary local installation.
 
+### Implementation status: CAP-09
+
+CAP-09 adds a main-owned host-services registry keyed by the exact app-server
+pool identity **and** canonical WorkContext root. It inventories filesystem,
+command, fuzzy-search, external-agent import, Windows sandbox, and feedback
+members from the generated protocol manifest, then assigns every member an
+explicit available, platform-blocked, or review-required disposition. The
+renderer receives only a closed Effect Schema operation union: it cannot send
+an app-server method name, absolute path, environment, shell string, or raw
+parameter object.
+
+Filesystem paths are WorkContext-relative and checked both lexically and by
+`realpath`; missing descendants walk to the nearest existing ancestor so a
+write through an escaping symlink still fails closed. Watches belong to one
+connection generation, discard out-of-root changes, bound retained paths, and
+surface overflow/disconnect rather than pretending continuity. Large reads and
+command streams have hard memory previews and private mode-0600 spool files;
+receipts retain causal hashes, counts, and outcomes instead of workspace paths,
+command text, attachment content, or app-server diagnostics.
+
+Commands require one-shot revision/payload-bound authority. Main chooses the
+canonical cwd and fixed timeout/output caps; stdin, resize, terminate, late
+completion, and generation loss obey one process identity and one terminal
+state. Stateful fuzzy sessions and imports are generation-owned, while partial
+import completion remains failed with success/failure counts. Feedback accepts
+at most eight explicitly reviewed WorkContext attachments and sends only their
+canonical paths to the main-private app-server call. Windows readiness/setup is
+absent on non-Windows hosts and has a dedicated `windows-latest` contract job,
+including junction-escape coverage. An exact packaged-binary smoke performs a
+real filesystem round trip and bounded command execution through app-server.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these
