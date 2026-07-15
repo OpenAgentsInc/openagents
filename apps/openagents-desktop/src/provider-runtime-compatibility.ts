@@ -1,4 +1,5 @@
 import { Exit, Schema } from "@effect-native/core/effect"
+import { bundledCodexVersion } from "@openagentsinc/codex-app-server-protocol/compatibility"
 
 export const providerRuntimeKinds = ["codex_cli", "claude_agent_sdk"] as const
 export type ProviderRuntimeKind = (typeof providerRuntimeKinds)[number]
@@ -6,7 +7,7 @@ export const providerRuntimeCompatibilityStates = ["compatible", "missing", "mal
 
 /** Exact versions exercised by this source/lockfile. Updates require a new receipt. */
 export const supportedProviderRuntimeVersions = {
-  codex_cli: "0.144.1",
+  codex_cli: bundledCodexVersion,
   claude_agent_sdk: "0.3.172",
 } as const satisfies Readonly<Record<ProviderRuntimeKind, string>>
 

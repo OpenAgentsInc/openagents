@@ -44,6 +44,7 @@ const bundledOptions = {
   isFile: () => true,
   isExecutable: () => true,
   hasExpectedArchitecture: () => true,
+  sha256: () => "29915529b97697def1a957b0505e770aa6a45744435d62fc263e98d7619e167a",
 }
 
 describe("provider runtime host", () => {
@@ -74,6 +75,7 @@ describe("provider runtime host", () => {
       isFile: () => true,
       isExecutable: () => true,
       hasExpectedArchitecture: () => true,
+      sha256: () => "29915529b97697def1a957b0505e770aa6a45744435d62fc263e98d7619e167a",
     })
     expect(resolved).toBe(
       "/Applications/OpenAgents.app/Contents/Resources/app.asar.unpacked/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
@@ -125,6 +127,7 @@ describe("provider runtime host", () => {
     expect(discoverBundledCodexRuntime({ ...base, isFile: () => false }).state).toBe("not_file")
     expect(discoverBundledCodexRuntime({ ...base, isExecutable: () => false }).state).toBe("not_executable")
     expect(discoverBundledCodexRuntime({ ...base, hasExpectedArchitecture: () => false }).state).toBe("wrong_architecture")
+    expect(discoverBundledCodexRuntime({ ...base, sha256: () => "unreviewed" }).state).toBe("unverified_binary")
     expect(discoverBundledCodexRuntime({ ...base, platform: "aix" }).state).toBe("unsupported_target")
   })
 

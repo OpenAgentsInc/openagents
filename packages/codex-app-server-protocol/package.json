@@ -1,0 +1,32 @@
+{
+  "name": "@openagentsinc/codex-app-server-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./compatibility": "./src/compatibility.ts",
+    "./parity": "./src/parity.ts",
+    "./current-source": "./src/_generated/current-source/meta.gen.ts",
+    "./current-source/schema": "./src/_generated/current-source/schema.gen.ts",
+    "./bundled-0.144.1": "./src/_generated/bundled-0.144.1/meta.gen.ts",
+    "./bundled-0.144.1/schema": "./src/_generated/bundled-0.144.1/schema.gen.ts"
+  },
+  "scripts": {
+    "generate": "node scripts/generate-all.ts",
+    "check:generated": "node scripts/check-generated.ts",
+    "smoke:binary": "node scripts/real-binary-smoke.ts",
+    "test": "vp test --run packages/codex-app-server-protocol/src/protocol.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/openapi-generator": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

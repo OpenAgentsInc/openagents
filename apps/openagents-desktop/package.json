@@ -39,6 +39,7 @@
     "@openagentsinc/assurance-spec": "workspace:*",
     "@openagentsinc/audio-contract": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
+    "@openagentsinc/codex-app-server-protocol": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/product-spec": "workspace:*",

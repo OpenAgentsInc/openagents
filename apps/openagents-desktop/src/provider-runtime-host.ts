@@ -1,7 +1,13 @@
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs"
 import { createRequire } from "node:module"
 import path from "node:path"
+
+import {
+  bundledCodexVersion,
+  evaluateCodexBinaryCompatibility,
+} from "@openagentsinc/codex-app-server-protocol/compatibility"
 
 import {
   classifyProviderRuntimeCompatibility,
@@ -42,6 +48,7 @@ export type BundledCodexResolutionOptions = Readonly<{
   isFile?: (value: string) => boolean
   isExecutable?: (value: string) => boolean
   hasExpectedArchitecture?: (value: string, target: CodexRuntimeTarget) => boolean
+  sha256?: (value: string) => string | null
   platform?: NodeJS.Platform
   arch?: string
   /** Test seam for dependency-graph resolution; never an ambient PATH lookup. */
@@ -77,7 +84,7 @@ export type CodexRuntimeResolution = Readonly<{
 }>
 
 export type CodexRuntimeCandidate = Readonly<{
-  state: "candidate" | "unsupported_target" | "missing_package" | "wrong_target" | "wrong_architecture" | "not_file" | "not_executable"
+  state: "candidate" | "unsupported_target" | "missing_package" | "wrong_target" | "wrong_architecture" | "not_file" | "not_executable" | "unverified_binary"
   source: CodexRuntimeSource | null
   target: CodexRuntimeTarget | null
   executablePath: string | null
@@ -94,6 +101,27 @@ const regularFileByDefault = (value: string): boolean => {
 const executableByDefault = (value: string): boolean => {
   if (process.platform === "win32") return true
   try { accessSync(value, constants.X_OK); return true } catch { return false }
+}
+
+const sha256ByDefault = (value: string): string | null => {
+  try {
+    return createHash("sha256").update(readFileSync(value)).digest("hex")
+  } catch {
+    return null
+  }
+}
+
+const hasReviewedManifest = (
+  value: string,
+  target: CodexRuntimeTarget,
+  sha256: (value: string) => string | null,
+): boolean => {
+  const digest = sha256(value)
+  return digest !== null && evaluateCodexBinaryCompatibility({
+    version: bundledCodexVersion,
+    target: target.triple,
+    sha256: digest,
+  })._tag === "Compatible"
 }
 
 const expectedMacCpuType = (arch: string): number | null =>
@@ -159,6 +187,7 @@ export const discoverBundledCodexRuntime = (
   const isFile = options.isFile ?? regularFileByDefault
   const isExecutable = options.isExecutable ?? executableByDefault
   const hasExpectedArchitecture = options.hasExpectedArchitecture ?? expectedArchitectureByDefault
+  const sha256 = options.sha256 ?? sha256ByDefault
   const dependencyCandidate = (options.resolveFromDependencyGraph ?? resolveCodexFromDependencyGraph)(target)
   if (dependencyCandidate !== null) {
     const executablePath = executableOutsideAsar(dependencyCandidate, exists)
@@ -170,6 +199,7 @@ export const discoverBundledCodexRuntime = (
       if (!isFile(executablePath)) return { state: "not_file", source, target, executablePath }
       if (!isExecutable(executablePath)) return { state: "not_executable", source, target, executablePath }
       if (!hasExpectedArchitecture(executablePath, target)) return { state: "wrong_architecture", source, target, executablePath }
+      if (!hasReviewedManifest(executablePath, target, sha256)) return { state: "unverified_binary", source, target, executablePath }
       return { state: "candidate", source, target, executablePath }
     }
   }
@@ -194,6 +224,7 @@ export const discoverBundledCodexRuntime = (
   if (!isFile(executablePath)) return { state: "not_file", source: "packaged_unpacked", target, executablePath }
   if (!isExecutable(executablePath)) return { state: "not_executable", source: "packaged_unpacked", target, executablePath }
   if (!hasExpectedArchitecture(executablePath, target)) return { state: "wrong_architecture", source: "packaged_unpacked", target, executablePath }
+  if (!hasReviewedManifest(executablePath, target, sha256)) return { state: "unverified_binary", source: "packaged_unpacked", target, executablePath }
   return { state: "candidate", source: "packaged_unpacked", target, executablePath }
 }
 
@@ -299,7 +330,9 @@ const defaultSpawnVersion = (executable: string): VersionChild | null => {
 }
 
 const resolutionFromCandidate = (candidate: CodexRuntimeCandidate): CodexRuntimeResolution => ({
-  state: candidate.state === "candidate" ? "spawn_failed" : candidate.state,
+  state: candidate.state === "candidate"
+    ? "spawn_failed"
+    : candidate.state === "unverified_binary" ? "incompatible_version" : candidate.state,
   source: candidate.source,
   target: candidate.target,
   executablePath: candidate.executablePath,

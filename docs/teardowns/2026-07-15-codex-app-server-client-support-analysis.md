@@ -41,6 +41,26 @@ message parses,” “the provider has an analogous feature,” and “the produ
 fully supports the app-server capability” are four different claims.
 OpenAgents should track those claims separately for every method and event.
 
+### Implementation status: CAP-00
+
+CAP-00 now establishes `packages/codex-app-server-protocol` as that tracking
+authority. Like T3 Code, it programmatically transforms pinned Codex JSON
+Schema into generated Effect schemas and method maps; unlike T3's single
+snapshot, it keeps current source and Desktop's exact bundled `0.144.1`
+executable in separate manifests. The current-source ledger accounts for
+126/1/11/72 runtime members and the 87 generated + 3 deprecated compatibility
++ 36 gated request partition. The bundled ledger records its own
+125/1/11/69 denominator and the reviewed Darwin arm64 executable SHA-256.
+
+The JSON/TypeScript generator asymmetry is explicit: the three deprecated
+requests and runtime-only raw-response notifications are compatibility entries,
+not silently borrowed from another artifact. CI verifies generated digests,
+refs, counts, duplicate-free inventories, and every member's disposition.
+Desktop now advertises `experimentalApi: false` and rejects an executable whose
+target/version/hash tuple has no matching manifest before returning it to a
+thread-start consumer. This is the protocol foundation only; handler and native
+projection fields intentionally remain pending for the sequenced CAP issues.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these
@@ -109,8 +129,9 @@ notification union still contains all 72 variants even though transport
 filtering gates 14 of them. A generated union is therefore not itself a
 negotiated capability manifest. [source] [schema]
 
-This distinction matters because both T3 and OpenAgents advertise
-`experimentalApi: true`. A client cannot use the stable-only generated request
+This distinction matters because T3 advertises `experimentalApi: true`; before
+CAP-00 OpenAgents did too, but it now fails closed with `experimentalApi: false`.
+A client cannot use the stable-only generated request
 union as its definition of complete experimental coverage. [source] [schema]
 
 A host is incomplete if it only sends requests. It must also preserve server

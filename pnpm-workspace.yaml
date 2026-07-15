@@ -32,6 +32,8 @@ publicHoistPattern:
 blockExoticSubdeps: false
 
 catalog:
+  "@effect/openapi-generator": 4.0.0-beta.94
+  "@effect/platform-node": 4.0.0-beta.94
   "@types/node": 24.13.1
   effect: 4.0.0-beta.94
   typescript: ^6.0.3

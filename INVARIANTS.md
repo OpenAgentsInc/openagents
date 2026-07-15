@@ -1149,6 +1149,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   enforced by the `new_chat_always_exits_history` UX contract,
   converging-host unit coverage, and both built-Electron input paths.
 - Desktop provider runtimes are package-owned, version-explicit capabilities.
+  The Codex app-server wire contract is generated programmatically from exact
+  upstream identities in `@openagentsinc/codex-app-server-protocol`; handwritten
+  request/notification inventories are not protocol authority. Current-source
+  and shipped-binary manifests have separate denominators. Every member has a
+  reviewed disposition, generated-schema digest, and stability gate, while the
+  three deprecated JSON-generator omissions and runtime-only notification
+  omissions are explicit compatibility members. An unknown target, version, or
+  executable hash is incompatible before thread start. Experimental app-server
+  capability advertisement remains disabled until the matching generated
+  manifest has complete handlers and projections. Generated drift fails CI
+  until the manifest is reviewed; supported six-method behavior is unchanged.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
   one immutable main-process `CodexRuntimeResolution` authority selects that

@@ -84,7 +84,7 @@ describe("Codex app-server native integration", () => {
       skillPath: "/isolated/codex-home/skills/productspec-work/SKILL.md",
     })
     await sleep(0)
-    expect(fake.messages[0]).toMatchObject({ method: "initialize", id: 1, params: { capabilities: { experimentalApi: true } } })
+    expect(fake.messages[0]).toMatchObject({ method: "initialize", id: 1, params: { capabilities: { experimentalApi: false } } })
     fake.respond(1, { userAgent: "codex-test" })
     await sleep(0)
     expect(fake.messages[1]).toEqual({ method: "initialized", params: {} })
