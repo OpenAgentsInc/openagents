@@ -38,6 +38,13 @@ body {
   letter-spacing: 0.005em;
 }
 
+/* ClientRouter keeps docs navigation in-page. Remove the default document
+   crossfade so a prefetched page swaps as soon as it is ready. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.01ms;
+}
+
 [data-blume-doc-grid] {
   padding-top: 4rem;
 }

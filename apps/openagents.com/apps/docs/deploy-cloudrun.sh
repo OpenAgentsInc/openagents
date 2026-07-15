@@ -22,7 +22,7 @@ gcloud run deploy "$SERVICE" \
   --ingress all \
   --cpu 1 \
   --memory 256Mi \
-  --min 0 \
+  --min 1 \
   --max 4 \
   --timeout 30 \
   --quiet

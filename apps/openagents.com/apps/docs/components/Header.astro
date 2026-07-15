@@ -2,6 +2,7 @@
 import Search from 'blume/components/layout/Search.astro'
 import type { UIStrings } from 'blume/core/i18n-ui.ts'
 import type { Navigation } from 'blume/core/types.ts'
+import { ClientRouter } from 'astro:transitions'
 
 interface Props {
   navigation: Navigation
@@ -25,6 +26,7 @@ const showNavToggle = hasDrawer && hasSidebar
 const navigationScript = `(()=>{const root=document.documentElement;const measure=()=>{const header=document.querySelector('[data-blume-header]');if(header){root.style.setProperty('--blume-drawer-top',header.getBoundingClientRect().bottom+'px')}};document.addEventListener('click',(event)=>{const target=event.target;if(!(target instanceof Element)){return}const toggle=target.closest('[data-blume-nav-toggle]');if(!toggle){return}const open=root.toggleAttribute('data-blume-nav-open');if(open){measure()}root.style.overflow=open?'hidden':''});addEventListener('resize',()=>{if(!root.hasAttribute('data-blume-nav-open')){return}if(matchMedia('(min-width:64rem)').matches){root.removeAttribute('data-blume-nav-open');root.style.overflow=''}else{measure()}})})();`
 ---
 
+<ClientRouter fallback="swap" />
 <header class="oa-docs-header" data-blume-header>
   {
     showNavToggle && (

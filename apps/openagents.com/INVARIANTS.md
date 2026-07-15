@@ -53,6 +53,10 @@ This is the invariant ledger for `openagents`.
   static bytes through a GET/HEAD-only Node host with no database, application
   secrets, dynamic Blume endpoint, Ask AI, MCP server, remote content adapter,
   or application-runtime authority.
+- Human docs navigation uses Astro's client router and eager link prefetch so
+  page-to-page reading does not reload the entire document. The isolated docs
+  Cloud Run service keeps one minimum instance warm; it must not scale to zero
+  and put a cold-start delay in the reading path.
 - The public content graph is exactly the curated `apps/docs/content` tree.
   Repository-wide audits, runbooks, evidence, transcripts, internal topology,
   and secrets must not enter that graph. A bounded `Future / Advanced` section

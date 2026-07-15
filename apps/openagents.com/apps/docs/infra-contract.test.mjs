@@ -41,7 +41,20 @@ test('the docs deploy is static, secretless, and pinned to its own service', () 
   assert.doesNotMatch(dockerfile, /pnpm|blume|astro/i)
   assert.match(deploy, /SERVICE="openagents-docs"/)
   assert.match(deploy, /gcloud run deploy "\$SERVICE"/)
+  assert.match(deploy, /--min 1/)
   assert.doesNotMatch(deploy, /--set-secrets|--set-env-vars|--add-cloudsql-instances/)
+})
+
+test('docs navigation uses the Astro client router without a visible page crossfade', () => {
+  const docsRoot = join(repoRoot, 'apps', 'openagents.com', 'apps', 'docs')
+  const header = readFileSync(join(docsRoot, 'components', 'Header.astro'), 'utf8')
+  const theme = readFileSync(join(docsRoot, 'theme.css'), 'utf8')
+
+  assert.match(header, /import \{ ClientRouter \} from 'astro:transitions'/)
+  assert.match(header, /<ClientRouter fallback="swap" \/>/)
+  assert.match(theme, /::view-transition-old\(root\)/)
+  assert.match(theme, /::view-transition-new\(root\)/)
+  assert.match(theme, /animation-duration: 0\.01ms/)
 })
 
 test('the drawer toggle disappears when Blume switches to its static desktop sidebar', () => {

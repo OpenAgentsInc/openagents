@@ -56,6 +56,11 @@ independent `openagents-docs` Cloud Run service at `/docs` and `/docs/*`.
 Terraform owns the service shell, serverless NEG, backend, and apex-only path
 rule. `auth.openagents.com` remains wholly routed to the monolith.
 
+Keep page-to-page reading client-routed and prefetched, with no decorative
+document transition delay. The docs service keeps one minimum Cloud Run
+instance warm so an idle site does not turn the next navigation into a cold
+start.
+
 Keep Blume build-only. Ask AI, hosted MCP, server adapters, remote content,
 analytics, and application secrets are not permitted. The docs package may read
 only its owned `content/` tree; never point it at the repository-wide `docs/`
