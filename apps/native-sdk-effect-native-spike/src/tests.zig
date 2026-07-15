@@ -101,6 +101,8 @@ test "exact Node sidecar bootstrap uses the Native SDK effects channel" {
     model.sidecar_entry_path = "/opt/openagents/native-sidecar.mjs";
     model.sidecar_nonce = "proof.native_1";
     model.sidecar_generation = 3;
+    model.sidecar_state_root = "/tmp/openagents-native-state";
+    model.sidecar_token = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     var fx = main.Effects.init(testing.allocator);
     defer fx.deinit();
     fx.executor = .fake;
@@ -111,23 +113,24 @@ test "exact Node sidecar bootstrap uses the Native SDK effects channel" {
     try testing.expectEqual(@as(usize, 1), fx.pendingSpawnCount());
     const request = fx.pendingSpawnAt(0).?;
     try testing.expectEqual(main.sidecar_effect_key, request.key);
-    try testing.expectEqual(native_sdk.EffectOutputMode.collect, request.output);
+    try testing.expectEqual(native_sdk.EffectOutputMode.lines, request.output);
     try testing.expectEqualStrings("/opt/openagents/node", request.argv[0]);
     try testing.expectEqualStrings("/opt/openagents/native-sidecar.mjs", request.argv[1]);
     try testing.expectEqualStrings(
-        "{\"protocol\":\"openagents.desktop.native-sidecar.v1\",\"generation\":3,\"nonce\":\"proof.native_1\"}",
+        "{\"protocol\":\"openagents.desktop.native-sidecar.v2\",\"generation\":3,\"nonce\":\"proof.native_1\",\"stateRootBase64\":\"L3RtcC9vcGVuYWdlbnRzLW5hdGl2ZS1zdGF0ZQ==\",\"transportToken\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
         request.stdin,
     );
 }
 
 test "sidecar bootstrap receipt is generation-fenced and fails closed" {
     const receipt =
-        \\{"protocol":"openagents.desktop.native-sidecar.v1","generation":2,"nonce":"proof.native_2","pid":4242,"nodeVersion":"24.13.1","gatewayProtocolVersion":11,"requestId":"native-sidecar.bootstrap","response":{"kind":"query_result","requestId":"native-sidecar.bootstrap","result":{"kind":"runtime.bootstrap","protocolVersion":11,"lifecycle":"ready","sessionPhase":"unavailable","identityTier":"local_unavailable","capabilities":[]}}}
+        \\{"protocol":"openagents.desktop.native-sidecar.v2","generation":2,"nonce":"proof.native_2","pid":4242,"nodeVersion":"24.13.1","gatewayProtocolVersion":11,"requestId":"native-sidecar.bootstrap","response":{"kind":"query_result","requestId":"native-sidecar.bootstrap","result":{"kind":"runtime.bootstrap","protocolVersion":11,"lifecycle":"ready","sessionPhase":"unavailable","identityTier":"local_unavailable","capabilities":[]}},"transport":{"kind":"loopback_http","host":"127.0.0.1","port":43123}}
     ;
     const parsed = try main.parseSidecarBootstrapReceipt(receipt, 2, "proof.native_2");
     try testing.expectEqual(@as(u64, 2), parsed.generation);
     try testing.expectEqual(@as(u32, 4242), parsed.pid);
     try testing.expectEqual(@as(u8, 11), parsed.gateway_protocol);
+    try testing.expectEqual(@as(u16, 43123), parsed.port);
     try testing.expectError(error.InvalidSidecarReceipt, main.parseSidecarBootstrapReceipt(receipt, 1, "proof.native_2"));
     const excess = try std.fmt.allocPrint(testing.allocator, "{s},\"ambientPath\":\"/private/repository\"}}", .{receipt[0 .. receipt.len - 1]});
     defer testing.allocator.free(excess);
@@ -139,20 +142,18 @@ test "sidecar bootstrap receipt is generation-fenced and fails closed" {
     var model = main.initialModel();
     model.sidecar_nonce = "proof.native_2";
     model.sidecar_generation = 2;
-    main.update(&model, .{ .sidecar_bootstrap_finished = .{
+    model.sidecar_phase = .starting;
+    main.update(&model, .{ .sidecar_ready_line = .{
         .key = main.sidecar_effect_key,
-        .code = 0,
-        .reason = .exited,
-        .output = receipt,
+        .line = receipt,
     } });
     try testing.expectEqual(main.SidecarPhase.ready, model.sidecar_phase);
     try testing.expectEqual(@as(u32, 4242), model.sidecar_pid);
 
-    main.update(&model, .{ .sidecar_bootstrap_finished = .{
+    main.update(&model, .{ .sidecar_exited = .{
         .key = main.sidecar_effect_key,
         .code = 1,
         .reason = .exited,
-        .stderr_tail = "refused",
     } });
     try testing.expectEqual(main.SidecarPhase.unavailable, model.sidecar_phase);
 }

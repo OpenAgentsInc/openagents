@@ -34,17 +34,19 @@ and then adapted into a product-shaped hybrid architecture proof:
 - `frontend/src/native-sdk-component-adoption.ts` records which Native SDK
   components are plausible direct lowerings, owned composites, or bounded
   `Host` drivers. Effect Native remains the public authoring contract.
-- Native SDK's own supervised spawn effect starts a plain ESM sidecar under
-  exact Node 24.13.1. The sidecar imports the Electron-neutral production
-  Desktop runtime gateway, executes and validates `runtime.bootstrap` at
-  protocol v11, emits one bounded receipt, and exits. This proves the service
-  seam only; chat still uses the deterministic fixture host.
+- Native SDK's own supervised spawn effect starts and retains a plain ESM
+  sidecar under exact Node 24.13.1. The sidecar keeps the Electron-neutral
+  production Desktop runtime gateway v11, Sync host, coding catalog, SQLite
+  store, private binding, and admitted workspace service live behind an
+  authenticated loopback-only protocol. Chat still uses the deterministic
+  fixture host.
 
 The thread data and `ChatHost` response are deterministic fixtures and send no
 provider request. The proof does **not** compile Effect through Native SDK's
 restricted TypeScript core compiler, implement a native Effect Native renderer,
-provide real Desktop host services, replace the shipping Electron host, or
-fully confirm any Native MVP AssuranceSpec criterion.
+provide provider/session custody, replace the shipping Electron host, or fully
+confirm the Native MVP AssuranceSpec. It does fully confirm CW-AC-03; 17
+criteria remain open.
 
 ## Verify
 
@@ -62,9 +64,12 @@ host gate. The host gate:
 - refuses to share Native SDK's hard-coded automation directory with a live
   publisher;
 - binds every observation to the exact spawned process id and protocol 7;
-- starts the minified sidecar under exact Node 24.13.1, requires the production
-  Desktop runtime gateway v11 bootstrap, then proves distinct sidecar PIDs and
-  generations across restart and proves both one-shot processes are dead;
+- starts the minified persistent sidecar under exact Node 24.13.1, requires the
+  production Desktop runtime gateway v11, and proves distinct live sidecar
+  generations plus dead-after-host teardown;
+- grants a real private Git repository through Native SDK's semantic file-drop
+  action, then restarts and grants a symlink alias; requires the same six
+  opaque refs and exactly one production coding-catalog session;
 - resolves fresh widget ids from roles and accessible names before acting;
 - drives session and workspace intents through the native canvas and waits for
   higher-revision Effect projections;
@@ -77,10 +82,10 @@ host gate. The host gate:
 - attests distinct initial/restart PIDs, exact Node/Zig/Native SDK identities,
   actual exit/signal/forced-kill state, and command, binary, sidecar bundle,
   frontend, source, and evidence digests in a
-  schema-decoded `openagents.native-sdk.host-gate.v4` artifact;
+  schema-decoded `openagents.native-sdk.host-gate.v5` artifact;
 - leaves private evidence under
   `var/native-sdk-effect-native-spike/host-smoke/` and prints
-  `[native-sdk-effect-native-spike smoke] OK` only after all ten steps.
+  `[native-sdk-effect-native-spike smoke] OK` only after all twelve steps.
 
 The wrapper now installs Native SDK's production asset source explicitly, so
 the built binary loads a marked
@@ -127,13 +132,11 @@ It executes the 36 Native-owned criterion candidate/falsifier units and this
 headed gate, writes a private gap report, and fails without publishing while
 any full MVP criterion lacks target-specific integration evidence.
 
-The gateway bootstrap is intentionally not counted as criterion evidence.
-There is no persistent request protocol, repository grant, selected work
-context, provider turn, or release lifecycle yet, so all 18 Native criterion
-candidates remain red. The next whole target is CW-AC-03: connect the existing
-Desktop coding catalog through a host-private Native directory grant and prove
-opaque `workContextRef`/`sessionRef` stability across process restart and
-ambient-identity falsifiers.
+The persistent grant is counted only for CW-AC-03. The current diagnostic
+confirms that candidate and its falsifier while retaining 17 explicit gaps;
+the host gate is ready and publication remains withheld. The next useful
+targets are CW-AC-17's bounded privacy-safe diagnostics and CW-AC-14's
+grant-scoped workspace tree/status/diff projection through the same sidecar.
 
 The script drives the file protocol directly and therefore does not need a
 machine-global Native SDK CLI. Native SDK's deterministic screenshot covers

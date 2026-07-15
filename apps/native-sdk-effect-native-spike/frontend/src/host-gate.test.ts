@@ -10,6 +10,14 @@ import {
 } from "../../scripts/host-gate.ts";
 
 const digest = `sha256:${"a".repeat(64)}`;
+const admission = {
+  grantRef: "grant.test",
+  projectRef: "project.test",
+  repositoryRef: "repository.test",
+  worktreeRef: "worktree.test",
+  workContextRef: "work-context.test",
+  sessionRef: "session.test",
+};
 const validGate = () => ({
   formatVersion: nativeSdkHostGateFormat,
   targetRef: nativeSdkTargetRef,
@@ -18,37 +26,84 @@ const validGate = () => ({
   frontendAuthority: "effect-native",
   result: "passed",
   runtime: { os: "darwin", architecture: "arm64", node: "24.13.1", zig: "0.16.0", nativeSdkCommit },
-  inputs: { commandDigest: digest, binaryDigest: digest, sidecarBundleDigest: digest, frontendDigest: digest, sourceDigest: digest },
+  inputs: {
+    commandDigest: digest,
+    binaryDigest: digest,
+    sidecarBundleDigest: digest,
+    frontendDigest: digest,
+    sourceDigest: digest,
+  },
   assurance: null,
   processes: {
-    initial: { pid: 101, publisherPid: 101, stopped: true, exitCode: 0, signal: null, forcedKill: false },
-    restarted: { pid: 102, publisherPid: 102, stopped: true, exitCode: 0, signal: null, forcedKill: false },
+    initial: {
+      pid: 101,
+      publisherPid: 101,
+      stopped: true,
+      exitCode: 0,
+      signal: null,
+      forcedKill: false,
+    },
+    restarted: {
+      pid: 102,
+      publisherPid: 102,
+      stopped: true,
+      exitCode: 0,
+      signal: null,
+      forcedKill: false,
+    },
   },
   sidecars: {
-    initial: { pid: 91, generation: 1, liveAfterBootstrap: false },
-    restarted: { pid: 92, generation: 2, liveAfterBootstrap: false },
+    initial: { pid: 91, generation: 1, liveDuringHost: true, liveAfterHost: false },
+    restarted: { pid: 92, generation: 2, liveDuringHost: true, liveAfterHost: false },
   },
-  steps: nativeSdkHostGateSteps.map((id) => ({ id, result: "passed", evidence: ["01-composited-window.png"] })),
+  criterionObservations: {
+    schema: "openagents.native-sdk.cw-ac-03.v1",
+    criterionRef: "CW-AC-03",
+    grantSource: "native_canvas_file_drop",
+    initial: { generation: 1, catalogSessionCount: 1, admission },
+    restarted: { generation: 2, catalogSessionCount: 1, admission },
+    aliasCanonicalized: true,
+    ambientInputsExcluded: true,
+    ambientFalsifiers: {
+      initial: { hostname: "host-alpha", port: "port-43101", providerThread: "provider-alpha" },
+      restarted: { hostname: "host-beta", port: "port-53202", providerThread: "provider-beta" },
+    },
+    privateBindingMode: "0600",
+  },
+  steps: nativeSdkHostGateSteps.map((id) => ({
+    id,
+    result: "passed",
+    evidence: ["01-composited-window.png"],
+  })),
   evidence: [
     "01-composited-window.png",
+    "02-cw-ac-03-initial.json",
     "03-native-shell.png",
     "04-renderer-reload.snapshot.txt",
     "05-process-restart.snapshot.txt",
+    "06-cw-ac-03-restarted.json",
   ].map((name) => ({ name, digest, bytes: 10 })),
 });
 
 describe("Native SDK typed host gate", () => {
   test("accepts only a complete two-process headed receipt", () => {
-    expect(decodeNativeSdkHostGate(validGate())).toMatchObject({ result: "passed", targetRef: nativeSdkTargetRef });
+    expect(decodeNativeSdkHostGate(validGate())).toMatchObject({
+      result: "passed",
+      targetRef: nativeSdkTargetRef,
+    });
   });
 
   test("rejects missing composited evidence and PID reuse", () => {
     const missing = validGate();
-    missing.evidence = missing.evidence.filter((entry) => entry.name !== "01-composited-window.png");
+    missing.evidence = missing.evidence.filter(
+      (entry) => entry.name !== "01-composited-window.png",
+    );
     expect(() => decodeNativeSdkHostGate(missing)).toThrow("native_host_gate_evidence_incomplete");
     const reused = validGate();
     reused.processes.restarted.pid = reused.processes.initial.pid;
     reused.processes.restarted.publisherPid = reused.processes.initial.pid;
-    expect(() => decodeNativeSdkHostGate(reused)).toThrow("native_host_gate_process_or_size_invalid");
+    expect(() => decodeNativeSdkHostGate(reused)).toThrow(
+      "native_host_gate_process_or_size_invalid",
+    );
   });
 });

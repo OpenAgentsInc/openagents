@@ -10,7 +10,14 @@ export type MvpAssuranceTargetDescriptor = Readonly<{
   targetRef: string;
   repositoryPath: string;
   productSpecPath: string;
-  assuranceSpec: Readonly<{ path: string; id: string; revision: number; gateRef: string; reviewId: string; admissionRef: string }>;
+  assuranceSpec: Readonly<{
+    path: string;
+    id: string;
+    revision: number;
+    gateRef: string;
+    reviewId: string;
+    admissionRef: string;
+  }>;
   paths: Readonly<{
     proposalFixture: string;
     environment: string;
@@ -23,7 +30,12 @@ export type MvpAssuranceTargetDescriptor = Readonly<{
     receiptRoot: string;
     runRoot: string;
   }>;
-  criterion: Readonly<{ testPath: string; environmentRef: string; adapterRef: string; adapterSourcePaths: ReadonlyArray<string> }>;
+  criterion: Readonly<{
+    testPath: string;
+    environmentRef: string;
+    adapterRef: string;
+    adapterSourcePaths: ReadonlyArray<string>;
+  }>;
   fullGate: Readonly<{
     argv: readonly [string, ...string[]];
     successMarker: string;
@@ -72,6 +84,8 @@ export const electronMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
     successMarker: "[openagents-desktop smoke] OK",
     smokeField: "electron_smoke",
     sourcePaths: [
+      "apps/native-sdk-effect-native-spike/assurance/mvp-assurance-criteria.test.ts",
+      "apps/native-sdk-effect-native-spike/assurance/native-ac03-observation.ts",
       "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
       "apps/openagents-desktop/src/renderer/assurance-spec-workspace.ts",
       "apps/openagents-desktop/package.json",
@@ -105,7 +119,8 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
   },
   paths: {
     proposalFixture: "packages/assurance-spec/conformance/valid/mvp-proposal.assurance-spec.md",
-    environment: "assurance/environments/openagents-desktop-native-sdk-mvp.assurance-environment.json",
+    environment:
+      "assurance/environments/openagents-desktop-native-sdk-mvp.assurance-environment.json",
     adapterLock: "assurance/openagents-desktop-native-sdk-mvp.adapter-lock.json",
     review: "assurance/openagents-desktop-native-sdk-mvp.assurance-review.json",
     admission: "assurance/openagents-desktop-native-sdk-mvp.assurance-admission.json",
@@ -128,7 +143,7 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
     argv: ["pnpm", "--dir", "apps/native-sdk-effect-native-spike", "run", "verify"],
     successMarker: "[native-sdk-effect-native-spike smoke] OK",
     smokeField: "native_sdk_smoke",
-    hostGateFormat: "openagents.native-sdk.host-gate.v4",
+    hostGateFormat: "openagents.native-sdk.host-gate.v5",
     sourcePaths: [
       "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
       "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
@@ -138,15 +153,27 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
       "apps/openagents-desktop/src/native-sidecar-contract.ts",
       "apps/openagents-desktop/src/native-sidecar-contract.test.ts",
       "apps/openagents-desktop/src/native-sidecar-entry.ts",
+      "apps/openagents-desktop/src/coding-catalog-contract.ts",
+      "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+      "apps/openagents-desktop/src/desktop-sync-host.ts",
+      "apps/openagents-desktop/src/desktop-sync-store.ts",
+      "apps/openagents-desktop/src/desktop-workspace-admission.ts",
+      "apps/openagents-desktop/src/runtime-gateway-contract.ts",
+      "apps/openagents-desktop/src/runtime-gateway.ts",
+      "apps/openagents-desktop/src/workspace-contract.ts",
+      "apps/openagents-desktop/src/workspace-service.ts",
       "apps/openagents-desktop/src/renderer/portable.ts",
       "apps/openagents-desktop/src/renderer/shell.ts",
       "apps/openagents-desktop/package.json",
     ],
   },
   dependencyLockPath: "pnpm-lock.yaml",
-  companionEvidenceRefs: ["assurance/openagents-desktop-native-sdk-mvp.full-native-gate-receipt.json"],
+  companionEvidenceRefs: [
+    "assurance/openagents-desktop-native-sdk-mvp.full-native-gate-receipt.json",
+  ],
   targetSourcePaths: [
     "apps/native-sdk-effect-native-spike/assurance/mvp-assurance-criteria.test.ts",
+    "apps/native-sdk-effect-native-spike/assurance/native-ac03-observation.ts",
     "apps/native-sdk-effect-native-spike/frontend/src/program.ts",
     "apps/native-sdk-effect-native-spike/frontend/src/native-bridge.ts",
     "apps/native-sdk-effect-native-spike/frontend/src/production-command-parity.ts",
@@ -163,6 +190,14 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
     "apps/openagents-desktop/package.json",
     "apps/openagents-desktop/src/chat-contract.ts",
     "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+    "apps/openagents-desktop/src/coding-catalog-contract.ts",
+    "apps/openagents-desktop/src/desktop-sync-host.ts",
+    "apps/openagents-desktop/src/desktop-sync-store.ts",
+    "apps/openagents-desktop/src/desktop-workspace-admission.ts",
+    "apps/openagents-desktop/src/runtime-gateway-contract.ts",
+    "apps/openagents-desktop/src/runtime-gateway.ts",
+    "apps/openagents-desktop/src/workspace-contract.ts",
+    "apps/openagents-desktop/src/workspace-service.ts",
     "apps/openagents-desktop/src/renderer/app.css",
     "apps/openagents-desktop/src/renderer/command-registry.ts",
     "apps/openagents-desktop/src/renderer/portable.ts",
@@ -170,8 +205,11 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
   ],
 };
 
-export const parseMvpAssuranceTargetArgs = (args: ReadonlyArray<string>): MvpAssuranceTargetDescriptor => {
-  if (args.length === 0 || (args.length === 1 && args[0] === "--target=electron")) return electronMvpAssuranceTarget;
+export const parseMvpAssuranceTargetArgs = (
+  args: ReadonlyArray<string>,
+): MvpAssuranceTargetDescriptor => {
+  if (args.length === 0 || (args.length === 1 && args[0] === "--target=electron"))
+    return electronMvpAssuranceTarget;
   if (args.length === 1 && args[0] === "--target=native-sdk") return nativeSdkMvpAssuranceTarget;
   throw new Error("usage: run-mvp-assurance.ts [--target=electron|native-sdk]");
 };
@@ -179,8 +217,13 @@ export const parseMvpAssuranceTargetArgs = (args: ReadonlyArray<string>): MvpAss
 export const mvpAssuranceTargetDescriptorDigest = (target: MvpAssuranceTargetDescriptor): string =>
   canonicalArtifact(target).digest;
 
-export const mvpAssuranceTargetSourceDigest = (repositoryRoot: string, target: MvpAssuranceTargetDescriptor): string =>
-  canonicalArtifact([...target.targetSourcePaths].sort().map((path) => ({
-    path,
-    digest: sha256Digest(readFileSync(resolve(repositoryRoot, path), "utf8")),
-  }))).digest;
+export const mvpAssuranceTargetSourceDigest = (
+  repositoryRoot: string,
+  target: MvpAssuranceTargetDescriptor,
+): string =>
+  canonicalArtifact(
+    [...target.targetSourcePaths].sort().map((path) => ({
+      path,
+      digest: sha256Digest(readFileSync(resolve(repositoryRoot, path), "utf8")),
+    })),
+  ).digest;

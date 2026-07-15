@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "c5005c6061a9bff9991d6b0256bb264a2ce40198db15df43cac191c13c12c3be",
+  "sourceTreeSha256": "73979dd51fd265102acbc0d64b426c5a6fef1f1bf707cbf0f96894e48548558b",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1469,9 +1469,9 @@
       "owner": "OpenAgents Desktop and Effect Native architecture",
       "disposition": "retain-historical",
       "dispatch": false,
-      "sha256": "99b620e498229a0e9848780958a2445be88d9f542faf858ae4d8dec14161d8e3",
+      "sha256": "a5d534595b227bd75bd0c0f00a5197e44c1712d87f999b4dd4159d0174090a5e",
       "status": "retain until Native SDK is adopted, rejected, or superseded by a later renderer/host decision",
-      "snapshot": "analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; real Desktop center-pane and command parity `8163cfd56371d0c1d52315cb2d12e644fbd97069`; current exact-Node sidecar increment based on that published commit; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)",
+      "snapshot": "analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; real Desktop center-pane and command parity `8163cfd56371d0c1d52315cb2d12e644fbd97069`; persistent Desktop-service increment based on `39e9d9e29b3b3ef344ee9b4c88acb9e726a0a602`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [

@@ -1,38 +1,42 @@
-import { Schema as S } from "effect"
-import { createHash } from "node:crypto"
-import { readFileSync, readdirSync } from "node:fs"
-import { basename, dirname, relative, resolve, sep } from "node:path"
+import { Schema as S } from "effect";
+import { createHash } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 
-import { canonicalArtifact } from "./artifact.ts"
-import type { AssuranceEnvironmentProfileDocument } from "./environment.ts"
-import type { AssuranceExecutionUnit, AssuranceManifest } from "./manifest.ts"
-import { sha256Digest } from "./tooling.ts"
+import { canonicalArtifact } from "./artifact.ts";
+import type { AssuranceEnvironmentProfileDocument } from "./environment.ts";
+import type { AssuranceExecutionUnit, AssuranceManifest } from "./manifest.ts";
+import { sha256Digest } from "./tooling.ts";
 import {
   executeVitePlusTestUnitWithIdentity,
   type VitePlusTestAdapterResult,
-} from "./vite-plus-test-adapter.ts"
+} from "./vite-plus-test-adapter.ts";
 
-export const OPENAGENTS_NATIVE_SDK_ASSURANCE_ADAPTER_REF = "openagents.native_sdk_assurance.v1" as const
-export const OPENAGENTS_NATIVE_SDK_ASSURANCE_ADAPTER_VERSION = "0.1.0" as const
-export const OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_REF = "openagents.native_sdk_host_gate.v1" as const
-export const OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_VERSION = "0.1.0" as const
-export const OPENAGENTS_NATIVE_SDK_HOST_GATE_FORMAT = "openagents.native-sdk.host-gate.v4" as const
-export const OPENAGENTS_NATIVE_SDK_TARGET_REF = "openagents.desktop.native-sdk.mvp" as const
+export const OPENAGENTS_NATIVE_SDK_ASSURANCE_ADAPTER_REF =
+  "openagents.native_sdk_assurance.v1" as const;
+export const OPENAGENTS_NATIVE_SDK_ASSURANCE_ADAPTER_VERSION = "0.1.0" as const;
+export const OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_REF =
+  "openagents.native_sdk_host_gate.v1" as const;
+export const OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_VERSION = "0.1.0" as const;
+export const OPENAGENTS_NATIVE_SDK_HOST_GATE_FORMAT = "openagents.native-sdk.host-gate.v5" as const;
+export const OPENAGENTS_NATIVE_SDK_TARGET_REF = "openagents.desktop.native-sdk.mvp" as const;
 
 export const nativeSdkHostGateExpectedSteps = [
   "initial-projection",
   "runtime-sidecar-bootstrap",
+  "repository-grant-admitted",
   "composited-window-capture",
   "session-selection",
   "workspace-round-trip",
   "native-canvas-screenshot",
   "renderer-reload-restored",
   "process-restart-restored",
+  "repository-identity-restored",
   "new-chat-after-restart",
   "clean-teardown",
-] as const
+] as const;
 
-const Digest = S.String
+const Digest = S.String;
 const Process = S.Struct({
   pid: S.Number,
   publisherPid: S.Number,
@@ -40,14 +44,27 @@ const Process = S.Struct({
   exitCode: S.NullOr(S.Number),
   signal: S.NullOr(S.String),
   forcedKill: S.Boolean,
-})
+});
 const AssuranceBinding = S.Struct({
   manifestDigest: Digest,
   environmentDigest: Digest,
   adapterLockDigest: Digest,
   targetDescriptorDigest: Digest,
   targetSourceDigest: Digest,
-})
+});
+const CodingRef = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(256),
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
+);
+const Admission = S.Struct({
+  grantRef: CodingRef,
+  projectRef: CodingRef,
+  repositoryRef: CodingRef,
+  worktreeRef: CodingRef,
+  workContextRef: CodingRef,
+  sessionRef: CodingRef,
+});
 
 /** Independent verifier schema. It intentionally does not import the app-owned producer decoder. */
 export const NativeSdkAssuranceHostGateSchema = S.Struct({
@@ -74,30 +91,64 @@ export const NativeSdkAssuranceHostGateSchema = S.Struct({
   assurance: AssuranceBinding,
   processes: S.Struct({ initial: Process, restarted: Process }),
   sidecars: S.Struct({
-    initial: S.Struct({ pid: S.Number, generation: S.Literal(1), liveAfterBootstrap: S.Literal(false) }),
-    restarted: S.Struct({ pid: S.Number, generation: S.Literal(2), liveAfterBootstrap: S.Literal(false) }),
+    initial: S.Struct({
+      pid: S.Number,
+      generation: S.Literal(1),
+      liveDuringHost: S.Literal(true),
+      liveAfterHost: S.Literal(false),
+    }),
+    restarted: S.Struct({
+      pid: S.Number,
+      generation: S.Literal(2),
+      liveDuringHost: S.Literal(true),
+      liveAfterHost: S.Literal(false),
+    }),
   }),
-  steps: S.Array(S.Struct({
-    id: S.String,
-    result: S.Literal("passed"),
-    evidence: S.Array(S.String),
-  })),
+  criterionObservations: S.Struct({
+    schema: S.Literal("openagents.native-sdk.cw-ac-03.v1"),
+    criterionRef: S.Literal("CW-AC-03"),
+    grantSource: S.Literal("native_canvas_file_drop"),
+    initial: S.Struct({
+      generation: S.Literal(1),
+      catalogSessionCount: S.Literal(1),
+      admission: Admission,
+    }),
+    restarted: S.Struct({
+      generation: S.Literal(2),
+      catalogSessionCount: S.Literal(1),
+      admission: Admission,
+    }),
+    aliasCanonicalized: S.Literal(true),
+    ambientInputsExcluded: S.Literal(true),
+    ambientFalsifiers: S.Struct({
+      initial: S.Struct({ hostname: CodingRef, port: CodingRef, providerThread: CodingRef }),
+      restarted: S.Struct({ hostname: CodingRef, port: CodingRef, providerThread: CodingRef }),
+    }),
+    privateBindingMode: S.Literal("0600"),
+  }),
+  steps: S.Array(
+    S.Struct({
+      id: S.String,
+      result: S.Literal("passed"),
+      evidence: S.Array(S.String),
+    }),
+  ),
   evidence: S.Array(S.Struct({ name: S.String, digest: Digest, bytes: S.Number })),
-})
+});
 
-export type NativeSdkAssuranceHostGate = typeof NativeSdkAssuranceHostGateSchema.Type
+export type NativeSdkAssuranceHostGate = typeof NativeSdkAssuranceHostGateSchema.Type;
 
 export type NativeSdkHostGateExpectedBinding = Readonly<{
-  workspaceRoot: string
-  evidenceRoot: string
-  manifestDigest: string
-  environmentDigest: string
-  adapterLockDigest: string
-  targetDescriptorDigest: string
-  targetSourceDigest: string
-  environmentRef: string
-  nativeReportRef: string
-}>
+  workspaceRoot: string;
+  evidenceRoot: string;
+  manifestDigest: string;
+  environmentDigest: string;
+  adapterLockDigest: string;
+  targetDescriptorDigest: string;
+  targetSourceDigest: string;
+  environmentRef: string;
+  nativeReportRef: string;
+}>;
 
 export const nativeSdkHostGateSourcePaths = [
   "apps/native-sdk-effect-native-spike/app.zon",
@@ -117,6 +168,8 @@ export const nativeSdkHostGateSourcePaths = [
   "apps/native-sdk-effect-native-spike/frontend/src/style.css",
   "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
   "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
+  "apps/native-sdk-effect-native-spike/assurance/mvp-assurance-criteria.test.ts",
+  "apps/native-sdk-effect-native-spike/assurance/native-ac03-observation.ts",
   "apps/openagents-desktop/src/native-sidecar-contract.ts",
   "apps/openagents-desktop/src/native-sidecar-contract.test.ts",
   "apps/openagents-desktop/src/native-sidecar-entry.ts",
@@ -124,100 +177,126 @@ export const nativeSdkHostGateSourcePaths = [
   "apps/openagents-desktop/package.json",
   "apps/openagents-desktop/src/chat-contract.ts",
   "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+  "apps/openagents-desktop/src/coding-catalog-contract.ts",
+  "apps/openagents-desktop/src/desktop-workspace-admission.ts",
+  "apps/openagents-desktop/src/desktop-sync-host.ts",
+  "apps/openagents-desktop/src/desktop-sync-store.ts",
+  "apps/openagents-desktop/src/workspace-contract.ts",
+  "apps/openagents-desktop/src/workspace-service.ts",
+  "apps/openagents-desktop/src/runtime-gateway-contract.ts",
+  "apps/openagents-desktop/src/runtime-gateway.ts",
   "apps/openagents-desktop/src/renderer/app.css",
   "apps/openagents-desktop/src/renderer/command-registry.ts",
   "apps/openagents-desktop/src/renderer/portable.ts",
   "apps/openagents-desktop/src/renderer/shell.ts",
-] as const
+  "packages/assurance-spec/src/native-sdk-assurance-adapter.ts",
+  "packages/assurance-spec/scripts/mvp-assurance-target.ts",
+  "pnpm-lock.yaml",
+] as const;
 
 export type NativeSdkHostGateReceipt = Readonly<{
-  native_sdk_host_gate_receipt_format_version: "0.1"
-  adapter_ref: typeof OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_REF
-  adapter_version: typeof OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_VERSION
-  target_ref: typeof OPENAGENTS_NATIVE_SDK_TARGET_REF
-  environment_ref: string
-  manifest_digest: string
-  environment_digest: string
-  adapter_lock_digest: string
-  target_descriptor_digest: string
-  target_source_digest: string
-  native_report_ref: string
-  native_report_digest: string
-  command_digest: string
-  binary_digest: string
-  sidecar_bundle_digest: string
-  frontend_digest: string
-  source_digest: string
-  evidence_digest: string
-  runtime: NativeSdkAssuranceHostGate["runtime"]
-  process_generations: 2
-  verdict: "green"
-  public_safety: Readonly<{ classification: "reviewed_public_safe"; contains_raw_output: false }>
-}>
+  native_sdk_host_gate_receipt_format_version: "0.1";
+  adapter_ref: typeof OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_REF;
+  adapter_version: typeof OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_VERSION;
+  target_ref: typeof OPENAGENTS_NATIVE_SDK_TARGET_REF;
+  environment_ref: string;
+  manifest_digest: string;
+  environment_digest: string;
+  adapter_lock_digest: string;
+  target_descriptor_digest: string;
+  target_source_digest: string;
+  native_report_ref: string;
+  native_report_digest: string;
+  command_digest: string;
+  binary_digest: string;
+  sidecar_bundle_digest: string;
+  frontend_digest: string;
+  source_digest: string;
+  evidence_digest: string;
+  runtime: NativeSdkAssuranceHostGate["runtime"];
+  process_generations: 2;
+  verdict: "green";
+  public_safety: Readonly<{ classification: "reviewed_public_safe"; contains_raw_output: false }>;
+}>;
 
 export type NativeSdkHostGateNormalization =
-  | Readonly<{ status: "ready"; gate: NativeSdkAssuranceHostGate; receipt: NativeSdkHostGateReceipt; receiptBytes: string; receiptDigest: string }>
-  | Readonly<{ status: "inconclusive"; code: string; message: string }>
+  | Readonly<{
+      status: "ready";
+      gate: NativeSdkAssuranceHostGate;
+      receipt: NativeSdkHostGateReceipt;
+      receiptBytes: string;
+      receiptDigest: string;
+    }>
+  | Readonly<{ status: "inconclusive"; code: string; message: string }>;
 
 export class NativeSdkAssuranceAdapterError extends Error {
-  readonly code: string
+  readonly code: string;
   constructor(code: string, message: string) {
-    super(message)
-    this.name = "NativeSdkAssuranceAdapterError"
-    this.code = code
+    super(message);
+    this.name = "NativeSdkAssuranceAdapterError";
+    this.code = code;
   }
 }
 
 const fail = (code: string, message: string): never => {
-  throw new NativeSdkAssuranceAdapterError(code, message)
-}
+  throw new NativeSdkAssuranceAdapterError(code, message);
+};
 
-const digestPattern = /^sha256:[a-f0-9]{64}$/u
-const noncePattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u
+const digestPattern = /^sha256:[a-f0-9]{64}$/u;
+const noncePattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 
 const sha256Bytes = (bytes: Buffer | string): string =>
-  `sha256:${createHash("sha256").update(bytes).digest("hex")}`
+  `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
 const filesUnder = (directory: string): ReadonlyArray<string> =>
   readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const absolute = resolve(directory, entry.name)
-    return entry.isDirectory() ? filesUnder(absolute) : [absolute]
-  })
+    const absolute = resolve(directory, entry.name);
+    return entry.isDirectory() ? filesUnder(absolute) : [absolute];
+  });
 
-const fileSetDigest = (paths: ReadonlyArray<string>, base: string): string => sha256Bytes(JSON.stringify(
-  [...paths].sort().map((absolute) => ({
-    path: relative(base, absolute).split(sep).join("/"),
-    digest: sha256Bytes(readFileSync(absolute)),
-  })),
-))
+const fileSetDigest = (paths: ReadonlyArray<string>, base: string): string =>
+  sha256Bytes(
+    JSON.stringify(
+      [...paths].sort().map((absolute) => ({
+        path: relative(base, absolute).split(sep).join("/"),
+        digest: sha256Bytes(readFileSync(absolute)),
+      })),
+    ),
+  );
 
 const processIsLive = (pid: number): boolean => {
   try {
-    process.kill(pid, 0)
-    return true
+    process.kill(pid, 0);
+    return true;
   } catch {
-    return false
+    return false;
   }
-}
+};
 
-export const observeNativeSdkHostGateInputs = (workspaceRootInput: string): Readonly<{
-  binaryDigest: string
-  sidecarBundleDigest: string
-  frontendDigest: string
-  sourceDigest: string
+export const observeNativeSdkHostGateInputs = (
+  workspaceRootInput: string,
+): Readonly<{
+  binaryDigest: string;
+  sidecarBundleDigest: string;
+  frontendDigest: string;
+  sourceDigest: string;
 }> => {
-  const workspaceRoot = resolve(workspaceRootInput)
-  const packageRoot = resolve(workspaceRoot, "apps/native-sdk-effect-native-spike")
+  const workspaceRoot = resolve(workspaceRootInput);
+  const packageRoot = resolve(workspaceRoot, "apps/native-sdk-effect-native-spike");
   return {
-    binaryDigest: sha256Bytes(readFileSync(resolve(packageRoot, "zig-out/bin/native-sdk-effect-native-spike"))),
-    sidecarBundleDigest: sha256Bytes(readFileSync(resolve(packageRoot, "sidecar/dist/native-sidecar-entry.mjs"))),
+    binaryDigest: sha256Bytes(
+      readFileSync(resolve(packageRoot, "zig-out/bin/native-sdk-effect-native-spike")),
+    ),
+    sidecarBundleDigest: sha256Bytes(
+      readFileSync(resolve(packageRoot, "sidecar/dist/native-sidecar-entry.mjs")),
+    ),
     frontendDigest: fileSetDigest(filesUnder(resolve(packageRoot, "frontend/dist")), packageRoot),
     sourceDigest: fileSetDigest(
       nativeSdkHostGateSourcePaths.map((path) => resolve(workspaceRoot, path)),
       workspaceRoot,
     ),
-  }
-}
+  };
+};
 
 const exactBinding = (
   gate: NativeSdkAssuranceHostGate,
@@ -231,66 +310,104 @@ const exactBinding = (
     "targetSourceDigest",
   ] as const) {
     if (gate.assurance[field] !== expected[field]) {
-      fail("host_gate_binding_mismatch", `Native host gate ${field} differs from the active assurance run.`)
+      fail(
+        "host_gate_binding_mismatch",
+        `Native host gate ${field} differs from the active assurance run.`,
+      );
     }
   }
-}
+};
 
 export const decodeAndBindNativeSdkHostGate = (
   bytes: string,
   expected: NativeSdkHostGateExpectedBinding,
 ): NativeSdkAssuranceHostGate => {
-  if (expected.nativeReportRef.startsWith("/") || expected.nativeReportRef.includes("..") || expected.nativeReportRef.trim() === "") {
-    return fail("host_gate_report_ref_invalid", "Native host report reference must be a safe repository-relative path.")
+  if (
+    expected.nativeReportRef.startsWith("/") ||
+    expected.nativeReportRef.includes("..") ||
+    expected.nativeReportRef.trim() === ""
+  ) {
+    return fail(
+      "host_gate_report_ref_invalid",
+      "Native host report reference must be a safe repository-relative path.",
+    );
   }
-  let candidate: unknown
+  let candidate: unknown;
   try {
-    candidate = JSON.parse(bytes)
+    candidate = JSON.parse(bytes);
   } catch {
-    return fail("host_gate_json_invalid", "Native host gate is not valid JSON.")
+    return fail("host_gate_json_invalid", "Native host gate is not valid JSON.");
   }
-  let gate: NativeSdkAssuranceHostGate
+  let gate: NativeSdkAssuranceHostGate;
   try {
-    gate = S.decodeUnknownSync(NativeSdkAssuranceHostGateSchema)(candidate, { onExcessProperty: "error" })
+    gate = S.decodeUnknownSync(NativeSdkAssuranceHostGateSchema)(candidate, {
+      onExcessProperty: "error",
+    });
   } catch {
-    return fail("host_gate_schema_invalid", "Native host gate does not match the independently owned verifier schema.")
+    return fail(
+      "host_gate_schema_invalid",
+      "Native host gate does not match the independently owned verifier schema.",
+    );
   }
-  if (!noncePattern.test(gate.runNonce)) fail("host_gate_nonce_invalid", "Native host gate nonce is malformed.")
-  if (JSON.stringify(gate.steps.map((step) => step.id)) !== JSON.stringify(nativeSdkHostGateExpectedSteps)) {
-    fail("host_gate_steps_incomplete", "Native host gate does not contain the exact ordered headed journey.")
+  if (!noncePattern.test(gate.runNonce))
+    fail("host_gate_nonce_invalid", "Native host gate nonce is malformed.");
+  if (
+    JSON.stringify(gate.steps.map((step) => step.id)) !==
+    JSON.stringify(nativeSdkHostGateExpectedSteps)
+  ) {
+    fail(
+      "host_gate_steps_incomplete",
+      "Native host gate does not contain the exact ordered headed journey.",
+    );
   }
-  const evidenceNames = gate.evidence.map((entry) => entry.name)
-  const evidenceSet = new Set(evidenceNames)
-  if (evidenceSet.size !== evidenceNames.length) fail("host_gate_evidence_duplicate", "Native host evidence names must be unique.")
+  const evidenceNames = gate.evidence.map((entry) => entry.name);
+  const evidenceSet = new Set(evidenceNames);
+  if (evidenceSet.size !== evidenceNames.length)
+    fail("host_gate_evidence_duplicate", "Native host evidence names must be unique.");
   for (const name of [
     "01-composited-window.png",
+    "02-cw-ac-03-initial.json",
     "03-native-shell.png",
     "04-renderer-reload.snapshot.txt",
     "05-process-restart.snapshot.txt",
+    "06-cw-ac-03-restarted.json",
   ]) {
-    if (!evidenceSet.has(name)) fail("host_gate_evidence_incomplete", `Native host evidence is missing ${name}.`)
+    if (!evidenceSet.has(name))
+      fail("host_gate_evidence_incomplete", `Native host evidence is missing ${name}.`);
   }
   if (gate.steps.some((step) => step.evidence.some((name) => !evidenceSet.has(name)))) {
-    fail("host_gate_step_evidence_unbound", "A Native host journey step names absent evidence.")
+    fail("host_gate_step_evidence_unbound", "A Native host journey step names absent evidence.");
   }
   if (gate.steps.some((step) => step.evidence.length === 0)) {
-    fail("host_gate_step_evidence_empty", "Every Native host journey step must bind evidence.")
+    fail("host_gate_step_evidence_empty", "Every Native host journey step must bind evidence.");
   }
-  const evidenceRoot = resolve(expected.evidenceRoot)
+  const evidenceRoot = resolve(expected.evidenceRoot);
   for (const evidence of gate.evidence) {
-    if (evidence.name !== basename(evidence.name) || evidence.name.includes("..") || evidence.name.includes("/") || evidence.name.includes("\\")) {
-      fail("host_gate_evidence_path_invalid", "Native host evidence names must be safe basenames.")
+    if (
+      evidence.name !== basename(evidence.name) ||
+      evidence.name.includes("..") ||
+      evidence.name.includes("/") ||
+      evidence.name.includes("\\")
+    ) {
+      fail("host_gate_evidence_path_invalid", "Native host evidence names must be safe basenames.");
     }
-    const evidencePath = resolve(evidenceRoot, evidence.name)
-    if (dirname(evidencePath) !== evidenceRoot) fail("host_gate_evidence_path_invalid", "Native host evidence escaped its run root.")
-    let bytes: Buffer
+    const evidencePath = resolve(evidenceRoot, evidence.name);
+    if (dirname(evidencePath) !== evidenceRoot)
+      fail("host_gate_evidence_path_invalid", "Native host evidence escaped its run root.");
+    let bytes: Buffer;
     try {
-      bytes = readFileSync(evidencePath)
+      bytes = readFileSync(evidencePath);
     } catch {
-      return fail("host_gate_evidence_missing", `Native host evidence is unavailable: ${evidence.name}.`)
+      return fail(
+        "host_gate_evidence_missing",
+        `Native host evidence is unavailable: ${evidence.name}.`,
+      );
     }
     if (bytes.length !== evidence.bytes || sha256Bytes(bytes) !== evidence.digest) {
-      fail("host_gate_evidence_mismatch", `Native host evidence differs from the host report: ${evidence.name}.`)
+      fail(
+        "host_gate_evidence_mismatch",
+        `Native host evidence differs from the host report: ${evidence.name}.`,
+      );
     }
   }
   const allDigests = [
@@ -301,32 +418,73 @@ export const decodeAndBindNativeSdkHostGate = (
     gate.inputs.sourceDigest,
     ...Object.values(gate.assurance),
     ...gate.evidence.map((entry) => entry.digest),
-  ]
+  ];
   if (!allDigests.every((digest) => digestPattern.test(digest))) {
-    fail("host_gate_digest_invalid", "Native host gate contains a malformed digest.")
+    fail("host_gate_digest_invalid", "Native host gate contains a malformed digest.");
   }
-  const { initial, restarted } = gate.processes
+  const { initial, restarted } = gate.processes;
   if (
-    !Number.isSafeInteger(initial.pid) || initial.pid <= 0 || initial.pid !== initial.publisherPid ||
-    !Number.isSafeInteger(restarted.pid) || restarted.pid <= 0 || restarted.pid !== restarted.publisherPid ||
-    initial.pid === restarted.pid || initial.forcedKill || restarted.forcedKill ||
+    !Number.isSafeInteger(initial.pid) ||
+    initial.pid <= 0 ||
+    initial.pid !== initial.publisherPid ||
+    !Number.isSafeInteger(restarted.pid) ||
+    restarted.pid <= 0 ||
+    restarted.pid !== restarted.publisherPid ||
+    initial.pid === restarted.pid ||
+    initial.forcedKill ||
+    restarted.forcedKill ||
     gate.sidecars.initial.pid === gate.sidecars.restarted.pid ||
-    gate.sidecars.initial.pid === initial.pid || gate.sidecars.restarted.pid === restarted.pid ||
+    gate.sidecars.initial.pid === initial.pid ||
+    gate.sidecars.restarted.pid === restarted.pid ||
     gate.evidence.some((entry) => !Number.isSafeInteger(entry.bytes) || entry.bytes <= 0)
   ) {
-    fail("host_gate_process_or_size_invalid", "Native host process generations or evidence sizes are invalid.")
+    fail(
+      "host_gate_process_or_size_invalid",
+      "Native host process generations or evidence sizes are invalid.",
+    );
   }
   if (
-    processIsLive(initial.publisherPid) || processIsLive(restarted.publisherPid) ||
-    processIsLive(gate.sidecars.initial.pid) || processIsLive(gate.sidecars.restarted.pid)
+    JSON.stringify(gate.criterionObservations.initial.admission) !==
+    JSON.stringify(gate.criterionObservations.restarted.admission)
   ) {
-    fail("host_gate_publisher_live", "A reported Native SDK host publisher remains live after the gate.")
+    fail(
+      "host_gate_work_identity_drift",
+      "Native repository work identity drifted across restart or alias canonicalization.",
+    );
   }
-  let observed: ReturnType<typeof observeNativeSdkHostGateInputs>
+  const admissionBytes = JSON.stringify(gate.criterionObservations.initial.admission);
+  const ambientFalsifiers = Object.values(gate.criterionObservations.ambientFalsifiers).flatMap(
+    Object.values,
+  );
+  if (
+    JSON.stringify(gate.criterionObservations.ambientFalsifiers.initial) ===
+      JSON.stringify(gate.criterionObservations.ambientFalsifiers.restarted) ||
+    ambientFalsifiers.some((value) => admissionBytes.includes(value))
+  ) {
+    fail(
+      "host_gate_ambient_identity_derived",
+      "Native work identity retained an ambient machine, port, or provider-thread sentinel.",
+    );
+  }
+  if (
+    processIsLive(initial.publisherPid) ||
+    processIsLive(restarted.publisherPid) ||
+    processIsLive(gate.sidecars.initial.pid) ||
+    processIsLive(gate.sidecars.restarted.pid)
+  ) {
+    fail(
+      "host_gate_publisher_live",
+      "A reported Native SDK host publisher remains live after the gate.",
+    );
+  }
+  let observed: ReturnType<typeof observeNativeSdkHostGateInputs>;
   try {
-    observed = observeNativeSdkHostGateInputs(expected.workspaceRoot)
+    observed = observeNativeSdkHostGateInputs(expected.workspaceRoot);
   } catch {
-    return fail("host_gate_input_unavailable", "Native host gate input artifacts could not be re-read.")
+    return fail(
+      "host_gate_input_unavailable",
+      "Native host gate input artifacts could not be re-read.",
+    );
   }
   if (
     observed.binaryDigest !== gate.inputs.binaryDigest ||
@@ -334,18 +492,21 @@ export const decodeAndBindNativeSdkHostGate = (
     observed.frontendDigest !== gate.inputs.frontendDigest ||
     observed.sourceDigest !== gate.inputs.sourceDigest
   ) {
-    fail("host_gate_input_mismatch", "Native host binary, frontend, or source bytes differ from the host report.")
+    fail(
+      "host_gate_input_mismatch",
+      "Native host binary, frontend, or source bytes differ from the host report.",
+    );
   }
-  exactBinding(gate, expected)
-  return gate
-}
+  exactBinding(gate, expected);
+  return gate;
+};
 
 export const normalizeNativeSdkHostGate = (
   bytes: string,
   expected: NativeSdkHostGateExpectedBinding,
 ): NativeSdkHostGateNormalization => {
   try {
-    const gate = decodeAndBindNativeSdkHostGate(bytes, expected)
+    const gate = decodeAndBindNativeSdkHostGate(bytes, expected);
     const receipt: NativeSdkHostGateReceipt = {
       native_sdk_host_gate_receipt_format_version: "0.1",
       adapter_ref: OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_REF,
@@ -369,36 +530,48 @@ export const normalizeNativeSdkHostGate = (
       process_generations: 2,
       verdict: "green",
       public_safety: { classification: "reviewed_public_safe", contains_raw_output: false },
-    }
-    const artifact = canonicalArtifact(receipt)
-    return { status: "ready", gate, receipt, receiptBytes: artifact.bytes, receiptDigest: artifact.digest }
+    };
+    const artifact = canonicalArtifact(receipt);
+    return {
+      status: "ready",
+      gate,
+      receipt,
+      receiptBytes: artifact.bytes,
+      receiptDigest: artifact.digest,
+    };
   } catch (error) {
-    const known = error instanceof NativeSdkAssuranceAdapterError
-      ? error
-      : new NativeSdkAssuranceAdapterError("host_gate_unavailable", "Native host gate could not be normalized.")
-    return { status: "inconclusive", code: known.code, message: known.message }
+    const known =
+      error instanceof NativeSdkAssuranceAdapterError
+        ? error
+        : new NativeSdkAssuranceAdapterError(
+            "host_gate_unavailable",
+            "Native host gate could not be normalized.",
+          );
+    return { status: "inconclusive", code: known.code, message: known.message };
   }
-}
+};
 
-export const executeNativeSdkCriterionUnit = (input: Readonly<{
-  workspaceRoot: string
-  runRoot: string
-  manifest: AssuranceManifest
-  manifestDigest: string
-  environment: AssuranceEnvironmentProfileDocument
-  unit: AssuranceExecutionUnit
-  producerRef: string
-  reviewerRef: string
-  sourceDigest: string
-  vitePlusExecutable?: string
-}>): VitePlusTestAdapterResult => {
+export const executeNativeSdkCriterionUnit = (
+  input: Readonly<{
+    workspaceRoot: string;
+    runRoot: string;
+    manifest: AssuranceManifest;
+    manifestDigest: string;
+    environment: AssuranceEnvironmentProfileDocument;
+    unit: AssuranceExecutionUnit;
+    producerRef: string;
+    reviewerRef: string;
+    sourceDigest: string;
+    vitePlusExecutable?: string;
+  }>,
+): VitePlusTestAdapterResult => {
   for (const capability of ["vite_plus_test", "junit", "native_sdk_criterion_catalog"]) {
     if (!input.environment.capabilities.includes(capability)) {
-      fail("missing_environment_capability", `Native SDK environment lacks ${capability}.`)
+      fail("missing_environment_capability", `Native SDK environment lacks ${capability}.`);
     }
   }
   return executeVitePlusTestUnitWithIdentity(input, {
     adapterRef: OPENAGENTS_NATIVE_SDK_ASSURANCE_ADAPTER_REF,
     adapterVersion: OPENAGENTS_NATIVE_SDK_ASSURANCE_ADAPTER_VERSION,
-  })
-}
+  });
+};

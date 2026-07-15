@@ -30,13 +30,25 @@ describe("MVP assurance execution targets", () => {
     const nativePaths = writablePaths(nativeSdkMvpAssuranceTarget);
     expect(nativePaths.every((path) => !electronPaths.has(path))).toBe(true);
     expect(nativeSdkMvpAssuranceTarget.criterion.testPath).not.toContain("openagents-desktop/src");
-    expect(nativeSdkMvpAssuranceTarget.targetSourcePaths.filter((path) => path.includes("openagents-desktop/src"))).toEqual([
+    expect(
+      nativeSdkMvpAssuranceTarget.targetSourcePaths.filter((path) =>
+        path.includes("openagents-desktop/src"),
+      ),
+    ).toEqual([
       "apps/openagents-desktop/src/desktop-command-contract.ts",
       "apps/openagents-desktop/src/native-sidecar-contract.ts",
       "apps/openagents-desktop/src/native-sidecar-contract.test.ts",
       "apps/openagents-desktop/src/native-sidecar-entry.ts",
       "apps/openagents-desktop/src/chat-contract.ts",
       "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+      "apps/openagents-desktop/src/coding-catalog-contract.ts",
+      "apps/openagents-desktop/src/desktop-sync-host.ts",
+      "apps/openagents-desktop/src/desktop-sync-store.ts",
+      "apps/openagents-desktop/src/desktop-workspace-admission.ts",
+      "apps/openagents-desktop/src/runtime-gateway-contract.ts",
+      "apps/openagents-desktop/src/runtime-gateway.ts",
+      "apps/openagents-desktop/src/workspace-contract.ts",
+      "apps/openagents-desktop/src/workspace-service.ts",
       "apps/openagents-desktop/src/renderer/app.css",
       "apps/openagents-desktop/src/renderer/command-registry.ts",
       "apps/openagents-desktop/src/renderer/portable.ts",
