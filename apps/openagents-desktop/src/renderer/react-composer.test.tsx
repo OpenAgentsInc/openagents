@@ -258,6 +258,48 @@ describe("React Codex composer", () => {
 });
 
 describe("React command and decision surfaces", () => {
+  test("does no catalog work while closed and bounds recent-session projection when open", async () => {
+    const { container } = installDom();
+    const { ReactCommandPalette, projectRecentCommandSessions } = await import("./react-composer.tsx");
+    const { report } = recorder();
+    let rootReads = 0;
+    const roots = new Proxy(Array.from({ length: 10_000 }, (_, index) => ({
+      threadRef: `history-${index}`,
+      parentThreadRef: null,
+      title: `History ${index}`,
+      status: "completed" as const,
+      createdAt: new Date(10_000 - index).toISOString(),
+      updatedAt: new Date(10_000 - index).toISOString(),
+      depth: 0,
+      descendantCount: 0,
+      model: null,
+      role: null,
+      nickname: null,
+      agentPath: null,
+      sourceVersion: null,
+      reasoning: null,
+      source: "codex" as const,
+    })), {
+      get(target, property, receiver) {
+        if (typeof property === "string" && /^\d+$/u.test(property)) rootReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const base = fixtureState();
+    const state = { ...base, commandPaletteOpen: false, history: {
+      ...base.history,
+      catalog: { roots, agents: [] },
+    } };
+    const root = createTestRoot(container);
+    await render(root, <ReactCommandPalette state={state} report={report} />);
+    expect(rootReads).toBe(0);
+    expect(container.textContent).toBe("");
+
+    const projected = projectRecentCommandSessions(state, "");
+    expect(projected).toHaveLength(6);
+    expect(rootReads).toBeLessThanOrEqual(24);
+  });
+
   test("groups only available OpenAgents actions and real recent sessions in the T3-shaped palette", async () => {
     const { window, container } = installDom();
     const { ReactCommandPalette } = await import("./react-composer.tsx");

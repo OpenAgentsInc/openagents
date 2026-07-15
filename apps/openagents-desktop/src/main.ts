@@ -721,9 +721,12 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       Effect.runSync(service.snapshotForThread(threadRef)),
   }
 }, () => ({
-  catalog: () => hostLifecycle.history()!.run({ kind: "history_catalog", sessionsRoot: codexSessionsRoot(), claudeRoot: claudeProjectsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
-  page: (threadRef, offset, limit) => hostLifecycle.history()!.run({ kind: "history_page", sessionsRoot: codexSessionsRoot(), claudeRoot: claudeProjectsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
-  search: (query, limit) => hostLifecycle.history()!.run({ kind: "history_search", sessionsRoot: codexSessionsRoot(), claudeRoot: claudeProjectsRoot(), query, limit }) as Promise<import("./codex-history-contract.ts").CodexHistorySearchResponse>,
+  // MVP is Codex-only. Do not scan or transfer a Claude graph that every
+  // current renderer projection discards; merged-history remains an internal
+  // future-phase capability, outside the startup path.
+  catalog: () => hostLifecycle.history()!.run({ kind: "history_catalog", sessionsRoot: codexSessionsRoot(), claudeRoot: null }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
+  page: (threadRef, offset, limit) => hostLifecycle.history()!.run({ kind: "history_page", sessionsRoot: codexSessionsRoot(), claudeRoot: null, threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
+  search: (query, limit) => hostLifecycle.history()!.run({ kind: "history_search", sessionsRoot: codexSessionsRoot(), claudeRoot: null, query, limit }) as Promise<import("./codex-history-contract.ts").CodexHistorySearchResponse>,
 }),()=>hostLifecycle.sync()===null?"local_unavailable":hostLifecycle.sync()!.status().identityTier, () => {
   const service = hostLifecycle.sync()?.runtime() ?? null
   if (service === null && smokeMode) {

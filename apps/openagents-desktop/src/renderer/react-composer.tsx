@@ -137,7 +137,51 @@ const commandIcon = (command: DesktopCommand): LucideIcon => {
   return RefreshCw;
 };
 
-export const ReactCommandPalette = ({
+const COMMAND_PALETTE_RECENT_SOURCE_LIMIT = 24;
+
+export type CommandPaletteSession = Readonly<{
+  id: string;
+  title: string;
+  updatedAt: string;
+  intent: "DesktopChatSelected" | "HistoryConversationSelected";
+}>;
+
+/**
+ * The command palette is a recent-work surface, not a second full-catalog
+ * index. Keep its projection bounded even when the loss-accounted history
+ * catalog contains years of conversations. Full-catalog lookup remains the
+ * explicit session-search path in the rail.
+ */
+export const projectRecentCommandSessions = (
+  state: DesktopShellState,
+  query: string,
+): ReadonlyArray<CommandPaletteSession> => {
+  const normalized = query.trim().toLocaleLowerCase();
+  const candidates: ReadonlyArray<CommandPaletteSession> = [
+    ...state.threads.slice(0, COMMAND_PALETTE_RECENT_SOURCE_LIMIT).map(thread => ({
+      id: thread.id,
+      title: thread.title || "Untitled session",
+      updatedAt: thread.updatedAt,
+      intent: "DesktopChatSelected" as const,
+    })),
+    ...state.history.catalog.roots.slice(0, COMMAND_PALETTE_RECENT_SOURCE_LIMIT)
+      .filter(thread => thread.source === "codex")
+      .map(thread => ({
+        id: thread.threadRef,
+        title: thread.title || "Untitled session",
+        updatedAt: thread.updatedAt,
+        intent: "HistoryConversationSelected" as const,
+      })),
+  ];
+  const seen = new Set<string>();
+  return [...candidates]
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .filter(session => seen.has(session.id) ? false : (seen.add(session.id), true))
+    .filter(session => normalized === "" || session.title.toLocaleLowerCase().includes(normalized))
+    .slice(0, 6);
+};
+
+const OpenReactCommandPalette = ({
   state,
   report,
 }: {
@@ -155,33 +199,13 @@ export const ReactCommandPalette = ({
       ),
     [normalized, state],
   );
-  const recentSessions = useMemo(() => {
-    const candidates = [
-      ...state.threads.map(thread => ({
-        id: thread.id,
-        title: thread.title || "Untitled session",
-        updatedAt: thread.updatedAt,
-        intent: "DesktopChatSelected",
-      })),
-      ...state.history.catalog.roots.filter(thread => thread.source === "codex").map(thread => ({
-        id: thread.threadRef,
-        title: thread.title || "Untitled session",
-        updatedAt: thread.updatedAt,
-        intent: "HistoryConversationSelected",
-      })),
-    ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-    const seen = new Set<string>();
-    return candidates
-      .filter(session => seen.has(session.id) ? false : (seen.add(session.id), true))
-      .filter(session => normalized === "" || session.title.toLocaleLowerCase().includes(normalized))
-      .slice(0, 6);
-  }, [normalized, state.history.catalog.roots, state.threads]);
-  useEffect(() => {
-    if (!state.commandPaletteOpen) setQuery("");
-  }, [state.commandPaletteOpen]);
+  const recentSessions = useMemo(
+    () => projectRecentCommandSessions(state, normalized),
+    [normalized, state.history.catalog.roots, state.threads],
+  );
   return (
     <CommandDialog
-      open={state.commandPaletteOpen}
+      open
       onOpenChange={(open) => {
         if (!open) dispatch(report, "DesktopCommandPaletteDismissed");
       }}
@@ -244,6 +268,14 @@ export const ReactCommandPalette = ({
     </CommandDialog>
   );
 };
+
+/** Closed palettes do zero command/catalog projection work during startup hydration. */
+export const ReactCommandPalette = (props: {
+  readonly state: DesktopShellState;
+  readonly report: IntentReporter;
+}): ReactElement => props.state.commandPaletteOpen
+  ? <OpenReactCommandPalette {...props} />
+  : <></>;
 
 export const ReactComposer = ({
   state,

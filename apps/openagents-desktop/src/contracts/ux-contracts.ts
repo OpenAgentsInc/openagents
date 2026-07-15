@@ -3718,7 +3718,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Opening the openagents app, via our new oa command or in dev, shows a blank/brown screen for ~5 seconds before opening the UI. This is unacceptable. I thought we had a UX contract somewhere about the need to show initial codex chats in <50 ms. That should be timed from startup. Go look up our ways of testing load times. Startup and everything else. Write full analysis of current situation in openagents/docs/fable/ new doc. This is an incident. Very bad. Need good bootup process. No brown screen. If any loading, show beautiful starcraft version of it, or something. Time to seeing stuff and then interactable elements on bootup is extremely important. Analyze, fix, update analysis, push.",
         authorityBoundary:
-          "The BrowserWindow is created before any local database open, OS-keychain custody, or session network verification on the production whenReady path, and the post-window network settle is fire-and-forget. The renderer paints a static branded boot frame (khalaTheme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, and streams hydration in afterwards behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
+          "The BrowserWindow is created before any local database open, OS-keychain custody, or session network verification on the production whenReady path, and the post-window network settle is fire-and-forget. The renderer paints a static branded boot frame (khalaTheme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, publishes the Codex-only top-level metadata catalog, guarantees that catalog a visible paint, and only then requests selected-thread detail. Closed overlays perform zero catalog projection work and recent-only projections inspect a fixed-size prefix, never the full loss-accounted catalog. Hydration streams behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
         evidenceRefs: [
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
@@ -3727,6 +3727,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/scripts/startup-bench.ts",
           "apps/openagents-desktop/benchmarks/startup/2026-07-13-window-first-boot-frame.json",
           "docs/fable/2026-07-13-desktop-startup-incident.md",
+          "docs/transcripts/248.md",
         ],
         oracles: [
           {
@@ -3743,7 +3744,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
             description:
-              "Proves the renderer mounts the shell before the coding-history hydration effect runs, that the history catalog fetch lives inside hydrateAfterMount, and that the boot frame is removed after mount.",
+              "Proves the renderer mounts the shell before the coding-history hydration effect runs, publishes catalog metadata before selected-thread detail, gives metadata a visible paint, keeps the MVP history host Codex-only, and removes the boot frame after mount. A known-bad detail-before-paint fixture is rejected.",
           },
           {
             id: "startup.boot_frame_token_sync",

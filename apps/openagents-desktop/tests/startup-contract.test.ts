@@ -23,7 +23,8 @@
  *     verification before `createWindow()`; the network settle after the
  *     window is fire-and-forget (`void`), never awaited.
  *  2. boot.ts: the shell mounts BEFORE the coding-history hydration
- *     (`hydrateAfterMount`), and the static boot frame is removed after mount.
+ *     (`hydrateAfterMount`), catalog metadata paints before selected-thread
+ *     detail starts, and the static boot frame is removed after mount.
  *  3. index.html: a branded boot frame paints with the first HTML parse and
  *     every color literal in it is an exact khalaTheme token value
  *     (mechanically synced to @effect-native/tokens — the same rule the
@@ -171,7 +172,7 @@ describe("startup contract: window before persistence/keychain/network (main.ts)
 const bootOrderViolations = (source: string): ReadonlyArray<string> => {
   const violations: Array<string> = []
   const idxHydrateDef = source.indexOf("const hydrateAfterMount")
-  const idxCatalogFetch = source.indexOf("Effect.promise(historyHost.catalog)")
+  const idxCatalogFetch = source.indexOf("historyHost.catalog()")
   const idxMount = source.indexOf("renderer.mount(root")
   const idxHydrateRun = source.indexOf("yield* hydrateAfterMount")
   if (idxHydrateDef < 0) violations.push("hydrateAfterMount missing from boot.ts")
@@ -191,14 +192,32 @@ const bootOrderViolations = (source: string): ReadonlyArray<string> => {
   return violations
 }
 
+const metadataFirstViolations = (source: string): ReadonlyArray<string> => {
+  const violations: Array<string> = []
+  const catalogCommit = source.indexOf("catalog: historyCatalog")
+  const visiblePaint = source.indexOf(
+    "requestAnimationFrame(() => requestAnimationFrame(() => resolve()))",
+    catalogCommit,
+  )
+  const detailFetch = source.indexOf("historyHost.page(selected", catalogCommit)
+  if (catalogCommit < 0) violations.push("history catalog metadata is never committed")
+  if (visiblePaint < 0) violations.push("catalog metadata has no guaranteed visible paint")
+  if (detailFetch < 0) violations.push("selected-thread detail fetch is missing")
+  if (violations.length > 0) return violations
+  if (detailFetch < catalogCommit) violations.push("selected-thread detail starts before catalog metadata commits")
+  if (detailFetch < visiblePaint) violations.push("selected-thread detail starts before catalog metadata paints")
+  return violations
+}
+
 describe("startup contract: shell mounts before history hydration (boot.ts)", () => {
   test("the renderer mounts the shell first and hydrates afterwards", () => {
     expect(bootOrderViolations(bootSource)).toEqual([])
+    expect(metadataFirstViolations(bootSource)).toEqual([])
   })
 
   test("falsifier: fetching the history catalog before mount is rejected", () => {
     const bad = [
-      "const catalog = yield* Effect.promise(historyHost.catalog)",
+      "const catalog = historyHost.catalog()",
       "const hydrateAfterMount = Effect.gen(function* () {})",
       "yield* renderer.mount(root, program.viewStream, report)",
       'document.getElementById("openagents-boot-frame")?.remove()',
@@ -207,6 +226,27 @@ describe("startup contract: shell mounts before history hydration (boot.ts)", ()
     expect(bootOrderViolations(bad)).toContain(
       "history catalog is fetched outside hydrateAfterMount (pre-mount blocking hydration)",
     )
+  })
+
+  test("falsifier: selected-thread detail before the metadata paint is rejected", () => {
+    const bad = [
+      "catalog: historyCatalog",
+      "historyHost.page(selected, 0, 1)",
+      "requestAnimationFrame(() => requestAnimationFrame(() => resolve()))",
+    ].join("\n")
+    expect(metadataFirstViolations(bad)).toContain(
+      "selected-thread detail starts before catalog metadata paints",
+    )
+  })
+
+  test("the MVP history host never scans the out-of-scope Claude store", () => {
+    const historyHostStart = mainSource.indexOf("// MVP is Codex-only.")
+    const historyHostEnd = mainSource.indexOf("}),()=>hostLifecycle.sync()", historyHostStart)
+    expect(historyHostStart).toBeGreaterThan(-1)
+    expect(historyHostEnd).toBeGreaterThan(historyHostStart)
+    const historyHost = mainSource.slice(historyHostStart, historyHostEnd)
+    expect(historyHost).toContain('claudeRoot: null')
+    expect(historyHost).not.toContain("claudeProjectsRoot()")
   })
 })
 

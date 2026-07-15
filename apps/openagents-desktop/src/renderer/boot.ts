@@ -1182,16 +1182,37 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const snapshot = yield* Effect.promise(() => bridge.liveAgentGraph!.snapshot!().catch(() => null))
       for (const update of snapshot?.graphs ?? []) applyLocalGraph(update)
     }
-    const [historyCatalog, localHistoryThreads] = yield* Effect.all([
-      Effect.promise(historyHost.catalog),
-      Effect.promise(historyHost.localThreads),
-    ], { concurrency: "unbounded" })
+    // Start independent metadata requests together, but never join them before
+    // publishing the catalog. A slow local-thread adapter must not hold the
+    // recent-session rail hostage.
+    const historyCatalogPromise = historyHost.catalog()
+    const localHistoryThreadsPromise = historyHost.localThreads()
+    const historyCatalog = yield* Effect.promise(() => historyCatalogPromise)
     // EP250 bottom-anchored flow: a restored ITEM selection loads the window
     // AROUND that item and scrolls to it; otherwise the conversation opens at
     // its END with the newest items visible.
     let initialHistoryAnchor: Readonly<{ kind: "end" }> | Readonly<{ kind: "item"; itemRef: string }> | null = null
     if (historyCatalog !== null) {
       const restored=restoreHistory(); const selected=restorableHistoryThreadRef(historyCatalog,restored?.selectedThreadRef,historyCatalogPageSize)
+      // Transcript 248 / metadata-first law: publish stable top-level rows as
+      // soon as the catalog arrives. Selected-thread detail is a second phase;
+      // it may parse a large rollout and must never delay discovery.
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        history: {
+          ...current.history,
+          catalog: historyCatalog,
+          page: null,
+          selectedItemRef: null,
+          railCollapsed: restored?.railCollapsed ?? false,
+          expandedThreadRefs: restored?.expandedThreadRefs ?? [],
+        },
+      }))
+      // Two animation frames guarantee the metadata commit gets a visible
+      // paint before any selected-thread page request begins.
+      yield* Effect.promise(() => new Promise<void>(resolve =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ))
       let firstPage: CodexHistoryPage | null = null
       if (selected !== null) {
         const probe = yield* Effect.promise(() => historyHost.page(selected, 0, 1))
@@ -1203,8 +1224,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             : { kind: "end" }
         }
       }
-      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, catalog: historyCatalog, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, railCollapsed:restored?.railCollapsed??false, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[], localThreads: localHistoryThreads } }))
-    } else if (localHistoryThreads.length > 0) {
+      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[] } }))
+    }
+    const localHistoryThreads = yield* Effect.promise(() => localHistoryThreadsPromise)
+    if (localHistoryThreads.length > 0) {
       yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, localThreads: localHistoryThreads } }))
     }
     let restoredWorkspace: DesktopWorkspaceName | null = null
