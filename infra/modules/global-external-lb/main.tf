@@ -100,26 +100,80 @@ resource "google_compute_backend_service" "this" {
   }
 }
 
+resource "google_compute_region_network_endpoint_group" "docs" {
+  project               = var.project
+  name                  = "${var.name}-docs-neg"
+  region                = var.region
+  network_endpoint_type = "SERVERLESS"
+
+  cloud_run {
+    service = var.docs_cloud_run_service
+  }
+}
+
+resource "google_compute_backend_service" "docs" {
+  project               = var.project
+  name                  = "${var.name}-docs-backend"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  protocol              = "HTTPS"
+
+  backend {
+    group = google_compute_region_network_endpoint_group.docs.id
+  }
+
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+}
+
 # ---------------------------------------------------------------------------
 # URL map, proxies, forwarding rules
 # ---------------------------------------------------------------------------
+
+data "google_compute_backend_service" "components" {
+  project = var.project
+  name    = var.components_backend_service
+}
 
 resource "google_compute_url_map" "this" {
   project         = var.project
   name            = "${var.name}-url-map"
   default_service = google_compute_backend_service.this.id
 
-  # All served hostnames route to the same monolith backend today; the
-  # explicit host rule keeps the intended host set visible and gives a seam
-  # for per-host routing later.
   host_rule {
-    hosts        = var.domains
+    hosts        = [var.docs_host]
+    path_matcher = "openagents"
+  }
+
+  host_rule {
+    hosts        = var.monolith_only_hosts
     path_matcher = "monolith"
+  }
+
+  host_rule {
+    hosts        = [var.components_host]
+    path_matcher = "effect-native-gallery"
+  }
+
+  path_matcher {
+    name            = "openagents"
+    default_service = google_compute_backend_service.this.id
+
+    path_rule {
+      paths   = ["/docs", "/docs/*"]
+      service = google_compute_backend_service.docs.id
+    }
   }
 
   path_matcher {
     name            = "monolith"
     default_service = google_compute_backend_service.this.id
+  }
+
+  path_matcher {
+    name            = "effect-native-gallery"
+    default_service = data.google_compute_backend_service.components.id
   }
 }
 

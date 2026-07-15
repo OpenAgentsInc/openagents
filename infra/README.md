@@ -31,7 +31,7 @@ infra/
     service-account/     SA + non-authoritative role grants (not yet instantiated)
     monitoring-alerts/   CPU / connections / 5xx / budget policies (not yet instantiated)
     secret-manager-secret/  secret CONTAINER + accessor grants — versions stay out-of-band
-    global-external-lb/  static IP + Certificate Manager cert (DNS-auth pre-provisioning) + serverless-NEG LB (CFG-10)
+    global-external-lb/  static IP + Certificate Manager cert + host/path routing for the monolith and static docs service
 ```
 
 Note: `backend.tf` and `providers.tf` live inside `prod/` (not at `infra/`)
@@ -52,6 +52,7 @@ its own copies with a different state prefix.
 | GCS `openagentsgemini-terraform-state` | `module.terraform_state_bucket` |
 | Secret Manager `oa-updates-codesign-key` + accessor grant (#8530) | `module.oa_updates_codesign_key` |
 | Cloud Run `openagents-monolith` (shell pre-created for CFG-9/#8524) | `module.openagents_monolith` |
+| Cloud Run `openagents-docs` (static Blume docs shell) | `module.openagents_docs` |
 | Global External LB for `openagents.com` + `auth.openagents.com` — static IP, Certificate Manager cert + DNS authorizations, serverless NEG, backend, URL maps, HTTP(S) proxies, forwarding rules (CFG-10/#8525) | `module.openagents_lb` |
 
 19 resources on import day, +2 imported for #8530, +16 created for #8525
@@ -65,6 +66,11 @@ was a **no-op** against live as of import day; there are no accepted diffs.
   and ingress. `lifecycle.ignore_changes` covers `template`, `traffic`,
   `labels`, `annotations`, etc., so ordinary `gcloud run deploy` releases
   never show up as drift and runtime env values never need to live in HCL.
+- **Docs routing is apex-only.** `/docs` and `/docs/*` on `openagents.com`
+  route to the `openagents-docs` static service. `auth.openagents.com` remains
+  wholly monolith-owned; no docs path rule applies to the auth host. The
+  pre-existing `components.openagents.com` gallery matcher and backend remain
+  explicit and unchanged in the same URL map.
 - **No credentials in HCL.** SQL users are tracked for existence only;
   passwords are set/rotated with `gcloud sql users set-password` and ignored
   by the provider config. Secret Manager secrets are tracked as **containers

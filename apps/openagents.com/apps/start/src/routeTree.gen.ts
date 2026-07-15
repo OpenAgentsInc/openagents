@@ -31,7 +31,6 @@ import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as KhalaIndexRouteImport } from './routes/khala/index'
 import { Route as ForumIndexRouteImport } from './routes/forum/index'
-import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as ComponentsIndexRouteImport } from './routes/components/index'
 import { Route as CodeIndexRouteImport } from './routes/code/index'
 import { Route as BusinessIndexRouteImport } from './routes/business/index'
@@ -43,7 +42,6 @@ import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
 import { Route as PreviewSalesLandingRouteImport } from './routes/preview/sales-landing'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
-import { Route as DocsSlugRouteImport } from './routes/docs/$slug'
 import { Route as ComponentsFamilyRouteImport } from './routes/components/$family'
 import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
@@ -169,11 +167,6 @@ const ForumIndexRoute = ForumIndexRouteImport.update({
   path: '/forum/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DocsIndexRoute = DocsIndexRouteImport.update({
-  id: '/docs/',
-  path: '/docs/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
   id: '/components/',
   path: '/components/',
@@ -227,11 +220,6 @@ const PreviewLandingRoute = PreviewLandingRouteImport.update({
 const KhalaChatSyncRoute = KhalaChatSyncRouteImport.update({
   id: '/khala/chat-sync',
   path: '/khala/chat-sync',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DocsSlugRoute = DocsSlugRouteImport.update({
-  id: '/docs/$slug',
-  path: '/docs/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ComponentsFamilyRoute = ComponentsFamilyRouteImport.update({
@@ -335,7 +323,6 @@ export interface FileRoutesByFullPath {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
-  '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -347,7 +334,6 @@ export interface FileRoutesByFullPath {
   '/business/': typeof BusinessIndexRoute
   '/code/': typeof CodeIndexRoute
   '/components/': typeof ComponentsIndexRoute
-  '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -386,7 +372,6 @@ export interface FileRoutesByTo {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
-  '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -398,7 +383,6 @@ export interface FileRoutesByTo {
   '/business': typeof BusinessIndexRoute
   '/code': typeof CodeIndexRoute
   '/components': typeof ComponentsIndexRoute
-  '/docs': typeof DocsIndexRoute
   '/forum': typeof ForumIndexRoute
   '/khala': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -438,7 +422,6 @@ export interface FileRoutesById {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
-  '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -450,7 +433,6 @@ export interface FileRoutesById {
   '/business/': typeof BusinessIndexRoute
   '/code/': typeof CodeIndexRoute
   '/components/': typeof ComponentsIndexRoute
-  '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -491,7 +473,6 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/components/$family'
-    | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -503,7 +484,6 @@ export interface FileRouteTypes {
     | '/business/'
     | '/code/'
     | '/components/'
-    | '/docs/'
     | '/forum/'
     | '/khala/'
     | '/business/kpi/$engagementRef'
@@ -542,7 +522,6 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/components/$family'
-    | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -554,7 +533,6 @@ export interface FileRouteTypes {
     | '/business'
     | '/code'
     | '/components'
-    | '/docs'
     | '/forum'
     | '/khala'
     | '/business/kpi/$engagementRef'
@@ -593,7 +571,6 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/components/$family'
-    | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -605,7 +582,6 @@ export interface FileRouteTypes {
     | '/business/'
     | '/code/'
     | '/components/'
-    | '/docs/'
     | '/forum/'
     | '/khala/'
     | '/business/kpi/$engagementRef'
@@ -645,7 +621,6 @@ export interface RootRouteChildren {
   BlogSlugRoute: typeof BlogSlugRoute
   CodeDownloadRoute: typeof CodeDownloadRoute
   ComponentsFamilyRoute: typeof ComponentsFamilyRoute
-  DocsSlugRoute: typeof DocsSlugRoute
   KhalaChatSyncRoute: typeof KhalaChatSyncRoute
   PreviewLandingRoute: typeof PreviewLandingRoute
   PreviewSalesLandingRoute: typeof PreviewSalesLandingRoute
@@ -657,7 +632,6 @@ export interface RootRouteChildren {
   BusinessIndexRoute: typeof BusinessIndexRoute
   CodeIndexRoute: typeof CodeIndexRoute
   ComponentsIndexRoute: typeof ComponentsIndexRoute
-  DocsIndexRoute: typeof DocsIndexRoute
   ForumIndexRoute: typeof ForumIndexRoute
   KhalaIndexRoute: typeof KhalaIndexRoute
   BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
@@ -825,13 +799,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ForumIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/docs/': {
-      id: '/docs/'
-      path: '/docs'
-      fullPath: '/docs/'
-      preLoaderRoute: typeof DocsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/components/': {
       id: '/components/'
       path: '/components'
@@ -907,13 +874,6 @@ declare module '@tanstack/react-router' {
       path: '/khala/chat-sync'
       fullPath: '/khala/chat-sync'
       preLoaderRoute: typeof KhalaChatSyncRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/docs/$slug': {
-      id: '/docs/$slug'
-      path: '/docs/$slug'
-      fullPath: '/docs/$slug'
-      preLoaderRoute: typeof DocsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/components/$family': {
@@ -1045,7 +1005,6 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugRoute: BlogSlugRoute,
   CodeDownloadRoute: CodeDownloadRoute,
   ComponentsFamilyRoute: ComponentsFamilyRoute,
-  DocsSlugRoute: DocsSlugRoute,
   KhalaChatSyncRoute: KhalaChatSyncRoute,
   PreviewLandingRoute: PreviewLandingRoute,
   PreviewSalesLandingRoute: PreviewSalesLandingRoute,
@@ -1057,7 +1016,6 @@ const rootRouteChildren: RootRouteChildren = {
   BusinessIndexRoute: BusinessIndexRoute,
   CodeIndexRoute: CodeIndexRoute,
   ComponentsIndexRoute: ComponentsIndexRoute,
-  DocsIndexRoute: DocsIndexRoute,
   ForumIndexRoute: ForumIndexRoute,
   KhalaIndexRoute: KhalaIndexRoute,
   BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,

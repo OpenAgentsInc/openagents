@@ -77,3 +77,6 @@ supportedArchitectures:
   cpu: [current, x64]
   libc: [current, glibc]
   os: [current, linux]
+
+minimumReleaseAgeExclude:
+  - blume@1.0.4

@@ -15,7 +15,6 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/code\/?$/,
   /^\/code\/download$/,
   /^\/components(?:\/[^/]+)?\/?$/,
-  /^\/docs(?:\/[^/]+)?\/?$/,
   /^\/download$/,
   /^\/forum(?:\/(?:f|t|receipts)\/[^/]+)?\/?$/,
   /^\/gym$/,

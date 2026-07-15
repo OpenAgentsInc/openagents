@@ -1,0 +1,201 @@
+@font-face {
+  font-family: 'Commit Mono';
+  src: url('/docs/fonts/CommitMonoV143-VF.woff2') format('woff2');
+  font-style: normal italic;
+  font-weight: 200 700;
+  font-display: swap;
+}
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --blume-background: #000000;
+  --blume-foreground: #f1efe8;
+  --blume-muted: #080808;
+  --blume-muted-foreground: rgba(255, 255, 255, 0.66);
+  --blume-border: #242424;
+  --blume-accent: #2979ff;
+  --blume-accent-foreground: #ffffff;
+  --blume-action: #2979ff;
+  --blume-code-background: #080808;
+  --blume-radius: 0.25rem;
+  --blume-font-display: 'Commit Mono', 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --blume-font-body: 'Commit Mono', 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --blume-font-mono: 'Commit Mono', 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body {
+  background: #000000;
+}
+
+body {
+  letter-spacing: 0.005em;
+}
+
+[data-blume-theme-toggle] {
+  display: none !important;
+}
+
+.oa-docs-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  min-height: 4rem;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--blume-border);
+  background: #000000;
+  padding: 0 1.5rem;
+}
+
+.oa-docs-brand {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--blume-foreground);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.oa-docs-brand small {
+  border-left: 1px solid var(--blume-border);
+  color: var(--blume-muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding-left: 0.6rem;
+}
+
+.oa-brand-mark {
+  display: inline-flex;
+  align-items: end;
+  gap: 2px;
+  height: 1.15rem;
+}
+
+.oa-brand-mark i {
+  display: block;
+  width: 3px;
+  background: #2979ff;
+}
+
+.oa-brand-mark i:nth-child(1) { height: 45%; }
+.oa-brand-mark i:nth-child(2) { height: 75%; }
+.oa-brand-mark i:nth-child(3) { height: 100%; background: #00b8ff; }
+
+.oa-docs-header-spacer {
+  flex: 1;
+}
+
+.oa-product-links {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.oa-product-links a,
+.oa-icon-button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--blume-muted-foreground);
+  padding: 0 0.75rem;
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.oa-product-links a:hover,
+.oa-icon-button:hover {
+  background: #080808;
+  color: var(--blume-foreground);
+}
+
+.oa-icon-button {
+  cursor: pointer;
+  font-size: 1.25rem;
+  padding: 0;
+  width: 2.75rem;
+}
+
+[data-blume-search-open] {
+  min-height: 2.75rem;
+  border-radius: 0.25rem !important;
+  background: #010102 !important;
+}
+
+[data-blume-search-dialog] {
+  border-radius: 0.25rem !important;
+  background: #010102 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+article {
+  text-wrap: pretty;
+}
+
+article h1,
+article h2,
+article h3 {
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+article :where(p, li) {
+  line-height: 1.75;
+}
+
+article a {
+  text-underline-offset: 0.2em;
+}
+
+:focus-visible {
+  outline: 2px solid #00b8ff !important;
+  outline-offset: 2px;
+}
+
+@media (max-width: 52rem) {
+  .oa-docs-header {
+    padding: 0 0.75rem;
+  }
+
+  .oa-product-links a:not(:last-child) {
+    display: none;
+  }
+}
+
+@media (max-width: 30rem) {
+  .oa-docs-brand small,
+  .oa-product-links {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  [data-blume-search-open],
+  [data-blume-search-close],
+  [data-blume-nav-toggle],
+  .oa-product-links a,
+  nav a,
+  button {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

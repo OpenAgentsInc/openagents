@@ -1,0 +1,24 @@
+---
+title: Agent-readable docs
+description: Static Markdown and discovery artifacts for tools and coding agents.
+lastModified: 2026-07-15
+sidebar:
+  order: 8
+---
+
+The docs build emits static agent-readable artifacts without running an AI endpoint or MCP server.
+
+## Available artifacts
+
+- [`llms.txt`](https://openagents.com/docs/llms.txt) indexes the public documentation tree.
+- [`llms-full.txt`](https://openagents.com/docs/llms-full.txt) provides the complete public documentation corpus.
+- [`agent-readability.json`](https://openagents.com/docs/agent-readability.json) describes enabled static formats and content-use signals.
+- Add `.md` to a documentation route to request its raw Markdown mirror.
+
+These artifacts contain only the curated public content under this docs package. They do not index the repository-wide `docs/` directory, internal audits, runbooks, evidence, private traces, or operational topology.
+
+## Authority boundary
+
+Instruction files and documentation help tools understand the system; they do not grant authentication, repository, deployment, payment, moderation, or operator authority. Server-side policy remains authoritative for every action.
+
+Ask AI and hosted MCP are disabled. Search is a local static Orama index built with the site.

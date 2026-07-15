@@ -1,0 +1,63 @@
+---
+import Search from 'blume/components/layout/Search.astro'
+import type { UIStrings } from 'blume/core/i18n-ui.ts'
+import type { Navigation } from 'blume/core/types.ts'
+
+interface Props {
+  navigation: Navigation
+  searchEnabled: boolean
+  searchLocale?: string
+  searchStrings?: UIStrings['search']
+  hasDrawer?: boolean
+  hasSidebar?: boolean
+}
+
+const {
+  navigation,
+  searchEnabled,
+  searchLocale,
+  searchStrings,
+  hasDrawer = true,
+  hasSidebar = true,
+} = Astro.props
+
+const showNavToggle = hasDrawer && hasSidebar
+const navigationScript = `(()=>{const root=document.documentElement;const measure=()=>{const header=document.querySelector('[data-blume-header]');if(header){root.style.setProperty('--blume-drawer-top',header.getBoundingClientRect().bottom+'px')}};document.addEventListener('click',(event)=>{const target=event.target;if(!(target instanceof Element)){return}const toggle=target.closest('[data-blume-nav-toggle]');if(!toggle){return}const open=root.toggleAttribute('data-blume-nav-open');if(open){measure()}root.style.overflow=open?'hidden':''});addEventListener('resize',()=>{if(!root.hasAttribute('data-blume-nav-open')){return}if(matchMedia('(min-width:64rem)').matches){root.removeAttribute('data-blume-nav-open');root.style.overflow=''}else{measure()}})})();`
+---
+
+<header class="oa-docs-header" data-blume-header>
+  {
+    showNavToggle && (
+      <button
+        aria-label="Toggle documentation navigation"
+        class="oa-icon-button lg:hidden"
+        data-blume-nav-toggle
+        type="button"
+      >
+        <span aria-hidden="true">≡</span>
+      </button>
+    )
+  }
+  <a class="oa-docs-brand" href="/docs">
+    <span class="oa-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span>OpenAgents</span>
+    <small>Docs</small>
+  </a>
+  <div class="oa-docs-header-spacer"></div>
+  {
+    searchEnabled && (
+      <Search
+        askEnabled={false}
+        locale={searchLocale}
+        navigation={navigation}
+        strings={searchStrings}
+      />
+    )
+  }
+  <nav aria-label="Product links" class="oa-product-links">
+    <a href="/astro">Desktop</a>
+    <a href="/promises">Promises</a>
+    <a href="https://github.com/OpenAgentsInc/openagents" rel="noreferrer" target="_blank">Source ↗</a>
+  </nav>
+</header>
+<script is:inline set:html={navigationScript} />

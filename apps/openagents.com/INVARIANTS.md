@@ -41,6 +41,29 @@ This is the invariant ledger for `openagents`.
   and companion agent files remain available. Legacy Sites, billing, credits,
   checkout, and other non-MVP Foldkit documents are not Start-owned.
 
+## 2026-07-15 static public documentation
+
+- `/docs` and `/docs/*` are retained public documentation routes owned by the
+  static `apps/docs` artifact and the independent `openagents-docs` Cloud Run
+  service. The apex load balancer routes only those paths to that service;
+  `auth.openagents.com` and every other apex path remain monolith-owned.
+- Blume is an exact-pinned, build-only dependency. Production serves generated
+  static bytes through a GET/HEAD-only Node host with no database, application
+  secrets, dynamic Blume endpoint, Ask AI, MCP server, remote content adapter,
+  or application-runtime authority.
+- The public content graph is exactly the curated `apps/docs/content` tree.
+  Repository-wide audits, runbooks, evidence, transcripts, internal topology,
+  secrets, and retired payment/credit/market/settlement/Sites/Autopilot claims
+  must not enter that graph.
+- `/docs/product-promises` remains stable, but mutable promise state stays
+  authoritative only in `/promises`, its JSON projection, and receipts.
+- Blume/Astro is a docs-only third-party presentation exception. Owned product
+  application UI remains Effect Native, and docs prose grants no auth, tool,
+  API, payment, deployment, acceptance, release, or public-claim authority.
+- Regression coverage lives in `apps/docs/server.test.mjs`, strict Blume
+  build/check/validate, Terraform validation/plan, and public document plus
+  concrete-asset smokes.
+
 ## 2026-07-14 payment, markets, and Sites retirement
 
 - The accepted MVP excludes payments, billing credits, markets, Sites,

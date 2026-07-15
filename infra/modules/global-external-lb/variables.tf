@@ -22,3 +22,28 @@ variable "cloud_run_service" {
   description = "Cloud Run service name the serverless NEG points at"
   type        = string
 }
+
+variable "docs_cloud_run_service" {
+  description = "Cloud Run service name for the static /docs backend"
+  type        = string
+}
+
+variable "docs_host" {
+  description = "Hostname whose /docs paths route to the docs backend"
+  type        = string
+}
+
+variable "monolith_only_hosts" {
+  description = "Hostnames that always route to the monolith"
+  type        = list(string)
+}
+
+variable "components_host" {
+  description = "Hostname for the separately managed Effect Native component gallery"
+  type        = string
+}
+
+variable "components_backend_service" {
+  description = "Existing global backend service name for the Effect Native component gallery"
+  type        = string
+}

@@ -246,6 +246,16 @@ module "openagents_monolith" {
   region  = var.region
 }
 
+# Static-only Blume documentation service. Terraform owns the service shell;
+# the checked-in docs deploy script owns immutable build revisions.
+module "openagents_docs" {
+  source = "../modules/cloud-run-service"
+
+  project = var.project_id
+  name    = "openagents-docs"
+  region  = var.region
+}
+
 # Global External Application LB fronting the monolith for openagents.com +
 # auth.openagents.com. Pre-staged: the static IP receives no traffic until
 # the DNS flip described in
@@ -253,9 +263,14 @@ module "openagents_monolith" {
 module "openagents_lb" {
   source = "../modules/global-external-lb"
 
-  project           = var.project_id
-  name              = "openagents"
-  region            = var.region
-  domains           = ["openagents.com", "auth.openagents.com"]
-  cloud_run_service = module.openagents_monolith.service_name
+  project                    = var.project_id
+  name                       = "openagents"
+  region                     = var.region
+  domains                    = ["openagents.com", "auth.openagents.com"]
+  cloud_run_service          = module.openagents_monolith.service_name
+  docs_cloud_run_service     = module.openagents_docs.service_name
+  docs_host                  = "openagents.com"
+  monolith_only_hosts        = ["auth.openagents.com"]
+  components_host            = "components.openagents.com"
+  components_backend_service = "effect-native-gallery-backend"
 }

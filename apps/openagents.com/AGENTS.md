@@ -47,6 +47,30 @@ and companion agent documents. Until that cutover is separately implemented,
 `apps/start` continues serving its current routes and `/` remains under the
 holding-page interception.
 
+## 2026-07-15 Blume documentation destination
+
+`apps/docs` is the owner-selected public documentation workspace. It exact-pins
+Blume and builds a curated Markdown/MDX tree into static files served by the
+independent `openagents-docs` Cloud Run service at `/docs` and `/docs/*`.
+Terraform owns the service shell, serverless NEG, backend, and apex-only path
+rule. `auth.openagents.com` remains wholly routed to the monolith.
+
+Keep Blume build-only. Ask AI, hosted MCP, server adapters, remote content,
+analytics, and application secrets are not permitted. The docs package may read
+only its owned `content/` tree; never point it at the repository-wide `docs/`
+directory. Public content must stay within current Desktop MVP, retained Forum,
+agent-readable, security/privacy, troubleshooting, and product-promise facts.
+Do not migrate retired money, credit, market, settlement, Sites, Autopilot, or
+availability claims.
+
+The Blume/Astro renderer is a narrow third-party documentation exception to the
+Effect Native UI rule. It grants no application, authentication, tool, API,
+payment, deployment, or public-claim authority and must not spread to product
+UI. Keep the docs dark-only, pure black, Commit Mono, Khala blue/cyan, compact,
+and free of the stock theme toggle, rounded SaaS cards, blur, and decorative
+shadows. The generated `.blume/` project is ignored and subordinate to the
+single root Node/pnpm/Vite Plus graph.
+
 <!-- effect-solutions:start -->
 
 ## Effect Best Practices
@@ -230,8 +254,10 @@ This directory is part of the pnpm workspace and uses the Vite Plus toolchain:
 
 - `apps/astro/` is the static public-site destination, isolated at `/astro`
   until root cutover.
+- `apps/docs/` is the static Blume documentation source and independent Cloud
+  Run deployment owner for `/docs`.
 - `apps/start/` is the current retained document host during the bounded Astro
-  migration.
+  migration; it no longer owns `/docs` routes.
 - `apps/web/` source is deleted; ignored build remnants are not an application.
 - `workers/api/` is the retained directory name for the Node API deployed to
   Google Cloud Run. It has no Cloudflare runtime or deploy authority.

@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { test } from 'node:test'
+
+const docsDir = dirname(fileURLToPath(import.meta.url))
+const repoRoot = join(docsDir, '..', '..', '..', '..')
+const readRepoFile = (...parts) => readFileSync(join(repoRoot, ...parts), 'utf8')
+
+test('Terraform sends only the apex /docs paths to the isolated docs backend', () => {
+  const loadBalancer = readRepoFile('infra', 'modules', 'global-external-lb', 'main.tf')
+  const production = readRepoFile('infra', 'prod', 'main.tf')
+
+  assert.match(loadBalancer, /paths\s*=\s*\["\/docs", "\/docs\/\*"\]/)
+  assert.match(loadBalancer, /service\s*=\s*google_compute_backend_service\.docs\.id/)
+  assert.match(loadBalancer, /hosts\s*=\s*var\.monolith_only_hosts/)
+  assert.match(loadBalancer, /data\s+"google_compute_backend_service"\s+"components"/)
+  assert.match(production, /name\s*=\s*"openagents-docs"/)
+  assert.match(production, /docs_host\s*=\s*"openagents\.com"/)
+  assert.match(production, /monolith_only_hosts\s*=\s*\["auth\.openagents\.com"\]/)
+})
+
+test('the docs deploy is static, secretless, and pinned to its own service', () => {
+  const dockerfile = readRepoFile(
+    'apps',
+    'openagents.com',
+    'apps',
+    'docs',
+    'Dockerfile',
+  )
+  const deploy = readRepoFile(
+    'apps',
+    'openagents.com',
+    'apps',
+    'docs',
+    'deploy-cloudrun.sh',
+  )
+
+  assert.match(dockerfile, /FROM node:24\.13\.1-bookworm-slim/)
+  assert.doesNotMatch(dockerfile, /pnpm|blume|astro/i)
+  assert.match(deploy, /SERVICE="openagents-docs"/)
+  assert.match(deploy, /gcloud run deploy "\$SERVICE"/)
+  assert.doesNotMatch(deploy, /--set-secrets|--set-env-vars|--add-cloudsql-instances/)
+})
