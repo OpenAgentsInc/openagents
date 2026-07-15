@@ -998,10 +998,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   snapshot consumption, and declared ordinary-element lowerings through the
   shared `@effect-native/render-dom/react` renderer. The bounded Desktop MVP
   transition may also define ordinary renderer-private React workbench
-  components only in the explicitly scanned `renderer/react-primitive-adapters.tsx`
-  and `renderer/react-timeline.tsx` hosts; they consume the same Effect-owned
+  components only in the explicitly scanned `renderer/react-primitive-adapters.tsx`,
+  `renderer/react-timeline.tsx`, and `renderer/react-composer.tsx` hosts; they consume the same Effect-owned
   `DesktopShellState` snapshot and existing intent keys and may retain only
-  ephemeral focus/overlay/scroll-anchor mechanics. They do not define a
+  ephemeral focus/overlay/scroll-anchor/IME/palette-query mechanics. They do not define a
   second domain store, runtime client, command identity, persistence path,
   token system, or Vercel AI SDK/model-stream authority. One authoritative
   surface selects exactly one whole-surface backend for its lifetime: declared

@@ -442,15 +442,111 @@ html[data-desktop-platform="darwin"] .oa-react-session-rail {
   border: 0;
 }
 
-.oa-react-composer-placeholder {
+.oa-react-composer {
+  display: grid;
+  gap: var(--en-spacing-2);
   margin: var(--en-spacing-3) auto var(--en-spacing-4);
   width: min(720px, calc(100% - var(--en-spacing-6)));
-  min-height: 48px;
-  padding: var(--en-spacing-3);
+  padding: var(--en-spacing-2);
   border: 1px solid var(--en-color-borderSubtle);
   border-radius: var(--en-radius-lg);
-  color: var(--en-color-textFaint);
   background: var(--en-color-surface);
+  box-shadow: var(--en-elevation-raised-shadow);
+}
+
+.oa-react-composer textarea {
+  width: 100%;
+  min-height: 64px;
+  max-height: 180px;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--en-color-textPrimary);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.oa-react-composer textarea:focus-visible {
+  box-shadow: none;
+}
+
+.oa-react-composer-bar,
+.oa-react-submit-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-1);
+}
+
+.oa-react-composer-spacer {
+  flex: 1 1 auto;
+}
+
+.oa-react-composer-status,
+.oa-react-composer-hint {
+  color: var(--en-color-textFaint);
+  font-size: 11px;
+}
+
+.oa-react-composer-hint {
+  padding: 0 var(--en-spacing-1);
+}
+
+.oa-react-decision {
+  border: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+  box-shadow: var(--en-elevation-overlay-shadow);
+}
+
+.oa-react-decision-questions,
+.oa-react-decision-options {
+  display: grid;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-decision fieldset {
+  display: grid;
+  gap: var(--en-spacing-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.oa-react-decision legend {
+  display: grid;
+  gap: 2px;
+  margin-bottom: var(--en-spacing-2);
+  font-weight: 600;
+}
+
+.oa-react-decision legend span {
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.oa-react-decision-options button {
+  display: grid;
+  height: auto;
+  min-height: var(--en-control-lg-height);
+  justify-items: start;
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  white-space: normal;
+  text-align: left;
+}
+
+.oa-react-decision-options small {
+  color: var(--en-color-textMuted);
+  font-weight: 400;
+}
+
+.oa-react-decision-failure {
+  margin: 0;
+  color: var(--en-color-danger);
+  font-size: 13px;
 }
 
 .oa-react-rail-scrim {

@@ -260,8 +260,8 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
   test("renderer imports only EN, scoped React host libraries, and sibling modules", () => {
     const sharedOrSibling =
       /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/
-    const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx", "react-timeline.tsx"])
-    const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|#components\/ui\/[a-z-]+)$/
+    const reactHostFiles = new Set(["boot.ts", "react-composer.tsx", "react-primitive-adapters.tsx", "react-timeline.tsx"])
+    const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!)
       specifiers.push(...[...source.matchAll(/import\s+"([^"]+)"/g)].map((match) => match[1]!))
@@ -275,7 +275,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
   })
 
   test("portable Effect Native state, recipes, projections, and intents stay React-free", () => {
-    const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx", "react-timeline.tsx"])
+    const reactHostFiles = new Set(["boot.ts", "react-composer.tsx", "react-primitive-adapters.tsx", "react-timeline.tsx"])
     for (const { name, source } of rendererSources) {
       if (reactHostFiles.has(name)) continue
       expect(name).not.toMatch(/\.tsx$/)
@@ -327,7 +327,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
 
   test("generated shadcn sources remain renderer-only components without host or domain authority", () => {
     const componentDir = path.join(appRoot, "src/components/ui")
-    const allowedImport = /^(react|@base-ui\/react(?:\/[a-z-]+)?|class-variance-authority|#lib\/utils)$/
+    const allowedImport = /^(react|@base-ui\/react(?:\/[a-z-]+)?|class-variance-authority|cmdk|lucide-react|#lib\/utils|#components\/ui\/[a-z-]+)$/
     for (const name of readdirSync(componentDir).filter(value => value.endsWith(".tsx"))) {
       const source = stripComments(read(`src/components/ui/${name}`))
       const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map(match => match[1]!)

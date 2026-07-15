@@ -202,3 +202,63 @@ Verification:
 - ProductSpec validation passed under OpenAgents and upstream profiles, its
   repository suite passed 102 tests, and built Electron compatibility smoke
   passed with zero active lifecycle owners after teardown.
++## MVP-02D — React composer, commands, and decisions (#8821)
+
+Status: implemented on the scoped `?renderer=react-shell` path. Effect remains
+the prompt, command, interaction, runtime, and reconciliation authority.
+
+Delivered:
+
+- a controlled shadcn Textarea composer that focuses a ready session, captures
+  the first keystroke, blocks Enter while an IME composition is active,
+  preserves Shift+Enter, and grows from 64px to a 180px internal-scroll cap;
+- the existing Send, Stop, Steer, Queue, pending-mode, and input intents with
+  an unavailable-lane explanation and no provider, model, account, reasoning,
+  permission, attachment, plugin, MCP, or voice controls;
+- a shadcn Command/Dialog palette over the canonical Desktop command registry,
+  including registry-id search, platform chords, availability gating,
+  no-results/status output, keyboard navigation, Escape dismissal, and focus
+  restoration supplied by the reviewed source components;
+- modal question, tool-approval, and plan-review surfaces correlated by the
+  exact `questionRef`, with complete option descriptions, explicit close
+  semantics, read-only unavailable state, pending/submitting/failed copy, and
+  no presentation-side inference of acceptance or rejection;
+- an Effect-owned in-flight marker before the typed answer bridge call. Rapid
+  duplicate choice/submit intents therefore produce one bridge effect, a
+  refused or failed bridge call returns to retryable pending with visible
+  failure, and only a confirmed bridge handoff marks the local submission;
+- resolved/expired/revoked/timeout/denied decision status retained in the
+  typed timeline after the modal is gone; and
+- renderer-boundary invariants expanded only for the React composer host and
+  its ephemeral IME, focus, overlay, and palette-query mechanics.
+
+Dependency and boundary receipt:
+
+- `cmdk@1.1.1` is the only runtime dependency added by the generated shadcn
+  Command source. Its input is the closed local command registry; it receives
+  no host object, arbitrary command callback, provider payload, credential,
+  filesystem path, or model output. Dialog framing remains the preset's Base
+  UI source component. The component-source oracle permits only reviewed UI
+  imports and continues to reject Effect, Electron, Node, and Desktop bridge
+  authority under `src/components/ui`.
+- Production output moved from MVP-02C's `boot.js` 898.23 kB / `app.css`
+  171.84 kB to `boot.js` 1,007.56 kB / `app.css` 185.51 kB: +109.33 kB JS and
+  +13.67 kB CSS before packaging compression. This is accepted for the MVP
+  because it supplies the requested shadcn command/dialog keyboard and focus
+  behavior; later bundle work may replace the implementation behind the same
+  source-component and typed-intent boundary.
+
+Focused verification passed Desktop typecheck plus 151 composer, decision,
+timeline, shell, renderer-boundary, and command tests (11 skipped). It covers
+first focus, height bounds, IME Enter, Shift+Enter, rapid duplicate send,
+Send/Stop/Steer/Queue identity, canonical palette identity, modal approval,
+failed decision presentation, and concurrent typed-bridge duplicate
+admission. The full Desktop suite passed 137 files / 1,339 tests (39 skipped),
+ProductSpec validated under both OpenAgents and upstream profiles and its
+repository suite passed 102 tests, the production build emitted the bundle
+sizes above, and built Electron compatibility smoke completed with zero active
+lifecycle owners after teardown. The production audit passed the high-severity
+gate; its one moderate finding is the pre-existing Expo/mobile `uuid` path,
+not `cmdk` or this Desktop dependency path. The installed whole-surface React
+turn/decision journey remains the explicit MVP-02F cutover receipt rather than
+being inferred from the compatibility smoke.

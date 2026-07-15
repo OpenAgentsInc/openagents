@@ -25,6 +25,7 @@ import { ScrollArea } from "#components/ui/scroll-area"
 import { Separator } from "#components/ui/separator"
 import type { DesktopShellState } from "./shell.ts"
 import { formatRelativeTimestamp } from "./shell.ts"
+import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
 import { ConversationTimeline } from "./react-timeline.tsx"
 import "./react-workbench.css"
 
@@ -234,6 +235,8 @@ export const WorkbenchShell = ({ state, report }: {
     if (railOpen) railRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
   }, [railOpen])
   return <div className="oa-react-workbench" data-en-react-surface="true">
+    <ReactCommandPalette state={state} report={report} />
+    <DecisionSurface state={state} report={report} />
     <Button
       ref={toggleRef}
       className="oa-react-mobile-session-trigger"
@@ -248,9 +251,7 @@ export const WorkbenchShell = ({ state, report }: {
     <main className="oa-react-conversation">
       <ConversationHeader state={state} />
       <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} report={report} />
-      <div className="oa-react-composer-placeholder" aria-label="Composer unavailable">
-        Composer controls continue in the next transition packet.
-      </div>
+      <ReactComposer state={state} report={report} />
     </main>
   </div>
 }

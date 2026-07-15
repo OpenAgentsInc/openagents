@@ -222,6 +222,10 @@ export type QuestionCardInteraction = Readonly<{
   selections: ReadonlyArray<ReadonlyArray<string>>
   /** True once the answer was handed to the typed bridge. */
   answered: boolean
+  /** True only while the exact typed bridge call is in flight. */
+  submitting?: boolean
+  /** Public presentation of the last refused/failed bridge attempt. */
+  failure?: "answer_refused"
   /** The submitted answers (for the collapsed answered rendering). */
   answers: ReadonlyArray<QuestionAnswer> | null
 }>
@@ -883,7 +887,7 @@ export const withQuestionSelection = (
     answered: false,
     answers: null,
   }
-  if (interaction.answered) return state
+  if (interaction.answered || interaction.submitting === true) return state
   const current = interaction.selections[questionIndex] ?? []
   const selection = question.multiSelect
     ? current.includes(label) ? current.filter((item) => item !== label) : [...current, label]
@@ -928,11 +932,12 @@ export const withQuestionAnswered = (
 ): DesktopShellState => {
   const interaction = state.questionCards[questionRef]
   if (interaction === undefined || interaction.answered) return state
+  const { failure: _failure, ...withoutFailure } = interaction
   return {
     ...state,
     questionCards: {
       ...state.questionCards,
-      [questionRef]: { ...interaction, answered: true, answers },
+      [questionRef]: { ...withoutFailure, answered: true, submitting: false, answers },
     },
   }
 }
@@ -947,12 +952,28 @@ export const withQuestionAnswerRejected = (
   questionRef: string,
 ): DesktopShellState => {
   const interaction = state.questionCards[questionRef]
-  if (interaction === undefined || !interaction.answered) return state
+  if (interaction === undefined || interaction.answered || interaction.submitting !== true) return state
   return {
     ...state,
     questionCards: {
       ...state.questionCards,
-      [questionRef]: { ...interaction, answered: false, answers: null },
+      [questionRef]: { ...interaction, submitting: false, failure: "answer_refused", answered: false, answers: null },
+    },
+  }
+}
+
+export const withQuestionAnswerSubmitting = (
+  state: DesktopShellState,
+  questionRef: string,
+): DesktopShellState => {
+  const interaction = state.questionCards[questionRef]
+  if (interaction === undefined || interaction.answered || interaction.submitting === true) return state
+  const { failure: _failure, ...withoutFailure } = interaction
+  return {
+    ...state,
+    questionCards: {
+      ...state.questionCards,
+      [questionRef]: { ...withoutFailure, submitting: true },
     },
   }
 }
@@ -1448,9 +1469,11 @@ export const makeDesktopShellHandlers = (
   ) =>
     Effect.gen(function* () {
       const answer = questionHost.answer
-      if (answer === null || interaction.answered) return
+      if (answer === null || interaction.answered || interaction.submitting === true) return
       if (!questionAnswersReady(card, interaction)) return
       const answers = questionAnswersFor(card, interaction)
+      yield* SubscriptionRef.update(state, current =>
+        withQuestionAnswerSubmitting(current, card.questionRef))
       const result = yield* Effect.promise(() =>
         answer({
           turnRef: card.turnRef,
@@ -1461,6 +1484,9 @@ export const makeDesktopShellHandlers = (
       if (result === true) {
         yield* SubscriptionRef.update(state, (current) =>
           withQuestionAnswered(current, card.questionRef, answers))
+      } else {
+        yield* SubscriptionRef.update(state, current =>
+          withQuestionAnswerRejected(current, card.questionRef))
       }
     })
   const pendingInteractionRef = (

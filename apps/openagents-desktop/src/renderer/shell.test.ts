@@ -2682,12 +2682,43 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
         const next = yield* SubscriptionRef.get(state)
         // The runtime said no: never a fake Answered state.
         expect(next.questionCards["question.1"]?.answered).toBe(false)
+        expect(next.questionCards["question.1"]?.submitting).toBe(false)
+        expect(next.questionCards["question.1"]?.failure).toBe("answer_refused")
         expect(next.questionCards["question.1"]?.selections).toEqual([["Streamed"]])
         const pending = desktopShellView(next)
         expect(nodeByKey(pending, "question-question.1-outcome")).toBeUndefined()
         expect(nodeByKey(pending, "question-question.1-q0-option-0")).toMatchObject({ variant: "secondary" })
       }),
     )
+  })
+
+  test("an in-flight decision admits exactly one typed bridge call under rapid duplicate activation", async () => {
+    const calls: Array<unknown> = []
+    let resolveAnswer: ((accepted: boolean) => void) | undefined
+    const slowHost = { answer: async (input: unknown) => {
+      calls.push(input)
+      return new Promise<boolean>(resolve => { resolveAnswer = resolve })
+    } }
+    const state = await Effect.runPromise(SubscriptionRef.make(questionState))
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, slowHost),
+    ))
+    const view = desktopShellView(await Effect.runPromise(SubscriptionRef.get(state)))
+    const option = nodeByKey(view, "question-question.1-q0-option-0") as {
+      onPress: Parameters<typeof resolveIntentRef>[0]
+    }
+    const intent = resolveIntentRef(option.onPress, null)
+    const first = Effect.runPromise(registry.dispatch(intent))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const second = Effect.runPromise(registry.dispatch(intent))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(calls).toHaveLength(1)
+    expect((await Effect.runPromise(SubscriptionRef.get(state))).questionCards["question.1"]?.submitting).toBe(true)
+    resolveAnswer?.(true)
+    await Promise.all([first, second])
+    expect(calls).toHaveLength(1)
+    expect((await Effect.runPromise(SubscriptionRef.get(state))).questionCards["question.1"]?.answered).toBe(true)
   })
 
   test("timeout and denied outcomes render dim resolved states naming the outcome", () => {

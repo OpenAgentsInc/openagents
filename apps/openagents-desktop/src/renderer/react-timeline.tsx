@@ -105,10 +105,11 @@ export const projectLocalTimelineRecords = (
   kind: note.question === undefined ? "local_message" : "question",
   label: note.question === undefined
     ? note.role === "user" ? "You" : note.role === "assistant" ? "Assistant" : "System"
-    : "Question",
-  body: note.text,
+    : note.question.kind === "tool_approval" ? "Tool approval"
+      : note.question.kind === "plan_review" ? "Plan review" : "Question",
+  body: note.question?.questions[0]?.question ?? note.text,
   timestamp: note.timestamp,
-  status: note.runtime?.kind ?? null,
+  status: note.question?.status ?? note.runtime?.kind ?? null,
   redacted: false,
   fields: [],
   resultRef: null,
