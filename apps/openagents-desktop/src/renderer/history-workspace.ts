@@ -453,6 +453,26 @@ export const isHistoryAgentTraversalShortcut = (
   event.shiftKey && !event.altKey &&
   (platform === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)
 
+export type HistoryConversationShortcutAction =
+  | Readonly<{ kind: "absolute"; index: number }>
+  | Readonly<{ kind: "step"; delta: -1 | 1 }>
+
+/** Number jumps stay global while the composer owns focus; arrow traversal
+ * yields to editable text navigation. */
+export const historyConversationShortcutAction = (
+  event: Readonly<{ key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; defaultPrevented: boolean }>,
+  platform: string | undefined,
+  editable: boolean,
+): HistoryConversationShortcutAction | null => {
+  const platformModifier = platform === "darwin"
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey
+  if (event.defaultPrevented || !platformModifier || event.altKey || event.shiftKey) return null
+  if (/^[1-9]$/.test(event.key)) return { kind: "absolute", index: Number(event.key) - 1 }
+  if (editable || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return null
+  return { kind: "step", delta: event.key === "ArrowDown" ? 1 : -1 }
+}
+
 const agentTree = (state: HistoryWorkspaceState): View => {
   const page = state.page; const allAgents = page?.agents ?? []; const agents = visibleHistoryAgents(state)
   return Stack({ key: "history-agent-tree-region", direction: "column", gap: "2", style: { minWidth: 0, minHeight: 0, flex: 1 }, a11y: { role: "region", label: "Agents" } }, [

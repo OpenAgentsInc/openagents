@@ -10,8 +10,8 @@ import {
 import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload, type MarkdownBlock, type MarkdownInline } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import type { ReactElement, ReactNode } from "react"
-import { Component, createElement, memo, useEffect, useMemo, useRef } from "react"
-import { Folder } from "lucide-react"
+import { Component, createElement, memo, useEffect, useMemo, useRef, useState } from "react"
+import { ChevronRight, Folder } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
@@ -319,6 +319,35 @@ type TimelineProps = Readonly<{
   working?: boolean
   report: IntentReporter
 }>
+
+const WorkGroupDisclosure = ({ groupKey, folded, visible, running, report }: {
+  readonly groupKey: string
+  readonly folded: ReadonlyArray<ReactTimelineRecord>
+  readonly visible: ReadonlyArray<ReactTimelineRecord>
+  readonly running: boolean
+  readonly report: IntentReporter
+}): ReactElement => {
+  const [expanded, setExpanded] = useState(false)
+  const activityLabel = `${folded.length} ${folded.length === 1 ? "activity" : "activities"}`
+  return <div className="oa-react-work-group" role="listitem" data-work-group={groupKey}>
+    <button
+      className="oa-react-work-group-summary"
+      type="button"
+      aria-expanded={expanded}
+      aria-controls={`${groupKey}:details`}
+      onClick={() => setExpanded(value => !value)}
+    >
+      <ChevronRight aria-hidden="true" data-icon-name="ChevronRight" data-expanded={expanded ? "true" : "false"} />
+      <strong>{running ? `+${folded.length} previous` : "Worked"}</strong>
+      <span>{activityLabel}</span>
+    </button>
+    {expanded ? <div id={`${groupKey}:details`} role="list">
+      {folded.map(entry => <MemoTimelineItemBoundary key={entry.key} record={entry} report={report} />)}
+    </div> : null}
+    {visible.map(entry => <MemoTimelineItemBoundary key={entry.key} record={entry} report={report} />)}
+  </div>
+}
+
 const TimelineRecords = ({ records, report }: {
   readonly records: ReadonlyArray<ReactTimelineRecord>
   readonly report: IntentReporter
@@ -344,15 +373,11 @@ const TimelineRecords = ({ records, report }: {
     const running = group.some(entry => entry.status === "running")
     const visible = running ? group.slice(-1) : []
     const folded = running ? group.slice(0, -1) : group
-    const groupKey = `work:${group[0]!.key}:${group.at(-1)!.key}`
+    // The first work record is the stable group identity. Appending streaming
+    // work must not remount the disclosure and discard the reader's choice.
+    const groupKey = `work:${group[0]!.key}`
     output.push(<MessageScrollerItem key={groupKey} messageId={groupKey}>
-      <div className="oa-react-work-group" role="listitem">
-        <details>
-          <summary className="oa-react-work-group-summary"><strong>{running ? `+${folded.length} previous` : "Worked"}</strong><span>{folded.length} {folded.length === 1 ? "activity" : "activities"}</span></summary>
-          <div role="list">{folded.map(entry => <MemoTimelineItemBoundary key={entry.key} record={entry} report={report} />)}</div>
-        </details>
-        {visible.map(entry => <MemoTimelineItemBoundary key={entry.key} record={entry} report={report} />)}
-      </div>
+      <WorkGroupDisclosure groupKey={groupKey} folded={folded} visible={visible} running={running} report={report} />
     </MessageScrollerItem>)
   }
   return <>{output}</>

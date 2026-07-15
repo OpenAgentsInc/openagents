@@ -50,6 +50,16 @@ describe("revision 3 conversation-first assurance gates", () => {
     expect(styles).toContain('overscroll-behavior: contain')
   })
 
+  test("keeps the React composer centered despite compatibility-host selectors and the collapsed rail control clear of macOS chrome", () => {
+    expect(styles).toContain('width: min(760px, calc(100% - var(--en-spacing-6))) !important')
+    expect(styles).toContain('margin: var(--en-spacing-3) auto var(--en-spacing-4) !important')
+    expect(styles).toContain('html[data-desktop-platform="darwin"] .oa-react-workbench[data-rail-collapsed="true"] .oa-react-sidebar-expand')
+    expect(styles).toContain('left: 92px')
+    expect(styles).toContain('z-index: 20')
+    expect(styles).toContain('width: 24px')
+    expect(styles).toContain('-webkit-app-region: no-drag')
+  })
+
   test("requires reduced motion and preserves the canonical token boundary", () => {
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)')
     expect(styles).toContain('var(--en-color-background)')

@@ -108,7 +108,7 @@ import type {
   DesktopRuntimeGatewayResponse,
 } from "../runtime-gateway-contract.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "../codex-history-contract.ts"
-import { historyAgentTraversalTarget, historyCatalogPageSize, historyItemPageSize, historyShouldFetchNewer, historyShouldFetchOlder, isHistoryAgentTraversalShortcut } from "./history-workspace.ts"
+import { historyAgentTraversalTarget, historyCatalogPageSize, historyConversationShortcutAction, historyItemPageSize, historyShouldFetchNewer, historyShouldFetchOlder, isHistoryAgentTraversalShortcut } from "./history-workspace.ts"
 import {
   decodeDesktopCodingCatalogProjection,
   desktopWorkspaceForCodingFocus,
@@ -1527,18 +1527,21 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         if(historyShortcutSteps!==0||historyShortcutAbsoluteIndex!==null)void pumpHistoryConversationShortcut()
       }
     }
+    let historyShortcutHintTimer:number|null=null
+    let historyShortcutHintsVisible=false
     const setHistoryShortcutHints=(visible:boolean):void=>{
+      if(historyShortcutHintsVisible===visible)return
+      historyShortcutHintsVisible=visible
       void Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopHistoryShortcutHintsChanged",StaticPayload(visible)))))
     }
     const onHistoryConversationShortcut = (event: KeyboardEvent): void => {
       const target=event.target
       const editable=target instanceof HTMLElement&&target.closest("input, textarea, [contenteditable='true']")!==null
-      const platformModifier=bridge?.platform==="darwin"?event.metaKey&&!event.ctrlKey:event.ctrlKey&&!event.metaKey
-      const digit=/^[1-9]$/.test(event.key)?Number(event.key)-1:null
-      if(event.defaultPrevented||editable||!platformModifier||event.altKey||event.shiftKey||(digit===null&&event.key!=="ArrowUp"&&event.key!=="ArrowDown"))return
+      const action=historyConversationShortcutAction(event,bridge?.platform,editable)
+      if(action===null)return
       event.preventDefault()
-      if(digit!==null){historyShortcutSteps=0;historyShortcutAbsoluteIndex=digit}
-      else {historyShortcutAbsoluteIndex=null;historyShortcutSteps+=event.key==="ArrowDown"?1:-1}
+      if(action.kind==="absolute"){historyShortcutSteps=0;historyShortcutAbsoluteIndex=action.index}
+      else {historyShortcutAbsoluteIndex=null;historyShortcutSteps+=action.delta}
       void pumpHistoryConversationShortcut()
     }
     // Cmd+Shift+Up/Down (Ctrl+Shift off-macOS): agent traversal inside the
@@ -1562,13 +1565,23 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       })
     }
     const onHistoryModifierDown=(event:KeyboardEvent):void=>{
-      const platformModifier=bridge?.platform==="darwin"?event.metaKey:event.ctrlKey
-      if(platformModifier)setHistoryShortcutHints(true)
+      const modifierKey=bridge?.platform==="darwin"?(event.key==="Meta"||event.key==="OS"):event.key==="Control"
+      if(!modifierKey||historyShortcutHintTimer!==null||historyShortcutHintsVisible)return
+      historyShortcutHintTimer=window.setTimeout(()=>{
+        historyShortcutHintTimer=null
+        setHistoryShortcutHints(true)
+      },100)
     }
     const onHistoryModifierUp=(event:KeyboardEvent):void=>{
-      if((bridge?.platform==="darwin"&&event.key==="Meta")||(bridge?.platform!=="darwin"&&event.key==="Control"))setHistoryShortcutHints(false)
+      if((bridge?.platform==="darwin"&&(event.key==="Meta"||event.key==="OS"))||(bridge?.platform!=="darwin"&&event.key==="Control")){
+        if(historyShortcutHintTimer!==null){window.clearTimeout(historyShortcutHintTimer);historyShortcutHintTimer=null}
+        setHistoryShortcutHints(false)
+      }
     }
-    const onHistoryWindowBlur=():void=>setHistoryShortcutHints(false)
+    const onHistoryWindowBlur=():void=>{
+      if(historyShortcutHintTimer!==null){window.clearTimeout(historyShortcutHintTimer);historyShortcutHintTimer=null}
+      setHistoryShortcutHints(false)
+    }
     const removeComposerImageAcquisition = installComposerImageAcquisition(window, {
       readSnapshot: () => Effect.runPromise(SubscriptionRef.get(state)).then(snapshot => ({
         pending: snapshot.pending,
@@ -1584,10 +1597,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     window.addEventListener("keydown", onNewChatShortcut)
     window.addEventListener("keydown", onFullscreenShortcut)
     window.addEventListener("keydown", onCommandPaletteShortcut)
-    window.addEventListener("keydown", onHistoryModifierDown)
+    window.addEventListener("keydown", onHistoryModifierDown, true)
     window.addEventListener("keydown", onHistoryConversationShortcut)
     window.addEventListener("keydown", onHistoryAgentShortcut)
-    window.addEventListener("keyup", onHistoryModifierUp)
+    window.addEventListener("keyup", onHistoryModifierUp, true)
     window.addEventListener("blur", onHistoryWindowBlur)
     // Scroll events do not bubble; capture phase observes the history region.
     window.addEventListener("scroll", onHistoryTimelineScroll, true)
@@ -1596,13 +1609,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       window.removeEventListener("keydown", onNewChatShortcut)
       window.removeEventListener("keydown", onFullscreenShortcut)
       window.removeEventListener("keydown", onCommandPaletteShortcut)
-      window.removeEventListener("keydown", onHistoryModifierDown)
+      window.removeEventListener("keydown", onHistoryModifierDown, true)
       window.removeEventListener("keydown", onHistoryConversationShortcut)
       window.removeEventListener("keydown", onHistoryAgentShortcut)
-      window.removeEventListener("keyup", onHistoryModifierUp)
+      window.removeEventListener("keyup", onHistoryModifierUp, true)
       window.removeEventListener("blur", onHistoryWindowBlur)
       window.removeEventListener("scroll", onHistoryTimelineScroll, true)
       if(historySelectionTimer!==null)window.clearTimeout(historySelectionTimer)
+      if(historyShortcutHintTimer!==null)window.clearTimeout(historyShortcutHintTimer)
     }, { once: true })
     // Durable preferences → real presentation (CUT-24 #8704): density + font
     // scale the shared theme through the token pipeline; reduced-motion resolves

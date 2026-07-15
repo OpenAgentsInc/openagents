@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test"
 import type { View } from "@effect-native/core"
-import { emptyHistoryWorkspaceState, historyAgentTraversalTarget, historyImmediateSearchResults, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historySearchActive, historySearchField, historySearchOpenAnchor, historySearchResultSidebarItems, historyShouldFetchNewer, historyShouldFetchOlder, historySourceBadgeLabel, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistorySearchResults, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
+import { emptyHistoryWorkspaceState, historyAgentTraversalTarget, historyConversationShortcutAction, historyImmediateSearchResults, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historySearchActive, historySearchField, historySearchOpenAnchor, historySearchResultSidebarItems, historyShouldFetchNewer, historyShouldFetchOlder, historySourceBadgeLabel, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistorySearchResults, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistorySearchResult } from "../codex-history-contract.ts"
 import { historyRestoreFetchPlan } from "./history-restore.ts"
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
@@ -243,6 +243,15 @@ describe("history workspace",()=>{
       // Non-darwin uses Ctrl+Shift.
       expect(isHistoryAgentTraversalShortcut(chord({ctrlKey:true,shiftKey:true}),"linux")).toBe(true)
       expect(isHistoryAgentTraversalShortcut(chord({metaKey:true,shiftKey:true}),"linux")).toBe(false)
+    })
+    test("Cmd+number remains global while arrow traversal yields to the focused composer",()=>{
+      const chord=(overrides:Partial<{key:string;metaKey:boolean;ctrlKey:boolean;altKey:boolean;shiftKey:boolean;defaultPrevented:boolean}>)=>({key:"1",metaKey:false,ctrlKey:false,altKey:false,shiftKey:false,defaultPrevented:false,...overrides})
+      expect(historyConversationShortcutAction(chord({metaKey:true}),"darwin",true)).toEqual({kind:"absolute",index:0})
+      expect(historyConversationShortcutAction(chord({key:"9",metaKey:true}),"darwin",true)).toEqual({kind:"absolute",index:8})
+      expect(historyConversationShortcutAction(chord({key:"ArrowDown",metaKey:true}),"darwin",true)).toBeNull()
+      expect(historyConversationShortcutAction(chord({key:"ArrowDown",metaKey:true}),"darwin",false)).toEqual({kind:"step",delta:1})
+      expect(historyConversationShortcutAction(chord({ctrlKey:true}),"linux",true)).toEqual({kind:"absolute",index:0})
+      expect(historyConversationShortcutAction(chord({metaKey:true,shiftKey:true}),"darwin",false)).toBeNull()
     })
   })
 

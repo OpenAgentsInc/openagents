@@ -123,15 +123,14 @@ describe("React workbench shell", () => {
     expect(stage?.getAttribute("data-app-stage")).toBe("dev")
   })
 
-  test("uses a compact accessible diff action instead of a text-heavy review button", async () => {
+  test("does not expose repository review in the core workbench", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={fixtureState()} report={() => Effect.void} />)
-    const review = container.querySelector<HTMLButtonElement>('.oa-react-review-trigger')
-    expect(review?.getAttribute("aria-label")).toBe("Review changes")
-    expect(review?.getAttribute("title")).toBe("Review changes")
-    expect(review?.textContent).toBe("")
-    expect(review?.querySelector('[data-icon-name="ReviewChanges"]')).not.toBeNull()
+    expect(container.querySelector('.oa-react-review-trigger')).toBeNull()
+    expect(container.querySelector('[data-review-surface]')).toBeNull()
+    expect(container.textContent).not.toContain("Repository review")
+    expect(container.textContent).not.toContain("Review changes")
   })
 
   test("keeps sensitive account text redacted until an explicit click", async () => {
@@ -284,6 +283,28 @@ describe("React workbench shell", () => {
     expect(rows.every(row => /^(?:now|\d+[mhd])$/u.test(row.meta))).toBe(true)
     expect(rows.map(row => row.meta).join(" ")).not.toMatch(/completed|running|waiting|title|content/iu)
     expect(state.history.page).toBeNull()
+
+    const hinted = projectReactSessionRows({
+      ...state,
+      historyShortcutHintsVisible: true,
+    }, new Date("2026-07-14T12:01:00.000Z"))
+    expect(hinted.map(row => row.meta)).toEqual(["⌘1", "⌘2"])
+    expect(hinted.map(row => row.id)).toEqual(rows.map(row => row.id))
+  })
+
+  test("renders exactly one active background across destinations and conversation rows", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const state = fixtureState()
+    await render(root, <WorkbenchShell state={{
+      ...state,
+      history: { ...state.history, pendingThreadRef: "history-1" },
+    }} report={() => Effect.void} />)
+    const selected = [...container.querySelectorAll<HTMLElement>('[data-selected="true"]')]
+    expect(selected).toHaveLength(1)
+    expect(selected[0]?.getAttribute("data-session-row")).not.toBeNull()
+    expect(selected[0]?.textContent).toContain("Earlier session")
+    expect(container.querySelector('[data-sidebar-destination-id="workspace-chat"]')?.getAttribute("aria-current")).toBeNull()
   })
 
   test("dispatches new, search, and select through the existing intent authority", async () => {
@@ -406,6 +427,24 @@ describe("React workbench shell", () => {
     expect(window.document.activeElement).toBe(trigger)
   })
 
+  test("Command-Enter toggles the same sidebar state as the visible control", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={{
+      ...fixtureState(),
+      presentation: { sidebarCollapsed: true, sessionSearchOpen: false },
+    }} report={report} />)
+    const trigger = container.querySelector<HTMLButtonElement>(".oa-react-sidebar-expand")
+    await interact(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true })))
+    expect(trigger?.getAttribute("aria-expanded")).toBe("true")
+    expect(received.at(-1)).toEqual({ name: "DesktopSidebarCollapsedChanged", payload: false })
+    await interact(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true })))
+    expect(trigger?.getAttribute("aria-expanded")).toBe("false")
+    expect(received.at(-1)).toEqual({ name: "DesktopSidebarCollapsedChanged", payload: true })
+  })
+
   test("uses closed-catalog icon controls and left-aligned sidebar actions", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)
@@ -419,7 +458,8 @@ describe("React workbench shell", () => {
       .find(button => button.textContent === "New session")
     expect(newSession?.classList.contains("justify-start")).toBe(true)
     expect(newSession?.classList.contains("text-left")).toBe(true)
-    expect(container.querySelector('[aria-current="page"]')?.textContent).toContain("Chat")
+    expect(container.querySelector('[aria-current="page"]')?.textContent).toContain("Local session")
+    expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
     expect(container.querySelector(".oa-react-section-label")?.textContent).toBe("Recent")
     expect(container.textContent).not.toContain("Search sessionsSearch Codex sessions")
   })
@@ -458,7 +498,9 @@ describe("React workbench shell", () => {
       presentation: { sidebarCollapsed: true, sessionSearchOpen: false },
     }} report={report} />)
     expect(container.querySelector(".oa-react-workbench")?.getAttribute("data-rail-collapsed")).toBe("true")
-    expect(container.querySelector<HTMLButtonElement>(".oa-react-sidebar-expand")).not.toBeNull()
+    const expand = container.querySelector<HTMLButtonElement>(".oa-react-sidebar-expand")
+    expect(expand).not.toBeNull()
+    expect(expand?.querySelector('[data-icon-name="Menu"]')).not.toBeNull()
     expect(container.querySelector('input[type="search"]')).toBeNull()
   })
 

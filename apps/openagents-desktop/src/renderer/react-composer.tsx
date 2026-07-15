@@ -192,7 +192,7 @@ const OpenReactCommandPalette = ({
   const normalized = query.trim().toLocaleLowerCase();
   const commands = useMemo(
     () =>
-      desktopCommandRegistry.filter((command) => commandAvailable(command, state)).filter(
+      desktopCommandRegistry.filter((command) => command.id !== "workspace.review" && commandAvailable(command, state)).filter(
         (command) =>
           normalized === "" ||
           `${command.label} ${command.id}`.toLocaleLowerCase().includes(normalized),

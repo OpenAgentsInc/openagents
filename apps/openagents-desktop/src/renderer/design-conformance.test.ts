@@ -157,7 +157,7 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(rule(".oa-react-primary-destination")).toContain("height: 30px")
     expect(rule(".oa-react-session-row")).toContain("height: 32px")
     expect(rule(".oa-react-section-label")).toContain("font-size: 10px")
-    expect(rule(".oa-react-conversation-header .oa-react-review-trigger")).toContain("width: 28px")
+    expect(css).toContain("-webkit-app-region: no-drag")
   })
 
   test("command palette keeps the T3 search/results/footer structure", () => {

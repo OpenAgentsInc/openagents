@@ -182,6 +182,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-sidebar-expand {
   display: none;
+  -webkit-app-region: no-drag;
 }
 
 .oa-react-primary-destination,
@@ -216,7 +217,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-primary-destination svg { width: 15px; height: 15px; }
 
-.oa-react-primary-destination:hover { background: var(--en-color-stateHover); }
+.oa-react-primary-destination:hover:not([data-selected="true"]) { background: transparent; color: var(--en-color-textSecondary); }
 .oa-react-primary-destination[data-selected="true"] { background: var(--en-color-stateSelected); }
 
 .oa-react-primary-nav {
@@ -305,9 +306,13 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-weight: 450;
 }
 
-.oa-react-session-row:hover,
 .oa-react-workspace-row > button:hover {
   background: var(--en-color-stateHover);
+}
+
+.oa-react-session-row:hover:not([data-selected="true"]) {
+  background: transparent;
+  color: var(--en-color-textSecondary);
 }
 
 .oa-react-session-row[data-selected="true"] {
@@ -419,19 +424,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   align-items: center;
   padding: 0 var(--en-spacing-5);
   border-bottom: 1px solid var(--en-color-borderSubtle);
-  -webkit-app-region: drag;
-}
-
-.oa-react-conversation-header .oa-react-review-trigger {
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
-  color: var(--en-color-textMuted);
   -webkit-app-region: no-drag;
 }
 
-.oa-react-conversation-header .oa-react-review-trigger:hover { color: var(--en-color-textPrimary); }
-.oa-react-conversation-header .oa-react-review-trigger svg { width: 14px; height: 14px; }
+.oa-react-conversation-heading {
+  -webkit-app-region: drag;
+}
 
 .oa-react-conversation-body {
   position: relative;
@@ -688,17 +686,19 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-work-entry, .oa-react-work-group, .oa-react-plan, .oa-react-notice { width: min(720px, 100%); margin: 0 auto var(--en-spacing-2); }
 .oa-react-work-entry > summary { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; gap: var(--en-spacing-2); min-height: 28px; padding: 0 var(--en-spacing-2); border-radius: var(--en-radius-md); color: var(--en-color-textMuted); cursor: pointer; font-size: 12px; list-style: none; }
-.oa-react-work-entry > summary::-webkit-details-marker, .oa-react-work-group-summary::-webkit-details-marker { display: none; }
+.oa-react-work-entry > summary::-webkit-details-marker { display: none; }
 .oa-react-work-entry > summary:hover { background: var(--en-color-stateHover); }
 .oa-react-work-label { color: var(--en-color-textPrimary); font-weight: 600; }
 .oa-react-work-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .oa-react-work-status { color: var(--en-color-textFaint); font-size: 11px; }
 .oa-react-work-status[data-status="running"] { color: var(--en-color-accent); }
 .oa-react-work-status[data-status="failed"], .oa-react-work-status[data-status="errored"] { color: var(--en-color-danger); }
-.oa-react-work-group-summary { display: flex; align-items: center; gap: var(--en-spacing-2); min-height: 28px; padding: 0 var(--en-spacing-2); color: var(--en-color-textMuted); cursor: pointer; font-size: 12px; list-style: none; }
-.oa-react-work-group-summary:hover { color: var(--en-color-textPrimary); }
+.oa-react-work-group-summary { display: flex; width: 100%; align-items: center; gap: var(--en-spacing-2); min-height: 28px; padding: 0 var(--en-spacing-2); border: 0; border-radius: var(--en-radius-md); background: transparent; color: var(--en-color-textMuted); cursor: pointer; font-size: 12px; text-align: left; }
+.oa-react-work-group-summary:hover { background: var(--en-color-stateHover); color: var(--en-color-textPrimary); }
+.oa-react-work-group-summary svg { width: 13px; height: 13px; flex: none; transition: transform var(--en-motion-fast) var(--en-ease-basic); }
+.oa-react-work-group-summary svg[data-expanded="true"] { transform: rotate(90deg); }
 .oa-react-work-group-summary span { color: var(--en-color-textFaint); }
-.oa-react-work-group > details[open] { margin-bottom: var(--en-spacing-2); }
+.oa-react-work-group > [role="list"] { margin-bottom: var(--en-spacing-2); }
 .oa-react-work-detail { display: grid; gap: var(--en-spacing-2); margin: var(--en-spacing-1) var(--en-spacing-2) var(--en-spacing-3); padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); background: var(--en-color-surface); }
 .oa-react-work-detail pre { max-height: 280px; margin: 0; overflow: auto; color: var(--en-color-textMuted); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .oa-react-plan { display: grid; gap: var(--en-spacing-2); padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); background: var(--en-color-surface); }
@@ -906,8 +906,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   position: relative;
   display: grid;
   gap: var(--en-spacing-1);
-  margin: var(--en-spacing-3) auto var(--en-spacing-4);
-  width: min(760px, calc(100% - var(--en-spacing-6)));
+  margin: var(--en-spacing-3) auto var(--en-spacing-4) !important;
+  width: min(760px, calc(100% - var(--en-spacing-6))) !important;
   padding: var(--en-spacing-2);
   border: 1px solid var(--en-color-borderSubtle);
   border-radius: var(--en-radius-xl);
@@ -1126,16 +1126,28 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
   .oa-react-workbench[data-rail-collapsed="true"] .oa-react-sidebar-expand {
     position: fixed;
-    z-index: 4;
+    z-index: 20;
     top: var(--en-spacing-3);
     left: var(--en-spacing-3);
     display: inline-flex;
+    width: 24px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
     border: 0;
     background: transparent;
   }
 
+  html[data-desktop-platform="darwin"] .oa-react-workbench[data-rail-collapsed="true"] .oa-react-sidebar-expand {
+    left: 92px;
+  }
+
   .oa-react-workbench[data-rail-collapsed="true"] .oa-react-conversation-header {
-    padding-left: 56px;
+    padding-left: 48px;
+  }
+
+  html[data-desktop-platform="darwin"] .oa-react-workbench[data-rail-collapsed="true"] .oa-react-conversation-header {
+    padding-left: 128px;
   }
 }
 

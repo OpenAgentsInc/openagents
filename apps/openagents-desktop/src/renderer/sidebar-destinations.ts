@@ -101,9 +101,11 @@ const destinationAccessibilityLabel = (
 
 export const projectDesktopSidebarDestinations = (
   activeWorkspace: DesktopSidebarWorkspace,
+  nestedSelectionActive = false,
 ): ReadonlyArray<DesktopSidebarDestination> =>
   desktopSidebarDestinationDefinitions.map((destination) => {
-    const selected = destination.workspace !== null && destination.workspace === activeWorkspace
+    const selected = destination.workspace !== null && destination.workspace === activeWorkspace &&
+      !(activeWorkspace === "chat" && nestedSelectionActive)
     return {
       ...destination,
       selected,

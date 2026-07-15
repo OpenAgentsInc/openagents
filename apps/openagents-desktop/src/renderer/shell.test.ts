@@ -412,7 +412,7 @@ describe("desktopShellView (state -> component tree)", () => {
     ])
     expect(navItemById(view, "workspace-new-chat")).toMatchObject({ icon: "ChatCompose", accessibilityLabel: "New session" })
     expect((navItemById(view, "workspace-new-chat")?.onSelect as { name?: string })?.name).toBe("DesktopNewChat")
-    const expected = projectDesktopSidebarDestinations("chat")
+    const expected = projectDesktopSidebarDestinations("chat", true)
     expect(dock?.items.map(item => {
       const resolved = resolveIntentRef(item.onSelect as never)
       return {
@@ -590,19 +590,13 @@ describe("desktopShellView (state -> component tree)", () => {
       createdAt:"2026-07-10T18:04:00.000Z",updatedAt:"2026-07-10T18:04:00.000Z",depth:0,descendantCount:0,
       model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,source:"codex" as const,
     }))
-    const locals=Array.from({length:5},(_,index)=>({...testThread,id:`local-${index}`,title:`Local ${index}`}))
-    const state={...baseState,threads:locals,historyShortcutHintsVisible:true,history:{...baseState.history,catalog:{roots,agents:roots}}}
+    const locals=Array.from({length:5},(_,index)=>({...testThread,id:`local-${index}`,title:`Local ${index}`,updatedAt:`2026-07-11T00:00:0${index}Z`}))
+    const state={...baseState,host:"electron/darwin",threads:locals,historyShortcutHintsVisible:true,history:{...baseState.history,catalog:{roots,agents:roots}}}
     const view=desktopShellView(state)
-    expect(navItemById(view,"sidebar-thread-local-0")?.meta).toBe("1")
-    expect(navItemById(view,"sidebar-thread-local-4")?.meta).toBe("5")
-    expect(navItemById(view,"sidebar-thread-hint-0")?.meta).toBe("6")
-    expect(navItemById(view,"sidebar-thread-hint-3")?.meta).toBe("9")
-    expect(navItemById(view,"sidebar-thread-hint-4")?.meta).toBe("")
-    expect(desktopConversationShortcutTargets(state).slice(0,7)).toEqual([
-      ...locals.map(thread=>({kind:"runtime" as const,threadRef:thread.id})),
-      {kind:"history" as const,threadRef:"hint-0"},
-      {kind:"history" as const,threadRef:"hint-1"},
-    ])
+    const targets=desktopConversationShortcutTargets(state)
+    expect(targets.slice(0,5)).toEqual([...locals].reverse().map(thread=>({kind:"runtime" as const,threadRef:thread.id})))
+    targets.slice(0,9).forEach((target,index)=>expect(navItemById(view,`sidebar-thread-${target.threadRef}`)?.meta).toBe(`⌘${index+1}`))
+    expect(navItemById(view,`sidebar-thread-${targets[9]?.threadRef}`)?.meta).toBe("")
   })
 
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {
@@ -3066,7 +3060,7 @@ describe("EP250 window + sidebar owner contracts", () => {
   test("composer send and stop use canonical command identities", () => {
     expect(desktopCanonicalCommandRegistry.find(command => command.id === "chat.send")).toMatchObject({
       intentName: "DesktopNoteSubmitted",
-      defaultBindings: ["Meta+Enter", "Control+Enter"],
+      defaultBindings: [],
       palette: true,
     })
     expect(desktopCanonicalCommandRegistry.find(command => command.id === "chat.stop")).toMatchObject({

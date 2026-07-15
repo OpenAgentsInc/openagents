@@ -1737,7 +1737,7 @@ export const makeDesktopShellHandlers = (
         anchorItemRef: page.items[0]?.itemRef ?? null,
         expandedThreadRefs,
       })
-      return { ...current, workspace: "chat" as const, history }
+      return { ...current, workspace: "chat" as const, activeThreadId: null, notes: [], history }
     })
     return true
   })
@@ -3187,7 +3187,7 @@ const historySidebarItems = (state: DesktopShellState, shortcutOffset: number, e
   const rows=roots.map((thread,index) => ({
     id:`sidebar-thread-${thread.threadRef}`,
     label:thread.title,
-    meta:state.historyShortcutHintsVisible ? (index + shortcutOffset < 9 ? String(index + shortcutOffset + 1) : "") : formatRelativeTimestamp(thread.updatedAt),
+    meta:state.historyShortcutHintsVisible ? desktopConversationShortcutLabel(state, index + shortcutOffset) : formatRelativeTimestamp(thread.updatedAt),
     accessibilityLabel:`Open ${historySourceBadgeLabel(thread.source)} chat ${thread.title}, ${thread.descendantCount} descendant agents`,
     onSelect:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),
   }))
@@ -3205,15 +3205,26 @@ const visibleCodexThreads = (state: DesktopShellState) =>
 const localSidebarItems = (state: DesktopShellState) => visibleCodexThreads(state).map((thread,index) => ({
   id:`sidebar-thread-${thread.id}`,
   label:thread.title,
-  meta:state.historyShortcutHintsVisible ? (index < 9 ? String(index + 1) : "") : formatRelativeTimestamp(thread.updatedAt),
+  meta:state.historyShortcutHintsVisible ? desktopConversationShortcutLabel(state, index) : formatRelativeTimestamp(thread.updatedAt),
   accessibilityLabel:`Open chat ${thread.title}`,
   onSelect:IntentRef("DesktopChatSelected",StaticPayload(thread.id)),
 }))
 
 const sidebarConversationItems = (state: DesktopShellState) => {
   const local = localSidebarItems(state)
+  const localById = new Map(local.map(item => [item.id.replace("sidebar-thread-", ""), item]))
   const localThreadIds = new Set(visibleCodexThreads(state).map(thread => thread.id))
-  return [...local, ...historySidebarItems(state, local.length, localThreadIds)]
+  const history = historySidebarItems(state, local.length, localThreadIds)
+  const loadMore = history.find(item => item.id === "sidebar-history-load-more")
+  const historyById = new Map(history
+    .filter(item => item.id !== "sidebar-history-load-more")
+    .map(item => [item.id.replace("sidebar-thread-", ""), item]))
+  const rows = desktopConversationShortcutTargets(state).map((target, index) => {
+    const item = target.kind === "runtime" ? localById.get(target.threadRef) : historyById.get(target.threadRef)
+    if (item === undefined || !state.historyShortcutHintsVisible) return item
+    return { ...item, meta: desktopConversationShortcutLabel(state, index) }
+  }).filter((item): item is NonNullable<typeof item> => item !== undefined)
+  return loadMore === undefined ? rows : [...rows, loadMore]
 }
 
 export type DesktopConversationShortcutTarget = Readonly<{
@@ -3221,16 +3232,21 @@ export type DesktopConversationShortcutTarget = Readonly<{
   threadRef: string
 }>
 
+export const desktopConversationShortcutLabel = (state: Pick<DesktopShellState, "host">, index: number): string =>
+  index >= 9 ? "" : state.host.includes("darwin") ? `⌘${index + 1}` : `Ctrl+${index + 1}`
+
 /** One canonical order for visible shortcut labels and keyboard activation. */
 export const desktopConversationShortcutTargets = (state: DesktopShellState): ReadonlyArray<DesktopConversationShortcutTarget> => {
+  if (historySearchActive(state.history)) return []
   const localThreads = visibleCodexThreads(state)
   const localIds = new Set(localThreads.map(thread => thread.id))
   return [
-    ...localThreads.map(thread => ({ kind: "runtime" as const, threadRef: thread.id })),
-    ...state.history.catalog.roots
+    ...localThreads.map(thread => ({ kind: "runtime" as const, threadRef: thread.id, updatedAt: thread.updatedAt })),
+    ...state.history.catalog.roots.slice(0, state.history.visibleRootCount)
       .filter(thread => thread.source === "codex" && !localIds.has(thread.threadRef))
-      .map(thread => ({ kind: "history" as const, threadRef: thread.threadRef })),
-  ]
+      .map(thread => ({ kind: "history" as const, threadRef: thread.threadRef, updatedAt: thread.updatedAt })),
+  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.threadRef.localeCompare(right.threadRef))
+    .map(({ updatedAt: _, ...target }) => target)
 }
 
 /**
@@ -3295,6 +3311,7 @@ const shellSidebar = (state: DesktopShellState): View => {
           //     is called for.
           {id:"sidebar-workspace-dock",layout:"row",items:projectDesktopSidebarDestinations(
             state.workspace === "home" || state.workspace === "settings" ? state.workspace : "chat",
+            state.history.pendingThreadRef !== null || state.history.page !== null || state.activeThreadId !== null,
           ).map((destination: DesktopSidebarDestination) => ({
             id: destination.id,
             label: destination.label,

@@ -54,6 +54,16 @@ describe("Desktop sidebar destination projection", () => {
     })
   })
 
+  test("does not paint Chat active when a nested conversation is the active row", () => {
+    const destinations = projectDesktopSidebarDestinations("chat", true)
+    expect(destinations.filter(destination => destination.selected)).toEqual([])
+    expect(destinations.find(destination => destination.id === "workspace-chat")).toMatchObject({
+      selected: false,
+      accessibilityCurrent: undefined,
+      indicator: null,
+    })
+  })
+
   test("uses truthful Settings toggle labels without selecting the primary action", () => {
     const open = projectDesktopSidebarDestinations("chat")
     expect(open.find(destination => destination.id === "shell-settings-toggle")).toMatchObject({

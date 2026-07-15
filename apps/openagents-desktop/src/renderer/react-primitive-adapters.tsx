@@ -17,7 +17,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Folder,
-  FileDiff,
   House,
   CircleAlert,
   Download,
@@ -46,9 +45,9 @@ import { ScrollArea } from "#components/ui/scroll-area"
 import { Separator } from "#components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
 import type { DesktopShellState } from "./shell.ts"
-import { formatRelativeTimestamp } from "./shell.ts"
+import { desktopConversationShortcutLabel, formatRelativeTimestamp } from "./shell.ts"
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
-import { ReviewSurface, StatusNotices } from "./react-review.tsx"
+import { StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
@@ -96,7 +95,7 @@ export const projectReactSessionRows = (
   now: Date = new Date(),
 ): ReadonlyArray<ReactSessionRow> => {
   const query = normalized(state.history.searchQuery)
-  const selectedHistoryRef = state.history.page?.rootThreadRef ?? null
+  const selectedHistoryRef = state.history.pendingThreadRef ?? state.history.page?.rootThreadRef ?? null
   const local = state.threads
     .filter(thread => query === "" || normalized(thread.title).includes(query))
     .map((thread): ReactSessionRow => ({
@@ -105,7 +104,7 @@ export const projectReactSessionRows = (
       updatedAt: thread.updatedAt,
       meta: formatRelativeTimestamp(thread.updatedAt, now),
       source: "local",
-      selected: state.activeThreadId === thread.id,
+      selected: selectedHistoryRef === null && state.activeThreadId === thread.id,
       intent: "DesktopChatSelected",
     }))
   const history: ReadonlyArray<ReactSessionRow> = query === ""
@@ -128,9 +127,15 @@ export const projectReactSessionRows = (
       intent: "HistorySearchResultOpened",
     }))
   const seen = new Set<string>()
-  return [...local, ...history]
+  const rows = [...local, ...history]
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
     .filter(row => seen.has(row.id) ? false : (seen.add(row.id), true))
+  return rows.map((row, index) => ({
+    ...row,
+    meta: state.historyShortcutHintsVisible && state.history.searchQuery.trim() === ""
+      ? desktopConversationShortcutLabel(state, index)
+      : row.meta,
+  }))
 }
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
@@ -156,11 +161,8 @@ const selectedLifecycle = (state: DesktopShellState): string => {
   return "Ready"
 }
 
-export const ConversationHeader = ({ state, report, reviewTriggerRef, onReviewOpen }: {
+export const ConversationHeader = ({ state }: {
   readonly state: DesktopShellState
-  readonly report: IntentReporter
-  readonly reviewTriggerRef: RefObject<HTMLButtonElement | null>
-  readonly onReviewOpen: () => void
 }): ReactElement => {
   const selectedCoding = state.codingCatalog.sessions.find(
     session => session.sessionRef === state.codingCatalog.selectedSessionRef,
@@ -175,15 +177,6 @@ export const ConversationHeader = ({ state, report, reviewTriggerRef, onReviewOp
         {selectedCoding === undefined ? null : <span>{selectedCoding.repositoryLabel}</span>}
       </div>
     </div>
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger render={<Button ref={reviewTriggerRef} className="oa-react-review-trigger" type="button" variant="ghost" size="icon-sm" aria-label="Review changes" title="Review changes" onClick={() => {
-          dispatch(report, "GitPanelRefreshRequested")
-          onReviewOpen()
-        }}><FileDiff aria-hidden="true" data-icon-name="ReviewChanges" /></Button>} />
-        <TooltipContent>Review changes</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   </header>
 }
 
@@ -207,6 +200,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
   const rows = projectReactSessionRows(state)
   const destinations = projectDesktopSidebarDestinations(
     state.workspace === "home" || state.workspace === "settings" ? state.workspace : "chat",
+    rows.some(row => row.selected),
   )
   const shown = state.history.visibleRootCount
   const searchOpen = state.presentation.sessionSearchOpen
@@ -367,22 +361,33 @@ export const WorkbenchShell = ({ state, report }: {
   readonly report: IntentReporter
 }): ReactElement => {
   const [railOpen, setRailOpen] = useState(false)
-  const [reviewOpen, setReviewOpen] = useState(false)
   const railCollapsed = state.presentation.sidebarCollapsed
   const [codexUpdateOpen, setCodexUpdateOpen] = useState(false)
   const [dismissedCodexVersion, setDismissedCodexVersion] = useState<string | null>(null)
   const railRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
-  const reviewTriggerRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent): void => {
-      if (event.key !== "Escape" || !railOpen) return
-      setRailOpen(false)
-      toggleRef.current?.focus()
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault()
+        event.stopPropagation()
+        if (railCollapsed && !railOpen) {
+          dispatch(report, "DesktopSidebarCollapsedChanged", false)
+          setRailOpen(true)
+        } else {
+          dispatch(report, "DesktopSidebarCollapsedChanged", true)
+          setRailOpen(false)
+        }
+        return
+      }
+      if (event.key === "Escape" && railOpen) {
+        setRailOpen(false)
+        toggleRef.current?.focus()
+      }
     }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [railOpen])
+    window.addEventListener("keydown", onKeyDown, true)
+    return () => window.removeEventListener("keydown", onKeyDown, true)
+  }, [railCollapsed, railOpen, report])
   useEffect(() => {
     if (railOpen) railRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
   }, [railOpen])
@@ -464,14 +469,14 @@ export const WorkbenchShell = ({ state, report }: {
     setDismissedCodexVersion(codex.latestVersion)
     dispatch(report, "DesktopHarnessUpdateRequested", "codex")
   }
-  return <div className="oa-react-workbench" data-en-react-surface="true" data-review-open={reviewOpen ? "true" : "false"} data-rail-collapsed={railCollapsed ? "true" : "false"}>
+  return <div className="oa-react-workbench" data-en-react-surface="true" data-rail-collapsed={railCollapsed ? "true" : "false"}>
     <ReactCommandPalette state={state} report={report} />
     <DecisionSurface state={state} report={report} />
     <Button
       ref={toggleRef}
       className="oa-react-sidebar-expand"
       variant="ghost"
-      size="icon-sm"
+      size="icon-xs"
       type="button"
       onClick={openRail}
       aria-expanded={railOpen}
@@ -481,7 +486,7 @@ export const WorkbenchShell = ({ state, report }: {
     <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} />
     {railOpen ? <button className="oa-react-rail-scrim" aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     {workspaceSurface ?? <main className="oa-react-conversation" data-react-workspace="chat">
-        <ConversationHeader state={state} report={report} reviewTriggerRef={reviewTriggerRef} onReviewOpen={() => setReviewOpen(true)} />
+        <ConversationHeader state={state} />
         <div className="oa-react-conversation-body">
           <StatusNotices state={state} report={report} />
           <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.pending} workingDirectory={state.workingDirectory} report={report} />
@@ -542,7 +547,6 @@ export const WorkbenchShell = ({ state, report }: {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    <ReviewSurface state={state} report={report} open={reviewOpen} onOpenChange={setReviewOpen} triggerRef={reviewTriggerRef} />
   </div>
 }
 
