@@ -391,6 +391,7 @@ import {
 } from "./desktop-command-contract.ts"
 import {
   deferredDesktopCommand,
+  dispatchNativeDesktopCommand,
   desktopCommandsFromArgv,
   makeDesktopCommandHost,
   parseDesktopCommandUrl,
@@ -5317,7 +5318,11 @@ const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): 
             : [commandBindingForNativeMenu(bindings, command.id)!],
         ) }),
     click: () => {
-      desktopCommandHost.enqueue(deferredDesktopCommand(command, "native_menu"))
+      dispatchNativeDesktopCommand(command, {
+        hasOpenWindow: () => BrowserWindow.getAllWindows().some(window => !window.isDestroyed()),
+        openWindow: () => { createWindow() },
+        enqueue: desktopCommandHost.enqueue,
+      })
     },
     }))
   const template: MenuItemConstructorOptions[] = [

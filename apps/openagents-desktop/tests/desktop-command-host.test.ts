@@ -3,11 +3,15 @@ import { describe, expect, test } from "vite-plus/test"
 
 import {
   deferredDesktopCommand,
+  dispatchNativeDesktopCommand,
   desktopCommandsFromArgv,
   makeDesktopCommandHost,
   parseDesktopCommandUrl,
 } from "../src/desktop-command-host"
-import { desktopCanonicalCommandRegistry } from "../src/desktop-command-contract"
+import {
+  decodeDesktopDeferredCommandOrNull,
+  desktopCanonicalCommandRegistry,
+} from "../src/desktop-command-contract"
 import { resolveDesktopDeferredCommandIntent } from "../src/renderer/command-registry"
 
 describe("contract openagents_desktop.commands.host_routing.v1", () => {
@@ -21,6 +25,9 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
     expect(main).toContain('app.on("second-instance"')
     expect(main).toContain('app.on("open-url"')
     expect(main).toContain("Menu.buildFromTemplate")
+    expect(main).toContain("dispatchNativeDesktopCommand(command")
+    expect(main).toContain("hasOpenWindow: () => BrowserWindow.getAllWindows()")
+    expect(main).toContain("openWindow: () => { createWindow() }")
     expect(main).toContain("DesktopCommandReadyChannel")
     expect(preload).toContain("decodeDesktopDeferredCommandOrNull")
     expect(preload).toContain("ipcRenderer.on(DesktopCommandEventChannel")
@@ -76,6 +83,42 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
     host.detach()
     expect(host.enqueue({ ...one, requestRef: "command.five" })).toBe("accepted")
     expect(host.pendingCount()).toBe(1)
+  })
+
+  test("Command+N recreates a closed last window before queuing a blank chat", () => {
+    const chatNew = desktopCanonicalCommandRegistry.find(value => value.id === "chat.new")!
+    const events: string[] = []
+    const host = makeDesktopCommandHost()
+
+    expect(dispatchNativeDesktopCommand(chatNew, {
+      hasOpenWindow: () => false,
+      openWindow: () => { events.push("window-opened") },
+      enqueue: value => {
+        const command = decodeDesktopDeferredCommandOrNull(value)
+        events.push(`command-queued:${command?.commandId ?? "invalid"}`)
+        return host.enqueue(value)
+      },
+    })).toBe("accepted")
+
+    expect(events).toEqual(["window-opened", "command-queued:chat.new"])
+    expect(host.pendingCount()).toBe(1)
+    const delivered: string[] = []
+    host.attach(command => { delivered.push(command.commandId) })
+    expect(delivered).toEqual(["chat.new"])
+  })
+
+  test("Command+N reuses an open window without creating another", () => {
+    const chatNew = desktopCanonicalCommandRegistry.find(value => value.id === "chat.new")!
+    let opened = 0
+    const host = makeDesktopCommandHost()
+    host.attach(() => {})
+
+    expect(dispatchNativeDesktopCommand(chatNew, {
+      hasOpenWindow: () => true,
+      openWindow: () => { opened += 1 },
+      enqueue: host.enqueue,
+    })).toBe("accepted")
+    expect(opened).toBe(0)
   })
 
   test("renderer resolves the same command to one typed intent after readiness and owner gates", () => {

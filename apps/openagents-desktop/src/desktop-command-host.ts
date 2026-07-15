@@ -66,6 +66,28 @@ export type DesktopCommandHost = Readonly<{
   pendingCount: () => number
 }>
 
+export type NativeDesktopCommandEnvironment = Readonly<{
+  hasOpenWindow: () => boolean
+  openWindow: () => void
+  enqueue: DesktopCommandHost["enqueue"]
+}>
+
+/**
+ * Native menu accelerators outlive the last macOS BrowserWindow. A New chat
+ * command therefore has to recreate the window before it is queued; the
+ * command host will retain it until that window's renderer readiness
+ * handshake attaches the next sink.
+ */
+export const dispatchNativeDesktopCommand = (
+  command: DesktopCommandDefinition,
+  environment: NativeDesktopCommandEnvironment,
+): ReturnType<DesktopCommandHost["enqueue"]> => {
+  if (command.id === "chat.new" && !environment.hasOpenWindow()) {
+    environment.openWindow()
+  }
+  return environment.enqueue(deferredDesktopCommand(command, "native_menu"))
+}
+
 export const makeDesktopCommandHost = (maxPending = 32): DesktopCommandHost => {
   let sink: ((command: DesktopDeferredCommand) => void) | null = null
   let pending: DesktopDeferredCommand[] = []
