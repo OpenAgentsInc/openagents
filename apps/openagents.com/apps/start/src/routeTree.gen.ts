@@ -24,12 +24,15 @@ import { Route as NewRouteImport } from './routes/new'
 import { Route as MirrorcodeRouteImport } from './routes/mirrorcode'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LandingEnRouteImport } from './routes/landing-en'
+import { Route as InstallRouteImport } from './routes/install'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DownloadRouteImport } from './routes/download'
 import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
+import { Route as AstroRouteImport } from './routes/astro'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AdjutantRouteImport } from './routes/adjutant'
 import { Route as ActivityRouteImport } from './routes/activity'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as KhalaIndexRouteImport } from './routes/khala/index'
 import { Route as ForumIndexRouteImport } from './routes/forum/index'
 import { Route as ComponentsIndexRouteImport } from './routes/components/index'
@@ -133,6 +136,11 @@ const LandingEnRoute = LandingEnRouteImport.update({
   path: '/landing-en',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InstallRoute = InstallRouteImport.update({
+  id: '/install',
+  path: '/install',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GymRoute = GymRouteImport.update({
   id: '/gym',
   path: '/gym',
@@ -148,6 +156,11 @@ const ClientsPreviewRoute = ClientsPreviewRouteImport.update({
   path: '/clients-preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AstroRoute = AstroRouteImport.update({
+  id: '/astro',
+  path: '/astro',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
@@ -161,6 +174,11 @@ const AdjutantRoute = AdjutantRouteImport.update({
 const ActivityRoute = ActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KhalaIndexRoute = KhalaIndexRouteImport.update({
@@ -302,12 +320,15 @@ const PylonCodexAssignmentsAssignmentRefRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/adjutant': typeof AdjutantRoute
   '/app': typeof AppRoute
+  '/astro': typeof AstroRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
+  '/install': typeof InstallRoute
   '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
@@ -352,12 +373,15 @@ export interface FileRoutesByFullPath {
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/adjutant': typeof AdjutantRoute
   '/app': typeof AppRoute
+  '/astro': typeof AstroRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
+  '/install': typeof InstallRoute
   '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
@@ -403,12 +427,15 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/adjutant': typeof AdjutantRoute
   '/app': typeof AppRoute
+  '/astro': typeof AstroRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
+  '/install': typeof InstallRoute
   '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
@@ -455,12 +482,15 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
     | '/activity'
     | '/adjutant'
     | '/app'
+    | '/astro'
     | '/clients-preview'
     | '/download'
     | '/gym'
+    | '/install'
     | '/landing-en'
     | '/login'
     | '/mirrorcode'
@@ -505,12 +535,15 @@ export interface FileRouteTypes {
     | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/activity'
     | '/adjutant'
     | '/app'
+    | '/astro'
     | '/clients-preview'
     | '/download'
     | '/gym'
+    | '/install'
     | '/landing-en'
     | '/login'
     | '/mirrorcode'
@@ -555,12 +588,15 @@ export interface FileRouteTypes {
     | '/pylon/codex/assignments/$assignmentRef'
   id:
     | '__root__'
+    | '/'
     | '/activity'
     | '/adjutant'
     | '/app'
+    | '/astro'
     | '/clients-preview'
     | '/download'
     | '/gym'
+    | '/install'
     | '/landing-en'
     | '/login'
     | '/mirrorcode'
@@ -606,12 +642,15 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
   AdjutantRoute: typeof AdjutantRoute
   AppRoute: typeof AppRoute
+  AstroRoute: typeof AstroRoute
   ClientsPreviewRoute: typeof ClientsPreviewRoute
   DownloadRoute: typeof DownloadRoute
   GymRoute: typeof GymRoute
+  InstallRoute: typeof InstallRoute
   LandingEnRoute: typeof LandingEnRoute
   LoginRoute: typeof LoginRoute
   MirrorcodeRoute: typeof MirrorcodeRoute
@@ -763,6 +802,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LandingEnRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/install': {
+      id: '/install'
+      path: '/install'
+      fullPath: '/install'
+      preLoaderRoute: typeof InstallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/gym': {
       id: '/gym'
       path: '/gym'
@@ -784,6 +830,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/astro': {
+      id: '/astro'
+      path: '/astro'
+      fullPath: '/astro'
+      preLoaderRoute: typeof AstroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app': {
       id: '/app'
       path: '/app'
@@ -803,6 +856,13 @@ declare module '@tanstack/react-router' {
       path: '/activity'
       fullPath: '/activity'
       preLoaderRoute: typeof ActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/khala/': {
@@ -998,12 +1058,15 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
   AdjutantRoute: AdjutantRoute,
   AppRoute: AppRoute,
+  AstroRoute: AstroRoute,
   ClientsPreviewRoute: ClientsPreviewRoute,
   DownloadRoute: DownloadRoute,
   GymRoute: GymRoute,
+  InstallRoute: InstallRoute,
   LandingEnRoute: LandingEnRoute,
   LoginRoute: LoginRoute,
   MirrorcodeRoute: MirrorcodeRoute,

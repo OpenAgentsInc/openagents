@@ -860,26 +860,6 @@ hardware, artifact, adapter, permission, and isolation details before execution.
         "name": "typecheck"
       },
       {
-        "command": "astro build",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "build"
-      },
-      {
-        "command": "astro dev",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "dev"
-      },
-      {
-        "command": "astro preview",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "preview"
-      },
-      {
-        "command": "astro check",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "typecheck"
-      },
-      {
         "command": "blume build --strict --analyze --budget-js 3800 --budget-css 120",
         "manifest_path": "apps/openagents.com/apps/docs/package.json",
         "name": "build"
@@ -955,7 +935,7 @@ hardware, artifact, adapter, permission, and isolation details before execution.
         "name": "artanis:readiness"
       },
       {
-        "command": "pnpm run build:astro && pnpm run build:start && pnpm run build:api",
+        "command": "pnpm run build:start && pnpm run build:api",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "build"
       },
@@ -963,11 +943,6 @@ hardware, artifact, adapter, permission, and isolation details before execution.
         "command": "pnpm --dir workers/api run build",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "build:api"
-      },
-      {
-        "command": "pnpm --dir apps/astro run build",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "build:astro"
       },
       {
         "command": "pnpm --dir apps/docs run build",
@@ -1043,11 +1018,6 @@ hardware, artifact, adapter, permission, and isolation details before execution.
         "command": "pnpm --dir workers/api run dev",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "dev:api"
-      },
-      {
-        "command": "pnpm --dir apps/astro run dev",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "dev:astro"
       },
       {
         "command": "pnpm --dir apps/docs run dev",
@@ -1205,7 +1175,7 @@ hardware, artifact, adapter, permission, and isolation details before execution.
         "name": "test:start"
       },
       {
-        "command": "pnpm run typecheck:packages && pnpm run typecheck:astro && pnpm run typecheck:start && pnpm run typecheck:api",
+        "command": "pnpm run typecheck:packages && pnpm run typecheck:start && pnpm run typecheck:api",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "typecheck"
       },
@@ -1218,11 +1188,6 @@ hardware, artifact, adapter, permission, and isolation details before execution.
         "command": "tsc -p workers/api/tsconfig.pylon-api-routes.test.json --noEmit",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "typecheck:api-pylon-integration"
-      },
-      {
-        "command": "pnpm --dir apps/astro run typecheck",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "typecheck:astro"
       },
       {
         "command": "pnpm --dir apps/docs run typecheck",

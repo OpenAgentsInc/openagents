@@ -572,24 +572,11 @@ importers:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(@vitest/browser-preview@4.1.10)(happy-dom@20.10.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))
 
-  apps/openagents.com/apps/astro:
-    dependencies:
-      astro:
-        specifier: ^7.0.3
-        version: 7.0.9(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@types/node@24.13.1)(@vercel/functions@3.7.5(ws@8.21.0))(aws4fetch@1.0.20)(ioredis@5.11.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
-    devDependencies:
-      '@astrojs/check':
-        specifier: ^0.9.7
-        version: 0.9.9(prettier@3.9.5)(typescript@6.0.3)
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
   apps/openagents.com/apps/docs:
     dependencies:
       blume:
         specifier: 1.0.4
-        version: 1.0.4(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@shikijs/themes@4.3.1)(@types/node@24.13.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@vercel/functions@3.7.5(ws@8.21.0))(aws4fetch@1.0.20)(encoding@0.1.13)(esbuild@0.28.1)(ioredis@5.11.1)(terser@5.49.0)(tsx@4.20.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))(ws@8.21.0)(yaml@2.9.0)
+        version: 1.0.4(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@shikijs/themes@4.3.1)(@types/node@24.13.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@vercel/functions@3.7.5(ws@8.21.0))(aws4fetch@1.0.20)(encoding@0.1.13)(esbuild@0.28.1)(ioredis@5.11.1)(prettier@3.9.5)(terser@5.49.0)(tsx@4.20.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))(ws@8.21.0)(yaml@2.9.0)
     devDependencies:
       '@astrojs/mdx':
         specifier: 7.0.3
@@ -17072,7 +17059,7 @@ snapshots:
 
   bluebird@3.7.2: {}
 
-  blume@1.0.4(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@shikijs/themes@4.3.1)(@types/node@24.13.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@vercel/functions@3.7.5(ws@8.21.0))(aws4fetch@1.0.20)(encoding@0.1.13)(esbuild@0.28.1)(ioredis@5.11.1)(terser@5.49.0)(tsx@4.20.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))(ws@8.21.0)(yaml@2.9.0):
+  blume@1.0.4(@astrojs/markdown-remark@7.2.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.2)(@shikijs/themes@4.3.1)(@types/node@24.13.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@vercel/functions@3.7.5(ws@8.21.0))(aws4fetch@1.0.20)(encoding@0.1.13)(esbuild@0.28.1)(ioredis@5.11.1)(prettier@3.9.5)(terser@5.49.0)(tsx@4.20.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))(ws@8.21.0)(yaml@2.9.0):
     dependencies:
       '@astrojs/check': 0.9.9(prettier@3.9.5)(typescript@6.0.3)
       '@astrojs/markdown-satteri': 0.3.4

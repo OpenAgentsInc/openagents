@@ -97,10 +97,17 @@ export const assertStartUiArtifactsExist = (): void => {
   }
 }
 
+export const isStartDocumentRequestPath = (
+  pathname: string,
+  allowPublicRoot = false,
+): boolean =>
+  isKnownStartDocumentPath(pathname) || (allowPublicRoot && pathname === '/')
+
 export const handleStartUiRequest = async (
   request: Request,
   env: Readonly<Record<string, unknown>>,
   ctx: ExecutionContext,
+  allowPublicRoot = false,
 ): Promise<Response | undefined> => {
   const asset = await serveExactClientAsset(request)
   if (asset !== undefined) return asset
@@ -108,7 +115,7 @@ export const handleStartUiRequest = async (
   const pathname = new URL(request.url).pathname
   if (
     (request.method !== 'GET' && request.method !== 'HEAD') ||
-    !isKnownStartDocumentPath(pathname)
+    !isStartDocumentRequestPath(pathname, allowPublicRoot)
   ) return undefined
 
   return (await loadStartWorker()).fetch(request, env, ctx)

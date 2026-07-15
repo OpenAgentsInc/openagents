@@ -24,6 +24,8 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
 
   test.each([
     '/app',
+    '/astro',
+    '/install',
     '/login',
     '/promises',
     '/forum',
@@ -42,7 +44,7 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
     ).toBe(false)
   })
 
-  test('the public root is Astro-owned rather than Start-owned', () => {
+  test('the public root stays out of the path-only table so auth.openagents.com cannot render it', () => {
     expect(isKnownStartDocumentPath('/')).toBe(false)
   })
 

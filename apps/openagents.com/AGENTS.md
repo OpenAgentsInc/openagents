@@ -33,15 +33,15 @@ the Cloud Run monolith. Do not recreate an SPA fallback or a Foldkit route.
 React, TanStack Start, and DOM remain renderer/host machinery, not the product
 architecture.
 
-## 2026-07-15 public Astro / authenticated Start split
+## 2026-07-15 unified TanStack Start public and authenticated surfaces
 
-`apps/astro` owns the public homepage at `/`, preserving the current holding
-page until its content is separately replaced. The Desktop MVP landing remains
-available at `/astro`, and new public landing-page work belongs in Astro rather
-than `apps/start`. Keep it static, minimal, Khala-themed, and centered on the
-accepted Desktop MVP; do not revive retired product areas.
+`apps/start` owns the public homepage at `/`, the Desktop MVP landing at
+`/astro`, the exact `/install` release-candidate page, and the authenticated
+application at `/app`. The root preserves the current holding page until its
+content is separately replaced. Keep public work minimal, Khala-themed, and
+centered on the accepted Desktop MVP; do not revive retired product areas.
 
-`apps/start` owns the authenticated application at `/app`. The Cloud Run
+The Cloud Run
 document gate must validate the real OpenAuth session before rendering Start,
 preserve refreshed session cookies, and redirect signed-out visitors to the
 real `/login` flow with only the exact bounded `/app` return target. App
@@ -51,8 +51,8 @@ is never authentication.
 During the completed root ownership cutover, retire remaining
 non-infrastructure Start documents rather than carrying them forward wholesale.
 Port only explicitly retained public material such as agent-readable promise
-evidence, required legal/auth entry, and companion agent documents. The holding
-page is now an Astro document rather than a Cloud Run inline-HTML interception.
+evidence, required legal/auth entry, and companion agent documents. Blume
+remains the independent `/docs` owner; do not fold it into Start.
 
 ## 2026-07-15 Blume documentation destination
 
@@ -270,12 +270,10 @@ For DOM operations (focus, scroll, modals, scroll lock), Foldkit ships a `Dom` m
 
 This directory is part of the pnpm workspace and uses the Vite Plus toolchain:
 
-- `apps/astro/` is the static public-site destination, isolated at `/astro`
-  until root cutover.
 - `apps/docs/` is the static Blume documentation source and independent Cloud
   Run deployment owner for `/docs`.
-- `apps/start/` is the current retained document host during the bounded Astro
-  migration; it no longer owns `/docs` routes.
+- `apps/start/` owns the public website, install page, authenticated `/app`, and
+  retained document routes; it does not own `/docs` routes.
 - `apps/web/` source is deleted; ignored build remnants are not an application.
 - `workers/api/` is the retained directory name for the Node API deployed to
   Google Cloud Run. It has no Cloudflare runtime or deploy authority.

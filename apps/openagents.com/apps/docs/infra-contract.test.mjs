@@ -63,18 +63,17 @@ test('docs navigation uses the Astro client router without a visible page crossf
 test('docs use the landing site sans stack and reserve Commit Mono for code', () => {
   const docsRoot = join(repoRoot, 'apps', 'openagents.com', 'apps', 'docs')
   const docsTheme = readFileSync(join(docsRoot, 'theme.css'), 'utf8')
-  const landingLayout = readRepoFile(
+  const landingTheme = readRepoFile(
     'apps',
     'openagents.com',
     'apps',
-    'astro',
+    'start',
     'src',
-    'layouts',
-    'Layout.astro',
+    'public-site.css',
   )
-  const sansStack = /ui-sans-serif, -apple-system, BlinkMacSystemFont, ['"]Segoe UI['"], sans-serif/
+  const sansStack = /Inter, ui-sans-serif, system-ui, -apple-system, sans-serif/
 
-  assert.match(landingLayout, sansStack)
+  assert.match(landingTheme, sansStack)
   assert.match(docsTheme, new RegExp(`--blume-font-display: ${sansStack.source}`))
   assert.match(docsTheme, new RegExp(`--blume-font-body: ${sansStack.source}`))
   assert.match(docsTheme, /--blume-font-mono: 'Commit Mono'/)

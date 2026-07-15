@@ -8,7 +8,6 @@
     "dev": "vp dev",
     "build": "vp build --logLevel warn && vp pack cloudrun/server.mjs --out-dir dist/cloudrun --format esm --platform node --target node24 --minify",
     "budget": "pnpm run build && node --import tsx src/routes/-funnel-budget.ts",
-    "benchmark:landing": "node scripts/benchmark-landing-frameworks.mjs",
     "preview": "vp preview",
     "deploy": "bash scripts/deploy-cloudrun.sh stage1",
     "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh",

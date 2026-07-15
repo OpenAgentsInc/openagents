@@ -13,10 +13,9 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     )
 
     expect(deployScript).toContain('vp pack src/cloudrun/server.ts')
-    expect(deployScript).toContain('pnpm run build:astro')
-    expect(deployScript).toContain(
-      'cp -R "$APP_DIR/apps/astro/dist" dist-cloudrun/astro-ui',
-    )
+    expect(deployScript).toContain('pnpm run build:start')
+    expect(deployScript).not.toContain('build:astro')
+    expect(deployScript).not.toContain('astro-ui')
     expect(deployScript).toContain('! -f dist-cloudrun/server.mjs')
     expect(deployScript).not.toContain('preload.mjs')
     expect(deployScript).not.toContain('cloudflare-workers-stub')
@@ -38,8 +37,14 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(dockerfile).toContain(
       'COPY dist-cloudrun/node_modules ./node_modules',
     )
-    expect(dockerfile).toContain('COPY dist-cloudrun/astro-ui ./astro-ui')
-    expect(dockerfile).toContain('ENV ASTRO_UI_DIR=/app/astro-ui')
+    expect(dockerfile).toContain(
+      'COPY dist-cloudrun/start-client ./start-client',
+    )
+    expect(dockerfile).toContain(
+      'COPY dist-cloudrun/start-server ./start-server',
+    )
+    expect(dockerfile).not.toContain('astro-ui')
+    expect(dockerfile).not.toContain('ASTRO_UI_DIR')
   })
 
   test('bundles owned workspace packages like the T3 Code pack pattern', () => {

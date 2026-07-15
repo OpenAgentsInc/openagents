@@ -2,9 +2,8 @@
 
 A Node 24 and pnpm workspace for the OpenAgents application stack.
 
-- Public site: Astro candidate at `/astro`
+- Public site and app: TanStack Start at `/`, `/astro`, `/install`, and `/app`
 - Public docs: Blume static site at `/docs`
-- Retained web: TanStack Start/React host during the Astro cutover
 - API: Node service on Google Cloud Run
 - Auth: OpenAuth target
 - Data and sync: Cloud SQL Postgres, Cloud Run LiveHub, Cloud Storage
@@ -14,9 +13,8 @@ A Node 24 and pnpm workspace for the OpenAgents application stack.
 ## Layout
 
 ```text
-apps/astro/            Static OpenAgents Desktop MVP public-site candidate
 apps/docs/             Curated Blume docs, static host, and deploy script
-apps/start/            TanStack Start host for retained Effect Native web UI
+apps/start/            TanStack Start public site, authenticated app, and retained UI
 workers/api/           retained path for the Node/Cloud Run API
 packages/sync-schema/  Effect Schema protocol models
 packages/sync-client/  browser-side sync helpers

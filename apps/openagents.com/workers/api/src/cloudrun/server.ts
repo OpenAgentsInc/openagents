@@ -20,7 +20,6 @@ import { Runtime } from '@openagentsinc/runtime-platform'
 import worker, { verifySession } from '../index'
 import { handleAppUiRequest } from './app-ui'
 import { assertAssetsDirExists } from './assets'
-import { assertAstroUiArtifactsExist, handleAstroUiRequest } from './astro-ui'
 import {
   isBindingUnavailableError,
   responseForBindingUnavailable,
@@ -36,6 +35,7 @@ import {
 } from './http-utils'
 // #8652 PORTAL-1: client portal mounts at openagents.com/portal (EN surface).
 import { handlePortalUiRequest } from './portal-ui'
+import { isPublicSiteRootRequest } from './public-site-host'
 import { assertStartUiArtifactsExist, handleStartUiRequest } from './start-ui'
 import {
   type SyncBridgeData,
@@ -58,7 +58,6 @@ const log = (event: string, detail: Record<string, unknown> = {}): void => {
 const main = async (): Promise<void> => {
   const runtime = buildCloudRunRuntime(process.env)
   assertAssetsDirExists(runtime.webDistDir)
-  assertAstroUiArtifactsExist()
   assertStartUiArtifactsExist()
 
   const tasks = makeBackgroundTasks((event, error) => {
@@ -109,10 +108,7 @@ const main = async (): Promise<void> => {
         trustForwardedHost,
       )
       const url = new URL(request.url)
-      const isPublicSiteRoot =
-        (url.hostname === 'openagents.com' ||
-          url.hostname === 'www.openagents.com') &&
-        url.pathname === '/'
+      const isPublicSiteRoot = isPublicSiteRootRequest(url)
 
       if (url.pathname === '/internal/healthz') {
         return Response.json({ ok: true, service: 'openagents-monolith' })
@@ -130,21 +126,17 @@ const main = async (): Promise<void> => {
         )
       }
 
-      // Astro owns the public root, the retained /astro comparison candidate,
-      // and the standalone download page.
-      if (
-        isPublicSiteRoot ||
-        url.pathname === '/astro' ||
-        url.pathname.startsWith('/astro/') ||
-        url.pathname === '/holding-bg.jpg' ||
-        url.pathname.startsWith('/_astro/') ||
-        url.pathname === '/install' ||
-        url.pathname === '/install/'
-      ) {
-        const astroResponse = await handleAstroUiRequest(request)
-        if (astroResponse !== undefined) {
-          return astroResponse
-        }
+      // The public root is apex-only. Its document now comes from the same
+      // TanStack Start build as /astro, /install, and the authenticated /app;
+      // auth.openagents.com/ must continue into the auth handler below.
+      if (isPublicSiteRoot) {
+        const rootResponse = await handleStartUiRequest(
+          request,
+          runtime.env as unknown as Readonly<Record<string, unknown>>,
+          ctx,
+          true,
+        )
+        if (rootResponse !== undefined) return rootResponse
       }
 
       const appResponse = await handleAppUiRequest(request, runtime.env, ctx, {
@@ -175,8 +167,8 @@ const main = async (): Promise<void> => {
         }
       }
 
-      // #8813: apps/start owns retained documents after the dedicated static,
-      // authenticated app, and EN mounts above. API/auth/unknown
+      // #8813: apps/start owns retained documents after the authenticated app
+      // and EN mounts above. API/auth/unknown
       // paths continue into the application handler unchanged.
       const startResponse = await handleStartUiRequest(
         request,
