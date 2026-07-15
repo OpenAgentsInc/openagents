@@ -86,6 +86,53 @@ update/rollback/downgrade-refusal/reinstall/cleanup driver. See
 `2026-07-14-openagents-desktop-react-rc13-release-receipt.md` for the immutable
 digest, Apple submission, and bounded public-safe evidence.
 
+## Pinned assurance execution
+
+The admitted `openagents-codex-workroom-mvp` AssuranceSpec revision 2 was
+re-executed after the React cutover against its exact frozen ProductSpec
+revision 6 binding. The session remained unchanged against both pins:
+
+- AssuranceSpec:
+  `sha256:66e1b49d3089b141a9bd5fb6221d002a0d364259ab719a46a254a507fb0dee72`;
+- ProductSpec:
+  `sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1`;
+- manifest:
+  `sha256:727dd64b9f9a8bbdd93580f632a0e2a298b9d1b9f573516939b31ceaedc47139`;
+  and
+- current evidence index:
+  `sha256:444f0f9e90049b5c3b215ac386e2b66fd24b63470f0a7799b68a1363a618bc4c`.
+
+The runtime lock rejected an initial invocation under Node 25.8.2 before it
+could produce evidence. The admitted Node 24.13.1 runtime was then used for
+the complete execution. That run exposed a React test-lifecycle race in the
+decision surface: a failed assertion could let a scheduled React task outlive
+the test DOM. The harness now registers every root, wraps rendering and input
+in React `act`, and unmounts every root before restoring globals. The exact
+failed-bridge copy and explicit `DesktopApprovalApproved` intent oracle were
+retained. The focused file passed 20 consecutive repetitions before the full
+rerun.
+
+Final bounded result:
+
+- 18 of 18 candidate observations confirmed;
+- 18 of 18 falsifiers refuted;
+- full Desktop typecheck, production build, and Electron smoke passed;
+- 138 test files passed; 1,342 tests passed and 39 retired tests remained
+  skipped; and
+- evidence axes remained distinct for every obligation: admission `admitted`,
+  readiness `executable`, observation `CONFIRMED`, infrastructure `ready`,
+  stability `stable`, freshness `current`, disposition `accepted`, and
+  exception `none`.
+
+The schema-valid claim audit echoes the requested claim but does not
+semantically evaluate it or grant publication authority. The full Desktop gate
+is separately `green`; it is not collapsed into criterion observations.
+
+This is re-execution of the admitted first-workroom contract plus the current
+Desktop gate. The Phase 2 React ProductSpec still has no separately admitted
+AssuranceSpec, so this result is not a Phase 2 admission or a substitute for
+the external gates below.
+
 ## External gates not claimed
 
 The following #8823 close-rule evidence is not produced by this packet:

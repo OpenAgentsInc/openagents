@@ -1,6 +1,8 @@
 import { resolveIntentRef, type IntentReporter } from "@effect-native/core";
 import { Effect } from "@effect-native/core/effect";
 import { Window } from "happy-dom";
+import { act, type ReactNode } from "react";
+import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
@@ -8,6 +10,7 @@ import { desktopCommandRegistry } from "./command-registry.ts";
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts";
 
 const restores: Array<() => void> = [];
+const roots = new Set<Root>();
 const installDom = () => {
   const window = new Window({ url: "http://localhost/" });
   class ResizeObserverStub {
@@ -32,6 +35,7 @@ const installDom = () => {
     getComputedStyle: window.getComputedStyle.bind(window),
     requestAnimationFrame: window.requestAnimationFrame.bind(window),
     cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+    IS_REACT_ACT_ENVIRONMENT: true,
   };
   const previous = new Map<string, PropertyDescriptor | undefined>();
   for (const [name, value] of Object.entries(values)) {
@@ -50,11 +54,12 @@ const installDom = () => {
 };
 
 afterEach(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  restores
-    .splice(0)
-    .reverse()
-    .forEach((restore) => restore());
+  await act(async () => {
+    for (const root of roots) root.unmount();
+    roots.clear();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  while (restores.length > 0) restores.pop()?.();
 });
 
 const fixtureState = (extra: Partial<DesktopShellState> = {}): DesktopShellState => {
@@ -76,80 +81,101 @@ const recorder = () => {
   return { received, report };
 };
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));
+const createTestRoot = (container: HTMLDivElement): Root => {
+  const root = createRoot(container);
+  roots.add(root);
+  return root;
+};
+const render = async (root: Root, node: ReactNode): Promise<void> => {
+  await act(async () => {
+    root.render(node);
+    await settle();
+  });
+};
+const interact = async (interaction: () => void): Promise<void> => {
+  await act(async () => {
+    interaction();
+    await settle();
+  });
+};
 
 describe("React Codex composer", () => {
   test("focuses on entry, grows within bounds, and sends one exact intent", async () => {
     const { window, container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
-    const root = createRoot(container);
-    root.render(<ReactComposer state={fixtureState({ input: "Ship it" })} report={report} />);
-    await settle();
+    const root = createTestRoot(container);
+    await render(
+      root,
+      <ReactComposer state={fixtureState({ input: "Ship it" })} report={report} />,
+    );
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
     Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 240 });
-    root.render(<ReactComposer state={fixtureState({ input: "Ship it now" })} report={report} />);
-    await settle();
+    await render(
+      root,
+      <ReactComposer state={fixtureState({ input: "Ship it now" })} report={report} />,
+    );
     expect(window.document.activeElement).toBe(textarea);
     expect(textarea.style.height).toBe("180px");
     expect(textarea.style.overflowY).toBe("auto");
-    textarea.dispatchEvent(
-      new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }) as unknown as Event,
-    );
-    [...container.querySelectorAll("button")]
-      .find((button) => button.textContent === "Send")
-      ?.click();
-    await settle();
+    await interact(() => {
+      textarea.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }) as unknown as Event,
+      );
+      [...container.querySelectorAll("button")]
+        .find((button) => button.textContent === "Send")
+        ?.click();
+    });
     expect(received.filter((value) => value.name === "DesktopNoteSubmitted")).toEqual([
       { name: "DesktopNoteSubmitted", payload: "Ship it now" },
     ]);
-    root.unmount();
   });
 
   test("does not submit during IME composition and preserves Shift+Enter", async () => {
     const { window, container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
-    const root = createRoot(container);
-    root.render(<ReactComposer state={fixtureState({ input: "入力" })} report={report} />);
-    await settle();
+    const root = createTestRoot(container);
+    await render(root, <ReactComposer state={fixtureState({ input: "入力" })} report={report} />);
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
     const composingEnter = new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true });
     Object.defineProperty(composingEnter, "isComposing", { configurable: true, value: true });
-    textarea.dispatchEvent(composingEnter as unknown as Event);
-    textarea.dispatchEvent(
-      new window.KeyboardEvent("keydown", {
-        key: "Enter",
-        shiftKey: true,
-        bubbles: true,
-      }) as unknown as Event,
-    );
-    await settle();
+    await interact(() => {
+      textarea.dispatchEvent(composingEnter as unknown as Event);
+      textarea.dispatchEvent(
+        new window.KeyboardEvent("keydown", {
+          key: "Enter",
+          shiftKey: true,
+          bubbles: true,
+        }) as unknown as Event,
+      );
+    });
     expect(received.some((value) => value.name.includes("Submitted"))).toBe(false);
-    root.unmount();
   });
 
   test("maps streaming controls to stop, steer, queue, and mode intents", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
-    const root = createRoot(container);
-    root.render(
+    const root = createTestRoot(container);
+    await render(
+      root,
       <ReactComposer
         state={fixtureState({ input: "Continue", pending: true, pendingSubmitMode: "steer" })}
         report={report}
       />,
     );
-    await settle();
     const click = (label: string, last = false) => {
       const buttons = [...container.querySelectorAll("button")].filter(
         (button) => button.textContent === label,
       );
       (last ? buttons.at(-1) : buttons[0])?.click();
     };
-    click("Stop");
-    click("Queue");
-    click("Steer", true);
-    await settle();
+    await interact(() => {
+      click("Stop");
+      click("Queue");
+      click("Steer", true);
+    });
     expect(received).toEqual(
       expect.arrayContaining([
         { name: "DesktopTurnInterrupted", payload: null },
@@ -157,7 +183,6 @@ describe("React Codex composer", () => {
         { name: "DesktopSteerCurrentRequested", payload: "Continue" },
       ]),
     );
-    root.unmount();
   });
 });
 
@@ -166,11 +191,11 @@ describe("React command and decision surfaces", () => {
     const { window, container } = installDom();
     const { ReactCommandPalette } = await import("./react-composer.tsx");
     const { received, report } = recorder();
-    const root = createRoot(container);
-    root.render(
+    const root = createTestRoot(container);
+    await render(
+      root,
       <ReactCommandPalette state={fixtureState({ commandPaletteOpen: true })} report={report} />,
     );
-    await settle();
     expect(window.document.querySelectorAll("[data-slot=command-item]").length).toBe(
       desktopCommandRegistry.length,
     );
@@ -178,16 +203,13 @@ describe("React command and decision surfaces", () => {
       ...window.document.querySelectorAll("[data-slot=command-item]"),
     ] as unknown as Array<HTMLElement>;
     const newChat = commandItems.find((item) => item.textContent?.includes("New chat"));
-    newChat?.click();
-    await settle();
+    await interact(() => newChat?.click());
     expect(received).toEqual(
       expect.arrayContaining([
         { name: "DesktopNewChat", payload: null },
         { name: "DesktopCommandPaletteDismissed", payload: null },
       ]),
     );
-    root.unmount();
-    container.remove();
   });
 
   test("keeps approval explicit and presents failed bridge attempts without inventing resolution", async () => {
@@ -224,17 +246,13 @@ describe("React command and decision surfaces", () => {
         },
       },
     });
-    const root = createRoot(container);
-    root.render(<DecisionSurface state={state} report={report} />);
-    await settle();
+    const root = createTestRoot(container);
+    await render(root, <DecisionSurface state={state} report={report} />);
     expect(window.document.body.textContent).toContain("did not accept");
     const approve = [...window.document.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("Approve"),
     );
-    approve?.click();
-    await settle();
+    await interact(() => approve?.click());
     expect(received).toContainEqual({ name: "DesktopApprovalApproved", payload: "decision-1" });
-    root.unmount();
-    container.remove();
   });
 });
