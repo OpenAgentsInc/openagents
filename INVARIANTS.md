@@ -9,6 +9,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   GCE for compute, Cloud SQL for relational state, Cloud Storage for blobs,
   Secret Manager for secrets, and Google Cloud scheduling/networking for
   operations.
+- Cloudflare is retained only as the authoritative DNS provider for
+  `openagents.com`. Registrar nameservers remain delegated to Cloudflare and
+  DNS-only records point directly to Google Cloud. This narrow DNS boundary
+  grants Cloudflare no runtime, proxy, CDN, WAF, deploy, storage, or fallback
+  authority.
 - No supported runtime, deploy, operator, migration, storage, queue, email,
   browser, AI-gateway, or fallback path may require Cloudflare or Wrangler.
   Historical Cloudflare records are evidence only and cannot be used as

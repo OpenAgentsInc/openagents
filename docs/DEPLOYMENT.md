@@ -13,6 +13,9 @@ change, update its linked runbook **and** fix the pointer here.
 > Infrastructure authority correction (2026-07-14): Google Cloud is the only
 > production infrastructure. Deploy `openagents.com` with the Cloud Run script;
 > do not use any Cloudflare/Worker/Wrangler row retained in older history.
+> Cloudflare remains authoritative DNS only: keep its nameserver delegation
+> and DNS-only records pointing directly to Google Cloud. Do not migrate the
+> zone to Cloud DNS or enable Cloudflare proxying without owner direction.
 
 > Found this because you're about to ship something? Good. Read the linked runbook
 > for the surface before running anything destructive/outward-facing.

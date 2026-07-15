@@ -198,25 +198,18 @@ The corrective verification set includes:
 - post-deploy Cloud Run health plus public document and JavaScript-asset
   smokes.
 
-## Residual owner action: authoritative DNS only
+## Retained DNS boundary: no migration action
 
-Cloudflare still serves the authoritative nameservers for `openagents.com`.
-That is DNS delegation residue, not application hosting. The automation service
-account currently lacks the Cloud DNS administrative role, and the available
-Cloudflare credential cannot read/export the zone records, so an agent cannot
-honestly copy and verify the zone or switch delegation yet.
+Cloudflare intentionally remains the authoritative DNS provider for
+`openagents.com`. The registrar continues to delegate the nameservers to
+Cloudflare, and Cloudflare DNS records point directly to Google Cloud in
+DNS-only mode. This is a retained DNS control-plane boundary, not application
+hosting, migration residue, or a pending nameserver cutover.
 
-The exact UI-first owner action is tracked in workspace `NEEDS_OWNER.md` and
-was corrected/pushed in workspace commit
-`df750654d298b75db556e8f3fb9773674cc405c9`. After those permissions are
-granted, the remaining sequence is: export the current zone, import it into
-Cloud DNS, compare every record, obtain the Google nameservers, switch the
-GoDaddy delegation, verify public resolution, and only then remove the old
-Cloudflare zone.
-
-No application deployment is blocked on that handoff: production already runs
-on Google Cloud. DNS is the final provider-account residue and must be migrated
-carefully to avoid an outage.
+No Cloud DNS administrative role, zone export/import, or GoDaddy nameserver
+change is required. Enabling the Cloudflare HTTP proxy, CDN, or WAF would put
+Cloudflare back into the application traffic path and therefore requires a new
+owner-approved infrastructure decision.
 
 ## Final rule
 

@@ -8,6 +8,10 @@ This is the invariant ledger for `openagents`.
   on Cloud Run, durable relational state is in Cloud SQL, live sync fanout is
   the Cloud Run LiveHub, blobs are in Cloud Storage, and secrets are in Secret
   Manager.
+- Cloudflare remains authoritative DNS for `openagents.com`; DNS-only records
+  point directly to Google Cloud. The nameserver delegation is intentional,
+  not migration residue. Cloudflare proxy/CDN/WAF and application-runtime
+  authority remain absent.
 - Cloudflare Workers, Durable Objects, D1, R2, Queues, Analytics Engine,
   Browser Rendering, and Wrangler are retired. No active route, fallback,
   deployment, migration, operator command, or test may depend on them.

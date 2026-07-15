@@ -84,7 +84,10 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 
 - Google Cloud is the sole production infrastructure authority. Current
   services use Cloud Run or GCE, Cloud SQL, Cloud Storage, Secret Manager,
-  Cloud Scheduler, and the Google Cloud load-balancing/DNS path.
+  Cloud Scheduler, and Google Cloud load balancing. Cloudflare remains the
+  authoritative DNS provider for `openagents.com`; its DNS-only records point
+  directly to Google Cloud. Do not migrate the nameservers or enable the
+  Cloudflare HTTP proxy without a new owner decision.
 - Cloudflare Workers, Durable Objects, D1, R2, Queues, Analytics Engine,
   Browser Rendering, and Wrangler are retired and must not be added as a
   runtime, deploy target, storage authority, operator path, fallback, or

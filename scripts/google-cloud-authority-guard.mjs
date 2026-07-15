@@ -131,6 +131,16 @@ if (!/^status: "accepted"$/m.test(googleCloudDecision)) {
 if (!/SHC was a limited pilot/.test(googleCloudDecision)) {
   violations.push("ADR-0014 must preserve the SHC limited-pilot correction")
 }
+if (
+  !/Cloudflare remains the authoritative DNS provider/.test(
+    googleCloudDecision,
+  )
+) {
+  violations.push("ADR-0014 must preserve Cloudflare authoritative DNS")
+}
+if (!/DNS-only/.test(googleCloudDecision)) {
+  violations.push("ADR-0014 must preserve the DNS-only Google Cloud target")
+}
 
 if (violations.length > 0) {
   console.error("Google Cloud authority guard failed:\n")

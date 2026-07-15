@@ -24,7 +24,14 @@ Google Cloud is the sole production infrastructure authority:
 - Cloud Storage owns blobs and retained archives;
 - Secret Manager owns runtime credentials;
 - Cloud Scheduler owns scheduled entrypoints; and
-- Google Cloud load balancing and Cloud DNS own the public network path.
+- Google Cloud load balancing owns application ingress.
+
+Cloudflare remains the authoritative DNS provider for `openagents.com`.
+Registrar nameservers stay delegated to Cloudflare, and Cloudflare DNS records
+remain DNS-only while pointing directly to Google Cloud. This deliberate DNS
+control-plane boundary is not application hosting and is not a pending Cloud
+DNS migration. Enabling the Cloudflare HTTP proxy, CDN, or WAF would require a
+new infrastructure decision.
 
 Cloudflare Workers, Durable Objects, D1, Hyperdrive, Queues, R2, Analytics
 Engine, Browser Rendering, Pages, and Wrangler are retired. They may not be
@@ -41,6 +48,8 @@ pilot records may retain explicit `retired_pilot` provenance.
 - Managed placement admits only `cloud-gcp`; managed execution uses
   `gcloud_vm`.
 - Live synchronization uses Cloud SQL plus the Cloud Run LiveHub service.
+- Authoritative DNS remains in Cloudflare with DNS-only records targeting
+  Google Cloud; no nameserver migration is planned.
 - Retired-provider exports are private evidence, not warm standby systems.
 - Historical documents remain evidence only when their status is explicit.
 - The Google Cloud authority guard runs before deploy and in repository checks.

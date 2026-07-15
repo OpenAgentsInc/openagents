@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "c52dade2eaf9fd099fedc24d4f7d3421a3552a48adc47a19870d3a9cb3994d7e",
+  "sourceTreeSha256": "a7e0c8b7aa2f00010c99207578c3e4f40efbdd72cacfa9e0d668609f4d8b2f6e",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1283,7 +1283,7 @@
       "owner": "OpenAgents Google Cloud infrastructure",
       "disposition": "retain-authority",
       "dispatch": false,
-      "sha256": "82ef406fbb63a84e93530240f8f542ae6dffef14d59ac1eb0bd181e9f923442f",
+      "sha256": "450a884eea8e5a7f7a3a280463ed44cab00405c3729f13814c90d6864e54c7e3",
       "status": "implemented; authoritative-DNS handoff remains owner-gated",
       "snapshot": "2026-07-14",
       "reviewedAt": "2026-07-12",
