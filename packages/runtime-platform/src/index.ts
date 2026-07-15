@@ -351,7 +351,10 @@ export const serve = <Data = unknown>(options: RuntimeServeOptions<Data>): Runti
 
   const writeResponse = async (response: Response | undefined, outgoing: import("node:http").ServerResponse): Promise<void> => {
     if (response === undefined) return
-    outgoing.writeHead(response.status, Object.fromEntries(response.headers.entries()))
+    const headers: import("node:http").OutgoingHttpHeaders = Object.fromEntries(response.headers.entries())
+    const setCookies = response.headers.getSetCookie()
+    if (setCookies.length > 0) headers["set-cookie"] = setCookies
+    outgoing.writeHead(response.status, headers)
     if (response.body === null) return void outgoing.end()
     Readable.fromWeb(response.body as never).pipe(outgoing)
   }

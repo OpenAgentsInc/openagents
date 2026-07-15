@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import http from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "vite-plus/test"
@@ -84,6 +85,34 @@ describe("runtime-platform under stock Node", () => {
     try {
       assert.notEqual(server.port, 0)
       assert.equal(await fetch(new URL("/ready", server.url)).then((response) => response.text()), "/ready")
+    } finally {
+      await server.stop(true)
+    }
+  })
+
+  test("HTTP responses preserve every Set-Cookie header", async () => {
+    const server = Runtime.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        const headers = new Headers()
+        headers.append("set-cookie", "oa_access=; Max-Age=0; Path=/; HttpOnly")
+        headers.append("set-cookie", "oa_refresh=; Max-Age=0; Path=/; HttpOnly")
+        return new Response(null, { headers, status: 302 })
+      },
+    })
+    await server.ready
+    try {
+      const setCookies = await new Promise<ReadonlyArray<string>>((resolve, reject) => {
+        http.get(server.url, (response) => {
+          response.resume()
+          response.once("end", () => resolve(response.headers["set-cookie"] ?? []))
+        }).once("error", reject)
+      })
+      assert.deepEqual(setCookies, [
+        "oa_access=; Max-Age=0; Path=/; HttpOnly",
+        "oa_refresh=; Max-Age=0; Path=/; HttpOnly",
+      ])
     } finally {
       await server.stop(true)
     }
