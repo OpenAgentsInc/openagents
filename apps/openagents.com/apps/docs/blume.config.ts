@@ -15,6 +15,11 @@ export default defineConfig({
   search: {
     provider: 'orama',
   },
+  navigation: {
+    sidebar: {
+      display: 'group',
+    },
+  },
   redirects: [
     { from: '/openagents', to: '/', status: 301 },
     { from: '/api', to: '/agent-readable', status: 301 },

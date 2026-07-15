@@ -86,3 +86,34 @@ test('human docs navigation omits promises while agent docs retain machine autho
   assert.match(agentDocs, /\/api\/public\/product-promises/)
   assert.match(agentDocs, /machine-facing evidence, not human website navigation/)
 })
+
+test('future docs are separated from live MVP guidance and carry explicit status', () => {
+  const futureDir = join(
+    repoRoot,
+    'apps',
+    'openagents.com',
+    'apps',
+    'docs',
+    'content',
+    'future',
+  )
+  const config = readFileSync(join(dirname(futureDir), '..', 'blume.config.ts'), 'utf8')
+  const meta = readFileSync(join(futureDir, 'meta.ts'), 'utf8')
+  const pages = [
+    'index.mdx',
+    'marketplaces.mdx',
+    'nostr.mdx',
+    'bitcoin-and-lightning.mdx',
+    'remote-workrooms.mdx',
+  ]
+
+  assert.match(meta, /title: 'Future \/ Advanced'/)
+  assert.match(meta, /collapsed: true/)
+  assert.match(config, /sidebar:\s*\{\s*display: 'group'/s)
+
+  for (const page of pages) {
+    const source = readFileSync(join(futureDir, page), 'utf8')
+    assert.match(source, /\*\*Status:\*\*/)
+    assert.match(source, /not (?:a live feature|part of the current MVP)/i)
+  }
+})

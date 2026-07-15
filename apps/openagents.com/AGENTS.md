@@ -60,9 +60,13 @@ Keep Blume build-only. Ask AI, hosted MCP, server adapters, remote content,
 analytics, and application secrets are not permitted. The docs package may read
 only its owned `content/` tree; never point it at the repository-wide `docs/`
 directory. Public content must stay within current Desktop MVP, retained Forum,
-agent-readable, security/privacy, troubleshooting, and machine-facing
-product-promise facts. Do not migrate retired money, credit, market,
-settlement, Sites, Autopilot, or availability claims.
+agent-readable, security/privacy, troubleshooting, machine-facing
+product-promise facts, and the bounded `Future / Advanced` history section.
+That section may summarize retired or dormant product ideas only when every
+page labels its current status, distinguishes historical exploration from a
+roadmap commitment, and gives no operational or availability claim. Do not
+migrate retired money, credit, market, settlement, Sites, Autopilot, or
+availability claims as current product documentation.
 
 The Blume/Astro renderer is a narrow third-party documentation exception to the
 Effect Native UI rule. It grants no application, authentication, tool, API,
