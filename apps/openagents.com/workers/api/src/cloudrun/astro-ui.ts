@@ -26,6 +26,9 @@ const contentType = (filePath: string): string => {
       return 'text/javascript; charset=utf-8'
     case '.json':
       return 'application/json'
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg'
     case '.png':
       return 'image/png'
     case '.svg':
@@ -45,19 +48,25 @@ const astroFileForPath = (
   pathname: string,
   astroUiDir: string,
 ): string | undefined => {
-  if (pathname === '/astro' || pathname === '/astro/') {
+  if (pathname === '/' || pathname === '') {
     return path.join(astroUiDir, 'index.html')
+  }
+  if (pathname === '/astro' || pathname === '/astro/') {
+    return path.join(astroUiDir, 'astro', 'index.html')
   }
   if (pathname === '/install' || pathname === '/install/') {
     return path.join(astroUiDir, 'install', 'index.html')
   }
-  if (!pathname.startsWith('/astro/')) {
+  if (pathname === '/holding-bg.jpg') {
+    return path.join(astroUiDir, 'holding-bg.jpg')
+  }
+  if (!pathname.startsWith('/_astro/')) {
     return undefined
   }
 
   let relativePath: string
   try {
-    relativePath = decodeURIComponent(pathname.slice('/astro/'.length))
+    relativePath = decodeURIComponent(pathname.slice(1))
   } catch {
     return undefined
   }
@@ -79,6 +88,11 @@ export const assertAstroUiArtifactsExist = (
       `Astro UI artifacts missing (${astroUiDir}). Run \`pnpm run build:astro\` first.`,
     )
   }
+  if (!existsSync(path.join(astroUiDir, 'astro', 'index.html'))) {
+    throw new Error(
+      `Astro landing artifacts missing (${astroUiDir}). Run \`pnpm run build:astro\` first.`,
+    )
+  }
 }
 
 export const handleAstroUiRequest = async (
@@ -87,8 +101,12 @@ export const handleAstroUiRequest = async (
 ): Promise<Response | undefined> => {
   const url = new URL(request.url)
   if (
+    url.pathname !== '/' &&
     url.pathname !== '/astro' &&
+    url.pathname !== '/astro/' &&
     !url.pathname.startsWith('/astro/') &&
+    url.pathname !== '/holding-bg.jpg' &&
+    !url.pathname.startsWith('/_astro/') &&
     url.pathname !== '/install' &&
     url.pathname !== '/install/'
   ) {
@@ -110,14 +128,17 @@ export const handleAstroUiRequest = async (
     if (!info.isFile()) {
       return Response.json({ error: 'not_found' }, { status: 404 })
     }
-    const immutable = url.pathname.startsWith('/astro/_astro/')
+    const immutable = url.pathname.startsWith('/_astro/')
+    const noStore = url.pathname === '/'
     return new Response(
       request.method === 'HEAD' ? null : await readFile(filePath),
       {
         headers: {
-          'cache-control': immutable
-            ? 'public, max-age=31536000, immutable'
-            : 'public, max-age=60',
+          'cache-control': noStore
+            ? 'no-store'
+            : immutable
+              ? 'public, max-age=31536000, immutable'
+              : 'public, max-age=60',
           'content-length': String(info.size),
           'content-type': contentType(filePath),
         },

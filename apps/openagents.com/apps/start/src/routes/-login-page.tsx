@@ -9,7 +9,13 @@ const buttonClass =
 const secondaryLinkClass =
   'khala-focus inline-flex min-h-11 items-center justify-center gap-2 border border-khala-border bg-khala-surface-raised px-4 py-2 font-mono text-sm font-semibold text-khala-text'
 
-export function LoginPage() {
+type LoginPageProps = Readonly<{
+  returnTo?: '/app'
+}>
+
+export function LoginPage({ returnTo }: LoginPageProps = {}) {
+  const providerQuery = returnTo === '/app' ? '?returnTo=%2Fapp' : ''
+
   return (
     <main
       aria-label="Log in"
@@ -28,6 +34,9 @@ export function LoginPage() {
           </p>
         </div>
         <form action="/login/email" className="grid gap-3" method="get">
+          {returnTo === '/app' ? (
+            <input name="returnTo" type="hidden" value="/app" />
+          ) : null}
           <label className="grid gap-1.5 text-sm text-khala-text-muted">
             <span>Email</span>
             <input
@@ -43,7 +52,10 @@ export function LoginPage() {
             <span>Email me a code</span>
           </button>
         </form>
-        <a className={secondaryLinkClass} href="/login/github">
+        <a
+          className={secondaryLinkClass}
+          href={`/login/github${providerQuery}`}
+        >
           <GitBranch aria-hidden="true" size={16} strokeWidth={1.8} />
           <span>Log in with GitHub</span>
         </a>

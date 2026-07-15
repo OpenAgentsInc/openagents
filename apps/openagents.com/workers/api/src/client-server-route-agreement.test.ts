@@ -5,8 +5,8 @@ import {
   knownDocumentPathPatterns as startDocumentPatterns,
 } from '../../../apps/start/src/route-table'
 import {
-  knownDocumentPathPatterns as workerDocumentPatterns,
   shouldRedirectUnknownDocumentToHome,
+  knownDocumentPathPatterns as workerDocumentPatterns,
 } from './worker-routes'
 
 const requestFor = (pathname: string) =>
@@ -23,7 +23,7 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
   })
 
   test.each([
-    '/',
+    '/app',
     '/login',
     '/promises',
     '/forum',
@@ -40,6 +40,10 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor(pathname), pathname),
     ).toBe(false)
+  })
+
+  test('the public root is Astro-owned rather than Start-owned', () => {
+    expect(isKnownStartDocumentPath('/')).toBe(false)
   })
 
   test.each([

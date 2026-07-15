@@ -3184,7 +3184,7 @@ const verifyOpenAuthUserTokens = async (
   return { user: verified.subject.properties, tokens: verified.tokens }
 }
 
-const verifySession = async (
+export const verifySession = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
@@ -3694,6 +3694,10 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
       const code = url.searchParams.get('code')?.trim().toUpperCase() ?? ''
 
       return `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`
+    }
+
+    if (url.pathname === '/app') {
+      return url.search === '' ? '/app' : undefined
     }
 
     const isAgentClaimReturn = isAgentClaimReturnPath(url.pathname)

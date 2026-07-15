@@ -1,9 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
-import { LandingPage } from './index'
+import { LandingPage } from './app'
 
-describe('Start landing route', () => {
+describe('Start app route', () => {
   test('server-renders the phase-1 Launch UI replica structure', () => {
     const html = renderToStaticMarkup(<LandingPage />)
 
@@ -14,7 +14,7 @@ describe('Start landing route', () => {
     expect(html).toContain('Professionally designed blocks and templates')
     expect(html).toContain('Used by 34.7k+ companies and builders')
     expect(html).toContain('Built with industry-standard tools')
-    expect(html).toContain("Everything you need. Nothing you don&#x27;t.")
+    expect(html).toContain('Everything you need. Nothing you don&#x27;t.')
     expect(html).toContain('Build your dream landing page, today.')
     expect(html).toContain('Questions and Answers')
     expect(html).toContain('Start building')

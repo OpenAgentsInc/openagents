@@ -236,6 +236,55 @@ describe('OpenAgents admin access policy', () => {
     ).toBe(true)
   })
 
+  test('stores only the exact authenticated app return target', async () => {
+    const appResponse = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/github?returnTo=%2Fapp',
+      ) as never,
+      {
+        ASSETS: { fetch: () => Response.json({ unused: true }) },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const nestedResponse = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/github?returnTo=%2Fapp%2Funtrusted',
+      ) as never,
+      {
+        ASSETS: { fetch: () => Response.json({ unused: true }) },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const queryResponse = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/github?returnTo=%2Fapp%3Fauth%3Dleak',
+      ) as never,
+      {
+        ASSETS: { fetch: () => Response.json({ unused: true }) },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+
+    expect(
+      appResponse.headers
+        .getSetCookie()
+        .some(cookie => cookie.includes('oa_login_return_to=%2Fapp')),
+    ).toBe(true)
+    expect(
+      nestedResponse.headers
+        .getSetCookie()
+        .some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
+    ).toBe(false)
+    expect(
+      queryResponse.headers
+        .getSetCookie()
+        .some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
+    ).toBe(false)
+  })
+
   test('stores invite accept return targets when starting email login', async () => {
     const response = await worker.fetch(
       new Request(

@@ -10,7 +10,7 @@ const readSource = (...parts) =>
 
 test('human landing navigation uses docs rather than product promises', () => {
   const layout = readSource('layouts', 'Layout.astro')
-  const page = readSource('pages', 'index.astro')
+  const page = readSource('pages', 'astro.astro')
 
   assert.doesNotMatch(layout, />Promises</)
   assert.doesNotMatch(layout, />Product promises</)
@@ -22,6 +22,15 @@ test('human landing navigation uses docs rather than product promises', () => {
   assert.match(page, /href=\{INSTALL_URL\}>\s*Download for Mac/)
 })
 
+test('the public root preserves the current holding page', () => {
+  const page = readSource('pages', 'index.astro')
+
+  assert.match(page, /<h1>OpenAgents<\/h1>/)
+  assert.match(page, /<p>be right back<\/p>/)
+  assert.match(page, /url\('\/holding-bg\.jpg'\)/)
+  assert.match(page, /<meta name="robots" content="noindex"/)
+})
+
 test('the install page links the exact published macOS release candidate', () => {
   const page = readSource('pages', 'install.astro')
   const site = readSource('lib', 'site.ts')
@@ -30,10 +39,7 @@ test('the install page links the exact published macOS release candidate', () =>
   assert.match(page, /href=\{MAC_RELEASE\.downloadUrl\}/)
   assert.match(page, />\s*Download for Mac\s*</)
   assert.match(site, /version: '0\.1\.0-rc\.12'/)
-  assert.match(
-    site,
-    /OpenAgents-0\.1\.0-rc\.12-arm64\.dmg/,
-  )
+  assert.match(site, /OpenAgents-0\.1\.0-rc\.12-arm64\.dmg/)
 })
 
 test('the landing foundation uses the canonical Khala theme background', () => {

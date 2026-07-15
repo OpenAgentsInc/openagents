@@ -11,10 +11,15 @@ const makeAstroFixture = async (): Promise<string> => {
   const directory = await mkdtemp(path.join(tmpdir(), 'openagents-astro-ui-'))
   temporaryDirectories.push(directory)
   await mkdir(path.join(directory, '_astro'))
+  await mkdir(path.join(directory, 'astro'))
   await mkdir(path.join(directory, 'install'))
   await writeFile(
     path.join(directory, 'index.html'),
-    '<!doctype html><title>OpenAgents Desktop</title><link rel="stylesheet" href="/astro/_astro/site.css">',
+    '<!doctype html><title>OpenAgents</title><p>be right back</p>',
+  )
+  await writeFile(
+    path.join(directory, 'astro', 'index.html'),
+    '<!doctype html><title>OpenAgents Desktop</title><link rel="stylesheet" href="/_astro/site.css">',
   )
   await writeFile(
     path.join(directory, 'install', 'index.html'),
@@ -24,6 +29,7 @@ const makeAstroFixture = async (): Promise<string> => {
     path.join(directory, '_astro', 'site.css'),
     'body{color:white}',
   )
+  await writeFile(path.join(directory, 'holding-bg.jpg'), 'fixture')
   return directory
 }
 
@@ -39,7 +45,6 @@ describe('Astro landing serving', () => {
   test('does not own non-Astro paths', async () => {
     const directory = await makeAstroFixture()
     for (const pathname of [
-      '/',
       '/promises',
       '/api/openapi.json',
       '/astrology',
@@ -52,6 +57,25 @@ describe('Astro landing serving', () => {
         ),
       ).toBeUndefined()
     }
+  })
+
+  test('serves the unchanged public holding page from Astro at root', async () => {
+    const directory = await makeAstroFixture()
+    const response = await handleAstroUiRequest(
+      new Request('https://openagents.com/'),
+      directory,
+    )
+
+    expect(response?.status).toBe(200)
+    expect(response?.headers.get('cache-control')).toBe('no-store')
+    expect(await response!.text()).toContain('be right back')
+
+    const background = await handleAstroUiRequest(
+      new Request('https://openagents.com/holding-bg.jpg'),
+      directory,
+    )
+    expect(background?.status).toBe(200)
+    expect(background?.headers.get('content-type')).toBe('image/jpeg')
   })
 
   test('serves the standalone Mac install page', async () => {
@@ -86,7 +110,7 @@ describe('Astro landing serving', () => {
   test('serves hashed assets immutably and supports HEAD', async () => {
     const directory = await makeAstroFixture()
     const response = await handleAstroUiRequest(
-      new Request('https://openagents.com/astro/_astro/site.css', {
+      new Request('https://openagents.com/_astro/site.css', {
         method: 'HEAD',
       }),
       directory,
@@ -117,5 +141,11 @@ describe('Astro landing serving', () => {
       directory,
     )
     expect(installPost?.status).toBe(405)
+
+    const rootPost = await handleAstroUiRequest(
+      new Request('https://openagents.com/', { method: 'POST' }),
+      directory,
+    )
+    expect(rootPost?.status).toBe(405)
   })
 })

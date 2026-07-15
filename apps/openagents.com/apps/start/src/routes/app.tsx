@@ -1,5 +1,3 @@
-import { createFileRoute } from '@tanstack/react-router'
-
 import CTA from '@/components/launch-ui/sections/cta/default'
 import FAQ from '@/components/launch-ui/sections/faq/default'
 import Footer from '@/components/launch-ui/sections/footer/default'
@@ -10,16 +8,16 @@ import Navbar from '@/components/launch-ui/sections/navbar/default'
 import Pricing from '@/components/launch-ui/sections/pricing/default'
 import Stats from '@/components/launch-ui/sections/stats/default'
 import { LayoutLines } from '@/components/launch-ui/ui/layout-lines'
+import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute('/app')({
   component: LandingPage,
   head: () => ({
     meta: [
-      { title: 'Launch UI Replica' },
+      { title: 'OpenAgents App' },
       {
         name: 'description',
-        content:
-          'Phase-1 Launch UI replica running on the OpenAgents TanStack Start staging app.',
+        content: 'The authenticated OpenAgents application.',
       },
     ],
   }),

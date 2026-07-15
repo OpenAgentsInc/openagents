@@ -18,4 +18,12 @@ describe('Start login route', () => {
     expect(html).toContain('href="/login/github"')
     expect(html).toContain('Log in with GitHub')
   })
+
+  test('carries only the bounded app return through both login providers', () => {
+    const html = renderToStaticMarkup(<LoginPage returnTo="/app" />)
+
+    expect(html).toContain('name="returnTo"')
+    expect(html).toContain('value="/app"')
+    expect(html).toContain('href="/login/github?returnTo=%2Fapp"')
+  })
 })

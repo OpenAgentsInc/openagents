@@ -33,20 +33,26 @@ the Cloud Run monolith. Do not recreate an SPA fallback or a Foldkit route.
 React, TanStack Start, and DOM remain renderer/host machinery, not the product
 architecture.
 
-## 2026-07-15 Astro landing destination
+## 2026-07-15 public Astro / authenticated Start split
 
-`apps/astro` is the owner-selected destination for the minimal public
-OpenAgents Desktop MVP site. Its candidate is mounted only at `/astro` until
-the owner explicitly replaces the root homepage. New landing-page work belongs
-there, not in `apps/start`. Keep the candidate static, minimal, Khala-themed,
-and centered on the accepted Desktop MVP; do not revive retired product areas.
+`apps/astro` owns the public homepage at `/`, preserving the current holding
+page until its content is separately replaced. The Desktop MVP landing remains
+available at `/astro`, and new public landing-page work belongs in Astro rather
+than `apps/start`. Keep it static, minimal, Khala-themed, and centered on the
+accepted Desktop MVP; do not revive retired product areas.
 
-At the eventual root cutover, retire the remaining non-infrastructure Start
-documents rather than carrying them forward wholesale. Port only explicitly
-retained public material such as agent-readable promise evidence, required
-legal/auth entry, and companion agent documents. Until that cutover is separately implemented,
-`apps/start` continues serving its current routes and `/` remains under the
-holding-page interception.
+`apps/start` owns the authenticated application at `/app`. The Cloud Run
+document gate must validate the real OpenAuth session before rendering Start,
+preserve refreshed session cookies, and redirect signed-out visitors to the
+real `/login` flow with only the exact bounded `/app` return target. App
+documents and auth redirects are private and `no-store`; cookie presence alone
+is never authentication.
+
+During the completed root ownership cutover, retire remaining
+non-infrastructure Start documents rather than carrying them forward wholesale.
+Port only explicitly retained public material such as agent-readable promise
+evidence, required legal/auth entry, and companion agent documents. The holding
+page is now an Astro document rather than a Cloud Run inline-HTML interception.
 
 ## 2026-07-15 Blume documentation destination
 

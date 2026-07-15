@@ -21,31 +21,35 @@ This is the invariant ledger for `openagents`.
   implementations are superseded historical records. They do not authorize a
   current code path. New and changed code must follow this section.
 
-## 2026-07-15 Astro public-site candidate
+## 2026-07-15 public Astro / authenticated Start split
 
-- `apps/astro` is the owner-selected destination for the minimal public
-  OpenAgents Desktop MVP site. The landing candidate remains at `/astro`
-  until a separate owner-directed root cutover replaces the holding page.
+- `apps/astro` owns the public homepage at `/`; its current document preserves
+  the prior holding page without a visible change until the owner replaces its
+  content. The Desktop MVP landing remains available at `/astro`.
   The exact `/install` route is also Astro-owned and serves the owner-approved
   public Mac download page for the latest published release candidate; this
-  narrow mount does not cut over `/` or revive other retired documents.
+  mount does not revive other retired documents.
   `/tanstack` is a bounded, public TanStack Start comparison of the exact
   `/astro` landing snapshot. It exists only for same-origin framework
   performance measurement, owns no product or release authority, and may be
   removed after the comparison is complete.
-- `apps/start` remains the current document host during that bounded migration.
-  New landing work must not expand it. The future root cutover retires its
+- `apps/start` owns the authenticated application entry at `/app`. The Cloud
+  Run gate verifies the real OpenAuth session before rendering it, redirects
+  signed-out visitors through `/login` with only the exact `/app` return path,
+  preserves refreshed session cookies, and marks app documents and redirects
+  private and `no-store`. Cookie presence alone is not authentication.
+  New public landing work must not expand Start. The root cutover retires its
   non-infrastructure documents and ports only explicitly retained surfaces,
   including agent-readable promise evidence and required legal/auth entry
   points.
 - `apps/web` and its Foldkit SPA fallback are deleted and must not be revived.
 - The Cloud Run monolith gives first refusal to infrastructure health,
-  retired-path tombstones, the isolated Astro candidate, Portal, the dedicated
-  Effect Native Forum mount, and the root holding-page interception. It then
+  retired-path tombstones, Astro public documents/assets, the authenticated
+  Start app gate, Portal, and the dedicated Effect Native Forum mount. It then
   serves exact Start client assets and delegates only Start-owned document
   routes to the built Start SSR handler. API, auth, and unknown paths remain
   owned by the Cloud Run API.
-- `/`, `/forum` and supported descendants, the compatibility `/promises`
+- `/`, `/app`, `/forum` and supported descendants, the compatibility `/promises`
   route, legal/auth documents, and companion agent files remain available.
   Legacy Sites, billing, credits, checkout, and other non-MVP Foldkit
   documents are not Start-owned.

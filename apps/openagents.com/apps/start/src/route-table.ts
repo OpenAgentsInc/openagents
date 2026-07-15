@@ -1,6 +1,6 @@
 /** Dependency-free document ownership shared by Start and the Worker. */
 export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
-  /^\/$/,
+  /^\/app\/?$/,
   /^\/X\/$/,
   /^\/activity$/,
   /^\/(?:adjutant|artanis)\/?$/,

@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const redirectRetiredCodeRoute = (): never => {
   throw redirect({
-    to: '/',
+    to: '/app',
     replace: true,
     statusCode: 308,
   })

@@ -17,7 +17,8 @@ import { Runtime } from '@openagentsinc/runtime-platform'
  * Run with `node --import tsx ./src/cloudrun/server.ts`.
  */
 
-import worker from '../index'
+import worker, { verifySession } from '../index'
+import { handleAppUiRequest } from './app-ui'
 import { assertAssetsDirExists } from './assets'
 import { assertAstroUiArtifactsExist, handleAstroUiRequest } from './astro-ui'
 import {
@@ -28,7 +29,6 @@ import { buildCloudRunRuntime } from './env'
 import { makeBackgroundTasks, makeExecutionContext } from './execution-context'
 // #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
 import { handleForumUiRequest } from './forum-ui'
-import { holdingPageInterception } from './holding-page'
 import {
   cronAuthorized,
   withForwardedHost,
@@ -109,6 +109,10 @@ const main = async (): Promise<void> => {
         trustForwardedHost,
       )
       const url = new URL(request.url)
+      const isPublicSiteRoot =
+        (url.hostname === 'openagents.com' ||
+          url.hostname === 'www.openagents.com') &&
+        url.pathname === '/'
 
       if (url.pathname === '/internal/healthz') {
         return Response.json({ ok: true, service: 'openagents-monolith' })
@@ -126,11 +130,14 @@ const main = async (): Promise<void> => {
         )
       }
 
-      // The Astro landing candidate stays isolated at /astro until root
-      // cutover. /install is the owner-approved standalone download page.
+      // Astro owns the public root, the retained /astro comparison candidate,
+      // and the standalone download page.
       if (
+        isPublicSiteRoot ||
         url.pathname === '/astro' ||
         url.pathname.startsWith('/astro/') ||
+        url.pathname === '/holding-bg.jpg' ||
+        url.pathname.startsWith('/_astro/') ||
         url.pathname === '/install' ||
         url.pathname === '/install/'
       ) {
@@ -138,6 +145,14 @@ const main = async (): Promise<void> => {
         if (astroResponse !== undefined) {
           return astroResponse
         }
+      }
+
+      const appResponse = await handleAppUiRequest(request, runtime.env, ctx, {
+        renderStart: handleStartUiRequest,
+        verifySession,
+      })
+      if (appResponse !== undefined) {
+        return appResponse
       }
 
       // #8652 PORTAL-1: client portal page + bundle at openagents.com/portal.
@@ -160,17 +175,8 @@ const main = async (): Promise<void> => {
         }
       }
 
-      // Public-site homepage placeholder (owner request): openagents.com/www
-      // show a "be right back" page at `/` ONLY. Every other route passes
-      // straight through. Remove `holding-page.ts` + this block to restore the
-      // real homepage too.
-      const holding = holdingPageInterception(url)
-      if (holding !== undefined) {
-        return holding
-      }
-
-      // #8813: apps/start owns retained documents after the dedicated EN
-      // mounts and root holding-page interception above. API/auth/unknown
+      // #8813: apps/start owns retained documents after the dedicated static,
+      // authenticated app, and EN mounts above. API/auth/unknown
       // paths continue into the application handler unchanged.
       const startResponse = await handleStartUiRequest(
         request,
