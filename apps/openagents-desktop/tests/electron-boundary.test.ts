@@ -79,6 +79,8 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(preload).toContain("DesktopWorkspaceChooseChannel")
     expect(preload).toContain("chooseWorkspace: async (): Promise<boolean>")
     expect(preload).not.toContain("workspaceSummary:")
+    expect(preload).toContain("workingDirectory: async")
+    expect(preload).toContain("decodeWorkspaceWorkingDirectory")
     expect(preload).not.toContain("listWorkspaceFiles:")
     expect(preload).not.toContain("readWorkspaceFile:")
     expect(preload).not.toContain("saveWorkspaceFile:")
@@ -111,6 +113,12 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(preload).not.toContain("ipcRenderer.send")
     expect(preload).not.toContain("MessagePort")
     expect(preload).not.toContain('require("node:')
+  })
+
+  test("the dev launcher skips workspace lifecycle hooks and repairs Electron explicitly", () => {
+    const launcher = read("scripts/oa-dev-launch")
+    expect(launcher).toContain("pnpm install --frozen-lockfile --ignore-scripts")
+    expect(launcher).toContain('node "$electron_package/install.js"')
   })
 
   test("main exposes fixed validated channels rather than arbitrary command authority", () => {

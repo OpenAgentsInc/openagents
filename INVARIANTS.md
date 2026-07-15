@@ -984,6 +984,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   per-thread directory. The runtime accepts the cwd through a host getter so a
   future explicit directory setting can replace the launch default; provider
   probes, account custody, and delegated scratch workers remain isolated.
+- An empty Desktop conversation fills its transcript row and centers the
+  welcome prompt with the active current working directory. That directory is
+  a schema-decoded, display-only projection of Electron main's canonical
+  WorkContext; React must not call `process.cwd()`, infer a path from session
+  history, or acquire absolute-path selection authority.
 - Desktop's mixed runtime/provider conversation sidebar has one canonical
   target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation;
   numbering never restarts at a source boundary. Selecting a runtime/app-local

@@ -111,6 +111,20 @@ const fixtureState = (): DesktopShellState => {
 }
 
 describe("React workbench shell", () => {
+  test("centers the empty conversation prompt with the current working directory", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const state = {
+      ...fixtureState(),
+      workingDirectory: "/Users/example/project",
+    }
+    await render(root, <WorkbenchShell state={state} report={() => Effect.void} />)
+    const empty = container.querySelector(".oa-react-timeline-empty")
+    expect(empty?.textContent).toContain("Start a conversation with Codex")
+    expect(empty?.textContent).toContain("/Users/example/project")
+    expect(empty?.querySelector('[data-icon-name="Folder"]')).not.toBeNull()
+  })
+
   test("projects metadata before transcript hydration in one deterministic recency order", () => {
     const state = fixtureState()
     const rows = projectReactSessionRows(state, new Date("2026-07-14T12:01:00.000Z"))

@@ -50,6 +50,7 @@ import {
 } from "./chat-contract.ts"
 import {
   DesktopWorkspaceChooseChannel,
+  DesktopWorkspaceWorkingDirectoryChannel,
   DesktopWorkspaceTreeChannel,
   DesktopWorkspaceSearchChannel,
   DesktopWorkspaceSearchCancelChannel,
@@ -64,6 +65,7 @@ import {
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
   decodeWorkspaceChange,
+  decodeWorkspaceWorkingDirectory,
   decodeWorkspaceSearchBridgeRequest,
   decodeWorkspaceSearchCancelRequest,
   decodeWorkspaceSearchCancelResult,
@@ -365,6 +367,8 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     const selected = await ipcRenderer.invoke(DesktopWorkspaceChooseChannel)
     return typeof selected === "object" && selected !== null
   },
+  workingDirectory: async (): Promise<string | null> =>
+    decodeWorkspaceWorkingDirectory(await ipcRenderer.invoke(DesktopWorkspaceWorkingDirectoryChannel)),
   productSpec: {
     open: async (value: unknown) => {
       const request = decodeProductSpecOpenRequest(value)

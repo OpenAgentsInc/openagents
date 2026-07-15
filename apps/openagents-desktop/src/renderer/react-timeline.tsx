@@ -11,6 +11,7 @@ import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter
 import { Effect } from "@effect-native/core/effect"
 import type { ReactElement, ReactNode } from "react"
 import { Component, createElement, useEffect, useRef } from "react"
+import { Folder } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
@@ -380,14 +381,23 @@ export const ReactTimeline = (props: TimelineProps): ReactElement =>
     <TimelineScroller {...props} />
   </MessageScrollerProvider>
 
-export const ConversationTimeline = ({ page, notes, loadingEdge, working, report }: {
+export const ConversationTimeline = ({ page, notes, loadingEdge, working, workingDirectory, report }: {
   readonly page: CodexHistoryPage | null
   readonly notes: ReadonlyArray<DesktopNoteEntry>
   readonly loadingEdge: "top" | "bottom" | null
   readonly working?: boolean
+  readonly workingDirectory: string | null
   readonly report: IntentReporter
 }): ReactElement => {
-  if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation"><p>Start a conversation with Codex.</p></section>
+  if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation">
+    <div className="oa-react-empty-conversation">
+      <h2>Start a conversation with Codex</h2>
+      <p className="oa-react-empty-working-directory" aria-label={workingDirectory === null ? "Working directory unavailable" : `Working directory: ${workingDirectory}`}>
+        <Folder aria-hidden="true" data-icon-name="Folder" />
+        <code title={workingDirectory ?? undefined}>{workingDirectory ?? "Working directory unavailable"}</code>
+      </p>
+    </div>
+  </section>
   const records = page === null ? projectLocalTimelineRecords(notes) : projectReactTimelineRecords(page.items)
   return <ReactTimeline sessionKey={page?.selectedThreadRef ?? "local"} records={records}
     loadedItemCount={page?.items.length ?? records.length} offset={page?.offset ?? 0}

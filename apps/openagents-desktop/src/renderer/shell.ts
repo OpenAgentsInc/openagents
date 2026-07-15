@@ -371,6 +371,8 @@ export type DesktopShellState = Readonly<{
   codingSessionFilter: CodingSessionFilter
   codingSessionQuery: string
   codingSessionDeleteConfirmRef: string | null
+  /** Main-owned absolute cwd for the active WorkContext; display-only. */
+  workingDirectory: string | null
   workspace: DesktopWorkspaceName
   /** Read-only projection of the Effect-owned ephemeral navigation stack. */
   navigation: DesktopNavigationProjection
@@ -467,6 +469,7 @@ export const initialDesktopShellState = (
   codingSessionFilter: "active",
   codingSessionQuery: "",
   codingSessionDeleteConfirmRef: null,
+  workingDirectory: null,
   workspace: "chat",
   navigation: emptyDesktopNavigationProjection(),
   workspaceBrowser: emptyWorkspaceBrowserState(),
@@ -1267,6 +1270,8 @@ export type ComposerImagePickerHost = Readonly<{
 export type WorkspaceHost = Readonly<{
   /** Opens the native picker; true means a new WorkContext is installed. */
   choose: () => Promise<unknown>
+  /** Reads the active main-process WorkContext root without selection authority. */
+  workingDirectory?: () => Promise<string | null>
   browser?: WorkspaceBrowserBridge
   documents?: WorkspaceDocumentBridge
   recovery?: Readonly<{
@@ -1531,6 +1536,12 @@ export const makeDesktopShellHandlers = (
     workspaceHost.documents ?? unavailableWorkspaceDocumentBridge,
     persistWorkspaceRecovery,
   )
+  const synchronizeWorkingDirectory = Effect.gen(function* () {
+    const workingDirectory = yield* Effect.promise(
+      () => workspaceHost.workingDirectory?.() ?? Promise.resolve(null),
+    )
+    yield* SubscriptionRef.update(state, current => ({ ...current, workingDirectory }))
+  })
   const gitPanelHandlers = makeGitPanelHandlers(state, gitBridge, diff =>
     SubscriptionRef.update(state, current => ({
       ...current,
@@ -2223,6 +2234,7 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, current => ({ ...current, codingSessionQuery: query.slice(0, 512) })),
   DesktopCodingCatalogChooseRequested: () => Effect.gen(function* () {
     const codingCatalog = yield* Effect.promise(codingCatalogHost.choose)
+    yield* synchronizeWorkingDirectory
     yield* SubscriptionRef.update(state, (current): DesktopShellState => ({
       ...current,
       codingCatalog,
@@ -2249,6 +2261,7 @@ export const makeDesktopShellHandlers = (
   DesktopCodingSessionOpened: (sessionRef) => Effect.gen(function* () {
     const committed = yield* commitCodingSession(sessionRef)
     if (!committed) return
+    yield* synchronizeWorkingDirectory
     const current = yield* SubscriptionRef.get(state)
     const title = current.codingCatalog.sessions.find(session => session.sessionRef === sessionRef)?.repositoryLabel || "Coding session"
     yield* recordNavigation({ kind: "coding_session", sessionRef, title })
@@ -2281,6 +2294,7 @@ export const makeDesktopShellHandlers = (
   }),
   DesktopCodingSessionRecovered: (sessionRef) => Effect.gen(function* () {
     const codingCatalog = yield* Effect.promise(() => codingCatalogHost.recover(sessionRef))
+    yield* synchronizeWorkingDirectory
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       codingCatalog,
@@ -2477,6 +2491,7 @@ export const makeDesktopShellHandlers = (
     Effect.gen(function* () {
       const selected = yield* Effect.promise(workspaceHost.choose)
       if (selected !== true) return
+      yield* synchronizeWorkingDirectory
       yield* SubscriptionRef.update(state, current => ({
         ...current,
         workspaceEditor: emptyWorkspaceEditorState(),

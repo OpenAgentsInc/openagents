@@ -1,0 +1,103 @@
+#!/bin/zsh
+
+emulate -L zsh
+setopt pipefail
+
+source_repo="$HOME/work/openagents"
+launch_repo="$HOME/work/.oa-launch"
+node24_bin="$HOME/.nvm/versions/node/v24.13.1/bin"
+owner_launch_cwd="$PWD"
+
+if [[ -x "$node24_bin/node" ]]; then
+  export PATH="$node24_bin:$PATH"
+fi
+if [[ "$(node --version 2>/dev/null)" != "v24.13.1" ]]; then
+  echo "oa-dev: Node 24.13.1 is required" >&2
+  exit 1
+fi
+if ! git -C "$source_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "oa-dev: $source_repo is not a usable Git worktree" >&2
+  exit 1
+fi
+
+echo "oa-dev: fetching origin/main"
+git -C "$source_repo" fetch --quiet origin main || exit 1
+
+# Primary-main hygiene is best-effort here, never launch authority. The
+# dedicated launch worktree below is the exact clean origin/main runtime.
+if [[ "$(git -C "$source_repo" branch --show-current)" == "main" &&
+      -z "$(git -C "$source_repo" status --porcelain)" ]]; then
+  git -C "$source_repo" merge --ff-only --quiet origin/main ||
+    echo "oa-dev: note: primary main did not fast-forward; using isolated launch worktree"
+else
+  echo "oa-dev: note: primary checkout is busy; using isolated launch worktree"
+fi
+
+existing_pid="$(pgrep -x 'OpenAgents Dev' | head -1)"
+if [[ -n "$existing_pid" ]]; then
+  echo "oa-dev: OpenAgents Dev is already running as process $existing_pid"
+  if ! /usr/bin/osascript -e "tell application \"System Events\" to set frontmost of first application process whose unix id is $existing_pid to true" >/dev/null 2>&1; then
+    echo "oa-dev: could not activate the existing OpenAgents Dev window" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+if [[ ! -e "$launch_repo/.git" ]]; then
+  if [[ -e "$launch_repo" ]]; then
+    echo "oa-dev: $launch_repo exists but is not the managed launch worktree" >&2
+    exit 1
+  fi
+  echo "oa-dev: creating isolated launch worktree"
+  git -C "$source_repo" worktree add --detach "$launch_repo" origin/main || exit 1
+fi
+
+# This worktree is launcher-owned and never an implementation home. Repairing
+# it is safe and makes stale mode bits or interrupted generated output unable
+# to brick the owner's dev command.
+if [[ -n "$(git -C "$launch_repo" status --porcelain)" ]]; then
+  echo "oa-dev: repairing managed launch worktree"
+  git -C "$launch_repo" reset --hard --quiet HEAD || exit 1
+  git -C "$launch_repo" clean -fdq || exit 1
+fi
+git -C "$launch_repo" switch --detach --force --quiet origin/main || exit 1
+
+launch_head="$(git -C "$launch_repo" rev-parse HEAD)"
+origin_head="$(git -C "$source_repo" rev-parse origin/main)"
+if [[ "$launch_head" != "$origin_head" ]]; then
+  echo "oa-dev: isolated launch worktree could not synchronize to origin/main" >&2
+  exit 1
+fi
+echo "oa-dev: launching clean origin/main at ${launch_head[1,10]}"
+
+export OPENAGENTS_DESKTOP_LAUNCH_CWD="$owner_launch_cwd"
+cd "$launch_repo" || exit 1
+lock_ref="$(git rev-parse HEAD:pnpm-lock.yaml 2>/dev/null)"
+deps_key="${lock_ref}:$(node --version):$(pnpm --version)"
+deps_marker="$launch_repo/node_modules/.oa-deps-key"
+electron_package="$launch_repo/apps/openagents-desktop/node_modules/electron"
+electron_app="$electron_package/dist/Electron.app"
+
+if [[ ! -d node_modules || ! -f "$deps_marker" || "$(<"$deps_marker")" != "$deps_key" ]]; then
+  echo "oa-dev: syncing pnpm dependencies"
+  # Dependency synchronization only needs to materialize the lockfile graph.
+  # Running workspace lifecycle scripts here makes an ordinary dev launch
+  # execute every package's prepare hook and can kill the launcher before the
+  # desktop app starts. Electron's required postinstall is verified and
+  # repaired explicitly below.
+  pnpm install --frozen-lockfile --ignore-scripts || exit 1
+  printf '%s\n' "$deps_key" >| "$deps_marker"
+fi
+if [[ ! -x "$electron_app/Contents/MacOS/Electron" ||
+      ! -e "$electron_app/Contents/Frameworks/Electron Framework.framework/Electron Framework" ]]; then
+  echo "oa-dev: repairing Electron runtime"
+  rm -rf "$electron_package/dist"
+  node "$electron_package/install.js" || exit 1
+fi
+if [[ ! -x "$electron_app/Contents/MacOS/Electron" ||
+      ! -e "$electron_app/Contents/Frameworks/Electron Framework.framework/Electron Framework" ]]; then
+  echo "oa-dev: Electron runtime failed integrity verification" >&2
+  exit 1
+fi
+
+exec pnpm --dir apps/openagents-desktop dev "$@"

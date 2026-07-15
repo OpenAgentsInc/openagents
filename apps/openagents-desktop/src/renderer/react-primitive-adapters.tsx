@@ -373,7 +373,7 @@ export const WorkbenchShell = ({ state, report }: {
       <ConversationHeader state={state} report={report} reviewTriggerRef={reviewTriggerRef} onReviewOpen={() => setReviewOpen(true)} />
       <div className="oa-react-conversation-body">
         <StatusNotices state={state} report={report} />
-        <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.pending} report={report} />
+        <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.pending} workingDirectory={state.workingDirectory} report={report} />
       </div>
       <ReactComposer state={state} report={report} />
     </main>

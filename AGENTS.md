@@ -667,6 +667,13 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   clean. The required final evidence is:
   `git status --porcelain` empty in both checkouts and
   `git rev-parse HEAD` equal to `git rev-parse origin/main` in each.
+- **The owner dev launcher is repository-owned.** Its canonical source is
+  `apps/openagents-desktop/scripts/oa-dev-launch`; keep the installed
+  `~/.local/bin/oa-dev-launch` copy aligned with it. Dependency synchronization
+  must use the frozen pnpm lockfile with lifecycle scripts disabled, because a
+  normal app launch may not run all 80 workspace projects' `prepare` hooks.
+  The launcher verifies and repairs Electron's required runtime explicitly
+  after dependency materialization.
 - Read `INVARIANTS.md` before changing authority, routing, payment,
   projection, or public-claim surfaces.
 - **One completion gate:** `pnpm run check` is the repository definition of

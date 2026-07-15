@@ -246,6 +246,7 @@ import {
   DesktopWorkspaceReadChannel,
   DesktopWorkspaceSaveChannel,
   DesktopWorkspaceSummaryChannel,
+  DesktopWorkspaceWorkingDirectoryChannel,
   DesktopWorkspaceTreeChannel,
   DesktopWorkspaceSearchChannel,
   DesktopWorkspaceSearchCancelChannel,
@@ -1258,6 +1259,10 @@ ipcMain.handle(DesktopWindowFullscreenChannel, (event) => {
   return next
 })
 ipcMain.handle(DesktopWorkspaceSummaryChannel, () => workspaceSnapshot())
+ipcMain.handle(DesktopWorkspaceWorkingDirectoryChannel, (event) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return null
+  return workspaceSnapshot()?.root ?? null
+})
 ipcMain.handle(DesktopWorkspaceFilesChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceTreeChannel, (event, value: unknown) => {
   if (!isTrustedRuntimeGatewaySender(event)) {

@@ -1,6 +1,7 @@
 import { Exit, Schema } from "@effect-native/core/effect"
 
 export const DesktopWorkspaceSummaryChannel = "openagents-desktop/workspace-summary" as const
+export const DesktopWorkspaceWorkingDirectoryChannel = "openagents-desktop/workspace-working-directory" as const
 export const DesktopWorkspaceChooseChannel = "openagents-desktop/workspace-choose" as const
 export const DesktopWorkspaceFilesChannel = "openagents-desktop/workspace-files" as const
 export const DesktopWorkspaceReadChannel = "openagents-desktop/workspace-read" as const
@@ -26,6 +27,11 @@ export const DesktopWorkspacePathRefSchema = Schema.String.pipe(
     Schema.isMaxLength(1_024),
     Schema.isPattern(/^(?!\/)(?![A-Za-z]:[\\/])(?!.*(?:^|\/)\.\.(?:\/|$))(?!.*\\)[^\0\r\n]*$/u),
   ),
+)
+
+/** Narrow main-owned projection used by the empty conversation welcome. */
+export const DesktopWorkspaceWorkingDirectorySchema = Schema.NullOr(
+  Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
 )
 
 export const DesktopWorkspaceTreeRequestSchema = Schema.Struct({
@@ -552,5 +558,10 @@ export const decodeWorkspaceDocumentResult = (
   value: unknown,
 ): DesktopWorkspaceDocumentResult | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentResultSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceWorkingDirectory = (value: unknown): string | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceWorkingDirectorySchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }

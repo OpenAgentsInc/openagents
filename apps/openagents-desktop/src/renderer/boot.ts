@@ -154,6 +154,7 @@ type DesktopBridge = Readonly<{
   }>
   sendMessage?: (value: unknown) => Promise<unknown>
   chooseWorkspace?: () => Promise<unknown>
+  workingDirectory?: () => Promise<unknown>
   productSpec?: Readonly<{
     open?: (value: unknown) => Promise<unknown>
     create?: (value: unknown) => Promise<unknown>
@@ -946,6 +947,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         }
       }, chat, {
         choose: async () => (await readBridge()?.chooseWorkspace?.()) === true,
+        workingDirectory: async () => {
+          const value = await readBridge()?.workingDirectory?.()
+          return typeof value === "string" && value.length > 0 ? value : null
+        },
         browser: workspaceBrowserBridge,
         documents: workspaceDocumentBridge,
         recovery: {
@@ -1128,6 +1133,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // that window OWNS the workspace. Capture the at-mount workspace so the
     // persisted-focus restore below never stomps explicit navigation.
     const workspaceAtMount = (yield* SubscriptionRef.get(state)).workspace
+    const workingDirectory = yield* Effect.promise(async () => {
+      const value = await bridge?.workingDirectory?.().catch(() => null)
+      return typeof value === "string" && value.length > 0 ? value : null
+    })
+    yield* SubscriptionRef.update(state, current => ({ ...current, workingDirectory }))
     if (typeof bridge?.liveAgentGraph?.snapshot === "function") {
       const snapshot = yield* Effect.promise(() => bridge.liveAgentGraph!.snapshot!().catch(() => null))
       for (const update of snapshot?.graphs ?? []) applyLocalGraph(update)

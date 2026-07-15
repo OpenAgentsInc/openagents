@@ -9,6 +9,48 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
     version: "2026-07-15.4",
     contracts: [
       {
+        contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "empty conversation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-15" },
+        statement:
+          "An empty conversation centers the Start a conversation with Codex prompt vertically and shows the current working directory.",
+        authorityBoundary:
+          "Electron main remains the sole WorkContext authority and exposes only a schema-decoded, display-only working-directory projection through preload. React receives that value in Effect-owned DesktopShellState; it cannot read process.cwd(), choose an absolute path, or infer a directory from history. The empty state fills the transcript row and centers a compact heading plus folder/path line without introducing a card or changing composer authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/preload.cts",
+          "apps/openagents-desktop/src/workspace-contract.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "apps/openagents-desktop/src/renderer/react-workbench.css",
+        ],
+        oracles: [
+          {
+            id: "empty_conversation.centered_current_working_directory",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+            description:
+              "Proves the empty React conversation renders the host-projected working directory and folder icon in the centered welcome surface.",
+          },
+          {
+            id: "empty_conversation.narrow_schema_decoded_host_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/electron-boundary.test.ts",
+            description:
+              "Proves preload exposes a narrow schema-decoded working-directory query without restoring the broad workspace-summary bridge.",
+          },
+        ],
+        verification:
+          "The React workbench and Electron boundary suites plus Desktop typecheck enforce centered presentation and narrow host projection.",
+      },
+      {
         contractId: "openagents_desktop.window.launch_fills_work_area.v1",
         state: "enforced",
         surface: "openagents-desktop",
