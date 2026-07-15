@@ -16,6 +16,7 @@ Evidence base:
 - [Executor architecture teardown](./2026-07-12-executor-architecture-teardown.md)
 - [T3 Code teardown](./2026-07-13-t3-code-teardown.md)
 - [Crabbox teardown](./2026-07-13-crabbox-teardown.md)
+- [Grok Build teardown](./2026-07-15-grok-build-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -1851,6 +1852,140 @@ Its evidence changes this document's decisions in the following ways.
    adversarial tenancy, usage-truth pre-spend, and settlement receipts in
    the design from the start rather than growing them out of a
    trusted-team model.
+
+Per the standing rule, none of these items is authority here: each lives or
+dies by its owning roadmap gate, issue, or contract when promoted.
+
+## Grok Build addendum (2026-07-15)
+
+The [Grok Build teardown](./2026-07-15-grok-build-teardown.md) adds the
+reference set's strongest open implementation of the terminal as a durable
+agent application platform: a Rust ACP runtime and process-shared leader under
+full-screen and native-scrollback TUI modes, headless automation, dashboards,
+persistent sessions, worktrees, tools, subagents, permissions, telemetry, and
+runtime-aware updates. Its unusually deep emulator/PTY, signal, resize,
+clipboard, leader-race, updater-race, scenario, fuzz, and performance structure
+turns terminal behavior into product architecture rather than ANSI polish.
+
+Its evidence changes this document's decisions in the following ways.
+
+1. **The terminal is a foreign host with two legitimate presentation
+   strategies.** Grok's full-screen renderer and native-scrollback renderer
+   share semantic session state while making different ownership choices for
+   history, live content, focus, selection, and host scrollback. OpenAgents
+   should adopt one typed transcript/action/effect projection with multiple
+   terminal lowerings, not a terminal-specific conversation engine. Terminal
+   modes, resize, paste, clipboard, mouse, focus, image capability, crash
+   cleanup, and finalized-block commit become explicit host contracts.
+2. **A shared local leader is the right precedent for Pylon, with a stronger
+   trust boundary.** Grok makes socket/lock discovery, backend identity,
+   protocol and binary version, client capabilities, reconnect, stale-leader
+   eviction, bounded drain, update relaunch, and session reload visible product
+   state. OpenAgents should adapt that lifecycle and add peer identity or a
+   protected per-generation client secret, owner-only endpoint creation,
+   bounded mailboxes, overload responses, and receipts. Ambient filesystem
+   permission around a local socket is not sufficient authority.
+3. **ACP belongs at the compatibility edge, not at the center of the domain.**
+   Grok proves ACP can let TUI, headless, editor, and filesystem/terminal-owning
+   clients share one runtime. OpenAgents should expose ACP through the same
+   Runtime Gateway command processor, authority compiler, event log, and
+   receipts as every first-party client while keeping Thread/Turn/Item/Work
+   Unit/Receipt canonical and generated. xAI or OpenAgents extension structs
+   must not become a second state machine.
+4. **Reconnect ordering is worth copying; durability names need tightening.**
+   Grok's stable event IDs, cursor reconnect, full-replay fallback on any
+   idempotency gap, and flush/gate/replay/delta-replay ordering are strong.
+   Its JSONL readers also bound torn tails, quarantine or skip corrupt records,
+   and repair partial presentation state. But ordinary flush acknowledgements
+   are not consistently file-plus-directory `fsync`, write errors often warn
+   and continue, and historical dual-writer corruption is acknowledged. Keep
+   accepted, flushed, replay-ready, and power-loss-durable as separate typed
+   outcomes; enforce one writer/lease per session.
+5. **Retry ownership should be explicit by layer.** Grok gives transport retry
+   to the sampler/request task and keeps compaction, auth refresh, conversation
+   resubmission, and work disposition in the session actor, with cancellation
+   and stream-drain barriers at the boundary. Adopt the taxonomy so two layers
+   never retry the same side effect. Prefer bounded task actors on a shared
+   runtime for the default OpenAgents scale curve; Grok's dedicated OS thread
+   and 8 MiB stack per resident session is an evidence-backed isolation choice,
+   not a free default.
+6. **Queue/send-now is excellent delivery UX, not a substitute for durable
+   admission.** Grok clearly distinguishes queue-after-current-turn from
+   cancel-and-send-now and projects session-scoped queue events. OpenAgents
+   should keep that interaction while retaining the stronger admit-first,
+   client-chosen identity, exact-retry reconciliation, steer-at-safe-boundary,
+   queue-until-yield, and worker-generation contract established by OpenCode
+   V2 and the existing guarantees.
+7. **The process-local dashboard validates the fast cockpit, not durable Fleet
+   truth.** Roster, activity, reply, question, queue, interrupt, mode, usage,
+   and transcript navigation show that dense multi-agent supervision belongs
+   in the terminal too. The dashboard disappears with the pager process and a
+   returned child summary proves neither delivery nor acceptance. OpenAgents
+   should drive its low-latency roster from the persisted agent/work graph and
+   keep review, commit, push, merge, acceptance, payout, and settlement as
+   distinct outcomes.
+8. **Conflict-aware rewind and typed worktrees are now a stronger combined
+   reference.** Prompt-indexed snapshots, comparison with the last
+   agent-produced state, external-modification categories, cross-compaction
+   replay, Git/jj adapters, create/apply/remove/resume, copy modes, and pinned
+   refs are all engine operations. Adapt them with stage/inspect/commit/clear,
+   a redo baseline, ownership and generation checks, irreversible-effect
+   disclosure, and a receipt for every partial restore. An isolation request
+   must fail when worktree setup fails, never silently reuse the shared
+   workspace.
+9. **The typed tool runtime is a protocol asset; declared scope is not
+   containment.** Grok separates typed arguments/results, progress and exactly
+   one terminal outcome, wire/model/UI projections, concise discovery,
+   registration generations, admission limits, cancellation races, and
+   external-process lifecycle. OpenAgents should adopt those invariants while
+   requiring authority scope at registration, failing closed on unknown or
+   unresolved capability names, propagating exact deadlines, cancelling remote
+   work on dropped consumers by default, showing exact MCP arguments, and
+   binding catalog identity to execution and receipt lineage.
+10. **The permission and sandbox gaps sharpen the authority compiler contract.**
+    Deny-before-ask-before-allow, managed clamps, shell-segment parsing, folder
+    trust, and OS policy compilation are useful. Prefix allow rules, non-
+    canonical direct paths, heuristic unknown-tool classification, fail-open
+    hooks, inherited subprocess environments, sandbox-off default, platform-
+    unequal network isolation, and warn-and-run enforcement failure are the
+    counterexamples. OpenAgents keeps canonical structured effects, exact
+    approval arguments, parent-intersected authority, scrubbed subprocess
+    environments, named fail-closed profiles, and effective-containment
+    receipts. Advisory fail-open automation hooks and mandatory fail-closed
+    policy hooks must be different types.
+11. **Subagent provenance is good; non-amplification and admission remain the
+    missing laws.** Grok persists independent child sessions, parent/prompt/
+    session provenance, coarse capability modes, depth clamps, foreground and
+    background cancellation semantics, and dashboard control. Children also
+    inherit broad parent runtime resources, unresolved allowlists can preserve
+    the full tool set, no explicit global child-admission bound was found, and
+    worktree isolation can degrade. OpenAgents must compute child authority as
+    an intersection, reject unresolved capabilities, bound concurrency, and
+    record placement/containment rather than infer it from role labels.
+12. **Exporter-side validation and coordinated relaunch are both worth
+    importing behind stricter ledgers.** Grok's customer-OTEL double opt-in,
+    content-free default, separate prompt/tool gates, closed typed vocabulary,
+    and final exporter validation are the right observability firewall. Its
+    versioned staging, atomic publication, concurrent-update convergence,
+    bounded drain, leader relaunch, reconnect, rollback, and cleanup are the
+    right runtime transaction. OpenAgents should add one comprehensible data-
+    flow/retention matrix and require signed manifests, artifact digests,
+    publisher identity, provenance, compatibility ranges, platform signatures,
+    last-known-good state, and update/rollback receipts.
+13. **A deep test architecture without a public gate is evidence and a
+    warning.** The real-binary PTY harness, terminal emulator, declarative
+    scenarios, real signals, clipboard, resize storms, leader clusters,
+    updater races, fuzzing, and benchmark targets set a new verification bar.
+    The public export omits CI/release workflows and checked-in platform
+    performance baselines, while many real-host tests are ignored. OpenAgents
+    should publish the exact platform matrix, baselines, commands, and retained
+    receipts; source transparency does not substitute for release provenance.
+14. **Mature terminal UX does not justify unchecked architectural scale.** The
+    export is roughly 1.35 million Rust lines across 79 workspace members, with
+    several massive modules and numerous unbounded channels. Copy the seams and
+    invariants, not the size: every new scope needs an ownership law,
+    dependency test, backpressure budget, observability boundary, and deletion
+    gate.
 
 Per the standing rule, none of these items is authority here: each lives or
 dies by its owning roadmap gate, issue, or contract when promoted.
