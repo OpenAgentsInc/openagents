@@ -649,6 +649,24 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
 
 ## Working Rules
 
+- **Primary `main` reconciliation is a completion gate (owner mandate,
+  2026-07-15).** Using a detached or auxiliary worktree for implementation is
+  encouraged, but pushing from that worktree is not the end of the session.
+  Before the final handoff, fetch `origin/main`, prove the delivered commit is
+  an ancestor of it, and bring the canonical checkout at
+  `/Users/christopherdavid/work/openagents` onto branch `main`, with an empty
+  `git status --porcelain`, and exactly fast-forwarded to `origin/main`.
+  Generated output, copied legacy trees, mode-bit drift, dependency installers,
+  and verification artifacts may not be left as primary-checkout dirt. Put
+  retained local-only material under an ignored path or outside the checkout.
+  The managed `/Users/christopherdavid/work/.oa-launch` worktree is launch-only:
+  never implement there, and leave it clean and detached at current
+  `origin/main`. If unrelated live work makes the canonical checkout unsafe to
+  reconcile, preserve it under the multi-agent hygiene rule and report the
+  reconciliation gate as blocked; never describe the session as completely
+  clean. The required final evidence is:
+  `git status --porcelain` empty in both checkouts and
+  `git rev-parse HEAD` equal to `git rev-parse origin/main` in each.
 - Read `INVARIANTS.md` before changing authority, routing, payment,
   projection, or public-claim surfaces.
 - **One completion gate:** `pnpm run check` is the repository definition of
