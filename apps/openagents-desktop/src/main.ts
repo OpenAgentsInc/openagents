@@ -15,7 +15,7 @@ import { homedir } from "node:os"
 import { createHash, randomUUID } from "node:crypto"
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFile, execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
 import { Effect } from "effect"
 import {
   fetchFleetRunClientProjection,
@@ -410,10 +410,26 @@ const rendererAssetContentTypes = new Map([
   ["boot.js", "text/javascript; charset=utf-8"],
   ["app.css", "text/css; charset=utf-8"],
 ] as const)
+const desktopDevServerUrl = (() => {
+  if (app.isPackaged) return null
+  const raw = process.env.OPENAGENTS_DESKTOP_DEV_SERVER_URL?.trim()
+  if (raw === undefined || raw === "") return null
+  const url = new URL(raw)
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.username !== "" || url.password !== "") {
+    throw new Error("OPENAGENTS_DESKTOP_DEV_SERVER_URL must be an unauthenticated 127.0.0.1 HTTP origin")
+  }
+  return url
+})()
 const installDesktopRendererProtocol = (): void => {
-  protocol.handle(DesktopRendererScheme, request => {
+  protocol.handle(DesktopRendererScheme, async request => {
     const url = new URL(request.url)
     const asset = url.hostname === "renderer" ? url.pathname.replace(/^\/+/, "") : ""
+    if (desktopDevServerUrl !== null && asset !== "") {
+      const targetPath = asset === "index.html" ? "/index.dev.html" : `${url.pathname}${url.search}`
+      return net.fetch(new URL(targetPath, desktopDevServerUrl).toString(), {
+        bypassCustomProtocolHandlers: true,
+      })
+    }
     const contentType = rendererAssetContentTypes.get(asset as "index.html" | "boot.js" | "app.css")
     if (contentType === undefined) return new Response("Not found", { status: 404 })
     return new Response(readFileSync(path.join(rendererRoot, asset)), {
@@ -470,8 +486,9 @@ const hiddenAutomationMode = (
 // seam a future persisted directory setting/picker will replace.
 const desktopLaunchWorkingDirectory = path.resolve(app.getPath("home"))
 const productionUserDataPath = path.join(app.getPath("appData"), "OpenAgents")
+const developmentUserDataPath = path.join(app.getPath("appData"), "OpenAgents Dev")
 const legacyDevelopmentUserDataPath = path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
-if (!smokeMode && !liveProofDriverMode && !mvpProofDriverMode && process.env.OPENAGENTS_DESKTOP_USER_DATA === undefined &&
+if (desktopDevServerUrl === null && !smokeMode && !liveProofDriverMode && !mvpProofDriverMode && process.env.OPENAGENTS_DESKTOP_USER_DATA === undefined &&
     !existsSync(productionUserDataPath) && existsSync(legacyDevelopmentUserDataPath)) {
   try {
     // Same-parent rename preserves the complete durable profile atomically.
@@ -481,7 +498,9 @@ if (!smokeMode && !liveProofDriverMode && !mvpProofDriverMode && process.env.OPE
   } catch { /* retain the legacy profile without deleting or partially copying it */ }
 }
 const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
-  smokeMode || liveProofDriverMode || mvpProofDriverMode
+  desktopDevServerUrl !== null
+    ? developmentUserDataPath
+    : smokeMode || liveProofDriverMode || mvpProofDriverMode
     ? path.join(
         app.getPath("temp"),
         `openagents-desktop-${startupMarksMode ? "startup-marks" : smokeMode ? "smoke" : liveProofDriverMode ? "live-proof" : "mvp-proof"}-${process.pid}`,

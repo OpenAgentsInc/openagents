@@ -79,6 +79,14 @@ const writeTransaction = (file: string, value: TransactionDocument): void => {
 
 const output = (result: UpdateCommandResult): string => `${result.stdout}\n${result.stderr}`
 
+/**
+ * `hdiutil attach` prints every device node in the attached image. Detaching
+ * the whole-disk node is more reliable than addressing the temporary mount
+ * directory after code-signature assessment and `ditto` have traversed it.
+ */
+export const attachedDiskDevice = (result: UpdateCommandResult): string | null =>
+  output(result).match(/^\/dev\/(disk\d+)\b/m)?.[0] ?? null
+
 export type MacOSUpdateApplier = Readonly<{
   rollbackAvailable: () => boolean
   rollbackVersion: () => string | null
@@ -200,6 +208,7 @@ export const openMacOSUpdateApplier = (input: Readonly<{
     mkdirSync(path.dirname(mountpoint), { recursive: true, mode: 0o700 })
     const mounted = await commandOk("/usr/bin/hdiutil", ["attach", "-readonly", "-nobrowse", "-mountpoint", mountpoint, artifactPath])
     if (mounted === null) return { ok: false, reason: "mount_failed" }
+    const detachTarget = attachedDiskDevice(mounted) ?? mountpoint
     try {
       const candidateApp = path.join(mountpoint, "OpenAgents.app")
       const verification = await verifyApp(candidateApp, candidateVersion)
@@ -221,7 +230,9 @@ export const openMacOSUpdateApplier = (input: Readonly<{
       writeTransaction(transactionFile, transaction)
       return { ok: true, action: "installed", installedVersion: candidateVersion, previousVersion: input.installedVersion }
     } finally {
-      await commandOk("/usr/bin/hdiutil", ["detach", mountpoint])
+      if (await commandOk("/usr/bin/hdiutil", ["detach", detachTarget]) === null) {
+        await commandOk("/usr/bin/hdiutil", ["detach", "-force", detachTarget])
+      }
       rmSync(mountpoint, { recursive: true, force: true })
     }
   }

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { MACOS_UPDATE_TRANSACTION_SCHEMA, openMacOSUpdateApplier, type UpdateCommandRunner } from "./macos-update-applier.ts"
+import { attachedDiskDevice, MACOS_UPDATE_TRANSACTION_SCHEMA, openMacOSUpdateApplier, type UpdateCommandRunner } from "./macos-update-applier.ts"
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -28,6 +28,7 @@ const fixture = (fail: string | null = null) => {
       const mountpoint = args[args.indexOf("-mountpoint") + 1]!
       mkdirSync(path.join(mountpoint, "OpenAgents.app", "Contents"), { recursive: true })
       writeFileSync(path.join(mountpoint, "OpenAgents.app", "Contents", "candidate"), "rc6")
+      return { exitCode: 0, stdout: `/dev/disk42\tGUID_partition_scheme\n/dev/disk42s1\t${mountpoint}\n`, stderr: "" }
     }
     if (name === "PlistBuddy") {
       const app = path.dirname(path.dirname(args[2]!))
@@ -64,7 +65,13 @@ describe("macOS signed update applier", () => {
     expect(h.calls.some(call => call.startsWith("xcrun syspolicy_check distribution"))).toBe(true)
     expect(h.calls.some(call => call.startsWith("spctl --assess"))).toBe(false)
     expect(h.calls.some(call => call.startsWith("xcrun stapler validate"))).toBe(true)
+    expect(h.calls).toContain("hdiutil detach /dev/disk42")
     expect(JSON.parse(readFileSync(path.join(h.root, "updates", "apply-transaction.json"), "utf8"))).toEqual({ schema: MACOS_UPDATE_TRANSACTION_SCHEMA, status: "installed", previousVersion: "0.1.0-rc.5", installedVersion: "0.1.0-rc.6", channel: "rc" })
+  })
+
+  test("extracts the whole-disk detach target and refuses unrelated output", () => {
+    expect(attachedDiskDevice({ exitCode: 0, stdout: "/dev/disk9\tGUID_partition_scheme\n/dev/disk9s1\t/private/tmp/mount\n", stderr: "" })).toBe("/dev/disk9")
+    expect(attachedDiskDevice({ exitCode: 0, stdout: "attached without a device receipt", stderr: "" })).toBeNull()
   })
 
   test("restart discovers and consumes exactly one retained rollback slot", async () => {

@@ -40,10 +40,19 @@ From the monorepo root:
 
 ```bash
 pnpm install
-pnpm run dev:openagents-desktop   # builds dist/ and launches Electron
+pnpm run dev:openagents-desktop   # starts Vite/HMR and launches Electron
 ```
 
 Or from this directory: `pnpm run dev`.
+
+The development command first rebuilds the Electron main/preload host, then
+starts a strict loopback-only Vite server at `127.0.0.1:5734` and launches the
+desktop host after that server is listening. Renderer requests retain the
+`openagents-app://renderer` application origin and are proxied to Vite only in
+an unpackaged process, so React Fast Refresh works without weakening the
+packaged renderer path. Development uses the isolated `OpenAgents Dev` profile
+and can run alongside an installed OpenAgents application. Stop the command
+with **Control-C**; the runner shuts down both Electron and Vite.
 
 What you should see: a neutral chat workspace with a chat rail, an owner
 composer, and **Open Fleet** in the titlebar. A submitted message renders the
