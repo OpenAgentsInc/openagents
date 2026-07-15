@@ -393,3 +393,27 @@ notarized RC12-to-RC13 interrupted-stage, atomic update, downgrade refusal,
 rollback, diagnostics, uninstall, reinstall, and cleanup sequence without
 deployment. The immutable artifact identity and honest remaining boundary live
 in `docs/mvp/2026-07-14-openagents-desktop-react-rc13-release-receipt.md`.
+
+### Reference-shaped dev loop and RC15 candidate
+
+The desktop development command now follows the reference's productive split:
+Vite owns the React renderer loop and Fast Refresh on one strict loopback
+origin, while Electron retains the `openagents-app://renderer` security origin
+and proxies assets only when unpackaged. The runner builds host artifacts,
+waits for Vite to listen, launches Electron with an isolated `OpenAgents Dev`
+profile, and owns both lifecycles. Production remains static and signed.
+
+During exact release acceptance, the updater cleanup was hardened to detach
+the whole disk device reported by `hdiutil attach` (with a forced-detach
+fallback) rather than relying only on a temporary mount path. RC14 was not
+promoted after that cleanup concern surfaced. The corrected exact
+`origin/main` source at `9bb0bbb94909f5b0b3e371972335a7c4df850a44` became
+RC15.
+
+RC15 passed the complete Node 24 Desktop gate (140 files, 1,347 tests), all 18
+assurance candidates and falsifiers, Apple notarization, post-staple
+Gatekeeper/integrity checks, read-only-DMG React decision/reload smoke, and the
+exact published-RC13 to RC15 interrupted-stage/update/downgrade-refusal/
+rollback/diagnostics/uninstall/reinstall/cleanup sequence. No feed or artifact
+was published. The exact receipt is
+`docs/mvp/2026-07-14-openagents-desktop-react-rc15-release-receipt.md`.
