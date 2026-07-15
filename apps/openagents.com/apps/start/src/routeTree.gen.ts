@@ -27,6 +27,7 @@ import { Route as LandingEnRouteImport } from './routes/landing-en'
 import { Route as InstallRouteImport } from './routes/install'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DownloadRouteImport } from './routes/download'
+import { Route as DocsRouteImport } from './routes/docs'
 import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
 import { Route as AstroRouteImport } from './routes/astro'
 import { Route as AppRouteImport } from './routes/app'
@@ -35,6 +36,7 @@ import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as KhalaIndexRouteImport } from './routes/khala/index'
 import { Route as ForumIndexRouteImport } from './routes/forum/index'
+import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as ComponentsIndexRouteImport } from './routes/components/index'
 import { Route as CodeIndexRouteImport } from './routes/code/index'
 import { Route as BusinessIndexRouteImport } from './routes/business/index'
@@ -46,6 +48,7 @@ import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
 import { Route as PreviewSalesLandingRouteImport } from './routes/preview/sales-landing'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
+import { Route as DocsSplatRouteImport } from './routes/docs/$'
 import { Route as ComponentsFamilyRouteImport } from './routes/components/$family'
 import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
@@ -151,6 +154,11 @@ const DownloadRoute = DownloadRouteImport.update({
   path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ClientsPreviewRoute = ClientsPreviewRouteImport.update({
   id: '/clients-preview',
   path: '/clients-preview',
@@ -190,6 +198,11 @@ const ForumIndexRoute = ForumIndexRouteImport.update({
   id: '/forum/',
   path: '/forum/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const DocsIndexRoute = DocsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DocsRoute,
 } as any)
 const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
   id: '/components/',
@@ -245,6 +258,11 @@ const KhalaChatSyncRoute = KhalaChatSyncRouteImport.update({
   id: '/khala/chat-sync',
   path: '/khala/chat-sync',
   getParentRoute: () => rootRouteImport,
+} as any)
+const DocsSplatRoute = DocsSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => DocsRoute,
 } as any)
 const ComponentsFamilyRoute = ComponentsFamilyRouteImport.update({
   id: '/components/$family',
@@ -326,6 +344,7 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRoute
   '/astro': typeof AstroRoute
   '/clients-preview': typeof ClientsPreviewRoute
+  '/docs': typeof DocsRouteWithChildren
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/install': typeof InstallRoute
@@ -351,6 +370,7 @@ export interface FileRoutesByFullPath {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
+  '/docs/$': typeof DocsSplatRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -362,6 +382,7 @@ export interface FileRoutesByFullPath {
   '/business/': typeof BusinessIndexRoute
   '/code/': typeof CodeIndexRoute
   '/components/': typeof ComponentsIndexRoute
+  '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -404,6 +425,7 @@ export interface FileRoutesByTo {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
+  '/docs/$': typeof DocsSplatRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -415,6 +437,7 @@ export interface FileRoutesByTo {
   '/business': typeof BusinessIndexRoute
   '/code': typeof CodeIndexRoute
   '/components': typeof ComponentsIndexRoute
+  '/docs': typeof DocsIndexRoute
   '/forum': typeof ForumIndexRoute
   '/khala': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -433,6 +456,7 @@ export interface FileRoutesById {
   '/app': typeof AppRoute
   '/astro': typeof AstroRoute
   '/clients-preview': typeof ClientsPreviewRoute
+  '/docs': typeof DocsRouteWithChildren
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/install': typeof InstallRoute
@@ -458,6 +482,7 @@ export interface FileRoutesById {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
+  '/docs/$': typeof DocsSplatRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -469,6 +494,7 @@ export interface FileRoutesById {
   '/business/': typeof BusinessIndexRoute
   '/code/': typeof CodeIndexRoute
   '/components/': typeof ComponentsIndexRoute
+  '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
@@ -488,6 +514,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/astro'
     | '/clients-preview'
+    | '/docs'
     | '/download'
     | '/gym'
     | '/install'
@@ -513,6 +540,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/components/$family'
+    | '/docs/$'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -524,6 +552,7 @@ export interface FileRouteTypes {
     | '/business/'
     | '/code/'
     | '/components/'
+    | '/docs/'
     | '/forum/'
     | '/khala/'
     | '/business/kpi/$engagementRef'
@@ -566,6 +595,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/components/$family'
+    | '/docs/$'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -577,6 +607,7 @@ export interface FileRouteTypes {
     | '/business'
     | '/code'
     | '/components'
+    | '/docs'
     | '/forum'
     | '/khala'
     | '/business/kpi/$engagementRef'
@@ -594,6 +625,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/astro'
     | '/clients-preview'
+    | '/docs'
     | '/download'
     | '/gym'
     | '/install'
@@ -619,6 +651,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/components/$family'
+    | '/docs/$'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -630,6 +663,7 @@ export interface FileRouteTypes {
     | '/business/'
     | '/code/'
     | '/components/'
+    | '/docs/'
     | '/forum/'
     | '/khala/'
     | '/business/kpi/$engagementRef'
@@ -648,6 +682,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRoute
   AstroRoute: typeof AstroRoute
   ClientsPreviewRoute: typeof ClientsPreviewRoute
+  DocsRoute: typeof DocsRouteWithChildren
   DownloadRoute: typeof DownloadRoute
   GymRoute: typeof GymRoute
   InstallRoute: typeof InstallRoute
@@ -823,6 +858,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/clients-preview': {
       id: '/clients-preview'
       path: '/clients-preview'
@@ -878,6 +920,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/forum/'
       preLoaderRoute: typeof ForumIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/docs/': {
+      id: '/docs/'
+      path: '/'
+      fullPath: '/docs/'
+      preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof DocsRoute
     }
     '/components/': {
       id: '/components/'
@@ -955,6 +1004,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/khala/chat-sync'
       preLoaderRoute: typeof KhalaChatSyncRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/docs/$': {
+      id: '/docs/$'
+      path: '/$'
+      fullPath: '/docs/$'
+      preLoaderRoute: typeof DocsSplatRouteImport
+      parentRoute: typeof DocsRoute
     }
     '/components/$family': {
       id: '/components/$family'
@@ -1057,6 +1113,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface DocsRouteChildren {
+  DocsSplatRoute: typeof DocsSplatRoute
+  DocsIndexRoute: typeof DocsIndexRoute
+}
+
+const DocsRouteChildren: DocsRouteChildren = {
+  DocsSplatRoute: DocsSplatRoute,
+  DocsIndexRoute: DocsIndexRoute,
+}
+
+const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
@@ -1064,6 +1132,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRoute,
   AstroRoute: AstroRoute,
   ClientsPreviewRoute: ClientsPreviewRoute,
+  DocsRoute: DocsRouteWithChildren,
   DownloadRoute: DownloadRoute,
   GymRoute: GymRoute,
   InstallRoute: InstallRoute,
@@ -1114,13 +1183,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

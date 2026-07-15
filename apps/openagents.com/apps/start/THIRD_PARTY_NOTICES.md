@@ -28,3 +28,9 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Commit Mono
+
+The documentation reader includes Commit Mono by Eigil Nikolajsen for code
+samples. It is distributed under the SIL Open Font License 1.1; the complete
+license is retained at `public/fonts/LICENSE-COMMIT-MONO.txt`.

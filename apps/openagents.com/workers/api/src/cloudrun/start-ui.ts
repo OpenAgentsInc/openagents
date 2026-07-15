@@ -14,6 +14,14 @@ const START_SERVER_ENTRY = path.resolve(
   process.env['OPENAGENTS_START_SERVER_ENTRY'] ??
     path.resolve(import.meta.dirname, '..', '..', '..', '..', 'apps/start/dist/server/server.js'),
 )
+const REQUIRED_DOCS_CLIENT_ARTIFACTS = [
+  'docs/index.md',
+  'docs/search.json',
+  'docs/llms.txt',
+  'docs/llms-full.txt',
+  'docs/agent-readability.json',
+  'docs/sitemap.xml',
+] as const
 
 type StartWorker = Readonly<{
   fetch: (
@@ -49,6 +57,7 @@ const contentType = (filePath: string): string => {
     case '.webp': return 'image/webp'
     case '.woff': return 'font/woff'
     case '.woff2': return 'font/woff2'
+    case '.xml': return 'application/xml; charset=utf-8'
     default: return 'application/octet-stream'
   }
 }
@@ -90,9 +99,16 @@ const serveExactClientAsset = async (request: Request): Promise<Response | undef
 }
 
 export const assertStartUiArtifactsExist = (): void => {
-  if (!existsSync(START_CLIENT_DIR) || !existsSync(START_SERVER_ENTRY)) {
+  const missingDocsArtifacts = REQUIRED_DOCS_CLIENT_ARTIFACTS.filter(
+    relativePath => !existsSync(path.join(START_CLIENT_DIR, relativePath)),
+  )
+  if (
+    !existsSync(START_CLIENT_DIR) ||
+    !existsSync(START_SERVER_ENTRY) ||
+    missingDocsArtifacts.length > 0
+  ) {
     throw new Error(
-      `Start UI artifacts missing (client=${START_CLIENT_DIR}, server=${START_SERVER_ENTRY}). Run \`pnpm run build:start\` first.`,
+      `Start UI artifacts missing (client=${START_CLIENT_DIR}, server=${START_SERVER_ENTRY}, docs=${missingDocsArtifacts.join(',') || 'ok'}). Run \`pnpm run build:start\` first.`,
     )
   }
 }

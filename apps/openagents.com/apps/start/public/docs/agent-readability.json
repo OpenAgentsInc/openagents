@@ -1,0 +1,21 @@
+{
+  "artifacts": {
+    "markdown": {
+      "contentNegotiation": "text/markdown",
+      "pattern": "https://openagents.com/docs/{route}.md"
+    },
+    "llmsFullTxt": "https://openagents.com/docs/llms-full.txt",
+    "llmsTxt": "https://openagents.com/docs/llms.txt",
+    "sitemap": "https://openagents.com/docs/sitemap.xml"
+  },
+  "description": "Use, understand, and verify the local-first OpenAgents Desktop Codex workroom.",
+  "generator": "openagents-tanstack-start",
+  "name": "OpenAgents Docs",
+  "site": "https://openagents.com",
+  "contentUsage": {
+    "search": true,
+    "ai-input": true,
+    "ai-train": false
+  },
+  "repository": "https://github.com/OpenAgentsInc/openagents"
+}
