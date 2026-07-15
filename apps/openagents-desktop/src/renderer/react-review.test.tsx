@@ -115,12 +115,16 @@ describe("React status projection", () => {
   test("maps only canonical typed Codex reasons", async () => {
     const { projectReactStatusNotices } = await import("./react-review.tsx")
     const cases = [
-      [CODEX_CHIP_REASON_VERIFYING, "checking"],
       [CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT, "signed_out"],
       [CODEX_CHIP_REASON_QUOTA_EXHAUSTED, "quota_exhausted"],
       [CODEX_CHIP_REASON_RATE_LIMITED, "rate_limited"],
       [CODEX_CHIP_REASON_POLICY_DENIED, "policy_denied"],
     ] as const
+    const checkingBase = fixtureState()
+    expect(projectReactStatusNotices({
+      ...checkingBase,
+      harnessLanes: { ...checkingBase.harnessLanes, codex: { available: false, reason: CODEX_CHIP_REASON_VERIFYING } },
+    })).toEqual([])
     for (const [reason, kind] of cases) {
       const base = fixtureState()
       const notices = projectReactStatusNotices({

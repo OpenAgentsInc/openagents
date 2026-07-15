@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts";
+import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 
 const restores: Array<() => void> = [];
 const roots = new Set<Root>();
@@ -99,6 +100,22 @@ const interact = async (interaction: () => void): Promise<void> => {
 };
 
 describe("React Codex composer", () => {
+  test("keeps initial Codex probing compact and local to the composer", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    const base = fixtureState();
+    await render(root, <ReactComposer state={{
+      ...base,
+      harnessLanes: { ...base.harnessLanes, codex: { available: false, reason: CODEX_CHIP_REASON_VERIFYING } },
+    }} report={report} />);
+    const status = container.querySelector('[data-codex-status="checking"]');
+    expect(status?.getAttribute("data-slot")).toBe("badge");
+    expect(status?.textContent).toBe("Checking Codex…");
+    expect(status?.querySelector(".oa-react-composer-status-dot")).not.toBeNull();
+  });
+
   test("keeps first-submit enabled while startup thread admission is still pending", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");

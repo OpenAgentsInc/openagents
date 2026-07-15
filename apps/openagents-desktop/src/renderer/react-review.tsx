@@ -26,7 +26,6 @@ const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = n
 }
 
 export type ReactStatusKind =
-  | "checking"
   | "signed_out"
   | "incompatible"
   | "offline"
@@ -59,9 +58,10 @@ const codexLaneNotice = (state: DesktopShellState): ReactStatusNotice | null => 
       action: null,
     }
   }
-  if (lane.reason === CODEX_CHIP_REASON_VERIFYING) {
-    return { key: "codex-checking", kind: "checking", title: "Checking Codex", detail: lane.reason, action: null }
-  }
+  // Initial provider probing is passive readiness, not an alert. Keep it in
+  // the composer status control (the same hierarchy used by the reference
+  // workbench) so startup remains calm and the empty state stays primary.
+  if (lane.reason === CODEX_CHIP_REASON_VERIFYING) return null
   if (lane.reason === CODEX_CHIP_REASON_QUOTA_EXHAUSTED) {
     return { key: "codex-quota", kind: "quota_exhausted", title: "Codex quota exhausted", detail: lane.reason, action: null }
   }

@@ -1044,13 +1044,42 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-composer-status {
-  color: var(--en-color-textFaint);
+  max-width: min(240px, 40vw);
+  height: 22px;
+  padding: 0 var(--en-spacing-2);
+  overflow: hidden;
+  border-color: var(--en-color-borderSubtle);
+  background: transparent;
+  color: var(--en-color-textSecondary);
   font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.oa-react-composer-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: var(--en-radius-full);
+  background: var(--en-color-warning);
+}
+
+.oa-react-composer-status[data-codex-status="checking"] .oa-react-composer-status-dot {
+  animation: oa-react-codex-checking 1.6s ease-in-out infinite;
+}
+
+@keyframes oa-react-codex-checking {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .oa-react-composer {
     transition: none;
+  }
+
+  .oa-react-composer-status-dot {
+    animation: none !important;
   }
 }
 

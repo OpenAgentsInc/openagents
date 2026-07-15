@@ -1,4 +1,5 @@
 import { Button } from "#components/ui/button";
+import { Badge } from "#components/ui/badge";
 import {
   Command,
   CommandDialog,
@@ -73,6 +74,7 @@ import {
   composerImageDataUrl,
   formatImageSize,
 } from "./composer-images.ts";
+import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 
 const composerIconNames = {
@@ -461,9 +463,16 @@ export const ReactComposer = ({
         ) : null}
         <span className="oa-react-composer-spacer" />
         {!state.pending && !lane.available ? (
-          <span className="oa-react-composer-status" role="status">
-            {lane.reason ?? "Codex is unavailable"}
-          </span>
+          <Badge
+            className="oa-react-composer-status"
+            variant="outline"
+            role="status"
+            aria-live="polite"
+            data-codex-status={lane.reason === CODEX_CHIP_REASON_VERIFYING ? "checking" : "unavailable"}
+          >
+            <span className="oa-react-composer-status-dot" aria-hidden="true" />
+            {lane.reason === CODEX_CHIP_REASON_VERIFYING ? "Checking Codex…" : lane.reason ?? "Codex unavailable"}
+          </Badge>
         ) : null}
         {state.pending ? (
           <Button
