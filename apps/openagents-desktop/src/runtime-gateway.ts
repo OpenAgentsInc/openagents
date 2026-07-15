@@ -190,9 +190,10 @@ export const createDesktopRuntimeGateway = (
   runtimeInteractions: () => DesktopRuntimeInteractions | null = () => null,
   voice: () => DesktopVoiceHost | null = () => null,
   maintenance?: Readonly<{
-    status: () => Promise<Readonly<{
+    status: (harness?: DesktopMaintenanceHarness) => Promise<Readonly<{
       observedAt: string
       harnesses: ReadonlyArray<DesktopHarnessMaintenanceEntry>
+      codexReleaseNotes?: import("./runtime-gateway-contract.ts").DesktopCodexReleaseNotes | null
     }>>
     update: (harness: DesktopMaintenanceHarness) => Promise<Readonly<{
       outcome: "updated" | "already_current" | "channel_jump_refused" | "failed"
@@ -259,12 +260,13 @@ export const createDesktopRuntimeGateway = (
         if (request.query.id === "maintenance.harness_status") {
           const requestId = request.requestId
           if (maintenance === undefined) return { kind: "request_rejected", reason: "invalid_request" }
-          return maintenance.status()
+          return maintenance.status(request.query.harness)
             .then(result => ({
               kind: "harness_maintenance_status" as const,
               requestId,
               observedAt: result.observedAt,
               harnesses: [...result.harnesses],
+              codexReleaseNotes: result.codexReleaseNotes ?? null,
             }))
             .catch(() => ({ kind: "request_rejected" as const, reason: "invalid_request" as const }))
         }

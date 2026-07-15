@@ -574,13 +574,13 @@ const openAgentsSessionSettingsBridge: OpenAgentsSessionSettingsBridge = {
 // public-safe typed projection.
 let harnessMaintenanceRequestSequence = 0
 const harnessMaintenanceSettingsBridge: HarnessMaintenanceSettingsBridge = {
-  status: async () => {
+  status: async harness => {
     const bridge = readBridge()
     if (typeof bridge?.runtimeRequest !== "function") return null
     return bridge.runtimeRequest({
       kind: "query",
       requestId: `renderer-harness-maintenance-status-${++harnessMaintenanceRequestSequence}`,
-      query: { id: "maintenance.harness_status" },
+      query: { id: "maintenance.harness_status", ...(harness === undefined ? {} : { harness }) },
     })
   },
   update: async harness => {
@@ -1693,6 +1693,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // first time Settings is opened (CUT-24 #8704). Event-driven, not a poll.
     void Effect.runPromise(
       registry.dispatch(resolveIntentRef(IntentRef("DesktopDiagnosticsRefreshRequested", StaticPayload(null)))),
+    )
+    // T3-style provider advisory, deliberately scoped to Codex. It runs only
+    // after the interactive shell mounts and never delays composer focus.
+    void Effect.runPromise(
+      registry.dispatch(resolveIntentRef(IntentRef("DesktopHarnessMaintenanceRefreshRequested", StaticPayload("codex")))),
     )
     // #8787 (owner verbatim: "the text input should be focused immediately on
     // open. so i can start typing right away."): keyboard focus lands in the

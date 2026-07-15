@@ -11,6 +11,49 @@
   color: var(--en-color-textPrimary);
 }
 
+.oa-react-codex-update-notice {
+  position: fixed;
+  z-index: 45;
+  top: 5.25rem;
+  right: 1.5rem;
+  width: min(25rem, calc(100vw - 3rem));
+  box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.oa-react-codex-update-notice [data-slot="alert-description"] { padding-right: 1.5rem; }
+.oa-react-codex-update-dismiss {
+  position: absolute;
+  top: .65rem;
+  right: .65rem;
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border: 0;
+  border-radius: .45rem;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+.oa-react-codex-update-dismiss:hover { color: var(--foreground); background: var(--accent); }
+.oa-react-codex-update-dismiss svg { width: .9rem; height: .9rem; }
+.oa-react-codex-update-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
+.oa-react-codex-update-actions svg { width: .9rem; height: .9rem; }
+
+.oa-react-codex-update-dialog { width: min(46rem, calc(100vw - 2rem)); max-width: 46rem; max-height: min(48rem, calc(100vh - 2rem)); }
+.oa-react-codex-update-state { display: flex; align-items: flex-start; gap: .75rem; padding: .8rem; border: 1px solid var(--border); border-radius: .65rem; background: var(--muted); }
+.oa-react-codex-update-state > svg { flex: 0 0 auto; width: 1rem; height: 1rem; margin-top: .15rem; }
+.oa-react-codex-update-state p { margin: .2rem 0 0; color: var(--muted-foreground); font-size: .8rem; line-height: 1.45; }
+.oa-react-codex-update-spinner { animation: oa-codex-update-spin .8s linear infinite; }
+@keyframes oa-codex-update-spin { to { transform: rotate(360deg); } }
+.oa-react-codex-release-notes { min-height: 12rem; overflow: hidden; border: 1px solid var(--border); border-radius: .65rem; }
+.oa-react-codex-release-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border-bottom: 1px solid var(--border); }
+.oa-react-codex-release-heading h3 { margin: 0; font-size: .9rem; }
+.oa-react-codex-release-heading time { color: var(--muted-foreground); font-size: .72rem; }
+.oa-react-codex-release-body { max-height: 22rem; overflow: auto; padding: 1rem; }
+.oa-react-codex-release-fallback { margin: 0; padding: 1rem; color: var(--muted-foreground); font-size: .82rem; line-height: 1.5; }
+
 .oa-react-session-rail {
   position: relative;
   z-index: 3;

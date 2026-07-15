@@ -456,3 +456,19 @@ mounted React smoke, performance budget, and RC15-to-RC16 reversible lifecycle
 passed. The lifecycle rerun follows a device-aware DMG detach fix discovered by
 the first reinstall attempt. The complete immutable receipt is
 `docs/mvp/2026-07-14-openagents-desktop-react-rc16-release-receipt.md`.
+
+### Codex update advisory and release-notes flow
+
+The React workbench now promotes the existing typed harness-maintenance
+authority into a Codex-only launch advisory shaped after the local T3 Code
+reference. The check begins after first interactive paint, the top-right card
+can be dismissed, and Settings or Update remain explicit user actions. Update
+opens a shadcn/Khala dialog that preserves the official Codex GitHub release
+notes while the operation runs and reports the existing channel-pinned,
+auth-home-scrubbed, re-probed receipt outcome.
+
+Runtime Gateway v12 adds an optional harness filter to the status query and a
+bounded, nullable Codex release-notes projection. The npm registry and local
+binary probe remain version authority; GitHub notes are best-effort display
+content. This source change is a rapid dev iteration and does not relabel RC16
+or claim a new release candidate.

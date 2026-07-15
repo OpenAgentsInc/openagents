@@ -1628,6 +1628,14 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `unavailable`). Its typed sign-in/sign-out intents send no arguments, disable
   while the host action is in flight, and never render callback, owner, or
   credential fields; `session_ready` is not presented as live Sync.
+- Desktop Codex update discovery starts only after the React workbench is
+  interactive and checks only Codex for the launch advisory. The renderer may
+  request an update but never chooses or executes a package command: main uses
+  the detected install channel, pins the existing version and digest, refuses
+  channel jumps, scrubs auth-home variables, and reports success only after a
+  fresh binary version probe. Official GitHub release notes are bounded,
+  optional presentation data; registry/version-probe truth remains update
+  authority, and missing notes never fabricate failure or success.
 - Mobile recovery may send the refresh token only to
   `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
   header. The existing OpenAuth verifier owns rotation; replacement tokens are

@@ -149,6 +149,15 @@ diagnostics remain available but do not compete with the conversation. The
 primary journey never asks the user to understand ProductSpec, Fleet, account
 rotation, or internal renderer architecture.
 
+After the interactive frame mounts, Desktop performs one Codex-only version
+check. When the detected CLI channel is behind the npm registry target, a
+dismissible top-right advisory offers Settings and Update without taking
+focus. Update opens a focused progress surface that keeps bounded official
+Codex release notes readable while the main process pins, updates on the
+detected install channel, and re-probes the binary. Missing release notes,
+offline registry state, unsupported install channels, and failed re-probes are
+named honestly and never become optimistic success.
+
 On a narrow desktop window, the session rail becomes a dismissible overlay and
 the review drawer becomes a full-height sheet; the conversation and composer
 remain usable. Status changes are announced without stealing focus. Motion is

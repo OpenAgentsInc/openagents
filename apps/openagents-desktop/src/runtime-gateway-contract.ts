@@ -68,7 +68,7 @@ const ConfirmedRuntimeInteractionSchema = Schema.declare<ConfirmedRuntimeInterac
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 11 as const
+export const DesktopRuntimeGatewayProtocolVersion = 12 as const
 
 // Typed per-harness maintenance (MAINT-1, #8785). The renderer projection is
 // public-safe by construction: versions, channel, and advisory only — never
@@ -85,6 +85,13 @@ export const DesktopHarnessMaintenanceEntrySchema = Schema.Struct({
   updateSupported: Schema.Boolean,
 })
 export type DesktopHarnessMaintenanceEntry = typeof DesktopHarnessMaintenanceEntrySchema.Type
+export const DesktopCodexReleaseNotesSchema = Schema.Struct({
+  version: Schema.String,
+  title: Schema.String,
+  body: Schema.String,
+  publishedAt: Schema.NullOr(Schema.String),
+})
+export type DesktopCodexReleaseNotes = typeof DesktopCodexReleaseNotesSchema.Type
 export const DesktopHarnessMaintenanceOutcomeSchema = Schema.Literals([
   "updated",
   "already_current",
@@ -168,7 +175,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     query: Schema.Struct({ id: Schema.Literal("conversation.catalog") }),
   }),
   Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("codex.history.catalog") }) }),
-  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("maintenance.harness_status") }) }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("maintenance.harness_status"), harness: Schema.optional(DesktopMaintenanceHarnessSchema) }) }),
   Schema.Struct({
     ...OperationContextField,
     kind: Schema.Literal("query"), requestId: Schema.String,
@@ -447,6 +454,7 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     requestId: Schema.String,
     observedAt: Schema.String,
     harnesses: Schema.Array(DesktopHarnessMaintenanceEntrySchema),
+    codexReleaseNotes: Schema.NullOr(DesktopCodexReleaseNotesSchema),
   }),
   Schema.Struct({
     ...OperationContextField,

@@ -35,7 +35,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(rendererResponse).toMatchObject({
       kind: "query_result",
       requestId: "renderer-bootstrap",
-      result: { protocolVersion: 11, lifecycle: "ready" },
+      result: { protocolVersion: 12, lifecycle: "ready" },
     })
   })
 
@@ -51,7 +51,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(response).toMatchObject({
       kind: "query_result",
       requestId: "query-1",
-      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 11,identityTier:"local_unavailable" },
+      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 12,identityTier:"local_unavailable" },
     })
     if (response.kind !== "query_result") throw new Error("expected query result")
     expect(response.result.capabilities).toContainEqual({
@@ -889,8 +889,8 @@ describe("Desktop Runtime Gateway", () => {
     gateway.dispose()
     unsubscribe()
     expect(events).toEqual([
-      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 11, sequence: 1 },
-      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 11, sequence: 2 },
+      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 12, sequence: 1 },
+      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 12, sequence: 2 },
     ])
     expect(events.every(event => decodeDesktopRuntimeGatewayEvent(event) !== null)).toBe(true)
     expect(await gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({

@@ -137,7 +137,7 @@ describe("Desktop canonical runtime interaction host", () => {
     })
     await new Promise(resolve => setTimeout(resolve, 0))
     current = interaction("resolved", envelope.decisionRef)
-    listener?.({ kind: "runtime.lifecycle", protocolVersion: 11, sequence: 1, phase: "ready" } as DesktopRuntimeGatewayEvent)
+    listener?.({ kind: "runtime.lifecycle", protocolVersion: 12, sequence: 1, phase: "ready" } as DesktopRuntimeGatewayEvent)
 
     expect(await decision).toMatchObject({ status: "confirmed_resolved", interaction: { version: 2 } })
     expect(requests.find(request => request.kind === "command")?.command).toEqual({

@@ -360,6 +360,7 @@ import {
   runHarnessMaintenanceUpdate,
 } from "@openagentsinc/pylon-core/custody/harness-maintenance"
 import { resolvePylonHome } from "@openagentsinc/pylon-core/shared/bootstrap"
+import { fetchCodexReleaseNotes } from "./codex-release-notes.ts"
 import { createDesktopRuntimeLiveSubscriptions } from "./runtime-live-subscriptions.ts"
 import {
   desktopOperationRef,
@@ -842,8 +843,12 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
   // from every spawn and never runs a login flow, so the default ~/.codex
   // login home stays untouched. Receipts persist to the shared Pylon home so
   // Desktop and `pylon accounts maintenance` project one provenance ledger.
-  status: async () => {
-    const projection = await collectHarnessMaintenanceStatus()
+  status: async harness => {
+    const projection = await collectHarnessMaintenanceStatus(
+      {},
+      harness === undefined ? undefined : [harness],
+    )
+    const codex = projection.harnesses.find(entry => entry.harness === "codex")
     return {
       observedAt: projection.observedAt,
       harnesses: projection.harnesses.map(entry => ({
@@ -855,6 +860,13 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
         advisory: entry.advisory,
         updateSupported: entry.updateSupported,
       })),
+      codexReleaseNotes: await fetchCodexReleaseNotes(codex?.latestVersion ?? null).then(notes =>
+        notes === null ? null : {
+          version: notes.version,
+          title: notes.title,
+          body: notes.body,
+          publishedAt: notes.publishedAt,
+        }),
     }
   },
   update: async harness => {

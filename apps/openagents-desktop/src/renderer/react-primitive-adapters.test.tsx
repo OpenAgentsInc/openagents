@@ -111,6 +111,48 @@ const fixtureState = (): DesktopShellState => {
 }
 
 describe("React workbench shell", () => {
+  test("shows the Codex-only update advisory and dispatches the typed update intent", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    const state: DesktopShellState = {
+      ...base,
+      settings: {
+        ...base.settings,
+        harnessMaintenance: {
+          view: {
+            state: "loaded",
+            harnesses: [{
+              harness: "codex",
+              installed: true,
+              installedVersion: "0.144.1",
+              latestVersion: "0.144.4",
+              channel: "npm-global",
+              advisory: "behind_latest",
+              updateSupported: true,
+            }],
+          },
+          updating: null,
+          lastOutcome: null,
+          codexReleaseNotes: {
+            version: "0.144.4",
+            title: "Codex 0.144.4",
+            body: "## Changelog\n\nStreaming improvements.",
+            publishedAt: "2026-07-15T00:00:00Z",
+          },
+        },
+      },
+    }
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={state} report={report} />)
+    expect(container.querySelector(".oa-react-codex-update-notice")?.textContent).toContain("Codex update available")
+    const update = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("Update"))
+    await interact(() => update?.click())
+    expect(received).toContainEqual({ name: "DesktopHarnessUpdateRequested", payload: "codex" })
+    expect(container.querySelector(".oa-react-codex-update-notice")).toBeNull()
+  })
+
   test("centers the empty conversation prompt with the current working directory", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)

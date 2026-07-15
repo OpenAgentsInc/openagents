@@ -86,6 +86,13 @@ export type HarnessMaintenanceItemView = Readonly<{
   updateSupported: boolean
 }>
 
+export type CodexReleaseNotesView = Readonly<{
+  version: string
+  title: string
+  body: string
+  publishedAt: string | null
+}>
+
 export type HarnessMaintenanceListView =
   | Readonly<{ state: "loading" }>
   | Readonly<{ state: "loaded"; harnesses: ReadonlyArray<HarnessMaintenanceItemView> }>
@@ -97,12 +104,15 @@ export type HarnessMaintenanceState = Readonly<{
   updating: HarnessMaintenanceHarnessName | null
   /** Human-readable result of the last update attempt (public-safe). */
   lastOutcome: string | null
+  /** Best-effort official GitHub release notes for the registry target. */
+  codexReleaseNotes?: CodexReleaseNotesView | null
 }>
 
 export const initialHarnessMaintenanceState = (): HarnessMaintenanceState => ({
   view: { state: "loading" },
   updating: null,
   lastOutcome: null,
+  codexReleaseNotes: null,
 })
 
 export type SettingsState = Readonly<{
@@ -444,6 +454,12 @@ const RendererHarnessMaintenanceStatusSchema = Schema.Struct({
     advisory: Schema.Literals(["current", "behind_latest", "unknown"]),
     updateSupported: Schema.Boolean,
   })),
+  codexReleaseNotes: Schema.optional(Schema.NullOr(Schema.Struct({
+    version: Schema.String,
+    title: Schema.String,
+    body: Schema.String,
+    publishedAt: Schema.NullOr(Schema.String),
+  }))),
 })
 const RendererHarnessMaintenanceOutcomeSchema = Schema.Struct({
   kind: Schema.Literal("harness_maintenance_outcome"),
@@ -461,24 +477,41 @@ const RendererHarnessMaintenanceOutcomeSchema = Schema.Struct({
 const versionText = (value: string | null): string | null =>
   value === null ? null : value.slice(0, 40)
 
-export const decodeHarnessMaintenanceListView = (value: unknown): HarnessMaintenanceListView => {
+export const decodeHarnessMaintenanceStatus = (value: unknown): Readonly<{
+  view: HarnessMaintenanceListView
+  codexReleaseNotes: CodexReleaseNotesView | null
+}> => {
   const decoded = Schema.decodeUnknownExit(RendererHarnessMaintenanceStatusSchema)(value)
   if (!Exit.isSuccess(decoded)) {
-    return { state: "unavailable", message: "Harness maintenance is unavailable on this build." }
+    return {
+      view: { state: "unavailable", message: "Harness maintenance is unavailable on this build." },
+      codexReleaseNotes: null,
+    }
   }
   return {
-    state: "loaded",
-    harnesses: decoded.value.harnesses.map((entry) => ({
-      harness: entry.harness,
-      installed: entry.installed,
-      installedVersion: versionText(entry.installedVersion),
-      latestVersion: versionText(entry.latestVersion),
-      channel: entry.channel.slice(0, 20),
-      advisory: entry.advisory,
-      updateSupported: entry.updateSupported,
-    })),
+    view: {
+      state: "loaded",
+      harnesses: decoded.value.harnesses.map((entry) => ({
+        harness: entry.harness,
+        installed: entry.installed,
+        installedVersion: versionText(entry.installedVersion),
+        latestVersion: versionText(entry.latestVersion),
+        channel: entry.channel.slice(0, 20),
+        advisory: entry.advisory,
+        updateSupported: entry.updateSupported,
+      })),
+    },
+    codexReleaseNotes: decoded.value.codexReleaseNotes == null ? null : {
+      version: decoded.value.codexReleaseNotes.version.slice(0, 40),
+      title: decoded.value.codexReleaseNotes.title.slice(0, 160),
+      body: decoded.value.codexReleaseNotes.body.slice(0, 12_000),
+      publishedAt: decoded.value.codexReleaseNotes.publishedAt,
+    },
   }
 }
+
+export const decodeHarnessMaintenanceListView = (value: unknown): HarnessMaintenanceListView =>
+  decodeHarnessMaintenanceStatus(value).view
 
 /** Public-safe, human-readable summary of an update attempt. */
 export const decodeHarnessMaintenanceOutcomeText = (value: unknown): string => {
@@ -512,7 +545,7 @@ export const harnessDisplayName = (harness: HarnessMaintenanceHarnessName): stri
 // ---------------------------------------------------------------------------
 
 export type HarnessMaintenanceSettingsBridge = Readonly<{
-  status: () => Promise<unknown>
+  status: (harness?: HarnessMaintenanceHarnessName) => Promise<unknown>
   update: (harness: HarnessMaintenanceHarnessName) => Promise<unknown>
 }>
 
@@ -661,7 +694,7 @@ export const DesktopHarnessUpdateRequested = defineIntent(
 )
 export const DesktopHarnessMaintenanceRefreshRequested = defineIntent(
   "DesktopHarnessMaintenanceRefreshRequested",
-  Schema.Null,
+  Schema.NullOr(harnessNameSchema),
 )
 
 // User-configured MCP servers (I2, EP250 wave-2). Field edits carry the raw
@@ -730,15 +763,19 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
   const update = (transform: (current: S) => S) => SubscriptionRef.update(state, transform)
 
   /** Re-read per-harness version/channel truth through the gateway. */
-  const refreshHarnessMaintenance = Effect.gen(function* () {
-    const view = decodeHarnessMaintenanceListView(
-      yield* Effect.promise(() => maintenanceBridge.status().catch(() => null)),
+  const refreshHarnessMaintenance = (harness?: HarnessMaintenanceHarnessName) => Effect.gen(function* () {
+    const decoded = decodeHarnessMaintenanceStatus(
+      yield* Effect.promise(() => maintenanceBridge.status(harness).catch(() => null)),
     )
     yield* update((next) => ({
       ...next,
       settings: {
         ...next.settings,
-        harnessMaintenance: { ...next.settings.harnessMaintenance, view },
+        harnessMaintenance: {
+          ...next.settings.harnessMaintenance,
+          view: decoded.view,
+          codexReleaseNotes: decoded.codexReleaseNotes,
+        },
       },
     }))
   })
@@ -881,7 +918,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         }))
         yield* refreshMcpServers
         yield* refreshPlugins
-        yield* refreshHarnessMaintenance
+        yield* refreshHarnessMaintenance()
       }),
     DesktopCodexConnectRequested: () => runConnectFlow(null, () => bridge.connectStart()),
     DesktopCodexReconnectRequested: (ref: string) =>
@@ -944,7 +981,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
     // -----------------------------------------------------------------------
     // Typed per-harness maintenance (MAINT-1, #8785).
     // -----------------------------------------------------------------------
-    DesktopHarnessMaintenanceRefreshRequested: () => refreshHarnessMaintenance,
+    DesktopHarnessMaintenanceRefreshRequested: (harness: HarnessMaintenanceHarnessName | null) => refreshHarnessMaintenance(harness ?? undefined),
     DesktopHarnessUpdateRequested: (raw: string) =>
       Effect.gen(function* () {
         const current = yield* SubscriptionRef.get(state)
@@ -982,7 +1019,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         }))
         // RE-PROBE truth reaches the row through a full status re-read: the
         // displayed version is always a fresh detection, never an assumption.
-        yield* refreshHarnessMaintenance
+        yield* refreshHarnessMaintenance()
       }),
     // -----------------------------------------------------------------------
     // User-configured MCP servers (I2, EP250 wave-2).

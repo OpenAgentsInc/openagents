@@ -18,11 +18,15 @@ import {
   ChevronRight,
   Folder,
   House,
+  CircleAlert,
+  Download,
+  LoaderCircle,
   MessageCircle,
   PanelLeft,
   Search,
   Settings,
   SquarePen,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import {
@@ -32,6 +36,10 @@ import {
 } from "@effect-native/render-dom/react"
 import type { Theme } from "@effect-native/tokens"
 import { Button } from "#components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "#components/ui/dialog"
 import { Input } from "#components/ui/input"
 import { ScrollArea } from "#components/ui/scroll-area"
 import { Separator } from "#components/ui/separator"
@@ -39,7 +47,7 @@ import type { DesktopShellState } from "./shell.ts"
 import { formatRelativeTimestamp } from "./shell.ts"
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
 import { ReviewSurface, StatusNotices } from "./react-review.tsx"
-import { ConversationTimeline } from "./react-timeline.tsx"
+import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 import "./react-workbench.css"
 
@@ -347,6 +355,8 @@ export const WorkbenchShell = ({ state, report }: {
   const [railOpen, setRailOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const railCollapsed = state.presentation.sidebarCollapsed
+  const [codexUpdateOpen, setCodexUpdateOpen] = useState(false)
+  const [dismissedCodexVersion, setDismissedCodexVersion] = useState<string | null>(null)
   const railRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   const reviewTriggerRef = useRef<HTMLButtonElement>(null)
@@ -404,6 +414,18 @@ export const WorkbenchShell = ({ state, report }: {
           </section>
         </main>
       : null
+  const maintenance = state.settings.harnessMaintenance
+  const codexReleaseNotes = maintenance.codexReleaseNotes ?? null
+  const codex = maintenance.view.state === "loaded"
+    ? maintenance.view.harnesses.find(item => item.harness === "codex") ?? null
+    : null
+  const codexUpdateAvailable = codex?.advisory === "behind_latest" && codex.latestVersion !== null
+  const startCodexUpdate = (): void => {
+    if (codex === null || !codex.updateSupported || maintenance.updating !== null) return
+    setCodexUpdateOpen(true)
+    setDismissedCodexVersion(codex.latestVersion)
+    dispatch(report, "DesktopHarnessUpdateRequested", "codex")
+  }
   return <div className="oa-react-workbench" data-en-react-surface="true" data-review-open={reviewOpen ? "true" : "false"} data-rail-collapsed={railCollapsed ? "true" : "false"}>
     <ReactCommandPalette state={state} report={report} />
     <DecisionSurface state={state} report={report} />
@@ -428,6 +450,60 @@ export const WorkbenchShell = ({ state, report }: {
         </div>
         <ReactComposer state={state} report={report} />
       </main>}
+    {codexUpdateAvailable && dismissedCodexVersion !== codex.latestVersion
+      ? <Alert className="oa-react-codex-update-notice" role="status">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>Codex update available</AlertTitle>
+          <AlertDescription>
+            {codex.installedVersion ?? "Installed version unknown"} → {codex.latestVersion}
+          </AlertDescription>
+          <button className="oa-react-codex-update-dismiss" type="button" aria-label="Dismiss Codex update" title="Dismiss" onClick={() => setDismissedCodexVersion(codex.latestVersion)}>
+            <X aria-hidden="true" />
+          </button>
+          <div className="oa-react-codex-update-actions">
+            <Button variant="outline" size="sm" type="button" onClick={() => dispatch(report, "DesktopSettingsToggled")}>Settings</Button>
+            <Button size="sm" type="button" disabled={!codex.updateSupported} onClick={startCodexUpdate}>
+              <Download aria-hidden="true" /> Update
+            </Button>
+          </div>
+        </Alert>
+      : null}
+    <Dialog open={codexUpdateOpen} onOpenChange={setCodexUpdateOpen}>
+      <DialogContent className="oa-react-codex-update-dialog">
+        <DialogHeader>
+          <DialogTitle>Update Codex</DialogTitle>
+          <DialogDescription>
+            {codex === null
+              ? "Checking the installed Codex CLI."
+              : `${codex.installedVersion ?? "Unknown version"} → ${codex.latestVersion ?? "latest"} via ${codex.channel}.`}
+          </DialogDescription>
+        </DialogHeader>
+        <section className="oa-react-codex-update-state" aria-live="polite">
+          {maintenance.updating === "codex"
+            ? <><LoaderCircle className="oa-react-codex-update-spinner" aria-hidden="true" /><div><strong>Updating Codex…</strong><p>The existing install is pinned first; success is reported only after the updated binary answers a fresh version probe.</p></div></>
+            : maintenance.lastOutcome === null
+              ? <><Download aria-hidden="true" /><div><strong>Ready to update</strong><p>OpenAgents will stay on the detected package channel and will not touch Codex login state.</p></div></>
+              : <div><strong>Update result</strong><p>{maintenance.lastOutcome}</p></div>}
+        </section>
+        <section className="oa-react-codex-release-notes">
+          <div className="oa-react-codex-release-heading">
+            <h3>{codexReleaseNotes?.title ?? "What’s new"}</h3>
+            {codexReleaseNotes?.publishedAt === null || codexReleaseNotes?.publishedAt === undefined
+              ? null
+              : <time dateTime={codexReleaseNotes.publishedAt}>{new Date(codexReleaseNotes.publishedAt).toLocaleDateString()}</time>}
+          </div>
+          {codexReleaseNotes === null
+            ? <p className="oa-react-codex-release-fallback">Release notes could not be loaded. The update can still be verified against the npm registry and local version probe.</p>
+            : <div className="oa-react-codex-release-body"><SafeReactMarkdown value={codexReleaseNotes.body} /></div>}
+        </section>
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={() => setCodexUpdateOpen(false)}>Close</Button>
+          <Button type="button" disabled={codex === null || !codex.updateSupported || maintenance.updating !== null || codex.advisory === "current"} onClick={startCodexUpdate}>
+            {maintenance.updating === "codex" ? <><LoaderCircle className="oa-react-codex-update-spinner" aria-hidden="true" /> Updating…</> : "Update Codex"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <ReviewSurface state={state} report={report} open={reviewOpen} onOpenChange={setReviewOpen} triggerRef={reviewTriggerRef} />
   </div>
 }
