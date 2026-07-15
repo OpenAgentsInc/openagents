@@ -10,6 +10,8 @@ import Stats from '@/components/launch-ui/sections/stats/default'
 import { LayoutLines } from '@/components/launch-ui/ui/layout-lines'
 import { createFileRoute } from '@tanstack/react-router'
 
+import { AppAccount } from './-app-account'
+
 export const Route = createFileRoute('/app')({
   component: LandingPage,
   head: () => ({
@@ -31,7 +33,7 @@ export function LandingPage() {
       data-route="landing"
     >
       <LayoutLines />
-      <Navbar />
+      <Navbar account={<AppAccount />} />
       <Hero />
       <Logos />
       <Items />

@@ -9,6 +9,7 @@ describe('Start app route', () => {
 
     expect(html).toContain('data-route="landing"')
     expect(html).toContain('data-launch-ui-replica="blue-minimal"')
+    expect(html).toContain('data-app-account="loading"')
     expect(html).toContain('Launch UI v2 is out!')
     expect(html).toContain('Give your big idea the design it deserves')
     expect(html).toContain('Professionally designed blocks and templates')

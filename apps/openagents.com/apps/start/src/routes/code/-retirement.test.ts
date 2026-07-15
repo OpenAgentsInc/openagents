@@ -26,7 +26,7 @@ describe('retired Khala Code product routes', () => {
     const result = captureRedirect(redirectRetiredCodeRoute)
 
     expect(result.status).toBe(308)
-    expect(result.options.to).toBe('/')
+    expect(result.options.href).toBe('/')
     expect(result.options.replace).toBe(true)
     expect(CodeRoute.options).not.toHaveProperty('component')
     expect(CodeRoute.options).not.toHaveProperty('head')
