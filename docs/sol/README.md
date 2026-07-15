@@ -75,6 +75,10 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-15-tanstack-start-unified-docs-migration-audit.md`](./2026-07-15-tanstack-start-unified-docs-migration-audit.md)
+  — owner-directed consolidation audit for moving the complete public docs
+  contract into TanStack Start and retiring the separate Blume/Astro service;
+  its implementation slices require explicit authorization and acceptance.
 - [`2026-07-15-arwes-first-principles-khala-ui-architecture-audit.md`](./2026-07-15-arwes-first-principles-khala-ui-architecture-audit.md)
   — pinned first-principles Arwes audit and ordered architecture for an owned
   Khala UI language inside Effect Native; implementation requires bounded
