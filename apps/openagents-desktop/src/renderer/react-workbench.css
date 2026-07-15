@@ -124,6 +124,28 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   gap: 2px;
 }
 
+.oa-react-rail-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--en-spacing-1);
+}
+
+.oa-react-rail-stage {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--en-color-textMuted) 60%, transparent);
+  background: color-mix(in srgb, var(--en-color-surfaceRaised) 50%, transparent);
+  font-family: "Geist Variable", sans-serif;
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .oa-react-rail-windowbar button,
 .oa-react-rail-titlebar button,
 .oa-react-sidebar-expand {

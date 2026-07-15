@@ -112,6 +112,17 @@ const fixtureState = (): DesktopShellState => {
 }
 
 describe("React workbench shell", () => {
+  test("shows the dev-stage badge beside the OpenAgents brand", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={fixtureState()} report={() => Effect.void} />)
+    const brand = container.querySelector(".oa-react-rail-brand")
+    const stage = brand?.querySelector(".oa-react-rail-stage")
+    expect(brand?.getAttribute("aria-label")).toBe("OpenAgents Dev")
+    expect(stage?.textContent).toBe("Dev")
+    expect(stage?.getAttribute("data-app-stage")).toBe("dev")
+  })
+
   test("keeps sensitive account text redacted until an explicit click", async () => {
     const value = "owner.name@example.com"
     const placeholder = redactedSensitivePlaceholder(value)

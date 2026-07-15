@@ -484,3 +484,14 @@ unselectable by default, click toggles the actual value, and tooltip guidance
 never contains the secret. Focused component and gateway tests cover the
 redaction transition and Codex-only projection; no release build or broad
 assurance run was performed during this rapid dev iteration.
+
+### Sidebar launch-stage badge
+
+The React session rail now carries the launch stage directly beside the
+OpenAgents brand. It adapts the local T3 Code reference's renderer rule and
+quiet pill treatment: Vite development mode resolves to `Dev`; packaged
+production renderer assets resolve to `Alpha`. The visible pill is uppercase,
+8px, widely tracked, and deliberately subordinate to the product name. A pure
+mode resolver test covers both labels and the mounted React test proves the
+development badge remains attached to the brand rather than becoming an
+unrelated status notice.

@@ -49,6 +49,7 @@ import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-com
 import { ReviewSurface, StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
+import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 import "./react-workbench.css"
 
@@ -247,7 +248,12 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       </div>
     </div>
     <div className="oa-react-rail-titlebar">
-      <strong>OpenAgents</strong>
+      <div className="oa-react-rail-brand" aria-label={`OpenAgents ${DESKTOP_STAGE_LABEL}`}>
+        <strong>OpenAgents</strong>
+        <span className="oa-react-rail-stage" data-app-stage={DESKTOP_STAGE_LABEL.toLowerCase()}>
+          {DESKTOP_STAGE_LABEL}
+        </span>
+      </div>
       <Button
         className="oa-react-search-trigger"
         variant="ghost"
