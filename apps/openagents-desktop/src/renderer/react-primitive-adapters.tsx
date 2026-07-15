@@ -183,7 +183,7 @@ export const SessionRail = ({ state, report, open, onClose, railRef }: {
               key={`${row.source}:${row.id}`}
               type="button"
               variant="ghost"
-              className="oa-react-session-row"
+              className="oa-react-session-row justify-start text-left"
               data-session-row
               data-selected={row.selected ? "true" : "false"}
               aria-current={row.selected ? "page" : undefined}

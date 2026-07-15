@@ -125,6 +125,12 @@ describe("React workbench shell", () => {
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={fixtureState()} report={report} />)
+    const sessionRows = [...container.querySelectorAll<HTMLButtonElement>('[data-session-row]')]
+    expect(sessionRows.length).toBeGreaterThan(0)
+    for (const row of sessionRows) {
+      expect(row.classList.contains("justify-start")).toBe(true)
+      expect(row.classList.contains("text-left")).toBe(true)
+    }
     await interact(() => {
       ;[...container.querySelectorAll("button")].find(button => button.textContent === "New session")?.click()
     })

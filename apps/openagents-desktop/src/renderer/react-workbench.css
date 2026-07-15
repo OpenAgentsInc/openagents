@@ -140,8 +140,11 @@ html[data-desktop-platform="darwin"] .oa-react-session-rail {
 }
 
 .oa-react-session-row span,
+.oa-react-session-row small,
 .oa-react-workspace-row span {
+  width: 100%;
   overflow: hidden;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
