@@ -29,6 +29,7 @@
     "typecheck:packages": "pnpm --dir packages/email-templates run typecheck && pnpm --dir packages/mullet-schema run typecheck && pnpm --dir packages/mullet-sim run typecheck && pnpm --dir packages/sync-schema run typecheck && pnpm --dir packages/sync-client run typecheck && pnpm --dir packages/sync-worker run typecheck",
     "test": "pnpm run test:packages && pnpm run test:start && pnpm run test:api",
     "test:packages": "pnpm --dir packages/email-templates run test && pnpm --dir packages/mullet-schema run test && pnpm --dir packages/mullet-sim run test && pnpm --dir packages/sync-schema run test && pnpm --dir packages/sync-client run test && pnpm --dir packages/sync-worker run test",
+    "test:astro": "pnpm --dir apps/astro run test",
     "test:start": "pnpm --dir apps/start run test",
     "test:api": "pnpm --dir workers/api run test",
     "test:docs": "pnpm --dir apps/docs run test",

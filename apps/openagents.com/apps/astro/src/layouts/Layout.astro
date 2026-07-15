@@ -1,8 +1,5 @@
 ---
-import {
-  GITHUB_REPOSITORY_URL,
-  PRODUCT_PROMISES_URL,
-} from '../lib/site'
+import { DOCS_URL, GITHUB_REPOSITORY_URL } from '../lib/site'
 
 interface Props {
   title?: string
@@ -22,7 +19,7 @@ const {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#05070d" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
@@ -33,7 +30,7 @@ const {
     <div class="site-shell">
       <header class="site-header">
         <nav class="nav container" aria-label="Primary navigation">
-          <a class="brand" href="/astro" aria-label="OpenAgents Desktop home">
+          <a class="brand" href="/" aria-label="OpenAgents home">
             <span class="brand-mark" aria-hidden="true">
               <span></span><span></span><span></span>
             </span>
@@ -46,7 +43,7 @@ const {
           </div>
 
           <div class="nav-links">
-            <a href={PRODUCT_PROMISES_URL}>Promises</a>
+            <a href={DOCS_URL}>Docs</a>
             <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">
               Source <span aria-hidden="true">↗</span>
             </a>
@@ -62,7 +59,7 @@ const {
         <div class="container footer-inner">
           <p>OpenAgents Desktop · local-first Codex workroom</p>
           <div class="footer-links">
-            <a href={PRODUCT_PROMISES_URL}>Product promises</a>
+            <a href={DOCS_URL}>Docs</a>
             <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">
               GitHub
             </a>
@@ -76,10 +73,10 @@ const {
 <style is:global>
   :root {
     color-scheme: dark;
-    --void: #000000;
-    --surface: #010102;
-    --surface-muted: #030711;
-    --surface-raised: #0b1322;
+    --void: #05070d;
+    --surface: #0b1220;
+    --surface-muted: #0a0f1c;
+    --surface-raised: #141f36;
     --border: #17315f;
     --border-subtle: #101b30;
     --energy: #3a7bff;
@@ -169,7 +166,7 @@ const {
     position: sticky;
     top: 0;
     z-index: 20;
-    background: rgb(0 0 0 / 0.94);
+    background: rgb(5 7 13 / 0.96);
     border-bottom: 1px solid var(--border-subtle);
   }
 

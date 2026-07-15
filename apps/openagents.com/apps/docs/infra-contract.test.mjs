@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
@@ -72,4 +72,17 @@ test('the docs header stays fixed while the document grid preserves its space', 
   assert.match(theme, /\.oa-docs-header\s*\{[^}]*position:\s*fixed;/s)
   assert.match(theme, /\[data-blume-doc-grid\]\s*\{[^}]*padding-top:\s*4rem;/s)
   assert.match(theme, /overscroll-behavior-y:\s*none;/)
+})
+
+test('human docs navigation omits promises while agent docs retain machine authority', () => {
+  const docsRoot = join(repoRoot, 'apps', 'openagents.com', 'apps', 'docs')
+  const header = readFileSync(join(docsRoot, 'components', 'Header.astro'), 'utf8')
+  const agentDocs = readFileSync(join(docsRoot, 'content', 'agent-readable.mdx'), 'utf8')
+
+  assert.doesNotMatch(header, />Promises</)
+  assert.match(header, /class="oa-docs-brand" href="\/"/)
+  assert.match(header, /class="oa-docs-section" href="\/docs"/)
+  assert.equal(existsSync(join(docsRoot, 'content', 'product-promises.mdx')), false)
+  assert.match(agentDocs, /\/api\/public\/product-promises/)
+  assert.match(agentDocs, /machine-facing evidence, not human website navigation/)
 })

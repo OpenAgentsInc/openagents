@@ -29,7 +29,8 @@ This is the invariant ledger for `openagents`.
 - `apps/start` remains the current document host during that bounded migration.
   New landing work must not expand it. The future root cutover retires its
   non-infrastructure documents and ports only explicitly retained surfaces,
-  including product promises and required legal/auth entry points.
+  including agent-readable promise evidence and required legal/auth entry
+  points.
 - `apps/web` and its Foldkit SPA fallback are deleted and must not be revived.
 - The Cloud Run monolith gives first refusal to infrastructure health,
   retired-path tombstones, the isolated Astro candidate, Portal, the dedicated
@@ -37,9 +38,10 @@ This is the invariant ledger for `openagents`.
   serves exact Start client assets and delegates only Start-owned document
   routes to the built Start SSR handler. API, auth, and unknown paths remain
   owned by the Cloud Run API.
-- `/`, `/forum` and supported descendants, `/promises`, legal/auth documents,
-  and companion agent files remain available. Legacy Sites, billing, credits,
-  checkout, and other non-MVP Foldkit documents are not Start-owned.
+- `/`, `/forum` and supported descendants, the compatibility `/promises`
+  route, legal/auth documents, and companion agent files remain available.
+  Legacy Sites, billing, credits, checkout, and other non-MVP Foldkit
+  documents are not Start-owned.
 
 ## 2026-07-15 static public documentation
 
@@ -55,8 +57,12 @@ This is the invariant ledger for `openagents`.
   Repository-wide audits, runbooks, evidence, transcripts, internal topology,
   secrets, and retired payment/credit/market/settlement/Sites/Autopilot claims
   must not enter that graph.
-- `/docs/product-promises` remains stable, but mutable promise state stays
-  authoritative only in `/promises`, its JSON projection, and receipts.
+- Product promises do not appear in human top-level navigation.
+  `/docs/product-promises` remains a stable compatibility redirect into the
+  agent-readable docs; mutable promise state stays authoritative in its JSON,
+  transition, audit, and receipt projections.
+- The docs and Astro landing foundations use the canonical Khala theme
+  background (`khalaTheme.color.background`, `#05070d`) rather than pure black.
 - Blume/Astro is a docs-only third-party presentation exception. Owned product
   application UI remains Effect Native, and docs prose grants no auth, tool,
   API, payment, deployment, acceptance, release, or public-claim authority.

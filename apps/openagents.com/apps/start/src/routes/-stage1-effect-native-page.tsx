@@ -381,11 +381,6 @@ export const stage1LandingView = (state: Stage1LandingState): View =>
             onPress: navigateIntent(SALES_LANDING_LINKS.docs),
           },
           {
-            id: 'promises',
-            label: 'Promises',
-            onPress: navigateIntent(SALES_LANDING_LINKS.promises),
-          },
-          {
             id: 'stats',
             label: 'Stats',
             onPress: navigateIntent(SALES_LANDING_LINKS.stats),
@@ -712,12 +707,6 @@ export const stage1LandingView = (state: Stage1LandingState): View =>
                 'footer-docs',
                 'Documentation',
                 SALES_LANDING_LINKS.docs,
-                'ghost',
-              ),
-              actionButton(
-                'footer-promises',
-                'Promises',
-                SALES_LANDING_LINKS.promises,
                 'ghost',
               ),
             ],

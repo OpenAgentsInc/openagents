@@ -109,12 +109,6 @@ export function LandingPreviewPage() {
           </a>
           <a
             className="khala-focus text-khala-text-faint no-underline transition-colors duration-150 hover:text-khala-text"
-            href="/docs/product-promises"
-          >
-            every claim: /docs/product-promises
-          </a>
-          <a
-            className="khala-focus text-khala-text-faint no-underline transition-colors duration-150 hover:text-khala-text"
             href="/stats"
           >
             live usage: /stats

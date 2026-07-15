@@ -78,7 +78,6 @@ function PreviewBanner() {
 const NAV_LINKS = [
   { text: 'Khala', href: SALES_LANDING_LINKS.khala },
   { text: 'For business', href: SALES_LANDING_LINKS.businessIntake },
-  { text: 'Promises', href: SALES_LANDING_LINKS.promises },
   { text: 'Docs', href: SALES_LANDING_LINKS.docs },
   { text: 'Stats', href: SALES_LANDING_LINKS.stats },
 ]
@@ -468,11 +467,9 @@ const FOOTER_COLUMNS = [
     ],
   },
   {
-    title: 'Evidence',
+    title: 'Network',
     links: [
-      { text: 'Product promises', href: SALES_LANDING_LINKS.promises },
       { text: 'Network stats', href: SALES_LANDING_LINKS.stats },
-      { text: 'Promises JSON', href: SALES_LANDING_LINKS.promisesJson },
     ],
   },
   {

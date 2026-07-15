@@ -335,11 +335,6 @@ const suiteCards: ReadonlyArray<View> = [
     'Network evidence',
     'Pylons, Forum activity, receipts, and stats stay public-safe and explicit about what is unavailable.',
   ),
-  suiteCard(
-    'suite-promises',
-    'Product promises',
-    'Claims route through the promise registry: green, operator-assisted, or roadmap-labeled.',
-  ),
 ]
 
 // FAQ — owner-copy TODO placeholders preserved VERBATIM from /stage1 (#8565).
@@ -402,7 +397,7 @@ const pricingColumn = (plan: LandingEnPlan): PricingColumnView =>
   })
 
 const navBarLinks: ReadonlyArray<NavBarLink> = [
-  { id: 'nav-promises', label: 'Promises', onPress: navigateIntent(SALES_LANDING_LINKS.promises) },
+  { id: 'nav-docs', label: 'Docs', onPress: navigateIntent(SALES_LANDING_LINKS.docs) },
   { id: 'nav-stats', label: 'Stats', onPress: navigateIntent(SALES_LANDING_LINKS.stats) },
   { id: 'nav-forum', label: 'Forum', onPress: navigateIntent(SALES_LANDING_LINKS.forum) },
 ]
@@ -412,7 +407,6 @@ const footerColumns: ReadonlyArray<FooterColumn> = [
     id: 'footer-product',
     title: 'Product',
     links: [
-      actionButton('footer-promises', 'Promises', SALES_LANDING_LINKS.promises, 'ghost'),
       actionButton('footer-stats', 'Stats', SALES_LANDING_LINKS.stats, 'ghost'),
       actionButton('footer-docs', 'Docs', SALES_LANDING_LINKS.docs, 'ghost'),
     ],
@@ -446,11 +440,6 @@ const LOGO_ITEMS = [
     id: 'network-evidence',
     source: 'https://cdn.simpleicons.org/cloudflare/F38020',
     alt: 'Network evidence',
-  },
-  {
-    id: 'product-promises',
-    source: 'https://cdn.simpleicons.org/shieldsdotio/000000',
-    alt: 'Product promises',
   },
 ] as const
 
@@ -511,8 +500,8 @@ export const landingEnView = (state: LandingEnState): View =>
             key: 'landing-en-announcement',
             label:
               'Effect Native landing preview — copy pending owner sign-off (#8565)',
-            actionLabel: 'Product promises',
-            onPress: navigateIntent(SALES_LANDING_LINKS.promises),
+            actionLabel: 'Documentation',
+            onPress: navigateIntent(SALES_LANDING_LINKS.docs),
           }),
           Hero({
             key: 'landing-en-hero-block',
@@ -741,7 +730,7 @@ export const landingEnView = (state: LandingEnState): View =>
             columns: footerColumns,
             legal: text(
               'landing-en-footer-legal',
-              'OpenAgents - Product promises, Forum, stats, privacy, and terms remain the canonical public surfaces.',
+              'OpenAgents - Docs, Forum, stats, privacy, and terms remain the canonical public surfaces.',
               'caption',
               'textMuted',
             ),

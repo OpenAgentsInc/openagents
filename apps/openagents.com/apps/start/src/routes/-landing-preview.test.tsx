@@ -16,7 +16,7 @@ describe('Start landing preview route', () => {
     expect(html).toContain('100% open source')
     expect(html).toContain('OpenAI-compatible free API')
     expect(html).toContain('Human-review gate before publish/send/spend')
-    expect(html).toContain('every claim: /docs/product-promises')
+    expect(html).not.toContain('/docs/product-promises')
     expect(html).toContain('href="/khala"')
     expect(html).toContain('href="/business"')
   })

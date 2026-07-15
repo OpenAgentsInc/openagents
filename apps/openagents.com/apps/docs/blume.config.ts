@@ -19,11 +19,12 @@ export default defineConfig({
     { from: '/openagents', to: '/', status: 301 },
     { from: '/api', to: '/agent-readable', status: 301 },
     { from: '/connect-codex-fleet', to: '/getting-started', status: 301 },
+    { from: '/product-promises', to: '/agent-readable', status: 301 },
   ],
   theme: {
     accent: '#2979ff',
     action: '#2979ff',
-    background: '#000000',
+    background: '#05070d',
     mode: 'dark',
     radius: 'sm',
   },

@@ -180,7 +180,7 @@ describe('WEB-1-EN landing Effect Native route (#8595)', () => {
     expect(container.querySelector('[data-en-glow]')).not.toBeNull()
     expect(container.querySelector('[data-en-cta]')).not.toBeNull()
     // LogoRow renders per-logo img markers (URI-schema https placeholders).
-    expect(container.querySelectorAll('[data-en-logo]').length).toBe(4)
+    expect(container.querySelectorAll('[data-en-logo]').length).toBe(3)
     expect(container.querySelector('[data-en-tag="LogoRow"]')).not.toBeNull()
     expect(container.querySelectorAll('[data-en-stat]').length).toBe(4)
     // FAQ accordion present (mode + items).

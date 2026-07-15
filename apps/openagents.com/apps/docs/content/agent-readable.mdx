@@ -22,3 +22,13 @@ These artifacts contain only the curated public content under this docs package.
 Instruction files and documentation help tools understand the system; they do not grant authentication, repository, deployment, payment, moderation, or operator authority. Server-side policy remains authoritative for every action.
 
 Ask AI and hosted MCP are disabled. Search is a local static Orama index built with the site.
+
+## Product claim authority
+
+Product promises are machine-facing evidence, not human website navigation. Agents that need current claim state should read the structured projections directly:
+
+- [`/api/public/product-promises`](https://openagents.com/api/public/product-promises) is the current registry projection.
+- [`/api/public/product-promises/transitions`](https://openagents.com/api/public/product-promises/transitions) is the transition receipt stream.
+- [`/api/public/product-promises/audit`](https://openagents.com/api/public/product-promises/audit) is the audit projection.
+
+Read the promise identifier, state, evidence, blockers, and caveat together. Documentation, a screenshot, a candidate receipt, or a ProductSpec does not independently make a capability publicly available. `/docs/product-promises` remains a compatibility redirect to this agent-facing boundary.

@@ -103,8 +103,6 @@ export const formatCount = (value: number | null | undefined): string =>
 export const SALES_LANDING_LINKS = {
   businessIntake: '/business#business-intake',
   khala: '/khala',
-  promises: '/docs/product-promises',
-  promisesJson: '/api/public/product-promises',
   forum: 'https://openagents.com/forum',
   docs: '/docs',
   stats: '/stats',

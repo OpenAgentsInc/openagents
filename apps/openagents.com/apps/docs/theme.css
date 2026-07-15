@@ -9,15 +9,15 @@
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --blume-background: #000000;
+  --blume-background: #05070d;
   --blume-foreground: #f1efe8;
-  --blume-muted: #080808;
+  --blume-muted: #0b1220;
   --blume-muted-foreground: rgba(255, 255, 255, 0.66);
-  --blume-border: #242424;
+  --blume-border: #1f2b45;
   --blume-accent: #2979ff;
   --blume-accent-foreground: #ffffff;
   --blume-action: #2979ff;
-  --blume-code-background: #080808;
+  --blume-code-background: #0a0f1c;
   --blume-radius: 0.25rem;
   --blume-font-display: 'Commit Mono', 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --blume-font-body: 'Commit Mono', 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -26,7 +26,7 @@
 
 html,
 body {
-  background: #000000;
+  background: #05070d;
 }
 
 html {
@@ -59,7 +59,7 @@ body {
   align-items: center;
   gap: 0.75rem;
   border-bottom: 1px solid var(--blume-border);
-  background: #000000;
+  background: #05070d;
   padding: 0 1.5rem;
 }
 
@@ -73,12 +73,17 @@ body {
   text-decoration: none;
 }
 
-.oa-docs-brand small {
+.oa-docs-section {
   border-left: 1px solid var(--blume-border);
   color: var(--blume-muted-foreground);
   font-size: 0.75rem;
   font-weight: 500;
   padding-left: 0.6rem;
+  text-decoration: none;
+}
+
+.oa-docs-section:hover {
+  color: var(--blume-foreground);
 }
 
 .oa-brand-mark {
@@ -126,7 +131,7 @@ body {
 
 .oa-product-links a:hover,
 .oa-icon-button:hover {
-  background: #080808;
+  background: #0b1220;
   color: var(--blume-foreground);
 }
 
@@ -140,12 +145,12 @@ body {
 [data-blume-search-open] {
   min-height: 2.75rem;
   border-radius: 0.25rem !important;
-  background: #010102 !important;
+  background: #0a0f1c !important;
 }
 
 [data-blume-search-dialog] {
   border-radius: 0.25rem !important;
-  background: #010102 !important;
+  background: #0a0f1c !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
@@ -193,7 +198,6 @@ article a {
 }
 
 @media (max-width: 30rem) {
-  .oa-docs-brand small,
   .oa-product-links {
     display: none;
   }

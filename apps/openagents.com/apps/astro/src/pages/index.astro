@@ -1,9 +1,9 @@
 ---
 import Layout from '../layouts/Layout.astro'
 import {
+  DOCS_URL,
   GITHUB_REPOSITORY_URL,
   PRODUCT_BOUNDARIES,
-  PRODUCT_PROMISES_URL,
   PRODUCT_SPEC_URL,
 } from '../lib/site'
 
@@ -42,8 +42,8 @@ const workroomSteps = [
           <a class="button button-primary" href={PRODUCT_SPEC_URL} target="_blank" rel="noreferrer">
             Read the product spec <span aria-hidden="true">↗</span>
           </a>
-          <a class="button button-secondary" href={PRODUCT_PROMISES_URL}>
-            Product promises
+          <a class="button button-secondary" href={DOCS_URL}>
+            Read the docs
           </a>
         </div>
         <p class="release-note">

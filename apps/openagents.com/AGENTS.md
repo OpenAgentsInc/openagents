@@ -15,11 +15,12 @@ applied migrations, withdraw promises, and revoke authority before deletion.
 
 This directory is converging on the single OpenAgents web app described by
 [`docs/sol/MASTER_ROADMAP.md`](../../docs/sol/MASTER_ROADMAP.md). Retained
-human-facing product routes are `/`, `/forum`, and required Forum
-descendants, plus `/promises` (`/sarah` was removed at owner direction
-2026-07-10, epic #8610 — it and all `/sarah/api/*` routes are 404
-tombstones). Preserve `/docs/product-promises` as a stable
-document or alias and preserve the registry, transition, audit, readiness,
+human-facing product routes are `/`, `/forum`, and required Forum descendants,
+plus the compatibility `/promises` route (`/sarah` was removed at owner
+direction 2026-07-10, epic #8610 — it and all `/sarah/api/*` routes are 404
+tombstones). Product promises are agent-facing evidence, not human top-level
+navigation. Preserve `/docs/product-promises` as a stable alias into the
+agent-readable docs and preserve the registry, transition, audit, readiness,
 report, receipt, verification, and evidence chain required to substantiate
 product promises and service deliverables. Legal, auth, other API, asset,
 health, manifest, and receipt routes are infrastructure exceptions. Other
@@ -42,8 +43,8 @@ and centered on the accepted Desktop MVP; do not revive retired product areas.
 
 At the eventual root cutover, retire the remaining non-infrastructure Start
 documents rather than carrying them forward wholesale. Port only explicitly
-retained public material such as product promises, required legal/auth entry,
-and companion agent documents. Until that cutover is separately implemented,
+retained public material such as agent-readable promise evidence, required
+legal/auth entry, and companion agent documents. Until that cutover is separately implemented,
 `apps/start` continues serving its current routes and `/` remains under the
 holding-page interception.
 
@@ -59,14 +60,15 @@ Keep Blume build-only. Ask AI, hosted MCP, server adapters, remote content,
 analytics, and application secrets are not permitted. The docs package may read
 only its owned `content/` tree; never point it at the repository-wide `docs/`
 directory. Public content must stay within current Desktop MVP, retained Forum,
-agent-readable, security/privacy, troubleshooting, and product-promise facts.
-Do not migrate retired money, credit, market, settlement, Sites, Autopilot, or
-availability claims.
+agent-readable, security/privacy, troubleshooting, and machine-facing
+product-promise facts. Do not migrate retired money, credit, market,
+settlement, Sites, Autopilot, or availability claims.
 
 The Blume/Astro renderer is a narrow third-party documentation exception to the
 Effect Native UI rule. It grants no application, authentication, tool, API,
 payment, deployment, or public-claim authority and must not spread to product
-UI. Keep the docs dark-only, pure black, Commit Mono, Khala blue/cyan, compact,
+UI. Keep the docs dark-only, on the canonical Khala background (`#05070d`),
+Commit Mono, Khala blue/cyan, compact,
 and free of the stock theme toggle, rounded SaaS cards, blur, and decorative
 shadows. The generated `.blume/` project is ignored and subordinate to the
 single root Node/pnpm/Vite Plus graph.
