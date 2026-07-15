@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "34ab3efca1b30f10835908c5412f8f7dd93fbaf543d5d66bc9bea12cc26f7c3f",
+  "sourceTreeSha256": "f8369dcc74c7cd527fc6d95e9f137b5bf5975a3df261ab56c1c6e9ac504c6c52",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1263,7 +1263,7 @@
       "owner": "OpenAgents client architecture",
       "disposition": "retain-decision",
       "dispatch": false,
-      "sha256": "f70a6f4f090e354087f276d386e5204f7956f746f7e3c649eb2dfbe0d8aa53b3",
+      "sha256": "b373218644f920aa5b7d00702178a02f3411729d25aeb03b8e1ae8da6d6ca86e",
       "status": "retain-decision",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",

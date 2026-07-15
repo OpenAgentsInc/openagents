@@ -101,3 +101,12 @@ zero-debt architecture gate because
 does not weaken that invariant or rewrite unrelated renderer code; deployment
 uses the same staging, live-seam smoke, and production Wrangler stages after the
 scoped tests above.
+
+Staging accepted the minified bundle as Worker version
+`e98252be-41c6-46cf-9169-24e2972eefaf`. The unminified bundle exceeded the
+account's 3 MiB Worker limit, so `deploy:safe` now minifies both staging and
+production uploads. Production was not advanced: Cloudflare rejected the eight
+already-pending staging migrations with D1 error 7500 (account storage limit),
+the dispatch smoke then returned HTTP 500, and the production pending-migration
+guard correctly refused to let Worker code ship ahead of schema. Raising the D1
+quota is an owner/platform prerequisite; bypassing the guard is not.
