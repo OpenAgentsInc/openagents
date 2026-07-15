@@ -1024,6 +1024,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   tokenless and Node-free. This boundary and `.tsx` scanner coverage are
   enforced by `apps/openagents-desktop/tests/electron-boundary.test.ts` and
   `apps/openagents-desktop/src/renderer/design-conformance.test.ts`.
+- Desktop React sidebar chrome follows one stable top-left anatomy: native
+  macOS traffic lights share the first row with the sidebar expander and
+  navigation-history slots; the next row is the `OpenAgents` identity with an
+  icon-only search disclosure; primary destinations and conversation titles
+  remain left aligned beneath it. Search never occupies a permanent field when
+  closed. Every glyph is named by the closed Effect Native `IconName` catalog
+  and lowered by a renderer-private adapter; enabled controls may never be
+  no-ops. Back/forward remain explicitly unavailable until typed Effect-owned
+  navigation authority lands in #8825, and the full admitted destination and
+  persisted presentation-state model remains tracked in #8826.
 - Desktop React repository review consumes only grant-scoped, root-relative
   paths plus opaque repository/status correlation already held by the Effect
   Git state. It remains read-only: no edit, discard, stage, commit, branch,

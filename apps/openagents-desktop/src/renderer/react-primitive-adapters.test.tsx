@@ -125,6 +125,10 @@ describe("React workbench shell", () => {
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={fixtureState()} report={report} />)
+    expect(container.querySelector('input[type="search"]')).toBeNull()
+    const searchTrigger = container.querySelector<HTMLButtonElement>('[aria-label="Search sessions"]')
+    expect(searchTrigger?.querySelector('[data-icon-name="Search"]')).not.toBeNull()
+    await interact(() => searchTrigger?.click())
     const sessionRows = [...container.querySelectorAll<HTMLButtonElement>('[data-session-row]')]
     expect(sessionRows.length).toBeGreaterThan(0)
     for (const row of sessionRows) {
@@ -135,6 +139,7 @@ describe("React workbench shell", () => {
       ;[...container.querySelectorAll("button")].find(button => button.textContent === "New session")?.click()
     })
     const search = container.querySelector('input[type="search"]') as HTMLInputElement
+    expect(window.document.activeElement).toBe(search)
     const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set
     valueSetter?.call(search, "earlier")
     await interact(() => search.dispatchEvent(new window.Event("input", { bubbles: true })))
@@ -218,11 +223,29 @@ describe("React workbench shell", () => {
     const report: IntentReporter = () => Effect.void
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={fixtureState()} report={report} />)
-    const trigger = container.querySelector(".oa-react-mobile-session-trigger") as HTMLButtonElement
+    const trigger = container.querySelector(".oa-react-sidebar-expand") as HTMLButtonElement
     await interact(() => trigger.click())
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
     await interact(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" })))
     expect(trigger.getAttribute("aria-expanded")).toBe("false")
     expect(window.document.activeElement).toBe(trigger)
+  })
+
+  test("uses closed-catalog icon controls and left-aligned sidebar actions", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={fixtureState()} report={() => Effect.void} />)
+    expect(container.querySelector('[data-icon-name="Menu"]')).not.toBeNull()
+    expect(container.querySelector('[data-icon-name="ChatCompose"]')).not.toBeNull()
+    expect(container.querySelector('[data-icon-name="Chats"]')).not.toBeNull()
+    expect(container.querySelector('[data-icon-name="ChevronLeft"]')).not.toBeNull()
+    expect(container.querySelector('[data-icon-name="ChevronRight"]')).not.toBeNull()
+    const newSession = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find(button => button.textContent === "New session")
+    expect(newSession?.classList.contains("justify-start")).toBe(true)
+    expect(newSession?.classList.contains("text-left")).toBe(true)
+    expect(container.querySelector('[aria-current="page"]')?.textContent).toContain("Chat")
+    expect(container.querySelector(".oa-react-section-label")?.textContent).toBe("Recent")
+    expect(container.textContent).not.toContain("Search sessionsSearch Codex sessions")
   })
 })

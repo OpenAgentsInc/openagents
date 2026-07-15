@@ -10,9 +10,19 @@ import {
   type ReactElement,
 } from "react"
 import { createRoot, type Root } from "react-dom/client"
-import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload } from "@effect-native/core"
+import { ComponentValueBinding, IntentRef, type IconName, type IntentError, type IntentReporter, type JsonPayload } from "@effect-native/core"
 import { Effect, Scope, Stream } from "@effect-native/core/effect"
 import { mountDomThemeStyleSheet } from "@effect-native/render-dom"
+import {
+  ChevronLeft,
+  ChevronRight,
+  Folder,
+  MessageCircle,
+  PanelLeft,
+  Search,
+  SquarePen,
+  type LucideIcon,
+} from "lucide-react"
 import {
   ReactSurfaceErrorBoundary,
   makeReactViewStore,
@@ -29,6 +39,27 @@ import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-com
 import { ReviewSurface, StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline } from "./react-timeline.tsx"
 import "./react-workbench.css"
+
+type ReactSidebarIconName = Extract<
+  IconName,
+  "ChatCompose" | "Chats" | "ChevronLeft" | "ChevronRight" | "Folder" | "Menu" | "Search"
+>
+
+const sidebarIconAssets: Readonly<Record<ReactSidebarIconName, LucideIcon>> = {
+  ChatCompose: SquarePen,
+  Chats: MessageCircle,
+  ChevronLeft,
+  ChevronRight,
+  Folder,
+  Menu: PanelLeft,
+  Search,
+}
+
+/** Closed-catalog React lowering; Lucide remains a renderer-private asset implementation. */
+const ReactCatalogIcon = ({ name }: { readonly name: ReactSidebarIconName }): ReactElement => {
+  const Asset = sidebarIconAssets[name]
+  return <Asset aria-hidden="true" data-icon-name={name} focusable="false" />
+}
 
 export type ReactSessionRow = Readonly<{
   id: string
@@ -143,15 +174,25 @@ const focusAdjacentSession = (event: KeyboardEvent<HTMLElement>): void => {
   rows[(index + (event.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length]?.focus()
 }
 
-export const SessionRail = ({ state, report, open, onClose, railRef }: {
+export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRef }: {
   readonly state: DesktopShellState
   readonly report: IntentReporter
   readonly open: boolean
-  readonly onClose: () => void
+  readonly onCollapse: () => void
+  readonly onDismiss: () => void
   readonly railRef: RefObject<HTMLElement | null>
 }): ReactElement => {
   const rows = projectReactSessionRows(state)
   const shown = state.history.visibleRootCount
+  const [searchOpen, setSearchOpen] = useState(state.history.searchQuery.trim() !== "")
+  const searchRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus()
+  }, [searchOpen])
+  const closeSearch = (): void => {
+    if (state.history.searchQuery !== "") dispatch(report, "HistorySearchChanged", "")
+    setSearchOpen(false)
+  }
   return <aside
     ref={railRef}
     className="oa-react-session-rail"
@@ -159,20 +200,61 @@ export const SessionRail = ({ state, report, open, onClose, railRef }: {
     aria-label="Sessions"
     onKeyDown={focusAdjacentSession}
   >
+    <div className="oa-react-rail-windowbar" aria-label="Sidebar controls">
+      <Button className="oa-react-rail-collapse" variant="ghost" size="icon-xs" type="button" onClick={onCollapse} aria-label="Collapse sidebar" title="Collapse sidebar">
+        <ReactCatalogIcon name="Menu" />
+      </Button>
+      <div className="oa-react-history-controls" aria-label="Session navigation">
+        <Button variant="ghost" size="icon-xs" type="button" disabled aria-label="Back unavailable" title="Back navigation is not implemented yet">
+          <ReactCatalogIcon name="ChevronLeft" />
+        </Button>
+        <Button variant="ghost" size="icon-xs" type="button" disabled aria-label="Forward unavailable" title="Forward navigation is not implemented yet">
+          <ReactCatalogIcon name="ChevronRight" />
+        </Button>
+      </div>
+    </div>
     <div className="oa-react-rail-titlebar">
       <strong>OpenAgents</strong>
-      <Button className="oa-react-rail-close" variant="ghost" size="sm" type="button" onClick={onClose} aria-label="Close sessions">Close</Button>
+      <Button
+        className="oa-react-search-trigger"
+        variant="ghost"
+        size="icon-xs"
+        type="button"
+        onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}
+        aria-label={searchOpen ? "Close session search" : "Search sessions"}
+        aria-expanded={searchOpen}
+        title={searchOpen ? "Close search" : "Search sessions"}
+      >
+        <ReactCatalogIcon name="Search" />
+      </Button>
     </div>
-    <Button className="oa-react-new-session" type="button" onClick={() => dispatch(report, "DesktopNewChat")}>New session</Button>
-    <label className="oa-react-search">
-      <span>Search sessions</span>
-      <Input
-        type="search"
-        value={state.history.searchQuery}
-        placeholder="Search Codex sessions"
-        onInput={event => dispatch(report, "HistorySearchChanged", event.currentTarget.value)}
-      />
-    </label>
+    {searchOpen ? <label className="oa-react-search">
+        <span className="sr-only">Search sessions</span>
+        <Input
+          ref={searchRef}
+          type="search"
+          value={state.history.searchQuery}
+          placeholder="Search sessions"
+          onKeyDown={event => {
+            if (event.key !== "Escape") return
+            event.preventDefault()
+            closeSearch()
+          }}
+          onInput={event => dispatch(report, "HistorySearchChanged", event.currentTarget.value)}
+        />
+      </label> : null}
+    <nav className="oa-react-primary-nav" aria-label="Primary">
+      <Button className="oa-react-new-session justify-start text-left" variant="ghost" type="button" onClick={() => dispatch(report, "DesktopNewChat") }>
+        <ReactCatalogIcon name="ChatCompose" />
+        <span>New session</span>
+      </Button>
+      <div className="oa-react-primary-current" aria-current="page">
+        <ReactCatalogIcon name="Chats" />
+        <span>Chat</span>
+        <i aria-hidden="true" />
+      </div>
+    </nav>
+    <p className="oa-react-section-label">Recent</p>
     <ScrollArea className="oa-react-session-scroll">
     <nav className="oa-react-session-list" aria-label="Recent sessions">
       {!state.history.hydrated && rows.length === 0
@@ -189,7 +271,7 @@ export const SessionRail = ({ state, report, open, onClose, railRef }: {
               aria-current={row.selected ? "page" : undefined}
               onClick={() => {
                 dispatch(report, row.intent, row.id)
-                onClose()
+                onDismiss()
               }}
             >
               <span>{row.title}</span>
@@ -202,7 +284,7 @@ export const SessionRail = ({ state, report, open, onClose, railRef }: {
     </ScrollArea>
     {state.codingCatalog.sessions.length === 0 ? null : <section className="oa-react-workspaces" aria-label="Coding workspaces">
       <Separator />
-      <h2>Workspaces</h2>
+      <h2><ReactCatalogIcon name="Folder" /> <span>Workspaces</span></h2>
       {state.codingCatalog.sessions.map(session => <div className="oa-react-workspace-row" key={session.sessionRef}>
         <Button variant="ghost" type="button" onClick={() => dispatch(report, "DesktopCodingSessionOpened", session.sessionRef)}>
           <span>{session.repositoryLabel}</span><small>{session.state}</small>
@@ -230,6 +312,7 @@ export const WorkbenchShell = ({ state, report }: {
   readonly report: IntentReporter
 }): ReactElement => {
   const [railOpen, setRailOpen] = useState(false)
+  const [railCollapsed, setRailCollapsed] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const railRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
@@ -246,19 +329,29 @@ export const WorkbenchShell = ({ state, report }: {
   useEffect(() => {
     if (railOpen) railRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
   }, [railOpen])
-  return <div className="oa-react-workbench" data-en-react-surface="true" data-review-open={reviewOpen ? "true" : "false"}>
+  const openRail = (): void => {
+    setRailCollapsed(false)
+    setRailOpen(true)
+  }
+  const closeRail = (): void => {
+    setRailCollapsed(true)
+    setRailOpen(false)
+  }
+  return <div className="oa-react-workbench" data-en-react-surface="true" data-review-open={reviewOpen ? "true" : "false"} data-rail-collapsed={railCollapsed ? "true" : "false"}>
     <ReactCommandPalette state={state} report={report} />
     <DecisionSurface state={state} report={report} />
     <Button
       ref={toggleRef}
-      className="oa-react-mobile-session-trigger"
-      variant="outline"
-      size="sm"
+      className="oa-react-sidebar-expand"
+      variant="ghost"
+      size="icon-sm"
       type="button"
-      onClick={() => setRailOpen(true)}
+      onClick={openRail}
       aria-expanded={railOpen}
-    >Sessions</Button>
-    <SessionRail state={state} report={report} open={railOpen} onClose={() => setRailOpen(false)} railRef={railRef} />
+      aria-label="Expand sidebar"
+      title="Expand sidebar"
+    ><ReactCatalogIcon name="Menu" /></Button>
+    <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} />
     {railOpen ? <button className="oa-react-rail-scrim" aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     <main className="oa-react-conversation">
       <ConversationHeader state={state} report={report} reviewTriggerRef={reviewTriggerRef} onReviewOpen={() => setReviewOpen(true)} />

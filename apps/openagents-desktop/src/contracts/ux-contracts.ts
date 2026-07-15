@@ -6,8 +6,39 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-14.5",
+    version: "2026-07-15.1",
     contracts: [
+      {
+        contractId: "openagents_desktop.sidebar.codex_shaped_react_anatomy.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "React workbench sidebar chrome",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-15" },
+        statement:
+          "Lay out the OpenAgents sidebar like Codex: left-aligned menus, OpenAgents identity, icon-only search, sidebar expander, back/forward positions, and appropriate icons from the existing Apps SDK catalog.",
+        authorityBoundary:
+          "Presentation and already-admitted interaction only. The React sidebar renders native-chrome-aligned controls, an OpenAgents identity row with an icon-only search disclosure, left-aligned New session and current Chat rows, a truthful Recent section, and conversation rows. Every glyph is a closed @effect-native/core IconName lowered through the renderer-private shadcn/Lucide adapter. Search, new-session, session selection, and collapse dispatch or retain only their existing authority. Back/forward are visibly disabled until #8825 supplies Effect-owned navigation history; missing MVP destinations and persisted presentation state remain absent until #8826. No enabled placeholder or React-owned domain navigation is authorized.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+          "apps/openagents-desktop/src/renderer/react-workbench.css",
+          "github:OpenAgentsInc/openagents#8825",
+          "github:OpenAgentsInc/openagents#8826",
+        ],
+        oracles: [
+          {
+            id: "react_sidebar.anatomy_icons_search_and_alignment",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+            description:
+              "The real React workbench proves search is absent until its catalog icon is activated, focus moves into the disclosed field, New session and every session row are left aligned, the current Chat row and Recent section are explicit, and chrome/new/chat/navigation glyphs resolve through data-icon-name values from the closed catalog adapter.",
+          },
+        ],
+        verification:
+          "Desktop typecheck and the focused React workbench DOM suite enforce the current presentation slice; issues #8825 and #8826 retain the deliberately unimplemented domain behavior.",
+      },
       {
         contractId: "openagents_desktop.design.apps_sdk_starcraft_harmonization.v1",
         state: "enforced",
@@ -2412,7 +2443,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
         statement: "remove the \"OpenAgents\" with icon top left ins idebar",
         authorityBoundary:
-          "Presentation only: the sidebar renders no brand row (icon + product-name text) above the workspace dock; window identity remains in the native title bar and app metadata.",
+          "Compatibility-renderer presentation only: its typed workspace dock renders no redundant brand row above the dock. This historical rule does not govern the admitted React workbench, whose current Codex-shaped identity row is specified by openagents_desktop.sidebar.codex_shaped_react_anatomy.v1.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "github:OpenAgentsInc/openagents#8712",
