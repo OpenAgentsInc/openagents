@@ -100,6 +100,13 @@ set +a
 pnpm --dir apps/openagents-desktop run make:mac
 ```
 
+`make:mac` first rebuilds the `macos-alias` and `fs-xattr` native addons with
+the Node runtime executing the release. This is required even in a clean
+worktree because pnpm's shared dependency store can retain addon binaries from
+a different Node ABI. The preparation script resolves the installed package
+roots, uses the workspace-pinned `node-gyp`, and fails before Forge if either
+addon cannot be compiled.
+
 `make:mac` is fail-closed (Gatekeeper release oracles, issue #8786; from the
 2026-07-13 T3 Gatekeeper-dead-DMG and ChatGPT dead-update incidents):
 

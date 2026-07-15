@@ -27,8 +27,12 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(config.makers).toHaveLength(2)
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }
     expect(manifest.scripts["make:mac"]).toBe(
-      "electron-forge make --platform=darwin --arch=arm64",
+      "node --import tsx scripts/prepare-macos-maker.ts && electron-forge make --platform=darwin --arch=arm64",
     )
+    const nativePreparation = readFileSync(path.join(root, "scripts", "prepare-macos-maker.ts"), "utf8")
+    expect(nativePreparation).toContain('const nativePackages = ["macos-alias", "fs-xattr"]')
+    expect(nativePreparation).toContain('Runtime.spawnSync([nodeGyp, "rebuild"]')
+    expect(nativePreparation).toContain("process.versions.modules")
     const workspace = readFileSync(path.join(root, "..", "..", "pnpm-workspace.yaml"), "utf8")
     expect(workspace).toContain("macos-alias: true")
     expect(workspace).toContain("fs-xattr: true")

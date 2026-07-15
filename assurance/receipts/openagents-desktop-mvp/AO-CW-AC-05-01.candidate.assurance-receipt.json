@@ -20,7 +20,7 @@
   "environment_ref": "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
   "execution_unit_ref": "unit.ao-cw-ac-05-01.candidate",
   "manifest_digest": "sha256:afd25a5d9f9a8442773d3d18dbda1b4feae4a29e4181a9afc8f1d9cc72cbdb17",
-  "native_report_digest": "sha256:cc3db35756e75ca9c89b55110b1e64de41f636db6b31db98ba40042305f00fc9",
+  "native_report_digest": "sha256:7401d4717bef178cd03549e3ef6fbfcabb0c40d5dd4acc21bc61e606d812f6c6",
   "native_report_ref": "var/assurance/openagents-desktop-mvp/AO-CW-AC-05-01/candidate.junit.xml",
   "obligation_id": "AO-CW-AC-05-01",
   "producer_ref": "runner.openagents.local.20260713",
@@ -29,7 +29,7 @@
     "classification": "reviewed_public_safe",
     "contains_raw_output": false
   },
-  "receipt_ref": "assurance.receipt.62935b47629ab5115fd16df3fac5324538a7538d6c49c43f95cd7b7c88cba0cd",
+  "receipt_ref": "assurance.receipt.3528991ace66246318f05ac88bb3fc2d4ee5ec3ebecdbcf004666c4cc5e909e2",
   "reviewer_ref": "reviewer.codex.assurance.20260713",
   "source_digest": "sha256:ed3d9b06863642b4239867e7b992a9276045f4070ac27a87a739d554f16365fd"
 }
