@@ -499,12 +499,38 @@ describe("desktopShellView (state -> component tree)", () => {
     }))
   })
 
-  test("sidebar chat rows are compact navigation items with trailing metadata", () => {
+  test("sidebar chat rows expose only a compact relative timestamp as trailing metadata", () => {
     const view = desktopShellView(baseState)
     const item = navItemById(view, `sidebar-thread-${testThread.id}`)
     expect(item).toMatchObject({label:"New chat",accessibilityLabel:"Open chat New chat"})
-    expect(item?.meta).toBeDefined()
+    expect(item?.meta).toMatch(/^(?:now|\d+[mhd])$/)
+    expect(item?.meta).not.toMatch(/completed|running|waiting|codex/i)
     expect((item?.onSelect as {name?:string})?.name).toBe("DesktopChatSelected")
+
+    const historyThread = {
+      threadRef: "history-status-proof",
+      parentThreadRef: null,
+      title: "Status-free history row",
+      status: "completed" as const,
+      createdAt: "2026-07-10T18:04:00.000Z",
+      updatedAt: "2026-07-10T18:04:00.000Z",
+      depth: 0,
+      descendantCount: 0,
+      model: null,
+      role: null,
+      nickname: null,
+      agentPath: null,
+      sourceVersion: null,
+      reasoning: null,
+      source: "codex" as const,
+    }
+    const historyItem = navItemById(desktopShellView({
+      ...baseState,
+      threads: [],
+      history: { ...baseState.history, catalog: { roots: [historyThread], agents: [historyThread] } },
+    }), "sidebar-thread-history-status-proof")
+    expect(historyItem?.meta).toMatch(/^(?:now|\d+[mhd])$/)
+    expect(historyItem?.meta).not.toMatch(/completed|running|waiting|codex/i)
   })
 
   test("the MVP session rail excludes Claude history and local Claude-model threads", () => {

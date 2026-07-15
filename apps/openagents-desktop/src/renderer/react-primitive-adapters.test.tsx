@@ -280,6 +280,9 @@ describe("React workbench shell", () => {
     const rows = projectReactSessionRows(state, new Date("2026-07-14T12:01:00.000Z"))
     expect(rows.map(row => row.id)).toEqual(["local-1", "history-1"])
     expect(rows[0]).toMatchObject({ title: "Local session", selected: true, meta: "1m" })
+    expect(rows[1]).toMatchObject({ title: "Earlier session", meta: "1h" })
+    expect(rows.every(row => /^(?:now|\d+[mhd])$/u.test(row.meta))).toBe(true)
+    expect(rows.map(row => row.meta).join(" ")).not.toMatch(/completed|running|waiting|title|content/iu)
     expect(state.history.page).toBeNull()
   })
 

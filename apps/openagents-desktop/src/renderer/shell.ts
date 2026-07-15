@@ -3187,7 +3187,7 @@ const historySidebarItems = (state: DesktopShellState, shortcutOffset: number, e
   const rows=roots.map((thread,index) => ({
     id:`sidebar-thread-${thread.threadRef}`,
     label:thread.title,
-    meta:state.historyShortcutHintsVisible ? (index + shortcutOffset < 9 ? String(index + shortcutOffset + 1) : "") : `${historySourceBadgeLabel(thread.source)} · ${formatRelativeTimestamp(thread.updatedAt)}`,
+    meta:state.historyShortcutHintsVisible ? (index + shortcutOffset < 9 ? String(index + shortcutOffset + 1) : "") : formatRelativeTimestamp(thread.updatedAt),
     accessibilityLabel:`Open ${historySourceBadgeLabel(thread.source)} chat ${thread.title}, ${thread.descendantCount} descendant agents`,
     onSelect:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),
   }))
