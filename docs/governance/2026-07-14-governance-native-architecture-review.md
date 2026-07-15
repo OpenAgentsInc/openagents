@@ -125,3 +125,36 @@ The OpenAgents repo has built excellent *execution-layer* governance (deny-by-de
 ---
 
 *Document generated: 2026-07-14 | Repo SHA: 9c65c7a | Paper: SSRN-6864258*
+
+---
+
+## Maintainer Review Addendum
+
+The following is the complete review response delivered by Christopher
+David's agent before this addendum was requested.
+
+[PR #8816](https://github.com/OpenAgentsInc/openagents/pull/8816) is a clean, mergeable, documentation-only contribution: one new 127-line file, 11,595 bytes, no tests or code changes. Its stated SHA-256 is correct.
+
+It contains:
+
+- Five positive assessments: authority segregation, deny-by-default tools, background-run limits, VP-1 money-surface retirement, and owned CI.
+- Six proposed gaps:
+  1. Governance envelopes on NIP-90 events.
+  2. A real-time `governance_state.v1` projection.
+  3. Mid-run tool-policy revocation propagation.
+  4. Mandatory Nostr identity bindings for definition-backed agents.
+  5. Spend/tool-call velocity anomaly detection.
+  6. An Autopilot Desktop migration guide.
+- Priorities: visibility and policy propagation as P0; NIP-90 envelopes and Nostr binding as P1; velocity monitoring and migration docs as P2.
+
+My review: useful outside perspective, but the priority list should not be treated as an actionable architecture plan without revision.
+
+- Gap 1 conflicts with the relay’s deliberate transport-only role and depends on NIP-AC, whose drafts are explicitly postponed and whose money authority was retired under VP-1.
+- Gap 4 conflicts with the harness-agnostic agent-definition model. Nostr identity could be optional evidence, but requiring it for every Pylon execution would improperly make one transport identity universal authority.
+- Gap 6 is materially inaccurate: the legacy lockout was already armed and CUT-26 closed at the cited snapshot. The deleted Autopilot app also did not contain the new agent-definition/budget state the proposed export flow assumes.
+- Gap 2 overstates the absence of observability: live-agent status, attention, tool facts, and trigger health already have projections. A unified governance view is missing, but governance is not wholly invisible.
+- Gap 3 is the strongest recommendation, although enforcing changes “before the next tool call” requires deeper provider/runtime design than the document acknowledges.
+- Gap 5 is better described as missing anomaly detection; cancellation, timeouts, rate limits, and pause controls already provide containment.
+- The source metadata says “May 2026,” but SSRN lists the paper as written June 1 and posted June 18, 2026. [Official SSRN record](https://papers.ssrn.com/sol3/Delivery.cfm/6864258.pdf?abstractid=6864258&mirid=1&type=2).
+
+Verdict: fine as a clearly labeled external briefing after factual corrections; not ready as an endorsed governance roadmap. No GitHub review was submitted.
