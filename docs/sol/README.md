@@ -75,6 +75,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-15-arwes-first-principles-khala-ui-architecture-audit.md`](./2026-07-15-arwes-first-principles-khala-ui-architecture-audit.md)
+  — pinned first-principles Arwes audit and ordered architecture for an owned
+  Khala UI language inside Effect Native; implementation requires bounded
+  claimed issues and does not authorize growth of the frozen `/tanstack`
+  comparison.
 - [`2026-07-14-blume-docs-site-integration-audit.md`](./2026-07-14-blume-docs-site-integration-audit.md)
   — pinned Blume suitability, destination-toolchain compatibility,
   public-content, and
