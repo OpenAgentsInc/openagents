@@ -86,11 +86,17 @@ export type MakeLocalHarnessChatHostInput = Readonly<{
   codexAvailability?: () => CodexLocalAvailability | null
   randomId?: () => string
   now?: () => Date
+  /** Injectable renderer cadence; one projection per frame by default. */
+  scheduleProjection?: (flush: () => void) => () => void
 }>
 
 export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): ChatHost => {
   const randomId = input.randomId ?? (() => globalThis.crypto.randomUUID())
   const now = input.now ?? (() => new Date())
+  const scheduleProjection = input.scheduleProjection ?? (flush => {
+    const timer = setTimeout(flush, 16)
+    return () => clearTimeout(timer)
+  })
 
   /**
    * The turn currently streaming through a local lane, if any. Tracked so the
@@ -125,8 +131,21 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     let assistantSequence = 0
     let effectiveModel: string | null = null
     const laneName = lane === "fable" ? "fable-local" : "codex-local"
+    let pendingAssistantChunks: string[] = []
+    let cancelProjection: (() => void) | null = null
+    let projectionDirty = false
 
-    const project = (): void => {
+    const commitAssistantText = (): void => {
+      if (activeAssistantIndex === null || pendingAssistantChunks.length === 0) return
+      const active = orderedNotes[activeAssistantIndex]!
+      orderedNotes[activeAssistantIndex] = { ...active, text: active.text + pendingAssistantChunks.join("") }
+      pendingAssistantChunks = []
+    }
+    const projectNow = (): void => {
+      cancelProjection = null
+      if (!projectionDirty) return
+      projectionDirty = false
+      commitAssistantText()
       if (baseThread === null || send.onUpdate === undefined) return
       send.onUpdate({
         ...baseThread,
@@ -136,7 +155,21 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         ],
       })
     }
+    const project = (): void => {
+      projectionDirty = true
+      if (cancelProjection === null) cancelProjection = scheduleProjection(projectNow)
+    }
+    const cancelScheduledProjection = (): void => {
+      const cancel = cancelProjection as (() => void) | null
+      cancel?.()
+      cancelProjection = null
+    }
+    const flushProjection = (): void => {
+      cancelScheduledProjection()
+      projectNow()
+    }
     const closeAssistantSegment = (): void => {
+      commitAssistantText()
       activeAssistantIndex = null
     }
     const pushSystemNote = (text: string): void => {
@@ -201,17 +234,15 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
           orderedNotes.push({
               key: `${turnRef}-assistant-${assistantSequence++}`,
               role: "assistant",
-              text: event.text,
+              text: "",
               timestamp: noteTimestamp(now()),
               // Streaming metadata (#8712): lane + turn are known here; the
               // effective model joins when its typed event lands. The
               // persisted note from main carries the authoritative meta.
               meta: { lane: laneName, turnRef, ...(effectiveModel === null ? {} : { model: effectiveModel }) },
             })
-        } else {
-          const active = orderedNotes[activeAssistantIndex]!
-          orderedNotes[activeAssistantIndex] = { ...active, text: active.text + event.text }
         }
+        pendingAssistantChunks.push(event.text)
         project()
         return
       }
@@ -446,6 +477,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         ...(send.model === undefined ? {} : { model: send.model }),
       })
       const result = decodeTurnResult(raw, laneLabel)
+      flushProjection()
       // A3 queue-until-idle: a follow-up promoted at this turn's idle boundary
       // becomes the NEXT turn (the runtime emits it but does not run it). Chain
       // it on the same lane/onUpdate and return its result so the shell's
@@ -462,6 +494,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       return result
     } finally {
       activeTurn = null
+      cancelScheduledProjection()
       unsubscribe()
     }
   }

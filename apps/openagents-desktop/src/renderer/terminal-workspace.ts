@@ -196,6 +196,12 @@ export const withTerminalEvent = (
   }
 }
 
+/** Fold a renderer-frame batch with one store publication. */
+export const withTerminalEvents = (
+  state: TerminalWorkspaceState,
+  events: ReadonlyArray<TerminalEvent>,
+): TerminalWorkspaceState => events.reduce(withTerminalEvent, state)
+
 // ---------------------------------------------------------------------------
 // Intents.
 // ---------------------------------------------------------------------------
@@ -210,6 +216,7 @@ export const TerminalCloseRequested = defineIntent("TerminalCloseRequested", Sch
 export const TerminalPreviewOpenRequested = defineIntent("TerminalPreviewOpenRequested", Schema.Number)
 export const TerminalRefreshRequested = defineIntent("TerminalRefreshRequested", Schema.Null)
 export const TerminalEventReceived = defineIntent("TerminalEventReceived", TerminalEventSchema)
+export const TerminalEventsReceived = defineIntent("TerminalEventsReceived", Schema.Array(TerminalEventSchema))
 
 export const terminalWorkspaceIntents = [
   TerminalCreateRequested,
@@ -222,6 +229,7 @@ export const terminalWorkspaceIntents = [
   TerminalPreviewOpenRequested,
   TerminalRefreshRequested,
   TerminalEventReceived,
+  TerminalEventsReceived,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -364,6 +372,11 @@ export const makeTerminalWorkspaceHandlers = <S extends TerminalCapableState>(
     SubscriptionRef.update(state, (current) => ({
       ...current,
       terminal: withTerminalEvent(current.terminal, event),
+    })),
+  TerminalEventsReceived: (events: ReadonlyArray<TerminalEvent>) =>
+    SubscriptionRef.update(state, current => ({
+      ...current,
+      terminal: withTerminalEvents(current.terminal, events),
     })),
 })
 

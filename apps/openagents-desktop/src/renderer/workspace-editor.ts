@@ -29,6 +29,7 @@ import {
   DesktopWorkspaceDocumentResultSchema,
   DesktopWorkspacePathRefSchema,
   decodeWorkspaceDocumentResult,
+  workspaceChangePathRefs,
   type DesktopWorkspaceChange,
   type DesktopWorkspaceDocument,
   type DesktopWorkspaceDocumentResult,
@@ -631,21 +632,24 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
 
   const refreshChangedDocuments = (change: DesktopWorkspaceChange) => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
+    const changedRefs = workspaceChangePathRefs(change)
     const targets = current.workspaceEditor.tabs.filter(tab =>
-      tab.document !== null && (change.pathRef === null || change.pathRef === tab.pathRef),
+      tab.document !== null && (changedRefs === null || changedRefs.includes(tab.pathRef)),
     )
-    for (const tab of targets) {
-      const raw = yield* Effect.promise(() => bridge.openWorkspaceDocument({
+    const results = yield* Effect.promise(() => Promise.all(targets.map(async tab => {
+      const raw = await bridge.openWorkspaceDocument({
         grantRef: tab.document!.grantRef,
         pathRef: tab.pathRef,
-      }).catch(() => null))
-      const result = decodeWorkspaceDocumentResult(raw) ?? {
+      }).catch(() => null)
+      return [tab.pathRef, decodeWorkspaceDocumentResult(raw) ?? {
         state: "unavailable" as const,
         reason: "unavailable" as const,
         message: "The changed document response could not be read.",
-      }
-      yield* setEditor(editor => withWorkspaceEditorExternalResult(editor, tab.pathRef, result))
-    }
+      }] as const
+    })))
+    if (results.length > 0) yield* setEditor(editor => results.reduce(
+      (next, [pathRef, result]) => withWorkspaceEditorExternalResult(next, pathRef, result), editor,
+    ))
   })
 
   const saveActiveAs = Effect.gen(function* () {

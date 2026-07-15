@@ -44,7 +44,11 @@ type Harness = {
   unsubscribed: () => boolean
 }
 
-const makeHarness = (input?: { fableAvailable?: boolean; bridge?: boolean }): Harness => {
+const makeHarness = (input?: {
+  fableAvailable?: boolean
+  bridge?: boolean
+  scheduleProjection?: (flush: () => void) => () => void
+}): Harness => {
   const legacySends: Array<unknown> = []
   const startCalls: Array<unknown> = []
   const steerCalls: Array<unknown> = []
@@ -103,6 +107,11 @@ const makeHarness = (input?: { fableAvailable?: boolean; bridge?: boolean }): Ha
         ? { state: "unavailable", reason: "no_claude_account" }
         : { state: "available", accountRef: "claude-pylon-b" },
     randomId: () => "fixed",
+    scheduleProjection: input?.scheduleProjection ?? (flush => {
+      let active = true
+      queueMicrotask(() => { if (active) flush() })
+      return () => { active = false }
+    }),
   })
   return {
     host,
@@ -221,6 +230,29 @@ describe("makeLocalHarnessChatHost", () => {
     })
     harness.resolveStart({ ok: true, thread: finalThread })
     expect((await pending).ok).toBe(true)
+  })
+
+  test("10,000 synchronous provider deltas publish once per cadence with exact text", async () => {
+    const scheduled: Array<() => void> = []
+    const harness = makeHarness({ scheduleProjection: flush => {
+      let active = true
+      scheduled.push(() => { if (active) flush() })
+      return () => { active = false }
+    } })
+    const updates: DesktopThread[] = []
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "stress", harness: "fable", onUpdate: thread => updates.push(thread) })
+    await settle()
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
+    for (let index = 0; index < 10_000; index++) {
+      harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "x" } })
+    }
+    expect(scheduled).toHaveLength(1)
+    expect(updates).toHaveLength(0)
+    scheduled[0]!()
+    expect(updates).toHaveLength(1)
+    expect(updates[0]!.notes.at(-1)?.text).toBe("x".repeat(10_000))
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
   })
 
   test("question_pending projects an interactive question note; question_resolved updates it in place (EP250)", async () => {

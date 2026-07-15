@@ -33,6 +33,7 @@ import {
   decodeWorkspaceOperationResult,
   decodeWorkspaceSearchResponse,
   decodeWorkspaceTreePage,
+  workspaceChangePathRefs,
   type DesktopWorkspaceChange,
   type DesktopWorkspaceOperationResult,
   type DesktopWorkspaceSearchResponse,
@@ -294,6 +295,7 @@ export const workspaceBrowserIntents = [
 
 export type WorkspaceBrowserCapableState = Readonly<{
   workspaceBrowser: WorkspaceBrowserState
+  workspace?: string
 }>
 
 export type WorkspaceBrowserBridge = Readonly<{
@@ -362,6 +364,7 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
 ) => {
   let searchSequence = 0
   let activeSearchRef: string | null = null
+  let changeSequence = 0
 
   const setBrowser = (mutate: (browser: WorkspaceBrowserState) => WorkspaceBrowserState) =>
     SubscriptionRef.update(state, next => ({ ...next, workspaceBrowser: mutate(next.workspaceBrowser) }))
@@ -391,10 +394,32 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
     yield* loadRoot()
   })
 
-  const reloadFromChange = Effect.gen(function* () {
+  const reloadFromChange = (change: DesktopWorkspaceChange) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.workspace !== undefined && current.workspace !== "files") return
+    if (current.workspaceBrowser.phase !== "ready") return
+    const changedRefs = workspaceChangePathRefs(change)
+    const loadedRefs = Object.keys(current.workspaceBrowser.pages)
+    const affectedRefs = changedRefs === null ? [""] : loadedRefs.filter(directoryRef =>
+      changedRefs.some(pathRef => {
+        const slash = pathRef.lastIndexOf("/")
+        const parentRef = slash < 0 ? "" : pathRef.slice(0, slash)
+        return directoryRef === parentRef || directoryRef === pathRef
+      }))
+    if (affectedRefs.length === 0) return
+    const sequence = ++changeSequence
     yield* cancelActiveSearch
-    yield* setBrowser(withWorkspaceBrowserLoading)
-    yield* loadRoot()
+    const pages = yield* Effect.promise(() => Promise.all(affectedRefs.map(directoryRef => treePageFrom(bridge, directoryRef))))
+    if (sequence !== changeSequence) return
+    const latest = yield* SubscriptionRef.get(state)
+    if (latest.workspace !== undefined && latest.workspace !== "files") return
+    yield* setBrowser(browser => {
+      const replacements = { ...browser.pages }
+      for (const page of pages) {
+        if (page.state === "available" && page.grantRef === browser.grantRef) replacements[page.directoryRef] = page
+      }
+      return { ...browser, pages: replacements }
+    })
   })
 
   const runSearch = (offset: number, append: boolean) =>
@@ -551,7 +576,7 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
         yield* setBrowser(browser => withWorkspaceBrowserOperation(browser, result))
       }),
 
-    WorkspaceBrowserChangeReceived: (_change: DesktopWorkspaceChange) => reloadFromChange,
+    WorkspaceBrowserChangeReceived: (change: DesktopWorkspaceChange) => reloadFromChange(change),
   }
 }
 

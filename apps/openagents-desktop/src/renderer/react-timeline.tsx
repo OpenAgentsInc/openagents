@@ -10,7 +10,7 @@ import {
 import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload, type MarkdownBlock, type MarkdownInline } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import type { ReactElement, ReactNode } from "react"
-import { Component, createElement, useEffect, useRef } from "react"
+import { Component, createElement, memo, useEffect, useMemo, useRef } from "react"
 import { Folder } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
@@ -196,14 +196,16 @@ const Blocks = ({ blocks }: { readonly blocks: ReadonlyArray<MarkdownBlock> }): 
   return null
 })
 
-export const SafeReactMarkdown = ({ value }: { readonly value: string }): ReactElement =>
-  <div className="oa-react-markdown">
-    {parseChatMarkdown(value).map((segment, index) => segment.kind === "markdown"
+export const SafeReactMarkdown = memo(({ value }: { readonly value: string }): ReactElement => {
+  const segments = useMemo(() => parseChatMarkdown(value), [value])
+  return <div className="oa-react-markdown">
+    {segments.map((segment, index) => segment.kind === "markdown"
       ? <Blocks key={index} blocks={segment.blocks} />
       : segment.kind === "code"
         ? <pre key={index}><code data-language={segment.language}>{segment.code}</code></pre>
         : <hr key={index} />)}
   </div>
+})
 
 const isUserRecord = (record: ReactTimelineRecord): boolean =>
   record.kind === "user_message" || record.label === "You"

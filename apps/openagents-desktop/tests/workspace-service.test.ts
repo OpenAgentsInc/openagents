@@ -19,6 +19,7 @@ import {
   decodeWorkspaceTreePage,
   decodeWorkspaceTreeRequest,
   decodeWorkspaceWatchRequest,
+  type DesktopWorkspaceChange,
 } from "../src/workspace-contract.ts"
 
 import {
@@ -711,6 +712,7 @@ describe("Desktop bounded workspace service", () => {
     const watcherCallbacks: Array<(pathRef: string | null) => void> = []
     let watchStarts = 0
     let watchCloses = 0
+    const scheduled: Array<() => void> = []
     const workspace = openWorkspaceService(root, {
       grantRef: "workspace.grant.lifecycle",
       watchFactory: (_root, listener) => {
@@ -718,6 +720,11 @@ describe("Desktop bounded workspace service", () => {
         watcherCallbacks.push(listener)
         let closed = false
         return { close: () => { if (!closed) { closed = true; watchCloses += 1 } } }
+      },
+      watchScheduler: flush => {
+        let active = true
+        scheduled.push(() => { if (active) flush() })
+        return { cancel: () => { active = false } }
       },
     })
     const changesA: unknown[] = []
@@ -731,13 +738,19 @@ describe("Desktop bounded workspace service", () => {
     expect(pageA.state === "available" ? pageA.cache.epoch : null).toBe(0)
 
     watcherCallbacks[0]?.("README.md")
-    expect(changesA).toEqual([{ kind: "changed", pathRef: "README.md", epoch: 1 }])
+    watcherCallbacks[0]?.("src/index.ts")
+    watcherCallbacks[0]?.("README.md")
+    scheduled.shift()?.()
+    expect(changesA).toEqual([{
+      kind: "changed", pathRef: null, pathRefs: ["README.md", "src/index.ts"], epoch: 1,
+    }])
     expect(changesB).toEqual(changesA)
     const pageAfterChange = workspace.tree({ directoryRef: "" })
     expect(pageAfterChange).not.toBe(pageA)
     expect(pageAfterChange.state === "available" ? pageAfterChange.cache.epoch : null).toBe(1)
 
     watcherCallbacks[0]?.(null)
+    scheduled.shift()?.()
     expect(changesA.at(-1)).toEqual({ kind: "overflow", pathRef: null, epoch: 2 })
     workspace.refresh()
     expect(changesA.at(-1)).toEqual({ kind: "refresh", pathRef: null, epoch: 3 })
@@ -753,6 +766,42 @@ describe("Desktop bounded workspace service", () => {
     expect(watchCloses).toBe(1)
     expect(workspace.tree({ directoryRef: "" }).state).toBe("unavailable")
     expect((await workspace.search({ query: "readme", mode: "path" }).result).state).toBe("unavailable")
+  })
+
+  test("drops generated-tree churn and bounds a 10,000-event watcher burst", () => {
+    const root = makeRoot()
+    const watcherCallbacks: Array<(pathRef: string | null) => void> = []
+    const scheduled: Array<() => void> = []
+    const workspace = openWorkspaceService(root, {
+      watchFactory: (_root, listener) => {
+        watcherCallbacks.push(listener)
+        return { close: () => undefined }
+      },
+      watchScheduler: flush => {
+        let active = true
+        scheduled.push(() => { if (active) flush() })
+        return { cancel: () => { active = false } }
+      },
+    })
+    const changes: DesktopWorkspaceChange[] = []
+    const subscription = workspace.subscribe(change => changes.push(change))
+    for (let index = 0; index < 10_000; index += 1) {
+      watcherCallbacks[0]?.(`node_modules/pkg-${index}/index.js`)
+      watcherCallbacks[0]?.(`.git/objects/${index}`)
+      watcherCallbacks[0]?.(`dist/chunk-${index}.js`)
+    }
+    expect(scheduled).toHaveLength(0)
+    expect(changes).toEqual([])
+    for (let index = 0; index < 256; index += 1) watcherCallbacks[0]?.(`src/generated-${index}.ts`)
+    watcherCallbacks[0]?.("src/generated-255.ts")
+    scheduled.shift()?.()
+    expect(changes[0]?.kind).toBe("changed")
+    expect(changes[0]?.pathRefs).toHaveLength(256)
+    for (let index = 0; index < 10_000; index += 1) watcherCallbacks[0]?.(`src/overflow-${index}.ts`)
+    scheduled.shift()?.()
+    expect(changes.at(-1)).toEqual({ kind: "overflow", pathRef: null, epoch: 2 })
+    subscription.close()
+    workspace.dispose()
   })
 
   test("owns asynchronous search tasks, caches only current results, and cancels them on epoch change or close", async () => {
@@ -883,6 +932,15 @@ describe("Desktop bounded workspace service", () => {
       epoch: 2,
     })
     expect(decodeWorkspaceChange({ kind: "changed", pathRef: null, epoch: "2" })).toBeNull()
+    expect(decodeWorkspaceChange({
+      kind: "changed", pathRef: null, pathRefs: ["README.md", "src/index.ts"], epoch: 3,
+    })?.pathRefs).toEqual(["README.md", "src/index.ts"])
+    expect(decodeWorkspaceChange({
+      kind: "changed", pathRef: null,
+      pathRefs: Array.from({ length: 257 }, (_, index) => `src/${index}.ts`), epoch: 3,
+    })).toBeNull()
+    expect(decodeWorkspaceChange({ kind: "changed", pathRef: null, pathRefs: ["../secret"], epoch: 3 })).toBeNull()
+    expect(decodeWorkspaceChange({ kind: "changed", pathRef: null, pathRefs: ["/tmp/secret"], epoch: 3 })).toBeNull()
     const root = makeRoot()
     writeFileSync(path.join(root, "README.md"), "safe")
     const page = workspaceTreePage({

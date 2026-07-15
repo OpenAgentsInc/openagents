@@ -981,6 +981,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   invocation's original position rather than moving the card or surrounding
   assistant text. Persisted model, reasoning, lane, tool, and assistant notes
   must reopen in the same relative sequence the user saw live.
+- Desktop renderer work is cadence-bounded. Consecutive provider text and PTY
+  output may accumulate until the next renderer frame, but every semantic
+  boundary and turn completion flushes pending text first. Workspace watches
+  exclude dot/generated trees, deduplicate and coalesce bursts for 75 ms, cap
+  exact affected refs at 256, and refresh only visible/loaded affected slices;
+  overflow is one explicit full-invalidation event.
 - An accepted Desktop-local provider turn is durable before provider dispatch.
   Electron main owns a private mode-0600 journal keyed by exact thread, turn,
   and lane; it records the selected account, provider session identity,

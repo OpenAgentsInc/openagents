@@ -195,6 +195,12 @@ process before D3/D4 breadth. The renderer never receives bearer/provider/
 Pylon credentials, a loopback URL, raw runtime events, general IPC, or a raw
 `MessagePort`.
 
+High-volume local sources cross that boundary in bounded batches: workspace
+watches ignore dot/generated trees and coalesce exact relative refs for 75 ms,
+while provider text and PTY output publish no more than once per renderer
+cadence (with synchronous semantic-boundary/final flushes). Hidden Files views
+do no tree reload work; open editor tabs still receive exact matching changes.
+
 Runtime Gateway protocol v8 now carries the authoritative conversation path:
 confirmed catalog/thread/current-timeline queries, canonical create/append
 enqueues, exact thread/message/run start or interrupt commands, and typed

@@ -14,6 +14,7 @@ import {
   terminalWorkspaceIntents,
   terminalWorkspaceView,
   withTerminalEvent,
+  withTerminalEvents,
   withTerminalSnapshot,
   type TerminalRendererBridge,
   type TerminalWorkspaceState,
@@ -78,6 +79,15 @@ describe("terminal transitions", () => {
       chunk: "hello world\n",
     })
     expect(state.sessions[0]!.output).toBe("hello world\n")
+  })
+
+  test("10,000 output events fold exactly in one bounded transition", () => {
+    const events: TerminalEvent[] = Array.from({ length: 10_000 }, () => ({
+      kind: "output", sessionRef: "terminal.aaa111bbb", chunk: "0123456789",
+    }))
+    const state = withTerminalEvents(runningState(), events)
+    expect(state.sessions[0]!.output).toHaveLength(100_000)
+    expect(state.sessions[0]!.output).toBe("0123456789".repeat(10_000))
   })
 
   test("exit marks the session exited with its code; input controls disable", () => {

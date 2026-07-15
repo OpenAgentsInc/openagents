@@ -1068,25 +1068,61 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     }
     if (typeof bridge?.workspaceSubscribe === "function") {
       const unsubscribeWorkspace = bridge.workspaceSubscribe(change => {
-        void Effect.runPromise(
+        void Effect.runPromise(SubscriptionRef.get(state)).then(current => Effect.runPromise(
           Effect.all([
-            registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserChangeReceived", StaticPayload(change)))),
+            ...(current.workspace === "files"
+              ? [registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserChangeReceived", StaticPayload(change))))]
+              : []),
             registry.dispatch(resolveIntentRef(IntentRef("WorkspaceEditorExternalChangeReceived", StaticPayload(change)))),
           ], { concurrency: 1, discard: true }),
-        )
+        ))
       })
-      window.addEventListener("pagehide", () => unsubscribeWorkspace(), { once: true })
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribeWorkspace))
     }
     // Workspace-bounded PTY terminals (CUT-20, #8700): stream every host event
     // into the terminal workspace state (schema-decoded in the handler), and
     // pull the snapshot once so a persisted tail is recovered after a restart.
     if (typeof bridge?.terminal?.onEvent === "function") {
-      const unsubscribeTerminal = bridge.terminal.onEvent((event) => {
+      type PendingTerminalEvent = import("../terminal-contract.ts").TerminalEvent | Readonly<{
+        kind: "batched_output"
+        sessionRef: string
+        chunks: string[]
+        length: number
+      }>
+      let pendingTerminalEvents: PendingTerminalEvent[] = []
+      let terminalFrame: ReturnType<typeof setTimeout> | null = null
+      const flushTerminalEvents = () => {
+        terminalFrame = null
+        if (pendingTerminalEvents.length === 0) return
+        const events: import("../terminal-contract.ts").TerminalEvent[] = pendingTerminalEvents.map(event =>
+          event.kind === "batched_output"
+            ? { kind: "output", sessionRef: event.sessionRef, chunk: event.chunks.join("").slice(-100_000) }
+            : event)
+        pendingTerminalEvents = []
         void Effect.runPromise(
-          registry.dispatch(resolveIntentRef(IntentRef("TerminalEventReceived", StaticPayload(event)))),
+          registry.dispatch(resolveIntentRef(IntentRef("TerminalEventsReceived", StaticPayload(events)))),
         )
+      }
+      const unsubscribeTerminal = bridge.terminal.onEvent((event) => {
+        const last = pendingTerminalEvents.at(-1)
+        if (event.kind === "output" && last?.kind === "batched_output" && last.sessionRef === event.sessionRef) {
+          last.chunks.push(event.chunk)
+          const length = last.length + event.chunk.length
+          pendingTerminalEvents[pendingTerminalEvents.length - 1] = length <= 200_000
+            ? { ...last, length }
+            : { ...last, chunks: [last.chunks.join("").slice(-100_000)], length: 100_000 }
+        } else if (event.kind === "output") {
+          pendingTerminalEvents.push({ kind: "batched_output", sessionRef: event.sessionRef, chunks: [event.chunk], length: event.chunk.length })
+        } else pendingTerminalEvents.push(event)
+        if (pendingTerminalEvents.length >= 512) flushTerminalEvents()
+        else if (terminalFrame === null) terminalFrame = setTimeout(flushTerminalEvents, 16)
       })
-      window.addEventListener("pagehide", () => unsubscribeTerminal(), { once: true })
+      yield* Effect.addFinalizer(() => Effect.sync(() => {
+        unsubscribeTerminal()
+        if (terminalFrame !== null) clearTimeout(terminalFrame)
+        terminalFrame = null
+        pendingTerminalEvents = []
+      }))
     }
     if (typeof bridge?.terminal?.snapshot === "function") {
       void Effect.runPromise(

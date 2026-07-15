@@ -712,6 +712,13 @@ The normal desktop test sweep also mechanically enforces these host boundaries:
   same typed entry as the checked construction evidence. The selected
   workspace is an explicit WorkContext service, and the process-owned Codex
   history worker has one host with an app-shutdown disposal path.
+- Workspace watch events never forward raw one-for-one churn. Dot-prefixed and
+  generated directories are ignored, relevant changes are sorted/deduplicated
+  into a 75 ms batch of at most 256 relative refs, and the renderer reloads
+  only visible loaded directories or matching open editor tabs. Provider text
+  and terminal output publish at renderer cadence with ordering-boundary and
+  completion flushes, so 10,000 synchronous deltas cannot cause 10,000 state
+  publications.
 - The production main process uses one replaceable lifecycle owner for runtime,
   WorkContext, authenticated Sync, account-connect, history, and per-window
   gateway subscriptions. Replacement closes the previous narrower slot before

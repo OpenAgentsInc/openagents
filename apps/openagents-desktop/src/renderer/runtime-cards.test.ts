@@ -240,6 +240,11 @@ const runHarness = async (): Promise<Harness> => {
     fable: bridge,
     fableAvailability: () => ({ state: "available", accountRef: "claude-pylon-b" }),
     randomId: () => "fixed",
+    scheduleProjection: flush => {
+      let active = true
+      queueMicrotask(() => { if (active) flush() })
+      return () => { active = false }
+    },
   })
   const updates: DesktopThread[] = []
   // A closure so `listener` keeps its declared type (a straight-line call would

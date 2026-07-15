@@ -1030,6 +1030,14 @@ export type DesktopWorkspaceService = Readonly<{
   dispose: () => void
 }>
 
+export const WORKSPACE_WATCH_COALESCE_MS = 75
+export const WORKSPACE_WATCH_BATCH_LIMIT = 256
+const ignoredWorkspaceWatchSegments = new Set(["build", "coverage", "dist", "node_modules", "out", "target"])
+
+/** Generated/VCS trees never enter the workspace UI event pipeline. */
+export const workspaceWatchPathIgnored = (pathRef: string): boolean =>
+  pathRef.split("/").some(segment => segment.startsWith(".") || ignoredWorkspaceWatchSegments.has(segment))
+
 /**
  * Creates one explicitly selected WorkContext service. The process composition
  * root may replace this value after another directory-picker decision, but no
@@ -1047,6 +1055,7 @@ export const openWorkspaceService = (
     mutationIo?: WorkspaceMutationIo
     documentIo?: WorkspaceDocumentIo
     reveal?: (absolutePath: string) => Promise<boolean> | boolean
+    watchScheduler?: (flush: () => void) => Readonly<{ cancel: () => void }>
   }> = {},
 ): DesktopWorkspaceService => {
   const root = path.resolve(selectedRoot)
@@ -1059,16 +1068,50 @@ export const openWorkspaceService = (
   let disposed = false
   let epoch = 0
   let watcher: Readonly<{ close: () => void }> | null = null
+  let watchFlushTimer: Readonly<{ cancel: () => void }> | null = null
+  let watchOverflow = false
+  const pendingWatchPaths = new Set<string>()
   const listeners = new Set<(change: DesktopWorkspaceChange) => void>()
   const treeCache = new Map<string, DesktopWorkspaceTreePage>()
   const searchCache = new Map<string, DesktopWorkspaceSearchPage>()
-  const notify = (kind: DesktopWorkspaceChange["kind"], changedPathRef: string | null) => {
+  const notify = (kind: DesktopWorkspaceChange["kind"], changedPathRef: string | null, pathRefs?: ReadonlyArray<string>) => {
     epoch += 1
     searchHost.cancelAll()
     treeCache.clear()
     searchCache.clear()
-    const change = { kind, pathRef: changedPathRef, epoch }
+    const change: DesktopWorkspaceChange = { kind, pathRef: changedPathRef, ...(pathRefs === undefined ? {} : { pathRefs }), epoch }
     for (const listener of listeners) listener(change)
+  }
+  const cancelWatchFlush = () => {
+    watchFlushTimer?.cancel()
+    watchFlushTimer = null
+  }
+  const flushWatchChanges = () => {
+    cancelWatchFlush()
+    if (disposed) return
+    if (watchOverflow) {
+      watchOverflow = false
+      pendingWatchPaths.clear()
+      notify("overflow", null)
+      return
+    }
+    const pathRefs = [...pendingWatchPaths].sort()
+    pendingWatchPaths.clear()
+    if (pathRefs.length === 0) return
+    notify("changed", pathRefs.length === 1 ? pathRefs[0]! : null, pathRefs)
+  }
+  const enqueueWatchChange = (pathRef: string | null) => {
+    if (pathRef !== null && workspaceWatchPathIgnored(pathRef)) return
+    if (pathRef === null || (!pendingWatchPaths.has(pathRef) && pendingWatchPaths.size >= WORKSPACE_WATCH_BATCH_LIMIT)) {
+      watchOverflow = true
+      pendingWatchPaths.clear()
+    } else if (!watchOverflow) pendingWatchPaths.add(pathRef)
+    if (watchFlushTimer === null) {
+      watchFlushTimer = (options.watchScheduler ?? (flush => {
+        const timer = setTimeout(flush, WORKSPACE_WATCH_COALESCE_MS)
+        return { cancel: () => clearTimeout(timer) }
+      }))(flushWatchChanges)
+    }
   }
   const defaultWatchFactory = (
     watchedRoot: string,
@@ -1086,7 +1129,7 @@ export const openWorkspaceService = (
     try {
       watcher = (options.watchFactory ?? defaultWatchFactory)(root, pathRef => {
         if (disposed) return
-        notify(pathRef === null ? "overflow" : "changed", pathRef)
+        enqueueWatchChange(pathRef)
       })
     } catch {
       notify("overflow", null)
@@ -1096,6 +1139,9 @@ export const openWorkspaceService = (
     const active = watcher
     watcher = null
     active?.close()
+    cancelWatchFlush()
+    watchOverflow = false
+    pendingWatchPaths.clear()
   }
   return {
     grantRef,
@@ -1177,7 +1223,12 @@ export const openWorkspaceService = (
       return result
     },
     refresh: () => {
-      if (!disposed) notify("refresh", null)
+      if (!disposed) {
+        cancelWatchFlush()
+        watchOverflow = false
+        pendingWatchPaths.clear()
+        notify("refresh", null)
+      }
     },
     subscribe: listener => {
       if (disposed) return { close: () => undefined }

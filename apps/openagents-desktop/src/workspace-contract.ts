@@ -236,6 +236,9 @@ export const DesktopWorkspaceSearchCancelResultSchema = Schema.Struct({
 export const DesktopWorkspaceChangeSchema = Schema.Struct({
   kind: Schema.Literals(["changed", "overflow", "refresh"]),
   pathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  pathRefs: Schema.optional(
+    Schema.Array(DesktopWorkspacePathRefSchema).check(Schema.isMaxLength(256)),
+  ),
   epoch: Schema.Number,
 })
 
@@ -368,8 +371,16 @@ export type DesktopWorkspaceDocumentResult =
 export type DesktopWorkspaceChange = Readonly<{
   kind: "changed" | "overflow" | "refresh"
   pathRef: string | null
+  pathRefs?: ReadonlyArray<string>
   epoch: number
 }>
+
+/** Exact affected refs for a coalesced change; null means full invalidation. */
+export const workspaceChangePathRefs = (
+  change: DesktopWorkspaceChange,
+): ReadonlyArray<string> | null => change.kind !== "changed"
+  ? null
+  : change.pathRefs ?? (change.pathRef === null ? null : [change.pathRef])
 
 export type DesktopWorkspaceFile = Readonly<{
   path: string

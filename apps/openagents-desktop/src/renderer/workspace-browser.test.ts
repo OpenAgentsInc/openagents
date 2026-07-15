@@ -295,8 +295,9 @@ const makeFakeBridge = (
 const handlerHarness = (
   bridge: WorkspaceBrowserBridge,
   initial: WorkspaceBrowserState = emptyWorkspaceBrowserState(),
+  workspace?: string,
 ) => Effect.gen(function* () {
-  const state = yield* SubscriptionRef.make({ workspaceBrowser: initial })
+  const state = yield* SubscriptionRef.make({ workspaceBrowser: initial, ...(workspace === undefined ? {} : { workspace }) })
   const handlers = makeWorkspaceBrowserHandlers(state, bridge)
   const registry = yield* makeIntentRegistry(workspaceBrowserIntents, handlers)
   return { state, handlers, registry }
@@ -445,6 +446,28 @@ describe("workspace browser typed intent loop", () => {
       yield* handlers.WorkspaceBrowserChangeReceived({ kind: "changed", pathRef: "README.md", epoch: 2 })
       expect((yield* SubscriptionRef.get(state)).workspaceBrowser.phase).toBe("ready")
       expect(calls.map(call => call.op)).toEqual(["tree"])
+    }))
+  })
+
+  test("watch batches refresh only visible loaded affected directories and replace deleted entries", async () => {
+    const { bridge, calls } = makeFakeBridge()
+    await Effect.runPromise(Effect.gen(function* () {
+      const loaded = withWorkspaceBrowserPage(
+        withWorkspaceBrowserToggled(readyState(), "src"),
+        treePage("src", [entry("src/deleted.ts")]),
+      )
+      const hidden = yield* handlerHarness(bridge, loaded, "chat")
+      yield* hidden.handlers.WorkspaceBrowserChangeReceived({
+        kind: "changed", pathRef: "src/deleted.ts", pathRefs: ["src/deleted.ts"], epoch: 2,
+      })
+      expect(calls).toEqual([])
+      const visible = yield* handlerHarness(bridge, loaded, "files")
+      yield* visible.handlers.WorkspaceBrowserChangeReceived({
+        kind: "changed", pathRef: null, pathRefs: ["other/file.ts", "src/deleted.ts"], epoch: 3,
+      })
+      expect(calls.map(call => (call.value as { directoryRef: string }).directoryRef)).toEqual(["src"])
+      expect((yield* SubscriptionRef.get(visible.state)).workspaceBrowser.pages.src?.entries).toEqual([])
+      expect((yield* SubscriptionRef.get(visible.state)).workspaceBrowser.expandedRefs).toContain("src")
     }))
   })
 })
