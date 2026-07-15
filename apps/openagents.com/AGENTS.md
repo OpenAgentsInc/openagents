@@ -77,7 +77,8 @@ The Blume/Astro renderer is a narrow third-party documentation exception to the
 Effect Native UI rule. It grants no application, authentication, tool, API,
 payment, deployment, or public-claim authority and must not spread to product
 UI. Keep the docs dark-only, on the canonical Khala background (`#05070d`),
-Commit Mono, Khala blue/cyan, compact,
+the public website's native sans stack for primary type, Commit Mono for code,
+Khala blue/cyan, compact,
 and free of the stock theme toggle, rounded SaaS cards, blur, and decorative
 shadows. The generated `.blume/` project is ignored and subordinate to the
 single root Node/pnpm/Vite Plus graph.
