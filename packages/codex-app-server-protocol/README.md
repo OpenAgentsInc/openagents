@@ -16,3 +16,16 @@ Run `pnpm generate` to refresh generated artifacts from the pinned commits and
 programmatic JSON Schema → Effect Schema architecture studied in T3 Code's
 `effect-codex-app-server` package. Portions of the generator are adapted from
 that MIT-licensed implementation; see `THIRD_PARTY_NOTICES.md`.
+
+Generation also emits compact runtime JSON Schema documents from the reviewed
+Effect schemas. Import the small `./decode` API at application boundaries;
+application packages should not import the multi-megabyte generated schema
+modules directly. The decoder covers every response, reverse request, and
+notification independently for each lane and returns a classified failure for
+unknown or malformed payloads instead of throwing.
+
+`fixtures/current-source-notifications.json` covers all 72 current
+notifications, and `fixtures/current-source-thread-items.json` covers all 18
+`ThreadItem` variants. `pnpm fixtures:generate` refreshes those corpora from
+the generated wire documents. `check:generated` verifies that every reviewed
+method has a corresponding runtime decoder.

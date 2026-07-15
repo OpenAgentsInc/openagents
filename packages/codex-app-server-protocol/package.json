@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./compatibility": "./src/compatibility.ts",
+    "./decode": "./src/decode.ts",
     "./parity": "./src/parity.ts",
     "./current-source": "./src/_generated/current-source/meta.gen.ts",
     "./current-source/schema": "./src/_generated/current-source/schema.gen.ts",
@@ -14,12 +15,14 @@
   },
   "scripts": {
     "generate": "node scripts/generate-all.ts",
+    "fixtures:generate": "node scripts/generate-notification-fixtures.ts",
     "check:generated": "node scripts/check-generated.ts",
     "smoke:binary": "node scripts/real-binary-smoke.ts",
     "test": "vp test --run packages/codex-app-server-protocol/src/protocol.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "ajv": "8.20.0",
     "effect": "catalog:"
   },
   "devDependencies": {

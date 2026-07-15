@@ -37,10 +37,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/login/cancel",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -53,10 +53,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/login/start",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -69,10 +69,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/logout",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -85,10 +85,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/rateLimitResetCredit/consume",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -101,10 +101,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/rateLimits/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -117,10 +117,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -133,10 +133,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/sendAddCreditsNudgeEmail",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -149,10 +149,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/usage/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -165,10 +165,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:account/workspaceMessages/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -181,10 +181,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:app/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -197,10 +197,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:collaborationMode/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -213,10 +213,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:command/exec",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -229,10 +229,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:command/exec/resize",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -245,10 +245,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:command/exec/terminate",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -261,10 +261,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:command/exec/write",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -277,10 +277,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:config/batchWrite",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -293,10 +293,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:config/mcpServer/reload",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -309,10 +309,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:config/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -325,10 +325,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:config/value/write",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -341,10 +341,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:configRequirements/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -357,10 +357,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:environment/add",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -373,10 +373,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:environment/info",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -389,10 +389,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:experimentalFeature/enablement/set",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -405,10 +405,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:experimentalFeature/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -421,10 +421,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:externalAgentConfig/detect",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -437,10 +437,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:externalAgentConfig/import",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -453,10 +453,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:externalAgentConfig/import/readHistories",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -469,10 +469,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:feedback/upload",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -485,10 +485,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/copy",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -501,10 +501,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/createDirectory",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -517,10 +517,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/getMetadata",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -533,10 +533,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/readDirectory",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -549,10 +549,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/readFile",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -565,10 +565,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/remove",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -581,10 +581,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/unwatch",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -597,10 +597,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/watch",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -613,10 +613,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fs/writeFile",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -629,10 +629,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fuzzyFileSearch",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -645,10 +645,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fuzzyFileSearch/sessionStart",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -661,10 +661,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fuzzyFileSearch/sessionStop",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -677,10 +677,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:fuzzyFileSearch/sessionUpdate",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -693,10 +693,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:getAuthStatus",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -709,10 +709,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:getConversationSummary",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -725,10 +725,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:gitDiffToRemote",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -741,10 +741,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:hooks/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -757,10 +757,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:initialize",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -773,10 +773,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:marketplace/add",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -789,10 +789,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:marketplace/remove",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -805,10 +805,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:marketplace/upgrade",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -821,10 +821,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:mcpServer/oauth/login",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -837,10 +837,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:mcpServer/resource/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -853,10 +853,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:mcpServer/tool/call",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -869,10 +869,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:mcpServerStatus/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -885,10 +885,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:memory/reset",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -901,10 +901,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:mock/experimentalMethod",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -917,10 +917,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:model/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -933,10 +933,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:modelProvider/capabilities/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -949,10 +949,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:permissionProfile/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -965,10 +965,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/install",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -981,10 +981,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/installed",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -997,10 +997,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1013,10 +1013,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1029,10 +1029,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/share/checkout",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1045,10 +1045,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/share/delete",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1061,10 +1061,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/share/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1077,10 +1077,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/share/save",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1093,10 +1093,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/share/updateTargets",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1109,10 +1109,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/skill/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1125,10 +1125,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:plugin/uninstall",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1141,10 +1141,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:process/kill",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1157,10 +1157,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:process/resizePty",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1173,10 +1173,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:process/spawn",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1189,10 +1189,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:process/writeStdin",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1205,10 +1205,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:remoteControl/client/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1221,10 +1221,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:remoteControl/client/revoke",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1237,10 +1237,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:remoteControl/disable",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1253,10 +1253,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:remoteControl/enable",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1269,10 +1269,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:remoteControl/pairing/start",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1285,10 +1285,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:remoteControl/pairing/status",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1301,10 +1301,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:remoteControl/status/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1317,10 +1317,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:review/start",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1333,10 +1333,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:skills/config/write",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1349,10 +1349,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:skills/extraRoots/set",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1365,10 +1365,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:skills/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1381,10 +1381,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/approveGuardianDeniedAction",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1397,10 +1397,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/archive",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1413,10 +1413,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/backgroundTerminals/clean",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1429,10 +1429,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/backgroundTerminals/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1445,10 +1445,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/backgroundTerminals/terminate",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1461,10 +1461,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/compact/start",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1477,10 +1477,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/decrement_elicitation",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1493,10 +1493,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/delete",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1509,10 +1509,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/fork",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1525,10 +1525,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/goal/clear",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1541,10 +1541,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/goal/get",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1557,10 +1557,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/goal/set",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1573,10 +1573,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/increment_elicitation",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1589,10 +1589,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/inject_items",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1605,10 +1605,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/items/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1621,10 +1621,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1637,10 +1637,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/loaded/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1653,10 +1653,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/memoryMode/set",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1669,10 +1669,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/metadata/update",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1685,10 +1685,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/name/set",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1701,10 +1701,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1717,10 +1717,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/realtime/appendAudio",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1733,10 +1733,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/realtime/appendSpeech",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1749,10 +1749,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/realtime/appendText",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1765,10 +1765,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/realtime/listVoices",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1781,10 +1781,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/realtime/start",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1797,10 +1797,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/realtime/stop",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1813,10 +1813,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/resume",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1829,10 +1829,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/rollback",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1845,10 +1845,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/search",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1861,10 +1861,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/settings/update",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1877,10 +1877,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/shellCommand",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1893,10 +1893,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/start",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1909,10 +1909,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/turns/list",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1925,10 +1925,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/unarchive",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1941,10 +1941,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:thread/unsubscribe",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1957,10 +1957,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:turn/interrupt",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1973,10 +1973,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:turn/start",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -1989,10 +1989,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:turn/steer",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2005,10 +2005,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:windowsSandbox/readiness",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2021,10 +2021,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-request:windowsSandbox/setupStart",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2037,10 +2037,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "client-notification:initialized",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2053,10 +2053,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:account/chatgptAuthTokens/refresh",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2069,10 +2069,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:applyPatchApproval",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2085,10 +2085,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:attestation/generate",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2101,10 +2101,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:currentTime/read",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2117,10 +2117,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:execCommandApproval",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2133,10 +2133,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:item/commandExecution/requestApproval",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2149,10 +2149,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:item/fileChange/requestApproval",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2165,10 +2165,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:item/permissions/requestApproval",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2181,10 +2181,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:item/tool/call",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2197,10 +2197,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:item/tool/requestUserInput",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2213,10 +2213,10 @@
       "errorSchema": "JSONRPCError",
       "decodeState": "generated",
       "handlerState": "installed-deny-or-thread-routed",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "supervisor-reverse-rpc",
       "authorityClass": "owner-local",
-      "fixture": "server-request:mcpServer/elicitation/request",
+      "fixture": "generated-wire-schema-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2229,10 +2229,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:account/login/completed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2245,10 +2245,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:account/rateLimits/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2261,10 +2261,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:account/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2277,10 +2277,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:app/list/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2293,10 +2293,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:command/exec/outputDelta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2309,10 +2309,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:configWarning",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2325,10 +2325,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:deprecationNotice",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2341,10 +2341,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:error",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2357,10 +2357,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:externalAgentConfig/import/completed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2373,10 +2373,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:externalAgentConfig/import/progress",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2389,10 +2389,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:fs/changed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2405,10 +2405,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:fuzzyFileSearch/sessionCompleted",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2421,10 +2421,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:fuzzyFileSearch/sessionUpdated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2437,10 +2437,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:guardianWarning",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2453,10 +2453,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:hook/completed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2469,10 +2469,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:hook/started",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2485,10 +2485,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/agentMessage/delta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2501,10 +2501,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/autoApprovalReview/completed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2517,10 +2517,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/autoApprovalReview/started",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2533,10 +2533,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/commandExecution/outputDelta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2549,10 +2549,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/commandExecution/terminalInteraction",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2565,10 +2565,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/completed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2581,10 +2581,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/fileChange/outputDelta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2597,10 +2597,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/fileChange/patchUpdated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2613,10 +2613,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/mcpToolCall/progress",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2629,10 +2629,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/plan/delta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2645,10 +2645,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/reasoning/summaryPartAdded",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2661,10 +2661,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/reasoning/summaryTextDelta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2677,10 +2677,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/reasoning/textDelta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2693,10 +2693,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:item/started",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2709,10 +2709,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:mcpServer/oauthLogin/completed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2725,10 +2725,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:mcpServer/startupStatus/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2741,10 +2741,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:model/rerouted",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2757,10 +2757,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:model/safetyBuffering/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2773,10 +2773,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:model/verification",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2789,10 +2789,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:process/exited",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2805,10 +2805,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:process/outputDelta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2821,10 +2821,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:rawResponseItem/completed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2837,10 +2837,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:remoteControl/status/changed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2853,10 +2853,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:serverRequest/resolved",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2869,10 +2869,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:skills/changed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2885,10 +2885,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/archived",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2901,10 +2901,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/closed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2917,10 +2917,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/compacted",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2933,10 +2933,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/deleted",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2949,10 +2949,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/goal/cleared",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2965,10 +2965,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/goal/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2981,10 +2981,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/name/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -2997,10 +2997,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/realtime/closed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3013,10 +3013,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/realtime/error",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3029,10 +3029,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/realtime/itemAdded",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3045,10 +3045,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/realtime/outputAudio/delta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3061,10 +3061,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/realtime/sdp",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3077,10 +3077,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/realtime/started",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3093,10 +3093,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/realtime/transcript/delta",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3109,10 +3109,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/realtime/transcript/done",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3125,10 +3125,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/settings/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3141,10 +3141,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/started",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3157,10 +3157,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/status/changed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3173,10 +3173,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/tokenUsage/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3189,10 +3189,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:thread/unarchived",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3205,10 +3205,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:turn/completed",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3221,10 +3221,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:turn/diff/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3237,10 +3237,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:turn/moderationMetadata",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3253,10 +3253,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:turn/plan/updated",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3269,10 +3269,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:turn/started",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3285,10 +3285,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:warning",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3301,10 +3301,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:windows/worldWritableWarning",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     },
     {
@@ -3317,10 +3317,10 @@
       "errorSchema": null,
       "decodeState": "generated",
       "handlerState": "not-admitted",
-      "nativeProjection": "pending-cap-02",
+      "nativeProjection": "codex-native-envelope-v1",
       "productSurface": "none",
       "authorityClass": "owner-local",
-      "fixture": "server-notification:windowsSandbox/setupCompleted",
+      "fixture": "generated-notification-and-thread-item-corpus",
       "realBinaryProof": "inventory-generated"
     }
   ]

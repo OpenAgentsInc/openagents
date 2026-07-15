@@ -11,4 +11,15 @@ for (const [lane, ref] of lanes) {
     env: { ...process.env, CODEX_PROTOCOL_LANE: lane, CODEX_PROTOCOL_REF: ref },
   });
   if (result.status !== 0) process.exit(result.status ?? 1);
+  const wire = spawnSync(process.execPath, [new URL("generate-wire.ts", import.meta.url).pathname], {
+    stdio: "inherit",
+    env: { ...process.env, CODEX_PROTOCOL_LANE: lane },
+  });
+  if (wire.status !== 0) process.exit(wire.status ?? 1);
 }
+
+const fixtures = spawnSync(process.execPath, [new URL("generate-notification-fixtures.ts", import.meta.url).pathname], {
+  stdio: "inherit",
+  env: process.env,
+});
+if (fixtures.status !== 0) process.exit(fixtures.status ?? 1);

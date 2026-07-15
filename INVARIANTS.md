@@ -1172,6 +1172,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   automatically replays a mutating RPC. JSONL writes are byte-bounded and
   cancellation, timeout, malformed input, stderr evidence, overload, and
   shutdown all fail closed.
+  Every bundled app-server response, reverse request, and notification crosses
+  a compact JSON Schema decoder generated from the reviewed Effect schemas
+  before product projection. Decoded provider payloads first enter a private
+  `CodexNativeEnvelope` plane with exact generation/request/thread/turn/item
+  identity. Semantic envelopes have bounded durable identity journals; audio,
+  process output, raw responses, and deltas use a smaller transient spool.
+  Provider text, workspace content and paths, auth/MCP/attestation material,
+  and credentials never enter that journal. Unknown or malformed future
+  messages are quarantined and produce one deduplicated visible compatibility
+  receipt rather than crashing or disappearing. `item/completed` is
+  authoritative over earlier deltas/starts for the native item projection.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
   one immutable main-process `CodexRuntimeResolution` authority selects that

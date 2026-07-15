@@ -1,4 +1,5 @@
 export * from "./compatibility.ts";
+export * from "./decode.ts";
 export * from "./drift.ts";
 export * from "./parity.ts";
 export * as CurrentSourceProtocol from "./_generated/current-source/meta.gen.ts";

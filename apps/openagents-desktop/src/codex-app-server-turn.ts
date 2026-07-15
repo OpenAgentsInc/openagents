@@ -178,6 +178,7 @@ export const runCodexAppServerTurn = async (
   const ownsSupervisor = input.supervisor === undefined
   let releaseState: (() => void) | null = null
   let releaseNotification: (() => void) | null = null
+  let releaseCompatibility: (() => void) | null = null
   let releaseReverseHandler: (() => void) | null = null
   let threadId: string | null = input.resumeThreadId
   let turnId: string | null = null
@@ -460,6 +461,18 @@ export const runCodexAppServerTurn = async (
     }
     lease = await supervisor.acquire(target)
     const activeLease = lease
+    const visibleCompatibility = new Set<string>()
+    const reportCompatibility = (method: string, reason: string): void => {
+      const key = `${method}\u0000${reason}`
+      if (visibleCompatibility.has(key)) return
+      visibleCompatibility.add(key)
+      input.emit({
+        kind: "lane_notice",
+        text: `Codex compatibility notice: ${method.slice(0, 160)} (${reason}). The unrecognized provider event was retained privately.`,
+      })
+    }
+    for (const receipt of lease.compatibilityReceipts()) reportCompatibility(receipt.method, receipt.reason)
+    releaseCompatibility = lease.subscribeCompatibility(receipt => reportCompatibility(receipt.method, receipt.reason))
     client = {
       initialize: async () => undefined,
       request: (method, params, options) => activeLease.request(method, params, options),
@@ -598,6 +611,7 @@ export const runCodexAppServerTurn = async (
     input.control.interrupt = null
     input.control.steer = null
     releaseNotification?.()
+    releaseCompatibility?.()
     releaseReverseHandler?.()
     releaseState?.()
     client?.close()

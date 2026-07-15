@@ -9,6 +9,9 @@ import * as CurrentMeta from "./_generated/current-source/meta.gen.ts";
 import { bundledCodex01441ProtocolManifest, currentSourceProtocolManifest } from "./parity.ts";
 import { evaluateCodexBinaryCompatibility } from "./compatibility.ts";
 import { renderProtocolDiff } from "./drift.ts";
+import { decodeCurrentServerNotification } from "./decode.ts";
+import currentNotificationFixtures from "../fixtures/current-source-notifications.json" with { type: "json" };
+import currentThreadItemFixtures from "../fixtures/current-source-thread-items.json" with { type: "json" };
 
 const count = (value: object) => Object.keys(value).length;
 
@@ -68,5 +71,39 @@ describe("Codex app-server protocol authority", () => {
       const digest = createHash("sha256").update(readFileSync(path)).digest("hex");
       expect(digest).toBe(manifest.generatedSchemaSha256);
     }
+  });
+
+  it("replays all 72 current notifications through generated wire decoding", () => {
+    expect(Object.keys(currentNotificationFixtures)).toEqual(
+      Object.keys(CurrentMeta.SERVER_NOTIFICATION_METHODS),
+    );
+    for (const [method, payload] of Object.entries(currentNotificationFixtures)) {
+      expect(decodeCurrentServerNotification(method, payload), method).toMatchObject({
+        _tag: "Decoded",
+        method,
+      });
+    }
+  });
+
+  it("replays every current ThreadItem variant without semantic classification loss", () => {
+    expect(currentThreadItemFixtures).toHaveLength(18);
+    const base = currentNotificationFixtures["item/completed"];
+    for (const item of currentThreadItemFixtures) {
+      expect(decodeCurrentServerNotification("item/completed", { ...base, item })).toMatchObject({
+        _tag: "Decoded",
+        method: "item/completed",
+      });
+    }
+  });
+
+  it("classifies unknown and malformed future messages instead of throwing", () => {
+    expect(decodeCurrentServerNotification("future/provider/event", { token: "private" })).toMatchObject({
+      _tag: "DecodeFailure",
+      reason: "unknown_method",
+    });
+    expect(decodeCurrentServerNotification("item/agentMessage/delta", { delta: 1 })).toMatchObject({
+      _tag: "DecodeFailure",
+      reason: "invalid_payload",
+    });
   });
 });

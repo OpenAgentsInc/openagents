@@ -1,8 +1,20 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import { spawn } from "node:child_process"
 import { createInterface } from "node:readline"
+import {
+  decodeBundledClientResponse,
+  decodeBundledServerNotification,
+  decodeBundledServerRequest,
+  type CodexProtocolDecodeResult,
+} from "@openagentsinc/codex-app-server-protocol/decode"
 
-export type CodexAppServerMessage = Readonly<Record<string, unknown>>
+export type CodexAppServerMessage = Readonly<{
+  id?: unknown
+  method?: unknown
+  params?: unknown
+  result?: unknown
+  error?: unknown
+}>
 export type CodexAppServerRequest = Readonly<{
   id: string | number
   method: string
@@ -23,6 +35,11 @@ export type CodexAppServerSpawn = (input: Readonly<{
   env: NodeJS.ProcessEnv
   cwd: string
 }>) => ChildProcessWithoutNullStreams
+
+export type CodexAppServerProtocolMessage = Readonly<{
+  requestId: string | number | null
+  decoded: CodexProtocolDecodeResult
+}>
 
 const defaultSpawn: CodexAppServerSpawn = input => spawn(input.binary, ["app-server"], {
   cwd: input.cwd,
@@ -70,11 +87,14 @@ export const openCodexAppServerClient = (input: Readonly<{
   requestTimeoutMs?: number
   maxQueuedWriteBytes?: number
   onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>
+  onProtocolMessage?: (message: CodexAppServerProtocolMessage) => void
+  strictGeneratedDecoding?: boolean
   onClose?: (error: CodexAppServerError) => void
   onStderr?: (chunk: string) => void
 }>): CodexAppServerClient => {
   const child = (input.spawnImpl ?? defaultSpawn)({ binary: input.binary, env: input.env, cwd: input.cwd })
   const pending = new Map<number, Readonly<{
+    method: string
     resolve: (value: unknown) => void
     reject: (error: Error) => void
     timer: ReturnType<typeof setTimeout>
@@ -142,6 +162,7 @@ export const openCodexAppServerClient = (input: Readonly<{
       }
       options.signal?.addEventListener("abort", abort, { once: true })
       pending.set(id, {
+        method,
         resolve: value => { options.signal?.removeEventListener("abort", abort); resolve(value) },
         reject: error => { options.signal?.removeEventListener("abort", abort); reject(error) },
         timer,
@@ -179,11 +200,27 @@ export const openCodexAppServerClient = (input: Readonly<{
           ? (message.error as { message: string }).message
           : "Codex app-server request failed"
         operation.reject(new CodexAppServerError("request_failed", detail))
-      } else operation.resolve(message.result)
+      } else {
+        const decoded = decodeBundledClientResponse(operation.method, message.result)
+        input.onProtocolMessage?.({ requestId: message.id, decoded })
+        if (decoded._tag === "DecodeFailure" && input.strictGeneratedDecoding === true) {
+          operation.reject(new CodexAppServerError("invalid_message", `Codex ${operation.method} response failed generated decoding`))
+        } else operation.resolve(decoded._tag === "Decoded" ? decoded.payload : message.result)
+      }
       return
     }
     if ((typeof message.id === "number" || typeof message.id === "string") && typeof message.method === "string") {
-      const serverRequest = message as CodexAppServerRequest
+      const decoded = decodeBundledServerRequest(message.method, message.params)
+      input.onProtocolMessage?.({ requestId: message.id, decoded })
+      if (decoded._tag === "DecodeFailure" && input.strictGeneratedDecoding === true) {
+        void write({ id: message.id, error: { code: -32_602, message: "Generated protocol decoding failed" } }).catch(() => undefined)
+        return
+      }
+      const serverRequest: CodexAppServerRequest = {
+        id: message.id,
+        method: message.method,
+        params: decoded._tag === "Decoded" ? decoded.payload : message.params,
+      }
       void (input.onServerRequest?.(serverRequest) ?? Promise.resolve().then(() => declineCodexServerRequest(serverRequest)))
         .then(result => write({ id: serverRequest.id, result }))
         .catch(error => write({
@@ -193,8 +230,14 @@ export const openCodexAppServerClient = (input: Readonly<{
       return
     }
     if (typeof message.method === "string") {
+      const decoded = decodeBundledServerNotification(message.method, message.params)
+      input.onProtocolMessage?.({ requestId: null, decoded })
+      if (decoded._tag === "DecodeFailure" && input.strictGeneratedDecoding === true) return
+      const notification: CodexAppServerMessage = decoded._tag === "Decoded"
+        ? { ...message, params: decoded.payload }
+        : message
       for (const listener of listeners) {
-        try { listener(message) } catch { /* isolate observers from transport */ }
+        try { listener(notification) } catch { /* isolate observers from transport */ }
       }
     }
   })

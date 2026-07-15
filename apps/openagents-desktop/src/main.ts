@@ -1849,7 +1849,10 @@ const codexChildren = makeCodexChildRuntime({
       }
     : {}),
 })
-const codexAppServerSupervisor = createCodexAppServerSupervisor()
+const codexAppServerSupervisor = createCodexAppServerSupervisor({
+  nativeJournalRoot: path.join(app.getPath("userData"), "codex-native"),
+  strictGeneratedDecoding: true,
+})
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
   supervisor: codexAppServerSupervisor,

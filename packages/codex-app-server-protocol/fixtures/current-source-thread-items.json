@@ -1,0 +1,106 @@
+[
+  {
+    "content": [],
+    "id": "x",
+    "type": "userMessage"
+  },
+  {
+    "fragments": [],
+    "id": "x",
+    "type": "hookPrompt"
+  },
+  {
+    "id": "x",
+    "text": "x",
+    "type": "agentMessage"
+  },
+  {
+    "id": "x",
+    "text": "x",
+    "type": "plan"
+  },
+  {
+    "id": "x",
+    "type": "reasoning"
+  },
+  {
+    "command": "x",
+    "commandActions": [],
+    "cwd": "x",
+    "id": "x",
+    "status": "inProgress",
+    "type": "commandExecution"
+  },
+  {
+    "changes": [],
+    "id": "x",
+    "status": "inProgress",
+    "type": "fileChange"
+  },
+  {
+    "arguments": null,
+    "id": "x",
+    "server": "x",
+    "status": "inProgress",
+    "tool": "x",
+    "type": "mcpToolCall"
+  },
+  {
+    "arguments": null,
+    "id": "x",
+    "status": "inProgress",
+    "tool": "x",
+    "type": "dynamicToolCall"
+  },
+  {
+    "agentsStates": {},
+    "id": "x",
+    "receiverThreadIds": [],
+    "senderThreadId": "x",
+    "status": "inProgress",
+    "tool": "spawnAgent",
+    "type": "collabAgentToolCall"
+  },
+  {
+    "agentPath": "x",
+    "agentThreadId": "x",
+    "id": "x",
+    "kind": "started",
+    "type": "subAgentActivity"
+  },
+  {
+    "id": "x",
+    "query": "x",
+    "type": "webSearch"
+  },
+  {
+    "id": "x",
+    "path": "x",
+    "type": "imageView"
+  },
+  {
+    "durationMs": 0,
+    "id": "x",
+    "type": "sleep"
+  },
+  {
+    "id": "x",
+    "result": "x",
+    "status": "x",
+    "type": "imageGeneration"
+  },
+  {
+    "id": "x",
+    "review": "x",
+    "type": "enteredReviewMode"
+  },
+  {
+    "id": "x",
+    "review": "x",
+    "type": "exitedReviewMode"
+  },
+  {
+    "id": "x",
+    "type": "contextCompaction"
+  }
+]

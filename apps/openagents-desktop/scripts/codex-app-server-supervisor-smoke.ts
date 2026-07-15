@@ -11,7 +11,10 @@ if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex execu
 const root = mkdtempSync(join(tmpdir(), "openagents-codex-supervisor-"))
 const codexHome = join(root, "home")
 mkdirSync(codexHome)
-const supervisor = createCodexAppServerSupervisor()
+const supervisor = createCodexAppServerSupervisor({
+  nativeJournalRoot: join(root, "native"),
+  strictGeneratedDecoding: true,
+})
 try {
   const target = {
     binary,
@@ -41,6 +44,9 @@ try {
   }
   if (first.state().status !== "ready" || first.state().generation !== second.state().generation) {
     throw new Error("leases did not share one ready connection generation")
+  }
+  if (first.nativeEnvelopes({ method: "thread/start" }).length !== 2) {
+    throw new Error("strict generated decoding did not retain both thread/start responses")
   }
   first.release()
   second.release()

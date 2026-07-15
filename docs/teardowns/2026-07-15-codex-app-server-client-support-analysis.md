@@ -84,6 +84,32 @@ two simultaneous thread starts over one initialized generation; deterministic
 fault tests cover stale-generation fencing, bounded reconnect, resumption,
 reverse routing, and idempotent shutdown.
 
+### Implementation status: CAP-02
+
+CAP-02 adds a second generated artifact beside each reviewed Effect schema: a
+small runtime JSON Schema document for every response, reverse request, and
+notification. Desktop enables strict decoding on its production supervisor,
+so semantic provider payloads cannot reach the portable workroom projection
+until the generated boundary accepts them. The current fixture corpus replays
+all 72 notifications and all 18 `ThreadItem` variants; the bundled real-binary
+smoke runs with strict decoding enabled.
+
+Accepted messages first enter a private `CodexNativeEnvelope` plane carrying
+the exact connection generation, request ID, thread ID, turn ID, item ID,
+method, and decoded payload. Existing Fable events are then derived from that
+same decoded payload, preserving current timeline/tool/plan/usage/child-agent
+behavior. Final `item/completed` state wins over starts and deltas while every
+known but unpresented envelope remains privately queryable.
+
+Durable disk state contains only bounded causal identity, item type, and
+status. Stream deltas, process/audio output, and raw-response events use a
+smaller in-memory transient spool; raw provider text, workspace content,
+absolute paths, auth/MCP/attestation material, and credentials are never
+journaled. Decode failures and unknown future methods are quarantined as a
+deduplicated compatibility receipt and projected as one bounded visible lane
+notice. Reopening the journal restores enough exact IDs and terminal status to
+reconcile without inventing completion.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these

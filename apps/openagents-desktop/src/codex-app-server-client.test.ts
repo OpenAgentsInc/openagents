@@ -214,6 +214,40 @@ describe("Codex app-server native integration", () => {
     expect(() => declineCodexServerRequest({ id: 3, method: "account/chatgptAuthTokens/refresh", params: {} })).toThrow()
   })
 
+  test("decodes at the wire boundary and quarantines unknown strict notifications", async () => {
+    const fake = fakeServer()
+    const protocol: string[] = []
+    const delivered: unknown[] = []
+    const client = openCodexAppServerClient({
+      binary: "/packaged/codex",
+      env: {},
+      cwd: "/workspace",
+      spawnImpl: fake.spawn,
+      strictGeneratedDecoding: true,
+      onProtocolMessage: message => protocol.push(`${message.decoded._tag}:${message.decoded.method}`),
+    })
+    client.onNotification(message => delivered.push(message))
+    const response = client.request("skills/extraRoots/set", { extraRoots: ["/skills"] })
+    await waitForMessages(fake.messages, 1)
+    fake.respond(1, {})
+    await expect(response).resolves.toEqual({})
+    fake.notify("item/agentMessage/delta", {
+      threadId: "thread-1", turnId: "turn-1", itemId: "item-1", delta: "hello",
+    })
+    fake.notify("future/provider-event", { token: "private" })
+    await sleep(0)
+
+    expect(protocol).toEqual([
+      "Decoded:skills/extraRoots/set",
+      "Decoded:item/agentMessage/delta",
+      "DecodeFailure:future/provider-event",
+    ])
+    expect(delivered).toEqual([{ method: "item/agentMessage/delta", params: {
+      threadId: "thread-1", turnId: "turn-1", itemId: "item-1", delta: "hello",
+    } }])
+    client.close()
+  })
+
   test("runs a native app-server thread and streams its exact terminal outcome", async () => {
     const fake = fakeServer()
     const events: unknown[] = []

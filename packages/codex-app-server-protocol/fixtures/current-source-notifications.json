@@ -1,0 +1,452 @@
+{
+  "error": {
+    "error": {
+      "message": "x"
+    },
+    "threadId": "x",
+    "turnId": "x",
+    "willRetry": false
+  },
+  "thread/started": {
+    "thread": {
+      "cliVersion": "x",
+      "createdAt": 0,
+      "cwd": "x",
+      "ephemeral": false,
+      "id": "x",
+      "modelProvider": "x",
+      "preview": "x",
+      "sessionId": "x",
+      "source": "cli",
+      "status": {
+        "type": "notLoaded"
+      },
+      "turns": [],
+      "updatedAt": 0
+    }
+  },
+  "thread/status/changed": {
+    "status": {
+      "type": "notLoaded"
+    },
+    "threadId": "x"
+  },
+  "thread/archived": {
+    "threadId": "x"
+  },
+  "thread/deleted": {
+    "threadId": "x"
+  },
+  "thread/unarchived": {
+    "threadId": "x"
+  },
+  "thread/closed": {
+    "threadId": "x"
+  },
+  "skills/changed": {},
+  "thread/name/updated": {
+    "threadId": "x"
+  },
+  "thread/goal/updated": {
+    "goal": {
+      "createdAt": 0,
+      "objective": "x",
+      "status": "active",
+      "threadId": "x",
+      "timeUsedSeconds": 0,
+      "tokensUsed": 0,
+      "updatedAt": 0
+    },
+    "threadId": "x"
+  },
+  "thread/goal/cleared": {
+    "threadId": "x"
+  },
+  "thread/environment/connected": {
+    "environmentId": "x",
+    "threadId": "x"
+  },
+  "thread/environment/disconnected": {
+    "environmentId": "x",
+    "threadId": "x"
+  },
+  "thread/settings/updated": {
+    "threadId": "x",
+    "threadSettings": {
+      "approvalPolicy": "untrusted",
+      "approvalsReviewer": "user",
+      "collaborationMode": {
+        "mode": "plan",
+        "settings": {
+          "model": "x"
+        }
+      },
+      "cwd": "x",
+      "model": "x",
+      "modelProvider": "x",
+      "sandboxPolicy": {
+        "type": "dangerFullAccess"
+      }
+    }
+  },
+  "thread/tokenUsage/updated": {
+    "threadId": "x",
+    "tokenUsage": {
+      "last": {
+        "cachedInputTokens": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "reasoningOutputTokens": 0,
+        "totalTokens": 0
+      },
+      "total": {
+        "cachedInputTokens": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "reasoningOutputTokens": 0,
+        "totalTokens": 0
+      }
+    },
+    "turnId": "x"
+  },
+  "turn/started": {
+    "threadId": "x",
+    "turn": {
+      "id": "x",
+      "items": [],
+      "status": "completed"
+    }
+  },
+  "hook/started": {
+    "run": {
+      "displayOrder": 0,
+      "entries": [],
+      "eventName": "preToolUse",
+      "executionMode": "sync",
+      "handlerType": "command",
+      "id": "x",
+      "scope": "thread",
+      "sourcePath": "x",
+      "startedAt": 0,
+      "status": "running"
+    },
+    "threadId": "x"
+  },
+  "turn/completed": {
+    "threadId": "x",
+    "turn": {
+      "id": "x",
+      "items": [],
+      "status": "completed"
+    }
+  },
+  "hook/completed": {
+    "run": {
+      "displayOrder": 0,
+      "entries": [],
+      "eventName": "preToolUse",
+      "executionMode": "sync",
+      "handlerType": "command",
+      "id": "x",
+      "scope": "thread",
+      "sourcePath": "x",
+      "startedAt": 0,
+      "status": "running"
+    },
+    "threadId": "x"
+  },
+  "turn/diff/updated": {
+    "diff": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "turn/plan/updated": {
+    "plan": [],
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/started": {
+    "item": {
+      "content": [],
+      "id": "x",
+      "type": "userMessage"
+    },
+    "startedAtMs": 0,
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/autoApprovalReview/started": {
+    "action": {
+      "command": "x",
+      "cwd": "x",
+      "source": "shell",
+      "type": "command"
+    },
+    "review": {
+      "status": "inProgress"
+    },
+    "reviewId": "x",
+    "startedAtMs": 0,
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/autoApprovalReview/completed": {
+    "action": {
+      "command": "x",
+      "cwd": "x",
+      "source": "shell",
+      "type": "command"
+    },
+    "completedAtMs": 0,
+    "decisionSource": "agent",
+    "review": {
+      "status": "inProgress"
+    },
+    "reviewId": "x",
+    "startedAtMs": 0,
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/completed": {
+    "completedAtMs": 0,
+    "item": {
+      "content": [],
+      "id": "x",
+      "type": "userMessage"
+    },
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "rawResponseItem/completed": {
+    "item": {
+      "content": [],
+      "role": "x",
+      "type": "message"
+    },
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "rawResponse/completed": {
+    "responseId": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/agentMessage/delta": {
+    "delta": "x",
+    "itemId": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/plan/delta": {
+    "delta": "x",
+    "itemId": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "command/exec/outputDelta": {
+    "capReached": false,
+    "deltaBase64": "x",
+    "processId": "x",
+    "stream": "stdout"
+  },
+  "process/outputDelta": {
+    "capReached": false,
+    "deltaBase64": "x",
+    "processHandle": "x",
+    "stream": "stdout"
+  },
+  "process/exited": {
+    "exitCode": 0,
+    "processHandle": "x",
+    "stderr": "x",
+    "stderrCapReached": false,
+    "stdout": "x",
+    "stdoutCapReached": false
+  },
+  "item/commandExecution/outputDelta": {
+    "delta": "x",
+    "itemId": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/commandExecution/terminalInteraction": {
+    "itemId": "x",
+    "processId": "x",
+    "stdin": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/fileChange/outputDelta": {
+    "delta": "x",
+    "itemId": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/fileChange/patchUpdated": {
+    "changes": [],
+    "itemId": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "serverRequest/resolved": {
+    "requestId": "x",
+    "threadId": "x"
+  },
+  "item/mcpToolCall/progress": {
+    "itemId": "x",
+    "message": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "mcpServer/oauthLogin/completed": {
+    "name": "x",
+    "success": false
+  },
+  "mcpServer/startupStatus/updated": {
+    "name": "x",
+    "status": "starting"
+  },
+  "account/updated": {},
+  "account/rateLimits/updated": {
+    "rateLimits": {}
+  },
+  "app/list/updated": {
+    "data": []
+  },
+  "remoteControl/status/changed": {
+    "installationId": "x",
+    "serverName": "x",
+    "status": "disabled"
+  },
+  "externalAgentConfig/import/progress": {
+    "importId": "x",
+    "itemTypeResults": []
+  },
+  "externalAgentConfig/import/completed": {
+    "importId": "x",
+    "itemTypeResults": []
+  },
+  "fs/changed": {
+    "changedPaths": [],
+    "watchId": "x"
+  },
+  "item/reasoning/summaryTextDelta": {
+    "delta": "x",
+    "itemId": "x",
+    "summaryIndex": 0,
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/reasoning/summaryPartAdded": {
+    "itemId": "x",
+    "summaryIndex": 0,
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "item/reasoning/textDelta": {
+    "contentIndex": 0,
+    "delta": "x",
+    "itemId": "x",
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "thread/compacted": {
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "model/rerouted": {
+    "fromModel": "x",
+    "reason": "highRiskCyberActivity",
+    "threadId": "x",
+    "toModel": "x",
+    "turnId": "x"
+  },
+  "model/verification": {
+    "threadId": "x",
+    "turnId": "x",
+    "verifications": []
+  },
+  "turn/moderationMetadata": {
+    "metadata": null,
+    "threadId": "x",
+    "turnId": "x"
+  },
+  "model/safetyBuffering/updated": {
+    "model": "x",
+    "reasons": [],
+    "showBufferingUi": false,
+    "threadId": "x",
+    "turnId": "x",
+    "useCases": []
+  },
+  "warning": {
+    "message": "x"
+  },
+  "guardianWarning": {
+    "message": "x",
+    "threadId": "x"
+  },
+  "deprecationNotice": {
+    "summary": "x"
+  },
+  "configWarning": {
+    "summary": "x"
+  },
+  "fuzzyFileSearch/sessionUpdated": {
+    "files": [],
+    "query": "x",
+    "sessionId": "x"
+  },
+  "fuzzyFileSearch/sessionCompleted": {
+    "sessionId": "x"
+  },
+  "thread/realtime/started": {
+    "threadId": "x",
+    "version": "v1"
+  },
+  "thread/realtime/itemAdded": {
+    "item": null,
+    "threadId": "x"
+  },
+  "thread/realtime/transcript/delta": {
+    "delta": "x",
+    "role": "x",
+    "threadId": "x"
+  },
+  "thread/realtime/transcript/done": {
+    "role": "x",
+    "text": "x",
+    "threadId": "x"
+  },
+  "thread/realtime/outputAudio/delta": {
+    "audio": {
+      "data": "x",
+      "numChannels": 0,
+      "sampleRate": 0
+    },
+    "threadId": "x"
+  },
+  "thread/realtime/sdp": {
+    "sdp": "x",
+    "threadId": "x"
+  },
+  "thread/realtime/error": {
+    "message": "x",
+    "threadId": "x"
+  },
+  "thread/realtime/closed": {
+    "threadId": "x"
+  },
+  "windows/worldWritableWarning": {
+    "extraCount": 0,
+    "failedScan": false,
+    "samplePaths": []
+  },
+  "windowsSandbox/setupCompleted": {
+    "mode": "elevated",
+    "success": false
+  },
+  "account/login/completed": {
+    "success": false
+  }
+}

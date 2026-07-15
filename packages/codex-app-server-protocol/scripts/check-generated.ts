@@ -17,6 +17,7 @@ for (const [lane, contract] of Object.entries(expected)) {
   const generated = resolve(import.meta.dirname, "..", "src", "_generated", lane);
   const schema = readFileSync(resolve(generated, "schema.gen.ts"), "utf8");
   const meta = readFileSync(resolve(generated, "meta.gen.ts"), "utf8");
+  const wire = readFileSync(resolve(generated, "wire.gen.ts"), "utf8");
   const manifest = JSON.parse(
     readFileSync(resolve(import.meta.dirname, "..", "manifests", `${lane}.json`), "utf8"),
   ) as {
@@ -47,6 +48,19 @@ for (const [lane, contract] of Object.entries(expected)) {
     throw new Error(
       `${lane}: protocol count drift ${observed.join("/")} != ${contract.counts.join("/")}`,
     );
+  }
+  const wireCounts = [
+    "CLIENT_RESPONSE_DOCUMENTS",
+    "SERVER_REQUEST_DOCUMENTS",
+    "SERVER_NOTIFICATION_DOCUMENTS",
+  ].map((name) => {
+    const encoded = new RegExp(`export const ${name}[^=]*= (.*);$`, "m").exec(wire)?.[1];
+    if (encoded === undefined) throw new Error(`${lane}: missing ${name}`);
+    return Object.keys(JSON.parse(encoded)).length;
+  });
+  const expectedWireCounts = [contract.counts[0], contract.counts[2], contract.counts[3]];
+  if (JSON.stringify(wireCounts) !== JSON.stringify(expectedWireCounts)) {
+    throw new Error(`${lane}: generated wire decoder coverage ${wireCounts.join("/")} != ${expectedWireCounts.join("/")}`);
   }
   const keys = manifest.members.map((member) => `${member.direction}:${member.method}`);
   if (new Set(keys).size !== keys.length) throw new Error(`${lane}: duplicate manifest member`);

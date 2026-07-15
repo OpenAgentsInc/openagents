@@ -1,4 +1,6 @@
 import { Effect } from "effect"
+import { createHash } from "node:crypto"
+import { join } from "node:path"
 import {
   bundledCodexExecutableSha256,
 } from "@openagentsinc/codex-app-server-protocol/compatibility"
@@ -9,9 +11,17 @@ import {
   openCodexAppServerClient,
   type CodexAppServerClient,
   type CodexAppServerMessage,
+  type CodexAppServerProtocolMessage,
   type CodexAppServerRequest,
   type CodexAppServerSpawn,
 } from "./codex-app-server-client.ts"
+import {
+  makeCodexNativeEventPlane,
+  type CodexCompatibilityReceipt,
+  type CodexNativeEnvelope,
+  type CodexNativeEventPlane,
+  type CodexNativeJournalEntry,
+} from "./codex-native-event-plane.ts"
 
 export type CodexAppServerPoolTarget = Readonly<{
   binary: string
@@ -128,6 +138,8 @@ export type CodexAppServerClientFactoryInput = Readonly<{
   reverseMethodRegistry: CodexAppServerReverseMethodRegistry
   /** Installed at client construction so process death cannot race initialization. */
   onClose: (error: Error) => void
+  onProtocolMessage: (message: CodexAppServerProtocolMessage) => void
+  strictGeneratedDecoding: boolean
 }>
 
 export type CodexAppServerClientFactory = (
@@ -141,6 +153,10 @@ export type CodexAppServerLease = Readonly<{
   request: (method: string, params: unknown, options?: Readonly<{ signal?: AbortSignal }>) => Promise<unknown>
   notify: (method: string, params: unknown) => Promise<void>
   subscribe: (listener: (notification: CodexAppServerNotification) => void) => () => void
+  subscribeCompatibility: (listener: (receipt: CodexCompatibilityReceipt) => void) => () => void
+  nativeEnvelopes: (filter?: Readonly<{ threadId?: string; turnId?: string; itemId?: string; method?: string }>) => ReadonlyArray<CodexNativeEnvelope>
+  compatibilityReceipts: () => ReadonlyArray<CodexCompatibilityReceipt>
+  nativeJournal: () => ReadonlyArray<CodexNativeJournalEntry>
   registerVisibleThread: (
     threadId: string,
     onReconciled?: (reconciliation: CodexAppServerReconciliation) => void,
@@ -163,6 +179,7 @@ export type CodexAppServerSupervisor = Readonly<{
 type LeaseRecord = {
   closed: boolean
   notifications: Set<(notification: CodexAppServerNotification) => void>
+  compatibility: Set<(receipt: CodexCompatibilityReceipt) => void>
   visibleThreads: Map<string, Set<(reconciliation: CodexAppServerReconciliation) => void>>
   reverseHandler: CodexAppServerReverseHandler | null
   threadIds: Set<string>
@@ -175,6 +192,7 @@ type Connection = {
   readonly identity: CodexAppServerPoolIdentity
   readonly leases: Set<LeaseRecord>
   readonly visibleThreads: Map<string, Set<(reconciliation: CodexAppServerReconciliation) => void>>
+  readonly nativePlane: CodexNativeEventPlane
   generation: number
   state: CodexAppServerSupervisorState
   client: SupervisedCodexAppServerClient | null
@@ -185,13 +203,21 @@ type Connection = {
 
 const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
-const defaultFactory: CodexAppServerClientFactory = ({ target, onServerRequest, onClose }) =>
+const defaultFactory: CodexAppServerClientFactory = ({
+  target,
+  onServerRequest,
+  onClose,
+  onProtocolMessage,
+  strictGeneratedDecoding,
+}) =>
   openCodexAppServerClient({
     binary: target.binary,
     env: target.env,
     cwd: target.cwd,
     onServerRequest,
     onClose,
+    onProtocolMessage,
+    strictGeneratedDecoding,
     ...(target.spawnImpl === undefined ? {} : { spawnImpl: target.spawnImpl }),
     ...(target.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: target.requestTimeoutMs }),
   })
@@ -205,6 +231,8 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
   maxReconnectAttempts?: number
   reconnectBackoffMs?: (attempt: number) => number
   sleep?: (milliseconds: number) => Promise<void>
+  nativeJournalRoot?: string
+  strictGeneratedDecoding?: boolean
 }> = {}): CodexAppServerSupervisor => {
   const factory = options.clientFactory ?? defaultFactory
   const maxReconnectAttempts = Math.max(0, Math.floor(options.maxReconnectAttempts ?? 3))
@@ -298,6 +326,11 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
         if (generation !== connection.generation || connection.client !== client) return
         void beginRepair(connection, error)
       },
+      onProtocolMessage: message => {
+        if (generation !== connection.generation) return
+        connection.nativePlane.accept({ generation, requestId: message.requestId, decoded: message.decoded })
+      },
+      strictGeneratedDecoding: options.strictGeneratedDecoding === true,
     })
     if (closed || connection.closed || generation !== connection.generation) {
       client.close()
@@ -400,12 +433,28 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     const key = codexAppServerPoolKey(target)
     let connection = connections.get(key)
     if (connection === undefined) {
+      const journalPath = options.nativeJournalRoot === undefined
+        ? undefined
+        : join(options.nativeJournalRoot, `${createHash("sha256").update(key).digest("hex")}.json`)
+      let createdConnection: Connection | null = null
+      const nativePlane = makeCodexNativeEventPlane({
+        ...(journalPath === undefined ? {} : { journalPath }),
+        onCompatibilityReceipt: receipt => {
+          if (createdConnection === null) return
+          for (const lease of createdConnection.leases) {
+            if (!lease.closed) for (const listener of lease.compatibility) {
+              try { listener(receipt) } catch { /* isolate observers */ }
+            }
+          }
+        },
+      })
       connection = {
         key,
         target,
         identity: codexAppServerPoolIdentity(target),
         leases: new Set(),
         visibleThreads: new Map(),
+        nativePlane,
         generation: 0,
         state: { status: "repairing", generation: 0, attempt: 0, maxAttempts: maxReconnectAttempts },
         client: null,
@@ -413,6 +462,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
         repair: null,
         closed: false,
       }
+      createdConnection = connection
       connections.set(key, connection)
       const initial = connect(connection, 0)
       connection.repair = initial
@@ -437,6 +487,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     const record: LeaseRecord = {
       closed: false,
       notifications: new Set(),
+      compatibility: new Set(),
       visibleThreads: new Map(),
       reverseHandler: null,
       threadIds: new Set(),
@@ -496,6 +547,19 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
           record.notifications.delete(listener)
         }
       },
+      subscribeCompatibility: listener => {
+        assertOpen()
+        record.compatibility.add(listener)
+        let subscribed = true
+        return () => {
+          if (!subscribed) return
+          subscribed = false
+          record.compatibility.delete(listener)
+        }
+      },
+      nativeEnvelopes: filter => ownedConnection.nativePlane.envelopes(filter),
+      compatibilityReceipts: () => ownedConnection.nativePlane.receipts(),
+      nativeJournal: () => ownedConnection.nativePlane.journal(),
       registerVisibleThread: (threadId, onReconciled) => {
         assertOpen()
         const normalized = threadId.trim()
@@ -528,6 +592,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
         released = true
         record.closed = true
         record.notifications.clear()
+        record.compatibility.clear()
         record.visibleThreads.clear()
         record.reverseHandler = null
         record.threadIds.clear()
@@ -552,6 +617,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
         for (const lease of connection.leases) {
           lease.closed = true
           lease.notifications.clear()
+          lease.compatibility.clear()
           lease.visibleThreads.clear()
           lease.reverseHandler = null
           lease.threadIds.clear()
