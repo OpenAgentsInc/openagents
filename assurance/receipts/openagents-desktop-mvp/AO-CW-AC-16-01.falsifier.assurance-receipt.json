@@ -13,14 +13,14 @@
     "readiness": "executable",
     "stability": "stable"
   },
-  "command_digest": "sha256:21ed60f2d4ff67b994194b7118e6f750ddd9f990e26437db7c95891bcdf19e8e",
+  "command_digest": "sha256:fb9b05193e0684dd3b56a1c85cb6e390d67c3a69f75bd8fecd0e637741bc6119",
   "criterion_refs": [
     "CW-AC-16"
   ],
   "environment_ref": "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
   "execution_unit_ref": "unit.ao-cw-ac-16-01.falsifier",
-  "manifest_digest": "sha256:727dd64b9f9a8bbdd93580f632a0e2a298b9d1b9f573516939b31ceaedc47139",
-  "native_report_digest": "sha256:83bbacf84a392da4ed28623953684fcb1729a31d51794a80bbfa85b31f98b176",
+  "manifest_digest": "sha256:afd25a5d9f9a8442773d3d18dbda1b4feae4a29e4181a9afc8f1d9cc72cbdb17",
+  "native_report_digest": "sha256:8c6ef67236e0082cb4db0744ddb55dc2a00057d421e727f1a53246ea9b74035a",
   "native_report_ref": "var/assurance/openagents-desktop-mvp/AO-CW-AC-16-01/falsifier.junit.xml",
   "obligation_id": "AO-CW-AC-16-01",
   "producer_ref": "runner.openagents.local.20260713",
@@ -29,7 +29,7 @@
     "classification": "reviewed_public_safe",
     "contains_raw_output": false
   },
-  "receipt_ref": "assurance.receipt.19490a976f8df06f3ef305b9cfac96e57a0b56a3123a81170ef97bdd6ef203f8",
+  "receipt_ref": "assurance.receipt.86b784e026eadf84885ea8a26b256845d8ac591b8c03c832f8f4e464b8348993",
   "reviewer_ref": "reviewer.codex.assurance.20260713",
   "source_digest": "sha256:ed3d9b06863642b4239867e7b992a9276045f4070ac27a87a739d554f16365fd"
 }

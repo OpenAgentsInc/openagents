@@ -9,7 +9,7 @@
     "path": "var/assurance/openagents-desktop-mvp/full-desktop-gate.log",
     "visibility": "private"
   },
-  "output_digest": "sha256:a0278221001267f6d57450b702e8e1b66d3b8b8ee2da45141754386ea1ca158b",
+  "output_digest": "sha256:dc29ed1be9de80705d32af3f1073d6af53f773e635fb8fa159132dba5d5d7b76",
   "public_safety": {
     "classification": "reviewed_public_safe",
     "contains_raw_output": false
@@ -17,7 +17,7 @@
   "source_digest": "sha256:7d6617d7fc65e328dc12e06707dedbfd8bb5608d7c89c3d044c00945f277911b",
   "tests": {
     "failed": 0,
-    "passed": 1342,
+    "passed": 1343,
     "skipped_retired": 39
   },
   "typecheck": "passed",

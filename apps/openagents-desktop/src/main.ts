@@ -193,12 +193,12 @@ import {
 } from "./codex-local-contract.ts"
 import {
   FIXTURE_CODEX_LOCAL_ACCOUNT,
-  FIXTURE_CODEX_LOCAL_TEXT,
   fixtureCodexLocalTurnStdout,
   makeCodexLocalRuntime,
 } from "./codex-local-runtime.ts"
 import { makeCodexPreflight, type CodexProbeResult } from "./codex-preflight.ts"
 import { resolveBundledCodexExecutable } from "./provider-runtime-host.ts"
+import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture.ts"
 import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
   LiveAgentGraphSnapshotChannel,
@@ -1824,6 +1824,7 @@ const codexAppServerConfig = {
       : { workContextRef: authority.workContextRef, service: authority.service })
   },
 }
+const codexAppServerSmoke = reactSmokeMode ? makeCodexAppServerSmokeHarness() : null
 // Codex account preflight: an ephemeral read-only app-server turn against
 // each named isolated account. `codex login status` is presence-only and can
 // report logged-in on revoked homes, so actual protocol success is required.
@@ -1834,7 +1835,9 @@ const codexAppServerConfig = {
 // reconnectRequired flag), the composer chip, and the live-proof journal.
 if (smokeMode) {
   console.log("[openagents-desktop] codex-preflight running in SMOKE FIXTURE mode (scripted probes, no real spawn)")
-  console.log("[openagents-desktop] codex-local running in SMOKE FIXTURE mode (scripted codex exec, no real spawn)")
+  console.log(reactSmokeMode
+    ? "[openagents-desktop] codex-local running in SMOKE FIXTURE mode (app-server protocol, no real spawn)"
+    : "[openagents-desktop] codex-local running in SMOKE FIXTURE mode (scripted codex exec, no real spawn)")
 }
 const recordProbeEvidence = (result: CodexProbeResult): void => {
   if (result.state === "verified") {
@@ -1878,11 +1881,13 @@ const codexPreflight = makeCodexPreflight({
         spawnImpl: input =>
           (smokeProbeSpawnByHome[String(input.env.CODEX_HOME)] ??
             smokeProbeSpawnByHome["/nonexistent/fixture-codex"]!)(input),
-        discoverImpl: async () => [
-          { ref: "codex", home: "/nonexistent/fixture-codex" },
-          { ref: "codex-2", home: "/nonexistent/fixture-codex-2" },
-          FIXTURE_CODEX_LOCAL_ACCOUNT,
-        ],
+        discoverImpl: async () => reactSmokeMode
+          ? [{ ...FIXTURE_CODEX_LOCAL_ACCOUNT, source: "current_session" as const }]
+          : [
+              { ref: "codex", home: "/nonexistent/fixture-codex" },
+              { ref: "codex-2", home: "/nonexistent/fixture-codex-2" },
+              FIXTURE_CODEX_LOCAL_ACCOUNT,
+            ],
       }
     : {}),
 })
@@ -1930,8 +1935,15 @@ const codexLocal = makeCodexLocalRuntime({
       usageLedger.markReconnectRequired({ provider: "codex", accountRef: input.accountRef })
     }
   },
-  ...(!smokeMode ? { appServer: codexAppServerConfig } : {}),
-  ...(smokeMode
+  ...(!smokeMode
+    ? { appServer: codexAppServerConfig }
+    : reactSmokeMode && codexAppServerSmoke !== null
+      ? {
+          appServer: { ...codexAppServerConfig, binary: () => "/packaged/codex", spawnImpl: codexAppServerSmoke.spawn },
+          discoverImpl: async () => [{ ...FIXTURE_CODEX_LOCAL_ACCOUNT, source: "current_session" as const }],
+        }
+      : {}),
+  ...(smokeMode && !reactSmokeMode
     ? {
         spawnImpl: input => {
           const resumedThread = input.args[0] === "exec" && input.args[1] === "resume"
@@ -3001,10 +3013,20 @@ const smokeReactTurnAndReview = `(async () => {
     input: document.querySelector('.oa-react-composer textarea')?.value ?? null,
   }
   send.click()
+  while (Date.now() < deadline && document.querySelector('.oa-react-decision') === null) await wait(50)
+  const decision = document.querySelector('.oa-react-decision')
+  const decisionOpened = decision !== null && decision.textContent?.includes("Command approval") &&
+    decision.textContent?.includes("echo fixture")
+  const approve = decision === null ? undefined : [...decision.querySelectorAll('button')]
+    .find((button) => button.querySelector('span')?.textContent?.trim() === "Approve")
+  approve?.click()
+  while (Date.now() < deadline && document.querySelector('.oa-react-decision') !== null) await wait(50)
+  const decisionReconciled = decisionOpened && approve !== undefined &&
+    document.querySelector('.oa-react-decision') === null
   while (Date.now() < deadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
-    .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
+    .some((item) => item.textContent?.includes("Codex local fixture proof."))) await wait(50)
   const turnVisible = [...document.querySelectorAll('.oa-react-timeline-item')]
-    .some((item) => item.textContent?.toLowerCase().includes("k"))
+    .some((item) => item.textContent?.includes("Codex local fixture proof."))
   const reviewTrigger = buttons().find((button) => button.textContent?.trim() === "Review changes")
   reviewTrigger?.click()
   while (Date.now() < deadline && document.querySelector('.oa-react-review-file') === null) await wait(50)
@@ -3017,8 +3039,11 @@ const smokeReactTurnAndReview = `(async () => {
   const forbidden = ["Stage", "Discard", "Commit", "Push", "Terminal"]
     .filter((label) => buttons().some((button) => button.textContent?.trim() === label))
   return {
-    ok: turnVisible && reviewSurface !== null && document.querySelector('.oa-react-exact-diff') !== null &&
+    ok: decisionOpened && decisionReconciled && turnVisible && reviewSurface !== null &&
+      document.querySelector('.oa-react-exact-diff') !== null &&
       !leakedAbsolutePath && forbidden.length === 0,
+    decisionOpened,
+    decisionReconciled,
     turnVisible,
     reviewOpen: reviewSurface !== null,
     diffVisible: document.querySelector('.oa-react-exact-diff') !== null,
@@ -4839,6 +4864,16 @@ const runSmoke = (window: BrowserWindow): void => {
           window.webContents.sendInputEvent({ type: "keyUp", keyCode: "K" })
           await step("react-first-keystroke", smokeReactFirstInput)
           await step("react-turn-and-review", smokeReactTurnAndReview)
+          const authoritativeDecision = codexAppServerSmoke?.receipt()
+          if (authoritativeDecision?.requestId !== 91 ||
+              authoritativeDecision.decision !== "accept" ||
+              !authoritativeDecision.completionEmitted) {
+            throw new Error(`react-authoritative-decision failed: ${JSON.stringify(authoritativeDecision)}`)
+          }
+          console.log(
+            "[openagents-desktop smoke] react-authoritative-decision OK",
+            JSON.stringify(authoritativeDecision),
+          )
           await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
           tracePass = 1
           window.webContents.reload()
@@ -4931,8 +4966,9 @@ const runSmoke = (window: BrowserWindow): void => {
         // the fixture PROBE-VERIFIED evidence lights the chip for the
         // codex-local streamed step below.
         releaseSmokeCodexAvailability?.()
-        // Codex local turn is FIXTURE-driven in smoke (scripted codex exec
-        // JSONL through the REAL parser; EP250 codex-first-class proof).
+        // The broad compatibility smoke retains the bounded codex-exec JSONL
+        // fixture; the React smoke uses the protocol-speaking app-server peer
+        // installed above. Production builds never set this env var.
         await step("codex-local-streamed-turn-FIXTURE", smokeCodexLocalStreaming)
         await captureShot(window, "11-codex-local-streamed")
         // EP250 (#8712): click a message -> right-side metadata inspector

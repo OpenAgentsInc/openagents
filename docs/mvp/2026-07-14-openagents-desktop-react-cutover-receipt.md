@@ -97,10 +97,10 @@ revision 6 binding. The session remained unchanged against both pins:
 - ProductSpec:
   `sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1`;
 - manifest:
-  `sha256:727dd64b9f9a8bbdd93580f632a0e2a298b9d1b9f573516939b31ceaedc47139`;
+  `sha256:afd25a5d9f9a8442773d3d18dbda1b4feae4a29e4181a9afc8f1d9cc72cbdb17`;
   and
 - current evidence index:
-  `sha256:444f0f9e90049b5c3b215ac386e2b66fd24b63470f0a7799b68a1363a618bc4c`.
+  `sha256:36cd0908f517501648c990d10271831856f7e5fb2bc85643e515acb7f9e61053`.
 
 The runtime lock rejected an initial invocation under Node 25.8.2 before it
 could produce evidence. The admitted Node 24.13.1 runtime was then used for
@@ -117,7 +117,7 @@ Final bounded result:
 - 18 of 18 candidate observations confirmed;
 - 18 of 18 falsifiers refuted;
 - full Desktop typecheck, production build, and Electron smoke passed;
-- 138 test files passed; 1,342 tests passed and 39 retired tests remained
+- 139 test files passed; 1,343 tests passed and 39 retired tests remained
   skipped; and
 - evidence axes remained distinct for every obligation: admission `admitted`,
   readiness `executable`, observation `CONFIRMED`, infrastructure `ready`,
@@ -133,12 +133,28 @@ Desktop gate. The Phase 2 React ProductSpec still has no separately admitted
 AssuranceSpec, so this result is not a Phase 2 admission or a substitute for
 the external gates below.
 
+## Authoritative decision follow-up
+
+After the RC13 receipt was produced, the installed React smoke gained a
+provider-originated decision proof modeled on the orchestration boundary in
+the T3 reference implementation. A protocol-speaking app-server peer is
+injected at the production spawn seam and originates command-approval request
+`91`. The normal main-process runtime parks that request, projects it through
+the typed local event and IPC path, and the React dialog dispatches `Approve`
+through the installed Effect intent runtime. The provider records the exact
+correlated `{ decision: "accept" }` response and withholds command completion,
+assistant output, usage, and turn completion until that response arrives.
+
+The built smoke additionally waits for decision reconciliation, final output,
+reload restoration, and zero runtime owners. This closes the deterministic
+integrated decision obligation; it does not claim a live-account or
+private-provider run.
+
 ## External gates not claimed
 
 The following #8823 close-rule evidence is not produced by this packet:
 
 - a real ordinary-session Codex run with private evidence handling;
-- an integrated authoritative question/approval/plan-review disposition;
 - owner/admission disposition for ProductSpec revision 1;
 - independent visual and interaction reviewer acceptance;
 - full VoiceOver/keyboard-only and measured WCAG contrast receipt;

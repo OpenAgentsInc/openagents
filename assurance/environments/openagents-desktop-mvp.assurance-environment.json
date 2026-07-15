@@ -8,7 +8,7 @@
   ],
   "data_classification": "private_local",
   "dependency_lock": {
-    "digest": "sha256:b5eacae097487bef349ae55bf123a809cf1ba1e0fa440aa3869cfc50b16cf94d",
+    "digest": "sha256:6e3c8d153accea3ffa21fe611e03e47a6b16a8cf016a24b1a3fbb37cabb6690a",
     "path": "package.json"
   },
   "environment_format_version": "0.1",
@@ -38,7 +38,7 @@
     "os": "macos",
     "runtime": "Node 24.13.1"
   },
-  "profile_digest": "sha256:ead359767763a4f19c22363a09f9eba6be43e26abe4ea37a7d8cdf6ca8012eae",
+  "profile_digest": "sha256:bbe692aced00c65dabd206551fe2edd23946009ddbc43df159f2f8dc6aef4fd7",
   "profile_id": "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
   "redaction_policy": "No raw output, hostname, absolute path, credential, prompt, transcript, or repository content in public projections.",
   "required_commands": [

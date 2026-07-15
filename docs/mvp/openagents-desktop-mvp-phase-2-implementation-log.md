@@ -312,8 +312,8 @@ effects authority.
 ## MVP-02F — Default React cutover and integrated receipt (#8823)
 
 Status: implementation cutover and signed release-boundary proof complete;
-release-proof issue remains open for real-account, authoritative-decision,
-owner/admission, accessibility/performance, and independent-review evidence.
+release-proof issue remains open for real-account, owner/admission,
+accessibility/performance, and independent-review evidence.
 
 Ordinary Desktop launches now install the React workbench by default. The
 catalog renderer remains available only through the explicit exclusive
@@ -332,6 +332,32 @@ Effect Native resolver rather than recording the unvalidated second argument.
 
 The normalized receipt and explicit non-claims live in
 `docs/mvp/2026-07-14-openagents-desktop-react-cutover-receipt.md`.
+
+### Provider-originated decision closeout (#8821)
+
+The decision boundary now follows the reference architecture in
+`projects/repos/t3code/apps/server/src/provider/Layers/CodexSessionRuntime.ts`
+and its orchestration integration harness: the provider originates a
+correlated request, the runtime holds the pending continuation, the UI returns
+the method-correct response for that exact request, and provider completion is
+causally withheld until the answer arrives.
+
+OpenAgents proves that lifecycle through the production-built Electron/React
+path with a protocol-speaking app-server peer installed only at the process
+spawn seam. It originates command-approval request `91`; the ordinary
+main-process pending registry projects the decision through the existing
+Fable-local event envelope, IPC bridge, Effect intent runtime, and React
+dialog. Clicking `Approve` returns `{ decision: "accept" }` to request `91`.
+The peer emits command completion, assistant text, usage, and turn completion
+only afterward. The host-side receipt asserts the correlation and causal
+ordering, while reload restoration and zero-owner teardown run after the
+decision reconciles.
+
+The peer itself is covered against the real app-server client, and the
+production runtime suite separately proves the native request/answer mapping.
+This is deterministic integrated evidence for the installed authority path;
+it is not represented as a live-account or private-provider receipt, which
+remains a separate #8823 gate.
 
 Exact `origin/main` commit `a66b8d4ea7` was then packaged as the ARM64 RC13
 candidate. Apple accepted the app and outer DMG; Gatekeeper, stapler,

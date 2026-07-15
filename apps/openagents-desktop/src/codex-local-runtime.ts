@@ -457,15 +457,15 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
               turnRef: input.turnRef,
               accept: answer => {
                 const labels = answer.answers.flatMap(item => item.labels)
-                if (labels.includes("Allow once")) {
+                if (labels.includes("Approve") || labels.includes("Allow once")) {
                   finish("accept", "answered")
                   return true
                 }
-                if (labels.includes("Allow for session")) {
+                if (labels.includes("Approve for session") || labels.includes("Allow for session")) {
                   finish("acceptForSession", "answered")
                   return true
                 }
-                if (labels.includes("Decline")) {
+                if (labels.includes("Deny") || labels.includes("Decline")) {
                   finish("decline", "denied")
                   return true
                 }
@@ -482,9 +482,9 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
                 question,
                 header: request.method === "item/commandExecution/requestApproval" ? "Command approval" : "File approval",
                 options: [
-                  { label: "Allow once", description: "Approve only this request." },
-                  { label: "Allow for session", description: "Approve matching requests for this Codex session." },
-                  { label: "Decline", description: "Refuse this request." },
+                  { label: "Approve", description: "Approve only this request." },
+                  { label: "Approve for session", description: "Approve matching requests for this Codex session." },
+                  { label: "Deny", description: "Refuse this request." },
                 ],
                 multiSelect: false,
               }],

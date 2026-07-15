@@ -19,7 +19,6 @@ import type { CodexAppServerSpawn } from "./codex-app-server-client.ts"
 
 import {
   fixtureCodexShortAuthStdout,
-  fixtureCodexSuccessStdout,
   makeCodexAccountHealth,
   makeFixtureCodexChildSpawn,
   type CodexChildAccount,
@@ -238,7 +237,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(runtime.answerQuestion({
       turnRef: "turn-native-question",
       questionRef: approval.questionRef,
-      answers: [{ question: "bun test", labels: ["Allow once"] }],
+      answers: [{ question: "bun test", labels: ["Approve"] }],
     })).toBe(true)
     await waitFor(fake.messages, 9)
     expect(fake.messages[8]).toEqual({ id: 91, result: { decision: "accept" } })

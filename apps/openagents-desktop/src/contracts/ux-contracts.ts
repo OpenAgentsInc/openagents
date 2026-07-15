@@ -2399,10 +2399,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
         statement: "yeah i need codex and claude both first class",
         authorityBoundary:
-          "The Codex chip in local mode runs a REAL bounded `codex exec --json` turn, preferring the ordinary authenticated local Codex session and using the pylon registry's isolated Codex homes as fallback — never the cloud gateway. The lane reuses the frozen fable-local event envelope so codex turns render through the exact same transcript cards (reasoning lines, tool cards, markdown assistant body, usage/metadata inspector facts). The chat lane persists codex sessions (no --ephemeral) so threads resume via `codex exec resume <thread_id>` on the SAME account only; a rotated account falls back to bounded-history prepend. Delegate children keep --ephemeral. No renderer authority is widened: the bridge carries only bounded, redacted typed events.",
+          "The Codex chip in local mode uses the package-owned Codex app-server protocol against the ordinary authenticated local Codex session — never the cloud gateway and never an inherited or registry-selected CODEX_HOME. Provider-originated server requests park at the main-process runtime in a correlated pending registry and emit bounded typed decision state. React can answer only through the installed intent/bridge path; the runtime returns the method-correct response to that exact provider request, and the turn continues only after the provider accepts it. The lane reuses the frozen fable-local event envelope so turns render through the same transcript cards, and persists the provider thread id for same-session resume. The legacy `codex exec --json` parser is retained only for compatibility fixtures and delegate children remain ephemeral. No renderer authority is widened: the bridge carries only bounded, redacted typed events.",
         evidenceRefs: [
           "apps/openagents-desktop/src/codex-local-runtime.ts",
           "apps/openagents-desktop/src/codex-local-contract.ts",
+          "apps/openagents-desktop/src/codex-app-server-smoke-fixture.ts",
+          "apps/openagents-desktop/src/codex-app-server-smoke-fixture.test.ts",
           "apps/openagents-desktop/src/renderer/local-harness.ts",
           "apps/openagents-desktop/src/main.ts",
           "github:OpenAgentsInc/openagents#8712",
@@ -2414,7 +2416,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
             description:
-              "Drives the REAL JSONL parser with scripted codex exec streams: the receipted no-ephemeral spawn recipe, exec-resume continuation on the same account (sandbox via -c, prompt = new message only), bounded-history fallback after rotation, full event mapping (reasoning/Bash cards/deltas/exact usage), typed visible rotation, interrupt, and typed all-revoked/no-account failures.",
+              "Exercises the production app-server runtime, including a provider-originated command approval that blocks the turn until the exact request id receives the method-correct decision. It also retains explicit compatibility coverage for the legacy JSONL parser, bounded history, event mapping, interruption, and typed no-account failures.",
           },
           {
             id: "codex_first_class.smoke",
@@ -2422,7 +2424,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The built-Electron smoke selects the Codex chip (lit only after the fixture preflight verifies an account) and streams a scripted codex exec turn through the real parser, IPC bridge, thread persistence, and renderer: reasoning line, Bash tool card, markdown assistant body, the 'Codex · gpt-5.6-sol (requested)' caption, no ASSISTANT label, composer re-enabled.",
+              "The production-built React Electron smoke injects a protocol-speaking provider peer at the app-server spawn seam. Request 91 opens a real pending command decision, the installed React dialog dispatches Approve through Effect intent and IPC, the provider records the exact correlated accept response, and only then emits command completion, assistant output, usage, and turn completion. Reload restoration and zero-owner teardown are asserted after reconciliation; the separate compatibility smoke retains the legacy parser fixture.",
           },
           {
             id: "codex_first_class.live_proof",
