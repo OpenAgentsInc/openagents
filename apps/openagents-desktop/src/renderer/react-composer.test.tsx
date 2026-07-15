@@ -260,7 +260,7 @@ describe("React Codex composer", () => {
     await render(
       root,
       <ReactComposer
-        state={fixtureState({ input: "Continue", pending: true, pendingSubmitMode: "steer" })}
+        state={fixtureState({ input: "Continue", pending: true, pendingSubmitMode: "steer", composerAdmission: { state: "active_steerable", activeTurnId: "turn-provider-7", reason: null, queuedCount: 0 } })}
         report={report}
       />,
     );
@@ -273,7 +273,8 @@ describe("React Codex composer", () => {
     };
     await interact(() => {
       click("Stop");
-      click("Queue");
+      click("Queue next");
+      click("Steer now", true);
       click("Steer", true);
     });
     expect(received).toEqual(
@@ -283,6 +284,27 @@ describe("React Codex composer", () => {
         { name: "DesktopSteerCurrentRequested", payload: "Continue" },
       ]),
     );
+    expect(container.textContent).toContain("Sends into active turn turn-provider-7")
+  });
+
+  test("projects durable queue order and disables mutation after dispatch ownership transfers", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    const entry = (queueRef: string, position: number, status: "queued" | "promoting") => ({
+      queueRef, intentRef: `intent-${queueRef}`, clientUserMessageId: `user-${queueRef}`,
+      threadRef: "thread-1", message: `Message ${queueRef}`, position, status, revision: 0,
+      quiescenceRef: null, providerTurnId: null, failure: null,
+      createdAt: "2026-07-15T00:00:00.000Z", updatedAt: "2026-07-15T00:00:00.000Z",
+    });
+    await render(root, <ReactComposer state={fixtureState({ composerQueue: [entry("one", 1, "queued"), entry("two", 0, "promoting")] })} report={report} />);
+    expect(container.textContent).toContain("#1Message onepending");
+    expect(container.textContent).toContain("Message twodispatching");
+    const edit = [...container.querySelectorAll("button")].find(button => button.textContent === "Edit" && !button.disabled);
+    await interact(() => edit?.click());
+    expect(received).toContainEqual({ name: "DesktopQueuedIntentEditRequested", payload: "one" });
+    expect([...container.querySelectorAll('button[title="This turn is already dispatching"]')]).toHaveLength(2);
   });
 });
 

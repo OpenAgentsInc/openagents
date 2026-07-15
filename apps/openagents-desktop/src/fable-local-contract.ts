@@ -204,6 +204,12 @@ export type FableLocalPlanEntry = typeof FableLocalPlanEntrySchema.Type
 
 export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
+    kind: Schema.Literal("composer_admission"),
+    state: Schema.Literals(["active_steerable", "active_nonsteerable", "interrupting", "repairing"]),
+    activeTurnId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
+    reason: Schema.NullOr(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT))),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("turn_started"),
     /**
      * The persisted thread snapshot with the user message already appended
@@ -574,6 +580,10 @@ export const FableLocalQueueFollowupRequestSchema = Schema.Struct({
     Schema.isMinLength(1),
     Schema.isMaxLength(FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
   ),
+  intentRef: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
+  clientUserMessageId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
+  /** Required for steer; ignored by queue. Prevents stale-turn delivery. */
+  expectedTurnId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
 })
 export type FableLocalQueueFollowupRequest = typeof FableLocalQueueFollowupRequestSchema.Type
 

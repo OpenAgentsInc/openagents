@@ -30,7 +30,7 @@ export type CodexAppServerTurnControl = {
   interrupted: boolean
   interrupt: (() => void) | null
   /** Inject text into this exact active provider turn. */
-  steer: ((message: string) => Promise<boolean>) | null
+  steer: ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null
 }
 
 type ProductSpecSkill = Readonly<{ skillRoot: string; skillPath: string }>
@@ -592,9 +592,10 @@ export const runCodexAppServerTurn = async (
         void client.request("turn/interrupt", { threadId, turnId }).catch(() => undefined)
       }
     }
-    input.control.steer = async message => {
+    input.control.steer = async (message, expectedTurnId, clientUserMessageId) => {
       if (client === null || threadId === null || turnId === null || message.trim() === "") return false
-      const authorization = turnState.authorizeSteer(threadId, turnId)
+      if (expectedTurnId !== undefined && expectedTurnId !== turnId) return false
+      const authorization = turnState.authorizeSteer(threadId, turnId, clientUserMessageId)
       if (!authorization.accepted) {
         turnState.settleSteer(threadId, turnId, authorization.clientUserMessageId, false)
         return false

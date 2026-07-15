@@ -217,6 +217,9 @@ type DesktopBridge = Readonly<{
     steerCurrent?: (value: unknown) => Promise<unknown>
     steerChild?: (value: unknown) => Promise<unknown>
     queueFollowup?: (value: unknown) => Promise<unknown>
+    queueList?: (threadRef: unknown) => Promise<unknown>
+    queueEdit?: (value: unknown) => Promise<unknown>
+    queueCancel?: (value: unknown) => Promise<unknown>
   }>
   codexHandoff?: Readonly<{
     open?: (value: unknown) => Promise<unknown>
@@ -713,6 +716,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             ...(typeof bridge.codexLocal.queueFollowup === "function"
               ? { queueFollowup: bridge.codexLocal.queueFollowup }
               : {}),
+            ...(typeof bridge.codexLocal.queueList === "function" ? { queueList: bridge.codexLocal.queueList } : {}),
+            ...(typeof bridge.codexLocal.queueEdit === "function" ? { queueEdit: bridge.codexLocal.queueEdit } : {}),
+            ...(typeof bridge.codexLocal.queueCancel === "function" ? { queueCancel: bridge.codexLocal.queueCancel } : {}),
           }
         : null
     let codexAvailability: CodexLocalAvailability | null = null
@@ -722,6 +728,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       fableAvailability: () => fableAvailability,
       codex: codexLocalBridge,
       codexAvailability: () => codexAvailability,
+      onComposerAdmission: admission => {
+        Effect.runFork(SubscriptionRef.update(state, current => ({ ...current, composerAdmission: admission })))
+      },
+      onComposerQueue: composerQueue => {
+        Effect.runFork(SubscriptionRef.update(state, current => ({ ...current, composerQueue })))
+      },
     })
     const selection = yield* Effect.promise(() => selectDesktopChatHostSelection({
       request: bridge?.runtimeRequest,

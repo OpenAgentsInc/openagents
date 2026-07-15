@@ -187,6 +187,10 @@ import {
   CodexLocalEventChannel,
   CodexLocalInterruptChannel,
   CodexLocalQueueFollowupChannel,
+  CodexLocalQueueListChannel,
+  CodexLocalQueueEditChannel,
+  CodexLocalQueueCancelChannel,
+  decodeCodexQueueMutation,
   CodexLocalStartChannel,
   CodexLocalSteerTurnChannel,
   codexLocalFailureMessage,
@@ -2745,6 +2749,20 @@ ipcMain.handle(CodexLocalQueueFollowupChannel, (_event, value: unknown) => {
   return request === null
     ? { ok: false, queued: false, reason: "no_active_turn" }
     : codexLocal.queueFollowup(request)
+})
+ipcMain.handle(CodexLocalQueueListChannel, (_event, threadRef: unknown) =>
+  typeof threadRef === "string" ? codexDurableQueue.list(threadRef) : [])
+ipcMain.handle(CodexLocalQueueEditChannel, (_event, value: unknown) => {
+  const request = decodeCodexQueueMutation(value)
+  if (request === null || request.message === undefined) return { ok: false, reason: "invalid" }
+  try { return { ok: true, entry: codexDurableQueue.edit(request.queueRef, request.message, request.expectedRevision) } }
+  catch (error) { return { ok: false, reason: error instanceof Error ? error.message : "Queue edit failed" } }
+})
+ipcMain.handle(CodexLocalQueueCancelChannel, (_event, value: unknown) => {
+  const request = decodeCodexQueueMutation(value)
+  if (request === null) return { ok: false, reason: "invalid" }
+  try { return { ok: true, entry: codexDurableQueue.cancel(request.queueRef, request.expectedRevision) } }
+  catch (error) { return { ok: false, reason: error instanceof Error ? error.message : "Queue cancellation failed" } }
 })
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)

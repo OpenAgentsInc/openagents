@@ -203,14 +203,23 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     await waitFor(fake.messages, 6); fake.respond(5, { thread: { id: "native-thread" } })
     await waitFor(fake.messages, 7); fake.respond(6, { turn: { id: "native-turn" } })
     await sleep(0)
+    await expect(runtime.steerCurrent({
+      threadRef: "thread-native-question",
+      message: "stale",
+      expectedTurnId: "stale-turn",
+    })).resolves.toEqual({ ok: false, outcome: "not_found" })
+    expect(fake.messages).toHaveLength(7)
     const steering = runtime.steerCurrent({
       threadRef: "thread-native-question",
       message: "Use the native path",
+      expectedTurnId: "native-turn",
+      clientUserMessageId: "user-steer-native",
+      intentRef: "intent-steer-native",
     })
     await waitFor(fake.messages, 8)
     expect(fake.messages[7]).toMatchObject({
       method: "turn/steer",
-      params: { expectedTurnId: "native-turn", clientUserMessageId: expect.stringMatching(/^steer\./), input: [{ type: "text", text: "Use the native path" }] },
+      params: { expectedTurnId: "native-turn", clientUserMessageId: "user-steer-native", input: [{ type: "text", text: "Use the native path" }] },
     })
     fake.respond(7, {})
     await expect(steering).resolves.toEqual({ ok: true, outcome: "delivered" })

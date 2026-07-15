@@ -296,13 +296,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     interrupted: boolean
     child: ChildLike | null
     interrupt: (() => void) | null
-    steer: ((message: string) => Promise<boolean>) | null
+    steer: ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null
   }>()
-  const activeTurnByThread = new Map<string, Readonly<{
+  const activeTurnByThread = new Map<string, {
     turnRef: string
     emit: (event: FableLocalEvent) => void
-    control: { steer: ((message: string) => Promise<boolean>) | null }
-  }>>()
+    providerTurnId: string | null
+    control: { steer: ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null }
+  }>()
   const followupQueue = new Map<string, Array<{ queueRef: string; message: string }>>()
   let followupSequence = 0
   const pendingQuestions = new Map<string, Readonly<{
@@ -1066,10 +1067,11 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       interrupted: false,
       child: null as ChildLike | null,
       interrupt: null as (() => void) | null,
-      steer: null as ((message: string) => Promise<boolean>) | null,
+      steer: null as ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null,
     }
     activeTurns.set(input.turnRef, control)
-    activeTurnByThread.set(input.threadRef, { turnRef: input.turnRef, emit: input.emit, control })
+    const activeThreadTurn = { turnRef: input.turnRef, emit: input.emit, providerTurnId: null as string | null, control }
+    activeTurnByThread.set(input.threadRef, activeThreadTurn)
     input.emit({ kind: "turn_started" })
     // Spawn-config truth caption (the exec stream echoes no model back).
     const requestedModel = input.model ?? CODEX_LOCAL_MODEL
@@ -1103,7 +1105,11 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           reasoningEffort: input.reasoningEffort,
           model: requestedModel,
           ...(input.clientUserMessageId === undefined ? {} : { clientUserMessageId: input.clientUserMessageId }),
-          onProviderTurn: id => { providerTurnId = id },
+          onProviderTurn: id => {
+            providerTurnId = id
+            activeThreadTurn.providerTurnId = id
+            input.emit({ kind: "composer_admission", state: "active_steerable", activeTurnId: id, reason: null })
+          },
         })
         if (attempt.outcome === "success") {
           confirmedQuiescence = true
@@ -1243,7 +1249,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       const active = activeTurnByThread.get(request.threadRef)
       if (active === undefined) return { ok: false, outcome: "not_found" }
       if (active.control.steer === null) return { ok: false, outcome: "unsupported" }
-      const delivered = await active.control.steer(bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT))
+      if (request.expectedTurnId === undefined || active.providerTurnId !== request.expectedTurnId) {
+        return { ok: false, outcome: "not_found" }
+      }
+      const delivered = await active.control.steer(
+        bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+        request.expectedTurnId,
+        request.clientUserMessageId,
+      )
       active.emit({
         kind: "lane_notice",
         text: delivered
@@ -1256,7 +1269,13 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       const active = activeTurnByThread.get(request.threadRef)
       if (active === undefined) return { ok: false, queued: false, reason: "no_active_turn" }
       if (options.durableQueue !== undefined) {
-        const queued = options.durableQueue.enqueue(request.threadRef, bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT))
+        const queued = options.durableQueue.enqueue(
+          request.threadRef,
+          bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+          request.intentRef !== undefined && request.clientUserMessageId !== undefined
+            ? { intentRef: request.intentRef, clientUserMessageId: request.clientUserMessageId }
+            : undefined,
+        )
         const position = options.durableQueue.list(request.threadRef).filter(entry => entry.status === "queued").findIndex(entry => entry.queueRef === queued.queueRef) + 1
         active.emit({ kind: "followup_queued", queueRef: queued.queueRef, position })
         return { ok: true, queued: true, queueRef: queued.queueRef, position }

@@ -1208,6 +1208,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   at most one entry per confirmed quiescence boundary. A second `turn/start`
   while the current turn is active and implicit steer-to-queue fallback are
   forbidden.
+  The running-turn composer is a projection of one typed admission matrix, not
+  renderer-local authority. Steer is enabled only with the displayed exact
+  provider turn ID; queue admission is idempotent by a stable intent and
+  client-user-message identity retained across refusal or lost ACK. Draft input
+  clears only after typed acceptance. Main-owned queue rows expose lifecycle,
+  order, and revision-safe edit/cancel only before promotion transfers dispatch
+  ownership; Stop is always a distinct intent.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
   one immutable main-process `CodexRuntimeResolution` authority selects that

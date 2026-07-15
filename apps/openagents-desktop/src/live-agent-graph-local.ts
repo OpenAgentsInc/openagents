@@ -485,6 +485,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
       case "reasoning":
       case "lane_notice":
       case "model_effective":
+      case "composer_admission":
       case "plan_updated":
       case "mcp_server_unavailable":
       case "followup_queued":

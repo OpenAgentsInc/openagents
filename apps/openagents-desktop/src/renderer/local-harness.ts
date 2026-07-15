@@ -50,6 +50,9 @@ export type FableLocalRendererBridge = Readonly<{
   steerChild?: (value: unknown) => Promise<unknown>
   steerCurrent?: (value: unknown) => Promise<unknown>
   queueFollowup?: (value: unknown) => Promise<unknown>
+  queueList?: (threadRef: unknown) => Promise<unknown>
+  queueEdit?: (value: unknown) => Promise<unknown>
+  queueCancel?: (value: unknown) => Promise<unknown>
 }>
 
 /** EP250 evidence-gated refusal: Send refuses with the chip's reason — the
@@ -88,6 +91,8 @@ export type MakeLocalHarnessChatHostInput = Readonly<{
   now?: () => Date
   /** Injectable renderer cadence; one projection per frame by default. */
   scheduleProjection?: (flush: () => void) => () => void
+  onComposerAdmission?: (value: import("../composer-admission.ts").ComposerAdmission) => void
+  onComposerQueue?: (value: ReadonlyArray<import("../codex-durable-queue.ts").CodexQueuedIntent>) => void
 }>
 
 export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): ChatHost => {
@@ -228,6 +233,20 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         if (event.thread !== undefined) {
           baseThread = event.thread
           project()
+        }
+        return
+      }
+      if (event.kind === "composer_admission") {
+        input.onComposerAdmission?.({
+          state: event.state,
+          activeTurnId: event.activeTurnId,
+          reason: event.reason,
+          queuedCount: 0,
+        })
+        if (lane === "codex" && input.codex?.queueList !== undefined) {
+          void input.codex.queueList(send.id).then(value => {
+            if (Array.isArray(value)) input.onComposerQueue?.(value as import("../codex-durable-queue.ts").CodexQueuedIntent[])
+          })
         }
         return
       }
@@ -499,6 +518,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       return result
     } finally {
       activeTurn = null
+      input.onComposerAdmission?.({ state: "idle", activeTurnId: null, reason: null, queuedCount: 0 })
       cancelScheduledProjection()
       unsubscribe()
     }
@@ -551,11 +571,19 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       const raw = await active.bridge.queueFollowup({
         threadRef: input.threadRef,
         message: input.message,
+        ...(input.intentRef === undefined ? {} : { intentRef: input.intentRef }),
+        ...(input.clientUserMessageId === undefined ? {} : { clientUserMessageId: input.clientUserMessageId }),
       })
       return typeof raw === "object" && raw !== null && typeof (raw as { queued?: unknown }).queued === "boolean"
         ? (raw as { ok: boolean; queued: boolean })
         : { ok: false, queued: false }
     },
+    queueList: async threadRef => {
+      const values = await input.codex?.queueList?.(threadRef)
+      return Array.isArray(values) ? values as import("../codex-durable-queue.ts").CodexQueuedIntent[] : []
+    },
+    queueEdit: async request => input.codex?.queueEdit?.(request) as Promise<Readonly<{ ok: boolean }>> ?? Promise.resolve({ ok: false }),
+    queueCancel: async request => input.codex?.queueCancel?.(request) as Promise<Readonly<{ ok: boolean }>> ?? Promise.resolve({ ok: false }),
     steerCurrent: async input => {
       const active = activeTurn
       if (active === null || active.bridge.steerCurrent === undefined) {
@@ -564,6 +592,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       const raw = await active.bridge.steerCurrent({
         threadRef: input.threadRef,
         message: input.message,
+        ...(input.intentRef === undefined ? {} : { intentRef: input.intentRef }),
+        ...(input.clientUserMessageId === undefined ? {} : { clientUserMessageId: input.clientUserMessageId }),
+        ...(input.expectedTurnId === undefined ? {} : { expectedTurnId: input.expectedTurnId }),
       })
       return typeof raw === "object" && raw !== null && typeof (raw as { outcome?: unknown }).outcome === "string"
         ? raw as { ok: boolean; outcome: string }

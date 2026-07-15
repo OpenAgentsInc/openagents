@@ -181,6 +181,10 @@ import {
   CodexLocalEventChannel,
   CodexLocalInterruptChannel,
   CodexLocalQueueFollowupChannel,
+  CodexLocalQueueListChannel,
+  CodexLocalQueueEditChannel,
+  CodexLocalQueueCancelChannel,
+  decodeCodexQueueMutation,
   CodexLocalStartChannel,
   CodexLocalSteerTurnChannel,
 } from "./codex-local-contract.ts"
@@ -742,6 +746,17 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return request === null
         ? Promise.resolve({ ok: false, queued: false, reason: "no_active_turn" })
         : ipcRenderer.invoke(CodexLocalQueueFollowupChannel, request)
+    },
+    queueList: (threadRef: unknown) => typeof threadRef === "string"
+      ? ipcRenderer.invoke(CodexLocalQueueListChannel, threadRef)
+      : Promise.resolve([]),
+    queueEdit: (value: unknown) => {
+      const request = decodeCodexQueueMutation(value)
+      return request === null ? Promise.resolve({ ok: false, reason: "invalid" }) : ipcRenderer.invoke(CodexLocalQueueEditChannel, request)
+    },
+    queueCancel: (value: unknown) => {
+      const request = decodeCodexQueueMutation(value)
+      return request === null ? Promise.resolve({ ok: false, reason: "invalid" }) : ipcRenderer.invoke(CodexLocalQueueCancelChannel, request)
     },
     onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => {
       const handler = (_event: unknown, value: unknown): void => {

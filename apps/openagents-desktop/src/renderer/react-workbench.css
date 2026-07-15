@@ -1023,6 +1023,41 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   box-shadow: none;
 }
 
+.oa-react-composer-queue {
+  display: grid;
+  max-height: 132px;
+  margin: 0;
+  padding: 0;
+  gap: var(--en-spacing-1);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.oa-react-composer-queue li {
+  display: grid;
+  grid-template-columns: 28px minmax(80px, 1fr) auto auto auto;
+  align-items: center;
+  min-width: 0;
+  gap: var(--en-spacing-1);
+}
+
+.oa-react-composer-queue-order,
+.oa-react-composer-queue-message {
+  color: var(--en-color-textSecondary);
+  font-size: 12px;
+}
+
+.oa-react-composer-queue-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .oa-react-composer-queue li { grid-template-columns: 24px minmax(64px, 1fr) auto; }
+  .oa-react-composer-queue li button { grid-row: 2; }
+}
+
 .oa-react-composer-bar,
 .oa-react-submit-mode {
   display: flex;
@@ -1032,6 +1067,47 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-composer-bar {
   min-height: var(--en-control-sm-height);
+  flex-wrap: wrap;
+}
+
+.oa-react-submit-mode {
+  min-width: 0;
+  padding: 2px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-react-submit-mode button {
+  min-height: 36px;
+}
+
+.oa-react-composer-consequence {
+  display: flex;
+  min-width: 0;
+  margin: var(--en-spacing-1) 0 0;
+  gap: var(--en-spacing-2);
+  color: var(--en-color-textFaint);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.oa-react-composer-consequence strong {
+  flex: 0 0 auto;
+  color: var(--en-color-textSecondary);
+  font-weight: 600;
+}
+
+.oa-react-composer-consequence span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .oa-react-composer-consequence {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 
 .oa-react-submit,

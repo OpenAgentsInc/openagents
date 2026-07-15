@@ -50,6 +50,13 @@ import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import { compareDesktopThreadsByRecency, type DesktopMessageMeta, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
 import { isCodexModel, type ClaudeModel, type CodexModel, type CodexReasoningEffort, type LocalModel } from "../fable-local-contract.ts"
 import {
+  composerActionPresentation,
+  idleComposerAdmission,
+  makeComposerSubmitIntent,
+  type ComposerAdmission,
+} from "../composer-admission.ts"
+import type { CodexQueuedIntent } from "../codex-durable-queue.ts"
+import {
   contextGroupSummary,
   humanizeToolInvocation,
   projectTranscriptEntries,
@@ -329,6 +336,12 @@ export type DesktopShellState = Readonly<{
   selectedHarness: DesktopHarnessName
   /** While streaming, submit either steers the active turn or queues the next. */
   pendingSubmitMode: "steer" | "queue"
+  /** Main/app-server-derived composer authority; renderer component state is never authority. */
+  composerAdmission: ComposerAdmission
+  /** Stable across a refused/lost ACK; reset only when the user changes the draft or admission succeeds. */
+  composerIntentIdentity: Readonly<{ intentRef: string; clientUserMessageId: string }> | null
+  composerQueue: ReadonlyArray<CodexQueuedIntent>
+  composerQueueEditingRef: string | null
   /** Requested Codex reasoning effort for subsequent turns. */
   codexReasoningEffort: CodexReasoningEffort
   /** Provider-scoped model choices persist while switching provider. */
@@ -454,6 +467,10 @@ export const initialDesktopShellState = (
   notes: [],
   selectedHarness: "codex",
   pendingSubmitMode: "queue",
+  composerAdmission: idleComposerAdmission(),
+  composerIntentIdentity: null,
+  composerQueue: [],
+  composerQueueEditingRef: null,
   codexReasoningEffort: "medium",
   codexModel: "gpt-5.6-sol",
   claudeModel: "claude-fable-5",
@@ -601,6 +618,8 @@ export const DesktopPendingSubmitModeSelected = defineIntent(
   "DesktopPendingSubmitModeSelected",
   Schema.Literals(["steer", "queue"]),
 )
+export const DesktopQueuedIntentEditRequested = defineIntent("DesktopQueuedIntentEditRequested", Schema.String)
+export const DesktopQueuedIntentCancelRequested = defineIntent("DesktopQueuedIntentCancelRequested", Schema.String)
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
 /**
  * Message metadata inspector selection (#8712). Payload is the transcript
@@ -714,6 +733,8 @@ export const desktopShellIntents = [
   DesktopProviderAccountSelected,
   DesktopPermissionModeSelected,
   DesktopPendingSubmitModeSelected,
+  DesktopQueuedIntentEditRequested,
+  DesktopQueuedIntentCancelRequested,
   DesktopChatSelected,
   DesktopMessageSelected,
   DesktopToolCardToggled,
@@ -788,6 +809,7 @@ export type CodexHistoryHost = Readonly<{
 export const withInput = (state: DesktopShellState, input: string): DesktopShellState => ({
   ...state,
   input,
+  ...(input === state.input ? {} : { composerIntentIdentity: null }),
 })
 
 export const withPending = (state: DesktopShellState, pending: boolean): DesktopShellState => ({
@@ -1207,13 +1229,16 @@ export type ChatHost = Readonly<{
    * typed queue outcome. Optional: a host that cannot queue (e.g. the runtime
    * adapter) omits it and a mid-turn submit is a no-op that keeps the draft.
    */
-  queueFollowup?: (input: Readonly<{ threadRef: string; message: string }>) => Promise<
+  queueFollowup?: (input: Readonly<{ threadRef: string; message: string; intentRef?: string; clientUserMessageId?: string }>) => Promise<
     Readonly<{ ok: boolean; queued: boolean }>
   >
   /** Inject a message into the exact currently active Codex app-server turn. */
-  steerCurrent?: (input: Readonly<{ threadRef: string; message: string }>) => Promise<
+  steerCurrent?: (input: Readonly<{ threadRef: string; message: string; intentRef?: string; clientUserMessageId?: string; expectedTurnId?: string }>) => Promise<
     Readonly<{ ok: boolean; outcome: string }>
   >
+  queueList?: (threadRef: string) => Promise<ReadonlyArray<CodexQueuedIntent>>
+  queueEdit?: (request: Readonly<{ queueRef: string; expectedRevision: number; message: string }>) => Promise<Readonly<{ ok: boolean }>>
+  queueCancel?: (request: Readonly<{ queueRef: string; expectedRevision: number }>) => Promise<Readonly<{ ok: boolean }>>
 }>
 
 export const messageWithReviewContext = (
@@ -1667,16 +1692,31 @@ export const makeDesktopShellHandlers = (
     mode: "steer" | "queue",
   ) => Effect.gen(function* () {
     if (!current.pending || current.activeThreadId === null || message.trim() === "") return
-    yield* SubscriptionRef.update(state, next => withInput(next, ""))
+    const identity = current.composerIntentIdentity ?? {
+      intentRef: `intent.desktop.${globalThis.crypto.randomUUID()}`,
+      clientUserMessageId: `user.desktop.${globalThis.crypto.randomUUID()}`,
+    }
+    const intent = makeComposerSubmitIntent({
+      admission: current.composerAdmission,
+      mode,
+      threadRef: current.activeThreadId,
+      message,
+      ...identity,
+    })
+    if (intent === null) return
+    yield* SubscriptionRef.update(state, next => ({ ...next, composerIntentIdentity: identity }))
     if (mode === "steer") {
       if (chat.steerCurrent === undefined) {
         yield* SubscriptionRef.update(state, next => withInput(next, message))
         return
       }
       const steered = yield* Effect.promise(() =>
-        chat.steerCurrent!({ threadRef: current.activeThreadId!, message: message.trim() }))
+        chat.steerCurrent!(intent as Extract<typeof intent, { kind: "steer_current" }>)
+          .catch(() => ({ ok: false, outcome: "lost_ack" })))
       if (!steered.ok) {
-        yield* SubscriptionRef.update(state, next => next.input === "" ? withInput(next, message) : next)
+        yield* SubscriptionRef.update(state, next => ({ ...next, composerIntentIdentity: identity }))
+      } else {
+        yield* SubscriptionRef.update(state, next => ({ ...withInput(next, ""), composerIntentIdentity: null }))
       }
       return
     }
@@ -1684,10 +1724,29 @@ export const makeDesktopShellHandlers = (
       yield* SubscriptionRef.update(state, next => withInput(next, message))
       return
     }
+    const editing = current.composerQueueEditingRef === null
+      ? null
+      : current.composerQueue.find(entry => entry.queueRef === current.composerQueueEditingRef) ?? null
+    if (editing !== null && chat.queueEdit !== undefined) {
+      const edited = yield* Effect.promise(() => chat.queueEdit!({ queueRef: editing.queueRef, expectedRevision: editing.revision, message: intent.message }).catch(() => ({ ok: false })))
+      if (!edited.ok) return
+      const composerQueue = chat.queueList === undefined ? current.composerQueue : yield* Effect.promise(() => chat.queueList!(current.activeThreadId!))
+      yield* SubscriptionRef.update(state, next => ({ ...withInput(next, ""), composerQueue, composerQueueEditingRef: null, composerIntentIdentity: null }))
+      return
+    }
     const queued = yield* Effect.promise(() =>
-      chat.queueFollowup!({ threadRef: current.activeThreadId!, message: message.trim() }))
+      chat.queueFollowup!(intent as Extract<typeof intent, { kind: "queue_next" }>)
+        .catch(() => ({ ok: false, queued: false })))
     if (!queued.queued) {
-      yield* SubscriptionRef.update(state, next => next.input === "" ? withInput(next, message) : next)
+      yield* SubscriptionRef.update(state, next => ({ ...next, composerIntentIdentity: identity }))
+    } else {
+      const composerQueue = chat.queueList === undefined ? current.composerQueue : yield* Effect.promise(() => chat.queueList!(current.activeThreadId!))
+      yield* SubscriptionRef.update(state, next => ({
+        ...withInput(next, ""),
+        composerIntentIdentity: null,
+        composerQueue,
+        composerAdmission: { ...next.composerAdmission, state: "queued" as const, queuedCount: next.composerAdmission.queuedCount + 1 },
+      }))
     }
   })
   const commitLocalSession = (threadRef: string) => Effect.gen(function* () {
@@ -2176,6 +2235,25 @@ export const makeDesktopShellHandlers = (
       : { ...current, claudeModel: model }),
   DesktopPendingSubmitModeSelected: (pendingSubmitMode) =>
     SubscriptionRef.update(state, current => ({ ...current, pendingSubmitMode })),
+  DesktopQueuedIntentEditRequested: (queueRef) =>
+    SubscriptionRef.update(state, current => {
+      const entry = current.composerQueue.find(value => value.queueRef === queueRef)
+      return entry === undefined || entry.status !== "queued" ? current : {
+        ...withInput(current, entry.message),
+        pendingSubmitMode: "queue" as const,
+        composerQueueEditingRef: queueRef,
+      }
+    }),
+  DesktopQueuedIntentCancelRequested: (queueRef) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const entry = current.composerQueue.find(value => value.queueRef === queueRef)
+    if (entry === undefined || entry.status !== "queued" || chat.queueCancel === undefined) return
+    const cancelled = yield* Effect.promise(() => chat.queueCancel!({ queueRef, expectedRevision: entry.revision }).catch(() => ({ ok: false })))
+    if (!cancelled.ok) return
+    const threadRef = current.activeThreadId
+    const composerQueue = chat.queueList === undefined || threadRef === null ? current.composerQueue : yield* Effect.promise(() => chat.queueList!(threadRef))
+    yield* SubscriptionRef.update(state, next => ({ ...next, composerQueue, composerQueueEditingRef: next.composerQueueEditingRef === queueRef ? null : next.composerQueueEditingRef }))
+  }),
   DesktopVoiceModeToggled: () => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     if (current.pending) return

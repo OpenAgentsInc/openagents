@@ -9,7 +9,8 @@ describe("Codex durable next-turn queue", () => {
     const root = mkdtempSync(join(tmpdir(), "oa-codex-queue-")); const path = join(root, "queue.json")
     try {
       const first = openCodexDurableQueue(path)
-      const one = first.enqueue("thread-1", "one")
+      const one = first.enqueue("thread-1", "one", { intentRef: "intent-stable", clientUserMessageId: "user-stable" })
+      expect(first.enqueue("thread-1", "lost ACK retry", { intentRef: "intent-stable", clientUserMessageId: "user-stable" })).toEqual(one)
       const two = first.enqueue("thread-1", "two")
       expect([one.position, two.position]).toEqual([1, 2])
       first.close()

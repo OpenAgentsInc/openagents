@@ -26,7 +26,7 @@ export class CodexDurableQueueError extends Error {
 }
 
 export type CodexDurableQueue = Readonly<{
-  enqueue: (threadRef: string, message: string) => CodexQueuedIntent
+  enqueue: (threadRef: string, message: string, identity?: Readonly<{ intentRef: string; clientUserMessageId: string }>) => CodexQueuedIntent
   list: (threadRef?: string) => ReadonlyArray<CodexQueuedIntent>
   edit: (queueRef: string, message: string, expectedRevision: number) => CodexQueuedIntent
   cancel: (queueRef: string, expectedRevision: number) => CodexQueuedIntent
@@ -73,11 +73,15 @@ export const openCodexDurableQueue = (path: string, now: () => Date = () => new 
       : entry)
   }
   return {
-    enqueue: (threadRef, message) => {
+    enqueue: (threadRef, message, identity) => {
       assertOpen()
+      if (identity !== undefined) {
+        const existing = entries.find(entry => entry.intentRef === identity.intentRef)
+        if (existing !== undefined) return { ...existing }
+      }
       const position = entries.filter(entry => entry.threadRef === threadRef && entry.status === "queued").length + 1
       const timestamp = now().toISOString()
-      const entry: CodexQueuedIntent = { queueRef: `queue.${randomUUID()}`, intentRef: `intent.${randomUUID()}`, clientUserMessageId: `user.${randomUUID()}`, threadRef, message, position, status: "queued", revision: 0, quiescenceRef: null, providerTurnId: null, failure: null, createdAt: timestamp, updatedAt: timestamp }
+      const entry: CodexQueuedIntent = { queueRef: `queue.${randomUUID()}`, intentRef: identity?.intentRef ?? `intent.${randomUUID()}`, clientUserMessageId: identity?.clientUserMessageId ?? `user.${randomUUID()}`, threadRef, message, position, status: "queued", revision: 0, quiescenceRef: null, providerTurnId: null, failure: null, createdAt: timestamp, updatedAt: timestamp }
       entries.push(entry); persist(); return entry
     },
     list: threadRef => entries.filter(entry => threadRef === undefined || entry.threadRef === threadRef).map(entry => ({ ...entry })),

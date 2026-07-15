@@ -231,6 +231,37 @@ is never silently converted to queueing. The live bundled-binary smoke proves
 steer, interrupt terminalization, durable queued promotion, and inline/detached
 review races against the ordinary authenticated local Codex session.
 
+### Implementation status: CAP-07
+
+CAP-07 lowers that native authority into one shared typed composer admission
+machine instead of letting React infer behavior from a generic `pending` bit.
+The matrix names idle, active-steerable, active-nonsteerable, interrupting,
+repairing, queued, offline, blocked, and incompatible states. The app-server
+publishes the exact provider turn ID only after `turn/start` succeeds; **Steer
+now** remains disabled until that identity exists, displays the identity in its
+consequence text, and sends it back as `expectedTurnId`. A stale ID is refused,
+never redirected. **Queue next** displays its durable position/consequence and
+never becomes a steer. Stop remains a separate command.
+
+Pointer, Enter, modified-Enter, command-palette, and native-menu paths retain
+the same canonical Effect intent identities. The renderer produces one stable
+intent and client-user-message identity before admission and retains both with
+the draft across refusal or lost ACK. Durable enqueue is idempotent by that
+intent identity, so retry cannot create a second row. Input clears only after a
+typed accepted result.
+
+The compact queue panel is a projection of the main-owned mode-0600 queue. It
+shows order and maps native `queued`, `promoting`, `promoted`, `failed`, and
+`cancelled` states to pending, dispatching, settled, failed, and cancelled.
+Queued rows can be loaded into the composer and revision-safely edited in
+place, or cancelled and reindexed. Once promotion owns a row, Edit and Remove
+are disabled with an explicit “already dispatching” explanation. The panel and
+Steer/Queue radiogroup use the existing Desktop tokens, wrap at the minimum
+window width, preserve visible focus and screen-reader state, and add no
+decorative motion. This follows T3's useful generated-effect architecture,
+while explicitly rejecting its second-`turn/start` queue behavior and local
+store authority.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these

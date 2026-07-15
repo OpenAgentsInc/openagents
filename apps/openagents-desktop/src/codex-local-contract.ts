@@ -39,6 +39,9 @@ export const CodexLocalStartChannel = "openagents:codex-local:start" as const
 export const CodexLocalInterruptChannel = "openagents:codex-local:interrupt" as const
 export const CodexLocalSteerTurnChannel = "openagents:codex-local:steer-turn" as const
 export const CodexLocalQueueFollowupChannel = "openagents:codex-local:queue-followup" as const
+export const CodexLocalQueueListChannel = "openagents:codex-local:queue-list" as const
+export const CodexLocalQueueEditChannel = "openagents:codex-local:queue-edit" as const
+export const CodexLocalQueueCancelChannel = "openagents:codex-local:queue-cancel" as const
 export const CodexLocalEventChannel = "openagents:codex-local:event" as const
 /** Exact packaged Codex compatibility identity; thread handoff remains disabled
  * unless a separately verified official-app continuity proof cites this ref. */
@@ -81,6 +84,16 @@ export const CodexLocalAvailabilitySchema = Schema.Union([
   }),
 ])
 export type CodexLocalAvailability = typeof CodexLocalAvailabilitySchema.Type
+
+export const CodexQueueMutationSchema = Schema.Struct({
+  queueRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  expectedRevision: Schema.Number,
+  message: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(20_000))),
+})
+export const decodeCodexQueueMutation = (value: unknown): typeof CodexQueueMutationSchema.Type | null => {
+  const decoded = Schema.decodeUnknownExit(CodexQueueMutationSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
 
 export const decodeCodexLocalAvailability = (value: unknown): CodexLocalAvailability | null => {
   const decoded = Schema.decodeUnknownExit(CodexLocalAvailabilitySchema)(value)
