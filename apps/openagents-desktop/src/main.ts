@@ -2955,6 +2955,7 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     model: requestedModel,
     ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
+    ...(request.fullAuto === true ? { fullAuto: true } : {}),
     emit: turnEvent => {
       // CUT-11 (#8691): same one-callback graph fold as the fable lane.
       liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })

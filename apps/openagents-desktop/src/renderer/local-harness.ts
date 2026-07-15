@@ -127,6 +127,8 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       model?: import("../fable-local-contract.ts").LocalModel
       queueRef?: string
       clientUserMessageId?: string
+      /** Full Auto (#8852): Codex-lane only; ignored on the Claude lane. */
+      fullAuto?: boolean
       onUpdate?: (thread: DesktopThread) => void
     }>,
   ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string; failureKind?: DesktopRuntimeFailureKind }>> => {
@@ -499,6 +501,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         ...(send.permissionMode === undefined ? {} : { permissionMode: send.permissionMode }),
         ...(lane !== "codex" || send.reasoningEffort === undefined ? {} : { reasoningEffort: send.reasoningEffort }),
         ...(send.model === undefined ? {} : { model: send.model }),
+        ...(lane !== "codex" || send.fullAuto !== true ? {} : { fullAuto: true }),
       })
       const result = decodeTurnResult(raw, laneLabel)
       flushProjection()

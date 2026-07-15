@@ -306,6 +306,27 @@ describe("React Codex composer", () => {
     expect(received).toContainEqual({ name: "DesktopQueuedIntentEditRequested", payload: "one" });
     expect([...container.querySelectorAll('button[title="This turn is already dispatching"]')]).toHaveLength(2);
   });
+
+  test("Full Auto (#8852): renders as an off-by-default composer toggle and reports DesktopFullAutoToggled", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactComposer state={fixtureState({ fullAuto: false })} report={report} />);
+    const toggle = container.querySelector('[data-en-key="shell-full-auto-toggle"]');
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+    await interact(() => {
+      (toggle as HTMLButtonElement).click();
+    });
+    expect(received).toEqual(
+      expect.arrayContaining([{ name: "DesktopFullAutoToggled", payload: null }]),
+    );
+    await render(root, <ReactComposer state={fixtureState({ fullAuto: true })} report={report} />);
+    expect(
+      container.querySelector('[data-en-key="shell-full-auto-toggle"]')?.getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
 });
 
 describe("React command and decision surfaces", () => {

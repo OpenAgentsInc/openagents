@@ -809,6 +809,68 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(commands).toContainEqual({ id: "voice.speak", protocolVersion: 1, turnRef: "turn.1", speechRef: "speech.assistant.1", messageRef: "assistant.1", text: "The deployment is healthy." })
   })
 
+  test("Full Auto (#8852): a clean Codex turn resubmits automatically, and toggling off mid-loop stops it", async () => {
+    const completedOnce = { ...testThread, notes: [{ key: "assistant.1", role: "assistant" as const, text: "Did the first thing.", timestamp: "18:05" }] }
+    const completedTwice = { ...testThread, notes: [{ key: "assistant.2", role: "assistant" as const, text: "Did the second thing.", timestamp: "18:06" }] }
+    const calls: Array<{ message: string; fullAuto?: boolean }> = []
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: true }))
+    const chatHost = {
+      listThreads: async () => [testThread],
+      newThread: async () => null,
+      openThread: async () => testThread,
+      sendMessage: async (input: { message: string; fullAuto?: boolean }) => {
+        calls.push({ message: input.message, fullAuto: input.fullAuto })
+        if (calls.length === 1) return { ok: true as const, thread: completedOnce }
+        // Simulate the owner toggling Full Auto off while this second turn was
+        // running (e.g. after watching the first completion) -- the loop must
+        // notice this on its NEXT continuation check rather than a stale read.
+        await Effect.runPromise(SubscriptionRef.update(state, current => ({ ...current, fullAuto: false })))
+        return { ok: true as const, thread: completedTwice }
+      },
+    }
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+    ))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Do the first thing")))))
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toMatchObject({ message: "Do the first thing", fullAuto: true })
+    expect(calls[1]?.fullAuto).toBe(true)
+    expect(calls[1]?.message).toContain("Continue Full Auto")
+    expect((await Effect.runPromise(SubscriptionRef.get(state))).fullAuto).toBe(false)
+  })
+
+  test("Full Auto (#8852): toggled off, an ordinary Codex turn sends fullAuto undefined and never resubmits", async () => {
+    const completed = { ...testThread, notes: [{ key: "assistant.1", role: "assistant" as const, text: "Done.", timestamp: "18:05" }] }
+    const calls: Array<{ message: string; fullAuto?: boolean }> = []
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: false }))
+    const chatHost = {
+      listThreads: async () => [testThread],
+      newThread: async () => null,
+      openThread: async () => testThread,
+      sendMessage: async (input: { message: string; fullAuto?: boolean }) => {
+        calls.push({ message: input.message, fullAuto: input.fullAuto })
+        return { ok: true as const, thread: completed }
+      },
+    }
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+    ))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Just one message")))))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.fullAuto).toBeUndefined()
+  })
+
+  test("Full Auto (#8852): DesktopFullAutoToggled flips the flag", async () => {
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: false }))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))
+    expect((await Effect.runPromise(SubscriptionRef.get(state))).fullAuto).toBe(true)
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))
+    expect((await Effect.runPromise(SubscriptionRef.get(state))).fullAuto).toBe(false)
+  })
+
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {
     const idle = nodeByKey(desktopShellView(baseState), "shell-input") as {
       clearOnSubmit?: boolean

@@ -644,6 +644,34 @@ Contract: `openagents_desktop.chat.empty_state_centers_current_directory.v1`.
 
 Contract: `openagents_desktop.chat.composer_image_input.v1`.
 
+### Full Auto is one composer toggle, no separate permission system, bounded
+
+- A single `Full Auto` toggle sits in the React composer's action bar
+  (`shell-full-auto-toggle`), off by default. No dedicated review screen,
+  criterion board, or admission-gate UI exists for it (#8852).
+- While on, a Codex-lane turn runs with a Full Auto instruction prefixed onto
+  its prompt (look at this repo's README/docs/issues, pick one concrete next
+  thing, do it) and `approvalPolicy: "never"` so it does not stop mid-turn for
+  approval — sandbox stays the existing `danger-full-access` default. Full
+  Auto inherits this repo's normal full-trust Codex execution posture rather
+  than adding a second, more cautious permission model next to it.
+- A clean turn completion on a still-toggled-on thread automatically
+  resubmits a continuation, reusing the exact same send/settle path as an
+  ordinary Send — no separate continuation plumbing exists. Turning Full Auto
+  off, switching threads, or losing lane availability stops the loop before
+  its next turn starts.
+- A bounded safety cap (20 consecutive continuations) turns Full Auto off and
+  leaves an explanatory system note if a loop runs that long unattended —
+  the only "autonomy policy" this first version has, deliberately, per the
+  owner direction that shipped it.
+- This is a renderer-owned loop: it does **not** survive an app restart
+  mid-loop. After a restart, Full Auto must be turned back on and a message
+  sent to resume. Durable, main-process-owned continuation across restarts
+  (per `docs/sol/MASTER_ROADMAP.md` invariant #24) is explicitly out of scope
+  for this bounded first version.
+
+Contract: `openagents_desktop.chat.full_auto_composer_loop.v1`.
+
 ### The MVP visible surface is mechanically enforced against the rendered shell
 
 Owner statement (rc.10 review, 2026-07-14, verbatim): "This menu, when I click

@@ -162,6 +162,97 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     await expect(running).resolves.toMatchObject({ ok: true, text: "Done." })
   })
 
+  test("Full Auto (#8852) forces approvalPolicy never and prefixes the turn prompt with the Full Auto instruction", async () => {
+    const fake = appServerFixture()
+    const root = scratch()
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: () => root,
+      workspaceRoot: () => root,
+      discoverImpl: async () => [{ ref: "ambient", home: "/owner/.codex", source: "current_session" }],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["ambient"]),
+      appServer: {
+        binary: () => "/packaged/codex",
+        installProductSpecSkill: account => ({
+          skillRoot: `${account.home}/skills`,
+          skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
+        }),
+        spawnImpl: fake.spawn,
+      },
+    })
+    const running = runtime.runTurn({
+      turnRef: "turn-full-auto",
+      threadRef: "thread-full-auto",
+      history: [],
+      message: "Continue Full Auto: look at this repository and do the next concrete useful thing.",
+      fullAuto: true,
+      emit: () => {},
+    })
+    await waitFor(fake.messages, 1); fake.respond(1, {})
+    await waitFor(fake.messages, 3)
+    expect(fake.messages[2]).toMatchObject({
+      method: "thread/start",
+      params: { approvalPolicy: "never" },
+    })
+    fake.respond(2, { thread: { id: "full-auto-thread" } })
+    await waitFor(fake.messages, 4)
+    expect(fake.messages[3]).toMatchObject({
+      method: "turn/start",
+      params: { approvalPolicy: "never" },
+    })
+    const turnStartParams = (fake.messages[3] as { params: { input: ReadonlyArray<{ type: string; text?: string }> } }).params
+    const textInput = turnStartParams.input.find(item => item.type === "text")
+    expect(textInput?.text?.startsWith("Full Auto is on for this turn.")).toBe(true)
+    expect(textInput?.text?.endsWith("Continue Full Auto: look at this repository and do the next concrete useful thing.")).toBe(true)
+    fake.respond(3, { turn: { id: "full-auto-turn" } })
+    fake.notify("item/agentMessage/delta", { threadId: "full-auto-thread", turnId: "full-auto-turn", delta: "Done." })
+    fake.notify("turn/completed", { threadId: "full-auto-thread", turn: { id: "full-auto-turn", status: "completed", error: null } })
+    await expect(running).resolves.toMatchObject({ ok: true, text: "Done." })
+  })
+
+  test("an ordinary (non-Full-Auto) app-server turn keeps approvalPolicy on-request and an unprefixed prompt", async () => {
+    const fake = appServerFixture()
+    const root = scratch()
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: () => root,
+      workspaceRoot: () => root,
+      discoverImpl: async () => [{ ref: "ambient", home: "/owner/.codex", source: "current_session" }],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["ambient"]),
+      appServer: {
+        binary: () => "/packaged/codex",
+        installProductSpecSkill: account => ({
+          skillRoot: `${account.home}/skills`,
+          skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
+        }),
+        spawnImpl: fake.spawn,
+      },
+    })
+    const running = runtime.runTurn({
+      turnRef: "turn-not-full-auto",
+      threadRef: "thread-not-full-auto",
+      history: [],
+      message: "Ordinary message",
+      emit: () => {},
+    })
+    await waitFor(fake.messages, 1); fake.respond(1, {})
+    await waitFor(fake.messages, 3)
+    expect(fake.messages[2]).toMatchObject({
+      method: "thread/start",
+      params: { approvalPolicy: "on-request" },
+    })
+    fake.respond(2, { thread: { id: "ordinary-thread-2" } })
+    await waitFor(fake.messages, 4)
+    expect(fake.messages[3]).toMatchObject({
+      method: "turn/start",
+      params: { approvalPolicy: "on-request", input: [{ type: "text", text: "Ordinary message" }] },
+    })
+    fake.respond(3, { turn: { id: "ordinary-turn-2" } })
+    fake.notify("item/agentMessage/delta", { threadId: "ordinary-thread-2", turnId: "ordinary-turn-2", delta: "Done." })
+    fake.notify("turn/completed", { threadId: "ordinary-thread-2", turn: { id: "ordinary-turn-2", status: "completed", error: null } })
+    await expect(running).resolves.toMatchObject({ ok: true, text: "Done." })
+  })
+
   test("production app-server path uses only the logged-in Codex session and completes a native question round-trip", async () => {
     const fake = appServerFixture()
     const sink = collect()

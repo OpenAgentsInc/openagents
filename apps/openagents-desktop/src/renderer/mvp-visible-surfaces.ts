@@ -87,7 +87,10 @@ export const forbiddenVisibleSurfaceKeys: ReadonlyArray<string> = [
   "workspace-terminal-panel",
   "workspace-inbox-panel",
   // Composer affordances outside the MVP cut (#8828 explicitly admits the
-  // already-authorized bounded image attachment control, and only that one).
+  // already-authorized bounded image attachment control; #8852 explicitly
+  // admits the Full Auto toggle (`shell-full-auto-toggle`) as a second named
+  // exception -- an explicit, dated owner direction to add it, not a silent
+  // reintroduction of the harness/model/reasoning/voice chrome named below).
   "shell-harness-select",
   "shell-model-select",
   "shell-reasoning-select",

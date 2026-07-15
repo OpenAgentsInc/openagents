@@ -111,6 +111,20 @@ import type { CodexDurableQueue } from "./codex-durable-queue.ts"
 import type { CodexEcosystem, CodexEcosystemRegistry } from "./codex-ecosystem.ts"
 import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
 
+/**
+ * Full Auto (#8852): prefixed onto the turn prompt whenever `fullAuto` is
+ * set. Deliberately narrow -- look at the repo, do one concrete thing, stop
+ * there. The loop's repetition comes from the renderer resubmitting after
+ * each clean completion, not from this instruction asking the model to loop
+ * itself.
+ */
+export const FULL_AUTO_INSTRUCTION =
+  "Full Auto is on for this turn. Look at this repository's own README, docs " +
+  "folder (if any), and open issues. Pick ONE concrete, real, useful next " +
+  "thing to do here, and do it now. Do not ask clarifying questions -- make " +
+  "a reasonable judgment call and proceed. Stop once this one thing is done; " +
+  "you will be asked to continue with the next one."
+
 export type CodexLocalTurnInput = Readonly<{
   turnRef: string
   threadRef: string
@@ -122,6 +136,12 @@ export type CodexLocalTurnInput = Readonly<{
   model?: CodexModel
   reasoningEffort?: CodexReasoningEffort
   extensionSelection?: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>
+  /**
+   * Full Auto (#8852): forces `approvalPolicy: "never"` for this turn (no
+   * mid-turn approval interruptions) and prefixes the prompt with the Full
+   * Auto instruction. Absent/false preserves the on-request default exactly.
+   */
+  fullAuto?: boolean
   /**
    * Optional image attachments (capability I1). `codex exec` accepts images
    * via `-i, --image <FILE>...` (local file paths), so the runtime writes each
@@ -409,6 +429,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     clientUserMessageId?: string
     extensionSelection?: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>
     onProviderTurn?: (turnId: string) => void
+    fullAuto?: boolean
     emit: (event: FableLocalEvent) => void
     control: {
       interrupted: boolean
@@ -587,6 +608,9 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       const productSpecEnabled = options.appServer.productSpecEnabled?.() === true
       const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime")
       mkdirSync(runtimeCwd, { recursive: true })
+      // Full Auto (#8852) forces no mid-turn approval interruptions; every
+      // other turn keeps the existing on-request default unchanged.
+      const approvalPolicy: "never" | "on-request" = input.fullAuto === true ? "never" : "on-request"
       if (options.appServer.controlPlanes !== undefined && options.appServer.supervisor !== undefined) {
         const controlPlane = await options.appServer.controlPlanes.forTarget({
           binary,
@@ -599,7 +623,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         })
         const denials = [
           controlPlane.gate({ type: "model", value: input.model }),
-          controlPlane.gate({ type: "approvalPolicy", value: "on-request" }),
+          controlPlane.gate({ type: "approvalPolicy", value: approvalPolicy }),
           controlPlane.gate({ type: "sandboxMode", value: "danger-full-access" }),
         ].filter(result => !result.allowed)
         if (denials.length > 0) {
@@ -650,6 +674,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         resumeThreadId: input.resumeThreadId,
         model: input.model,
         reasoningEffort: input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT,
+        approvalPolicy,
         productSpecSkill: skill,
         includeProductSpecSkill: productSpecEnabled,
         ...(productSpecEnabled && options.appServer.productSpecDynamicTools !== undefined
@@ -1112,9 +1137,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           : continuity !== undefined && continuity.accountRef === account.ref
             ? continuity.threadId
             : null
-        const prompt = resumeThreadId === null
+        const basePrompt = resumeThreadId === null
           ? historyPrompt(input.history, input.message)
           : input.message
+        const prompt = input.fullAuto === true
+          ? `${FULL_AUTO_INSTRUCTION}\n\n${basePrompt}`
+          : basePrompt
         const attempt = await runAttempt({
           account,
           threadRef: input.threadRef,
@@ -1134,6 +1162,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             activeThreadTurn.providerTurnId = id
             input.emit({ kind: "composer_admission", state: "active_steerable", activeTurnId: id, reason: null })
           },
+          fullAuto: input.fullAuto,
         })
         if (attempt.outcome === "success") {
           confirmedQuiescence = true

@@ -499,6 +499,13 @@ export const FableLocalStartRequestSchema = Schema.Struct({
     appIds: Schema.optional(Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))).check(Schema.isMaxLength(32))),
     pluginIds: Schema.optional(Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))).check(Schema.isMaxLength(32))),
   })),
+  /**
+   * Full Auto (#8852): when true on the Codex lane, the turn runs with
+   * `approvalPolicy: "never"` (no mid-turn approval interruptions) and its
+   * prompt is prefixed with the Full Auto instruction. Ignored by the Claude
+   * lane. Absent/false preserves prior on-request approval behavior exactly.
+   */
+  fullAuto: Schema.optional(Schema.Boolean),
 })
 export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
 

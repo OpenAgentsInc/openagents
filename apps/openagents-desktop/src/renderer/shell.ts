@@ -344,6 +344,14 @@ export type DesktopShellState = Readonly<{
   composerQueueEditingRef: string | null
   /** Requested Codex reasoning effort for subsequent turns. */
   codexReasoningEffort: CodexReasoningEffort
+  /**
+   * Full Auto (#8852): while true, a completed Codex turn on the active
+   * thread automatically resubmits a continuation instead of waiting for the
+   * user to send the next message. Off by default; toggled from the
+   * composer. Renderer-owned preference only -- it does not survive an app
+   * restart mid-loop (see runNoteSubmission).
+   */
+  fullAuto: boolean
   /** Provider-scoped model choices persist while switching provider. */
   codexModel: CodexModel
   claudeModel: ClaudeModel
@@ -472,6 +480,7 @@ export const initialDesktopShellState = (
   composerQueue: [],
   composerQueueEditingRef: null,
   codexReasoningEffort: "medium",
+  fullAuto: false,
   codexModel: "gpt-5.6-sol",
   claudeModel: "claude-fable-5",
   providerTargetsByThread: {},
@@ -605,6 +614,7 @@ export const DesktopCodexReasoningSelected = defineIntent(
   "DesktopCodexReasoningSelected",
   Schema.Literals(["low", "medium", "high", "xhigh"]),
 )
+export const DesktopFullAutoToggled = defineIntent("DesktopFullAutoToggled", Schema.Null)
 export const DesktopModelSelected = defineIntent(
   "DesktopModelSelected",
   Schema.Literals(["gpt-5.6-sol", "gpt-5.5", "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"]),
@@ -726,6 +736,7 @@ export const desktopShellIntents = [
   DesktopSessionSearchDisclosureChanged,
   DesktopHarnessSelected,
   DesktopCodexReasoningSelected,
+  DesktopFullAutoToggled,
   DesktopModelSelected,
   DesktopVoiceModeToggled,
   DesktopVoiceMuteToggled,
@@ -1198,6 +1209,8 @@ export type ChatHost = Readonly<{
     model?: LocalModel
     /** Optional image attachments threaded into the turn payload (capability I1). */
     images?: ReadonlyArray<FableLocalImageAttachment>
+    /** Full Auto (#8852): Codex-lane only; ignored on the Claude lane. */
+    fullAuto?: boolean
     onUpdate?: (thread: DesktopThread) => void
   }>) => Promise<Readonly<{
     ok: boolean
@@ -1749,6 +1762,144 @@ export const makeDesktopShellHandlers = (
       }))
     }
   })
+  /**
+   * Full Auto (#8852) safety bound: a genuinely stuck loop must not burn
+   * unbounded provider quota unattended. Hitting this turns Full Auto off and
+   * leaves an explanatory note rather than continuing silently.
+   */
+  const FULL_AUTO_MAX_CONTINUATIONS = 20
+  const FULL_AUTO_CONTINUE_MESSAGE =
+    "Continue Full Auto: look at this repository (README, docs, open issues) and do the next concrete useful thing."
+  /**
+   * The shared "submit a note" path for both a direct user Send and a Full
+   * Auto continuation. A `while` loop (not recursion) drives the
+   * continuation so a completed, still-toggled-on Codex turn resubmits
+   * itself here, reusing the exact same send/settle logic every iteration --
+   * no separate continuation plumbing exists. Each iteration re-reads state
+   * fresh, so toggling Full Auto off, switching threads, or losing lane
+   * availability stops the loop before its next turn starts. This is a
+   * renderer-owned loop: it does not survive an app restart mid-loop (Full
+   * Auto must be turned back on after a restart) -- see #8852 for scope.
+   */
+  const runNoteSubmission = (explicitMessage?: string) => Effect.gen(function* () {
+    let nextMessage = explicitMessage
+    let continuationCount = 0
+    while (true) {
+      let current = yield* SubscriptionRef.get(state)
+      const message =
+        typeof nextMessage === "string" && nextMessage.trim() !== "" ? nextMessage : current.input
+      // A3 queue-until-idle (EP250 wave-2): the composer stays usable while a
+      // turn streams; a submit mid-turn ENQUEUES a text follow-up instead of
+      // starting a new turn. Delivery is at the current turn's completion (the
+      // runtime's followup_queued/followup_promoted events drive the chip and
+      // the promoted next turn). A host that cannot queue keeps the draft. An
+      // empty follow-up is never queued; image attachments are not queued
+      // mid-turn (they ride the next started turn).
+      if (current.pending) {
+        yield* submitPendingMessage(current, message, current.pendingSubmitMode)
+        return
+      }
+      // Evidence-gated send (#8712): an unavailable selected lane must not
+      // accept the action — the composer keeps the draft and the caption
+      // already names the reason. Never substitute another lane silently.
+      if (!current.harnessLanes[current.selectedHarness].available) return
+      // Capability I1: a turn is submittable with text OR ≥1 image; an empty
+      // turn with no images is a no-op (withNote returns state unchanged).
+      if (message.trim() === "" && current.composerImages.length === 0 &&
+        current.composerReviewContext === null && current.composerFileContext === null) return
+      // The startup composer is intentionally usable before its tiny local
+      // thread-admission IPC round trip completes. If Send wins that race,
+      // create the exact same durable local session here and continue the
+      // submission instead of dropping the user's first message.
+      if (current.activeThreadId === null) {
+        const thread = yield* Effect.promise(chat.newThread)
+        if (thread === null) return
+        const draft = current.input
+        current = { ...withNewChat(current, thread), input: draft }
+        yield* SubscriptionRef.set(state, current)
+      }
+      // Capture the pending attachments BEFORE withNote clears them.
+      const pendingImages = current.composerImages
+      const images = toStartImages(current.composerImages)
+      // Explicit slash routing is selected from the user's message first;
+      // bounded untrusted context is lowered only after that semantic/program
+      // route. Context contents can therefore never invoke a skill.
+      const skillSelection = parseExplicitSkillInvocation(message, current.settings.plugins.plugins)
+      if (skillSelection.kind === "invalid") return
+      const providerMessage = messageWithReviewContext(
+        skillSelection.message,
+        current.composerReviewContext,
+        current.composerFileContext,
+      )
+      const routedMessage = providerMessage
+      const fullAutoActive = current.fullAuto && current.selectedHarness === "codex"
+      yield* SubscriptionRef.set(state, withNote(current, message, now()))
+      const result = yield* Effect.promise(() => chat.sendMessage({
+        id: current.activeThreadId!,
+        message: routedMessage,
+        harness: current.selectedHarness,
+        ...(providerTargetForSubmission(current) === null ? {} : { target: providerTargetForSubmission(current)! }),
+        ...(skillSelection.kind === "skill" ? { skill: skillSelection.skill } : {}),
+        permissionMode: current.permissionModeByThread[current.activeThreadId!] ?? "owner_full",
+        ...(current.selectedHarness === "codex" ? { reasoningEffort: current.codexReasoningEffort } : {}),
+        model: current.selectedHarness === "codex" ? current.codexModel : current.claudeModel,
+        ...(images.length > 0 ? { images } : {}),
+        ...(fullAutoActive ? { fullAuto: true } : {}),
+        onUpdate: thread => {
+          Effect.runFork(SubscriptionRef.update(state, next =>
+            next.activeThreadId === thread.id
+              ? { ...withChatSelected(next, thread), pending: true }
+              : next))
+        },
+      }))
+      yield* SubscriptionRef.update(state, (next) => {
+        const settled = withTurnResult(next, result, now())
+        if (result.ok) return settled
+        return {
+          ...settled,
+          // Acquisition is disabled while pending, so this exact failed-turn
+          // set can be restored without overwriting a newer user selection.
+          composerImages: pendingImages.reduce(
+            (images, attachment) => addComposerImage(images, attachment),
+            settled.composerImages,
+          ),
+        }
+      })
+      if (result.ok && result.thread) {
+        const previousKeys = new Set(current.notes.map(note => note.key))
+        const reply = [...result.thread.notes].reverse().find(note => note.role === "assistant" && note.text.trim() !== "" && !previousKeys.has(note.key))
+        const latest = yield* SubscriptionRef.get(state)
+        if (reply !== undefined && voiceActive(latest.voice)) {
+          const messageRef = (reply.key.trim() || `message.${Date.now()}`).slice(0, 256)
+          const turnRef = (reply.meta?.turnRef?.trim() || `turn.${messageRef}`).slice(0, 256)
+          yield* Effect.promise(() => voiceHost.command({ id: "voice.speak", protocolVersion: 1, turnRef, speechRef: `speech.${messageRef}`.slice(0, 256), messageRef, text: reply.text.slice(0, 16_384) }))
+        }
+      }
+      // Full Auto (#8852): a clean completion on a still-toggled-on thread
+      // loops back to the top and resubmits automatically. Re-reads state
+      // fresh so a mid-turn toggle-off, thread switch, or lost lane
+      // availability stops the loop before the next turn starts.
+      if (!(result.ok && fullAutoActive)) return
+      const latest = yield* SubscriptionRef.get(state)
+      if (!latest.fullAuto || latest.activeThreadId !== current.activeThreadId ||
+        !latest.harnessLanes.codex.available || latest.pending) return
+      continuationCount += 1
+      if (continuationCount > FULL_AUTO_MAX_CONTINUATIONS) {
+        yield* SubscriptionRef.update(state, next => ({
+          ...next,
+          fullAuto: false,
+          notes: [...next.notes, {
+            key: `full-auto-limit-${next.notes.length}`,
+            role: "system" as const,
+            text: `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
+            timestamp: now(),
+          }],
+        }))
+        return
+      }
+      nextMessage = FULL_AUTO_CONTINUE_MESSAGE
+    }
+  })
   const commitLocalSession = (threadRef: string) => Effect.gen(function* () {
     const thread = yield* Effect.promise(() => chat.openThread(threadRef))
     if (thread === null) return false
@@ -2041,96 +2192,9 @@ export const makeDesktopShellHandlers = (
   DesktopFileContextRemoved: () =>
     SubscriptionRef.update(state, current => ({ ...current, composerFileContext: null })),
   DesktopNoteSubmitted: (value) =>
-    Effect.gen(function* () {
-      let current = yield* SubscriptionRef.get(state)
-      const message =
-        typeof value === "string" && value.trim() !== "" ? value : current.input
-      // A3 queue-until-idle (EP250 wave-2): the composer stays usable while a
-      // turn streams; a submit mid-turn ENQUEUES a text follow-up instead of
-      // starting a new turn. Delivery is at the current turn's completion (the
-      // runtime's followup_queued/followup_promoted events drive the chip and
-      // the promoted next turn). A host that cannot queue keeps the draft. An
-      // empty follow-up is never queued; image attachments are not queued
-      // mid-turn (they ride the next started turn).
-      if (current.pending) {
-        yield* submitPendingMessage(current, message, current.pendingSubmitMode)
-        return
-      }
-      // Evidence-gated send (#8712): an unavailable selected lane must not
-      // accept the action — the composer keeps the draft and the caption
-      // already names the reason. Never substitute another lane silently.
-      if (!current.harnessLanes[current.selectedHarness].available) return
-      // Capability I1: a turn is submittable with text OR ≥1 image; an empty
-      // turn with no images is a no-op (withNote returns state unchanged).
-      if (message.trim() === "" && current.composerImages.length === 0 &&
-        current.composerReviewContext === null && current.composerFileContext === null) return
-      // The startup composer is intentionally usable before its tiny local
-      // thread-admission IPC round trip completes. If Send wins that race,
-      // create the exact same durable local session here and continue the
-      // submission instead of dropping the user's first message.
-      if (current.activeThreadId === null) {
-        const thread = yield* Effect.promise(chat.newThread)
-        if (thread === null) return
-        const draft = current.input
-        current = { ...withNewChat(current, thread), input: draft }
-        yield* SubscriptionRef.set(state, current)
-      }
-      // Capture the pending attachments BEFORE withNote clears them.
-      const pendingImages = current.composerImages
-      const images = toStartImages(current.composerImages)
-      // Explicit slash routing is selected from the user's message first;
-      // bounded untrusted context is lowered only after that semantic/program
-      // route. Context contents can therefore never invoke a skill.
-      const skillSelection = parseExplicitSkillInvocation(message, current.settings.plugins.plugins)
-      if (skillSelection.kind === "invalid") return
-      const providerMessage = messageWithReviewContext(
-        skillSelection.message,
-        current.composerReviewContext,
-        current.composerFileContext,
-      )
-      const routedMessage = providerMessage
-      yield* SubscriptionRef.set(state, withNote(current, message, now()))
-      const result = yield* Effect.promise(() => chat.sendMessage({
-        id: current.activeThreadId!,
-        message: routedMessage,
-        harness: current.selectedHarness,
-        ...(providerTargetForSubmission(current) === null ? {} : { target: providerTargetForSubmission(current)! }),
-        ...(skillSelection.kind === "skill" ? { skill: skillSelection.skill } : {}),
-        permissionMode: current.permissionModeByThread[current.activeThreadId!] ?? "owner_full",
-        ...(current.selectedHarness === "codex" ? { reasoningEffort: current.codexReasoningEffort } : {}),
-        model: current.selectedHarness === "codex" ? current.codexModel : current.claudeModel,
-        ...(images.length > 0 ? { images } : {}),
-        onUpdate: thread => {
-          Effect.runFork(SubscriptionRef.update(state, next =>
-            next.activeThreadId === thread.id
-              ? { ...withChatSelected(next, thread), pending: true }
-              : next))
-        },
-      }))
-      yield* SubscriptionRef.update(state, (next) => {
-        const settled = withTurnResult(next, result, now())
-        if (result.ok) return settled
-        return {
-          ...settled,
-          // Acquisition is disabled while pending, so this exact failed-turn
-          // set can be restored without overwriting a newer user selection.
-          composerImages: pendingImages.reduce(
-            (images, attachment) => addComposerImage(images, attachment),
-            settled.composerImages,
-          ),
-        }
-      })
-      if (result.ok && result.thread) {
-        const previousKeys = new Set(current.notes.map(note => note.key))
-        const reply = [...result.thread.notes].reverse().find(note => note.role === "assistant" && note.text.trim() !== "" && !previousKeys.has(note.key))
-        const latest = yield* SubscriptionRef.get(state)
-        if (reply !== undefined && voiceActive(latest.voice)) {
-          const messageRef = (reply.key.trim() || `message.${Date.now()}`).slice(0, 256)
-          const turnRef = (reply.meta?.turnRef?.trim() || `turn.${messageRef}`).slice(0, 256)
-          yield* Effect.promise(() => voiceHost.command({ id: "voice.speak", protocolVersion: 1, turnRef, speechRef: `speech.${messageRef}`.slice(0, 256), messageRef, text: reply.text.slice(0, 16_384) }))
-        }
-      }
-    }),
+    runNoteSubmission(typeof value === "string" ? value : undefined),
+  DesktopFullAutoToggled: () =>
+    SubscriptionRef.update(state, current => ({ ...current, fullAuto: !current.fullAuto })),
   DesktopSteerCurrentRequested: value => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     const message = typeof value === "string" && value.trim() !== "" ? value : current.input

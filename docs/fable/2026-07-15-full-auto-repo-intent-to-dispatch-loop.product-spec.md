@@ -2,17 +2,39 @@
 spec_format_version: "0.1"
 title: "Full Auto: one-button autonomous Codex loop"
 artifact_type: "openspec_proposal"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-15T00:00:00Z"
-updated_at: "2026-07-15T01:30:00Z"
+updated_at: "2026-07-15T23:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 tool_metadata:
-  openagents_lane: "docs/fable strategy proposal; not an admitted plan of record"
-  openagents_status: "proposed, unreviewed, zero implementation"
-  openagents_revision_note: "rev 2 replaces rev 1's dedicated ProductSpec/AssuranceSpec review UI and multi-stage admission-envelope design after owner correction: no new app surfaces beyond existing Codex chat, and agents inherit full trust by default rather than a bespoke permission system"
-  openagents_supersedes_claim_for: "autopilot.desktop_full_auto_guidance.v1 (red, docs/promises/registry.md)"
+  openagents_lane: "docs/fable strategy proposal; historical design record, not the adopted spec"
+  openagents_status: "implemented and tested; see the adopted spec below for as-built scope"
+  openagents_issue: "8852 (implemented)"
+  openagents_adopted_spec: "specs/desktop/full-auto.product-spec.md"
+  openagents_adopted_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
+  openagents_revision_note: "rev 3: implemented per rev 2's simplified design, with one further honest narrowing found during implementation -- auto-continuation is renderer-owned (shell.ts), not the main-process durable goal-state/idempotent-outbox rev 2 described; it does not survive an app restart mid-loop. The adopted ProductSpec (specs/desktop/full-auto.product-spec.md) is now the authoritative as-built record; this file remains the historical design/strategy trail per docs/fable convention."
+  openagents_supersedes_claim_for: "autopilot.desktop_full_auto_guidance.v1 (red, docs/promises/registry.md) -- still not claimed by this implementation; see Promise Links"
 ---
+
+## Implementation Note (rev 3)
+
+This design shipped in issue #8852. The authoritative as-built ProductSpec is
+`specs/desktop/full-auto.product-spec.md` (with a generated companion
+`specs/desktop/full-auto.assurance-spec.md`), validated against the real
+`packages/product-spec` and `packages/assurance-spec` CLIs and covered by new
+tests in `codex-local-runtime.test.ts`, `react-composer.test.tsx`, and
+`shell.test.ts`. This file remains as the historical strategy/design record
+per `docs/fable`'s convention; read the adopted spec for exact current scope.
+One narrowing emerged during implementation that this file's rev 2 body below
+did not anticipate: the auto-continuation loop lives in the renderer
+(`shell.ts`'s `runNoteSubmission`), not a main-process durable goal-state
+store, because the renderer's per-turn event listener is scoped to that
+turn's exact ref and a main-originated continuation turn would have no
+listener to receive its events without new plumbing this issue did not build.
+Concretely: **Full Auto does not survive an app restart mid-loop** — the user
+must toggle it back on and send once more after a restart. Everything else in
+rev 2's design below shipped as described.
 
 ## Problem
 

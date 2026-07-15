@@ -50,6 +50,7 @@ import {
   SquarePen,
   X,
   XCircle,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -84,6 +85,7 @@ const composerIconNames = {
   submit: "ArrowUp",
   attach: "Image",
   remove: "X",
+  fullAuto: "Zap",
 } as const satisfies Readonly<Record<string, IconName>>;
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
@@ -461,6 +463,19 @@ export const ReactComposer = ({
           title="Commands"
         >
           <CommandIcon data-icon-name={composerIconNames.commands} aria-hidden="true" />
+        </Button>
+        <Button
+          data-en-key="shell-full-auto-toggle"
+          type="button"
+          variant={state.fullAuto ? "secondary" : "ghost"}
+          size="sm"
+          aria-pressed={state.fullAuto}
+          onClick={() => dispatch(report, "DesktopFullAutoToggled")}
+          aria-label={state.fullAuto ? "Turn off Full Auto" : "Turn on Full Auto"}
+          title="Full Auto: Codex looks at this repo and keeps working, turn after turn, until you turn it off"
+        >
+          <Zap data-icon-name={composerIconNames.fullAuto} aria-hidden="true" />
+          Full Auto
         </Button>
         {state.pending ? (
           <div className="oa-react-submit-mode" role="radiogroup" aria-label="Pending message behavior">
