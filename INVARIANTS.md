@@ -1198,6 +1198,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   without reopening owner attention. Permission and MCP paths are deny-only,
   auth refresh and attestation return typed authority-unavailable errors, and
   `currentTime/read` succeeds without experimental capability advertising.
+  Turn and item effects are generated programmatically from the same pinned
+  notification manifest. `turn/steer` is a compare-and-set against the exact
+  active regular turn and carries a stable client user-message identity;
+  hashed receipts contain no message text. Interrupt ACK is admission only and
+  cannot terminalize a turn without terminal notification or repaired durable
+  state. Codex next-turn intents live in a private mode-0600 durable queue,
+  survive restart with stable queue/intent/user-message identities, and promote
+  at most one entry per confirmed quiescence boundary. A second `turn/start`
+  while the current turn is active and implicit steer-to-queue fallback are
+  forbidden.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
   one immutable main-process `CodexRuntimeResolution` authority selects that

@@ -120,6 +120,8 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       permissionMode?: "owner_full" | "plan_only"
       reasoningEffort?: import("../fable-local-contract.ts").CodexReasoningEffort
       model?: import("../fable-local-contract.ts").LocalModel
+      queueRef?: string
+      clientUserMessageId?: string
       onUpdate?: (thread: DesktopThread) => void
     }>,
   ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string; failureKind?: DesktopRuntimeFailureKind }>> => {
@@ -214,7 +216,8 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       return found !== undefined && found.kind === "child" ? found : null
     }
     // A3: a follow-up promoted at the idle boundary becomes the next turn.
-    let promotedFollowup: string | null = null
+    let promotedFollowup: Readonly<{ message: string; queueRef: string; clientUserMessageId?: string }> | null = null
+    const readPromotedFollowup = (): typeof promotedFollowup => promotedFollowup
 
     const unsubscribe = bridge.onEvent(envelope => {
       if (envelope.turnRef !== turnRef) return
@@ -456,7 +459,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       }
       if (event.kind === "followup_promoted") {
         removeRuntimeNote(`${turnRef}-queue-${event.queueRef}`)
-        promotedFollowup = event.message
+        promotedFollowup = { message: event.message, queueRef: event.queueRef, ...(event.clientUserMessageId === undefined ? {} : { clientUserMessageId: event.clientUserMessageId }) }
         return
       }
       // turn_completed / turn_failed carry no transcript body of their
@@ -468,6 +471,8 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         turnRef,
         threadRef: send.id,
         message: send.message,
+        ...(send.queueRef === undefined ? {} : { queueRef: send.queueRef }),
+        ...(send.clientUserMessageId === undefined ? {} : { clientUserMessageId: send.clientUserMessageId }),
         // Capability I1: images ride the frozen start request additively.
         ...(send.images !== undefined && send.images.length > 0 ? { images: send.images } : {}),
         ...(send.target === undefined ? {} : { target: send.target }),
@@ -487,9 +492,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       // `?? ""` reads the closure-assigned value at runtime (the onEvent
       // assignment above is invisible to CFA, which linearly narrows the
       // `= null` init and would otherwise make a `!== null` guard `never`).
-      const promoted = promotedFollowup ?? ""
-      if (promoted.trim() !== "" && result.ok) {
-        return runLaneTurn(lane, bridge, { ...send, message: promoted, images: undefined })
+      const promoted = readPromotedFollowup()
+      if (promoted !== null && promoted.message.trim() !== "") {
+        return runLaneTurn(lane, bridge, { ...send, message: promoted.message, images: undefined, queueRef: promoted.queueRef, ...(promoted.clientUserMessageId === undefined ? {} : { clientUserMessageId: promoted.clientUserMessageId }) })
       }
       return result
     } finally {

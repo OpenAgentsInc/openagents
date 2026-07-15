@@ -210,7 +210,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     await waitFor(fake.messages, 8)
     expect(fake.messages[7]).toMatchObject({
       method: "turn/steer",
-      params: { expectedTurnId: "native-turn", input: [{ type: "text", text: "Use the native path" }] },
+      params: { expectedTurnId: "native-turn", clientUserMessageId: expect.stringMatching(/^steer\./), input: [{ type: "text", text: "Use the native path" }] },
     })
     fake.respond(7, {})
     await expect(steering).resolves.toEqual({ ok: true, outcome: "delivered" })

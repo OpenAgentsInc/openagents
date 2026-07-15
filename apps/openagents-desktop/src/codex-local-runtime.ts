@@ -107,6 +107,7 @@ import {
 import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-server-client.ts"
 import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import type { CodexControlPlaneRegistry } from "./codex-control-plane.ts"
+import type { CodexDurableQueue } from "./codex-durable-queue.ts"
 import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
 
 export type CodexLocalTurnInput = Readonly<{
@@ -114,6 +115,8 @@ export type CodexLocalTurnInput = Readonly<{
   threadRef: string
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
+  queueRef?: string
+  clientUserMessageId?: string
   accountRef?: string
   model?: CodexModel
   reasoningEffort?: CodexReasoningEffort
@@ -159,6 +162,7 @@ export type CodexLocalRuntimeOptions = Readonly<{
   preflight?: CodexPreflight
   /** Test-only host deadline. Production turns have no automatic cutoff. */
   timeoutMs?: number
+  durableQueue?: CodexDurableQueue
   /**
    * Product runtime path. When present every real Codex turn uses the pinned
    * app-server protocol; the legacy exec parser remains only for deterministic
@@ -169,6 +173,7 @@ export type CodexLocalRuntimeOptions = Readonly<{
     supervisor?: CodexAppServerSupervisor
     /** Main-owned app-server truth and managed-policy gate for this exact account target. */
     controlPlanes?: CodexControlPlaneRegistry
+    turnReceiptPath?: (account: CodexChildAccount, threadRef: string) => string
     installProductSpecSkill: (account: CodexChildAccount) => Readonly<{
       skillRoot: string
       skillPath: string
@@ -397,6 +402,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     resumeThreadId: string | null
     reasoningEffort?: CodexReasoningEffort
     model: CodexModel
+    clientUserMessageId?: string
+    onProviderTurn?: (turnId: string) => void
     emit: (event: FableLocalEvent) => void
     control: {
       interrupted: boolean
@@ -446,6 +453,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       options.onDispatch?.({
         threadRef: input.threadRef,
         turnRef: input.turnRef,
+        ...(input.clientUserMessageId === undefined ? {} : { clientUserMessageId: input.clientUserMessageId }),
         accountRef: input.account.ref,
       })
       const onServerRequest = async (request: CodexAppServerRequest): Promise<unknown> => {
@@ -631,12 +639,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
         onServerRequest,
         ...(timeoutMs === undefined ? {} : { turnTimeoutMs: timeoutMs, requestTimeoutMs: timeoutMs }),
+        ...(options.appServer.turnReceiptPath === undefined ? {} : { turnReceiptPath: options.appServer.turnReceiptPath(input.account, input.threadRef) }),
         onProviderSession: threadId => options.onProviderSession?.({
           threadRef: input.threadRef,
           turnRef: input.turnRef,
           accountRef: input.account.ref,
           threadId,
         }),
+        ...(input.onProviderTurn === undefined ? {} : { onProviderTurn: input.onProviderTurn }),
       })
     }
     return new Promise(resolve => {
@@ -1007,6 +1017,15 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       input.emit({ kind: "turn_failed", reason: result.reason, detail: result.detail })
       return result
     }
+    let promotedIntent: ReturnType<NonNullable<typeof options.durableQueue>["admitPromotion"]> | null = null
+    if ((input.queueRef === undefined) !== (input.clientUserMessageId === undefined)) {
+      return emitFailure(failure("session_failed", "queue promotion identity is incomplete"))
+    }
+    if (input.queueRef !== undefined && input.clientUserMessageId !== undefined) {
+      if (options.durableQueue === undefined) return emitFailure(failure("session_failed", "durable queue authority is unavailable"))
+      try { promotedIntent = options.durableQueue.admitPromotion(input.queueRef, input.threadRef, input.clientUserMessageId) }
+      catch { return emitFailure(failure("session_failed", "queued intent is not admitted for promotion")) }
+    }
 
     const discovered = await verifiedOrderedAccounts()
     const selectedAccountRef = input.recovery?.accountRef ?? input.accountRef
@@ -1024,6 +1043,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     // isolated per-thread fallback remains available to tests/other hosts.
     const workspace = options.workspaceRoot?.() ??
       join(options.scratchRoot(), "threads", fableThreadWorkspaceSlug(input.threadRef))
+    let confirmedQuiescence = false
+    let providerTurnId: string | null = null
     try {
       mkdirSync(workspace, { recursive: true })
     } catch {
@@ -1081,8 +1102,11 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           control,
           reasoningEffort: input.reasoningEffort,
           model: requestedModel,
+          ...(input.clientUserMessageId === undefined ? {} : { clientUserMessageId: input.clientUserMessageId }),
+          onProviderTurn: id => { providerTurnId = id },
         })
         if (attempt.outcome === "success") {
+          confirmedQuiescence = true
           health.recordSuccess(account.ref)
           options.onAccountEvidence?.({ accountRef: account.ref, evidence: "verified" })
           if (attempt.threadId !== null) {
@@ -1105,6 +1129,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             accountRef: account.ref,
             ...(split === null ? {} : { usage: split }),
           })
+          if (promotedIntent !== null) options.durableQueue?.complete(promotedIntent.queueRef, providerTurnId)
           return {
             ok: true,
             text: attempt.text,
@@ -1115,6 +1140,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           }
         }
         if (attempt.outcome === "interrupted") {
+          confirmedQuiescence = true
+          if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, "promoted turn interrupted")
           return emitFailure(failure("interrupted", "turn interrupted"))
         }
         if (attempt.outcome === "timeout") {
@@ -1137,9 +1164,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           continue
         }
         if (attempt.outcome === "incompatible_workflow") {
+          confirmedQuiescence = true
+          if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, attempt.detail)
           return emitFailure(failure("incompatible_workflow", attempt.detail))
         }
         if (attempt.preContent) {
+          confirmedQuiescence = true
           // Non-auth pre-content failure: rotation-eligible, no demotion.
           otherFailures += 1
           lastDetail = attempt.detail
@@ -1159,6 +1189,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           continue
         }
         // Post-content failure: terminal — a partial reply never double-runs.
+        confirmedQuiescence = true
+        if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, attempt.detail)
         return emitFailure(failure("session_failed", attempt.detail))
       }
       if (otherFailures === 0) {
@@ -1167,6 +1199,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           `all ${reconnectCount} available Codex session(s) need reconnect (credentials rejected)`,
         ))
       }
+      if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, lastDetail)
       return emitFailure(failure(
         "session_failed",
         `all ${accounts.length} available Codex session(s) failed before producing content` +
@@ -1176,11 +1209,18 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       activeTurns.delete(input.turnRef)
       const active = activeTurnByThread.get(input.threadRef)
       if (active?.turnRef === input.turnRef) activeTurnByThread.delete(input.threadRef)
-      const queue = followupQueue.get(input.threadRef)
-      if (queue !== undefined && queue.length > 0) {
-        const next = queue.shift()!
-        if (queue.length === 0) followupQueue.delete(input.threadRef)
-        input.emit({ kind: "followup_promoted", queueRef: next.queueRef, message: next.message })
+      const durableNext = confirmedQuiescence
+        ? options.durableQueue?.claimNext(input.threadRef, `${input.turnRef}:terminal`) ?? null
+        : null
+      if (durableNext !== null) {
+        input.emit({ kind: "followup_promoted", queueRef: durableNext.queueRef, intentRef: durableNext.intentRef, clientUserMessageId: durableNext.clientUserMessageId, message: durableNext.message })
+      } else if (options.durableQueue === undefined) {
+        const queue = followupQueue.get(input.threadRef)
+        if (queue !== undefined && queue.length > 0) {
+          const next = queue.shift()!
+          if (queue.length === 0) followupQueue.delete(input.threadRef)
+          input.emit({ kind: "followup_promoted", queueRef: next.queueRef, message: next.message })
+        }
       }
     }
   }
@@ -1215,6 +1255,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     queueFollowup: request => {
       const active = activeTurnByThread.get(request.threadRef)
       if (active === undefined) return { ok: false, queued: false, reason: "no_active_turn" }
+      if (options.durableQueue !== undefined) {
+        const queued = options.durableQueue.enqueue(request.threadRef, bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT))
+        const position = options.durableQueue.list(request.threadRef).filter(entry => entry.status === "queued").findIndex(entry => entry.queueRef === queued.queueRef) + 1
+        active.emit({ kind: "followup_queued", queueRef: queued.queueRef, position })
+        return { ok: true, queued: true, queueRef: queued.queueRef, position }
+      }
       followupSequence += 1
       const queueRef = bounded(
         `followup.${fableThreadWorkspaceSlug(request.threadRef)}.${followupSequence}`,

@@ -412,6 +412,8 @@ export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("followup_promoted"),
     queueRef: Schema.String.check(Schema.isMaxLength(120)),
+    intentRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+    clientUserMessageId: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     message: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT)),
   }),
   /**
@@ -457,6 +459,9 @@ export type CodexReasoningEffort = typeof CodexReasoningEffortSchema.Type
 export const FableLocalStartRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  /** Durable queue admission identity; host validates this pair before provider dispatch. */
+  queueRef: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
+  clientUserMessageId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
   // Widened from min-length 1 to max-length only (capability I1): a turn may
   // carry images with an empty message. This is a superset of the prior
   // contract — every previously valid request (non-empty message) still

@@ -12,6 +12,7 @@ import {
   type CodexAppServerSupervisor,
 } from "./codex-app-server-supervisor.ts"
 import type { FableLocalEvent } from "./fable-local-contract.ts"
+import { makeCodexTurnState } from "./codex-turn-state.ts"
 
 export type CodexAppServerTurnOutcome = Readonly<{
   outcome: "success" | "reconnect_required" | "incompatible_workflow" | "failed" | "timeout" | "interrupted"
@@ -43,12 +44,20 @@ export type RunCodexAppServerTurnInput = Readonly<{
   supervisor?: CodexAppServerSupervisor
   threadRef: string
   turnRef: string
+  /** Stable user intent identity; survives queue promotion retries/restarts. */
+  clientUserMessageId?: string
   accountRef: string
   prompt: string
   imagePaths: ReadonlyArray<string>
   resumeThreadId: string | null
   model: string
   reasoningEffort: string
+  /** Generated protocol extensions: apps/plugins/mentions/remote images/extra skills. */
+  additionalInput?: ReadonlyArray<Readonly<Record<string, unknown>>>
+  /** Full current thread/start option surface; canonical identity/cwd fields below win. */
+  threadStartOptions?: Readonly<Record<string, unknown>>
+  /** Full current turn/start controls (schema, tier, personality, collaboration, roots, context, metadata). */
+  turnStartOptions?: Readonly<Record<string, unknown>>
   productSpecSkill: ProductSpecSkill
   productSpecDynamicTools?: ReadonlyArray<Readonly<Record<string, unknown>>>
   onProductSpecToolCall?: (request: CodexAppServerRequest) => Promise<unknown | null>
@@ -63,6 +72,8 @@ export type RunCodexAppServerTurnInput = Readonly<{
   turnTimeoutMs?: number
   onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>
   onProviderSession?: (threadId: string) => void
+  onProviderTurn?: (turnId: string) => void
+  turnReceiptPath?: string
 }>
 
 const record = (value: unknown): Record<string, unknown> | null =>
@@ -197,6 +208,7 @@ export const runCodexAppServerTurn = async (
   let settled = false
   let turnTimer: ReturnType<typeof setTimeout> | null = null
   const completion = new Promise<CodexAppServerTurnOutcome>(resolve => { settle = resolve })
+  const turnState = makeCodexTurnState({ ...(input.turnReceiptPath === undefined ? {} : { receiptPath: input.turnReceiptPath }) })
 
   const finish = (outcome: CodexAppServerTurnOutcome): void => {
     if (settled) return
@@ -275,6 +287,7 @@ export const runCodexAppServerTurn = async (
   }
 
   const handleNotification = (message: CodexAppServerMessage): void => {
+    turnState.apply({ generation: lease?.state().generation ?? 0, message })
     const params = record(message.params)
     if (params === null) return
     if (message.method === "thread/started") {
@@ -525,6 +538,7 @@ export const runCodexAppServerTurn = async (
       input.resumeThreadId === null ? "thread/start" : "thread/resume",
       input.resumeThreadId === null
         ? {
+            ...(input.threadStartOptions ?? {}),
             model: input.model,
             cwd: input.workspace,
             approvalPolicy,
@@ -551,10 +565,12 @@ export const runCodexAppServerTurn = async (
       { type: "text", text: input.prompt, text_elements: [] },
       ...input.imagePaths.map(path => ({ type: "localImage", path })),
       ...(input.includeProductSpecSkill === false ? [] : [{ type: "skill", name: "productspec-work", path: input.productSpecSkill.skillPath }]),
+      ...(input.additionalInput ?? []),
     ]
     const turnResponse = record(await client.request("turn/start", {
+      ...(input.turnStartOptions ?? {}),
       threadId,
-      clientUserMessageId: input.turnRef,
+      clientUserMessageId: input.clientUserMessageId ?? input.turnRef,
       input: userInput,
       cwd: input.workspace,
       model: input.model,
@@ -566,22 +582,34 @@ export const runCodexAppServerTurn = async (
     }))
     turnId = string(record(turnResponse?.turn)?.id)
     if (turnId === null) throw new Error("Codex app-server omitted turn identity")
+    turnState.bindStartedTurn(threadId, turnId)
+    input.onProviderTurn?.(turnId)
     input.control.interrupt = () => {
       if (client !== null && threadId !== null && turnId !== null) {
+        if (!turnState.admitInterrupt(threadId, turnId)) return
+        // ACK means interruption was admitted only. Completion still waits for
+        // turn/completed or later durable reconciliation.
         void client.request("turn/interrupt", { threadId, turnId }).catch(() => undefined)
       }
     }
     input.control.steer = async message => {
       if (client === null || threadId === null || turnId === null || message.trim() === "") return false
+      const authorization = turnState.authorizeSteer(threadId, turnId)
+      if (!authorization.accepted) {
+        turnState.settleSteer(threadId, turnId, authorization.clientUserMessageId, false)
+        return false
+      }
       try {
         await client.request("turn/steer", {
           threadId,
-          clientUserMessageId: null,
+          clientUserMessageId: authorization.clientUserMessageId,
           input: [{ type: "text", text: message, text_elements: [] }],
           expectedTurnId: turnId,
         })
+        turnState.settleSteer(threadId, turnId, authorization.clientUserMessageId, true)
         return true
       } catch {
+        turnState.settleSteer(threadId, turnId, authorization.clientUserMessageId, false)
         return false
       }
     }

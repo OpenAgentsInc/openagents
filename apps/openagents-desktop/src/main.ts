@@ -209,6 +209,7 @@ import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture
 import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import { makeCodexControlPlaneRegistry } from "./codex-control-plane.ts"
 import { makeCodexThreadLifecycleRegistry, type CodexThreadLifecycle } from "./codex-thread-lifecycle.ts"
+import { openCodexDurableQueue } from "./codex-durable-queue.ts"
 import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
   LiveAgentGraphSnapshotChannel,
@@ -965,6 +966,9 @@ ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
 const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
 const localTurnJournal = openLocalTurnJournal(
   path.join(app.getPath("userData"), "local-turns", "journal.json"),
+)
+const codexDurableQueue = openCodexDurableQueue(
+  path.join(app.getPath("userData"), "codex-turn-queue", "queue.json"),
 )
 const codexHandoffBindings = openCodexHandoffBindings(
   path.join(app.getPath("userData"), "codex-handoff", "bindings.json"),
@@ -1897,6 +1901,8 @@ const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
   supervisor: codexAppServerSupervisor,
   ...(!smokeMode ? { controlPlanes: codexControlPlanes } : {}),
+  turnReceiptPath: (account: import("./codex-child-runtime.ts").CodexChildAccount, threadRef: string) =>
+    path.join(app.getPath("userData"), "codex-turn-admission", `${createHash("sha256").update(`${account.ref}\0${threadRef}`).digest("hex")}.json`),
   installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
     if (account.source === "current_session") {
       const verified = verifyBuiltinProductSpecWorkSkill(builtinSkillsRoot)
@@ -2021,6 +2027,7 @@ const codexLocal = makeCodexLocalRuntime({
     launchFallbackRoot: desktopLaunchWorkingDirectory,
   }),
   preflight: codexPreflight,
+  durableQueue: codexDurableQueue,
   initialSessions: localTurnJournal.list().flatMap(record =>
     record.lane === "codex-local" && record.providerSessionRef !== null && record.accountRef !== null
       ? [{
@@ -2533,6 +2540,8 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     threadRef: request.threadRef,
     history,
     message: turnPromptText(request.message, request.images),
+    ...(request.queueRef === undefined ? {} : { queueRef: request.queueRef }),
+    ...(request.clientUserMessageId === undefined ? {} : { clientUserMessageId: request.clientUserMessageId }),
     ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
     ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
     model: requestedModel,
@@ -5674,6 +5683,7 @@ app.on("before-quit", () => {
   codexLocal.dispose()
   codexControlPlanes.close()
   codexThreadLifecycles.close()
+  codexDurableQueue.close()
   codexAppServerSupervisor.close()
   usageLedger.dispose()
   desktopCorrelationJournal.dispose()

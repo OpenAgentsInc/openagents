@@ -197,6 +197,40 @@ completion closes the local journal, while running/unknown state becomes an
 explicit retryable transient gap. Production no longer sends a synthetic
 “continue after restart” prompt when app-server state is available.
 
+### Implementation status: CAP-06
+
+CAP-06 adds a generated, programmatic Turn/Item effect machine. Its effect
+classes are derived from the pinned bundled notification manifest rather than
+maintained as a second handwritten method list. Every current item fixture and
+notification can replay through exact native item/turn identities; terminal
+item/turn state wins over late starts or deltas, while diff, plan, reasoning,
+command/file output, warnings, verification/reroute/safety, moderation, raw
+completion, and usage observations remain privately retained even when no
+portable card exists yet. The turn API now accepts every current generated
+input family through bounded additional input plus thread/turn option maps,
+including remote/local images, skills/mentions/apps/plugins, output schema,
+service tier, personality, collaboration, permissions, environments, runtime
+roots, additional context, and client metadata.
+
+Steering is compare-and-set against the exact active regular turn. Every steer
+gets a stable `clientUserMessageId`; the request carries `expectedTurnId`, and
+the bounded `0600` receipt stores only hashes and accepted/rejected outcome.
+Review turns cannot be steered through this seam. Interrupt ACK records
+admission but leaves the turn active until `turn/completed` or durable repair.
+`review/start` supports both inline identity and a distinct detached review
+thread.
+
+The former in-memory Codex follow-up queue is replaced in production by a
+mode-0600 durable queue. Each entry has stable queue, intent, and
+`clientUserMessageId` identities; supports ordered edit/cancel/failure states;
+and is claimed once per confirmed quiescence boundary. A crash while promoting
+recovers the same identity rather than selecting the next entry. The existing
+Effect composer flow receives the generated promotion effect and starts no
+second provider turn while another is active; rejected steering is visible and
+is never silently converted to queueing. The live bundled-binary smoke proves
+steer, interrupt terminalization, durable queued promotion, and inline/detached
+review races against the ordinary authenticated local Codex session.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these
