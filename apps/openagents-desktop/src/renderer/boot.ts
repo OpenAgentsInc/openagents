@@ -68,13 +68,13 @@ import {
   makeDesktopShellHandlers,
   withInput,
   withLiveAgentGraph,
+  withThreadCatalog,
   withThreads,
 } from "./shell.ts"
 import { makeCommandNoticeController } from "./command-notice.ts"
 import { makeComposerFocuser, makeComposerFocusSettler } from "./composer-focus.ts"
 import { withVoiceHostState } from "./voice-mode.ts"
 import { executeVoiceAction, makeVoiceFinalLedger } from "./voice-actions.ts"
-import { historyRestoreFetchPlan, restorableHistoryThreadRef } from "./history-restore.ts"
 import {
   migrateDesktopPreferences,
   type DesktopPreferences,
@@ -1188,15 +1188,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const historyCatalogPromise = historyHost.catalog()
     const localHistoryThreadsPromise = historyHost.localThreads()
     const historyCatalog = yield* Effect.promise(() => historyCatalogPromise)
-    // EP250 bottom-anchored flow: a restored ITEM selection loads the window
-    // AROUND that item and scrolls to it; otherwise the conversation opens at
-    // its END with the newest items visible.
-    let initialHistoryAnchor: Readonly<{ kind: "end" }> | Readonly<{ kind: "item"; itemRef: string }> | null = null
     if (historyCatalog !== null) {
-      const restored=restoreHistory(); const selected=restorableHistoryThreadRef(historyCatalog,restored?.selectedThreadRef,historyCatalogPageSize)
+      const restored = restoreHistory()
       // Transcript 248 / metadata-first law: publish stable top-level rows as
-      // soon as the catalog arrives. Selected-thread detail is a second phase;
-      // it may parse a large rollout and must never delay discovery.
+      // soon as the catalog arrives. Startup never restores or opens a thread:
+      // history is discovery metadata until the user explicitly selects it.
       yield* SubscriptionRef.update(state, current => ({
         ...current,
         history: {
@@ -1213,18 +1209,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       yield* Effect.promise(() => new Promise<void>(resolve =>
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       ))
-      let firstPage: CodexHistoryPage | null = null
-      if (selected !== null) {
-        const probe = yield* Effect.promise(() => historyHost.page(selected, 0, 1))
-        if (probe !== null) {
-          const plan = historyRestoreFetchPlan(restored, probe.totalItems, historyItemPageSize)
-          firstPage = yield* Effect.promise(() => historyHost.page(selected, plan.offset, historyItemPageSize))
-          initialHistoryAnchor = plan.anchor === "item" && restored?.selectedItemRef != null && firstPage !== null && firstPage.items.some(item => item.itemRef === restored.selectedItemRef)
-            ? { kind: "item", itemRef: restored.selectedItemRef }
-            : { kind: "end" }
-        }
-      }
-      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[] } }))
     }
     const localHistoryThreads = yield* Effect.promise(() => localHistoryThreadsPromise)
     if (localHistoryThreads.length > 0) {
@@ -1244,7 +1228,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const existing = yield* Effect.promise(chat.listThreads)
     const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
     if (threads.length > 0) {
-      yield* SubscriptionRef.update(state, current => withThreads(current, threads))
+      // Catalog arrival is discovery-only. Never turn the newest row into an
+      // implicit selection while the owner is composing the startup draft.
+      yield* SubscriptionRef.update(state, current => withThreadCatalog(current, threads))
     }
     // Snapshot/update delivery can precede the initial local-thread catalog;
     // replay retained newest post-images once those thread rows exist.
@@ -1320,37 +1306,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     {
       const marks = ((globalThis as { __oaStartupMarks?: Record<string, number> }).__oaStartupMarks ??= {})
       marks.historyHydrated = Date.now()
-    }
-    // Restored history lands where the reader left it: window AROUND the
-    // saved item (scrolled to it) or bottom-anchored at the newest items.
-    if (initialHistoryAnchor !== null) {
-      const anchor = initialHistoryAnchor
-      window.setTimeout(() => { void (anchor.kind === "end" ? anchorHistoryEnd(Effect.runSync(SubscriptionRef.get(state)).history.page?.selectedThreadRef) : anchorHistoryItem(anchor.itemRef)) }, 0)
-    }
-    // First paint must never wait on local rollout parsing. The sidebar gets
-    // metadata immediately; the selected thread receives five recent messages
-    // and then its bounded expanded tail after the DOM is already visible.
-    if (threads.length > 0) {
-      const id = threads[0]!.id
-      window.setTimeout(() => {
-        void (async () => {
-          const detail = await chat.openThread(id)
-          if (typeof detail === "object" && detail !== null && typeof (detail as { id?: unknown }).id === "string") {
-            const selected = detail as DesktopThread
-            await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
-              ? { ...current, threads: [selected, ...current.threads.filter(thread => thread.id !== id)], notes: selected.notes }
-              : current))
-          }
-          if (chat.hydrateThread === undefined) return
-          const hydrated = await chat.hydrateThread(id)
-          if (typeof hydrated === "object" && hydrated !== null && typeof (hydrated as { id?: unknown }).id === "string") {
-            const expanded = hydrated as DesktopThread
-            await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
-              ? { ...current, threads: [expanded, ...current.threads.filter(thread => thread.id !== id)], notes: expanded.notes }
-              : current))
-          }
-        })()
-      }, 0)
     }
     })
     // Focus must land AFTER the chat view mounts. A New-chat dispatch can

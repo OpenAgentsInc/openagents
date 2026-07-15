@@ -40,6 +40,7 @@ import {
   withNote,
   withPending,
   withTurnResult,
+  withThreadCatalog,
   withThreads,
   withComposerImageAdded,
   withComposerImageNotice,
@@ -108,6 +109,7 @@ describe("EP250 chat contracts are registered and enforced (#8712)", () => {
       "openagents_desktop.chat.no_composer_disabled_caption.v1",
       "openagents_desktop.chat.markdown_rendering.v1",
       "openagents_desktop.chat.compact_message_details_affordance.v1",
+      "openagents_desktop.chat.startup_new_session_continuity.v1",
       "openagents_desktop.chat.details_affordance_visibility_is_pointer_only.v1",
       "openagents_desktop.chat.typed_tool_call_cards.v1",
       "openagents_desktop.chat.interactive_question_cards.v1",
@@ -179,6 +181,17 @@ test("provider target selection is exact and stable per conversation", () => {
       [testThread.id]: { provider: "codex", accountRef: "codex-2", model: "gpt-5.6-sol" },
     },
   })).toEqual({ provider: "codex", accountRef: "codex-2", model: "gpt-5.6-sol" })
+})
+
+test("thread catalog hydration never auto-selects its newest conversation", () => {
+  const unselected = { ...baseState, threads: [], activeThreadId: null, notes: [] }
+  const hydrated = withThreadCatalog(unselected, [
+    testThread,
+    { id: "newest", title: "Newest", updatedAt: "2026-07-15T13:00:00.000Z", notes: [] },
+  ])
+  expect(hydrated.threads.map(thread => thread.id)).toEqual(["newest", "test-thread"])
+  expect(hydrated.activeThreadId).toBeNull()
+  expect(hydrated.notes).toEqual([])
 })
 
 test.skip("retired out-of-scope Claude/Pylon composer target control", () => {
@@ -2050,6 +2063,43 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         const transcript = nodeByKey(view, "shell-transcript")
         expect(transcript?._tag).toBe("Transcript")
         expect((transcript?.messages as Array<unknown>).length).toBe(0)
+      }),
+    )
+  })
+
+  test("the first startup submit creates a durable thread and sends the preserved draft", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const startup: DesktopShellState = {
+          ...baseState,
+          input: "First message",
+          threads: [],
+          activeThreadId: null,
+        }
+        const state = yield* SubscriptionRef.make(startup)
+        const created = { id: "startup-thread", title: "New session", updatedAt: "2026-07-15T13:00:00.000Z", notes: [] }
+        const sent: Array<Readonly<{ id: string; message: string }>> = []
+        let creates = 0
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, {
+            listThreads: async () => [],
+            newThread: async () => { creates += 1; return created },
+            openThread: async () => null,
+            sendMessage: async input => {
+              sent.push({ id: input.id, message: input.message })
+              return { ok: true, thread: { ...created, notes: [] } }
+            },
+          }),
+        )
+
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("First message"))))
+
+        const next = yield* SubscriptionRef.get(state)
+        expect(creates).toBe(1)
+        expect(sent).toEqual([{ id: "startup-thread", message: "First message" }])
+        expect(next.activeThreadId).toBe("startup-thread")
+        expect(next.history.page).toBeNull()
       }),
     )
   })

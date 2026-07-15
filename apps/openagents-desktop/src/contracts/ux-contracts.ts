@@ -2528,6 +2528,55 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "pnpm --dir apps/openagents-desktop run verify runs the palette-registry assertions and the Electron smoke new-chat + cmd-n focus steps.",
       },
       {
+        contractId: "openagents_desktop.chat.startup_new_session_continuity.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "startup chat continuity",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-live-review", statedBy: "owner", statedOn: "2026-07-15" },
+        statement:
+          "When the app opens I can immediately type and send in the new chat. Loading the conversation catalog must never replace that draft by auto-opening the most recent conversation.",
+        authorityBoundary:
+          "The first mounted chat surface is a real New session draft, not a temporary facade and not a restored conversation. It stays focused and submittable without eagerly persisting empty chats; the first valid submission admits exactly one durable local thread through the same typed ChatHost used by DesktopNewChat and continues the original send unchanged. Startup history hydration may publish Codex metadata into the sidebar but may not select, restore, open, page, or hydrate any conversation detail; local thread-catalog arrival also preserves the null selection. Detail reads require an explicit user selection.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/react-composer.tsx",
+          "apps/openagents-desktop/tests/startup-contract.test.ts",
+          "apps/openagents-desktop/src/renderer/shell.test.ts",
+          "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+        ],
+        oracles: [
+          {
+            id: "startup_chat.no_history_autoselection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
+            description:
+              "Proves the shell mounts before history hydration, local catalog projection preserves the null selection, and rejects startup hydration containing restored selection, history paging, openThread, or hydrateThread calls.",
+          },
+          {
+            id: "startup_chat.first_submit_is_durable",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Starts with a typed draft and no active thread, submits once, and proves exactly one durable local thread is created and the exact first message is sent on it.",
+          },
+          {
+            id: "startup_chat.composer_send_enabled",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+            description:
+              "Proves the focused startup composer keeps Send enabled for a valid draft before activeThreadId admission settles and dispatches DesktopNoteSubmitted unchanged.",
+          },
+        ],
+        verification:
+          "The normal Desktop test sweep runs the source-ordering falsifier, the typed handler first-submit test, and the React composer admission-race test.",
+      },
+      {
         contractId: "openagents_desktop.chat.new_chat_always_exits_history.v1",
         state: "enforced",
         surface: "openagents-desktop",
@@ -3718,7 +3767,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Opening the openagents app, via our new oa command or in dev, shows a blank/brown screen for ~5 seconds before opening the UI. This is unacceptable. I thought we had a UX contract somewhere about the need to show initial codex chats in <50 ms. That should be timed from startup. Go look up our ways of testing load times. Startup and everything else. Write full analysis of current situation in openagents/docs/fable/ new doc. This is an incident. Very bad. Need good bootup process. No brown screen. If any loading, show beautiful starcraft version of it, or something. Time to seeing stuff and then interactable elements on bootup is extremely important. Analyze, fix, update analysis, push.",
         authorityBoundary:
-          "The BrowserWindow is created before any local database open, OS-keychain custody, or session network verification on the production whenReady path, and the post-window network settle is fire-and-forget. The renderer paints a static branded boot frame (khalaTheme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, publishes the Codex-only top-level metadata catalog, guarantees that catalog a visible paint, and only then requests selected-thread detail. Closed overlays perform zero catalog projection work and recent-only projections inspect a fixed-size prefix, never the full loss-accounted catalog. Hydration streams behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
+          "The BrowserWindow is created before any local database open, OS-keychain custody, or session network verification on the production whenReady path, and the post-window network settle is fire-and-forget. The renderer paints a static branded boot frame (khalaTheme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, and publishes the Codex-only top-level metadata catalog without requesting any selected-thread detail. Closed overlays perform zero catalog projection work and recent-only projections inspect a fixed-size prefix, never the full loss-accounted catalog. Hydration streams behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
         evidenceRefs: [
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
@@ -3744,7 +3793,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
             description:
-              "Proves the renderer mounts the shell before the coding-history hydration effect runs, publishes catalog metadata before selected-thread detail, gives metadata a visible paint, keeps the MVP history host Codex-only, and removes the boot frame after mount. A known-bad detail-before-paint fixture is rejected.",
+              "Proves the renderer mounts the shell before the coding-history hydration effect runs, publishes catalog metadata without selected-thread detail, keeps the MVP history host Codex-only, and removes the boot frame after mount. A known-bad startup detail-autoload fixture is rejected.",
           },
           {
             id: "startup.boot_frame_token_sync",

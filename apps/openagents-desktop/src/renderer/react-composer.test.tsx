@@ -99,6 +99,18 @@ const interact = async (interaction: () => void): Promise<void> => {
 };
 
 describe("React Codex composer", () => {
+  test("keeps first-submit enabled while startup thread admission is still pending", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactComposer state={fixtureState({ activeThreadId: null, threads: [], input: "Start now" })} report={report} />);
+    const send = container.querySelector('[aria-label="Send"]') as HTMLButtonElement;
+    expect(send.disabled).toBe(false);
+    await interact(() => send.click());
+    expect(received).toContainEqual({ name: "DesktopNoteSubmitted", payload: "Start now" });
+  });
+
   test("attaches, previews, removes, reports rejection, and sends an image-only turn", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");

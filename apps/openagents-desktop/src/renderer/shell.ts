@@ -1357,6 +1357,14 @@ export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<Des
       }
 }
 
+/** Metadata/catalog arrival may refresh rows, but it never invents a selection. */
+export const withThreadCatalog = (
+  state: DesktopShellState,
+  threads: ReadonlyArray<DesktopThread>,
+): DesktopShellState => state.activeThreadId === null
+  ? { ...state, threads: [...threads].sort(compareDesktopThreadsByRecency).slice(0, 5) }
+  : withThreads(state, threads)
+
 export const withLiveAgentGraph = (
   state: DesktopShellState,
   threadRef: string,
@@ -1975,8 +1983,7 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, current => ({ ...current, composerFileContext: null })),
   DesktopNoteSubmitted: (value) =>
     Effect.gen(function* () {
-      const current = yield* SubscriptionRef.get(state)
-      if (current.activeThreadId === null) return
+      let current = yield* SubscriptionRef.get(state)
       const message =
         typeof value === "string" && value.trim() !== "" ? value : current.input
       // A3 queue-until-idle (EP250 wave-2): the composer stays usable while a
@@ -1998,6 +2005,17 @@ export const makeDesktopShellHandlers = (
       // turn with no images is a no-op (withNote returns state unchanged).
       if (message.trim() === "" && current.composerImages.length === 0 &&
         current.composerReviewContext === null && current.composerFileContext === null) return
+      // The startup composer is intentionally usable before its tiny local
+      // thread-admission IPC round trip completes. If Send wins that race,
+      // create the exact same durable local session here and continue the
+      // submission instead of dropping the user's first message.
+      if (current.activeThreadId === null) {
+        const thread = yield* Effect.promise(chat.newThread)
+        if (thread === null) return
+        const draft = current.input
+        current = { ...withNewChat(current, thread), input: draft }
+        yield* SubscriptionRef.set(state, current)
+      }
       // Capture the pending attachments BEFORE withNote clears them.
       const pendingImages = current.composerImages
       const images = toStartImages(current.composerImages)

@@ -291,9 +291,9 @@ export const ReactComposer = ({
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
   const lane = state.harnessLanes[state.selectedHarness];
   const hasText = state.input.trim() !== "";
-  const canSubmit = state.activeThreadId !== null && (state.pending
-    ? hasText
-    : lane.available && (hasText || state.composerImages.length > 0));
+  const canSubmit = state.pending
+    ? state.activeThreadId !== null && hasText
+    : lane.available && (hasText || state.composerImages.length > 0);
   const atImageLimit = !canAttachMoreImages(state.composerImages);
   const attachmentDisabled = state.pending || atImageLimit;
   const attachmentLabel = state.pending

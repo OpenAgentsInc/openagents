@@ -192,27 +192,43 @@ const bootOrderViolations = (source: string): ReadonlyArray<string> => {
   return violations
 }
 
-const metadataFirstViolations = (source: string): ReadonlyArray<string> => {
+const metadataPaintViolations = (source: string): ReadonlyArray<string> => {
   const violations: Array<string> = []
   const catalogCommit = source.indexOf("catalog: historyCatalog")
   const visiblePaint = source.indexOf(
     "requestAnimationFrame(() => requestAnimationFrame(() => resolve()))",
     catalogCommit,
   )
-  const detailFetch = source.indexOf("historyHost.page(selected", catalogCommit)
   if (catalogCommit < 0) violations.push("history catalog metadata is never committed")
   if (visiblePaint < 0) violations.push("catalog metadata has no guaranteed visible paint")
-  if (detailFetch < 0) violations.push("selected-thread detail fetch is missing")
+  return violations
+}
+
+const startupNewSessionViolations = (source: string): ReadonlyArray<string> => {
+  const violations: Array<string> = []
+  const shellMounted = source.indexOf("marks.shellMounted = Date.now()")
+  const hydrationRun = source.indexOf("yield* hydrateAfterMount")
+  const hydrateStart = source.indexOf("const hydrateAfterMount")
+  const hydrateEnd = source.indexOf("// Focus must land AFTER", hydrateStart)
+  if (shellMounted < 0) violations.push("shell-mounted milestone is missing")
+  if (hydrationRun < 0) violations.push("startup hydration run is missing")
+  if (hydrateStart < 0 || hydrateEnd < 0) violations.push("startup hydration block is missing")
   if (violations.length > 0) return violations
-  if (detailFetch < catalogCommit) violations.push("selected-thread detail starts before catalog metadata commits")
-  if (detailFetch < visiblePaint) violations.push("selected-thread detail starts before catalog metadata paints")
+  const hydration = source.slice(hydrateStart, hydrateEnd)
+  for (const forbidden of ["restorableHistoryThreadRef", "historyHost.page(", "chat.openThread(", "chat.hydrateThread("]) {
+    if (hydration.includes(forbidden)) violations.push(`startup hydration auto-selects conversation detail through ${forbidden}`)
+  }
+  if (!hydration.includes("withThreadCatalog(current, threads)")) {
+    violations.push("startup thread metadata does not use the selection-preserving catalog projector")
+  }
   return violations
 }
 
 describe("startup contract: shell mounts before history hydration (boot.ts)", () => {
   test("the renderer mounts the shell first and hydrates afterwards", () => {
     expect(bootOrderViolations(bootSource)).toEqual([])
-    expect(metadataFirstViolations(bootSource)).toEqual([])
+    expect(metadataPaintViolations(bootSource)).toEqual([])
+    expect(startupNewSessionViolations(bootSource)).toEqual([])
   })
 
   test("falsifier: fetching the history catalog before mount is rejected", () => {
@@ -228,14 +244,17 @@ describe("startup contract: shell mounts before history hydration (boot.ts)", ()
     )
   })
 
-  test("falsifier: selected-thread detail before the metadata paint is rejected", () => {
+  test("falsifier: history detail autoload during startup hydration is rejected", () => {
     const bad = [
-      "catalog: historyCatalog",
+      "const hydrateAfterMount = Effect.gen(function* () {",
       "historyHost.page(selected, 0, 1)",
-      "requestAnimationFrame(() => requestAnimationFrame(() => resolve()))",
+      "// Focus must land AFTER",
+      "marks.shellMounted = Date.now()",
+      "withThreadCatalog(current, threads)",
+      "yield* hydrateAfterMount",
     ].join("\n")
-    expect(metadataFirstViolations(bad)).toContain(
-      "selected-thread detail starts before catalog metadata paints",
+    expect(startupNewSessionViolations(bad)).toContain(
+      "startup hydration auto-selects conversation detail through historyHost.page(",
     )
   })
 
