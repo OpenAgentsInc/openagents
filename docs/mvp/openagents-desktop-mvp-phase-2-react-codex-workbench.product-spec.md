@@ -595,7 +595,9 @@ release receipts through the owning promise registry.
   settled work folds behind a `Worked` disclosure; active work stays visible.
   This is a material acceptance change from revision 2 and does not inherit
   revision 1 admission or admit revision 2.
-- **Adoption state: proposed.** This checked-in document records requested
-  product intent. It has no ProductSpec host admission receipt in this change
-  and therefore cannot dispatch work, admit an invariant exception, verify an
-  implementation, release an artifact, or authorize a public claim.
+- **2026-07-14 — Owner disposition for revision 3: accepted for candidate
+  construction.** The owner explicitly directed OpenAgents to update assurance
+  around this UI hierarchy, produce a passing release build, and close the
+  transition issues. That is the current owner disposition for revision 3 and
+  authorizes RC16 candidate construction and verification. It is not a public
+  release, feed-publication, or public-claim authorization.

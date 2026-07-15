@@ -27,6 +27,9 @@ supporting audits, and evidence boundaries separate and easy to read.
    [`2026-07-14-openagents-desktop-react-rc15-release-receipt.md`](./2026-07-14-openagents-desktop-react-rc15-release-receipt.md): signed and
    notarized RC15, mounted React/decision smoke, full assurance, and reversible
    RC13-to-RC15 lifecycle acceptance without publication.
+   The owner-directed conversation-first revision is specified and mechanically
+   gated in
+   [`openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md).
 3. [`openagents-codex-workroom-mvp.product-spec.md`](./openagents-codex-workroom-mvp.product-spec.md)
    — the exact ProductSpec v0.1 intent artifact. It owns the MVP problem,
    hypothesis, in/out/cut scope, user experience, solution, stable acceptance
