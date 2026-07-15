@@ -89,7 +89,10 @@ START_RUNTIME_DEPLOY_DIR="$(mktemp -d)"
   --config.allow-unused-patches=true \
   --filter @openagentsinc/openagents-com-start deploy "$START_RUNTIME_DEPLOY_DIR" \
   --prod --legacy)
-cp -R "$START_RUNTIME_DEPLOY_DIR/node_modules/." dist-cloudrun/node_modules/
+# Both filtered deploys retain symlinks to the same internal workspace packages.
+# macOS cp treats those already-identical links as an error; rsync merges the two
+# production dependency trees without dereferencing or rejecting shared links.
+rsync -a "$START_RUNTIME_DEPLOY_DIR/node_modules/" dist-cloudrun/node_modules/
 # Legacy deploy mutates the workspace install mode while materializing the
 # portable tree. Restore the development install before later build/smoke
 # commands invoke pnpm again.
