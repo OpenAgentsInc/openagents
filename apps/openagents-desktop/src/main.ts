@@ -1242,7 +1242,11 @@ const activateCodingCatalogRoot = () => {
   }
 }
 const chooseCodingWorkspace = async (registerCatalog = true) => {
-  const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
+  const currentRoot = workspaceSnapshot()?.root
+  const result = await dialog.showOpenDialog({
+    properties: ["openDirectory", "createDirectory"],
+    ...(currentRoot === undefined ? {} : { defaultPath: currentRoot }),
+  })
   if (result.canceled || result.filePaths[0] === undefined) return null
   const root = result.filePaths[0]
   if (registerCatalog) {
@@ -1385,8 +1389,8 @@ ipcMain.handle(DesktopWorkspaceWatchChannel, (event, value: unknown) => {
   return true
 })
 ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {
-  await chooseCodingWorkspace()
-  return workspaceSnapshot()
+  const selectedRoot = await chooseCodingWorkspace()
+  return selectedRoot === null ? null : workspaceSnapshot()
 })
 ipcMain.handle(ProductSpecOpenChannel, (event, raw: unknown) => {
   const request = decodeProductSpecOpenRequest(raw)

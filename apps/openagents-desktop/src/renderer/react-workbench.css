@@ -867,11 +867,17 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-empty-working-directory code {
   min-width: 0;
+  max-width: min(60vw, 480px);
   overflow: hidden;
   font-family: monospace;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.oa-react-empty-working-directory button {
+  flex: none;
+  color: var(--en-color-textSecondary);
 }
 
 .oa-react-new-activity {

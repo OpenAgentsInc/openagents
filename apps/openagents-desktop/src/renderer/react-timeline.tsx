@@ -411,10 +411,13 @@ export const ConversationTimeline = ({ page, notes, loadingEdge, working, workin
   if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation">
     <div className="oa-react-empty-conversation">
       <h2>Start a conversation with Codex</h2>
-      <p className="oa-react-empty-working-directory" aria-label={workingDirectory === null ? "Working directory unavailable" : `Working directory: ${workingDirectory}`}>
+      <div className="oa-react-empty-working-directory" aria-label={workingDirectory === null ? "Working directory unavailable" : `Working directory: ${workingDirectory}`}>
         <Folder aria-hidden="true" data-icon-name="Folder" />
         <code title={workingDirectory ?? undefined}>{workingDirectory ?? "Working directory unavailable"}</code>
-      </p>
+        <Button type="button" variant="ghost" size="sm"
+          aria-label="Change working directory" title="Change working directory"
+          onClick={() => dispatch(report, "DesktopWorkspacePickerRequested")}>Change</Button>
+      </div>
     </div>
   </section>
   const records = page === null ? projectLocalTimelineRecords(notes) : projectReactTimelineRecords(page.items)

@@ -224,7 +224,9 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
   test("workspace filesystem authority starts only after an explicit directory choice", () => {
     expect(main).toContain("makeDesktopHostLifecycle")
     expect(main).toContain('properties: ["openDirectory", "createDirectory"]')
+    expect(main).toContain("defaultPath: currentRoot")
     expect(main).toContain("const root = result.filePaths[0]")
+    expect(main).toContain("selectedRoot === null ? null : workspaceSnapshot()")
     expect(main).toContain("hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))")
     expect(main).toContain("const openSelectedWorkspace = (root: string) => openWorkspaceService(root")
     expect(main).not.toContain("let workspaceRoot")

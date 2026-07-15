@@ -1008,9 +1008,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   probes, account custody, and delegated scratch workers remain isolated.
 - An empty Desktop conversation fills its transcript row and centers the
   welcome prompt with the active current working directory. That directory is
-  a schema-decoded, display-only projection of Electron main's canonical
-  WorkContext; React must not call `process.cwd()`, infer a path from session
-  history, or acquire absolute-path selection authority.
+  a schema-decoded projection of Electron main's canonical WorkContext. Only
+  this empty state may render the adjacent Change action, which dispatches the
+  existing typed native workspace-picker intent; React must not call
+  `process.cwd()`, infer a path from session history, or submit an absolute
+  path. Cancel retains the prior WorkContext. Selection uses the same admitted
+  workspace grant consumed by Files, Terminal, Git, and the next Codex turn.
 - Generated OpenAgents Desktop release artifacts use a stable, version-first
   public filename. macOS disk images are
   `OpenAgents-<version>-<arch>.dmg`; platform-neutral archives include the OS

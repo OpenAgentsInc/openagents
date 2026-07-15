@@ -1757,6 +1757,36 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     }))
   })
 
+  test("workspace picker refreshes the displayed working directory only after selection", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      let selected = false
+      let workingDirectoryReads = 0
+      const state = yield* SubscriptionRef.make<DesktopShellState>({
+        ...baseState,
+        workingDirectory: "/workspace/old",
+      })
+      const registry = yield* makeIntentRegistry(
+        desktopShellIntents,
+        makeDesktopShellHandlers(state, fixedNow, undefined, undefined, {
+          choose: async () => selected,
+          workingDirectory: async () => {
+            workingDirectoryReads += 1
+            return "/workspace/new"
+          },
+        }),
+      )
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspacePickerRequested", StaticPayload(null))))
+      expect((yield* SubscriptionRef.get(state)).workingDirectory).toBe("/workspace/old")
+      expect(workingDirectoryReads).toBe(0)
+
+      selected = true
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspacePickerRequested", StaticPayload(null))))
+      expect((yield* SubscriptionRef.get(state)).workingDirectory).toBe("/workspace/new")
+      expect(workingDirectoryReads).toBe(1)
+    }))
+  })
+
   test("Files entry reconciles ref-only recovery against the current workspace grant", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const browser: WorkspaceBrowserBridge = {

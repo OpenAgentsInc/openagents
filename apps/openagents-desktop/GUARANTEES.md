@@ -613,6 +613,20 @@ delivers.
 Contract:
 `openagents_desktop.history.sidebar_header_truthful_scope.v1`.
 
+### Empty-chat workspace changes retain one authority
+
+- The current working directory and its **Change** action appear only in the
+  empty new-chat timeline. The action dispatches the existing typed workspace
+  picker intent and never accepts renderer-authored path text.
+- Main opens the native directory picker at the current workspace when
+  available. Cancellation or picker failure leaves the workspace and displayed
+  path unchanged.
+- A selected directory passes through the existing workspace admission and
+  grant lifecycle. The refreshed displayed path, Files, Terminal, Git, and the
+  next Codex turn all consume that same admitted WorkContext.
+
+Contract: `openagents_desktop.chat.empty_state_centers_current_directory.v1`.
+
 ### Composer image attachments stay bounded and explicit
 
 - The active React composer accepts PNG, JPEG, WebP, and GIF files only, with

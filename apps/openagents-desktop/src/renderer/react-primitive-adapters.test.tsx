@@ -249,18 +249,30 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-codex-update-notice")).toBeNull()
   })
 
-  test("centers the empty conversation prompt with the current working directory", async () => {
+  test("centers the empty conversation path and dispatches its accessible Change action only while empty", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
     const state = {
       ...fixtureState(),
       workingDirectory: "/Users/example/project",
     }
-    await render(root, <WorkbenchShell state={state} report={() => Effect.void} />)
+    await render(root, <WorkbenchShell state={state} report={report} />)
     const empty = container.querySelector(".oa-react-timeline-empty")
     expect(empty?.textContent).toContain("Start a conversation with Codex")
     expect(empty?.textContent).toContain("/Users/example/project")
     expect(empty?.querySelector('[data-icon-name="Folder"]')).not.toBeNull()
+    const change = empty?.querySelector<HTMLButtonElement>('[aria-label="Change working directory"]')
+    expect(change?.textContent).toBe("Change")
+    await interact(() => change?.click())
+    expect(received).toContainEqual({ name: "DesktopWorkspacePickerRequested", payload: null })
+
+    await render(root, <WorkbenchShell state={{
+      ...state,
+      notes: [{ key: "owner-1", role: "user", text: "Hello", timestamp: "now" }],
+    }} report={report} />)
+    expect(container.querySelector('[aria-label="Change working directory"]')).toBeNull()
   })
 
   test("projects metadata before transcript hydration in one deterministic recency order", () => {

@@ -17,9 +17,9 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         blockerRefs: [],
         source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-15" },
         statement:
-          "An empty conversation centers the Start a conversation with Codex prompt vertically and shows the current working directory.",
+          "An empty conversation centers the Start a conversation with Codex prompt, shows the current working directory, and offers a Change action beside it.",
         authorityBoundary:
-          "Electron main remains the sole WorkContext authority and exposes only a schema-decoded, display-only working-directory projection through preload. React receives that value in Effect-owned DesktopShellState; it cannot read process.cwd(), choose an absolute path, or infer a directory from history. The empty state fills the transcript row and centers a compact heading plus folder/path line without introducing a card or changing composer authority.",
+          "Electron main remains the sole WorkContext authority and exposes only a schema-decoded working-directory projection plus the existing fixed workspace-picker capability through preload. React receives the displayed value in Effect-owned DesktopShellState and may only dispatch DesktopWorkspacePickerRequested; it cannot read process.cwd(), submit an absolute path, or infer a directory from history. Main initializes the native directory dialog from the current root when available and admits a selection through the same workspace authority used by files, terminal, Git, and Codex. Cancel or failure retains the current workspace and path. The action renders only in a genuinely empty new-chat timeline.",
         evidenceRefs: [
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/preload.cts",
@@ -36,7 +36,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
             description:
-              "Proves the empty React conversation renders the host-projected working directory and folder icon in the centered welcome surface.",
+              "Proves the empty React conversation renders the host-projected working directory, folder icon, and keyboard-accessible Change action; the action dispatches the existing picker intent and disappears once timeline content exists.",
           },
           {
             id: "empty_conversation.narrow_schema_decoded_host_projection",
@@ -44,11 +44,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/electron-boundary.test.ts",
             description:
-              "Proves preload exposes a narrow schema-decoded working-directory query without restoring the broad workspace-summary bridge.",
+              "Proves preload exposes a narrow schema-decoded working-directory query and fixed picker capability, while main seeds the native dialog from the current root and reports cancel as no selection without restoring the broad workspace-summary bridge.",
           },
         ],
         verification:
-          "The React workbench and Electron boundary suites plus Desktop typecheck enforce centered presentation and narrow host projection.",
+          "The React workbench, shell intent-loop, runtime-workspace, and Electron boundary suites plus Desktop typecheck enforce presentation, cancel/selection semantics, and the single WorkContext authority.",
       },
       {
         contractId: "openagents_desktop.window.launch_fills_work_area.v1",

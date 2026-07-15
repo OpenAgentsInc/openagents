@@ -73,6 +73,10 @@ shell state whose boolean preference persists in the main-owned versioned
 preferences document; session-search disclosure deliberately starts closed on
 each launch, while the query remains in the existing history authority. A
 restored collapsed launch keeps the composer focused and the expander reachable.
+On an empty new chat, the centered current-working-directory line includes a
+keyboard-accessible **Change** action. It opens the existing native folder
+picker; cancellation preserves the current WorkContext, while selection is
+admitted through the same authority used by Codex, Files, Terminal, and Git.
 
 ## Verify it
 
