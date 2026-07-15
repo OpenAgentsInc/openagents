@@ -440,3 +440,19 @@ state/intent boundaries remain intact.
 This owner-directed correction changes AC-5 and is recorded as proposed
 ProductSpec revision 3. It is post-RC15 source work; it does not relabel the
 RC15 artifact or claim a new release candidate.
+
+### Revision-3 gate and RC16 closeout
+
+The owner accepted revision 3 for candidate construction and directed the
+assurance program to encode the conversation-first hierarchy. The new focused
+gate covers authored-message primacy, hidden accounting/scaffolding, compact
+and folded work, active streaming visibility, collapsed raw details, stable
+live-edge behavior, the actual shadcn rail scroll boundary, reduced motion,
+and preservation of Khala token authority.
+
+Exact source `c12a0d4422` became signed/notarized ARM64 candidate RC16. The
+complete Desktop gate, 18 candidate/falsifier obligations, release preflight,
+mounted React smoke, performance budget, and RC15-to-RC16 reversible lifecycle
+passed. The lifecycle rerun follows a device-aware DMG detach fix discovered by
+the first reinstall attempt. The complete immutable receipt is
+`docs/mvp/2026-07-14-openagents-desktop-react-rc16-release-receipt.md`.

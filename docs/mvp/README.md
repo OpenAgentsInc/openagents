@@ -30,6 +30,8 @@ supporting audits, and evidence boundaries separate and easy to read.
    The owner-directed conversation-first revision is specified and mechanically
    gated in
    [`openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md).
+   The exact passing signed candidate is recorded in
+   [`2026-07-14-openagents-desktop-react-rc16-release-receipt.md`](./2026-07-14-openagents-desktop-react-rc16-release-receipt.md).
 3. [`openagents-codex-workroom-mvp.product-spec.md`](./openagents-codex-workroom-mvp.product-spec.md)
    — the exact ProductSpec v0.1 intent artifact. It owns the MVP problem,
    hypothesis, in/out/cut scope, user experience, solution, stable acceptance

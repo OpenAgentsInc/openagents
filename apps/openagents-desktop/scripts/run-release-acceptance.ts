@@ -53,12 +53,20 @@ const command = (executable: string, args: string[]): string => {
 const mountedCopy = (dmg: string, destination: string): void => {
   const mount = path.join(root, `mount-${Math.random().toString(16).slice(2)}`)
   mkdirSync(mount, { recursive: true })
-  command("/usr/bin/hdiutil", ["attach", "-readonly", "-nobrowse", "-mountpoint", mount, dmg])
+  const attach = command("/usr/bin/hdiutil", ["attach", "-readonly", "-nobrowse", "-mountpoint", mount, dmg])
+  // Detach the whole disk device, not only its mount path. Disk images may
+  // unmount the volume while retaining the device, which makes a later attach
+  // of the same immutable DMG fail during reinstall acceptance.
+  const device = attach.match(/^(\/dev\/disk\d+)\b/m)?.[1] ?? mount
   try {
     rmSync(destination, { recursive: true, force: true })
     command("/usr/bin/ditto", ["--rsrc", "--extattr", path.join(mount, "OpenAgents.app"), destination])
   } finally {
-    command("/usr/bin/hdiutil", ["detach", mount])
+    try {
+      command("/usr/bin/hdiutil", ["detach", device])
+    } catch {
+      command("/usr/bin/hdiutil", ["detach", "-force", device])
+    }
     rmSync(mount, { recursive: true, force: true })
   }
 }

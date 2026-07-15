@@ -1,0 +1,196 @@
+{
+  "schema": "openagents-desktop-startup-bench/v1",
+  "capturedAtIso": "2026-07-15T04:03:43.690Z",
+  "label": null,
+  "unit": "ms-from-process-start",
+  "runs": 7,
+  "warmupDiscarded": 1,
+  "mode": "startup-marks (deterministic fixtures)",
+  "platform": "darwin-arm64",
+  "marks": {
+    "mainModuleEvaluated": {
+      "median": 107.77,
+      "p95": 113.56,
+      "min": 105.48,
+      "max": 113.88,
+      "n": 7
+    },
+    "appWhenReady": {
+      "median": 199.31,
+      "p95": 206.86,
+      "min": 196.5,
+      "max": 206.88,
+      "n": 7
+    },
+    "windowCreated": {
+      "median": 278.31,
+      "p95": 282.56,
+      "min": 269.5,
+      "max": 282.88,
+      "n": 7
+    },
+    "syncHostOpened": {
+      "median": 286.31,
+      "p95": 290.56,
+      "min": 277.5,
+      "max": 290.88,
+      "n": 7
+    },
+    "sessionVaultRecovered": {
+      "median": 292.77,
+      "p95": 296.54,
+      "min": 282.5,
+      "max": 296.82,
+      "n": 7
+    },
+    "windowReadyToShow": {
+      "median": 400.48,
+      "p95": 406.25,
+      "min": 390.5,
+      "max": 406.88,
+      "n": 7
+    },
+    "rendererBootStart": {
+      "median": 394.77,
+      "p95": 397.54,
+      "min": 384.5,
+      "max": 397.82,
+      "n": 7
+    },
+    "firstPaint": {
+      "median": 381.87,
+      "p95": 384.95,
+      "min": 368.2,
+      "max": 385.18,
+      "n": 7
+    },
+    "shellMounted": {
+      "median": 417.77,
+      "p95": 420.86,
+      "min": 406.5,
+      "max": 420.88,
+      "n": 7
+    },
+    "historyHydrated": {
+      "median": 516.13,
+      "p95": 518.67,
+      "min": 505.5,
+      "max": 518.82,
+      "n": 7
+    },
+    "capabilityReady": {
+      "median": 422.77,
+      "p95": 424.86,
+      "min": 411.5,
+      "max": 424.88,
+      "n": 7
+    }
+  },
+  "rawSamples": [
+    {
+      "mainModuleEvaluated": 105.48,
+      "appWhenReady": 198.48,
+      "sessionHardened": 204.48,
+      "syncHostOpened": 283.48,
+      "sessionVaultRecovered": 287.48,
+      "sessionRecoverySettled": null,
+      "windowCreated": 274.48,
+      "windowReadyToShow": 400.48,
+      "rendererBootStart": 390.48,
+      "firstPaint": 376.98,
+      "shellMounted": 414.48,
+      "historyHydrated": 515.48,
+      "capabilityReady": 418.48
+    },
+    {
+      "mainModuleEvaluated": 112.82,
+      "appWhenReady": 206.82,
+      "sessionHardened": 212.82,
+      "syncHostOpened": 289.82,
+      "sessionVaultRecovered": 296.82,
+      "sessionRecoverySettled": null,
+      "windowCreated": 281.82,
+      "windowReadyToShow": 400.82,
+      "rendererBootStart": 397.82,
+      "firstPaint": 384.22,
+      "shellMounted": 420.82,
+      "historyHydrated": 518.82,
+      "capabilityReady": 424.82
+    },
+    {
+      "mainModuleEvaluated": 107.5,
+      "appWhenReady": 196.5,
+      "sessionHardened": 204.5,
+      "syncHostOpened": 277.5,
+      "sessionVaultRecovered": 282.5,
+      "sessionRecoverySettled": null,
+      "windowCreated": 269.5,
+      "windowReadyToShow": 390.5,
+      "rendererBootStart": 384.5,
+      "firstPaint": 368.2,
+      "shellMounted": 406.5,
+      "historyHydrated": 505.5,
+      "capabilityReady": 411.5
+    },
+    {
+      "mainModuleEvaluated": 113.88,
+      "appWhenReady": 206.88,
+      "sessionHardened": 212.88,
+      "syncHostOpened": 290.88,
+      "sessionVaultRecovered": 295.88,
+      "sessionRecoverySettled": null,
+      "windowCreated": 282.88,
+      "windowReadyToShow": 406.88,
+      "rendererBootStart": 396.88,
+      "firstPaint": 385.18,
+      "shellMounted": 420.88,
+      "historyHydrated": 517.88,
+      "capabilityReady": 424.88
+    },
+    {
+      "mainModuleEvaluated": 108.13,
+      "appWhenReady": 199.13,
+      "sessionHardened": 205.13,
+      "syncHostOpened": 284.13,
+      "sessionVaultRecovered": 290.13,
+      "sessionRecoverySettled": null,
+      "windowCreated": 276.13,
+      "windowReadyToShow": 399.13,
+      "rendererBootStart": 394.13,
+      "firstPaint": 378.33,
+      "shellMounted": 417.13,
+      "historyHydrated": 516.13,
+      "capabilityReady": 421.13
+    },
+    {
+      "mainModuleEvaluated": 107.31,
+      "appWhenReady": 199.31,
+      "sessionHardened": 205.31,
+      "syncHostOpened": 286.31,
+      "sessionVaultRecovered": 293.31,
+      "sessionRecoverySettled": null,
+      "windowCreated": 278.31,
+      "windowReadyToShow": 399.31,
+      "rendererBootStart": 395.31,
+      "firstPaint": 384.41,
+      "shellMounted": 419.31,
+      "historyHydrated": 518.31,
+      "capabilityReady": 423.31
+    },
+    {
+      "mainModuleEvaluated": 107.77,
+      "appWhenReady": 202.77,
+      "sessionHardened": 208.77,
+      "syncHostOpened": 287.77,
+      "sessionVaultRecovered": 292.77,
+      "sessionRecoverySettled": null,
+      "windowCreated": 279.77,
+      "windowReadyToShow": 404.77,
+      "rendererBootStart": 394.77,
+      "firstPaint": 381.87,
+      "shellMounted": 417.77,
+      "historyHydrated": 515.77,
+      "capabilityReady": 422.77
+    }
+  ]
+}
