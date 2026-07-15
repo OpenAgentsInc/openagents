@@ -214,6 +214,43 @@ describe("Codex app-server native integration", () => {
     expect(() => declineCodexServerRequest({ id: 3, method: "account/chatgptAuthTokens/refresh", params: {} })).toThrow()
   })
 
+  test("validates reverse responses and preserves typed non-generic JSON-RPC errors", async () => {
+    const fake = fakeServer()
+    const client = openCodexAppServerClient({
+      binary: "/packaged/codex",
+      env: {},
+      cwd: "/workspace",
+      spawnImpl: fake.spawn,
+      onServerRequest: async request => {
+        if (request.method === "attestation/generate") {
+          throw Object.assign(new Error("attestation authority unavailable"), { code: -32_003 })
+        }
+        return { decision: "not-a-generated-decision" }
+      },
+    })
+    fake.child.stdout.write(`${JSON.stringify({
+      id: "invalid-response",
+      method: "item/commandExecution/requestApproval",
+      params: {},
+    })}\n`)
+    await waitForMessages(fake.messages, 1)
+    expect(fake.messages[0]).toEqual({
+      id: "invalid-response",
+      error: { code: -32_001, message: "Codex item/commandExecution/requestApproval handler returned an invalid response" },
+    })
+    fake.child.stdout.write(`${JSON.stringify({
+      id: "typed-error",
+      method: "attestation/generate",
+      params: {},
+    })}\n`)
+    await waitForMessages(fake.messages, 2)
+    expect(fake.messages[1]).toEqual({
+      id: "typed-error",
+      error: { code: -32_003, message: "attestation authority unavailable" },
+    })
+    client.close()
+  })
+
   test("decodes at the wire boundary and quarantines unknown strict notifications", async () => {
     const fake = fakeServer()
     const protocol: string[] = []

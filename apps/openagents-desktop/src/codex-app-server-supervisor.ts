@@ -7,7 +7,6 @@ import {
 import { bundledCodex01441ProtocolManifest } from "@openagentsinc/codex-app-server-protocol/parity"
 
 import {
-  declineCodexServerRequest,
   openCodexAppServerClient,
   type CodexAppServerClient,
   type CodexAppServerMessage,
@@ -22,6 +21,13 @@ import {
   type CodexNativeEventPlane,
   type CodexNativeJournalEntry,
 } from "./codex-native-event-plane.ts"
+import {
+  makeCodexReverseRpcArbiter,
+  denyCodexReverseRpc,
+  type CodexReverseRpcArbiter,
+  type CodexReverseRpcAttention,
+  type CodexReverseRpcReceipt,
+} from "./codex-reverse-rpc-arbiter.ts"
 
 export type CodexAppServerPoolTarget = Readonly<{
   binary: string
@@ -97,23 +103,11 @@ export type CodexAppServerReverseMethodRegistry = Readonly<
   Record<CodexAppServerReverseMethod, CodexAppServerReverseHandler>
 >
 
-const hasSafeDenyResponse = (method: CodexAppServerReverseMethod): boolean =>
-  method !== "item/permissions/requestApproval" &&
-  method !== "account/chatgptAuthTokens/refresh" &&
-  method !== "attestation/generate" &&
-  method !== "currentTime/read"
-
 /** A complete, method-shaped, deny-only registry suitable for unattended startup. */
 export const denyCodexAppServerReverseRequests: CodexAppServerReverseMethodRegistry =
   Object.freeze(Object.fromEntries(reverseMethods.map(method => [
     method,
-    (request: CodexAppServerRequest): unknown => {
-      if (hasSafeDenyResponse(method)) return declineCodexServerRequest(request)
-      throw new CodexAppServerSupervisorError(
-        "unsafe_reverse_request",
-        `Codex server request has no safe deny response: ${method}`,
-      )
-    },
+    (): unknown => denyCodexReverseRpc(method),
   ])) as unknown as CodexAppServerReverseMethodRegistry)
 
 export class CodexAppServerSupervisorError extends Error {
@@ -173,6 +167,8 @@ export type CodexAppServerSupervisor = Readonly<{
     identity: CodexAppServerPoolIdentity,
     state: CodexAppServerSupervisorState,
   ) => void) => () => void
+  subscribeReverseRpcAttention: (listener: (attention: CodexReverseRpcAttention) => void) => () => void
+  reverseRpcReceipts: () => ReadonlyArray<CodexReverseRpcReceipt>
   close: () => void
 }>
 
@@ -233,12 +229,18 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
   sleep?: (milliseconds: number) => Promise<void>
   nativeJournalRoot?: string
   strictGeneratedDecoding?: boolean
+  reverseRpcJournalPath?: string
+  reverseRpcTimeoutMs?: number
 }> = {}): CodexAppServerSupervisor => {
   const factory = options.clientFactory ?? defaultFactory
   const maxReconnectAttempts = Math.max(0, Math.floor(options.maxReconnectAttempts ?? 3))
   const reconnectBackoffMs = options.reconnectBackoffMs ?? (attempt => Math.min(1_000, 25 * (2 ** (attempt - 1))))
   const sleep = options.sleep ?? defaultSleep
   const connections = new Map<string, Connection>()
+  const reverseRpcArbiter: CodexReverseRpcArbiter = makeCodexReverseRpcArbiter({
+    ...(options.reverseRpcJournalPath === undefined ? {} : { journalPath: options.reverseRpcJournalPath }),
+    ...(options.reverseRpcTimeoutMs === undefined ? {} : { timeoutMs: options.reverseRpcTimeoutMs }),
+  })
   const stateListeners = new Set<(
     identity: CodexAppServerPoolIdentity,
     state: CodexAppServerSupervisorState,
@@ -291,12 +293,28 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
       (threadId !== null && lease.threadIds.has(threadId)) ||
       (turnId !== null && lease.turnIds.has(turnId))
     ))
-    if (routed.length === 1) return routed[0]!.reverseHandler!(request)
-    if (routed.length === 0 && threadId === null && turnId === null) {
-      const preStart = [...connection.leases].filter(lease => !lease.closed && lease.reverseHandler !== null)
-      if (preStart.length === 1) return preStart[0]!.reverseHandler!(request)
-    }
-    return reverseRegistry[request.method as CodexAppServerReverseMethod](request)
+    const preStart = routed.length === 0 && threadId === null && turnId === null
+      ? [...connection.leases].filter(lease => !lease.closed && lease.reverseHandler !== null)
+      : []
+    const method = request.method as CodexAppServerReverseMethod
+    const privateHandler = options.reverseHandlers?.[method]
+    const privileged = method === "item/permissions/requestApproval" ||
+      method === "mcpServer/elicitation/request" ||
+      method === "account/chatgptAuthTokens/refresh" ||
+      method === "attestation/generate" ||
+      method === "currentTime/read"
+    const leaseHandlers = privileged ? [] : (routed.length > 0 ? routed : preStart)
+      .map(lease => lease.reverseHandler!)
+    const proposers = [
+      ...(privateHandler === undefined ? [] : [privateHandler]),
+      ...leaseHandlers,
+    ]
+    return reverseRpcArbiter.arbitrate({
+      connectionKey: connection.key,
+      generation: connection.generation,
+      request,
+      proposers,
+    })
   }
 
   const visibleThreads = (connection: Connection): ReadonlyArray<Readonly<{
@@ -610,6 +628,8 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
       stateListeners.add(listener)
       return () => stateListeners.delete(listener)
     },
+    subscribeReverseRpcAttention: listener => reverseRpcArbiter.subscribe(listener),
+    reverseRpcReceipts: () => reverseRpcArbiter.receipts(),
     close: () => {
       if (closed) return
       closed = true
@@ -628,6 +648,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
         closeConnection(connection)
       }
       stateListeners.clear()
+      reverseRpcArbiter.close()
     },
   }
 }

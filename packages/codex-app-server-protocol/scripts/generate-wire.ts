@@ -24,6 +24,7 @@ const output = [
   "// @ts-nocheck -- public exports erase this generated structural graph.",
   `export const CLIENT_RESPONSE_DOCUMENTS: Readonly<Record<string, unknown>> = ${JSON.stringify(documents(meta.CLIENT_REQUEST_RESPONSES as SchemaMap))};`,
   `export const SERVER_REQUEST_DOCUMENTS: Readonly<Record<string, unknown>> = ${JSON.stringify(documents(meta.SERVER_REQUEST_PARAMS as SchemaMap))};`,
+  `export const SERVER_REQUEST_RESPONSE_DOCUMENTS: Readonly<Record<string, unknown>> = ${JSON.stringify(documents(meta.SERVER_REQUEST_RESPONSES as SchemaMap))};`,
   `export const SERVER_NOTIFICATION_DOCUMENTS: Readonly<Record<string, unknown>> = ${JSON.stringify(documents(meta.SERVER_NOTIFICATION_PARAMS as SchemaMap))};`,
   "",
 ].join("\n")

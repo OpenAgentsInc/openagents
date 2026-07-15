@@ -3,7 +3,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { bundledCodexExecutableSha256 } from "@openagentsinc/codex-app-server-protocol/compatibility"
+import { decodeBundledServerRequestResponse } from "@openagentsinc/codex-app-server-protocol/decode"
 import { createCodexAppServerSupervisor } from "../src/codex-app-server-supervisor.ts"
+import { denyCodexReverseRpc } from "../src/codex-reverse-rpc-arbiter.ts"
 
 const binary = process.env.CODEX_BIN
 if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex executable")
@@ -47,6 +49,19 @@ try {
   }
   if (first.nativeEnvelopes({ method: "thread/start" }).length !== 2) {
     throw new Error("strict generated decoding did not retain both thread/start responses")
+  }
+  for (const method of [
+    "item/commandExecution/requestApproval",
+    "item/fileChange/requestApproval",
+    "item/permissions/requestApproval",
+    "item/tool/requestUserInput",
+    "item/tool/call",
+    "mcpServer/elicitation/request",
+    "currentTime/read",
+  ]) {
+    if (decodeBundledServerRequestResponse(method, denyCodexReverseRpc(method))._tag !== "Decoded") {
+      throw new Error(`generated reverse-RPC smoke failed for ${method}`)
+    }
   }
   first.release()
   second.release()

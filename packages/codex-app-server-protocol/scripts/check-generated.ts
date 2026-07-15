@@ -52,13 +52,14 @@ for (const [lane, contract] of Object.entries(expected)) {
   const wireCounts = [
     "CLIENT_RESPONSE_DOCUMENTS",
     "SERVER_REQUEST_DOCUMENTS",
+    "SERVER_REQUEST_RESPONSE_DOCUMENTS",
     "SERVER_NOTIFICATION_DOCUMENTS",
   ].map((name) => {
     const encoded = new RegExp(`export const ${name}[^=]*= (.*);$`, "m").exec(wire)?.[1];
     if (encoded === undefined) throw new Error(`${lane}: missing ${name}`);
     return Object.keys(JSON.parse(encoded)).length;
   });
-  const expectedWireCounts = [contract.counts[0], contract.counts[2], contract.counts[3]];
+  const expectedWireCounts = [contract.counts[0], contract.counts[2], contract.counts[2], contract.counts[3]];
   if (JSON.stringify(wireCounts) !== JSON.stringify(expectedWireCounts)) {
     throw new Error(`${lane}: generated wire decoder coverage ${wireCounts.join("/")} != ${expectedWireCounts.join("/")}`);
   }

@@ -1851,6 +1851,7 @@ const codexChildren = makeCodexChildRuntime({
 })
 const codexAppServerSupervisor = createCodexAppServerSupervisor({
   nativeJournalRoot: path.join(app.getPath("userData"), "codex-native"),
+  reverseRpcJournalPath: path.join(app.getPath("userData"), "codex-reverse-rpc", "receipts.json"),
   strictGeneratedDecoding: true,
 })
 const codexAppServerConfig = {

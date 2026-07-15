@@ -1183,6 +1183,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   messages are quarantined and produce one deduplicated visible compatibility
   receipt rather than crashing or disappearing. `item/completed` is
   authoritative over earlier deltas/starts for the native item projection.
+  All 11 bundled server-initiated methods pass through one process-owned
+  exactly-once arbiter keyed by connection plus stable request/causal identity.
+  Window/lease handlers submit generated-response-validated proposals; the
+  first valid proposal commits and late/duplicate proposals are inspectable
+  no-ops. Pending attention has a deadline and shutdown cancellation, and its
+  bounded `0600` journal contains only hashed request identity, method,
+  outcome, timestamps, and late counts. It never contains questions, command
+  text, file changes, credentials, auth/attestation tokens, MCP content, or
+  response payloads. Replayed committed requests are denied method-correctly
+  without reopening owner attention. Permission and MCP paths are deny-only,
+  auth refresh and attestation return typed authority-unavailable errors, and
+  `currentTime/read` succeeds without experimental capability advertising.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
   one immutable main-process `CodexRuntimeResolution` authority selects that

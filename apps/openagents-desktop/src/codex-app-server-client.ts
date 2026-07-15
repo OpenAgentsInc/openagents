@@ -5,6 +5,7 @@ import {
   decodeBundledClientResponse,
   decodeBundledServerNotification,
   decodeBundledServerRequest,
+  decodeBundledServerRequestResponse,
   type CodexProtocolDecodeResult,
 } from "@openagentsinc/codex-app-server-protocol/decode"
 
@@ -65,9 +66,10 @@ export const declineCodexServerRequest = (request: CodexAppServerRequest): unkno
   switch (request.method) {
     case "item/commandExecution/requestApproval":
     case "item/fileChange/requestApproval":
+      return { decision: "decline" }
     case "applyPatchApproval":
     case "execCommandApproval":
-      return { decision: "decline" }
+      return { decision: "denied" }
     case "item/tool/requestUserInput":
       return { answers: {} }
     case "mcpServer/elicitation/request":
@@ -222,10 +224,20 @@ export const openCodexAppServerClient = (input: Readonly<{
         params: decoded._tag === "Decoded" ? decoded.payload : message.params,
       }
       void (input.onServerRequest?.(serverRequest) ?? Promise.resolve().then(() => declineCodexServerRequest(serverRequest)))
-        .then(result => write({ id: serverRequest.id, result }))
+        .then(result => {
+          const response = decodeBundledServerRequestResponse(serverRequest.method, result)
+          input.onProtocolMessage?.({ requestId: serverRequest.id, decoded: response })
+          if (response._tag === "DecodeFailure") {
+            throw new CodexAppServerError("invalid_message", `Codex ${serverRequest.method} handler returned an invalid response`)
+          }
+          return write({ id: serverRequest.id, result: response.payload })
+        })
         .catch(error => write({
           id: serverRequest.id,
-          error: { code: -32_000, message: error instanceof Error ? error.message : "request refused" },
+          error: {
+            code: typeof (error as { code?: unknown })?.code === "number" ? (error as { code: number }).code : -32_001,
+            message: error instanceof Error ? error.message : "request refused",
+          },
         }).catch(() => undefined))
       return
     }

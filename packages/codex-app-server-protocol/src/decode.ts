@@ -4,15 +4,17 @@ import {
   CLIENT_RESPONSE_DOCUMENTS as bundledClientResponses,
   SERVER_NOTIFICATION_DOCUMENTS as bundledServerNotifications,
   SERVER_REQUEST_DOCUMENTS as bundledServerRequests,
+  SERVER_REQUEST_RESPONSE_DOCUMENTS as bundledServerRequestResponses,
 } from "./_generated/bundled-0.144.1/wire.gen.ts"
 import {
   CLIENT_RESPONSE_DOCUMENTS as currentClientResponses,
   SERVER_NOTIFICATION_DOCUMENTS as currentServerNotifications,
   SERVER_REQUEST_DOCUMENTS as currentServerRequests,
+  SERVER_REQUEST_RESPONSE_DOCUMENTS as currentServerRequestResponses,
 } from "./_generated/current-source/wire.gen.ts"
 
 export type CodexProtocolLane = "bundled-0.144.1" | "current-source"
-export type CodexProtocolDirection = "client-response" | "server-request" | "server-notification"
+export type CodexProtocolDirection = "client-response" | "server-request" | "server-request-response" | "server-notification"
 
 export type CodexDecodedPayload = Readonly<{
   _tag: "Decoded"
@@ -44,11 +46,13 @@ const Ajv2020Constructor = Ajv2020 as unknown as new (options: object) => WireLa
 const makeLane = (
   clientResponses: Readonly<Record<string, unknown>>,
   serverRequests: Readonly<Record<string, unknown>>,
+  serverRequestResponses: Readonly<Record<string, unknown>>,
   serverNotifications: Readonly<Record<string, unknown>>,
 ): WireLane => ({
   methods: {
     "client-response": clientResponses,
     "server-request": serverRequests,
+    "server-request-response": serverRequestResponses,
     "server-notification": serverNotifications,
   },
   validators: new Map(),
@@ -56,8 +60,8 @@ const makeLane = (
 })
 
 const lanes: Readonly<Record<CodexProtocolLane, WireLane>> = {
-  "bundled-0.144.1": makeLane(bundledClientResponses, bundledServerRequests, bundledServerNotifications),
-  "current-source": makeLane(currentClientResponses, currentServerRequests, currentServerNotifications),
+  "bundled-0.144.1": makeLane(bundledClientResponses, bundledServerRequests, bundledServerRequestResponses, bundledServerNotifications),
+  "current-source": makeLane(currentClientResponses, currentServerRequests, currentServerRequestResponses, currentServerNotifications),
 }
 
 const decode = (
@@ -110,6 +114,9 @@ export const decodeBundledClientResponse = (method: string, payload: unknown): C
 
 export const decodeBundledServerRequest = (method: string, payload: unknown): CodexProtocolDecodeResult =>
   decode("bundled-0.144.1", "server-request", method, payload)
+
+export const decodeBundledServerRequestResponse = (method: string, payload: unknown): CodexProtocolDecodeResult =>
+  decode("bundled-0.144.1", "server-request-response", method, payload)
 
 export const decodeBundledServerNotification = (method: string, payload: unknown): CodexProtocolDecodeResult =>
   decode("bundled-0.144.1", "server-notification", method, payload)

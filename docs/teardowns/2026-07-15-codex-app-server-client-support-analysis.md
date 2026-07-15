@@ -110,6 +110,32 @@ deduplicated compatibility receipt and projected as one bounded visible lane
 notice. Reopening the journal restores enough exact IDs and terminal status to
 reconcile without inventing completion.
 
+### Implementation status: CAP-03
+
+CAP-03 installs one process-owned `CodexReverseRpcArbiter` in front of all 11
+bundled server-request handlers. The transport decodes request params and now
+also validates every proposed response against the generated method-specific
+response schema before writing JSON-RPC. Routed turn/window handlers are only
+proposers: the arbiter commits the first valid proposal for a stable
+connection/request/causal key, shares that result with concurrent subscribers,
+and records late or duplicate proposals as visible no-ops.
+
+The arbiter persists only a bounded `0600` decision receipt: hashed request
+identity, method, terminal outcome, decision time, and late-proposal count.
+Restart replay returns a method-correct denial without reopening attention or
+replaying a prior payload. Timeouts and supervisor shutdown settle pending
+requests and clear attention. No command/question/file content, response body,
+credential, account ID, auth token, attestation, or MCP payload enters the
+receipt journal.
+
+Command, file, user-input, dynamic-tool, and legacy approval methods can race
+private turn proposals. Permission and MCP remain centrally deny-only until
+their later authority work; auth-token refresh and attestation fail with a
+typed authority-unavailable JSON-RPC error; `currentTime/read` returns whole
+Unix seconds even while experimental advertising remains disabled. The
+supervisor exposes private attention and receipt subscriptions for host UI and
+diagnostics without passing privileged payloads into renderer props.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these

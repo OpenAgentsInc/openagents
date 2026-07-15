@@ -175,7 +175,17 @@ describe("CAP-01 Codex app-server supervisor", () => {
       id: "tokens",
       method: "account/chatgptAuthTokens/refresh",
       params: {},
-    })).rejects.toMatchObject({ reason: "unsafe_reverse_request" })
+    })).rejects.toMatchObject({ reason: "authority_unavailable" })
+    await expect(fake.clients[0]?.input.onServerRequest({
+      id: "permissions",
+      method: "item/permissions/requestApproval",
+      params: { threadId: "thread-1", turnId: "turn-1", reason: "test", permissions: {} },
+    })).resolves.toEqual({ permissions: {} })
+    await expect(fake.clients[0]?.input.onServerRequest({
+      id: "time",
+      method: "currentTime/read",
+      params: { threadId: "thread-1" },
+    })).resolves.toEqual({ currentTimeAt: Math.floor(Date.now() / 1_000) })
     await expect(fake.clients[0]?.input.onServerRequest({
       id: "unknown",
       method: "future/reverseMethod",
@@ -213,24 +223,27 @@ describe("CAP-01 Codex app-server supervisor", () => {
     const second = await supervisor.acquire(target())
     first.registerVisibleThread("thread-1")
     second.registerVisibleThread("thread-2")
-    first.registerReverseHandler(request => ({ decision: "accept", owner: "first", id: request.id }))
-    second.registerReverseHandler(request => ({ decision: "accept", owner: "second", id: request.id }))
+    let firstCalls = 0
+    let secondCalls = 0
+    first.registerReverseHandler(() => { firstCalls += 1; return { decision: "accept" } })
+    second.registerReverseHandler(() => { secondCalls += 1; return { decision: "acceptForSession" } })
 
     await expect(fake.clients[0]?.input.onServerRequest({
       id: "approval-1",
       method: "item/commandExecution/requestApproval",
       params: { threadId: "thread-1", turnId: "turn-1" },
-    })).resolves.toMatchObject({ owner: "first" })
+    })).resolves.toEqual({ decision: "accept" })
     await expect(fake.clients[0]?.input.onServerRequest({
       id: "approval-2",
       method: "item/commandExecution/requestApproval",
       params: { threadId: "thread-2", turnId: "turn-2" },
-    })).resolves.toMatchObject({ owner: "second" })
+    })).resolves.toEqual({ decision: "acceptForSession" })
     await expect(fake.clients[0]?.input.onServerRequest({
       id: "approval-unmatched",
       method: "item/commandExecution/requestApproval",
       params: { threadId: "thread-other" },
     })).resolves.toEqual({ decision: "decline" })
+    expect({ firstCalls, secondCalls }).toEqual({ firstCalls: 1, secondCalls: 1 })
     supervisor.close()
   })
 
