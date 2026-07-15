@@ -61,7 +61,7 @@ node "$REPO_ROOT/scripts/google-cloud-authority-guard.mjs"
 
 cd "$APP_DIR"
 echo "==> Building unified TanStack Start application (apps/start/dist)"
-pnpm run build:start >/dev/null
+CI=true pnpm run build:start >/dev/null
 
 cd "$API_DIR"
 echo "==> Bundling Node server (Vite Plus pack)"
@@ -96,7 +96,7 @@ rsync -a "$START_RUNTIME_DEPLOY_DIR/node_modules/" dist-cloudrun/node_modules/
 # Legacy deploy mutates the workspace install mode while materializing the
 # portable tree. Restore the development install before later build/smoke
 # commands invoke pnpm again.
-(cd "$REPO_ROOT" && CI=true pnpm install --frozen-lockfile >/dev/null)
+(cd "$REPO_ROOT" && CI=true pnpm install --frozen-lockfile --ignore-scripts >/dev/null)
 node scripts/cloudrun/assert-self-contained-bundle.mjs dist-cloudrun
 cp -R "$APP_DIR/apps/start/dist/client" dist-cloudrun/start-client
 cp -R "$APP_DIR/apps/start/dist/server" dist-cloudrun/start-server
