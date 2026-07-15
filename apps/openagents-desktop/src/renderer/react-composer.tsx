@@ -20,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "#components/ui/dialog";
-import { Textarea } from "#components/ui/textarea";
 import {
   ComponentValueBinding,
   IntentRef,
@@ -66,7 +65,6 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
-  type KeyboardEvent,
   type ReactElement,
 } from "react";
 
@@ -84,6 +82,10 @@ import {
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
 import { formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import {
+  LexicalComposerEditor,
+  type LexicalComposerEditorHandle,
+} from "./lexical-composer-editor.tsx";
 
 const composerIconNames = {
   commands: "Command",
@@ -295,8 +297,7 @@ export const ReactComposer = ({
   readonly state: DesktopShellState;
   readonly report: IntentReporter;
 }): ReactElement => {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const composingRef = useRef(false);
+  const editorRef = useRef<LexicalComposerEditorHandle>(null);
   const [dragActive, setDragActive] = useState(false);
   const lastSubmitRef = useRef<Readonly<{ value: string; at: number }> | null>(null);
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
@@ -326,35 +327,25 @@ export const ReactComposer = ({
       ? "Steer"
       : "Queue"
     : "Send";
-  const submit = (): void => {
-    if (!canSubmit) return;
+  const submit = (editorValue = state.input): void => {
+    const nextHasText = editorValue.trim() !== "";
+    const nextCanSubmit = state.pending
+      ? state.activeThreadId !== null && nextHasText
+      : lane.available && (nextHasText || state.composerImages.length > 0);
+    if (!nextCanSubmit) return;
     const now = Date.now();
-    if (lastSubmitRef.current?.value === state.input && now - lastSubmitRef.current.at < 350)
+    if (lastSubmitRef.current?.value === editorValue && now - lastSubmitRef.current.at < 350)
       return;
-    lastSubmitRef.current = { value: state.input, at: now };
-    dispatch(report, submitIntent, state.input);
+    lastSubmitRef.current = { value: editorValue, at: now };
+    dispatch(report, submitIntent, editorValue);
   };
   useLayoutEffect(() => {
     // A session transition is an explicit keyboard-flow reset. Focus may
     // still be owned by the New session button when this commit lands, so the
     // guarded "unowned focus" rule used for background hydration is wrong
     // here: the composer must synchronously take focus for immediate typing.
-    textareaRef.current?.focus();
+    editorRef.current?.focusAtEnd();
   }, [sessionKey]);
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea === null) return;
-    textarea.style.height = "auto";
-    const next = Math.min(180, Math.max(52, textarea.scrollHeight));
-    textarea.style.height = `${next}px`;
-    textarea.style.overflowY = textarea.scrollHeight > 180 ? "auto" : "hidden";
-  }, [state.input]);
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== "Enter" || event.shiftKey) return;
-    if (composingRef.current || event.nativeEvent.isComposing) return;
-    event.preventDefault();
-    submit();
-  };
   const showDragTarget = (event: ReactDragEvent<HTMLElement>): void => {
     if (!attachmentDisabled && [...event.dataTransfer.types].includes("Files")) setDragActive(true);
   };
@@ -423,10 +414,9 @@ export const ReactComposer = ({
       )}
       {dragActive ? <span className="oa-react-composer-drop-target" role="status">Drop images to attach</span> : null}
       <DesktopComposerInput>
-        <Textarea
-          ref={textareaRef}
+        <LexicalComposerEditor
+          editorRef={editorRef}
           value={state.input}
-          rows={2}
           placeholder={
             state.pending
               ? state.pendingSubmitMode === "steer"
@@ -434,16 +424,10 @@ export const ReactComposer = ({
                 : "Queue a follow-up…"
               : "Message Codex…"
           }
-          aria-label={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
-          title={`Enter to ${submitLabel.toLocaleLowerCase()} · Shift+Enter for a new line`}
-          onInput={(event) => dispatch(report, "DesktopInputChanged", event.currentTarget.value)}
-          onCompositionStart={() => {
-            composingRef.current = true;
-          }}
-          onCompositionEnd={() => {
-            composingRef.current = false;
-          }}
-          onKeyDown={onKeyDown}
+          ariaLabel={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
+          disabled={false}
+          onChange={(value) => dispatch(report, "DesktopInputChanged", value)}
+          onSubmit={submit}
         />
         <DesktopComposerBar>
         <DesktopComposerButton

@@ -115,9 +115,11 @@ const click = (key: string): string => `(() => {
 
 const setField = (key: string, value: string): string => `(() => {
   const host = document.querySelector('[data-en-key=${JSON.stringify(key)}]')
-  const field = host?.matches?.('input,textarea') ? host : host?.querySelector?.('input,textarea')
+  const selector = '[data-lexical-composer="true"],input,textarea'
+  const field = host?.matches?.(selector) ? host : host?.querySelector?.(selector)
   if (field === null || field === undefined || field.disabled === true) return { changed: false }
-  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set
+  const setter = Object.getOwnPropertyDescriptor(field, 'value')?.set ??
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set
   if (setter === undefined) return { changed: false }
   setter.call(field, ${JSON.stringify(value)})
   field.dispatchEvent(new Event('input', { bubbles: true }))

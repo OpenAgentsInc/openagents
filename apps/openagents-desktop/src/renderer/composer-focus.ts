@@ -11,12 +11,15 @@
  * (sidebar search, an editor, a dialog).
  */
 
-/** The one composer input — textarea today, legacy input accepted. */
+/** The one composer input — Lexical first, legacy form controls accepted. */
 export const composerInputSelector =
-  '[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input'
+  '[data-en-key="shell-input"] [contenteditable="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input'
 
-export const findComposerInput = (root: ParentNode): HTMLTextAreaElement | HTMLInputElement | null =>
-  root.querySelector<HTMLTextAreaElement | HTMLInputElement>(composerInputSelector)
+export const findComposerInput = (root: ParentNode): HTMLElement | null =>
+  root.querySelector<HTMLElement>(composerInputSelector)
+
+const composerInputDisabled = (input: HTMLElement): boolean =>
+  "disabled" in input && input.disabled === true
 
 /**
  * Whether keyboard focus is currently unowned. Only then may an automatic
@@ -45,7 +48,7 @@ export const makeComposerFocuser = (hooks: ComposerFocuserHooks): (() => void) =
     let attempts = 0
     const tryFocus = (): void => {
       const input = findComposerInput(hooks.root)
-      if (input !== null && !input.disabled) {
+      if (input !== null && !composerInputDisabled(input)) {
         input.focus()
         if (hooks.root.ownerDocument.activeElement === input) return
       }

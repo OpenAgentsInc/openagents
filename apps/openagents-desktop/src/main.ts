@@ -3392,10 +3392,10 @@ const smokeReactWorkbench = `(async () => {
     await wait(50)
   }
   const surface = document.querySelector('[data-en-react-surface="true"]')
-  let textarea = document.querySelector('.oa-react-composer textarea')
+  let textarea = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   while (Date.now() < deadline && (textarea === null || textarea.disabled)) {
     await wait(50)
-    textarea = document.querySelector('.oa-react-composer textarea')
+    textarea = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   }
   const marks = () => globalThis.__oaStartupMarks || {}
   while (Date.now() < deadline && typeof marks().historyHydrated !== "number") await wait(50)
@@ -3403,7 +3403,7 @@ const smokeReactWorkbench = `(async () => {
     .find((button) => button.textContent?.trim() === "New session")
   newSession?.click()
   await wait(200)
-  textarea = document.querySelector('.oa-react-composer textarea')
+  textarea = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   textarea?.focus()
   await wait(200)
   return {
@@ -3421,12 +3421,12 @@ const smokeReactWorkbench = `(async () => {
 
 const smokeReactFirstInput = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const textarea = document.querySelector('.oa-react-composer textarea')
+  const textarea = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   const deadline = Date.now() + 5000
-  while (Date.now() < deadline && textarea instanceof HTMLTextAreaElement && !textarea.value.toLowerCase().includes("k")) {
+  while (Date.now() < deadline && textarea instanceof HTMLElement && !textarea.value.toLowerCase().includes("k")) {
     await wait(50)
   }
-  return { ok: textarea instanceof HTMLTextAreaElement && textarea.value.toLowerCase().includes("k"), value: textarea?.value ?? null, probe: globalThis.__oaReactInputProbe ?? null, intent: document.documentElement.dataset.reactInputIntent ?? null }
+  return { ok: textarea instanceof HTMLElement && textarea.value.toLowerCase().includes("k"), value: textarea?.value ?? null, probe: globalThis.__oaReactInputProbe ?? null, intent: document.documentElement.dataset.reactInputIntent ?? null }
 })()`
 
 const smokeReactSidebarDestinations = `(async () => {
@@ -3481,16 +3481,16 @@ const smokeReactCollapseForReload = `(async () => {
 })()`
 
 const smokeReactArmInputProbe = `(() => {
-  const textarea = document.querySelector('.oa-react-composer textarea')
-  if (!(textarea instanceof HTMLTextAreaElement)) return false
+  const editor = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
+  if (!(editor instanceof HTMLElement)) return false
   globalThis.__oaReactInputProbe = { keydown: 0, input: 0, change: 0, inputValue: null }
-  textarea.addEventListener("keydown", () => globalThis.__oaReactInputProbe.keydown++)
-  textarea.addEventListener("input", (event) => {
+  editor.addEventListener("keydown", () => globalThis.__oaReactInputProbe.keydown++)
+  editor.addEventListener("input", (event) => {
     globalThis.__oaReactInputProbe.input++
     globalThis.__oaReactInputProbe.inputValue = event.currentTarget.value
   })
-  textarea.addEventListener("change", () => globalThis.__oaReactInputProbe.change++)
-  textarea.focus()
+  editor.addEventListener("change", () => globalThis.__oaReactInputProbe.change++)
+  editor.focus()
   return true
 })()`
 
@@ -3498,15 +3498,16 @@ const smokeReactImageAttachment = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 60000
   const composer = document.querySelector('[data-en-key="shell-composer"]')
-  const textarea = composer?.querySelector('textarea')
-  if (!(composer instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+  const editor = composer?.querySelector('[data-lexical-composer="true"], textarea')
+  if (!(composer instanceof HTMLElement) || !(editor instanceof HTMLElement)) {
     return { ok: false, reason: 'composer unavailable' }
   }
-  const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
-  valueSetter?.call(textarea, '')
-  textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
+  const valueSetter = Object.getOwnPropertyDescriptor(editor, 'value')?.set ??
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(editor), 'value')?.set
+  valueSetter?.call(editor, '')
+  editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
   await wait(0)
-  const imageOnlyComposer = textarea.value.trim() === ''
+  const imageOnlyComposer = editor.value.trim() === ''
   const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xj6mAAAAAElFTkSuQmCC'), char => char.charCodeAt(0))
   const transfer = new DataTransfer()
   transfer.items.add(new File([bytes], 'smoke-image.png', { type: 'image/png' }))
@@ -3562,7 +3563,7 @@ const smokeReactTurnAndReview = `(async () => {
     buttons: buttons().map((button) => ({ text: button.textContent?.trim(), disabled: button.disabled })),
     composerStatus: document.querySelector('.oa-react-composer-status')?.textContent ?? null,
     heading: document.querySelector('.oa-react-conversation-heading h1')?.textContent ?? null,
-    input: document.querySelector('.oa-react-composer textarea')?.value ?? null,
+    input: document.querySelector('.oa-react-composer [data-lexical-composer="true"]')?.value ?? null,
   }
   send.click()
   while (Date.now() < deadline && document.querySelector('.oa-react-decision') === null) await wait(50)
@@ -3662,7 +3663,7 @@ const smokeReactReloadRestoration = `(async () => {
   while (Date.now() < deadline && document.querySelector('[data-en-react-surface="true"]') === null) await wait(50)
   const collapsedAtMount = document.querySelector('.oa-react-workbench')?.getAttribute('data-rail-collapsed') === 'true'
   const searchClosedAtMount = document.querySelector('input[type="search"]') === null
-  const composerAtMount = document.querySelector('.oa-react-composer textarea')
+  const composerAtMount = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   const composerFocusedAtMount = composerAtMount !== null && document.activeElement === composerAtMount
   const automaticDeadline = Date.now() + 2000
   while (Date.now() < automaticDeadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
@@ -3974,7 +3975,7 @@ const smokeLifecycleCorrelation = `(async () => {
 })()`
 
 const smokeTypeIntoComposer = `(() => {
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Pixel-proof: real chat rows on the shared catalog"
@@ -4006,7 +4007,7 @@ const smokeCodexHistoryDetails = `(async () => {
 // must never steal open-time focus. No pointer event happens before this step.
 const smokeComposerFocusedOnOpen = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const composer = () => document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const composer = () => document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   const deadline = Date.now() + 10000
   while (Date.now() < deadline && (composer() === null || document.activeElement !== composer())) await wait(50)
   const focusedAtMount = composer() !== null && document.activeElement === composer()
@@ -4022,7 +4023,7 @@ const smokeComposerFocusedOnOpen = `(async () => {
 // process, no prior pointer event) lands in the composer as typed text.
 const smokeFirstKeystrokeLandsInComposer = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (composer === null) return { ok: false, reason: "composer input never mounted" }
   const deadline = Date.now() + 5000
   while (Date.now() < deadline && composer.value !== "k") await wait(50)
@@ -4214,7 +4215,7 @@ const smokeTerminalWorkspace = `(async () => {
 
 const smokeSubmitComposer = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   const messageCount = () =>
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
@@ -4539,7 +4540,7 @@ const smokeNewChatFromHistory = `(async () => {
   const transcript = document.querySelector('[data-en-key="shell-transcript"]')
   const split = document.querySelector('[data-en-key="history-workspace-split"]')
   const messages = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
-  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   // Owner contract (EP250): "when i do new chat, clicking button or command
   // N, auto focus the input." The focus retry loop lands AFTER the chat
   // view mounts, so poll for it.
@@ -4549,7 +4550,8 @@ const smokeNewChatFromHistory = `(async () => {
   }
   return {
     ok: transcript !== null && split === null && messages === 0 &&
-      composer !== null && composer.disabled === false &&
+      composer !== null && !("disabled" in composer && composer.disabled === true) &&
+      composer.getAttribute("contenteditable") !== "false" &&
       document.activeElement === composer,
     historyStillLoaded: split !== null,
     messages,
@@ -4568,7 +4570,7 @@ const smokeNewChatFromHistory = `(async () => {
 // currently-disabled codex lane (capability truth lives on the chip/Send).
 const smokeComposerGestures = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   // Icon-only send control: IconButton variant, plane glyph inside, aria
   // label present, no freestanding icon, no visible "Send" text.
@@ -4718,7 +4720,7 @@ const smokeFableLocalStreaming = `(async () => {
   harness.value = "fable"
   harness.dispatchEvent(new Event("change", { bubbles: true }))
   await wait(50)
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Stream a fable-local proof"
@@ -4830,7 +4832,7 @@ const smokeFableImageAttach = `(async () => {
     await wait(50)
   }
   const composer = document.querySelector('[data-en-key="shell-composer"]')
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (composer === null || input === null) return { ok: false, reason: "composer not mounted" }
   // A minimal in-renderer PNG File dropped on the composer (no filesystem read).
   const bytes = new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x01])
@@ -4930,7 +4932,7 @@ const smokeCodexLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const engine = document.querySelector('[data-en-key="shell-codex-engine"]')
   if (engine?.textContent !== "Codex") return { ok: false, reason: "fixed Codex engine label never mounted" }
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Stream a codex-local proof"
@@ -5028,7 +5030,7 @@ const smokeDetailsAffordanceStableOnInput = `(async () => {
   details.dataset.enFlashProbe = "1"
   const parentBefore = details.parentElement
   // Type in the composer — the exact "type something in the input" scenario.
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   let maxOpacityDuringTyping = 0
@@ -5234,7 +5236,7 @@ const smokeCmdNNewChat = `(async () => {
   )) {
     await wait(50)
   }
-  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   const focusDeadline = Date.now() + 3000
   while (Date.now() < focusDeadline && document.activeElement !== composer) {
     await wait(50)

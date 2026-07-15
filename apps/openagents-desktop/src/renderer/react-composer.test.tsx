@@ -23,11 +23,17 @@ const installDom = () => {
     document: window.document,
     navigator: window.navigator,
     Node: window.Node,
+    Text: window.Text,
+    Document: window.Document,
+    Range: window.Range,
     Element: window.Element,
     HTMLElement: window.HTMLElement,
+    HTMLDivElement: window.HTMLDivElement,
     HTMLInputElement: window.HTMLInputElement,
     HTMLTextAreaElement: window.HTMLTextAreaElement,
     Event: window.Event,
+    InputEvent: window.InputEvent,
+    CompositionEvent: window.CompositionEvent,
     KeyboardEvent: window.KeyboardEvent,
     MouseEvent: window.MouseEvent,
     MutationObserver: window.MutationObserver,
@@ -135,7 +141,9 @@ describe("React Codex composer", () => {
     const root = createTestRoot(container);
     const image = { id: "image-1", mediaType: "image/png" as const, data: "aGVsbG8=", name: "screen.png", sizeBytes: 5 };
     await render(root, <ReactComposer state={fixtureState({ composerImages: [image], composerImageNotice: "That image is too large." })} report={report} />);
-    expect(container.querySelector('[data-en-key="shell-composer"] [data-en-key="shell-input"] textarea')).not.toBeNull();
+    expect(container.querySelector('form[data-chat-composer-form="true"]')).not.toBeNull();
+    expect(container.querySelector('[data-chat-composer-footer="true"]')).not.toBeNull();
+    expect(container.querySelector('[data-en-key="shell-composer"] [data-en-key="shell-input"] [contenteditable="true"]')).not.toBeNull();
     expect(container.querySelector('img[src="data:image/png;base64,aGVsbG8="]')).not.toBeNull();
     expect(container.textContent).toContain("screen.png");
     expect(container.textContent).not.toContain("aGVsbG8=");
@@ -171,7 +179,7 @@ describe("React Codex composer", () => {
     expect(container.textContent).toContain("Drop images to attach");
   });
 
-  test("focuses on entry, grows within bounds, and sends one exact intent", async () => {
+  test("focuses the Lexical editor, preserves its bounded shell, and sends one exact intent", async () => {
     const { window, container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
@@ -180,23 +188,22 @@ describe("React Codex composer", () => {
       root,
       <ReactComposer state={fixtureState({ input: "Ship it" })} report={report} />,
     );
-    const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
-    expect(container.querySelector('[data-en-key="shell-input"] textarea')).toBe(textarea);
+    const editor = container.querySelector('[data-lexical-composer="true"]') as HTMLElement;
+    expect(container.querySelector('[data-en-key="shell-input"] [contenteditable="true"]')).toBe(editor);
     expect(container.querySelector('[data-icon-name="Command"]')).not.toBeNull();
     expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(2);
     expect(container.querySelector('[data-composer-button-kind="toggle"]')).not.toBeNull();
     expect(container.querySelector('[data-composer-button-kind="submit"]')).not.toBeNull();
-    Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 240 });
     await render(
       root,
       <ReactComposer state={fixtureState({ input: "Ship it now" })} report={report} />,
     );
-    expect(window.document.activeElement).toBe(textarea);
-    expect(textarea.style.height).toBe("180px");
-    expect(textarea.style.overflowY).toBe("auto");
+    expect(window.document.activeElement).toBe(editor);
+    expect(editor.classList.contains("oa-lexical-composer-content")).toBe(true);
+    expect(editor.textContent).toBe("Ship it now");
     await interact(() => {
-      textarea.dispatchEvent(
+      editor.dispatchEvent(
         new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }) as unknown as Event,
       );
       [...container.querySelectorAll("button")]
@@ -214,7 +221,7 @@ describe("React Codex composer", () => {
     const { report } = recorder();
     const root = createTestRoot(container);
     await render(root, <ReactComposer state={fixtureState()} report={report} />);
-    const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
+    const editor = container.querySelector('[data-lexical-composer="true"]') as HTMLElement;
     const trigger = window.document.createElement("button");
     window.document.body.appendChild(trigger);
     trigger.focus();
@@ -230,7 +237,7 @@ describe("React Codex composer", () => {
         report={report}
       />,
     );
-    expect(window.document.activeElement).toBe(textarea);
+    expect(window.document.activeElement).toBe(editor);
   });
 
   test("does not submit during IME composition and preserves Shift+Enter", async () => {
@@ -239,12 +246,12 @@ describe("React Codex composer", () => {
     const { received, report } = recorder();
     const root = createTestRoot(container);
     await render(root, <ReactComposer state={fixtureState({ input: "入力" })} report={report} />);
-    const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
+    const editor = container.querySelector('[data-lexical-composer="true"]') as HTMLElement;
     const composingEnter = new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true });
     Object.defineProperty(composingEnter, "isComposing", { configurable: true, value: true });
     await interact(() => {
-      textarea.dispatchEvent(composingEnter as unknown as Event);
-      textarea.dispatchEvent(
+      editor.dispatchEvent(composingEnter as unknown as Event);
+      editor.dispatchEvent(
         new window.KeyboardEvent("keydown", {
           key: "Enter",
           shiftKey: true,
@@ -253,6 +260,29 @@ describe("React Codex composer", () => {
       );
     });
     expect(received.some((value) => value.name.includes("Submitted"))).toBe(false);
+  });
+
+  test("keeps Lexical controlled without replacing the editor or echoing external hydration", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactComposer state={fixtureState({ input: "Initial" })} report={report} />);
+    const editor = container.querySelector('[data-lexical-composer="true"]') as HTMLElement & { value: string };
+    expect(editor.getAttribute("role")).toBe("textbox");
+    expect(editor.getAttribute("aria-multiline")).toBe("true");
+    expect(editor.textContent).toBe("Initial");
+
+    await interact(() => {
+      editor.value = "Local edit";
+    });
+    expect(received).toContainEqual({ name: "DesktopInputChanged", payload: "Local edit" });
+
+    const changeCount = received.filter((value) => value.name === "DesktopInputChanged").length;
+    await render(root, <ReactComposer state={fixtureState({ input: "Server hydration" })} report={report} />);
+    expect(container.querySelector('[data-lexical-composer="true"]')).toBe(editor);
+    expect(editor.textContent).toBe("Server hydration");
+    expect(received.filter((value) => value.name === "DesktopInputChanged")).toHaveLength(changeCount);
   });
 
   test("maps streaming controls to stop, steer, queue, and mode intents", async () => {

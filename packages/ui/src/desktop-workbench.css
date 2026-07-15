@@ -1165,14 +1165,20 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   display: grid;
   gap: var(--en-spacing-1);
   margin: var(--en-spacing-3) auto var(--en-spacing-4) !important;
-  width: min(760px, calc(100% - var(--en-spacing-6))) !important;
-  padding: var(--en-spacing-2);
+  width: min(768px, calc(100% - var(--en-spacing-6))) !important;
+  padding: 14px 12px 10px;
   border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-xl);
+  border-radius: 20px;
   background: var(--en-color-surfaceRaised);
   box-shadow: var(--en-elevation-raised-shadow);
   transition: border-color var(--en-motion-fast) var(--en-ease-basic),
-    background-color var(--en-motion-fast) var(--en-ease-basic);
+    background-color var(--en-motion-fast) var(--en-ease-basic),
+    box-shadow var(--en-motion-fast) var(--en-ease-basic);
+}
+
+.oa-react-composer:focus-within {
+  border-color: var(--en-color-accent);
+  box-shadow: 0 0 0 1px var(--en-color-focus);
 }
 
 .oa-react-composer[data-drag-active="true"] {
@@ -1263,22 +1269,52 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   pointer-events: none;
 }
 
-.oa-react-composer textarea {
-  width: 100%;
-  min-height: 52px;
-  max-height: 180px;
-  padding: var(--en-spacing-1) var(--en-spacing-2);
-  resize: none;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--en-color-textPrimary);
-  font: inherit;
-  line-height: 1.5;
+.oa-lexical-composer-editor {
+  position: relative;
+  min-width: 0;
 }
 
-.oa-react-composer textarea:focus-visible {
-  box-shadow: none;
+.oa-lexical-composer-content {
+  width: 100%;
+  min-height: 70px;
+  max-height: 200px;
+  padding: 0 var(--en-spacing-1);
+  overflow-y: auto;
+  outline: none;
+  color: var(--en-color-textPrimary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+
+.oa-lexical-composer-content:focus-visible {
+  outline: none;
+}
+
+.oa-lexical-composer-paragraph {
+  margin: 0;
+}
+
+.oa-lexical-composer-placeholder {
+  position: absolute;
+  top: 0;
+  left: var(--en-spacing-1);
+  right: var(--en-spacing-1);
+  overflow: hidden;
+  color: var(--en-color-textSecondary);
+  font-size: 14px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+.oa-lexical-composer-editor[data-editor-disabled="true"] {
+  opacity: 0.6;
 }
 
 .oa-react-composer-queue {
@@ -1326,6 +1362,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-composer-bar {
   min-height: var(--en-control-sm-height);
   flex-wrap: wrap;
+  padding-inline: var(--en-spacing-1);
 }
 
 .oa-react-composer-button {
