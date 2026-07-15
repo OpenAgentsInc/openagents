@@ -6,8 +6,37 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-15.2",
+    version: "2026-07-15.3",
     contracts: [
+      {
+        contractId: "openagents_desktop.window.launch_fills_work_area.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Desktop window launch geometry",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-15" },
+        statement:
+          "When OpenAgents opens, make it take up the full width and height of the screen without entering fullscreen.",
+        authorityBoundary:
+          "At BrowserWindow creation, Electron resolves the display under the current cursor and applies that display's usable workArea x, y, width, and height. The window remains ordinary and resizable with fullscreen explicitly false, so the menu bar, Dock/taskbar, traffic lights, and separate typed fullscreen command retain their existing semantics. No renderer, persistence, display-reconfiguration, or window-management authority is added.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/tests/startup-contract.test.ts",
+        ],
+        oracles: [
+          {
+            id: "window_launch.active_display_work_area_not_fullscreen",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
+            description:
+              "Proves active-display workArea resolution precedes BrowserWindow construction; all four bounds come from that workArea; fullscreen is explicitly false; and startup does not substitute maximize().",
+          },
+        ],
+        verification:
+          "Desktop typecheck and the focused startup-contract suite.",
+      },
       {
         contractId: "openagents_desktop.chat.shadcn_message_scroller_and_composer.v1",
         state: "enforced",

@@ -15,7 +15,7 @@ import { homedir } from "node:os"
 import { createHash, randomUUID } from "node:crypto"
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFile, execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, screen as electronScreen, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
 import { Effect } from "effect"
 import {
   fetchFleetRunClientProjection,
@@ -2899,11 +2899,19 @@ app.on("web-contents-created", (_event, contents) => {
 })
 
 const createWindow = (): BrowserWindow => {
+  // Fill the display the owner is currently using without entering native
+  // fullscreen. `workArea` deliberately preserves the menu bar and Dock.
+  const launchWorkArea = electronScreen.getDisplayNearestPoint(
+    electronScreen.getCursorScreenPoint(),
+  ).workArea
   const window = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    x: launchWorkArea.x,
+    y: launchWorkArea.y,
+    width: launchWorkArea.width,
+    height: launchWorkArea.height,
     minWidth: 720,
     minHeight: 480,
+    fullscreen: false,
     // khalaTheme color.background — must match @effect-native/tokens so the
     // pre-boot window never flashes an off-palette frame (EP250 #8712).
     backgroundColor: "#05070d",

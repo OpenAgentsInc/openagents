@@ -141,6 +141,19 @@ describe("startup contract: window before persistence/keychain/network (main.ts)
     expect(mainSource).toContain(`backgroundColor: "${khalaTheme.color.background}"`)
   })
 
+  test("ordinary windows fill the active display work area without entering fullscreen", () => {
+    const resolveWorkArea = mainSource.indexOf("electronScreen.getDisplayNearestPoint(")
+    const createBrowserWindow = mainSource.indexOf("const window = new BrowserWindow({", resolveWorkArea)
+    expect(resolveWorkArea).toBeGreaterThan(-1)
+    expect(mainSource.indexOf("electronScreen.getCursorScreenPoint()", resolveWorkArea)).toBeGreaterThan(resolveWorkArea)
+    expect(createBrowserWindow).toBeGreaterThan(resolveWorkArea)
+    for (const field of ["x", "y", "width", "height"]) {
+      expect(mainSource.slice(createBrowserWindow, createBrowserWindow + 800)).toContain(`${field}: launchWorkArea.${field}`)
+    }
+    expect(mainSource.slice(createBrowserWindow, createBrowserWindow + 800)).toContain("fullscreen: false")
+    expect(mainSource.slice(createBrowserWindow, createBrowserWindow + 800)).not.toContain("window.maximize()")
+  })
+
   test("ordinary startup admits the validated launcher directory before restoring the WorkContext", () => {
     const resolve = mainSource.indexOf("const desktopLaunchWorkingDirectory = desktopLaunchWorkspaceRoot({")
     const select = mainSource.indexOf("selectWorkspace(desktopLaunchWorkingDirectory)")

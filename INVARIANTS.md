@@ -1040,6 +1040,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   push, PR, terminal, arbitrary Git argv, absolute root, or raw diff fallback.
   Review refusals and runtime recovery banners project typed Effect
   dispositions; React never classifies raw provider/runtime error strings.
+- A newly created Desktop window occupies the active display's full usable
+  `workArea` while remaining an ordinary resizable window. It preserves the
+  operating-system menu bar, Dock/taskbar, traffic lights, and normal window
+  controls; startup must not call `maximize()` or enter native fullscreen.
+  The explicit fullscreen command remains separate owner authority.
 - The MVP sidebar never projects connected provider accounts or usage. Any
   retained account/Fleet state is non-visible post-MVP substrate only.
 - Desktop chat context rails are genuinely pointer-resizable from 280–480px.
