@@ -148,6 +148,8 @@ describe("React workbench shell", () => {
     for (const row of sessionRows) {
       expect(row.classList.contains("justify-start")).toBe(true)
       expect(row.classList.contains("text-left")).toBe(true)
+      expect(row.querySelector(".oa-react-session-title")).not.toBeNull()
+      expect(row.querySelector(".oa-react-session-meta")).not.toBeNull()
     }
     await interact(() => {
       ;[...container.querySelectorAll("button")].find(button => button.textContent === "New session")?.click()

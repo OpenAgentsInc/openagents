@@ -290,8 +290,8 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
                 onDismiss()
               }}
             >
-              <span>{row.title}</span>
-              <small>{row.meta}</small>
+              <span className="oa-react-session-title">{row.title}</span>
+              <small className="oa-react-session-meta">{row.meta}</small>
             </Button>)}
       {state.history.searchQuery.trim() === "" && shown < state.history.catalog.roots.length
         ? <Button type="button" variant="outline" size="sm" className="oa-react-load-more" onClick={() => dispatch(report, "HistoryCatalogMoreRequested")}>Load more sessions</Button>

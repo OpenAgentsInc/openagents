@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-15.5",
+    version: "2026-07-15.6",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -131,7 +131,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Lay out the OpenAgents sidebar like Codex: left-aligned menus, OpenAgents identity, icon-only search, sidebar expander, back/forward positions, and appropriate icons from the existing Apps SDK catalog.",
         authorityBoundary:
-          "Presentation and already-admitted interaction only. The React sidebar renders native-chrome-aligned controls, an OpenAgents identity row with an icon-only search disclosure, left-aligned New session and current Chat rows, a truthful Recent section, and conversation rows. Every glyph is a closed @effect-native/core IconName lowered through the renderer-private shadcn/Lucide adapter. Search, new-session, session selection, collapse, and Back/Forward dispatch only typed intents. The Effect-owned bounded navigation authority projects exact enabled state; missing MVP destinations and persisted presentation state remain absent until #8826. No enabled placeholder or React-owned domain navigation is authorized.",
+          "Presentation and already-admitted interaction only. The React sidebar renders native-chrome-aligned controls, an OpenAgents identity row with an icon-only search disclosure, left-aligned New session and current Chat rows, a truthful Recent section, and single-line conversation rows whose truncated title stays left while timestamp/status metadata is right-justified on that same line. Every glyph is a closed @effect-native/core IconName lowered through the renderer-private shadcn/Lucide adapter. Search, new-session, session selection, collapse, and Back/Forward dispatch only typed intents. The Effect-owned bounded navigation authority projects exact enabled state; missing MVP destinations and persisted presentation state remain absent until #8826. No enabled placeholder or React-owned domain navigation is authorized.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
           "apps/openagents-desktop/src/renderer/react-workbench.css",
@@ -144,7 +144,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
             description:
-              "The real React workbench proves search is absent until its catalog icon is activated, focus moves into the disclosed field, New session and every session row are left aligned, the current Chat row and Recent section are explicit, and chrome/new/chat/navigation glyphs resolve through data-icon-name values from the closed catalog adapter.",
+              "The real React workbench proves search is absent until its catalog icon is activated, focus moves into the disclosed field, New session and every session title are left aligned, timestamp/status metadata has its dedicated right-justified same-line slot, the current Chat row and Recent section are explicit, and chrome/new/chat/navigation glyphs resolve through data-icon-name values from the closed catalog adapter.",
           },
         ],
         verification:

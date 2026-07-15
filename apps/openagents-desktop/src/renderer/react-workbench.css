@@ -181,6 +181,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   transition: background-color var(--en-motion-fast) var(--en-ease-basic);
 }
 
+.oa-react-session-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--en-spacing-2);
+}
+
 .oa-react-session-row:hover,
 .oa-react-workspace-row > button:hover {
   background: var(--en-color-stateHover);
@@ -198,6 +204,16 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.oa-react-session-row .oa-react-session-title {
+  min-width: 0;
+}
+
+.oa-react-session-row .oa-react-session-meta {
+  width: auto;
+  justify-self: end;
+  text-align: right;
 }
 
 .oa-react-session-row small,

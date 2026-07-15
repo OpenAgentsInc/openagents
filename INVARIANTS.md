@@ -1043,7 +1043,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   macOS traffic lights share the first row with the sidebar expander and
   navigation-history slots; the next row is the `OpenAgents` identity with an
   icon-only search disclosure; primary destinations and conversation titles
-  remain left aligned beneath it. Search never occupies a permanent field when
+  remain left aligned beneath it. Each conversation title and its timestamp or
+  status metadata share one non-wrapping row, with metadata right-justified;
+  metadata may not consume a second line. Search never occupies a permanent field when
   closed. Every glyph is named by the closed Effect Native `IconName` catalog
   and lowered by a renderer-private adapter; enabled controls may never be
   no-ops. Back/forward read one ephemeral bounded stack owned by the Effect
