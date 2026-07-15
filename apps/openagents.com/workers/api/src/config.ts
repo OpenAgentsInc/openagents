@@ -66,8 +66,8 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // Native email-sequence send-service flag (promise
   // autopilot_sites.native_email_sequences.v1, yellow). Default OFF: authored
   // sequence sends still take the dry-run/skipped path and do not call a sender.
-  // Set "true"/"1"/"on" only after the Cloudflare Email binding and authenticated
-  // sender domain are configured. The promise remains yellow until live
+  // Set "true"/"1"/"on" only after Resend and the authenticated sender domain
+  // are configured. The promise remains yellow until live
   // deliverability receipts and owner sign-off exist.
   EMAIL_SEQUENCE_SEND_ENABLED?: string | undefined
   EMAIL_SEQUENCE_FROM_EMAIL?: string | undefined
@@ -170,12 +170,12 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // ops/canaries need fresh keys during an incident.
   FREE_KEY_MAX_MINTS_PER_IP_PER_DAY?: string | undefined
   // Durable-stream resumable inference feature flag (durable-stream Rank-1,
-  // #6058, EPIC #6056). Owner-armed in production/staging Wrangler config as of
+  // #6058, EPIC #6056). Owner-armed in production/staging Cloud Run config as of
   // 2026-07-05 because Khala MCP coding assignments (`khala.request`,
   // `khala.spawn`, `khala.resume`, `khala.status`) depend on the durable read
   // URL for caller-owned Pylon/Codex resume/status. If unset, the gateway remains
   // fail-safe non-durable pass-through. When set "true"/"1"/"on", the
-  // `KHALA_SYNC_DB` Hyperdrive binding must also be wired (the durable log is
+  // `KHALA_SYNC_DB` Cloud SQL connection must also be wired (the durable log is
   // Postgres-backed since CFG-6 #8521); metering still settles EXACTLY ONCE on
   // the real upstream EOF and NEVER on a resume/replay read.
   INFERENCE_DURABLE_STREAM_ENABLED?: string | undefined
@@ -437,24 +437,6 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // falls back to the shared Resend from/reply-to when absent.
   CRM_RESEND_FROM_EMAIL?: string | undefined
   CRM_RESEND_REPLY_TO_EMAIL?: string | undefined
-  RUNNER_AUTOMATIC_FAILOVER_ENABLED?: string | undefined
-  RUNNER_BACKEND_POLICY?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_ALLOWED_TRUSTS?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_CLASS_NAME?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_CONFIGURED?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_DURABLE_OBJECT_BINDING?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_ENABLED?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_IMAGE_REF?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_INSTANCE_TYPE?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_MAX_INSTANCES?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_POLICY_APPROVED?: string | undefined
-  RUNNER_CLOUDFLARE_CONTAINER_STAGING_SMOKE?: string | undefined
-  RUNNER_GCLOUD_REFERENCE_ENABLED?: string | undefined
-  RUNNER_GCLOUD_SENSITIVE_APPROVED?: string | undefined
-  SHC_CONTROL_API_BEARER_TOKEN?: string | undefined
-  SHC_CONTROL_API_URL?: string | undefined
-  SHC_DISPATCH_MODE?: string | undefined
-  SHC_RUNNER_CALLBACK_TOKEN?: string | undefined
 }>
 
 export const OpenAgentsAppUrl = S.String.pipe(S.brand('OpenAgentsAppUrl'))
@@ -483,22 +465,10 @@ export type ResendEmailSender = typeof ResendEmailSender.Type
 export const EmailAddress = S.String.pipe(S.brand('EmailAddress'))
 export type EmailAddress = typeof EmailAddress.Type
 
-export const ShcControlApiUrl = S.String.pipe(S.brand('ShcControlApiUrl'))
-export type ShcControlApiUrl = typeof ShcControlApiUrl.Type
-
 export const WorkerSecret = S.String.pipe(S.brand('WorkerSecret'))
 export type WorkerSecret = typeof WorkerSecret.Type
 
-export type ShcDispatchMode = 'live' | 'unconfigured'
-
-export type RunnerBackendPolicy =
-  | 'shc_primary_cloudflare_container_backup_gcloud_reference'
-  | 'shc_primary_only'
-
 export type RunnerWorkloadTrust = 'low' | 'medium' | 'sensitive'
-
-export type CloudflareContainerInstanceType =
-  'basic' | 'lite' | 'standard-1' | 'standard-2' | 'standard-3' | 'standard-4'
 
 export type ResendEmailConfig = Readonly<{
   apiKey: Redacted.Redacted<WorkerSecret>
@@ -554,29 +524,6 @@ export type ExaConfig = Readonly<{
   retryLimit: number
 }>
 
-export type RunnerBackendConfig = Readonly<{
-  automaticFailoverEnabled: boolean
-  cloudflareContainer: Readonly<{
-    allowedWorkloadTrusts: ReadonlyArray<RunnerWorkloadTrust>
-    binding: Readonly<{
-      className?: string | undefined
-      durableObjectBinding?: string | undefined
-      imageRef?: string | undefined
-      instanceType?: CloudflareContainerInstanceType | undefined
-      maxInstances?: number | undefined
-    }>
-    configured: boolean
-    enabled: boolean
-    policyApproved: boolean
-    stagingSmokePassed: boolean
-  }>
-  gcloud: Readonly<{
-    referenceEnabled: boolean
-    sensitiveApproved: boolean
-  }>
-  policy: RunnerBackendPolicy
-}>
-
 export type OpenAgentsWorkerConfigShape = Readonly<{
   adminApiToken?: Redacted.Redacted<WorkerSecret> | undefined
   app: Readonly<{
@@ -609,13 +556,6 @@ export type OpenAgentsWorkerConfigShape = Readonly<{
     issuerOrigin: OpenAuthIssuerOrigin
     issuerUrl: OpenAuthIssuerUrl
     mobileClientId: OpenAuthClientId
-  }>
-  runnerBackends: RunnerBackendConfig
-  shc: Readonly<{
-    controlApiBearerToken?: Redacted.Redacted<WorkerSecret> | undefined
-    controlApiUrl?: ShcControlApiUrl | undefined
-    dispatchMode: ShcDispatchMode
-    runnerCallbackToken?: Redacted.Redacted<WorkerSecret> | undefined
   }>
 }>
 
@@ -820,28 +760,6 @@ const optionalNonNegativeInteger = (
       )
 }
 
-const optionalPositiveIntegerValue = (
-  env: OpenAgentsWorkerConfigEnv,
-  field: keyof OpenAgentsWorkerConfigEnv,
-): Effect.Effect<number | undefined, OpenAgentsWorkerConfigError> => {
-  const value = optionalString(env, field)
-
-  if (value === undefined) {
-    return Effect.sync((): number | undefined => undefined)
-  }
-
-  const parsed = Number(value)
-
-  return Number.isInteger(parsed) && parsed > 0
-    ? Effect.succeed(parsed)
-    : Effect.fail(
-        new OpenAgentsWorkerConfigError({
-          field,
-          reason: 'Expected a positive integer.',
-        }),
-      )
-}
-
 const exaSearchType = (
   env: OpenAgentsWorkerConfigEnv,
 ): Effect.Effect<ExaSearchType, OpenAgentsWorkerConfigError> => {
@@ -930,191 +848,6 @@ const exaConfig = (
     }
   })
 
-const shcDispatchMode = (
-  env: OpenAgentsWorkerConfigEnv,
-): Effect.Effect<ShcDispatchMode, OpenAgentsWorkerConfigError> => {
-  const value = optionalString(env, 'SHC_DISPATCH_MODE')
-
-  if (value === undefined || value === 'unconfigured') {
-    return Effect.succeed('unconfigured')
-  }
-
-  if (value === 'live') {
-    return Effect.succeed('live')
-  }
-
-  return Effect.fail(
-    new OpenAgentsWorkerConfigError({
-      field: 'SHC_DISPATCH_MODE',
-      reason: 'Expected "live" or "unconfigured".',
-    }),
-  )
-}
-
-const runnerBackendPolicy = (
-  env: OpenAgentsWorkerConfigEnv,
-): Effect.Effect<RunnerBackendPolicy, OpenAgentsWorkerConfigError> => {
-  const value = optionalString(env, 'RUNNER_BACKEND_POLICY')
-
-  if (value === undefined || value === 'shc_primary_only') {
-    return Effect.succeed('shc_primary_only')
-  }
-
-  if (value === 'shc_primary_cloudflare_container_backup_gcloud_reference') {
-    return Effect.succeed(
-      'shc_primary_cloudflare_container_backup_gcloud_reference',
-    )
-  }
-
-  return Effect.fail(
-    new OpenAgentsWorkerConfigError({
-      field: 'RUNNER_BACKEND_POLICY',
-      reason:
-        'Expected "shc_primary_only" or "shc_primary_cloudflare_container_backup_gcloud_reference".',
-    }),
-  )
-}
-
-const runnerWorkloadTrustValues: ReadonlyArray<RunnerWorkloadTrust> = [
-  'low',
-  'medium',
-  'sensitive',
-]
-
-const isRunnerWorkloadTrust = (value: string): value is RunnerWorkloadTrust =>
-  runnerWorkloadTrustValues.includes(value as RunnerWorkloadTrust)
-
-const cloudflareContainerAllowedWorkloadTrusts = (
-  env: OpenAgentsWorkerConfigEnv,
-): Effect.Effect<
-  ReadonlyArray<RunnerWorkloadTrust>,
-  OpenAgentsWorkerConfigError
-> => {
-  const value = optionalString(
-    env,
-    'RUNNER_CLOUDFLARE_CONTAINER_ALLOWED_TRUSTS',
-  )
-
-  if (value === undefined) {
-    return Effect.succeed(['low', 'medium'])
-  }
-
-  const trusts = value
-    .split(',')
-    .map(part => part.trim())
-    .filter(part => part !== '')
-  const invalid = trusts.find(trust => !isRunnerWorkloadTrust(trust))
-
-  if (trusts.length === 0 || invalid !== undefined) {
-    return Effect.fail(
-      new OpenAgentsWorkerConfigError({
-        field: 'RUNNER_CLOUDFLARE_CONTAINER_ALLOWED_TRUSTS',
-        reason: 'Expected comma-separated low, medium, or sensitive values.',
-      }),
-    )
-  }
-
-  return Effect.succeed([
-    ...new Set(trusts),
-  ] as ReadonlyArray<RunnerWorkloadTrust>)
-}
-
-const cloudflareContainerInstanceTypes: ReadonlyArray<CloudflareContainerInstanceType> =
-  ['lite', 'basic', 'standard-1', 'standard-2', 'standard-3', 'standard-4']
-
-const cloudflareContainerInstanceType = (
-  env: OpenAgentsWorkerConfigEnv,
-): Effect.Effect<
-  CloudflareContainerInstanceType | undefined,
-  OpenAgentsWorkerConfigError
-> => {
-  const value = optionalString(env, 'RUNNER_CLOUDFLARE_CONTAINER_INSTANCE_TYPE')
-
-  if (value === undefined) {
-    return Effect.sync(
-      (): CloudflareContainerInstanceType | undefined => undefined,
-    )
-  }
-
-  if (
-    cloudflareContainerInstanceTypes.includes(
-      value as CloudflareContainerInstanceType,
-    )
-  ) {
-    return Effect.succeed(value as CloudflareContainerInstanceType)
-  }
-
-  return Effect.fail(
-    new OpenAgentsWorkerConfigError({
-      field: 'RUNNER_CLOUDFLARE_CONTAINER_INSTANCE_TYPE',
-      reason:
-        'Expected lite, basic, standard-1, standard-2, standard-3, or standard-4.',
-    }),
-  )
-}
-
-const runnerBackendConfig = (
-  env: OpenAgentsWorkerConfigEnv,
-): Effect.Effect<RunnerBackendConfig, OpenAgentsWorkerConfigError> =>
-  Effect.gen(function* () {
-    return {
-      automaticFailoverEnabled: yield* optionalBooleanFlag(
-        env,
-        'RUNNER_AUTOMATIC_FAILOVER_ENABLED',
-      ),
-      cloudflareContainer: {
-        allowedWorkloadTrusts:
-          yield* cloudflareContainerAllowedWorkloadTrusts(env),
-        binding: {
-          className: optionalString(
-            env,
-            'RUNNER_CLOUDFLARE_CONTAINER_CLASS_NAME',
-          ),
-          durableObjectBinding: optionalString(
-            env,
-            'RUNNER_CLOUDFLARE_CONTAINER_DURABLE_OBJECT_BINDING',
-          ),
-          imageRef: optionalString(
-            env,
-            'RUNNER_CLOUDFLARE_CONTAINER_IMAGE_REF',
-          ),
-          instanceType: yield* cloudflareContainerInstanceType(env),
-          maxInstances: yield* optionalPositiveIntegerValue(
-            env,
-            'RUNNER_CLOUDFLARE_CONTAINER_MAX_INSTANCES',
-          ),
-        },
-        configured: yield* optionalBooleanFlag(
-          env,
-          'RUNNER_CLOUDFLARE_CONTAINER_CONFIGURED',
-        ),
-        enabled: yield* optionalBooleanFlag(
-          env,
-          'RUNNER_CLOUDFLARE_CONTAINER_ENABLED',
-        ),
-        policyApproved: yield* optionalBooleanFlag(
-          env,
-          'RUNNER_CLOUDFLARE_CONTAINER_POLICY_APPROVED',
-        ),
-        stagingSmokePassed: yield* optionalBooleanFlag(
-          env,
-          'RUNNER_CLOUDFLARE_CONTAINER_STAGING_SMOKE',
-        ),
-      },
-      gcloud: {
-        referenceEnabled: yield* optionalBooleanFlag(
-          env,
-          'RUNNER_GCLOUD_REFERENCE_ENABLED',
-        ),
-        sensitiveApproved: yield* optionalBooleanFlag(
-          env,
-          'RUNNER_GCLOUD_SENSITIVE_APPROVED',
-        ),
-      },
-      policy: yield* runnerBackendPolicy(env),
-    }
-  })
-
 const resendConfig = (
   env: OpenAgentsWorkerConfigEnv,
 ): Effect.Effect<ResendEmailConfig | undefined, OpenAgentsWorkerConfigError> =>
@@ -1199,58 +932,12 @@ const mdkConfig = (
     walletMnemonic: undefined,
   })
 
-const validateLiveShc = (
-  env: OpenAgentsWorkerConfigEnv,
-  dispatchMode: ShcDispatchMode,
-  controlApiUrl: string | undefined,
-  controlApiBearerToken: Redacted.Redacted<string> | undefined,
-): Effect.Effect<void, OpenAgentsWorkerConfigError> => {
-  if (dispatchMode !== 'live') {
-    return Effect.sync(() => undefined)
-  }
-
-  if (controlApiUrl === undefined) {
-    return Effect.fail(
-      new OpenAgentsWorkerConfigError({
-        field: 'SHC_CONTROL_API_URL',
-        reason:
-          'SHC_CONTROL_API_URL is required when SHC_DISPATCH_MODE is live.',
-      }),
-    )
-  }
-
-  if (controlApiBearerToken === undefined) {
-    return Effect.fail(
-      new OpenAgentsWorkerConfigError({
-        field: 'SHC_CONTROL_API_BEARER_TOKEN',
-        reason:
-          'SHC_CONTROL_API_BEARER_TOKEN is required when SHC_DISPATCH_MODE is live.',
-      }),
-    )
-  }
-
-  return Effect.sync(() => undefined)
-}
-
 export const decodeOpenAgentsWorkerConfig = (
   env: OpenAgentsWorkerConfigEnv,
 ): Effect.Effect<OpenAgentsWorkerConfigShape, OpenAgentsWorkerConfigError> =>
   Effect.gen(function* () {
     const app = yield* requiredUrl(env, 'OPENAGENTS_APP_URL')
     const issuer = yield* requiredUrl(env, 'OPENAUTH_ISSUER_URL')
-    const dispatchMode = yield* shcDispatchMode(env)
-    const controlApiUrl = yield* optionalUrl(env, 'SHC_CONTROL_API_URL')
-    const controlApiBearerToken = optionalRedacted(
-      env,
-      'SHC_CONTROL_API_BEARER_TOKEN',
-    )
-
-    yield* validateLiveShc(
-      env,
-      dispatchMode,
-      controlApiUrl,
-      controlApiBearerToken,
-    )
 
     return {
       adminApiToken: optionalRedacted(env, 'OPENAGENTS_ADMIN_API_TOKEN'),
@@ -1301,16 +988,6 @@ export const decodeOpenAgentsWorkerConfig = (
             ? 'openagents-khala-mobile'
             : (env.OPENAUTH_MOBILE_CLIENT_ID ?? 'openagents-khala-mobile'),
         ),
-      },
-      runnerBackends: yield* runnerBackendConfig(env),
-      shc: {
-        controlApiBearerToken,
-        controlApiUrl:
-          controlApiUrl === undefined
-            ? undefined
-            : ShcControlApiUrl.make(controlApiUrl),
-        dispatchMode,
-        runnerCallbackToken: optionalRedacted(env, 'SHC_RUNNER_CALLBACK_TOKEN'),
       },
     }
   })

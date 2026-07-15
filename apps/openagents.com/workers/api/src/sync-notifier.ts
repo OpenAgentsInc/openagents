@@ -24,14 +24,16 @@ import { observedPromise } from './observability'
 import {
   openAgentsDatabase,
   scheduleBackgroundWork,
-  syncRoomNotifications,
-  syncScopes,
 } from './runtime'
 import type { TeamChatMessage } from './team-chat'
 import type { PublicThreadFile } from './thread-files'
 
-type SyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>
-type SyncRoomEnv = Pick<WorkerBindings, 'SYNC_ROOM'>
+type LiveHubEnv = Readonly<{
+  KHALA_SYNC_LIVE_HUB_FETCH?: ((request: Request) => Promise<Response>) | undefined
+  KHALA_SYNC_LIVE_HUB_TOKEN?: string | undefined
+  KHALA_SYNC_LIVE_HUB_URL?: string | undefined
+}>
+type SyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB'> & LiveHubEnv
 
 export type SyncNotificationContext = Pick<ExecutionContext, 'waitUntil'>
 
@@ -44,12 +46,33 @@ export const PUBLIC_AGENT_GOAL_EVENTS_SYNC_COLLECTION =
   'public_agent_goal_events'
 
 export const notifySyncScopes = async (
-  env: SyncRoomEnv,
+  env: LiveHubEnv,
   scopes: ReadonlyArray<string>,
 ): Promise<void> => {
-  await observedPromise('Sync.notifyScopes', () =>
-    syncRoomNotifications(env).notifyScopesPromise(syncScopes(scopes)),
-  )
+  const baseUrl = env.KHALA_SYNC_LIVE_HUB_URL?.trim()
+  const token = env.KHALA_SYNC_LIVE_HUB_TOKEN?.trim()
+  if (baseUrl === undefined || baseUrl === '' || token === undefined || token === '') {
+    return
+  }
+  const fetchImpl = env.KHALA_SYNC_LIVE_HUB_FETCH ?? fetch
+
+  await observedPromise('Sync.notifyScopes', async () => {
+    await Promise.all(
+      [...new Set(scopes)].map(async scope => {
+        const response = await fetchImpl(new Request(`${baseUrl.replace(/\/+$/, '')}/access-changed`, {
+          body: JSON.stringify({ scope }),
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          method: 'POST',
+        }))
+        if (!response.ok) {
+          throw new Error(`live hub notification failed: ${response.status}`)
+        }
+      }),
+    )
+  }).catch(() => undefined)
 }
 
 const remainingTokens = (goal: AgentGoalRecord): number | null =>
@@ -130,13 +153,13 @@ export const publicAgentGoalEventSyncValue = async (
 
 export const publishAgentGoalSyncIfBound = async (
   env: Pick<WorkerBindings, 'OPENAGENTS_DB'> &
-    Partial<Pick<WorkerBindings, 'SYNC_ROOM'>>,
+    LiveHubEnv,
   ctx: SyncNotificationContext,
   goal: AgentGoalRecord,
   actorId: string,
 ): Promise<void> => {
   await publishAgentGoalSync(
-    env as Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>,
+    env,
     ctx,
     goal,
     actorId,

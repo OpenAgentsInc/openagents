@@ -181,28 +181,28 @@ describe('auth email OTP hardening', () => {
     vi.restoreAllMocks()
   })
 
-  test('auth issuer redirect host allowlist includes staging but rejects sibling worker hosts', () => {
+  test('auth issuer redirect host allowlist includes Cloud Run staging and rejects unknown hosts', () => {
     expect(authIssuerAllowsRedirectHostname('openagents.com')).toBe(true)
     expect(authIssuerAllowsRedirectHostname('auth.openagents.com')).toBe(true)
     expect(
       authIssuerAllowsRedirectHostname(
-        'openagents-staging.openagents.workers.dev',
+        'openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app',
       ),
     ).toBe(true)
     expect(authIssuerAllowsRedirectHostname('localhost')).toBe(true)
     expect(authIssuerAllowsRedirectHostname('127.0.0.1')).toBe(true)
-    // Aiur (#8499): separate Worker, same downstream web client id.
+    // Aiur (#8499): separate Cloud Run service, same downstream web client id.
     expect(authIssuerAllowsRedirectHostname('aiur.openagents.com')).toBe(true)
 
     expect(authIssuerAllowsRedirectHostname('openagents.example.com')).toBe(
       false,
     )
     expect(
-      authIssuerAllowsRedirectHostname('random.openagents.workers.dev'),
+      authIssuerAllowsRedirectHostname('random.example.com'),
     ).toBe(false)
     expect(
       authIssuerAllowsRedirectHostname(
-        'openagents-staging.evil.workers.dev',
+        'openagents-staging.evil.example.com',
       ),
     ).toBe(false)
     expect(authIssuerAllowsRedirectHostname('www.openagents.com')).toBe(false)
@@ -350,17 +350,7 @@ describe('auth email OTP hardening', () => {
     expect(authEmailOtpSendForm(verifyForm)).toBeUndefined()
   })
 
-  test('uses Cloudflare client IP first, then forwarded IP, then unknown', () => {
-    expect(
-      authEmailOtpClientIp(
-        new Request('https://auth.openagents.com/authorize', {
-          headers: {
-            'cf-connecting-ip': '203.0.113.9',
-            'x-forwarded-for': '198.51.100.1',
-          },
-        }),
-      ),
-    ).toBe('203.0.113.9')
+  test('uses the Google load balancer forwarded IP, then unknown', () => {
     expect(
       authEmailOtpClientIp(
         new Request('https://auth.openagents.com/authorize', {
@@ -386,7 +376,7 @@ describe('auth email OTP hardening', () => {
         }),
         headers: {
           accept: 'text/html',
-          'cf-connecting-ip': '203.0.113.44',
+          'x-forwarded-for': '203.0.113.44',
           'content-type': 'application/x-www-form-urlencoded',
         },
         method: 'POST',

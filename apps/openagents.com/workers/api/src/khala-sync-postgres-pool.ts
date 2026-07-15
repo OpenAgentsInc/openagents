@@ -1,13 +1,10 @@
 /**
  * Shared postgres.js client acquisition for the Khala Sync Postgres seams.
  *
- * WHY THIS EXISTS (incident 2026-07-08): every driver seam in this Worker used
+ * WHY THIS EXISTS (incident 2026-07-08): every driver seam used
  * to construct a FRESH `postgres(connectionString, { max: 1 })` client per D1
- * operation / per request and `end()` it immediately after. Under Cloudflare
- * Workers + Hyperdrive that is correct — each invocation is isolated and
- * Hyperdrive pools upstream, and a Worker isolate cannot reuse a socket across
- * request contexts. But on the **Cloud Run monolith** (a long-lived Bun
- * process, `--concurrency 80`, up to 4 instances) that pattern opens a brand
+ * operation / per request and `end()` it immediately after. On the Cloud Run
+ * monolith (a long-lived process, concurrency 80, up to 4 instances) that opens a brand
  * new raw connection to Cloud SQL for every single statement. At ~80 concurrent
  * DB-heavy requests it blew past Cloud Run's hard limit of **100 connections
  * per instance** to `khala-sync-pg`, surfacing as
@@ -27,8 +24,6 @@
  * sync-engine client's default string int8) never share a connection with the
  * wrong parsing behavior.
  *
- * On Cloudflare Workers (detected via `navigator.userAgent`) the legacy
- * per-acquire fresh-client-with-real-teardown path is preserved unchanged.
  */
 
 /** The structural postgres.js `default` export: `postgres(url, options)`. */
@@ -45,10 +40,9 @@ export type PostgresJsClientLike = {
 
 export type SharedPostgresHandle<Client extends PostgresJsClientLike> =
   Readonly<{
-    /** The underlying postgres.js client (pooled on the server runtime). */
+    /** The underlying pooled postgres.js client. */
     sql: Client
-    /** Release the client. No-op for the shared server pool; a real teardown
-     * for the per-acquire Workers client. Always safe to call. */
+    /** Release the client. No-op for the process-lifetime shared pool. */
     end: () => Promise<void>
   }>
 
@@ -58,25 +52,12 @@ export type AcquireSharedPostgresArgs = Readonly<{
    * variants so they never share a pooled connection. */
   variant: string
   /** Driver options for THIS seam. `max` is injected by this helper (the pool
-   * size on the server; forced to 1 on Workers) — do not set it here. */
+   * size on Cloud Run) — do not set it here. */
   options: Record<string, unknown>
   /** Test seam: inject a fake `postgres(...)` factory. Default: dynamic import
    * of `postgres`. */
   createClient?: PostgresJsFactory
-  /** Test/override seam: force the runtime. Default: auto-detect. */
-  runtime?: 'workers' | 'server'
 }>
-
-/** Cloudflare Workers sets `navigator.userAgent === 'Cloudflare-Workers'`. Bun
- * (Cloud Run) and Node report something else or `undefined`, so this is
- * `false` on the long-lived server. */
-const detectRuntime = (): 'workers' | 'server' => {
-  const ua =
-    typeof navigator !== 'undefined'
-      ? (navigator as { userAgent?: string }).userAgent
-      : undefined
-  return ua === 'Cloudflare-Workers' ? 'workers' : 'server'
-}
 
 const DEFAULT_POOL_MAX = 10
 
@@ -125,10 +106,8 @@ const NOOP_END = async (): Promise<void> => undefined
 /**
  * Acquire a postgres.js client for a Khala Sync Postgres seam.
  *
- * - Server runtime (Cloud Run / Bun): returns a SHARED pool-backed client,
- *   memoized per `(connectionString, variant)`, with a no-op `end()`.
- * - Workers runtime: returns a FRESH `max: 1` client with a real `end()`,
- *   preserving the pre-incident Hyperdrive-era discipline.
+ * Returns a shared Cloud Run pool-backed client, memoized per
+ * `(connectionString, variant)`, with a no-op `end()`.
  */
 export const acquireSharedPostgresClient = async <
   Client extends PostgresJsClientLike,
@@ -136,19 +115,6 @@ export const acquireSharedPostgresClient = async <
   args: AcquireSharedPostgresArgs,
 ): Promise<SharedPostgresHandle<Client>> => {
   const createClient = args.createClient ?? (await loadDefaultCreateClient())
-  const runtime = args.runtime ?? detectRuntime()
-
-  if (runtime === 'workers') {
-    const sql = createClient(args.connectionString, {
-      ...args.options,
-      max: 1,
-    }) as Client
-    return {
-      end: () => sql.end({ timeout: 5 }),
-      sql,
-    }
-  }
-
   const key = `${args.connectionString}::${args.variant}`
   const existing = serverPools.get(key)
   if (existing !== undefined) {

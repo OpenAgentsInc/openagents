@@ -3,7 +3,7 @@
   "training_run_id": "training.run.tb2.retained.001",
   "benchmark_run_id": "benchmark.run.tb2.retained.001",
   "task_run_id": "taskrun.db-wal-recovery.001",
-  "target_node_id": "oa-shc-katy-01",
+  "target_node_id": "oa-gcp-katy-01",
   "dataset": {
     "dataset_slug": "terminal-bench",
     "dataset_version": "2.0",

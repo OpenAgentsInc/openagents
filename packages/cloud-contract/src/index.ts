@@ -32,7 +32,7 @@ export const PublicSafeRef = S.String.check(
 export const ComputeLane = S.Literals([
   "auto",
   "cloud_gcp",
-  "shc",
+  "gcp",
   "local",
   "cloud_vm",
 ])

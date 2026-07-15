@@ -12,11 +12,11 @@ import {
  * integration suite (real local Postgres via `src/test/local-postgres.ts`),
  * the client-engine contracts in the `packages/khala-sync-client`
  * fake-transport session suite, and the revocation contract additionally in
- * the full-stack e2e suite of the `openagents.com` Worker. Authoring
+ * the Cloud Run API route suite. Authoring
  * guidance for mutators — including how these rules bind mutator code — is
  * docs/khala-sync/MUTATORS.md. Desktop-surface consumption of the client
  * primitives is contracted separately in
- * clients/khala-code-desktop/src/contracts/ux-contracts.ts
+ * the supported Desktop and mobile applications
  * (khala_code.fleet.khala_sync_indicator_truthful.v1 /
  * khala_code.fleet.khala_sync_must_refetch_recovers.v1) and referenced
  * here rather than duplicated.
@@ -57,9 +57,9 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
       state: "enforced",
       statement:
         "Acceptance is synchronous with the transaction; validation failures ack the mutation and report the error in-band — they never 4xx/block the queue.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "KS-3.3 is enforced by the push-engine integration suite in packages/khala-sync-server (executePush against real local Postgres) in that package's normal pnpm exec vp test sweep; the route-level never-4xx mapping is exercised by the openagents.com Worker push route tests.",
+        "KS-3.3 is enforced by the push-engine integration suite in packages/khala-sync-server (executePush against real local Postgres) in that package's normal pnpm exec vp test sweep; the route-level never-4xx mapping is exercised by the openagents.com Cloud Run API push route tests.",
     },
     {
       authorityBoundary:
@@ -222,17 +222,8 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "docs/khala-sync/SPEC.md",
         "docs/khala-sync/RUNBOOK.md",
         "packages/khala-sync-client/src/session.ts",
-        "apps/openagents.com/workers/api/src/khala-sync-access-revocation.e2e.test.ts",
       ],
       oracles: [
-        {
-          description:
-            "Full-stack revocation e2e (KS-7.1, #8305): real local Postgres + real Worker bootstrap/log/connect route handlers + real KhalaSyncHubDO + the real client store/overlay/session — membership removal plus the access-changed trigger broadcasts MustRefetch(access_changed), all reads 403, and the client's denied re-bootstrap clears its scope-local durable state and parks terminal denied.",
-          id: "khala_sync.access.revocation_e2e_retracts_state",
-          kind: "bun-test",
-          mode: "unit",
-          ref: "apps/openagents.com/workers/api/src/khala-sync-access-revocation.e2e.test.ts",
-        },
         {
           description:
             "Client-engine oracles over the fake transport: MustRefetch(access_changed) followed by a denied re-bootstrap clears durable rows + cursor and parks terminal denied; proven revoke closes mutation before queue insertion, burns already-queued hosted commands, retracts every subscribed hosted scope, and preserves device-local rows. Transient close remains reconstructible.",
@@ -253,11 +244,11 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "Access revocation clears synced state: once access is revoked or native sign-out is proven, the client stops receiving hosted scopes, refuses new mutation, burns queued hosted commands, and clears locally synced hosted state rather than leaving it readable or replayable; the session parks denied or closed instead of silently retrying.",
       surface: "khala-sync-client",
       verification:
-        "The full-stack oracle is the KS-7.1 revocation e2e in apps/openagents.com/workers/api (vitest; real Postgres via local-postgres, skips only on machines without initdb/pg_ctl) and the client-side clearing oracles run in the packages/khala-sync-client pnpm exec vp test sweep. Both suites run in their packages' normal test sweeps before pushes to main; SPEC §7 invariant 7 registration with honest limits lives in apps/openagents.com/INVARIANTS.md.",
+        "The client-side clearing oracle runs in the packages/khala-sync-client pnpm exec vp test sweep before pushes to main; the Cloud Run API scope-auth and LiveHub route suites separately enforce live membership checks and access-changed delivery. SPEC §7 invariant 7 registration with honest limits lives in apps/openagents.com/INVARIANTS.md.",
     },
     {
       authorityBoundary:
-        "This SEAM contract (ST-5 #8511) binds the two-sided bearer WebSocket connect boundary: the real client transport's documented ?token= query-param bearer on the WS upgrade (browser and React Native WebSocket clients cannot set an Authorization header) MEETS the Worker connect route's query-param-aware authentication, and an authenticated cookie-less session actually reaches the live phase. It does not bind delivery latency, reconnect backoff policy, or scope membership semantics (owned by the access contracts above). Per the seam convention, its oracle must be an e2e suite driving REAL code from both named sides — the fake-transport session suite can never enforce this contract.",
+        "This SEAM contract (ST-5 #8511) binds the two-sided bearer WebSocket connect boundary: the real client transport's documented ?token= query-param bearer on the WS upgrade (browser and React Native WebSocket clients cannot set an Authorization header) MEETS the Cloud Run API connect route's query-param-aware authentication, and an authenticated cookie-less session actually reaches the live phase. It does not bind delivery latency, reconnect backoff policy, or scope membership semantics (owned by the access contracts above). Per the seam convention, its oracle must be an e2e suite driving REAL code from both named sides — the fake-transport session suite can never enforce this contract.",
       blockerRefs: [
         "blocker.khala_sync.depends_on_8507_live_seam_smoke_landing",
       ],
@@ -288,7 +279,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "A cookie-less bearer client completes a real /api/sync/connect upgrade and reaches live: the client transport's ?token= query-param bearer (the only credential a browser or React Native WebSocket upgrade can carry) is accepted by the real connect route, and the session phase actually reaches live — never an infinite silent retry loop.",
       surface: "khala-sync-client",
       verification:
-        "Pending on ST-1 (#8507): the oracle is the live-seam smoke at packages/khala-sync-client/src/live-seam-smoke.e2e.test.ts, which drives the REAL transport (bootstrap -> logPage -> connectLive) with a bearer-only credential against the real Worker route stack. Once that suite lands on main, flip this contract to enforced/test-sweep with that ref as its bun-test oracle — the seam coverage checker will then require the e2e ref and its contractId reference. The one-sided halves that already exist (the connect route's query-param tests and the client's fake-transport session suite) are deliberately NOT acceptable oracles for this contract.",
+        "Pending on ST-1 (#8507): the oracle is the live-seam smoke at packages/khala-sync-client/src/live-seam-smoke.e2e.test.ts, which drives the REAL transport (bootstrap -> logPage -> connectLive) with a bearer-only credential against the real Cloud Run API route stack. Once that suite lands on main, flip this contract to enforced/test-sweep with that ref as its bun-test oracle — the seam coverage checker will then require the e2e ref and its contractId reference. The one-sided halves that already exist (the connect route's query-param tests and the client's fake-transport session suite) are deliberately NOT acceptable oracles for this contract.",
     },
     {
       authorityBoundary:

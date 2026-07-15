@@ -2,6 +2,21 @@
 
 This is the invariant ledger for `openagents`.
 
+## 2026-07-14 Google Cloud production authority
+
+- Google Cloud is the sole production infrastructure authority. The API runs
+  on Cloud Run, durable relational state is in Cloud SQL, live sync fanout is
+  the Cloud Run LiveHub, blobs are in Cloud Storage, and secrets are in Secret
+  Manager.
+- Cloudflare Workers, Durable Objects, D1, R2, Queues, Analytics Engine,
+  Browser Rendering, and Wrangler are retired. No active route, fallback,
+  deployment, migration, operator command, or test may depend on them.
+- SHC was a limited pilot, not a primary production lane. It is retired and
+  cannot be used for placement, pricing, provisioning, or fallback.
+- Older entries below that name former Worker/D1/R2/Durable Object/SHC
+  implementations are superseded historical records. They do not authorize a
+  current code path. New and changed code must follow this section.
+
 ## 2026-07-14 retained web application cutover
 
 - `apps/start` is the only retained `openagents.com` document application.
@@ -10,7 +25,7 @@ This is the invariant ledger for `openagents`.
   retired-path tombstones, Portal, the dedicated Effect Native Forum mount,
   and the root holding-page interception. It then serves exact Start client
   assets and delegates only Start-owned document routes to the built Start SSR
-  handler. API, auth, and unknown paths remain Worker-owned.
+  handler. API, auth, and unknown paths remain owned by the Cloud Run API.
 - `/`, `/forum` and supported descendants, `/promises`, legal/auth documents,
   and companion agent files remain available. Legacy Sites, billing, credits,
   checkout, and other non-MVP Foldkit documents are not Start-owned.
@@ -371,8 +386,8 @@ This is the invariant ledger for `openagents`.
   sequence. Duplicate or non-append events must fail closed before
   persistence.
 - Ingestion must not parse adapter-specific transcript dialects. Fixture,
-  Codex, Claude, OpenCode, hosted, SHC, Hermes-reserved, and native loops must
-  project into the shared kernel contract before the Worker sees them.
+  Codex, Claude, OpenCode, hosted, Hermes-reserved, and native loops must
+  project into the shared kernel contract before the API sees them.
 - Runtime events are evidence only. Ingestion and public projection must not
   grant accepted-work authority, payout authority, public-claim authority,
   provider-account mutation, or spend authority.
@@ -3022,7 +3037,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 
 - Artanis production-equivalent Probe GEPA/Pylon smoke is retained evidence,
   not runtime authority. It may clear the `production_e2e_smoke` launch-gate
-  blocker only when it carries SHC/Harbor refs, Probe closeout bundle refs,
+  blocker only when it carries Google Cloud run refs, Probe closeout bundle refs,
   accepted and rejected Pylon closeout refs, artifact/proof/resource/verifier
   refs, route scorecard refs, Psionic import refs, explicit `unpaid_smoke`
   mode, and a public-safe Forum summary ref.
@@ -3888,14 +3903,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
 
 Khala Sync is the owned replication substrate (Cloud SQL Postgres →
 per-scope live hubs → SQLite clients; the hub layer is the LiveHub Cloud
-Run service `apps/khala-live-hub` when `KHALA_SYNC_LIVE_HUB_URL`/`_TOKEN`
-are configured — CFG-5, #8520 — with the legacy `KhalaSyncHubDO` in this
-Worker serving unconfigured deployments until CFG-9 deletes it). The
+Run service `apps/khala-live-hub`, configured through
+`KHALA_SYNC_LIVE_HUB_URL`/`_TOKEN`). There is no in-process or edge-runtime
+fallback. The
 normative spec is `docs/khala-sync/SPEC.md`; §7 defines nine invariants and
-this section registers them (KS-9.3, #8312). This Worker owns the sync
+this section registers them (KS-9.3, #8312). The Cloud Run API owns the sync
 routes (`POST /api/sync/push`, `GET /api/sync/log`,
 `POST /api/sync/bootstrap`, `GET /api/sync/connect`, and the admin-bearer
-internal hub append/log/connect routes) and the hub DO; the substrate and
+internal hub append/log/connect routes); the substrate and
 client engines
 live in `packages/khala-sync-server` / `packages/khala-sync-client` and are
 cited here because the invariants span the seam. Statuses are honest:

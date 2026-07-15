@@ -1,7 +1,9 @@
 # @openagentsinc/durable-stream
 
-An Effect + Effect Schema **durable append-only offset-log** primitive on
-Cloudflare Durable Objects with SQLite storage. It implements the four-part
+An Effect + Effect Schema **durable append-only offset-log** primitive with a
+pluggable storage port. Production persistence is implemented on Google Cloud
+with Cloud SQL/Postgres; this package owns the provider-neutral protocol core.
+It implements the four-part
 [Durable Streams](https://github.com/durable-streams/durable-streams) conformance
 contract — **ported, not vendored** (the upstream ElectricSQL repo is a read-only
 reference under `projects/repos/durable-streams/`).
@@ -27,8 +29,7 @@ EPIC: #6056. Core primitive: #6057.
    per read mode.
 3. **Exactly-once writes** — `(producerId, epoch, seq)` dedup, zombie fencing,
    gap detection; validate+append serialized per `(stream, producerId)` and
-   committed atomically (the DO's single-threaded transactional execution gives
-   this for free).
+   committed atomically by the storage adapter.
 4. **CDN-friendly fan-out** — cacheable catch-up reads (`ETag` varying with
    closure, `Cache-Control`, `Stream-Cursor`).
 
@@ -41,13 +42,11 @@ EPIC: #6056. Core primitive: #6057.
 | `src/core.ts`           | transport-agnostic state machine (pure; Vitest-testable) |
 | `src/store.ts`          | `StreamStore` port + in-memory impl                      |
 | `src/http.ts`           | Web `Request`/`Response` adapter (+ SSE)                 |
-| `src/durable-object.ts` | Cloudflare DO + SQLite adapter                           |
 | `src/test-server.ts`    | Node-hostable test server (same core/http paths)         |
 
-The core has **no Cloudflare import** — the DO adapter is isolated, so the whole
-protocol state machine is unit-testable under Node with `MemoryStreamStore`. The
-DO adapter (`SqliteStreamStore` / `handleDurableStreamFetch`) wires the same core
-to `ctx.storage.sql` and DO alarms (TTL/expiry).
+The package has no cloud-provider imports. The protocol state machine is
+unit-testable under Node with `MemoryStreamStore`; the OpenAgents API supplies
+the Google Cloud/Cloud SQL production adapter.
 
 Stream URL scheme: `{base}/v1/stream/{path}` (matches the upstream conformance
 harness).

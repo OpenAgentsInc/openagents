@@ -17,7 +17,7 @@
 //     + per-context Firecracker microVM lease); the production default fails
 //     closed until that real provisioner is explicitly armed
 //   - a placement policy that honors repo trust tiers BEFORE any dispatch
-//     (regulated -> SHC-only, private -> own/verified, public -> any), an
+//     (regulated -> Google Cloud-only, private -> own/verified, public -> any), an
 //     authority boundary the promise already commits to
 //   - a usage/receipt seam (`CloudCodingMeteringHook`) for the
 //     `openagents.resource_usage_receipt.v1` round-trip; lifecycle/resource
@@ -70,16 +70,15 @@ export const isCloudCodingSessionsEnabled = (
 // The cloud execution lane a session is launched onto. This is the CLOUD subset
 // of the shared Autopilot control-protocol `SessionLane` (#4998): the surface
 // only accepts cloud lanes (a `local` session never reaches this Worker route).
-//   - `cloud-gcp` — OpenAgents Cloud on Google GCE (the default cloud lane)
-//   - `cloud-shc` — OpenAgents Cloud SHC capacity (the cloud fallback / regulated)
-export const CloudCodingLane = S.Literals(['cloud-gcp', 'cloud-shc'])
+//   - `cloud-gcp` — OpenAgents Cloud on Google Compute Engine
+export const CloudCodingLane = S.Literals(['cloud-gcp'])
 export type CloudCodingLane = typeof CloudCodingLane.Type
 export const DEFAULT_CLOUD_CODING_LANE: CloudCodingLane = 'cloud-gcp'
 
 // REPO TRUST TIER ----------------------------------------------------------
 // Drives placement: which cloud capacity may run a session for a repo of this
 // classification. The promise's authority boundary commits to exactly this:
-// regulated -> SHC-only, private -> own/verified, public -> any.
+// regulated -> Google Cloud-only, private -> own/verified, public -> any.
 export const RepoTrustTier = S.Literals(['public', 'private', 'regulated'])
 export type RepoTrustTier = typeof RepoTrustTier.Type
 export const DEFAULT_REPO_TRUST_TIER: RepoTrustTier = 'private'
@@ -216,14 +215,10 @@ export type CloudCodingSession = Readonly<{
 // Pure decision: which cloud lanes may run a session for a repo of this trust
 // tier, and whether the REQUESTED lane is admissible. This encodes the promise's
 // authority boundary as a checkable function, BEFORE any adapter dispatch:
-//   - regulated -> SHC-only        (cloud-shc)
-//   - private   -> own/verified    (cloud-gcp or cloud-shc)
-//   - public    -> any             (cloud-gcp or cloud-shc)
-// A regulated repo requesting cloud-gcp is REFUSED here; nothing reaches a VM.
+// Every trust tier is admitted only to the owned Google Cloud lane.
 export const admissibleLanesForTrustTier = (
-  tier: RepoTrustTier,
-): ReadonlyArray<CloudCodingLane> =>
-  tier === 'regulated' ? ['cloud-shc'] : ['cloud-gcp', 'cloud-shc']
+  _tier: RepoTrustTier,
+): ReadonlyArray<CloudCodingLane> => ['cloud-gcp']
 
 export type PlacementDecision =
   | Readonly<{ allowed: true; lane: CloudCodingLane }>
@@ -1014,14 +1009,14 @@ type CloudPlacementResponse = Readonly<{
 const normalizeCloudPlacementResponse = (
   payload: unknown,
   fallbackRunId: string,
-  fallbackLane: CloudCodingLane,
+  _fallbackLane: CloudCodingLane,
 ): CloudPlacementResponse => {
   const record = (payload ?? {}) as Record<string, unknown>
   const rawBinding =
     record.binding !== null && typeof record.binding === 'object'
       ? (record.binding as Record<string, unknown>)
       : {}
-  const lane = rawBinding.lane === 'cloud-shc' ? 'cloud-shc' : fallbackLane
+  const lane: CloudCodingLane = 'cloud-gcp'
   const externalRunId =
     publicRefFromUnknown(record.externalRunId) ??
     publicRefFromUnknown(rawBinding.externalRunId) ??
@@ -1072,8 +1067,7 @@ const normalizeCloudPlacementResponse = (
       externalRunId,
       lane,
       providerLane:
-        publicRefFromUnknown(rawBinding.providerLane) ??
-        (lane === 'cloud-shc' ? 'shc' : 'gcp'),
+        publicRefFromUnknown(rawBinding.providerLane) ?? 'gcp',
       reason: publicRefFromUnknown(rawBinding.reason) ?? '',
       runId: publicRefFromUnknown(rawBinding.runId) ?? fallbackRunId,
       runnerId: publicRefFromUnknown(rawBinding.runnerId) ?? '',
@@ -1193,13 +1187,8 @@ export const makeCloudControlCloudCodingAdapter = (
             // Seam A (#8503, AC-1): forward the opaque base64 work-context blob
             // (repo/commit + inference block, incl. a short-lived owner-linked
             // agent bearer) so the daemon runs the turn INSIDE a Firecracker
-            // microVM instead of the Codex runner. Only meaningful on the
-            // GCE microVM lane; the daemon decodes it into /tmp/wc.json and the
-            // baked turn-runner consumes it. Omitted when absent (Codex path).
-            const workContextB64 =
-              lane === 'cloud-gcp'
-                ? stringOption(request.options, 'workContextB64')
-                : undefined
+            // The placement boundary carries an opaque work-context ref only.
+            // Raw/base64 context never crosses into the GCP control request.
             const response = await fetchImpl(`${baseUrl}/v1/placement`, {
               body: JSON.stringify({
                 auth_grant_ref: authGrantRef,
@@ -1223,9 +1212,6 @@ export const makeCloudControlCloudCodingAdapter = (
                 timeout_seconds: request.timeoutSeconds,
                 wallet_authority: false,
                 work_context_ref: workContextRef,
-                ...(workContextB64 === undefined
-                  ? {}
-                  : { work_context_b64: workContextB64 }),
               }),
               headers: {
                 Authorization: `Bearer ${config.bearerToken}`,

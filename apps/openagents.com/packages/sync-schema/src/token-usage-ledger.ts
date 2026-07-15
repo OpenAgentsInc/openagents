@@ -15,7 +15,7 @@ export const TokenUsageProducerSystem = S.Literals([
   'omega',
   'pylon',
   'provider_broker',
-  'shc_runner',
+  'gcp_runner',
   'manual',
   'unknown',
 ])
@@ -27,7 +27,7 @@ export const TokenUsageSourceRoute = S.Literals([
   'omega_provider_broker',
   'omega_hosted_gemini',
   'pylon_codex_direct_local',
-  'shc_runner_callback',
+  'gcp_runner_callback',
   'manual',
   'unknown',
 ])

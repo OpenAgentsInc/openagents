@@ -6,8 +6,8 @@ import { Context, Effect, Layer } from 'effect'
 
 import {
   type DispatchResult,
-  dispatchAgentRunToShc,
-  dispatchDeploymentToShc,
+  dispatchAgentRunToGoogleCloud,
+  dispatchDeploymentToGoogleCloud,
 } from '../omni-runs'
 import { type OmniError, omniDispatchErrorFromUnknown } from './errors'
 
@@ -19,8 +19,8 @@ export type OmniDispatchConfig = Readonly<{
 }>
 
 export type OmniDispatchServiceDependencies = Readonly<{
-  dispatchAgentRunToShc?: typeof dispatchAgentRunToShc | undefined
-  dispatchDeploymentToShc?: typeof dispatchDeploymentToShc | undefined
+  dispatchAgentRunToGoogleCloud?: typeof dispatchAgentRunToGoogleCloud | undefined
+  dispatchDeploymentToGoogleCloud?: typeof dispatchDeploymentToGoogleCloud | undefined
 }>
 
 export type OmniDispatchServiceShape = Readonly<{
@@ -52,9 +52,9 @@ export const makeOmniDispatchService = (
   dependencies: OmniDispatchServiceDependencies = {},
 ): OmniDispatchServiceShape => {
   const dispatchAgentRun =
-    dependencies.dispatchAgentRunToShc ?? dispatchAgentRunToShc
+    dependencies.dispatchAgentRunToGoogleCloud ?? dispatchAgentRunToGoogleCloud
   const dispatchDeployment =
-    dependencies.dispatchDeploymentToShc ?? dispatchDeploymentToShc
+    dependencies.dispatchDeploymentToGoogleCloud ?? dispatchDeploymentToGoogleCloud
 
   return {
     dispatchAgentRun: (assignment, config) =>

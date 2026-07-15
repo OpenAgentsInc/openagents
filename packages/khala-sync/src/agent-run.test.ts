@@ -21,7 +21,7 @@ import {
  */
 
 const validRun = {
-  backend: "shc_vm",
+  backend: "gcloud_vm",
   canceledAt: null,
   completedAt: null,
   createdAt: "2026-07-05T12:00:00.000Z",
@@ -143,7 +143,7 @@ const validEvent = {
   payloadJson: '{"tool":"read_file"}',
   runId: "run.alpha",
   sequence: 2,
-  source: "shc",
+  source: "gcp",
   status: null,
   summary: "OpenCode read a file in the workspace.",
   type: "runner.progress",

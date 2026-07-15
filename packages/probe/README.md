@@ -13,7 +13,7 @@ agent runtime. It should be one coherent surface for coding agents that can run
 with API-key model providers, local inference, swarm inference, Codex-style
 hosted execution, and future OpenAgents inference routes without exposing those
 implementation choices as product names. Probe should be opinionated around the
-OpenAgents stack: OpenAgents product surface dispatch, OpenAgents Sync events, SHC boxes, Pylons,
+OpenAgents stack: OpenAgents product surface dispatch, OpenAgents Sync events, Google Cloud, Pylons,
 forum-thread workrooms, artifact receipts, and explicit product acceptance.
 
 OpenCode is an important inspiration point, especially for the shape of a
@@ -31,7 +31,7 @@ pile of separate agent products.
 
 The same runtime should also be deployable into sandboxes from
 `openagents.com`. Forum threads, workroom requests, and operator actions should
-be able to create bounded Probe assignments that run in SHC boxes or other
+be able to create bounded Probe assignments that run on Google Cloud or other
 approved sandboxes, emit redacted events back to OpenAgents product surface, produce artifacts, and
 wait for explicit acceptance before any product or writeback authority is
 treated as complete.
@@ -66,7 +66,7 @@ Tracked files should stay minimal until the new architecture lands:
   token-usage events to OpenAgents product surface for global Stats totals and opt-out-aware
   leaderboards.
 - `packages/runtime/src/fleet/backend-capability.ts` reports Apple FM backend
-  capability for Pylon/SHC/sandbox routing from live health.
+  capability for Pylon/Google Cloud/sandbox routing from live health.
 - `packages/runtime/src/backends/registry.ts` registers the first Apple FM
   backend profile.
 - `packages/runtime/src/backends/apple-fm/contract.ts` defines the Effect v4
@@ -94,7 +94,7 @@ Tracked files should stay minimal until the new architecture lands:
   Pylon/OpenAgents product surface dispatch.
 - `docs/probe-auth-materialization.md` records the implemented per-run auth
   materialization slice.
-- `docs/probe-runner-identity.md` records the SHC/Pylon/sandbox runner
+- `docs/probe-runner-identity.md` records the historical pilot/Pylon/sandbox runner
   identity slice.
 - `docs/probe-cli-openagents-auth.md` records the CLI account-management slice.
 - `docs/probe-fleet-telemetry.md` records the fleet telemetry and failover
@@ -120,7 +120,7 @@ Tracked files should stay minimal until the new architecture lands:
 - `docs/probe-blueprint-program-run-evidence.md` records the evidence-only
   Program Run shape emitted by Apple FM tool streams.
 - `docs/probe-blueprint-backend-capability-routing.md` records the
-  Blueprint-aware backend capability facts used by Pylon/SHC routing.
+  Blueprint-aware backend capability facts used by Pylon/Google Cloud routing.
 - `docs/probe-blueprint-action-submission-boundary.md` records the proposal-only
   write boundary for external effects.
 - `docs/probe-blueprint-contribution-release-gates.md` records the Probe-side
@@ -130,7 +130,7 @@ Tracked files should stay minimal until the new architecture lands:
 - `docs/probe-retained-terminal-bench-fixtures.md` records the public-ref-only
   retained Terminal-Bench fixture package for GEPA Stage 0/1.
 - `docs/2026-06-08-probe-gepa-live-network-system-audit.md` records the
-  current cross-repo Probe GEPA live-network system state after the SHC Harbor
+  historical cross-repo Probe GEPA live-network system state after the limited pilot
   smoke, Benchmark Cloud runner work, Psionic live import path, OpenAgents product surface route
   scorecard/product evidence path, and Artanis projection updates.
 - `.gitignore` keeps local build/cache noise out of the repo.
@@ -182,7 +182,7 @@ The next Probe should start from the final shape:
 - A durable session and event log that can resume, replay, and close out runs.
 - A single tool and approval model across local, swarm, API-key, and Codex-style
   inference routes.
-- SHC-first deployment, with later Pylon and other sandbox hosts using the same
+- Google-Cloud-first deployment, with Pylon and other sandbox hosts using the same
   assignment contract.
 - Redacted artifacts and events suitable for OpenAgents Sync and
   `openagents.com` workrooms.

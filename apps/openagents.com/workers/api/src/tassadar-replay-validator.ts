@@ -2,7 +2,7 @@
  * Server-side exact-replay validation for the Tassadar executor-trace
  * proof of concept (compute.tassadar_executor_poc.v1, issue #4692).
  *
- * The production Cloudflare Worker acts as the validator device: it
+ * The production Google Cloud service acts as the validator device: it
  * re-executes the dispatched digest-pinned workload itself and reports
  * the digest it computed, so the replay evidence is produced on a
  * physically separate machine from the worker Pylon. The verdict then
@@ -32,7 +32,7 @@ import {
 } from '@openagentsinc/tassadar-executor/linked-dense-module'
 
 export const TassadarReplayValidatorDeviceRef =
-  'device.cloudflare_worker.openagents_api'
+  'device.gcp_cloud_run.openagents_api'
 
 export const TassadarReplayRequest = S.Struct({
   assignmentRef: S.String,

@@ -18,7 +18,7 @@ import {
 } from "../auth/materializer.js";
 import { type OmegaGrantResolver, type ProbeAuthGrantError } from "../omega/grant-client.js";
 
-export const ProbeRunnerKind = S.Literals(["local", "shc", "pylon", "sandbox"]);
+export const ProbeRunnerKind = S.Literals(["local", "gcp", "pylon", "sandbox"]);
 export type ProbeRunnerKind = typeof ProbeRunnerKind.Type;
 export { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract.js";
 export { PROBE_GEMINI_BACKEND_CAPABILITY } from "../backends/gemini/contract.js";
@@ -39,7 +39,7 @@ export const ProbeRunnerAssignmentProof = S.Struct({
   runnerSessionId: S.String,
   issuedAt: S.String,
   nonce: S.String,
-  proofKind: S.Literals(["pylon_signed_link", "shc_broker", "sandbox_control", "test"]),
+  proofKind: S.Literals(["pylon_signed_link", "gcp_control", "sandbox_control", "test"]),
   signatureRef: S.optional(S.String),
 });
 export type ProbeRunnerAssignmentProof = typeof ProbeRunnerAssignmentProof.Type;

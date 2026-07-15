@@ -9,8 +9,8 @@ set -euo pipefail
 #
 # Build happens here on the deploy machine (aiur/oa-updates pattern):
 #   1. pnpm run build:start (TanStack Start client + server artifacts)
-#   2. vp pack src/cloudrun/server.ts + preload.ts → dist-cloudrun/
-#   3. render the non-secret env YAML from wrangler.jsonc vars
+#   2. vp pack src/cloudrun/server.ts → dist-cloudrun/
+#   3. use the committed target-specific Cloud Run env YAML
 #   4. gcloud run deploy --source . (Dockerfile in this directory)
 #
 # Secrets ride --set-secrets from GCP Secret Manager (created out of band —
@@ -24,8 +24,7 @@ set -euo pipefail
 #   openagents-gemini-api-key / openagents-openrouter-api-key /
 #   openagents-fireworks-api-key / openagents-exa-api-key /
 #   openagents-resend-api-key / openagents-vertex-sa-key
-#   openagents-github-client-secret          (production only; NEEDS-OWNER
-#                                            until re-supplied — see #8524)
+#   openagents-github-client-secret          GitHub OAuth client secret
 #
 # Cloud Scheduler: pass --with-scheduler to (re)create the per-minute
 # /internal/cron job for the target env after deploy.
@@ -52,22 +51,18 @@ API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$(cd "$API_DIR/../.." && pwd)"   # apps/openagents.com
 REPO_ROOT="$(cd "$API_DIR/../../../.." && pwd)"
 
+node "$REPO_ROOT/scripts/google-cloud-authority-guard.mjs"
+
 cd "$APP_DIR"
 echo "==> Building retained Start application (apps/start/dist)"
 pnpm run build:start >/dev/null
 
 cd "$API_DIR"
-echo "==> Bundling Node server + preload (Vite Plus pack)"
+echo "==> Bundling Node server (Vite Plus pack)"
 rm -rf dist-cloudrun
 vp pack src/cloudrun/server.ts --out-dir dist-cloudrun --format esm \
   --platform node --target node24 >/dev/null
-vp pack src/cloudrun/preload.ts src/cloudrun/cloudflare-workers-stub.ts \
-  --out-dir dist-cloudrun --format esm --platform node --target node24 \
-  --no-clean >/dev/null
-# `vp pack` cleans its output directory by default. The preload pass must
-# preserve server.mjs and any split server chunks produced by the first pass.
-if [[ ! -f dist-cloudrun/server.mjs || ! -f dist-cloudrun/preload.mjs || \
-      ! -f dist-cloudrun/cloudflare-workers-stub.mjs ]]; then
+if [[ ! -f dist-cloudrun/server.mjs ]]; then
   echo "FATAL: Vite Plus Cloud Run bundles are incomplete" >&2
   exit 1
 fi
@@ -109,8 +104,11 @@ mkdir -p dist-cloudrun/forum-ui
   --out-dir "$API_DIR/dist-cloudrun/forum-ui") >/dev/null
 mv dist-cloudrun/forum-ui/forum-entry.iife.js dist-cloudrun/forum-ui/app.js
 
-echo "==> Rendering env vars from wrangler.jsonc ($TARGET)"
-node --import tsx scripts/cloudrun/render-env-yaml.ts "$TARGET"
+ENV_FILE="scripts/cloudrun/env-${TARGET}.yaml"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "FATAL: missing Cloud Run environment file: $ENV_FILE" >&2
+  exit 1
+fi
 
 SET_SECRETS=(
   "KHALA_SYNC_DATABASE_URL=openagents-monolith-database-url-${ENV_SUFFIX}:latest"
@@ -137,9 +135,10 @@ SET_SECRETS=(
   "EXA_API_KEY=openagents-exa-api-key:latest"
   "RESEND_API_KEY=openagents-resend-api-key:latest"
   "VERTEX_SA_KEY=openagents-vertex-sa-key:latest"
+  "GITHUB_CLIENT_SECRET=openagents-github-client-secret:latest"
   # Cloud coding sessions control-plane bearer (oa-cloud-run-bridge).
   "OA_CLOUD_CONTROL_TOKEN=oa-cloud-run-bridge-control-token:latest"
-  # CFG-8 GCS artifacts (bucket name is a committed wrangler var).
+  # CFG-8 GCS artifacts.
   "ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID=oa-artifacts-gcs-hmac-access-key-id:latest"
   "ARTIFACTS_GCS_HMAC_SECRET=oa-artifacts-gcs-hmac-secret:latest"
   "AGENT_REGISTRATION_SECRET=openagents-agent-registration-secret:latest"
@@ -152,7 +151,7 @@ SET_SECRETS=(
   # grant-gated audio edge. Keep the shared HMAC mounted across every deploy.
   "OPENAGENTS_AUDIO_TOKEN_SECRET=openagents-audio-token-secret:latest"
   # CFG-14 (2026-07-07): khala_app password for the Cloud SQL Auth Connector
-  # socket path (PGHOST/PGUSER are non-secret wrangler vars; the db name rides
+  # socket path (PGHOST/PGUSER are committed Cloud Run vars; the db name rides
   # the authority-less KHALA_SYNC_DATABASE_URL secret). khala_app is
   # instance-wide, so the same secret serves prod + staging. WITHOUT this the
   # deploy drops PGPASSWORD and the socket connection fails — and with public
@@ -165,23 +164,14 @@ if [[ "$TARGET" == "production" ]]; then
     # OPENROUTER_API_KEY was dropped here (owner decision 2026-07-09) — OpenRouter
     # is no longer a platform Khala lane on prod OR staging. See the common block
     # above. The BYOK caller-key path does not need this platform secret.
-    "GITHUB_CLIENT_SECRET=openagents-github-client-secret:latest"
-    # SHC live dispatch (config validation requires the bearer when
-    # SHC_DISPATCH_MODE=live).
-    "SHC_CONTROL_API_BEARER_TOKEN=openagents-shc-control-api-bearer:latest"
-    "SHC_RUNNER_CALLBACK_TOKEN=openagents-shc-runner-callback-token:latest"
-    # D1-over-HTTP bridge for not-yet-migrated CFG-4 domains (typed 503 when
-    # the daily free-tier quota is exhausted — see #8524).
-    "CLOUDFLARE_API_TOKEN=openagents-monolith-cf-d1-token:latest"
-    # Hydralisk GPT-OSS lanes (secondary; 120B base URL is CF-only — see the
-    # #8524 NEEDS-OWNER catalogue).
+    # Hydralisk GPT-OSS lanes.
     "HYDRALISK_BASE_URL=hydralisk-gptoss20b-base-url:latest"
     "HYDRALISK_BEARER_TOKEN=hydralisk-gptoss20b-bearer:latest"
     "HYDRALISK_GPT_OSS_120B_BEARER_TOKEN=hydralisk-gptoss120b-bearer:latest"
   )
   # Hydralisk GLM-5.2-REAP-504B fleet (the Khala primary backing): one
   # BASE_URL + BEARER_TOKEN pair per replica id from the committed
-  # HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS wrangler var.
+  # HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS Cloud Run var.
   GLM_REPLICAS=(
     g4-4g-b-20260625154532
     g4-4g-central1f-spot-20260625203000
@@ -229,7 +219,7 @@ gcloud run deploy "$SERVICE" \
   --memory 2Gi \
   --timeout 3600 \
   --concurrency 80 \
-  --env-vars-file "dist-cloudrun/env-${TARGET}.yaml" \
+  --env-vars-file "$ENV_FILE" \
   --set-secrets "$SECRET_FLAG" \
   --add-cloudsql-instances "openagentsgemini:us-central1:khala-sync-pg"
 

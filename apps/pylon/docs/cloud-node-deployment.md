@@ -14,7 +14,7 @@ Forum publication authority.
 ## Prerequisites
 
 - Ubuntu 24.04 LTS or another systemd-based Linux host.
-- Bun, Git, and a working outbound HTTPS path.
+- Node 24, pnpm, Git, and a working outbound HTTPS path.
 - An owner-granted OpenAgents agent token with assignment/work authority.
 - BYOK Claude Agent readiness, either:
   - `ANTHROPIC_API_KEY`, or
@@ -128,8 +128,8 @@ send-readiness path explicitly proves readiness.
 This is the cloud form of the M3 free own-Pylon lane:
 
 - owner work placed on this Pylon is free and writes no buyer debit rows;
-- SHC remains the metered fallback when this Pylon is offline, stale, or
-  ineligible;
+- Google Cloud managed capacity is the only hosted fallback when this Pylon is
+  offline, stale, or ineligible; the retired SHC pilot is never selected;
 - browser `/autopilot/work` and `pylon work status` read the same work-order
   projection.
 

@@ -12,7 +12,7 @@ import {
   type KhalaSyncProxyDeps,
 } from './khala-sync-proxy'
 
-const ORIGIN = 'https://openagents-com-start-staging.workers.dev'
+const ORIGIN = 'https://openagents.com'
 
 const cookieHeader = (ownerUserId: string, token: string): string =>
   `${KHALA_SYNC_OWNER_COOKIE}=${encodeURIComponent(ownerUserId)}; ${KHALA_SYNC_TOKEN_COOKIE}=${encodeURIComponent(token)}`
@@ -23,7 +23,7 @@ const cookieHeader = (ownerUserId: string, token: string): string =>
  * browsers), so `new Request(url, { headers: { cookie: ... } })` silently
  * drops them, exactly like a real browser would for a `fetch()` call. A REAL
  * incoming WebSocket-upgrade or cookie-bearing request never goes through
- * that constructor path at all — the Workers runtime hands the route a
+ * that constructor path at all — the server hands the route a
  * `Request` built from the actual TCP/TLS handshake, headers intact. This
  * minimal stand-in reproduces just the interface `khala-sync-proxy.ts`
  * reads (`url`, `method`, `headers.get`, `json`, `text`) so these tests can

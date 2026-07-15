@@ -38,7 +38,6 @@ export * from "./gym-run-progress-projection.js"
 export * from "./identity-auth-domain-tables.js"
 export * from "./forum-content-tables.js"
 export * from "./forum-remainder-tables.js"
-export * from "./khala-code-product-state-backfill.js"
 export * from "./khala-code-product-state-projection.js"
 export * from "./khala-code-product-state-tables.js"
 export * from "./live-agent-graph-projection.js"
@@ -62,7 +61,8 @@ export * from "./user-credit-balance-projection.js"
 /**
  * @openagentsinc/khala-sync-server — server substrate for Khala Sync:
  * Postgres schema (see ./migrations), the mutator engine (./push-engine),
- * bootstrap and catch-up reads, capture, and the per-scope KhalaSyncHubDO.
+ * bootstrap and catch-up reads, capture, and the per-scope Google Cloud
+ * LiveHub service.
  *
  * Spec: docs/khala-sync/SPEC.md §§4-5. Implementation lands per the KS-2,
  * KS-3, and KS-4 workstream issues; this module currently defines the
@@ -100,7 +100,7 @@ export type KhalaSyncReadError =
   | KhalaSyncInvalidPageTokenError
 
 /**
- * Snapshot + catch-up reads (Hyperdrive path). The substrate functions are
+ * Snapshot + catch-up reads (direct Cloud SQL path). The substrate functions are
  * `bootstrap`/`logPage` in ./read-service (Promise-based at the transaction
  * seam, like the outbox writer); this Effect-facing service wraps them above
  * the scope-auth check (KS-7).
@@ -138,19 +138,16 @@ export interface KhalaSyncScopeAuth {
 // Capture (KS-4.1): tails khala_sync_changelog over a DIRECT Postgres
 // connection (LISTEN wake + poll fallback) and pushes ordered batches to
 // the per-scope hub — implemented in ./capture and exposed ONLY through
-// the Bun-side `@openagentsinc/khala-sync-server/capture` subpath
+// the Node-side `@openagentsinc/khala-sync-server/capture` subpath
 // (KHALA_SYNC_NOTIFY_CHANNEL, KhalaSyncCaptureCheckpoint, runCapturePass,
-// startCaptureDaemon, …). It is a long-lived Bun daemon (`import { SQL }
-// from a runtime-specific module as a VALUE), so it must never ride the root export the
-// workers-typechecked openagents.com Worker consumes — same isolation rule
-// as ./hub. CLI: scripts/capture.ts.
+// startCaptureDaemon, …). It is a long-lived service, so it must never ride the
+// browser-facing root export. CLI: scripts/capture.ts.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Hub DO surface (KS-4): implemented as a Durable Object class inside the
-// openagents.com Worker (wrangler binding KHALA_SYNC_HUB). The DO holds the
-// recent log window in DO SQLite, hibernating WebSockets, and serves
-// offset-resumable catch-up. See issue KS-4.2.
+// Hub surface (KS-4): implemented by the owned Google Cloud Run LiveHub
+// service. It holds the recent log window and serves WebSocket notifications
+// plus offset-resumable catch-up. See issue KS-4.2.
 // ---------------------------------------------------------------------------
 
 export * from "./hub.js"

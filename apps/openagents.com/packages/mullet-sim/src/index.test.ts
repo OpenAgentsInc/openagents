@@ -12,8 +12,8 @@ import {
   consumerProviderMinimumBidUsd,
   minerProviderMinimumBidUsd,
   selectDispatchCandidate,
-  shcReservedFractionalRuntimeCostUsd,
-  shcReservedHourlyCostUsd,
+  gcpReservedFractionalRuntimeCostUsd,
+  gcpReservedHourlyCostUsd,
   simulateScenarioHour,
 } from './index'
 
@@ -277,7 +277,7 @@ describe('MODEL1 accepted-outcome economics', () => {
     expect(result.buyerPriceUsd).toBe(272.95)
   })
 
-  test('models decentralized validation and SHC reserved capacity examples', () => {
+  test('models decentralized validation and Google Cloud reserved capacity examples', () => {
     const providerBid = consumerProviderMinimumBidUsd({
       averagePowerKw: 0.15,
       runtimeHours: 1,
@@ -289,10 +289,10 @@ describe('MODEL1 accepted-outcome economics', () => {
 
     expect(providerBid).toBeCloseTo(0.2525, 4)
     expect(providerBid + 0.05).toBeCloseTo(0.3025, 4)
-    expect(shcReservedHourlyCostUsd(1031.79, 1)).toBeCloseTo(0.1178, 4)
-    expect(shcReservedHourlyCostUsd(1031.79, 0.5)).toBeCloseTo(0.2356, 4)
+    expect(gcpReservedHourlyCostUsd(1031.79, 1)).toBeCloseTo(0.1178, 4)
+    expect(gcpReservedHourlyCostUsd(1031.79, 0.5)).toBeCloseTo(0.2356, 4)
     expect(
-      shcReservedFractionalRuntimeCostUsd({
+      gcpReservedFractionalRuntimeCostUsd({
         annualCostUsd: 1031.79,
         utilizationPercent: 0.5,
         allocationPercent: 0.25,

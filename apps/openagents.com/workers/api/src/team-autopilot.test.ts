@@ -419,7 +419,7 @@ describe('team Autopilot answer-back', () => {
     })
   })
 
-  test('uses completed event detail when SHC promotes assistant text', () => {
+  test('uses completed event detail when Google Cloud promotes assistant text', () => {
     const bundle = {
       events: [
         {
@@ -526,7 +526,7 @@ describe('team Autopilot answer-back', () => {
           assignment: {
             artifactPolicy: 'metadata_only',
             assignmentKind: 'workroom_agent',
-            backend: 'shc_vm',
+            backend: 'gcloud_vm',
             callback: {
               tokenRef: 'callback-token-ref',
               url: 'https://nexus.openagents.com/callback',
@@ -573,7 +573,7 @@ describe('team Autopilot answer-back', () => {
           },
           assignmentKind: 'workroom_agent',
           authGrantRef: null,
-          backend: 'shc_vm',
+          backend: 'gcloud_vm',
           canceledAt: null,
           completedAt: '2026-06-03T00:00:03.000Z',
           createdAt: '2026-06-03T00:00:00.000Z',

@@ -39,7 +39,7 @@ import type { SqlTag, SyncSql } from "./sql.js"
  *
  * WRITE: `projectSettledFeedEventsBestEffort` appends N event upserts + one
  * summary upsert to `scope.public.settled-feed` in ONE Postgres transaction
- * via the KHALA_SYNC_DB Hyperdrive binding. FAIL-SOFT (same discipline as
+ * through the Cloud Run API's direct Cloud SQL connection. FAIL-SOFT (same discipline as
  * the KS-6.1 fleet projection / KS-6.3 tokens-served projection): a
  * projection failure never fails the caller's real settlement dispatch.
  *

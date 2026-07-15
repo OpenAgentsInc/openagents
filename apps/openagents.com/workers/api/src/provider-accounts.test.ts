@@ -1302,14 +1302,14 @@ describe('provider account service', () => {
     ).resolves.toBeUndefined()
   })
 
-  test('fake SHC runner resolves a grant and receives only a redacted materialization plan', async () => {
+  test('fake Google Cloud runner resolves a grant and receives only a redacted materialization plan', async () => {
     const repository = new MemoryProviderAccountRepository()
     repository.grants.push(makeGrant({}))
 
     const resolved = await resolveProviderAccountGrant(
       repository,
       {
-        actorId: 'user_agent_shc_runner',
+        actorId: 'user_agent_pilot_runner',
         grantRef: 'codex-auth-grant_1',
         providerAccountRef: 'provider-account_1',
         runnerSessionId: 'runner_session_1',
@@ -1334,7 +1334,7 @@ describe('provider account service', () => {
       resolveProviderAccountGrant(
         repository,
         {
-          actorId: 'user_agent_shc_runner',
+          actorId: 'user_agent_pilot_runner',
           grantRef: 'codex-auth-grant_1',
           runnerSessionId: 'runner_session_1',
         },
@@ -1347,7 +1347,7 @@ describe('provider account service', () => {
       resolveProviderAccountGrant(
         repository,
         {
-          actorId: 'user_agent_shc_runner',
+          actorId: 'user_agent_pilot_runner',
           grantRef: 'codex-auth-grant_1',
           runnerSessionId: 'runner_session_1',
         },
@@ -1376,7 +1376,7 @@ describe('provider account service', () => {
       resolveProviderAccountGrant(
         repository,
         {
-          actorId: 'user_agent_shc_runner',
+          actorId: 'user_agent_pilot_runner',
           grantRef: 'codex-auth-grant_1',
         },
         {
@@ -1387,7 +1387,7 @@ describe('provider account service', () => {
 
     await expect(
       resolveProviderAccountGrant(repository, {
-        actorId: 'user_agent_shc_runner',
+        actorId: 'user_agent_pilot_runner',
         grantRef: 'codex-auth-grant_2',
         runnerSessionId: 'runner_session_wrong',
       }),

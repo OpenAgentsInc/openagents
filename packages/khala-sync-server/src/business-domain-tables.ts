@@ -823,7 +823,7 @@ export const BUSINESS_DOMAIN_TABLE_SPECS: Readonly<
  * Normalize a D1/driver value into the canonical scalar used for both the
  * Postgres bind parameter and the reconciliation row hash. Identical to the
  * KS-8.2/8.7 normalization so the SAME logical row hashes identically
- * whether it came from a wrangler D1 JSON export or a postgres.js read.
+ * whether it came from a retained legacy JSON export or a postgres.js read.
  */
 export const normalizeBusinessValue = (
   value: unknown,

@@ -70,17 +70,17 @@ export const authIssuerAllowsWebRedirectHostname = (
 ): boolean =>
   hostname === 'openagents.com' ||
   hostname === 'auth.openagents.com' ||
-  // Isolated staging Worker. WIDEN-ONLY: this lets the prod issuer accept the
+  // Isolated staging Cloud Run service. WIDEN-ONLY: this lets the prod issuer accept the
   // staging-origin auth callback so a human can sign in on staging and exercise
-  // the billing/credit flow. The staging Worker delegates auth to this same
+  // the billing/credit flow. Staging delegates auth to this same
   // prod issuer (OPENAUTH_ISSUER_URL=auth.openagents.com), so the allowlist must
   // live here. Prod hosts above are unchanged.
-  hostname === 'openagents-staging.openagents.workers.dev' ||
-  // Aiur (#8499): a SEPARATE Cloudflare Worker at aiur.openagents.com, the
+  hostname === 'openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app' ||
+  // Aiur (#8499): a separate Cloud Run service at aiur.openagents.com, the
   // owner-only admin panel for the Khala Code mobile MVP. It reuses this
   // same downstream web client id (never a new registration), so its
   // callback hostname must be allow-listed here too. WIDEN-ONLY — every
-  // route on that Worker independently re-checks a hard owner allowlist
+  // route on that service independently re-checks a hard owner allowlist
   // (apps/aiur/src/auth/owner-gate.ts) before trusting the resulting
   // session for anything.
   hostname === 'aiur.openagents.com' ||

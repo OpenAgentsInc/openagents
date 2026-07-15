@@ -39,17 +39,15 @@ import type { SyncScope } from "@openagentsinc/khala-sync"
  * authoritative second gate once a `userId` (or `undefined`) is known —
  * defense in depth, not "trust the route's own check."
  *
- * WHERE THE DATA LIVES decides the seam shape: team membership and
- * agent-run/thread ownership live in the openagents.com Worker's D1 today,
- * while `khala_sync_scope_owners` lives in Khala Sync Postgres. So the
- * resolver takes injected CAPABILITY CALLBACKS
- * ({@link KhalaSyncScopeAuthCapabilities}) — the Worker implements the
- * D1-backed ones against its live tables
- * (`workers/api/src/khala-sync-scope-auth.ts`) and the Postgres-backed
- * fleet-owner lookup through its Hyperdrive binding. Nothing here caches:
+ * WHERE THE DATA LIVES decides the seam shape: team membership,
+ * agent-run/thread ownership, and `khala_sync_scope_owners` all live in the
+ * production Cloud SQL database. The resolver takes injected CAPABILITY
+ * CALLBACKS ({@link KhalaSyncScopeAuthCapabilities}); the Cloud Run API
+ * implements them against the live Postgres tables in
+ * `workers/api/src/khala-sync-scope-auth.ts`. Nothing here caches:
  * membership checks are live-at-read, so a revoked user fails the resolver
  * on their very next request (the push half of invariant 7 — the hub's
- * `MustRefetch(access_changed)` broadcast — lives in the hub DO).
+ * `MustRefetch(access_changed)` broadcast — lives in the LiveHub service).
  *
  * FAIL-CLOSED BY CONSTRUCTION: a capability that throws can never grant.
  * Every callback invocation is wrapped; failures come back as a typed
@@ -82,20 +80,20 @@ const denied = (reason: ScopeReadDenialReason): ScopeReadDecision => ({
 })
 
 // ---------------------------------------------------------------------------
-// Capability seam (implemented Worker-side against live D1 + Postgres)
+// Capability seam (implemented by the Cloud Run API against live Cloud SQL)
 // ---------------------------------------------------------------------------
 
 export interface KhalaSyncScopeAuthCapabilities {
   /** LIVE team membership: does `userId` hold an ACTIVE membership in `teamId`? */
   readonly isTeamMember: (userId: string, teamId: string) => Promise<boolean>
   /**
-   * `scope.agent_run.<runId>` ownership per the Worker's `agent_runs`
+   * `scope.agent_run.<runId>` ownership per the Cloud SQL `agent_runs`
    * table: the run's owning user, or (for team runs) an active member of
    * the run's team. Unknown/archived runs must answer `false`.
    */
   readonly canReadAgentRun: (userId: string, runId: string) => Promise<boolean>
   /**
-   * `scope.thread.<threadId>` ownership: Worker-side callbacks may resolve
+   * `scope.thread.<threadId>` ownership: API callbacks may resolve
    * legacy agent-run/autopilot-thread mappings and owner-private chat
    * thread ownership. Unresolvable threads must answer `false`.
    */

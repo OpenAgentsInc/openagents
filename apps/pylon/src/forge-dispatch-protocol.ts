@@ -9,7 +9,7 @@ import type {
   PylonAssignmentLease,
 } from "./assignment.js"
 
-export const FORGE_PYLON_DISPATCH_BACKEND_REF = "forge.openagents.com"
+export const FORGE_PYLON_DISPATCH_BACKEND_REF = "openagents.com/api/forge"
 
 export type ForgeDispatchPylonCodingAssignment = Readonly<{
   schema: "openagents.forge.pylon_dispatch.coding_assignment.v0.1"

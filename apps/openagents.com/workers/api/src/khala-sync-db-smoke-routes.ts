@@ -140,8 +140,7 @@ const readCount = (
  *
  * Success: `{ ok: true, khalaSyncTables, latencyMs, routeRef }`.
  * Binding absent: honest `{ ok: false, reason }` (HTTP 200) so the operator
- * sees the enablement gap instead of an opaque 500 (mirrors the
- * cf-browser-smoke convention). Query/connect failures: `{ ok: false,
+ * sees the enablement gap instead of an opaque 500. Query/connect failures: `{ ok: false,
  * error, reason }` with HTTP 503 and redacted reason.
  */
 export const handleKhalaSyncDbSmoke = (
@@ -165,9 +164,8 @@ export const handleKhalaSyncDbSmoke = (
       return noStoreJsonResponse({
         ok: false,
         reason:
-          'Hyperdrive binding (env.KHALA_SYNC_DB) is absent. Add the ' +
-          '`hyperdrive` binding to wrangler.jsonc and deploy; the binding ' +
-          'only exists inside a deployed Worker.',
+          'Cloud SQL connection (env.KHALA_SYNC_DB) is absent. Configure the ' +
+          'Cloud Run service with the production Cloud SQL connection secret.',
         routeRef: KHALA_SYNC_DB_SMOKE_ROUTE_REF,
       })
     }

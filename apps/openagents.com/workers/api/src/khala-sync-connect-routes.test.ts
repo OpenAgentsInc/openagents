@@ -14,7 +14,7 @@ import { resolveScopeRead } from '@openagentsinc/khala-sync-server'
 import type {
   KhalaSyncHubNamespaceLike,
   KhalaSyncHubStubLike,
-} from './khala-sync-hub-do'
+} from './khala-sync-hub-routes'
 import {
   handleKhalaSyncConnect,
   KHALA_SYNC_CONNECT_PATH,

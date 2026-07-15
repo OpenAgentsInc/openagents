@@ -25,7 +25,7 @@
  * relay and reads them back, proving the lifecycle is dippable on the relay
  * before the closeout binds it:
  *
- *   node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts --relay https://relay.openagents.com
+ *   node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts --relay wss://nos.lol
  */
 
 import {
@@ -186,7 +186,7 @@ const main = async () => {
     bidMsats: 2_000_000,
     deadline: "deadline.public.lbr.20260630",
     forumTopicRef: "topic.public.forum.labor_de6_proof",
-    relays: ["wss://relay.openagents.com"],
+    relays: ["wss://nos.lol"],
   })
   const requestDraft = lbrAgenticCodingRequestToDraft(request)
   const requestEvent = sign(
@@ -206,7 +206,7 @@ const main = async () => {
     capabilityRefs: ["capability.pylon.local_claude_agent"],
     quoteRef: "quote.public.lbr.de6_proof",
     expiresAt: "expiry.public.lbr.20260630",
-    requestRelay: "wss://relay.openagents.com",
+    requestRelay: "wss://nos.lol",
   })
   const quoteDraft = lbrQuoteToDraft(quote)
   const quoteEvent = sign(
@@ -221,7 +221,7 @@ const main = async () => {
     providerPubkey,
     escrowReceiptRef: "receipt.public.escrow.de6_proof",
     acceptanceRef: "acceptance.public.lbr.de6_proof",
-    requestRelay: "wss://relay.openagents.com",
+    requestRelay: "wss://nos.lol",
   })
   const acceptanceDraft = lbrAcceptanceToDraft(acceptance)
   const acceptanceEvent = sign(
@@ -238,7 +238,7 @@ const main = async () => {
     summaryRef: "summary.public.lbr.de6_proof",
     testRef: "test.public.lbr.bun",
     buildRef: "build.public.lbr.de6_proof",
-    requestRelay: "wss://relay.openagents.com",
+    requestRelay: "wss://nos.lol",
   })
   const resultDraft = lbrResultToDraft(result)
   const resultEvent = sign(

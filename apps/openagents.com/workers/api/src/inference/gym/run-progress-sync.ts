@@ -73,7 +73,10 @@ export const GYM_RUN_PROGRESS_SYNC_COLLECTION = 'gym_run_progress'
 
 type GymRunProgressSyncEnv = Pick<
   WorkerBindings,
-  'OPENAGENTS_DB' | 'SYNC_ROOM' | 'KHALA_SYNC_DB'
+  | 'OPENAGENTS_DB'
+  | 'KHALA_SYNC_DB'
+  | 'KHALA_SYNC_LIVE_HUB_URL'
+  | 'KHALA_SYNC_LIVE_HUB_TOKEN'
 >
 
 /**

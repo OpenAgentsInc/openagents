@@ -7,7 +7,7 @@ describe('team repository helpers', () => {
     expect(
       userTeamProjectAgentFromMetadata({
         agent: {
-          backend: 'shc_vm',
+          backend: 'gcloud_vm',
           focus: 'customer support',
           id: 'agent_1',
           name: 'Support Autopilot',
@@ -18,7 +18,7 @@ describe('team repository helpers', () => {
         },
       }),
     ).toEqual({
-      backend: 'shc_vm',
+      backend: 'gcloud_vm',
       focus: 'customer support',
       id: 'agent_1',
       name: 'Support Autopilot',
@@ -33,7 +33,7 @@ describe('team repository helpers', () => {
     expect(
       userTeamProjectAgentFromMetadata({
         agent: {
-          backend: 'SHC',
+          backend: 'Google Cloud',
           focus: 'Sites',
           id: 'agent_adjutant',
           name: 'Autopilot',
@@ -46,7 +46,7 @@ describe('team repository helpers', () => {
         surface: 'openagents-core-team',
       }),
     ).toEqual({
-      backend: 'SHC',
+      backend: 'Google Cloud',
       focus: 'Sites',
       id: 'agent_adjutant',
       name: 'Autopilot',

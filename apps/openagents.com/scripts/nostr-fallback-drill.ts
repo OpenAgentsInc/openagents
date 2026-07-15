@@ -157,7 +157,7 @@ const waitForMessage = (
   })
 
 // Wait briefly for an optional NIP-42 ["AUTH", <challenge>] frame the relay may
-// send on open. Public relays do not send one; the owned relay (#5537) does, to
+// send on open. Most public relays do not send one; authenticated relays may, to
 // gate the general coordination kinds. Returns the challenge string or null.
 const waitForAuthChallenge = (socket: WebSocket, timeoutMs: number): Promise<string | null> =>
   new Promise(resolve => {
@@ -203,7 +203,7 @@ const publishEvent = async (
   const socket = new WebSocket(relayUrl)
   await waitForOpen(socket)
   // If the relay issues a NIP-42 challenge, authenticate this connection before
-  // publishing so the owned relay accepts general coordination kinds.
+  // publishing when a configured relay requires NIP-42 authentication.
   const challenge = await waitForAuthChallenge(socket, 1_000)
   if (challenge !== null) {
     await authenticate(socket, relayUrl, challenge, authSecretKey)

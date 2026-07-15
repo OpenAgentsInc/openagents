@@ -14,15 +14,15 @@ const backend = (
 ): OpenAgentsRunnerBackendRecord =>
   S.decodeUnknownSync(OpenAgentsRunnerBackendRecordSchema)({
     artifactRefs: ['artifact.container.preview_manifest'],
-    backendKind: 'cloudflare_container',
+    backendKind: 'gcloud_vm',
     capacityRefs: ['capacity.container.low_medium_trust_available'],
     configured: false,
     costRefs: ['cost.container.metered.gated'],
     dispatchStatus: 'blocked',
-    displayNameRef: 'runner.cloudflare_container',
+    displayNameRef: 'runner.gcloud_vm',
     enabled: false,
     healthRefs: ['health.container.disabled_by_default'],
-    id: 'runner_backend.cloudflare_container',
+    id: 'runner_backend.gcloud_vm',
     lifecycleEventRefs: ['runner_event.container.blocked.not_enabled'],
     operatorDiagnosticRefs: [
       'diagnostic.container.policy_not_approved',
@@ -36,23 +36,23 @@ const backend = (
   })
 
 describe('OpenAgents runner backend schemas and projections', () => {
-  test('decodes the cloudflare_container backend schema', () => {
+  test('decodes the gcloud_vm backend schema', () => {
     const record = backend()
 
-    expect(record.backendKind).toBe('cloudflare_container')
+    expect(record.backendKind).toBe('gcloud_vm')
     expect(record.dispatchStatus).toBe('blocked')
   })
 
-  test('supports SHC and reference backend kinds without changing dispatch policy', () => {
+  test('supports Google Cloud and reference backend kinds without changing dispatch policy', () => {
     expect(
       S.decodeUnknownSync(OpenAgentsRunnerBackendRecordSchema)(
         backend({
-          backendKind: 'shc_vm',
+          backendKind: 'gcloud_vm',
           id: 'runner_backend.shc_primary',
           trustLevel: 'sensitive',
         }),
       ).backendKind,
-    ).toBe('shc_vm')
+    ).toBe('gcloud_vm')
     expect(
       S.decodeUnknownSync(OpenAgentsRunnerBackendRecordSchema)(
         backend({

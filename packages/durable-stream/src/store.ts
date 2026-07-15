@@ -1,15 +1,14 @@
 /**
  * Storage port for a single stream's durable state, plus an in-memory
- * implementation used by Bun unit tests. The DO adapter (durable-object.ts)
+ * implementation used by Node unit tests.
  * provides a SQLite-backed implementation of the same port.
  *
- * The port is intentionally synchronous and single-stream: it models exactly
- * the surface a Cloudflare Durable Object gives us — serialized, single-threaded
- * access with an implicit per-call transaction. The protocol's "serialize
+ * The port is intentionally synchronous and single-stream: implementations
+ * provide serialized access with an atomic append boundary. The protocol's "serialize
  * validate+append per (stream, producerId)" and "commit producer-state + log
  * atomically" requirements (PROTOCOL.md §5.2.1) are satisfied because each
- * `StreamStore` instance IS one stream's DO, and `appendAtomic` writes the log
- * row and producer-state row in one call.
+ * `StreamStore` instance owns one stream, and `appendAtomic` writes the log row
+ * and producer-state row in one call.
  */
 
 export interface StreamMeta {
@@ -37,8 +36,8 @@ export interface AppendResult {
 }
 
 /**
- * Per-stream durable storage. All methods are synchronous to model the DO's
- * serialized transactional access.
+ * Per-stream durable storage. All methods are synchronous to preserve the
+ * serialized transactional contract.
  */
 export interface StreamStore {
   /** Stream metadata, or null if the stream does not exist. */

@@ -11,12 +11,12 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::cloud_vm::{
-    CloudVmError, CloudVmOs, CloudVmProvisioner, CloudVmRequest, ProvisionedVm, ProvisionerKind,
-    provisioner_for,
+    provisioner_for, CloudVmError, CloudVmOs, CloudVmProvisioner, CloudVmRequest, ProvisionedVm,
+    ProvisionerKind,
 };
 
 pub const PORTABLE_AGENT_COMPUTER_VERSION: &str =

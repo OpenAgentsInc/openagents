@@ -35,13 +35,13 @@ import { type CrmEmailDatabase } from './crm-email-domain-store'
 import { Effect } from 'effect'
 
 import {
-  type CloudflareEmailBinding,
   type EmailLedgerSendResult,
   type EmailRuntime,
   RenderedEmail,
-  sendRenderedEmailViaCloudflareBindingWithLedger,
+  sendRenderedEmailWithLedger,
   systemEmailRuntime,
 } from './email'
+import { type ResendEmailConfig } from './config'
 
 export const EMAIL_SEQUENCE_SEND_PROMISE_ID =
   'autopilot_sites.native_email_sequences.v1'
@@ -98,14 +98,14 @@ export type EmailSequenceSendPlan = Readonly<{
   userId: string | null
 }>
 
-export type EmailSequenceCloudflareSenderConfig = Readonly<{
+export type EmailSequenceSenderConfig = Readonly<{
   appOrigin: string
   fromEmail: string
   replyToEmail?: string | undefined
 }>
 
 // An injected sender. The real implementation wires the email ledger
-// (sendRenderedEmailViaCloudflareBindingWithLedger / a per-template sender). In
+// (sendRenderedEmailWithLedger / a per-template sender). In
 // the default INERT state this is never called.
 export type EmailSequenceSender = (
   plan: EmailSequenceSendPlan,
@@ -176,7 +176,7 @@ const managePreferencesUrl = (appOrigin: string): string =>
   `${appOrigin.replace(/\/+$/, '')}/email/preferences`
 
 export const renderEmailSequenceSend = (
-  config: EmailSequenceCloudflareSenderConfig,
+  config: EmailSequenceSenderConfig,
   plan: EmailSequenceSendPlan,
 ): RenderedEmail => {
   const sequenceLabel = compactLabel(plan.stepKey) || 'update'
@@ -236,15 +236,16 @@ export const renderEmailSequenceSend = (
   })
 }
 
-export const makeCloudflareEmailSequenceSender = (
+export const makeResendEmailSequenceSender = (
   db: CrmEmailDatabase,
-  binding: CloudflareEmailBinding,
-  config: EmailSequenceCloudflareSenderConfig,
+  resend: ResendEmailConfig,
+  config: EmailSequenceSenderConfig,
+  fetcher: typeof fetch = fetch,
   runtime: EmailRuntime = systemEmailRuntime,
 ): EmailSequenceSender => plan =>
-  sendRenderedEmailViaCloudflareBindingWithLedger(
+  sendRenderedEmailWithLedger(
     db,
-    binding,
+    resend,
     renderEmailSequenceSend(config, plan),
     {
       metadata: {
@@ -256,6 +257,7 @@ export const makeCloudflareEmailSequenceSender = (
       sourceAuthorityRef: plan.sourceAuthorityRef,
       targetUserId: plan.userId ?? undefined,
     },
+    fetcher,
     runtime,
   ).pipe(
     Effect.catch(error =>

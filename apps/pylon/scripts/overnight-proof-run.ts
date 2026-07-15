@@ -15,7 +15,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  *    admit → accept → execute → verify → progress → artifacts → closeout)
  *    with the REAL SDK runners, driven against the local in-process
  *    assignment-API harness from the codex/claude task smokes (#4790
- *    lineage). The live API and SHC lane are intentionally out of scope for
+ *    lineage). The live API and Google Cloud lane are intentionally out of scope for
  *    this leg; the deferral is recorded in the summary's deviations.
  *
  * Boundaries: local_bounded execution only, no-spend only, approvals never,
@@ -138,7 +138,7 @@ const COMPOSER_TASKS: Array<{
 ]
 
 const DEVIATIONS = [
-  "deviation.m10.shc_lane_deferred_requires_live_scheduled_launch",
+  "deviation.m10.gcp_lane_deferred_requires_live_scheduled_launch",
   "deviation.m10.web_ui_surface_deferred_requires_live_api",
   "deviation.m10.work_status_cli_surface_deferred_requires_live_api",
   "deviation.m10.work_order_surface_used_local_assignment_harness",

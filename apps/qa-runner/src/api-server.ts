@@ -4,8 +4,8 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 //
 // It runs the existing runner/evals engine IN-PROCESS (QaControl), async, with
 // an in-memory job store, on a machine that HAS Chrome (the runner drives a real
-// Playwright browser, which cannot run in a Cloudflare Worker). The Worker side
-// (/pro) only dereferences the public-safe artifacts this daemon produces.
+// Playwright browser). The Cloud Run API side (/pro) only dereferences the
+// public-safe artifacts this daemon produces.
 //
 // Endpoints (all require `Authorization: Bearer <khala-agent-token>`):
 //   POST /runs               -> submit a run; returns { id, status, ... }

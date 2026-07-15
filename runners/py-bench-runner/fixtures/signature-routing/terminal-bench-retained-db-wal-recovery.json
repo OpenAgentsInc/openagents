@@ -17,8 +17,8 @@
   "metadata": {
     "terminalBenchTaskId": "db-wal-recovery",
     "retainedFailureFamily": "sqlite_wal_recovery",
-    "preservedRunRef": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md#per-task-results",
-    "sourceDoc": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md",
+    "preservedRunRef": "docs/bootstrap/CND-052-gcp-codex-terminal-bench-16task-preserved.md#per-task-results",
+    "sourceDoc": "docs/bootstrap/CND-052-gcp-codex-terminal-bench-16task-preserved.md",
     "taskChecksum": "c18abdc4fdc3a01bf374c55a9700708fe6a9662077d29db81abb692f0a3c5f6f",
     "rawCodexReward": 0.0,
     "rawCodexVerifier": "5 passed / 2 failed",

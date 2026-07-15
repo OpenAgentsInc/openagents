@@ -51,8 +51,8 @@ const geminiAssignment = (): ProbeRunAssignment => ({
 });
 
 const runner = (overrides: Partial<ProbeRunnerIdentity> = {}): ProbeRunnerIdentity => ({
-  runnerId: "runner_shc_1",
-  kind: "shc",
+  runnerId: "runner_gcp_1",
+  kind: "gcp",
   linkedSubject: "user_1",
   linkedAt: "2026-06-07T00:00:00.000Z",
   expiresAt: "2099-01-01T00:00:00.000Z",
@@ -61,7 +61,7 @@ const runner = (overrides: Partial<ProbeRunnerIdentity> = {}): ProbeRunnerIdenti
 });
 
 const proof = (overrides: Partial<ProbeRunnerAssignmentProof> = {}): ProbeRunnerAssignmentProof => ({
-  runnerId: "runner_shc_1",
+  runnerId: "runner_gcp_1",
   assignmentId: "assignment_1",
   runnerSessionId: "runner_session_1",
   issuedAt: "2026-06-07T00:00:00.000Z",
@@ -143,7 +143,7 @@ describe("Probe runner identity gate", () => {
     ).rejects.toMatchObject({ _tag: "ProbeRunnerAuthorizationError" });
   });
 
-  test("SHC/Pylon assignment payloads reject raw credentials", async () => {
+  test("Google Cloud/Pylon assignment payloads reject raw credentials", async () => {
     await expect(
       Effect.runPromise(
         decodeProbeRunAssignment({

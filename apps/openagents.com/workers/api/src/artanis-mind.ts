@@ -4,20 +4,12 @@
  * docs/artanis/2026-06-10-artanis-production-tick-and-tassadar-evolution-audit.md
  * section 7.1, embodiment (a)).
  *
- * Inference path: Cloudflare AI Gateway (provider google-ai-studio,
- * BYOK) when a gateway resolves, with direct Google AI Studio fallback
- * so the mind never depends on gateway availability. The smoke route
- * reports which path served. The mind proposes; typed schemas validate;
+ * Inference path: Google AI Studio directly. The mind proposes; typed schemas validate;
  * approval gates hold - intelligence never upgrades authority.
  */
 
 export const ArtanisMindModelDefault = 'gemini-3.5-flash'
-export const ArtanisMindGatewayProvider = 'google-ai-studio'
-export const ArtanisMindAccountId = '54fac8b750a29fdda9f2fa0f0afaed90'
-export const ArtanisMindGatewayCandidates = ['openagents-ai-gateway'] as const
-
 export type ArtanisMindServedVia =
-  | 'cloudflare_ai_gateway'
   | 'google_direct'
   | 'openagents_khala'
 
@@ -164,8 +156,6 @@ const textFromGeminiResponse = (payload: unknown): GeminiCandidateText => {
 const artanisMindCompleteOnce = async (input: Readonly<{
   apiKey: string
   fetchImpl: typeof fetch
-  gatewayId?: string | undefined
-  gatewayToken?: string | undefined
   model: string
   prompt: string
   system: string
@@ -182,67 +172,7 @@ const artanisMindCompleteOnce = async (input: Readonly<{
     input.images,
   )
   const attempts: Array<{ path: string; status: number; detail: string }> = []
-  // Skip the Cloudflare AI Gateway entirely when no `cf-aig` token is
-  // available: the gateway 401s without it, and we are exiting Cloudflare
-  // (the account is cancelled). Going straight to the direct Google AI Studio
-  // path — which needs only the Gemini API key — avoids a guaranteed-failing
-  // round-trip and is the working inference path post-CF. An explicit
-  // `gatewayId` (with a token) still opts back in.
-  const gatewayIds =
-    input.gatewayToken === undefined || input.gatewayToken === ''
-      ? []
-      : input.gatewayId !== undefined
-        ? [input.gatewayId]
-        : [...ArtanisMindGatewayCandidates]
   let truncated = false
-
-  for (const gatewayId of gatewayIds) {
-    const url = `https://gateway.ai.cloudflare.com/v1/${ArtanisMindAccountId}/${gatewayId}/${ArtanisMindGatewayProvider}/v1beta/models/${input.model}:generateContent`
-    const response = await input.fetchImpl(url, {
-      body,
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': input.apiKey,
-        ...(input.gatewayToken === undefined
-          ? {}
-          : { 'cf-aig-authorization': `Bearer ${input.gatewayToken}` }),
-      },
-      method: 'POST',
-    })
-    if (response.ok) {
-      const payload = await response.json()
-      const candidate = textFromGeminiResponse(payload)
-      if (candidate.kind === 'text') {
-        return {
-          ok: true,
-          result: {
-            gatewayId,
-            model: input.model,
-            promptChars: input.prompt.length,
-            responseChars: candidate.text.length,
-            servedVia: 'cloudflare_ai_gateway',
-            text: candidate.text,
-            usage: usageFromGeminiResponse(payload),
-          },
-        }
-      }
-      if (candidate.kind === 'truncated') truncated = true
-      attempts.push({
-        detail:
-          candidate.kind === 'truncated'
-            ? 'gateway 200 truncated (MAX_TOKENS)'
-            : 'gateway 200 without candidate text',
-        path: `gateway:${gatewayId}`,
-        status: response.status,
-      })
-      continue
-    }
-    attempts.push({
-      detail: (await response.text()).slice(0, 120),
-      path: `gateway:${gatewayId}`,
-      status: response.status,
-    })
-  }
 
   const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/${input.model}:generateContent`
   const direct = await input.fetchImpl(directUrl, {
@@ -297,8 +227,6 @@ const artanisMindCompleteOnce = async (input: Readonly<{
 export const artanisMindComplete = async (input: Readonly<{
   apiKey: string
   fetchImpl?: typeof fetch
-  gatewayId?: string | undefined
-  gatewayToken?: string | undefined
   model?: string | undefined
   prompt: string
   system: string
@@ -312,8 +240,6 @@ export const artanisMindComplete = async (input: Readonly<{
   const first = await artanisMindCompleteOnce({
     apiKey: input.apiKey,
     fetchImpl,
-    gatewayId: input.gatewayId,
-    gatewayToken: input.gatewayToken,
     maxOutputTokens: baseMax,
     model,
     prompt: input.prompt,
@@ -330,8 +256,6 @@ export const artanisMindComplete = async (input: Readonly<{
     const escalated = await artanisMindCompleteOnce({
       apiKey: input.apiKey,
       fetchImpl,
-      gatewayId: input.gatewayId,
-      gatewayToken: input.gatewayToken,
       maxOutputTokens: ArtanisMindEscalatedMaxOutputTokens,
       model,
       prompt: input.prompt,

@@ -1,0 +1,6 @@
+{
+  "name": "@types/openagents-platform",
+  "version": "0.0.0",
+  "private": true,
+  "types": "index.d.ts"
+}

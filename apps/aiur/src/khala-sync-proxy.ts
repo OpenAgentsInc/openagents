@@ -1,13 +1,13 @@
 /**
  * Server-side Khala Sync proxy for Aiur (AIUR-1, #8499).
  *
- * Aiur is a separate Cloudflare Worker (`aiur.openagents.com`) from the
- * production `openagents.com` Worker that owns the real
+ * Aiur is a separate Cloud Run service (`aiur.openagents.com`) from the
+ * production `openagents.com` service that owns the real
  * `/api/sync/bootstrap` / `/api/sync/push` / `/api/sync/connect` routes.
  * Same two problems as `apps/openagents.com/apps/start/src/khala-sync-proxy.ts`
  * (cross-origin fetch needs CORS the upstream does not grant; a browser
  * `WebSocket` cannot set an `Authorization` header) — same fix: the browser
- * only ever talks to THIS Worker's own origin, and THIS Worker attaches the
+ * only ever talks to Aiur's own origin, and the server attaches the
  * real bearer server-side before forwarding upstream.
  *
  * Unlike the Start app's proxy, the bearer here is never a separately

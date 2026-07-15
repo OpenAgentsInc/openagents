@@ -1759,10 +1759,10 @@ function sessionLaneOption(
 ): ControlSessionSpawnCommand['lane'] | undefined {
   const lane = optionString(options, 'lane')
   if (lane === undefined) return undefined
-  if (lane === 'auto' || lane === 'local' || lane === 'cloud-gcp' || lane === 'cloud-shc') {
+  if (lane === 'auto' || lane === 'local' || lane === 'cloud-gcp') {
     return lane
   }
-  throw new Error(`${label} --lane must be auto, local, cloud-gcp, or cloud-shc`)
+  throw new Error(`${label} --lane must be auto, local, or cloud-gcp`)
 }
 
 const isTerminalSessionState = (state: unknown): boolean =>

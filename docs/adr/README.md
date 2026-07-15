@@ -26,7 +26,7 @@ records. They provide a stable decision log that links those sources together.
 * [ADR-0001: Record architecture decisions](0001-record-architecture-decisions.md)
 * [ADR-0002: Adopt Effect as the core runtime model](0002-adopt-effect-as-the-core-runtime-model.md)
 * [ADR-0003: Use Bun as the workspace runtime and toolchain](0003-use-bun-as-the-workspace-runtime-and-toolchain.md)
-* [ADR-0004: Prefer Cloudflare-native product infrastructure](0004-prefer-cloudflare-native-product-infrastructure.md)
+* [ADR-0004 (superseded): Prefer Cloudflare-native product infrastructure](0004-prefer-cloudflare-native-product-infrastructure.md)
 * [ADR-0005: Land through PR review and the `check:deploy` gate](0005-land-through-pr-review-and-check-deploy.md)
 * [ADR-0006: Route Khala coding delegation through owner-local Pylon capacity](0006-route-khala-coding-delegation-through-owner-local-pylon-capacity.md)
 * [ADR-0007: Gate public product claims through product promises](0007-gate-public-product-claims-through-product-promises.md)
@@ -36,3 +36,4 @@ records. They provide a stable decision log that links those sources together.
 * [ADR-0011 (superseded): Ship Khala mobile as native SwiftUI with local Apple tooling](0011-ship-khala-mobile-as-native-swiftui-with-local-apple-tooling.md)
 * [ADR-0012: Adopt a native Khala terminal tool runtime](0012-adopt-khala-native-terminal-tool-runtime.md)
 * [ADR-0013: Adopt a ProseMirror-inspired command composer](0013-adopt-prosemirror-inspired-command-composer.md)
+* [ADR-0014: Use Google Cloud as the sole production infrastructure](0014-use-google-cloud-as-the-sole-production-infrastructure.md)

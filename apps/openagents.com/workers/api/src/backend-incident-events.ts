@@ -144,7 +144,7 @@ export const recordBackendIncidentEvent = async (
       method,
       statusCode,
       errorName,
-      'cloudflare_workers',
+      'gcp_cloud_run',
       1,
       safeMetadataJson(input.safeMetadata),
       createdAt,

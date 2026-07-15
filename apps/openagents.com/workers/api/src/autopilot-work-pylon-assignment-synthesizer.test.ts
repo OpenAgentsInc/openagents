@@ -51,7 +51,7 @@ describe('Autopilot Pylon assignment synthesizer', () => {
       placementDecision: {
         availabilityState: 'selected',
         callerActionRefs: [],
-        fallbackRunnerKind: 'openagents_shc',
+        fallbackRunnerKind: 'google_cloud',
         pylonCandidates: [],
         reasonRefs: [
           'placement.selected.requester_pylon',
@@ -111,7 +111,7 @@ describe('Autopilot Pylon assignment synthesizer', () => {
       placementDecision: {
         availabilityState: 'selected',
         callerActionRefs: [],
-        fallbackRunnerKind: 'openagents_shc',
+        fallbackRunnerKind: 'google_cloud',
         pylonCandidates: [
           {
             assignmentReady: true,
@@ -164,7 +164,7 @@ describe('Autopilot Pylon assignment synthesizer', () => {
       placementDecision: {
         availabilityState: 'selected',
         callerActionRefs: [],
-        fallbackRunnerKind: 'openagents_shc',
+        fallbackRunnerKind: 'google_cloud',
         pylonCandidates: [
           {
             assignmentReady: true,
@@ -216,7 +216,7 @@ describe('Autopilot Pylon assignment synthesizer', () => {
       placementDecision: {
         availabilityState: 'selected',
         callerActionRefs: [],
-        fallbackRunnerKind: 'openagents_shc',
+        fallbackRunnerKind: 'google_cloud',
         pylonCandidates: [
           {
             assignmentReady: true,
@@ -268,7 +268,7 @@ describe('Autopilot Pylon assignment synthesizer', () => {
       placementDecision: {
         availabilityState: 'selected',
         callerActionRefs: [],
-        fallbackRunnerKind: 'openagents_shc',
+        fallbackRunnerKind: 'google_cloud',
         pylonCandidates: [
           {
             assignmentReady: true,
@@ -324,7 +324,7 @@ describe('Autopilot Pylon assignment synthesizer', () => {
       placementDecision: {
         availabilityState: 'selected',
         callerActionRefs: [],
-        fallbackRunnerKind: 'openagents_shc',
+        fallbackRunnerKind: 'google_cloud',
         pylonCandidates: [
           {
             assignmentReady: true,
@@ -369,13 +369,13 @@ describe('Autopilot Pylon assignment synthesizer', () => {
         placementDecision: {
           availabilityState: 'selected',
           callerActionRefs: [],
-          fallbackRunnerKind: 'openagents_shc',
+          fallbackRunnerKind: 'google_cloud',
           pylonCandidates: [],
           reasonRefs: ['placement.selected.fallback'],
           refusalReasonRefs: [],
           retryAfterSeconds: null,
           selectedPylonRef: null,
-          selectedRunnerKind: 'openagents_shc',
+          selectedRunnerKind: 'google_cloud',
           source: 'fallback',
         },
         tasks: [task],

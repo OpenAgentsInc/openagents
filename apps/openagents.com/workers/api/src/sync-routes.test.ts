@@ -161,28 +161,11 @@ const makeMemoryD1 = (): MemoryD1 => {
   return db
 }
 
-const makeSyncRoom = (capturedScopes: Array<string>): DurableObjectNamespace =>
-  ({
-    getByName: (scope: string) => ({
-      fetch: async (request: Request) => {
-        capturedScopes.push(
-          request.headers.get('x-openagents-sync-scope') ?? scope,
-        )
-
-        return new Response(null, { status: 204 })
-      },
-    }),
-    get: (id: DurableObjectId) => ({
-      fetch: async (request: Request) => {
-        capturedScopes.push(
-          request.headers.get('x-openagents-sync-scope') ?? String(id),
-        )
-
-        return new Response(null, { status: 204 })
-      },
-    }),
-    idFromName: (scope: string) => scope,
-  }) as never
+const makeLiveHubFetch = (capturedScopes: Array<string>) =>
+  async (request: Request): Promise<Response> => {
+    capturedScopes.push(new URL(request.url).searchParams.get('scope') ?? '')
+    return new Response(null, { status: 204 })
+  }
 
 const makeExecutionContext = (): ExecutionContext =>
   ({
@@ -194,12 +177,14 @@ const makeExecutionContext = (): ExecutionContext =>
 
 const makeEnv = (
   db: D1Database,
-  syncRoom: DurableObjectNamespace = makeSyncRoom([]),
+  liveHubFetch = makeLiveHubFetch([]),
 ): Env =>
   ({
+    KHALA_SYNC_LIVE_HUB_FETCH: liveHubFetch,
+    KHALA_SYNC_LIVE_HUB_TOKEN: 'test-live-hub-token',
+    KHALA_SYNC_LIVE_HUB_URL: 'https://khala-live-hub.test',
     OPENAGENTS_DB: db,
-    SYNC_ROOM: syncRoom,
-  }) as Env
+  }) as unknown as Env
 
 const makeRoutes = (session: TestSession | undefined) =>
   makeSyncRoutes<TestSession>({
@@ -296,7 +281,7 @@ describe('sync routes', () => {
     const capturedScopes: Array<string> = []
     const response = await runRoute(
       new Request('https://openagents.test/api/sync/workspace/user_1/stream'),
-      makeEnv(makeMemoryD1(), makeSyncRoom(capturedScopes)),
+      makeEnv(makeMemoryD1(), makeLiveHubFetch(capturedScopes)),
       defaultSession,
     )
 
@@ -347,7 +332,7 @@ describe('sync routes', () => {
       new Request(
         'https://openagents.test/api/sync/public-agent/agent_artanis/stream',
       ),
-      makeEnv(makeMemoryD1(), makeSyncRoom(capturedScopes)),
+      makeEnv(makeMemoryD1(), makeLiveHubFetch(capturedScopes)),
       undefined,
     )
     const command = new SyncCommand({
@@ -419,7 +404,7 @@ describe('sync routes', () => {
       new Request(
         'https://openagents.test/api/sync/public-settled-feed/tassadar/stream',
       ),
-      makeEnv(makeMemoryD1(), makeSyncRoom(capturedScopes)),
+      makeEnv(makeMemoryD1(), makeLiveHubFetch(capturedScopes)),
       undefined,
     )
 
@@ -474,7 +459,7 @@ describe('sync routes', () => {
       new Request(
         'https://openagents.test/api/sync/public-gym-run-progress/network/stream',
       ),
-      makeEnv(makeMemoryD1(), makeSyncRoom(capturedScopes)),
+      makeEnv(makeMemoryD1(), makeLiveHubFetch(capturedScopes)),
       undefined,
     )
 

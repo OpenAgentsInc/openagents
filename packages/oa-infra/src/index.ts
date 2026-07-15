@@ -10,7 +10,7 @@
  * | Interface       | Backends here             | Swap targets (audit)    |
  * |-----------------|---------------------------|-------------------------|
  * | `KvStore`       | memory, Postgres          | Memorystore/Redis       |
- * | `BlobStore`     | memory, GCS               | S3, MinIO on SHC        |
+ * | `BlobStore`     | memory, GCS               | S3, MinIO on Google Cloud        |
  * | `JobQueue`      | memory, PG SKIP LOCKED    | Pub/Sub, SQS, NATS      |
  * | `DurableStream` | memory, PG append table   | Redis Streams, Kafka    |
  * | `Mutex`         | memory, PG advisory locks | Redis locks             |

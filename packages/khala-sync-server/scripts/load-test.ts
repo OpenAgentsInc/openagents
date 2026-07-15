@@ -15,7 +15,7 @@
  *     [--json-out <file>]
  *
  *   KHALA_LOAD_TOKEN=<agent bearer> node --import tsx scripts/load-test.ts --mode http \
- *     --base-url https://openagents-staging.openagents.workers.dev \
+ *     --base-url https://openagents-monolith-staging-157437760789.us-central1.run.app \
  *     [--database-url <url>]   # optional: enables post-run cleanup
  *
  * Secrets are env-only (`KHALA_LOAD_DATABASE_URL`, `KHALA_LOAD_TOKEN`) or

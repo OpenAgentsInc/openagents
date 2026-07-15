@@ -6,18 +6,16 @@ import { shouldBundleCloudRunDependency } from "../../vite.config";
 import { externalRuntimeSpecifiers } from "./assert-self-contained-bundle.mjs";
 
 describe("Cloud Run Vite Plus bundle contract", () => {
-  test("preserves the server bundle while packing preload", () => {
+  test("packs only the self-contained Node server bundle", () => {
     const deployScript = readFileSync(
       fileURLToPath(new URL("../deploy-cloudrun.sh", import.meta.url)),
       "utf8",
     );
 
-    expect(deployScript).toMatch(
-      /vp pack src\/cloudrun\/preload\.ts src\/cloudrun\/cloudflare-workers-stub\.ts[\s\S]*?--no-clean/,
-    );
+    expect(deployScript).toContain("vp pack src/cloudrun/server.ts");
     expect(deployScript).toContain("! -f dist-cloudrun/server.mjs");
-    expect(deployScript).toContain("! -f dist-cloudrun/preload.mjs");
-    expect(deployScript).toContain("! -f dist-cloudrun/cloudflare-workers-stub.mjs");
+    expect(deployScript).not.toContain("preload.mjs");
+    expect(deployScript).not.toContain("cloudflare-workers-stub");
     expect(deployScript).toContain("assert-self-contained-bundle.mjs");
     expect(deployScript).toContain("pnpm --config.node-linker=hoisted");
     expect(deployScript).toContain("--filter @openagentsinc/api-worker deploy");

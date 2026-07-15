@@ -63,10 +63,10 @@ const physicalReadiness = () => ({
 })
 
 const tinyboxScenario = () => ({
-  id: 'mullet_scenario_tinybox_shc',
-  name: 'Tinybox at SHC-style power',
+  id: 'mullet_scenario_tinybox_gcp',
+  name: 'Tinybox at Google Cloud-style power',
   schemaVersion: '2026-06-08.v1',
-  kind: 'tinybox_shc_power',
+  kind: 'tinybox_gcp_power',
   createdAt: timestamp,
   updatedAt: timestamp,
   dateRange: {
@@ -74,9 +74,9 @@ const tinyboxScenario = () => ({
     endAt: '2026-06-09T00:00:00.000Z',
   },
   facility: {
-    id: 'facility_shc_pilot',
-    siteId: 'site_shc',
-    name: 'SHC pilot site',
+    id: 'facility_gcp_pilot',
+    siteId: 'site_gcp',
+    name: 'Google Cloud pilot site',
     market: 'ERCOT',
     zone: 'LZ_WEST',
     capacityMw: provenancedNumber(1, 'megawatts'),
@@ -110,8 +110,8 @@ const tinyboxScenario = () => ({
       nodeId: 'node_tinybox_red_v2',
       nodeType: 'tinybox_red_v2',
       ownerParty: 'openagents',
-      operatorParty: 'shc',
-      siteId: 'site_shc',
+      operatorParty: 'gcp',
+      siteId: 'site_gcp',
       gpuModel: 'AMD 9070 XT',
       gpuCount: 4,
       vramGb: 64,
@@ -292,7 +292,7 @@ describe('mullet schema package', () => {
   test('decodes a Tinybox scenario shell', () => {
     const scenario = decodeMulletScenario(tinyboxScenario())
 
-    expect(scenario.name).toBe('Tinybox at SHC-style power')
+    expect(scenario.name).toBe('Tinybox at Google Cloud-style power')
     expect(scenario.facility.capacityMw.provenance).toBe('modeled')
     expect(scenario.computeNodes[0]?.nodeType).toBe('tinybox_red_v2')
     expect(scenario.workClasses[0]?.flexibility.canPause).toBe(true)

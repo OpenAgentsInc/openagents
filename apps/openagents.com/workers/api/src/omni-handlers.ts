@@ -22,11 +22,7 @@ import {
 } from './agent-runtime-store'
 import { appendSessionCookies } from './auth-cookies'
 import { identityDbForEnv, type IdentityDb } from './identity-db'
-import type {
-  OpenAgentsWorkerConfigEnv,
-  ResendEmailConfig,
-  RunnerBackendConfig,
-} from './config'
+import type { ResendEmailConfig } from './config'
 import {
   hasRequiredGitHubWriteScopes,
   issueGitHubWriteGrant,
@@ -66,8 +62,8 @@ import {
   type OmniEventRecord,
   type OmniRunStore,
   agentRunSyncProjectionRaw,
-  checkShcControlHealth,
-  continueAgentRunOnShc,
+  checkGoogleCloudControlHealth,
+  continueAgentRunOnGoogleCloud,
   createAgentRunId,
   createGitHubWorkOrder,
   createQueuedAgentRun,
@@ -75,7 +71,7 @@ import {
   deploymentStatusFromText,
   dispatchEventForAgentRun,
   dispatchEventForDeployment,
-  fetchAgentRunEventsFromShc,
+  fetchAgentRunEventsFromGoogleCloud,
   firstText,
   legacyAgentRunIdFromUuid,
   makeD1OmniRunStore,
@@ -177,7 +173,7 @@ type AuthenticatedActor =
 
 type BillingAwareOmniRunStore = ReturnType<typeof makeD1OmniRunStore>
 
-type ShcDispatchConfig = Readonly<{
+type GoogleCloudDispatchConfig = Readonly<{
   controlApiBearerToken?: string | undefined
   controlApiUrl?: string | undefined
   dispatchMode?: string | undefined
@@ -215,7 +211,6 @@ type OmniHandlerDependencies = Readonly<{
   actorJson: (actor: AuthenticatedActor) => unknown
   getAppOrigin: (env: OpenAgentsWorkerEnv) => string
   getResendEmailConfig: (env: OpenAgentsWorkerEnv) => ResendEmailConfig | undefined
-  getRunnerBackendConfig: (env: OpenAgentsWorkerConfigEnv) => RunnerBackendConfig
   isOpenAgentsAdminEmail: (email: string) => boolean
   isRouteAccessError: (
     value: AgentRunBundle | RouteAccessError,
@@ -255,11 +250,11 @@ type OmniHandlerDependencies = Readonly<{
     userId: string,
     runIdOrLegacyThreadId: string,
   ) => Promise<AgentRunBundle | RouteAccessError>
-  shcDispatchConfig: (env: OpenAgentsWorkerEnv) => ShcDispatchConfig
+  gcpDispatchConfig: (env: OpenAgentsWorkerEnv) => GoogleCloudDispatchConfig
 }>
 
 type OmniHandlerEnv = Parameters<
-  OmniHandlerDependencies['shcDispatchConfig']
+  OmniHandlerDependencies['gcpDispatchConfig']
 >[0]
 
 const optionalUuid = (value: unknown): string | undefined =>
@@ -489,8 +484,7 @@ const optionalUserWritableTeamChatKind = (
 
 const optionalRunnerBackend = (
   value: unknown,
-): 'shc_vm' | 'gcloud_vm' | undefined =>
-  value === 'shc_vm' || value === 'gcloud_vm' ? value : undefined
+): 'gcloud_vm' | undefined => (value === 'gcloud_vm' ? value : undefined)
 
 const DEFAULT_AGENT_GOAL_AGENT_ID = 'openagents-autopilot'
 
@@ -973,20 +967,20 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     )
   }
 
-  const shcPreflightCheck = async (
+  const gcpPreflightCheck = async (
     env: OmniHandlerEnv,
   ): Promise<AutopilotOperatorCheck> => {
-    const dispatchConfig = dependencies.shcDispatchConfig(env)
+    const dispatchConfig = dependencies.gcpDispatchConfig(env)
 
     try {
-      const health = await checkShcControlHealth(dispatchConfig)
+      const health = await checkGoogleCloudControlHealth(dispatchConfig)
 
       return health.ok
-        ? operatorCheck('shc_control', 'ok', 'SHC control API is reachable.', {
+        ? operatorCheck('gcp_control', 'ok', 'Google Cloud control API is reachable.', {
             status: health.status,
           })
         : operatorCheck(
-            'shc_control',
+            'gcp_control',
             health.status === 'not_configured' ? 'blocked' : 'warning',
             health.error,
             {
@@ -995,14 +989,14 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
             },
           )
     } catch (error) {
-      return operatorCheck('shc_control', 'blocked', errorMessage(error))
+      return operatorCheck('gcp_control', 'blocked', errorMessage(error))
     }
   }
 
   const callbackPreflightCheck = (
     env: OmniHandlerEnv,
   ): AutopilotOperatorCheck => {
-    const dispatchConfig = dependencies.shcDispatchConfig(env)
+    const dispatchConfig = dependencies.gcpDispatchConfig(env)
     const appOrigin = dependencies.getAppOrigin(env).replace(/\/+$/, '')
 
     return dispatchConfig.dispatchMode === 'live' &&
@@ -1020,7 +1014,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       : operatorCheck(
           'runner_callback',
           'blocked',
-          'Live SHC dispatch and callback auth must be configured before launching Autopilot.',
+          'Live Google Cloud dispatch and callback auth must be configured before launching Autopilot.',
           {
             dispatchMode: dispatchConfig.dispatchMode ?? null,
           },
@@ -1030,13 +1024,12 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
   const runnerBackendPreflightCheck = (
     env: OmniHandlerEnv,
     selector: Record<string, unknown>,
-    shcControl: AutopilotOperatorCheck,
+    gcpControl: AutopilotOperatorCheck,
     runnerCallback: AutopilotOperatorCheck,
   ): AutopilotOperatorCheck => {
     const check = runnerBackendReadinessCheck({
       callbackStatus: runnerCallback.status,
-      config: dependencies.getRunnerBackendConfig(env),
-      shcControlStatus: shcControl.status,
+      gcloudControlStatus: gcpControl.status,
       workloadTrust: runnerWorkloadTrustFromSelector(selector),
     })
 
@@ -1065,8 +1058,8 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     }
 
     try {
-      const fetched = await fetchAgentRunEventsFromShc(run, {
-        ...dependencies.shcDispatchConfig(env),
+      const fetched = await fetchAgentRunEventsFromGoogleCloud(run, {
+        ...dependencies.gcpDispatchConfig(env),
         cursor: run.eventCursor,
       })
 
@@ -1075,12 +1068,12 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
             'callback_lag',
             fetched.events.length === 0 ? 'ok' : 'warning',
             fetched.events.length === 0
-              ? 'Cloudflare has ingested all currently visible SHC events.'
-              : 'SHC has events that Cloudflare has not ingested yet.',
+              ? 'The OpenAgents control plane has ingested all currently visible Google Cloud events.'
+              : 'Google Cloud has events that the OpenAgents control plane has not ingested yet.',
             {
               pendingEvents: fetched.events.length,
               runEventCursor: run.eventCursor,
-              shcNextCursor: fetched.nextCursor,
+              gcpNextCursor: fetched.nextCursor,
             },
           )
         : operatorCheck('callback_lag', 'warning', fetched.error, {
@@ -1137,7 +1130,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
         : store.findAgentRunForUser(targetUser.userId, legacyRunId)
     })())
 
-  const shcActionEventPayloads = (
+  const gcpActionEventPayloads = (
     payload: unknown,
   ): ReadonlyArray<Record<string, unknown>> => {
     const record = isRecord(payload) ? payload : undefined
@@ -1214,16 +1207,16 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
         ? await latestRunForTargetUser(store, targetUser)
         : await findOperatorRunBundle(store, targetUser, selectedRunId)
     const selectedRunRecord = selectedRun?.run
-    const shcControl = await shcPreflightCheck(env)
+    const gcpControl = await gcpPreflightCheck(env)
     const runnerCallback = callbackPreflightCheck(env)
     const checks = [
       await migrationPreflightCheck(db),
       await projectPreflightCheck(db, selector, targetUser),
       await providerPreflightCheck(db, selector, targetUser),
       await githubWritePreflightCheck(db, targetUser),
-      shcControl,
+      gcpControl,
       runnerCallback,
-      runnerBackendPreflightCheck(env, selector, shcControl, runnerCallback),
+      runnerBackendPreflightCheck(env, selector, gcpControl, runnerCallback),
     ]
     const includeCallbackLag =
       new URL(request.url).pathname.includes('/checklist') ||
@@ -1311,10 +1304,10 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
           connectedAccounts: accounts.filter(
             account => account.publicStatus === 'connected',
           ).length,
-          dispatchMode: dependencies.shcDispatchConfig(env).dispatchMode,
-          fleetId: 'openagents-autopilot:shc-autopilot',
-          primaryRunnerId: 'oa-shc-katy-01',
-          routingPolicy: 'shc_primary_gcloud_fallback',
+          dispatchMode: dependencies.gcpDispatchConfig(env).dispatchMode,
+          fleetId: 'openagents-autopilot:gcp-autopilot',
+          primaryRunnerId: 'oa-gcp-katy-01',
+          routingPolicy: 'gcp_primary_gcloud_fallback',
           totalAccounts: accounts.length,
         },
         ...publicOmniOverview(agentRuns, deployments),
@@ -1418,10 +1411,10 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
             bundle.run.status,
           ),
         ).length,
-        dispatchMode: dependencies.shcDispatchConfig(env).dispatchMode,
-        fleetId: 'openagents-autopilot:shc-autopilot',
-        primaryRunnerId: 'oa-shc-katy-01',
-        routingPolicy: 'shc_primary_gcloud_fallback',
+        dispatchMode: dependencies.gcpDispatchConfig(env).dispatchMode,
+        fleetId: 'openagents-autopilot:gcp-autopilot',
+        primaryRunnerId: 'oa-gcp-katy-01',
+        routingPolicy: 'gcp_primary_gcloud_fallback',
       },
       ...publicOmniOverview(agentRuns, deployments),
     })
@@ -1617,7 +1610,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
         firstText(selector.repositoryRef, selector.baseRef) ??
         parsedRepository.ref,
     }
-    const backend = optionalRunnerBackend(selector.runnerBackend) ?? 'shc_vm'
+    const backend = optionalRunnerBackend(selector.runnerBackend) ?? 'gcloud_vm'
     const projectId = optionalString(selector.projectId)
     const teamId = optionalString(selector.teamId)
     const project =
@@ -1889,15 +1882,15 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     }
 
     if (action === 'callbacks_retry') {
-      const fetched = await fetchAgentRunEventsFromShc(bundle.run, {
-        ...dependencies.shcDispatchConfig(env),
+      const fetched = await fetchAgentRunEventsFromGoogleCloud(bundle.run, {
+        ...dependencies.gcpDispatchConfig(env),
         cursor: bundle.run.eventCursor,
       })
 
       if (!fetched.ok) {
         return noStoreJsonResponse(
           {
-            error: 'shc_callback_retry_failed',
+            error: 'gcp_callback_retry_failed',
             message: fetched.error,
             runId: bundle.run.id,
             status: fetched.status,
@@ -1935,8 +1928,8 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
         bundle.run.status === 'waiting_for_input' ||
         bundle.run.status === 'queued'
       ) {
-        const result = await continueAgentRunOnShc(bundle.run, {
-          ...dependencies.shcDispatchConfig(env),
+        const result = await continueAgentRunOnGoogleCloud(bundle.run, {
+          ...dependencies.gcpDispatchConfig(env),
           authGrantRef: bundle.run.authGrantRef ?? undefined,
           prompt,
           turnId:
@@ -1947,7 +1940,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
         if (!result.ok) {
           return noStoreJsonResponse(
             {
-              error: 'shc_continue_failed',
+              error: 'gcp_continue_failed',
               message: result.error,
               runId: bundle.run.id,
               status: result.status,
@@ -1961,7 +1954,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
         const ingested = await ingestOperatorFetchedRunEvents(
           env,
           bundle.run,
-          shcActionEventPayloads(result.payload),
+          gcpActionEventPayloads(result.payload),
           optionalString(
             nestedUnknown(
               isRecord(result.payload) ? result.payload : undefined,
@@ -2048,7 +2041,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     run: AgentRunRecord,
   ): Promise<void> => {
     const store = dependencies.makeBillingAwareOmniRunStore(env)
-    const dispatchConfig = dependencies.shcDispatchConfig(env)
+    const dispatchConfig = dependencies.gcpDispatchConfig(env)
     const dispatchService = makeOmniDispatchService()
     const repository = makeOmniRunRepository(store)
     const runnerEvents = makeOmniRunnerEventService()
@@ -2091,7 +2084,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
             run.id,
             2,
             {
-              source: 'shc',
+              source: 'gcp',
               status: 'failed',
               summary: errorMessage(dispatchResult.error),
               type: 'runner.dispatch_failed',
@@ -2122,7 +2115,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       Effect.gen(function* () {
         const dispatch = yield* dispatchService.dispatchDeployment(
           deployment.assignment,
-          dependencies.shcDispatchConfig(env),
+          dependencies.gcpDispatchConfig(env),
         )
 
         yield* repository.appendDeploymentEvents(
@@ -2149,7 +2142,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
             deployment.id,
             2,
             {
-              source: 'shc',
+              source: 'gcp',
               status: 'failed',
               summary: errorMessage(dispatchResult.error),
               type: 'deploy.dispatch_failed',
@@ -2388,8 +2381,8 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       }
     }
 
-    const result = await continueAgentRunOnShc(bundle.run, {
-      ...dependencies.shcDispatchConfig(env),
+    const result = await continueAgentRunOnGoogleCloud(bundle.run, {
+      ...dependencies.gcpDispatchConfig(env),
       authGrantRef: bundle.run.authGrantRef ?? undefined,
       prompt: input.prompt,
       turnId: `adjutant_turn_${createAgentRunId()}`,
@@ -2400,7 +2393,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
         ok: false,
         response: noStoreJsonResponse(
           {
-            error: 'shc_continue_failed',
+            error: 'gcp_continue_failed',
             message: result.error,
             runId: bundle.run.id,
             status: result.status,
@@ -2414,7 +2407,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     const ingested = await ingestOperatorFetchedRunEvents(
       env,
       bundle.run,
-      shcActionEventPayloads(result.payload),
+      gcpActionEventPayloads(result.payload),
       optionalString(
         nestedUnknown(isRecord(result.payload) ? result.payload : undefined, [
           'status',
@@ -2485,7 +2478,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
     const repository = parseGithubRepository(repositoryText)
     const backend =
-      optionalRunnerBackend(input.selector.runnerBackend) ?? 'shc_vm'
+      optionalRunnerBackend(input.selector.runnerBackend) ?? 'gcloud_vm'
     const timeoutMs = numberOrUndefined(input.selector.timeoutMs)
     const runId = createAgentRunId()
     const githubWorkOrder = githubWorkOrderFromSelector(

@@ -17,8 +17,8 @@
   "metadata": {
     "terminalBenchTaskId": "pypi-server",
     "retainedFailureFamily": "local_pypi_simple_index",
-    "preservedRunRef": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md#per-task-results",
-    "sourceDoc": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md",
+    "preservedRunRef": "docs/bootstrap/CND-052-gcp-codex-terminal-bench-16task-preserved.md#per-task-results",
+    "sourceDoc": "docs/bootstrap/CND-052-gcp-codex-terminal-bench-16task-preserved.md",
     "taskChecksum": "9eb21236249d5b42ee64c7229bb1e5a3b3c0be7ed5ee9801bdd0d16ca575941a",
     "rawCodexReward": 0.0,
     "rawCodexVerifier": "0 passed / 1 failed",

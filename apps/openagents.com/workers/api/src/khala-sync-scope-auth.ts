@@ -25,7 +25,7 @@
 // fails log/bootstrap/connect immediately; the paired push half of
 // invariant 7 (broadcasting `MustRefetch(access_changed)` to already-open
 // sockets) is `notifyKhalaSyncHubAccessChangedBestEffort` /
-// `POST /api/internal/khala-sync/hub/access-changed` in khala-sync-hub-do.
+// `POST /api/internal/khala-sync/hub/access-changed` in khala-sync-hub-routes.
 //
 // This module returns typed {@link ScopeReadDecision} values only; the
 // shared decision → HTTP response mapper the read routes consume is

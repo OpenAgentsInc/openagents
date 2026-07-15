@@ -47,7 +47,7 @@ describe("control schema", () => {
     })
     expect(defaulted.type === "session.spawn" && defaulted.lane).toBe("auto")
 
-    for (const lane of ["auto", "local", "cloud-gcp", "cloud-shc"] as const) {
+    for (const lane of ["auto", "local", "cloud-gcp"] as const) {
       const decoded = decodeControlCommand({
         type: "session.spawn",
         adapter: "codex",

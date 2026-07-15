@@ -1,12 +1,12 @@
 # OpenAgents.com Start Staging
 
-TanStack Start staging scaffold for TS-2a (#8343). This package is intentionally
-isolated from the live `openagents.com` Worker and routes.
+TanStack Start application for the retained `openagents.com` document routes.
+It is built into the Google Cloud Run monolith.
 
-The TS-1 parity contract and pinned TanStack/Cloudflare versions live in
+The historical TS-1 parity contract lives in
 [`docs/fable/2026-07-04-tanstack-start-parity-contract.md`](../../../../docs/fable/2026-07-04-tanstack-start-parity-contract.md).
 Server loaders/functions should use `@openagentsinc/effect-start` for the
-Effect boundary and Worker request context instead of creating app-local
+Effect boundary and server request context instead of creating app-local
 bridges.
 
 ## UI Components
@@ -36,24 +36,17 @@ pnpm --dir apps/openagents.com/apps/start run budget
 
 ## Deploy
 
-This app deploys to its own Worker:
+This app deploys only as part of the Cloud Run monolith:
 
 ```sh
-pnpm --dir apps/openagents.com/apps/start run deploy
+CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config \
+  bash apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh production
 ```
 
-The Wrangler name is `openagents-com-start-staging`. Do not deploy it through
-the live `apps/openagents.com/workers/api` deploy path, and do not attach it to
-the production `openagents.com` route in this slice.
-
-Current staging URL:
-
-- https://openagents-com-start-staging.openagents.workers.dev
-
-After deploy, record the `*.workers.dev` URL in the issue or PR and smoke it:
+Deploy staging first and smoke the Cloud Run revision:
 
 ```sh
-curl --retry 5 --retry-delay 2 --retry-all-errors -fsS https://openagents-com-start-staging.<account>.workers.dev/ \
+curl --retry 5 --retry-delay 2 --retry-all-errors -fsS https://openagents-monolith-staging-157437760789.us-central1.run.app/ \
   | rg -a 'OpenAgents|What is Khala\\?|Join the Tassadar training run'
 ```
 
@@ -66,8 +59,8 @@ curl --retry 5 --retry-delay 2 --retry-all-errors -fsS https://openagents-com-st
 - Dropped Drizzle/database/runtime host context: the landing page has no data
   dependency, and the issue requested room for later content negotiation and
   crons rather than a database boundary now.
-- Dropped analytics proxy and scheduled tasks: no deploy in this run, and the
-  staging Worker should not emit production analytics or run cron work.
+- Scheduled work is owned by Cloud Scheduler and the Cloud Run API, not this
+  document application.
 - Used a static hero fold: the production Three.js scene is deferred by the
   issue; the fold preserves the dark Khala/StarCraft token palette without
   adding a second renderer.
@@ -84,21 +77,23 @@ Landing route budget for the first deployed staging URL:
 - Initial landing document should keep LCP under 2.5s on a local Lighthouse
   mobile run before promotion to a custom domain.
 
-2026-07-04 deploy receipt:
+## Historical 2026-07-04 edge-host receipt
 
-- Worker: `openagents-com-start-staging`
-- URL: https://openagents-com-start-staging.openagents.workers.dev
+This receipt records a retired experiment. It is not a current deploy target
+or infrastructure authority.
+
+- Former service: `openagents-com-start-staging`
 - TS-2a version ID: `dce2450d-c23c-42ed-9eb0-8ffada0b05cb`
 - TS-2 version ID: `01014344-715c-46f2-a71d-6b6ff5db7587`
-- TS-2 startup time reported by Wrangler: 34 ms
+- TS-2 startup time recorded by the retired host: 34 ms
 - Landing SSR smoke:
-  `curl --retry 5 --retry-delay 2 --retry-all-errors -fsS https://openagents-com-start-staging.openagents.workers.dev/ | rg -a 'OpenAgents|What is Khala\\?|Join the Tassadar training run'`
+  completed against the former staging origin; that origin is retired.
 - TS-2 staged routes smoked with SSR markers:
   `/business`, `/docs`, `/docs/api`, `/blog`,
   `/blog/introducing-khala-code`, `/code/download`, `/autopilot`,
   `/autopilot/legal`.
 - Shared agent surfaces are served before the Start fallback from the API
-  Worker helpers: `/llms.txt`, `/agents.md`, `/ai.md`, `/skill.md`,
+  helpers: `/llms.txt`, `/agents.md`, `/ai.md`, `/skill.md`,
   `/robots.txt`, `/sitemap.xml`, `/.well-known/mcp.json`,
   `/.well-known/mcp/manifest.json`, and `/.well-known/ai-catalog.json`.
 - Route budget gate: `openagents.start_funnel_route_budget.v1`, 409.2 KiB

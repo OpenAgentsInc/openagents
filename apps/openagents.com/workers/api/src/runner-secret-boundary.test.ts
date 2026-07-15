@@ -21,17 +21,17 @@ const repository: RepositoryRef = {
   repo: 'autopilot-omega',
 }
 
-const shcPayload = () =>
+const gcpPayload = () =>
   buildAgentRunAssignment({
     appOrigin: 'https://openagents.com',
     authGrantRef: 'grant.provider_account.codex.account_1',
-    backend: 'shc_vm',
+    backend: 'gcloud_vm',
     dispatchGoal: 'dispatch.goal.ref.site_builder',
     githubWriteGrantRef: 'grant.github_write.repo_branch',
     goal: 'Build a reviewed Site revision.',
     providerAccountRef: 'provider_account.codex.account_1',
     repository,
-    runId: 'run.shc.1',
+    runId: 'run.gcp.1',
   })
 
 const containerPayload = () => ({
@@ -44,7 +44,7 @@ const containerPayload = () => ({
   },
   assignmentRef: 'assignment.site_builder.fake_container',
   authGrantRef: 'grant.provider_account.codex.account_2',
-  backendKind: 'cloudflare_container',
+  backendKind: 'gcloud_vm',
   callbackRef: 'callback.fake_container.redacted_ref',
   githubWriteGrantRef: 'grant.github_write.repo_branch',
   goalRef: 'goal.site_builder.fake_container',
@@ -59,16 +59,16 @@ const containerPayload = () => ({
 })
 
 describe('runner dispatch secret boundary', () => {
-  test('models grant refs, resolution receipts, and scrub receipts for SHC dispatch', () => {
+  test('models grant refs, resolution receipts, and scrub receipts for Google Cloud dispatch', () => {
     const boundary = buildOpenAgentsRunnerDispatchSecretBoundary({
       authGrantRef: 'grant.provider_account.codex.account_1',
-      backendKind: 'shc_vm',
+      backendKind: 'gcloud_vm',
       callbackRef: 'runner_callback_token',
-      dispatchPayload: shcPayload(),
-      dispatchRef: 'dispatch.shc.run_1',
+      dispatchPayload: gcpPayload(),
+      dispatchRef: 'dispatch.gcp.run_1',
       githubWriteGrantRef: 'grant.github_write.repo_branch',
       providerAccountRef: 'provider_account.codex.account_1',
-      runnerSessionRef: 'run.shc.1',
+      runnerSessionRef: 'run.gcp.1',
     })
 
     expect(boundary).not.toBeInstanceOf(
@@ -76,7 +76,7 @@ describe('runner dispatch secret boundary', () => {
     )
     expect(S.decodeUnknownSync(OpenAgentsRunnerDispatchSecretBoundary)(boundary))
       .toMatchObject({
-        backendKind: 'shc_vm',
+        backendKind: 'gcloud_vm',
         status: 'ready',
       })
     if (!(boundary instanceof OpenAgentsRunnerDispatchSecretBoundaryDenied)) {
@@ -93,7 +93,7 @@ describe('runner dispatch secret boundary', () => {
   test('models Container-compatible dispatch refs without credential material', () => {
     const boundary = buildOpenAgentsRunnerDispatchSecretBoundary({
       authGrantRef: 'grant.provider_account.codex.account_2',
-      backendKind: 'cloudflare_container',
+      backendKind: 'gcloud_vm',
       callbackRef: 'callback.fake_container.redacted_ref',
       dispatchPayload: containerPayload(),
       dispatchRef: 'dispatch.container.run_2',
@@ -106,7 +106,7 @@ describe('runner dispatch secret boundary', () => {
       OpenAgentsRunnerDispatchSecretBoundaryDenied,
     )
     if (!(boundary instanceof OpenAgentsRunnerDispatchSecretBoundaryDenied)) {
-      expect(boundary.backendKind).toBe('cloudflare_container')
+      expect(boundary.backendKind).toBe('gcloud_vm')
       expect(boundary.status).toBe('ready')
       expect(boundary.denialReasons).toEqual([])
       expect(boundary.resolutionReceipts.map(receipt => receipt.status))
@@ -122,13 +122,13 @@ describe('runner dispatch secret boundary', () => {
   test('keeps public projection free of provider-account and credential refs', () => {
     const boundary = buildOpenAgentsRunnerDispatchSecretBoundary({
       authGrantRef: 'grant.provider_account.codex.account_1',
-      backendKind: 'shc_vm',
+      backendKind: 'gcloud_vm',
       callbackRef: 'runner_callback_token',
-      dispatchPayload: shcPayload(),
-      dispatchRef: 'dispatch.shc.run_1',
+      dispatchPayload: gcpPayload(),
+      dispatchRef: 'dispatch.gcp.run_1',
       githubWriteGrantRef: 'grant.github_write.repo_branch',
       providerAccountRef: 'provider_account.codex.account_1',
-      runnerSessionRef: 'run.shc.1',
+      runnerSessionRef: 'run.gcp.1',
     })
 
     if (boundary instanceof OpenAgentsRunnerDispatchSecretBoundaryDenied) {
@@ -158,14 +158,14 @@ describe('runner dispatch secret boundary', () => {
   test('denies missing required grant refs', () => {
     const grantRefs = openAgentsRunnerGrantRefsForDispatch({
       githubWriteGrantRef: 'grant.github_write.repo_branch',
-      runnerSessionRef: 'run.shc.1',
+      runnerSessionRef: 'run.gcp.1',
     })
     const boundary = buildOpenAgentsRunnerDispatchSecretBoundary({
-      backendKind: 'shc_vm',
+      backendKind: 'gcloud_vm',
       dispatchPayload: { callback: { tokenRef: 'runner_callback_token' } },
-      dispatchRef: 'dispatch.shc.missing_required',
+      dispatchRef: 'dispatch.gcp.missing_required',
       githubWriteGrantRef: 'grant.github_write.repo_branch',
-      runnerSessionRef: 'run.shc.1',
+      runnerSessionRef: 'run.gcp.1',
     })
 
     expect(grantRefs.map(grant => grant.grantKind)).toEqual(['github_write'])
@@ -187,12 +187,12 @@ describe('runner dispatch secret boundary', () => {
     const denials = unsafePayloads.map(dispatchPayload =>
       buildOpenAgentsRunnerDispatchSecretBoundary({
         authGrantRef: 'grant.provider_account.codex.account_1',
-        backendKind: 'shc_vm',
+        backendKind: 'gcloud_vm',
         callbackRef: 'runner_callback_token',
         dispatchPayload,
-        dispatchRef: 'dispatch.shc.unsafe',
+        dispatchRef: 'dispatch.gcp.unsafe',
         providerAccountRef: 'provider_account.codex.account_1',
-        runnerSessionRef: 'run.shc.unsafe',
+        runnerSessionRef: 'run.gcp.unsafe',
       }),
     )
 

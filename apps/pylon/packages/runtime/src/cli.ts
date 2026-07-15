@@ -688,13 +688,13 @@ function numberOption(options: Record<string, string | true>, key: string): numb
 function runnerKindOption(options: Record<string, string | true>, key: string): ProbeRunnerIdentity["kind"] | undefined {
   const value = stringOption(options, key);
 
-  return value === "local" || value === "shc" || value === "pylon" || value === "sandbox" ? value : undefined;
+  return value === "local" || value === "gcp" || value === "pylon" || value === "sandbox" ? value : undefined;
 }
 
 function usage(): string {
   return [
     "Usage:",
-    "  probe omega link [--base-url URL] [--runner-id ID] [--subject USER_OR_TEAM] [--kind local|shc|pylon|sandbox]",
+    "  probe omega link [--base-url URL] [--runner-id ID] [--subject USER_OR_TEAM] [--kind local|gcp|pylon|sandbox]",
     "  probe auth accounts [--base-url URL]",
     "  probe auth add chatgpt [--base-url URL]",
     "  probe chat [--profile gemini-api] [--model gemini-3.5-flash] [--prompt TEXT] [--color always|never] [--no-color] [--tui]",

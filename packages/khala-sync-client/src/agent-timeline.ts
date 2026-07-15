@@ -99,7 +99,7 @@ export const ConfirmedAgentRunSchema = Schema.Struct({
   routeRef: TimelineRefSchema,
   workContextRef: Schema.optionalKey(TimelineRefSchema),
   runtime: Schema.optionalKey(Schema.Literals(["opencode_codex", "codex", "claude_code", "openagents_native"])),
-  backend: Schema.optionalKey(Schema.Literals(["shc_vm", "gcloud_vm", "pylon", "hosted"])),
+  backend: Schema.optionalKey(Schema.Literals(["gcloud_vm", "pylon", "hosted"])),
   status: Schema.Literals(["queued", "running", "waiting_for_input", "completed", "failed", "canceled"]),
   createdAt: TimelineTimestampSchema,
   updatedAt: TimelineTimestampSchema,

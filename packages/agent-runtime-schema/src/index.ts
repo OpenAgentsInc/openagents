@@ -22,7 +22,7 @@ export const AgentRuntimeAdapterKind = S.Literals([
   "opencode",
   "hermes",
   "hosted_container",
-  "shc",
+  "gcp",
   "test_fixture",
 ])
 export type AgentRuntimeAdapterKind = typeof AgentRuntimeAdapterKind.Type
@@ -35,7 +35,7 @@ export const agentRuntimeAdapterKinds: ReadonlyArray<AgentRuntimeAdapterKind> = 
   "opencode",
   "hermes",
   "hosted_container",
-  "shc",
+  "gcp",
   "test_fixture",
 ]
 

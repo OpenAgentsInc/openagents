@@ -6,12 +6,12 @@ describe("deploy status view projection", () => {
   test("projects a direct deployed payload", () => {
     expect(projectDeployStatus({
       state: "deployed",
-      url: "https://example.workers.dev",
+      url: "https://example.run.app",
       deployedAt: "2026-06-13T12:34:56.000Z",
       message: "Live",
     })).toEqual({
       state: "deployed",
-      url: "https://example.workers.dev",
+      url: "https://example.run.app",
       deployedAt: "2026-06-13T12:34:56.000Z",
       message: "Live",
     })

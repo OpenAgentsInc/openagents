@@ -1,9 +1,7 @@
 /**
  * Server-side Khala Sync proxy for the Start web app (issue #8413).
  *
- * `apps/openagents.com/apps/start` deploys to its own isolated Worker
- * (`openagents-com-start-staging.workers.dev`), a DIFFERENT origin from the
- * production `openagents.com` Worker that owns the real
+ * The Start server delegates to the production `openagents.com` API that owns the real
  * `/api/sync/bootstrap` `/api/sync/connect` `/api/sync/push` routes. Two
  * problems fall out of that:
  *
@@ -18,14 +16,13 @@
  * entirely: it lives only in an httpOnly cookie set by `POST
  * /api/khala-sync/session` after a real bootstrap-backed credential check. Every
  * other route here is a same-origin server-to-server proxy: the browser
- * talks to THIS Worker's own origin (no CORS, cookies attach automatically),
- * and THIS Worker attaches the real `Authorization: Bearer <token>` header
+ * talks to its own origin (no CORS, cookies attach automatically),
+ * and the server attaches the real `Authorization: Bearer <token>` header
  * when it forwards to the production Khala Sync API — including the
- * WebSocket upgrade, using the Workers-runtime "outbound fetch upgrade"
- * pattern already used for the Nostr relay bridge in
+ * WebSocket upgrade, using the server's outbound fetch upgrade pattern used in
  * `apps/openagents.com/workers/api/src/forum-work-request-live-publisher.ts`
  * (`workersFetchRelayConnector`), just proxied back out to a browser client
- * via `WebSocketPair` instead of consumed in-process.
+ * via the runtime socket pair instead of consumed in-process.
  */
 
 import { getStartRequestContext } from '@openagentsinc/effect-start'

@@ -20,8 +20,6 @@ pub const PLACEMENT_ASSIGNMENT_VERSION: &str = "openagents.codex_placement_assig
 pub const AGENT_COMPUTER_ISOLATION_POLICY_VERSION: &str =
     "openagents.agent_computer_isolation_policy.v1";
 
-/// SHC secondary/fallback runner id (CND-041). Google GCE is the primary lane.
-pub const SHC_FALLBACK_RUNNER_ID: &str = "oa-shc-katy-01";
 /// Stable GCE ephemeral-per-session capacity class id (the commercial-plan C-5
 /// class). Owner sessions default to this lane (cloud#88).
 pub const GCE_EPHEMERAL_CAPACITY_CLASS_ID: &str = "gce.ephemeral.standard.v1";
@@ -41,16 +39,10 @@ pub const DEFAULT_OWNER_ACTIVE_SESSION_CAP: u32 = 4;
 pub const DEFAULT_OWNER_REMOTE_LEASE_CAP: u32 = 2;
 
 // ---------------------------------------------------------------------------
-// Placement cost model (CND-042).
+// Placement cost model.
 //
 // These are the single source of truth for the per-lane cost-plus-10% estimate
-// used by cost-driven placement. They are derived from the CND-042 receipt
-// comparison report:
-//   docs/benchmarks/2026-06-14-cnd-042-gce-shc-receipt-comparison.md
-//
-// To update rates after a real GCP Billing Catalog pull or a real SHC invoice,
-// change ONLY the four `*_PER_VM_SEC_NANOUSD` constants below; the cost-plus-10%
-// markup and the comparison logic do not need to change.
+// used by cost accounting. Google Cloud is the only managed compute authority.
 //
 // Units are nano-USD (1e-9 USD) per VM-second to keep integer math precise for
 // the small per-second rates without floating point in the decision path. The
@@ -71,22 +63,10 @@ pub const DEFAULT_OWNER_REMOTE_LEASE_CAP: u32 = 2;
 /// switching the basis to `cost_plus_10pct_gcp` remains the deeper follow-up.
 pub const GCE_RAW_PER_VM_SEC_NANOUSD: u64 = 4_653;
 
-/// SHC `oa-shc-katy-01` whole-host amortized rate, raw (pre-markup).
-/// Basis: real invoice — $1000.00/year capex, paid upfront (no longer modeled).
-/// $1000/yr ÷ 8760h ÷ 3600s = 31.710e-6 USD/s = 31_710 nano-USD/s.
-/// (See CND-042 report §2.4 — assumption 2 RESOLVED via the real SHC invoice.)
-pub const SHC_RAW_PER_VM_SEC_NANOUSD: u64 = 31_710;
-
 /// Modeled default `standard`-class session length in VM-seconds, used to turn
 /// the per-second rates into a per-session cost basis. Rounded from the CND-052
 /// mean per-task wall (~260.8 s) to 300 s.
 pub const DEFAULT_SESSION_VM_SECONDS: u64 = 300;
-
-/// Margin a cheaper lane must beat the preferred lane by before it can win on
-/// cost alone, in basis points (here 10% = 1000 bps). A challenger lane must be
-/// at least this much cheaper than GCE to be considered "materially cheaper".
-/// This encodes the owner tiebreak: GCE wins ties and near-ties.
-pub const PLACEMENT_COST_MATERIAL_MARGIN_BPS: u64 = 1_000;
 
 const MAX_CODEX_AUTH_GRANT_TTL_MS: u128 = 1000 * 60 * 60 * 2;
 const SECRET_REF_PREFIXES: &[&str] = &[
@@ -438,7 +418,6 @@ pub struct ResourceUsageReceipt {
 pub enum ProviderLane {
     Local,
     Gcp,
-    Shc,
     Provider,
     Unknown,
 }
@@ -2073,24 +2052,18 @@ fn validate_artifact_name(value: &str) -> Result<(), String> {
 
 /// Lane-agnostic compute lane selector for a coding-run placement request.
 ///
-/// `Auto` defers to fleet policy: per the owner direction (2026-06-14) the
-/// cloud lane priority is Google GCE first, SHC second, so `Auto` binds to GCE
-/// and only falls back to SHC when GCE is unavailable. The other variants are
-/// explicit caller pins.
+/// `Auto` defers to fleet policy and binds to Google Cloud. Google Cloud is the
+/// only managed compute authority; unavailable capacity fails closed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ComputeLane {
-    /// Cost-driven (CND-042): own-Pylon-first-and-free upstream, then the
-    /// cheaper of GCE/SHC by cost-plus-10% (GCE wins ties/near-ties; SHC only
-    /// when materially cheaper and the pilot recommends "expand").
+    /// Fleet-selected Google Cloud capacity.
     Auto,
     /// Caller's own local Pylon. Resolution is out of scope for the cloud
     /// placement endpoint; cloud placement treats this as a non-cloud lane.
     Local,
-    /// Google GCE ephemeral-per-session VM (primary cloud lane).
+    /// Google GCE ephemeral-per-session VM.
     CloudGcp,
-    /// SHC `oa-shc-katy-01` node (secondary cloud lane).
-    CloudShc,
 }
 
 impl ComputeLane {
@@ -2099,7 +2072,6 @@ impl ComputeLane {
             Self::Auto => "auto",
             Self::Local => "local",
             Self::CloudGcp => "cloud-gcp",
-            Self::CloudShc => "cloud-shc",
         }
     }
 }
@@ -2157,7 +2129,7 @@ pub struct PlacementAssignment {
     pub auth_grant_ref: String,
     /// Bounded instruction for the coding run.
     pub goal: String,
-    /// Requested compute lane. Defaults to `Auto` (GCE primary, SHC fallback).
+    /// Requested compute lane. Defaults to `Auto` (Google Cloud).
     #[serde(default)]
     pub lane: ComputeLane,
     /// Non-secret repo/project context.
@@ -2193,14 +2165,9 @@ pub struct PlacementAssignment {
 pub enum PlacementReason {
     /// Caller explicitly pinned this lane.
     LanePinned,
-    /// Policy default selected GCE as the primary cloud lane.
+    /// Policy default selected Google Cloud.
     PolicyDefaultGce,
-    /// GCE was unavailable; SHC selected as the secondary lane.
-    GceUnavailableShcFallback,
-    /// Cost-driven comparison selected this lane (CND-042). The chosen lane's
-    /// cost-plus-10% basis is recorded in `RunnerBinding::cost_basis`. Per owner
-    /// direction, GCE wins ties and near-ties; SHC is chosen only when it is
-    /// materially cheaper AND the pilot recommendation is "expand".
+    /// Cost accounting was requested for the Google Cloud placement.
     CostDriven,
 }
 
@@ -2208,19 +2175,16 @@ pub enum PlacementReason {
 ///
 /// This surfaces the chosen lane's cost-plus-10% estimate and the comparison
 /// inputs so downstream metering/settlement can reconcile, without exposing raw
-/// customer cost in public-facing refs. The values here are the *modeled lane
-/// estimate* (infra cost-plus-10% per the contract), never a customer's billed
-/// amount, and never raw GCP/SHC invoice identifiers.
+/// customer cost in public-facing refs. The values here are the modeled Google
+/// Cloud estimate, never a customer's billed amount or raw invoice identifier.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PlacementCostBasis {
     /// `cost_plus_10pct_gcp` style label describing how the estimate was formed.
     pub basis: String,
     /// Chosen lane's cost-plus-10% estimate, micro-USD per VM-second.
     pub chosen_micro_usd_per_vm_sec: u64,
-    /// GCE lane's cost-plus-10% estimate, micro-USD per VM-second.
+    /// Google Cloud lane's cost-plus-10% estimate, micro-USD per VM-second.
     pub gce_micro_usd_per_vm_sec: u64,
-    /// SHC lane's cost-plus-10% estimate, micro-USD per VM-second.
-    pub shc_micro_usd_per_vm_sec: u64,
     /// Modeled session length used for the per-session figure below.
     pub modeled_session_vm_seconds: u64,
     /// Chosen lane's per-session cost-plus-10% estimate, micro-USD.
@@ -2255,32 +2219,26 @@ pub struct RunnerBinding {
     pub caps: ComputeQuotaCaps,
 }
 
-/// Per-lane cost model for cost-driven placement (CND-042).
+/// Google Cloud cost model for placement accounting.
 ///
-/// Holds the raw (pre-markup) per-VM-second rate for each cloud lane. The
+/// Holds the raw (pre-markup) per-VM-second rate for the managed cloud lane. The
 /// cost-plus-10% markup from `openagents.compute_quota_routing.v1` is applied by
 /// the accessor methods so the markup lives in exactly one place. Rates are
-/// sourced from the CND-042 report; update the `*_RAW_PER_VM_SEC_NANOUSD`
-/// constants to change them.
+/// sourced from the published Google Cloud rate; update
+/// `GCE_RAW_PER_VM_SEC_NANOUSD` to change it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LaneCostModel {
     /// GCE raw rate, nano-USD per VM-second.
     pub gce_raw_nanousd_per_vm_sec: u64,
-    /// SHC raw rate, nano-USD per VM-second.
-    pub shc_raw_nanousd_per_vm_sec: u64,
     /// Modeled default session length, VM-seconds.
     pub session_vm_seconds: u64,
-    /// Material-cheaper margin in basis points a challenger must beat GCE by.
-    pub material_margin_bps: u64,
 }
 
 impl Default for LaneCostModel {
     fn default() -> Self {
         Self {
             gce_raw_nanousd_per_vm_sec: GCE_RAW_PER_VM_SEC_NANOUSD,
-            shc_raw_nanousd_per_vm_sec: SHC_RAW_PER_VM_SEC_NANOUSD,
             session_vm_seconds: DEFAULT_SESSION_VM_SECONDS,
-            material_margin_bps: PLACEMENT_COST_MATERIAL_MARGIN_BPS,
         }
     }
 }
@@ -2291,38 +2249,15 @@ impl LaneCostModel {
         cost_plus_10pct_micro_usd_per_vm_sec(self.gce_raw_nanousd_per_vm_sec)
     }
 
-    /// SHC cost-plus-10% estimate, micro-USD per VM-second.
-    pub fn shc_micro_usd_per_vm_sec(&self) -> u64 {
-        cost_plus_10pct_micro_usd_per_vm_sec(self.shc_raw_nanousd_per_vm_sec)
-    }
-
-    /// True when SHC is materially cheaper than GCE: SHC cost-plus-10% must be
-    /// below GCE cost-plus-10% by at least `material_margin_bps`. GCE wins ties
-    /// and near-ties by construction (owner direction).
-    pub fn shc_materially_cheaper_than_gce(&self) -> bool {
+    /// Build the refs-only Google Cloud cost basis.
+    pub fn cost_basis(&self) -> PlacementCostBasis {
         let gce = self.gce_micro_usd_per_vm_sec();
-        let shc = self.shc_micro_usd_per_vm_sec();
-        // Threshold: shc < gce * (10000 - margin) / 10000.
-        let threshold =
-            gce.saturating_mul(10_000u64.saturating_sub(self.material_margin_bps)) / 10_000;
-        shc < threshold
-    }
-
-    /// Build the refs-only cost basis for a chosen lane.
-    pub fn cost_basis(&self, chosen: ProviderLane) -> PlacementCostBasis {
-        let gce = self.gce_micro_usd_per_vm_sec();
-        let shc = self.shc_micro_usd_per_vm_sec();
-        let chosen_rate = match chosen {
-            ProviderLane::Shc => shc,
-            _ => gce,
-        };
         PlacementCostBasis {
-            basis: "cost_plus_10pct_lane_model".to_string(),
-            chosen_micro_usd_per_vm_sec: chosen_rate,
+            basis: "cost_plus_10pct_gcp_catalog".to_string(),
+            chosen_micro_usd_per_vm_sec: gce,
             gce_micro_usd_per_vm_sec: gce,
-            shc_micro_usd_per_vm_sec: shc,
             modeled_session_vm_seconds: self.session_vm_seconds,
-            chosen_session_micro_usd: chosen_rate.saturating_mul(self.session_vm_seconds),
+            chosen_session_micro_usd: gce.saturating_mul(self.session_vm_seconds),
         }
     }
 }
@@ -2381,49 +2316,28 @@ impl PlacementAssignment {
     /// tests that want the pure policy behavior; equivalent to
     /// [`resolve_runner_binding_cost_aware`] with `cost_driven_enabled = false`.
     ///
-    /// Policy (owner direction 2026-06-14): Google GCE is primary, SHC is the
-    /// secondary fallback. `Auto` and `CloudGcp` bind to GCE when GCE capacity
-    /// is reachable; otherwise they fall back to SHC. `CloudShc` pins SHC.
-    /// `Local` is not a cloud-placeable lane here.
+    /// `Auto` and `CloudGcp` bind to Google Cloud when capacity is reachable.
+    /// Unavailable Google Cloud capacity fails closed. `Local` is not a
+    /// cloud-placeable lane here.
     pub fn resolve_runner_binding(
         &self,
         gce_available: bool,
-        shc_runner_id: &str,
         caps: ComputeQuotaCaps,
     ) -> Result<RunnerBinding, String> {
-        self.resolve_runner_binding_cost_aware(
-            gce_available,
-            shc_runner_id,
-            caps,
-            false,
-            false,
-            LaneCostModel::default(),
-        )
+        self.resolve_runner_binding_cost_aware(gce_available, caps, false, LaneCostModel::default())
     }
 
     /// Resolve the lane-agnostic assignment to a concrete runner binding,
     /// optionally using the CND-042 cost-driven comparison.
     ///
-    /// Cost-driven selection only applies to an `Auto` (non-caller-pinned)
-    /// assignment when BOTH lanes are eligible (GCE available). In that case:
-    ///
-    /// - GCE wins ties and near-ties (owner direction: Google preferred).
-    /// - SHC is chosen only when it is BOTH materially cheaper than GCE
-    ///   (`LaneCostModel::shc_materially_cheaper_than_gce`) AND the pilot
-    ///   recommendation is "expand" (`report_recommends_expand = true`).
-    /// - The chosen lane records `cost_driven = true` and a refs-only
-    ///   `cost_basis`.
-    ///
-    /// When `cost_driven_enabled` is false, or the lane is pinned, or GCE is
-    /// unavailable (no choice to make), this is identical to the policy-driven
-    /// path with `cost_driven = false` and no `cost_basis`.
+    /// When cost accounting is enabled for an `Auto` assignment, the Google
+    /// Cloud estimate is attached to the binding. This never selects another
+    /// provider.
     pub fn resolve_runner_binding_cost_aware(
         &self,
         gce_available: bool,
-        shc_runner_id: &str,
         caps: ComputeQuotaCaps,
         cost_driven_enabled: bool,
-        report_recommends_expand: bool,
         cost_model: LaneCostModel,
     ) -> Result<RunnerBinding, String> {
         // danger_full_access is the explicit default inside the no-wallet VM
@@ -2433,100 +2347,39 @@ impl PlacementAssignment {
             .clone()
             .unwrap_or_else(|| "danger_full_access".to_string());
 
-        // (runner_id, provider_lane, capacity_class_id, reason, cost_basis)
-        let (runner_id, provider_lane, capacity_class_id, reason, cost_basis) = match self.lane {
+        let (reason, cost_basis) = match self.lane {
             ComputeLane::Local => {
                 return Err(
                     "local lane is resolved by the caller's own Pylon, not by cloud placement"
                         .to_string(),
                 );
             }
-            ComputeLane::CloudShc => (
-                shc_runner_id.to_string(),
-                ProviderLane::Shc,
-                None,
-                PlacementReason::LanePinned,
-                None,
-            ),
             ComputeLane::CloudGcp => {
-                if gce_available {
-                    (
-                        gce_runner_id(&self.run_id),
-                        ProviderLane::Gcp,
-                        Some(GCE_EPHEMERAL_CAPACITY_CLASS_ID.to_string()),
-                        PlacementReason::LanePinned,
-                        None,
-                    )
-                } else {
-                    (
-                        shc_runner_id.to_string(),
-                        ProviderLane::Shc,
-                        None,
-                        PlacementReason::GceUnavailableShcFallback,
-                        None,
-                    )
+                if !gce_available {
+                    return Err("Google Cloud capacity is unavailable".to_string());
                 }
+                (PlacementReason::LanePinned, None)
             }
             ComputeLane::Auto => {
                 if !gce_available {
-                    // No choice to make; SHC is the only eligible lane.
-                    (
-                        shc_runner_id.to_string(),
-                        ProviderLane::Shc,
-                        None,
-                        PlacementReason::GceUnavailableShcFallback,
-                        None,
-                    )
+                    return Err("Google Cloud capacity is unavailable".to_string());
                 } else if cost_driven_enabled {
-                    // Both lanes eligible: compare on cost-plus-10%.
-                    // SHC wins only when materially cheaper AND the report says
-                    // "expand". Otherwise GCE wins (ties/near-ties/owner pref).
-                    let choose_shc =
-                        report_recommends_expand && cost_model.shc_materially_cheaper_than_gce();
-                    if choose_shc {
-                        (
-                            shc_runner_id.to_string(),
-                            ProviderLane::Shc,
-                            None,
-                            PlacementReason::CostDriven,
-                            Some(cost_model.cost_basis(ProviderLane::Shc)),
-                        )
-                    } else {
-                        (
-                            gce_runner_id(&self.run_id),
-                            ProviderLane::Gcp,
-                            Some(GCE_EPHEMERAL_CAPACITY_CLASS_ID.to_string()),
-                            PlacementReason::CostDriven,
-                            Some(cost_model.cost_basis(ProviderLane::Gcp)),
-                        )
-                    }
+                    (PlacementReason::CostDriven, Some(cost_model.cost_basis()))
                 } else {
-                    // Policy-driven default: GCE primary.
-                    (
-                        gce_runner_id(&self.run_id),
-                        ProviderLane::Gcp,
-                        Some(GCE_EPHEMERAL_CAPACITY_CLASS_ID.to_string()),
-                        PlacementReason::PolicyDefaultGce,
-                        None,
-                    )
+                    (PlacementReason::PolicyDefaultGce, None)
                 }
             }
         };
-
-        let resolved_lane = match provider_lane {
-            ProviderLane::Gcp => ComputeLane::CloudGcp,
-            ProviderLane::Shc => ComputeLane::CloudShc,
-            _ => self.lane,
-        };
+        let runner_id = gce_runner_id(&self.run_id);
 
         Ok(RunnerBinding {
             contract_version: PLACEMENT_ASSIGNMENT_VERSION.to_string(),
             run_id: self.run_id.clone(),
-            external_run_id: format!("shc-codex:{runner_id}:{}", self.run_id),
-            lane: resolved_lane,
-            provider_lane,
+            external_run_id: format!("gcp-codex:{runner_id}:{}", self.run_id),
+            lane: ComputeLane::CloudGcp,
+            provider_lane: ProviderLane::Gcp,
             runner_id,
-            capacity_class_id,
+            capacity_class_id: Some(GCE_EPHEMERAL_CAPACITY_CLASS_ID.to_string()),
             sandbox_mode,
             reason,
             cost_driven: cost_basis.is_some(),
@@ -2738,7 +2591,8 @@ mod tests {
 
     const CONTRIBUTOR: &str =
         include_str!("../../../fixtures/cloud/cloud_node_v1/contributor-pylon.json");
-    const MANAGED: &str = include_str!("../../../fixtures/cloud/cloud_node_v1/managed-oa-node.json");
+    const MANAGED: &str =
+        include_str!("../../../fixtures/cloud/cloud_node_v1/managed-oa-node.json");
     const DEGRADED: &str = include_str!("../../../fixtures/cloud/cloud_node_v1/degraded-node.json");
     const PRIVATE_WORKROOM: &str =
         include_str!("../../../fixtures/cloud/workroom_v1/private-workroom.json");
@@ -2750,14 +2604,16 @@ mod tests {
         include_str!("../../../fixtures/cloud/forge_assignment_v1/workroom-assignment.json");
     const FORGE_SANDBOX_ASSIGNMENT: &str =
         include_str!("../../../fixtures/cloud/forge_assignment_v1/sandbox-worker-assignment.json");
-    const FORGE_LABOR_ASSIGNMENT: &str =
-        include_str!("../../../fixtures/cloud/forge_assignment_v1/open-ended-labor-assignment.json");
+    const FORGE_LABOR_ASSIGNMENT: &str = include_str!(
+        "../../../fixtures/cloud/forge_assignment_v1/open-ended-labor-assignment.json"
+    );
     const PSIONIC_MIXED_WORKERS: &str =
         include_str!("../../../fixtures/cloud/psionic_worker_attachment_v1/mixed-readiness.json");
     const PROBE_ATTACHMENT: &str =
         include_str!("../../../fixtures/cloud/probe_worker_attachment_v1/workroom-probe.json");
-    const TRAINING_TERMINAL_BENCH: &str =
-        include_str!("../../../fixtures/cloud/training_run_assignment_v1/terminal-bench-retained.json");
+    const TRAINING_TERMINAL_BENCH: &str = include_str!(
+        "../../../fixtures/cloud/training_run_assignment_v1/terminal-bench-retained.json"
+    );
     const ARTANIS_BOOTSTRAP: &str = include_str!(
         "../../../fixtures/cloud/artanis_bootstrap_assignment_v1/pylon-launch-bootstrap.json"
     );
@@ -2898,7 +2754,7 @@ mod tests {
             contract_version: CODEX_WORKROOM_ASSIGNMENT_VERSION.to_string(),
             assignment_id: "assignment.codex.test".to_string(),
             workroom_id: "workroom.codex.test".to_string(),
-            target_node_id: "oa-gcp-shc-katy-01".to_string(),
+            target_node_id: "oa-gcp-runner-test".to_string(),
             user_ref: "user.test".to_string(),
             organization_ref: Some("org.test".to_string()),
             project_ref: Some("project.test".to_string()),
@@ -2967,8 +2823,8 @@ mod tests {
             receipt_id: "resource.usage.assignment.test.1".to_string(),
             run_ref: "assignment.test".to_string(),
             workroom_id: "workroom.test".to_string(),
-            node_ref: "oa-shc-katy-01".to_string(),
-            provider_lane: ProviderLane::Shc,
+            node_ref: "oa-gcp-runner-test".to_string(),
+            provider_lane: ProviderLane::Gcp,
             host: ResourceHostSnapshot {
                 os: "ubuntu_24.04".to_string(),
                 arch: "x86_64".to_string(),
@@ -3166,7 +3022,7 @@ mod tests {
         let assignment = placement_fixture(ComputeLane::Auto);
         assignment.validate_contract(1).unwrap();
         let binding = assignment
-            .resolve_runner_binding(true, SHC_FALLBACK_RUNNER_ID, ComputeQuotaCaps::default())
+            .resolve_runner_binding(true, ComputeQuotaCaps::default())
             .unwrap();
         assert_eq!(binding.provider_lane, ProviderLane::Gcp);
         assert_eq!(binding.lane, ComputeLane::CloudGcp);
@@ -3184,43 +3040,27 @@ mod tests {
     }
 
     #[test]
-    fn placement_auto_falls_back_to_shc_when_gce_unavailable() {
+    fn placement_auto_fails_closed_when_google_cloud_is_unavailable() {
         let assignment = placement_fixture(ComputeLane::Auto);
-        let binding = assignment
-            .resolve_runner_binding(false, SHC_FALLBACK_RUNNER_ID, ComputeQuotaCaps::default())
-            .unwrap();
-        assert_eq!(binding.provider_lane, ProviderLane::Shc);
-        assert_eq!(binding.lane, ComputeLane::CloudShc);
-        assert_eq!(binding.runner_id, SHC_FALLBACK_RUNNER_ID);
-        assert_eq!(binding.reason, PlacementReason::GceUnavailableShcFallback);
-        assert_eq!(binding.capacity_class_id, None);
+        let error = assignment
+            .resolve_runner_binding(false, ComputeQuotaCaps::default())
+            .unwrap_err();
+        assert_eq!(error, "Google Cloud capacity is unavailable");
     }
 
     #[test]
-    fn placement_pins_shc_when_requested() {
-        let assignment = placement_fixture(ComputeLane::CloudShc);
-        let binding = assignment
-            .resolve_runner_binding(true, SHC_FALLBACK_RUNNER_ID, ComputeQuotaCaps::default())
-            .unwrap();
-        assert_eq!(binding.provider_lane, ProviderLane::Shc);
-        assert_eq!(binding.reason, PlacementReason::LanePinned);
-    }
-
-    #[test]
-    fn placement_cloud_gcp_pin_falls_back_to_shc_when_unavailable() {
+    fn placement_cloud_gcp_pin_fails_closed_when_unavailable() {
         let assignment = placement_fixture(ComputeLane::CloudGcp);
-        let binding = assignment
-            .resolve_runner_binding(false, SHC_FALLBACK_RUNNER_ID, ComputeQuotaCaps::default())
-            .unwrap();
-        assert_eq!(binding.provider_lane, ProviderLane::Shc);
-        assert_eq!(binding.reason, PlacementReason::GceUnavailableShcFallback);
+        assert!(assignment
+            .resolve_runner_binding(false, ComputeQuotaCaps::default())
+            .is_err());
     }
 
     #[test]
     fn placement_local_lane_is_not_cloud_placeable() {
         let assignment = placement_fixture(ComputeLane::Local);
         assert!(assignment
-            .resolve_runner_binding(true, SHC_FALLBACK_RUNNER_ID, ComputeQuotaCaps::default())
+            .resolve_runner_binding(true, ComputeQuotaCaps::default())
             .is_err());
     }
 
@@ -3331,17 +3171,11 @@ mod tests {
     }
 
     #[test]
-    fn lane_cost_model_gce_is_cheaper_than_shc_and_not_materially_beaten() {
-        // From the CND-042 report: GCE ~5 micro-USD/VM-sec, SHC ~34 micro-USD.
+    fn lane_cost_model_records_google_cloud_catalog_rate() {
         let model = LaneCostModel::default();
         let gce = model.gce_micro_usd_per_vm_sec();
-        let shc = model.shc_micro_usd_per_vm_sec();
         // cost_plus_10pct(4653 nano × 1.1 / 1000) = floor(5118/1000) = 5.
         assert_eq!(gce, 5);
-        // cost_plus_10pct(31710 nano × 1.1 / 1000) = floor(34881/1000) = 34.
-        assert_eq!(shc, 34);
-        // SHC is more expensive, so it is not materially cheaper than GCE.
-        assert!(!model.shc_materially_cheaper_than_gce());
     }
 
     #[test]
@@ -3387,52 +3221,32 @@ mod tests {
     }
 
     #[test]
-    fn placement_cost_driven_cheaper_eligible_lane_wins() {
-        // Construct a model where SHC is clearly cheaper than GCE so the
-        // cheaper eligible lane wins under cost-driven placement + expand.
+    fn placement_cost_accounting_attaches_google_cloud_basis() {
         let model = LaneCostModel {
-            gce_raw_nanousd_per_vm_sec: 45_662, // expensive GCE
-            shc_raw_nanousd_per_vm_sec: 4_653,  // cheap SHC
+            gce_raw_nanousd_per_vm_sec: 45_662,
             ..LaneCostModel::default()
         };
-        assert!(model.shc_materially_cheaper_than_gce());
         let assignment = placement_fixture(ComputeLane::Auto);
         let binding = assignment
-            .resolve_runner_binding_cost_aware(
-                true,
-                SHC_FALLBACK_RUNNER_ID,
-                ComputeQuotaCaps::default(),
-                true,
-                true, // report recommends expand
-                model,
-            )
+            .resolve_runner_binding_cost_aware(true, ComputeQuotaCaps::default(), true, model)
             .unwrap();
-        assert_eq!(binding.provider_lane, ProviderLane::Shc);
-        assert_eq!(binding.lane, ComputeLane::CloudShc);
+        assert_eq!(binding.provider_lane, ProviderLane::Gcp);
+        assert_eq!(binding.lane, ComputeLane::CloudGcp);
         assert_eq!(binding.reason, PlacementReason::CostDriven);
         assert!(binding.cost_driven);
-        let basis = binding.cost_basis.expect("cost basis on cost-driven SHC");
+        let basis = binding.cost_basis.expect("Google Cloud cost basis");
         assert_eq!(
             basis.chosen_micro_usd_per_vm_sec,
-            model.shc_micro_usd_per_vm_sec()
+            model.gce_micro_usd_per_vm_sec()
         );
     }
 
     #[test]
-    fn placement_cost_driven_google_wins_tie_and_when_competitive() {
-        // Default model: GCE is cheaper than SHC. Even with expand recommended,
-        // GCE wins because SHC is not materially cheaper (owner tiebreak).
+    fn placement_cost_accounting_uses_google_cloud() {
         let model = LaneCostModel::default();
         let assignment = placement_fixture(ComputeLane::Auto);
         let binding = assignment
-            .resolve_runner_binding_cost_aware(
-                true,
-                SHC_FALLBACK_RUNNER_ID,
-                ComputeQuotaCaps::default(),
-                true,
-                true, // expand recommended, but SHC not materially cheaper
-                model,
-            )
+            .resolve_runner_binding_cost_aware(true, ComputeQuotaCaps::default(), true, model)
             .unwrap();
         assert_eq!(binding.provider_lane, ProviderLane::Gcp);
         assert_eq!(binding.lane, ComputeLane::CloudGcp);
@@ -3446,48 +3260,15 @@ mod tests {
     }
 
     #[test]
-    fn placement_cost_driven_shc_only_when_expand_recommended() {
-        // SHC materially cheaper, but the report does NOT recommend expand:
-        // GCE must still win (HOLD/STOP never promotes SHC on cost alone).
-        let model = LaneCostModel {
-            gce_raw_nanousd_per_vm_sec: 45_662,
-            shc_raw_nanousd_per_vm_sec: 4_653,
-            ..LaneCostModel::default()
-        };
-        let assignment = placement_fixture(ComputeLane::Auto);
-        let binding = assignment
-            .resolve_runner_binding_cost_aware(
-                true,
-                SHC_FALLBACK_RUNNER_ID,
-                ComputeQuotaCaps::default(),
-                true,
-                false, // report does NOT recommend expand
-                model,
-            )
-            .unwrap();
-        assert_eq!(binding.provider_lane, ProviderLane::Gcp);
-        assert_eq!(binding.reason, PlacementReason::CostDriven);
-        assert!(binding.cost_driven);
-    }
-
-    #[test]
     fn placement_cost_driven_pinned_lane_still_pinned() {
         // A caller pin is never overridden by cost comparison.
         let model = LaneCostModel {
             gce_raw_nanousd_per_vm_sec: 45_662,
-            shc_raw_nanousd_per_vm_sec: 4_653,
             ..LaneCostModel::default()
         };
         let assignment = placement_fixture(ComputeLane::CloudGcp);
         let binding = assignment
-            .resolve_runner_binding_cost_aware(
-                true,
-                SHC_FALLBACK_RUNNER_ID,
-                ComputeQuotaCaps::default(),
-                true,
-                true,
-                model,
-            )
+            .resolve_runner_binding_cost_aware(true, ComputeQuotaCaps::default(), true, model)
             .unwrap();
         assert_eq!(binding.provider_lane, ProviderLane::Gcp);
         assert_eq!(binding.reason, PlacementReason::LanePinned);
@@ -3496,23 +3277,16 @@ mod tests {
     }
 
     #[test]
-    fn placement_cost_driven_gce_unavailable_is_fallback_not_cost_driven() {
-        // GCE unavailable: no choice, SHC fallback, not a cost-driven decision.
+    fn placement_cost_driven_gce_unavailable_fails_closed() {
         let assignment = placement_fixture(ComputeLane::Auto);
-        let binding = assignment
+        assert!(assignment
             .resolve_runner_binding_cost_aware(
                 false,
-                SHC_FALLBACK_RUNNER_ID,
                 ComputeQuotaCaps::default(),
-                true,
                 true,
                 LaneCostModel::default(),
             )
-            .unwrap();
-        assert_eq!(binding.provider_lane, ProviderLane::Shc);
-        assert_eq!(binding.reason, PlacementReason::GceUnavailableShcFallback);
-        assert!(!binding.cost_driven);
-        assert!(binding.cost_basis.is_none());
+            .is_err());
     }
 
     #[test]

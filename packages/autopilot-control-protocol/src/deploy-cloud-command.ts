@@ -1,7 +1,7 @@
 import { validateDeployRequest } from "./deploy-request-validate.js"
 
 export type DeployCloudCommandInput = {
-  target: "cloudrun" | "workers"
+  target: "cloudrun"
   ref: string
   env: "production" | "preview"
 }
@@ -25,19 +25,10 @@ export function buildDeployCommand(input: DeployCloudCommandInput): DeployCloudC
     }
   }
 
-  if (validation.target === "cloudrun") {
-    return {
-      ok: true,
-      command: "deploy-cloudrun.sh",
-      args: [validation.ref, "--env", validation.env],
-      reason: "deploy command ready",
-    }
-  }
-
   return {
     ok: true,
-    command: "wrangler",
-    args: ["deploy", "--env", validation.env],
+    command: "deploy-cloudrun.sh",
+    args: [validation.ref, "--env", validation.env],
     reason: "deploy command ready",
   }
 }

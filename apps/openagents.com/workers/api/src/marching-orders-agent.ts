@@ -203,7 +203,7 @@ export const buildMarchingOrderSubmission = (
       settlementMode: 'no_worker_payout',
     },
     placementPolicy: {
-      allowedRunnerKinds: ['requester_pylon', 'openagents_shc'],
+      allowedRunnerKinds: ['requester_pylon', 'google_cloud'],
       disallowedRunnerKinds: [],
       localOnlyAllowed: false,
       preferredRunnerKinds: ['requester_pylon'],

@@ -109,28 +109,15 @@ const makeMemoryD1 = (): MemoryD1 => {
   } as unknown as MemoryD1
 }
 
-const makeSyncRoom = (notifiedScopes: Array<string>): DurableObjectNamespace =>
-  ({
-    getByName: (scope: string) => ({
-      fetch: async (request: Request) => {
-        notifiedScopes.push(
-          request.headers.get('x-openagents-sync-scope') ?? scope,
-        )
-
-        return new Response(null, { status: 204 })
-      },
-    }),
-    idFromName: (scope: string) => scope,
-    get: (scope: string) => ({
-      fetch: async (request: Request) => {
-        notifiedScopes.push(
-          request.headers.get('x-openagents-sync-scope') ?? scope,
-        )
-
-        return new Response(null, { status: 204 })
-      },
-    }),
-  }) as never
+const makeLiveHubEnv = (notifiedScopes: Array<string>) => ({
+  KHALA_SYNC_LIVE_HUB_FETCH: async (request: Request) => {
+    const body = (await request.json()) as { scope: string }
+    notifiedScopes.push(body.scope)
+    return new Response(null, { status: 204 })
+  },
+  KHALA_SYNC_LIVE_HUB_TOKEN: 'test-live-hub-token',
+  KHALA_SYNC_LIVE_HUB_URL: 'https://khala-live-hub.test',
+})
 
 const webAuthorized = (
   runRef: string,
@@ -168,8 +155,8 @@ describe('publishGymRunProgressSnapshot', () => {
     const db = makeMemoryD1()
     const notifiedScopes: Array<string> = []
     const env = {
+      ...makeLiveHubEnv(notifiedScopes),
       OPENAGENTS_DB: db,
-      SYNC_ROOM: makeSyncRoom(notifiedScopes),
     } as never
 
     await publishGymRunProgressSnapshot(env, webAuthorized('run.web.alpha'))
@@ -196,8 +183,8 @@ describe('publishGymRunProgressSnapshot', () => {
   test('re-ingesting the same runRef reuses the same entity id (upsert, no dup)', async () => {
     const db = makeMemoryD1()
     const env = {
+      ...makeLiveHubEnv([]),
       OPENAGENTS_DB: db,
-      SYNC_ROOM: makeSyncRoom([]),
     } as never
 
     await publishGymRunProgressSnapshot(env, webAuthorized('run.web.alpha'))
@@ -217,8 +204,8 @@ describe('publishGymRunProgressSnapshot', () => {
   test('publishes the degraded local_only projection (no live counts)', async () => {
     const db = makeMemoryD1()
     const env = {
+      ...makeLiveHubEnv([]),
       OPENAGENTS_DB: db,
-      SYNC_ROOM: makeSyncRoom([]),
     } as never
 
     await publishGymRunProgressSnapshot(env, localOnly('run.local.beta'))
@@ -236,20 +223,14 @@ describe('publishGymRunProgressSnapshot', () => {
 
   test('is fail-soft: a poke failure never breaks the ingest path', async () => {
     const db = makeMemoryD1()
-    const failingRoom = {
-      getByName: () => ({
-        fetch: async () => {
-          throw new Error('sync room unavailable')
-        },
-      }),
-      idFromName: (scope: string) => scope,
-      get: () => ({
-        fetch: async () => {
-          throw new Error('sync room unavailable')
-        },
-      }),
+    const env = {
+      KHALA_SYNC_LIVE_HUB_FETCH: async () => {
+        throw new Error('live hub unavailable')
+      },
+      KHALA_SYNC_LIVE_HUB_TOKEN: 'test-live-hub-token',
+      KHALA_SYNC_LIVE_HUB_URL: 'https://khala-live-hub.test',
+      OPENAGENTS_DB: db,
     } as never
-    const env = { OPENAGENTS_DB: db, SYNC_ROOM: failingRoom } as never
 
     // The production ingest path passes the execution context, so the poke runs
     // DETACHED via `ctx.waitUntil` and a poke failure can never reject the publish
@@ -263,12 +244,12 @@ describe('publishGymRunProgressSnapshot', () => {
       }),
     ).resolves.toBeUndefined()
     expect(db.changes).toHaveLength(1)
-    // Each sync scope's Durable Object notify fetch is isolated (#8282
-    // Promise.all landmine audit follow-up): a failing scope's fetch is
+    // Each sync scope's LiveHub notify fetch is isolated (#8282 follow-up):
+    // a failing scope's fetch is
     // caught and logged internally by `notifySyncScopesPromise`, so the
     // detached poke promise itself now resolves rather than rejecting —
     // strictly more fail-soft than a rejecting `ctx.waitUntil` handle, which
-    // a real Workers runtime would otherwise surface as an unhandled
+    // the runtime would otherwise surface as an unhandled
     // rejection.
     await expect(Promise.all(detached)).resolves.toEqual(
       detached.map(() => undefined),

@@ -1,7 +1,7 @@
 /**
  * Aiur's own session cookie jar (AIUR-1, #8499). Deliberately independent
  * from `apps/openagents.com/workers/api/src/auth-cookies.ts` — Aiur is a
- * separate Cloudflare Worker on a separate origin (`aiur.openagents.com`),
+ * separate Cloud Run service on a separate origin (`aiur.openagents.com`),
  * so its session cookies must never collide with (or be confused for) the
  * main site's `oa_access`/`oa_refresh` cookies even though the shape is the
  * same pattern.

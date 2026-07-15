@@ -3,8 +3,6 @@
 # The build happens on the deploy machine (scripts/deploy-cloudrun.sh):
 #   dist-cloudrun/server.mjs  — self-contained `vp pack` Node bundle
 #                               bundle of src/cloudrun/server.ts
-#   dist-cloudrun/preload.js  — bundled cloudflare:workers virtual-module
-#                               plugin (src/cloudrun/preload.ts)
 #   dist-cloudrun/start-client/ — TanStack Start browser assets
 #   dist-cloudrun/start-server/ — TanStack Start SSR handler and chunks
 # so this image needs no node_modules and no workspace context.
@@ -34,4 +32,4 @@ ENV FORUM_UI_DIR=/app/forum-ui
 
 EXPOSE 8080
 
-CMD ["node", "--import", "./dist-cloudrun/preload.mjs", "dist-cloudrun/server.mjs"]
+CMD ["node", "dist-cloudrun/server.mjs"]

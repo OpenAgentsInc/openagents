@@ -123,7 +123,6 @@ export const buildArtanisResponderKhalaRequest = (
 const completeResponderMind = async (
   deps: Readonly<{
     geminiApiKey: string | null
-    gatewayToken?: string | undefined
     khalaClient?: ArtanisResponderKhalaClient | undefined
   }>,
   input: Readonly<{ prompt: string; system: string }>,
@@ -154,9 +153,6 @@ const completeResponderMind = async (
 
   return artanisMindComplete({
     apiKey: deps.geminiApiKey,
-    ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
-      ? {}
-      : { gatewayToken: deps.gatewayToken }),
     prompt: input.prompt,
     system: input.system,
   })
@@ -234,7 +230,6 @@ export const runArtanisResponderScan = async (
   db: ArtanisDatabase,
   deps: Readonly<{
     geminiApiKey: string | null
-    gatewayToken?: string | undefined
     khalaClient?: ArtanisResponderKhalaClient | undefined
     artanisActorRefs: ReadonlyArray<string>
     // Owner/operator actor refs (e.g. the admin user posting test articles)
@@ -449,7 +444,6 @@ export const runArtanisResponderScanScheduled = (
   deps: Readonly<{
     enabled: boolean
     geminiApiKey: string | null
-    gatewayToken?: string | undefined
     khalaClient?: ArtanisResponderKhalaClient | undefined
     artanisActorRefs: ReadonlyArray<string>
     adminActorRefs?: ReadonlyArray<string>

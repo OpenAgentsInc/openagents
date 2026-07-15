@@ -14,28 +14,15 @@ describe('OpenAgents admin access policy', () => {
     passThroughOnException: () => undefined,
     waitUntil: () => undefined,
   } as never
-  const makeSyncRoom = (notifiedScopes: Array<string>) =>
-    ({
-      getByName: (scope: string) => ({
-        fetch: async (request: Request) => {
-          notifiedScopes.push(
-            request.headers.get('x-openagents-sync-scope') ?? scope,
-          )
-
-          return Response.json({ ok: true })
-        },
-      }),
-      idFromName: (scope: string) => scope,
-      get: (scope: string) => ({
-        fetch: async (request: Request) => {
-          notifiedScopes.push(
-            request.headers.get('x-openagents-sync-scope') ?? scope,
-          )
-
-          return Response.json({ ok: true })
-        },
-      }),
-    }) as never
+  const makeLiveHubEnv = (notifiedScopes: Array<string>) => ({
+    KHALA_SYNC_LIVE_HUB_FETCH: async (request: Request) => {
+      const body = (await request.json()) as { scope: string }
+      notifiedScopes.push(body.scope)
+      return Response.json({ ok: true })
+    },
+    KHALA_SYNC_LIVE_HUB_TOKEN: 'test-live-hub-token',
+    KHALA_SYNC_LIVE_HUB_URL: 'https://khala-live-hub.test',
+  })
   const requiredWorkerConfig = {
     GITHUB_CLIENT_ID: 'github-client',
     GITHUB_CLIENT_SECRET: 'github-secret',
@@ -524,7 +511,7 @@ describe('OpenAgents admin access policy', () => {
     ).toHaveLength(6)
   })
 
-  test('protects operator SHC routes with the admin API token', async () => {
+  test('protects operator Google Cloud routes with the admin API token', async () => {
     const missingSecret = await worker.fetch(
       new Request('https://openagents.com/api/omni/operator/fleet') as never,
       {
@@ -612,7 +599,7 @@ describe('OpenAgents admin access policy', () => {
       {
         OPENAGENTS_ADMIN_API_TOKEN: 'expected',
         ...requiredWorkerConfig,
-        SYNC_ROOM: makeSyncRoom(notifiedScopes),
+        ...makeLiveHubEnv(notifiedScopes),
       } as never,
       executionContext,
     )

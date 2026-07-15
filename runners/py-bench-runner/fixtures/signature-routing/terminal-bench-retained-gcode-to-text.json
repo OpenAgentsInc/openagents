@@ -17,8 +17,8 @@
   "metadata": {
     "terminalBenchTaskId": "gcode-to-text",
     "retainedFailureFamily": "gcode_parser_guard",
-    "preservedRunRef": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md#per-task-results",
-    "sourceDoc": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md",
+    "preservedRunRef": "docs/bootstrap/CND-052-gcp-codex-terminal-bench-16task-preserved.md#per-task-results",
+    "sourceDoc": "docs/bootstrap/CND-052-gcp-codex-terminal-bench-16task-preserved.md",
     "taskChecksum": "0ce9e2f5430d6cad157437ae0fc23f581c3f6ce3ee3eb9233484a554011557ed",
     "rawCodexReward": 0.0,
     "rawCodexVerifier": "1 passed / 1 failed",

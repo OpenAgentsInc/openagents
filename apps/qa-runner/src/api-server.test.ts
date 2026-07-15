@@ -202,7 +202,6 @@ describe("full QA Swarm flow over HTTP", () => {
     expect(body.qaShareUrl).toContain("/qa/");
     expect(body.swarm).not.toBeNull();
     expect(body.swarm!.projection.schemaVersion).toBe("openagents.qa_swarm.run_projection.v1");
-    expect(body.swarm!.tiers.some(tier => tier.backend === "cf-browser-rendering" && tier.status === "skipped")).toBe(true);
   });
 
   test("real swarm run is refused with 403 not_armed when unarmed", async () => {

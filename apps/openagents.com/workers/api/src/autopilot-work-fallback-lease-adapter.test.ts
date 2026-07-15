@@ -45,22 +45,22 @@ const task = {
 } as const
 
 describe('Autopilot fallback lease adapter', () => {
-  test('creates buyer-funded fallback lease intents for SHC lanes', () => {
+  test('creates buyer-funded fallback lease intents for Google Cloud lanes', () => {
     const intents = fallbackLeaseIntentsForAutopilotWork({
       assignmentIntents: [paidReadyAssignment],
       placementDecision: {
         availabilityState: 'selected',
         callerActionRefs: [],
-        fallbackRunnerKind: 'openagents_shc',
+        fallbackRunnerKind: 'google_cloud',
         pylonCandidates: [],
         reasonRefs: [
           'placement.selected.fallback',
-          'placement.fallback.openagents_shc',
+          'placement.fallback.google_cloud',
         ],
         refusalReasonRefs: [],
         retryAfterSeconds: null,
         selectedPylonRef: null,
-        selectedRunnerKind: 'openagents_shc',
+        selectedRunnerKind: 'google_cloud',
         source: 'fallback',
       },
       tasks: [task],
@@ -77,7 +77,7 @@ describe('Autopilot fallback lease adapter', () => {
           'closeout.fallback_assignment.autopilot_work_order.test.task.repair.tests_or_blocker_required',
           'closeout.fallback_assignment.autopilot_work_order.test.task.repair.accepted_work_not_implied',
         ],
-        fallbackLaneRef: 'fallback_lane.openagents.shc',
+        fallbackLaneRef: 'fallback_lane.google_cloud',
         forumAutoPublishAllowed: false,
         jobKind: 'validation',
         noForumAutoPublishRefs: [
@@ -86,7 +86,7 @@ describe('Autopilot fallback lease adapter', () => {
         paymentMode: 'buyer_funded',
         requiredCapabilityRefs: [
           'capability.fallback.assignment_ready',
-          'capability.openagents.shc',
+          'capability.google_cloud',
         ],
         resultExpectationRefs: [
           'result.fallback_assignment.autopilot_work_order.test.task.repair.public_safe_closeout',
@@ -94,10 +94,10 @@ describe('Autopilot fallback lease adapter', () => {
         rollbackRefs: [
           'rollback.fallback_assignment.autopilot_work_order.test.task.repair.no_deploy_without_owner_acceptance',
         ],
-        runnerKind: 'openagents_shc',
+        runnerKind: 'google_cloud',
         selectionPolicyRefs: [
           'placement.selected.fallback',
-          'placement.fallback.openagents_shc',
+          'placement.fallback.google_cloud',
         ],
         spendCapRefs: ['spend_cap.buyer_funded.fallback_assignment'],
         taskRef: 'task.repair',
@@ -113,7 +113,7 @@ describe('Autopilot fallback lease adapter', () => {
         placementDecision: {
           availabilityState: 'selected',
           callerActionRefs: [],
-          fallbackRunnerKind: 'openagents_shc',
+          fallbackRunnerKind: 'google_cloud',
           pylonCandidates: [],
           reasonRefs: ['placement.selected.requester_pylon'],
           refusalReasonRefs: [],

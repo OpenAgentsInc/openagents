@@ -77,7 +77,7 @@ import {
   makeKhalaSyncAnonymousConnectRateLimiter,
   type KhalaSyncAnonymousRateLimiter,
 } from './khala-sync-anonymous-rate-limit'
-import type { KhalaSyncHubNamespaceLike } from './khala-sync-hub-do'
+import type { KhalaSyncHubNamespaceLike } from './khala-sync-hub-routes'
 import type { KhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
 
 type HttpResponse = globalThis.Response

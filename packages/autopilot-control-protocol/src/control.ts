@@ -20,14 +20,12 @@ export type Adapter = typeof Adapter.Type
 //   - `auto`       — own-Pylon-first-and-free, then overflow to cloud-gcp
 //   - `local`      — run on the local Pylon node (today's behavior)
 //   - `cloud-gcp`  — OpenAgents Cloud on Google GCE (the default cloud lane)
-//   - `cloud-shc`  — OpenAgents Cloud SHC capacity (the cloud fallback)
 // Full cloud dispatch is tracked by #4997; this enum is the typed selector that
 // round-trips through spawn so the requested lane is recorded on the session.
 export const SessionLane = S.Literals([
   "auto",
   "local",
   "cloud-gcp",
-  "cloud-shc",
 ])
 export type SessionLane = typeof SessionLane.Type
 
@@ -65,7 +63,7 @@ export const SessionSummary = S.Struct({
   pylonManaged: S.optional(S.Boolean),
   // Requested execution lane this session was spawned with (#4998). Optional so
   // older nodes that do not record a lane still decode; surfaces the
-  // "running on Google GCE / SHC / local" provenance to clients.
+  // "running on Google GCE / Google Cloud / local" provenance to clients.
   lane: S.optional(SessionLane),
   updatedAt: S.String,
 })

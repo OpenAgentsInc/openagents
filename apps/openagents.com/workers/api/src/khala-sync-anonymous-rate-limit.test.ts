@@ -13,7 +13,7 @@ import {
 
 const requestFrom = (ip: string): Request =>
   new Request('https://openagents.com/api/sync/log', {
-    headers: { 'cf-connecting-ip': ip },
+    headers: { 'x-forwarded-for': ip },
   })
 
 describe('makeKhalaSyncAnonymousReadRateLimiter', () => {

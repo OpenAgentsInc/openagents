@@ -80,6 +80,19 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 
 ## Repo Layout
 
+### Production infrastructure authority
+
+- Google Cloud is the sole production infrastructure authority. Current
+  services use Cloud Run or GCE, Cloud SQL, Cloud Storage, Secret Manager,
+  Cloud Scheduler, and the Google Cloud load-balancing/DNS path.
+- Cloudflare Workers, Durable Objects, D1, R2, Queues, Analytics Engine,
+  Browser Rendering, and Wrangler are retired and must not be added as a
+  runtime, deploy target, storage authority, operator path, fallback, or
+  compatibility lane.
+- SHC was a bounded pilot, never the primary infrastructure. It is retired and
+  must not be selected, priced, provisioned, or used as a fallback. Historical
+  SHC evidence may remain only when explicitly labeled historical.
+
 - `apps/openagents.com/` owns the single OpenAgents web app. The retained
   public product routes are `/`, `/forum`, required Forum
   descendants, and `/promises` (`/sarah` was removed at owner direction
@@ -90,31 +103,23 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   transition authority, and dereferenceable receipt/verification/evidence
   refs. Autopilot, Sites, and other legacy pages are retirement sources, not
   product surfaces to grow.
-- `apps/openagents-world/` is the Cloudflare Worker + Region Durable Object
-  home for live Verse world projection, presence, local interaction,
-  interest-scoped fanout, world WebSocket transport, D1 projection rows, queue
-  markers, and DO alarm expiry. New world-backend work belongs there, using
-  Effect, Effect Schema, D1, hibernatable WebSockets, and the shared world
-  packages below.
+- The retired `apps/openagents-world/`, `apps/forge/`, and
+  `apps/nostr-relay/` services are deleted. Git history is their archive; do
+  not recreate them or route current work to them.
 - `packages/world-contract/` is the shared Effect Schema contract home for
   public-safe world rows, commands, deltas, cursors, moderation decisions, and
   WoC-style read-model projection types.
 - `packages/world-client/` is the shared desktop/web Verse world client that
   mirrors snapshots and deltas into a read-only `WorldReadModel`.
-- The old self-hosted SpacetimeDB `openagents-world` module was deleted during
-  the Cloudflare Verse World cutover. Do not re-clone, regenerate bindings for,
-  or add production world features to that path; port useful historical schema
-  or reducer ideas into the Cloudflare/Effect world service instead.
+- The world service has no active production host. Any future world backend
+  requires a new Google Cloud design and explicit product authority; shared
+  world contracts and client projections alone are not deploy authority.
 - `apps/forum/` owns the forum extraction target for
-  `openagents.com/forum`. The live Forum routes stay inside the
-  `openagents.com` Worker for now because they share auth, D1, payment
-  receipt, and public projection boundaries.
-- `apps/forge/` is a legacy/postponed implementation source. Do not treat it as
-  a fourth product app or grow its public surface under the three-app plan.
+  `openagents.com/forum`. Live Forum routes are served by the Google Cloud Run
+  monolith and share its Cloud SQL authorization and projection boundaries.
 - `apps/pylon/` owns the Pylon contributor app imported from the standalone
   Pylon repository. It bundles the former Probe runtime as
   `@openagentsinc/pylon-runtime`.
-- `apps/nostr-relay/` owns the Nostr relay surface.
 - `packages/probe/` owns the Probe runtime imported from the standalone Probe
   repository.
 - `packages/nip90/` owns the NIP-90 protocol library for the compute, data,
@@ -498,8 +503,8 @@ the exact `token_usage_events` row exists.
 
 The redacted ATIF trace is only the public-safe summary. While the Codex SDK
 turn is still running, local Pylon streams raw SDK event chunks to
-`POST /api/pylon/codex/event-chunks`; the Worker stores those chunks in private
-owner-scoped blob storage under the Pylon/Codex raw-event-chunk prefix, with D1
+`POST /api/pylon/codex/event-chunks`; the Cloud Run API stores those chunks in private
+owner-scoped Cloud Storage under the Pylon/Codex raw-event-chunk prefix, with Cloud SQL
 metadata rows in `pylon_codex_raw_event_chunks` keyed by
 assignment/session/owner/turn/chunk. Verify that chunk rows exist before
 treating a long-running delegation as observable:
@@ -513,7 +518,7 @@ SELECT chunk_ref, assignment_ref, session_ref, turn_index, chunk_index,
 ```
 
 At final turn closeout, Pylon also posts the complete ordered Codex SDK event
-stream to `POST /api/pylon/codex/turns` as `rawEvents`; the Worker stores that
+stream to `POST /api/pylon/codex/turns` as `rawEvents`; the Cloud Run API stores that
 canonical whole-turn archive in `pylon_codex_raw_events` for audit and
 idempotent replay checks. Raw chunks and final archives may contain prompts,
 command/tool args, local paths, file-change details, and shell output; they
@@ -580,7 +585,7 @@ codex_agent_task` or the equivalent typed MCP/tool field is missing, assume the
   workflow needs a first-class command that resolves `assignmentRef` to the
   exact `token_usage_events` rows and `agent_traces` rows, including provider,
   model, `usage_truth`, `demand_kind`, `demand_source`, visibility, and token
-  totals, so agents do not have to query D1 directly.
+  totals, so agents do not have to query Cloud SQL directly.
 - `assignment run-no-spend --json` should expose live progress while Codex is
   running: elapsed time, last progress event, current phase, and the assignment
   ref being worked. A long silent run is hard to supervise and hard to
@@ -598,7 +603,7 @@ codex_agent_task` or the equivalent typed MCP/tool field is missing, assume the
   prompt were rejected without naming the offending field, and an unsupported
   verifier shape returned a server 500 instead of a typed client error.
 
-Report evidence with the deployment commit, Worker version, live `/` and exact
+Report evidence with the deployment commit, Cloud Run revision, live `/` and exact
 asset smoke, `pylonRef`, `assignmentRef`, `durableRequestId`, closeout refs, and
 before/after counter values. Keep raw tokens, private prompts, wallet material,
 and local Codex auth out of reports.
@@ -626,7 +631,7 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
 ## Deploying & Releasing
 
 - **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**
-  Read it first for any of: deploying the `openagents.com` Cloudflare Worker,
+  Read it first for any of: deploying the `openagents.com` Cloud Run service,
   publishing Pylon to npm, cutting a future OpenAgents Desktop Electron release
   from `apps/openagents-desktop` (including the signed/notarized macOS DMG), the
   `updates.openagents.com` OTA feed, or the greenfield mobile app. The deprecated
@@ -857,7 +862,7 @@ Managed Cloud infrastructure is **in this monorepo**, not the private
 | `crates/oa-codex-control`          | Placement / GCE capacity / Cloud-VM control plane       |
 | `crates/oa-node`                   | Managed node daemon                                     |
 | `crates/oa-workroomd`              | Workroom sidecar                                        |
-| `crates/oa-cloud-run-bridge`       | Historical Cloud Run bridge — not new prod paths        |
+| `crates/oa-cloud-run-bridge`       | Cloud Run bridge to the private GCE control plane        |
 | `docs/cloud/`                      | Contracts, operator docs, invariants, migration receipt |
 | `fixtures/cloud/`                  | Public-safe Cloud contract fixtures                     |
 
@@ -908,7 +913,7 @@ and is included in the ProductSpec test sweep; do not create a mirror under
 - The behavior contracts that bound the surface are preserved verbatim as
   `retired` in `packages/behavior-contracts/src/sarah-retired.ts`; the human
   rendering stays at `docs/sarah/SARAH_CONTRACTS.md` (historical).
-- Worker-side Sarah-named API surfaces that are NOT under `/sarah`
+- API-side Sarah-named surfaces that are NOT under `/sarah`
   (`/api/sarah/fleet-runs` FleetRun intake authority, CRM handoff/checkout
   operator routes, internal-neutral inference lane caps) remain in place —
   their client surface is gone; any change there is a separate decision.

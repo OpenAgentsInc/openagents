@@ -65,7 +65,7 @@ export interface LoadTestConfig {
   readonly mode: LoadTestMode
   /** Direct Postgres URL (substrate mode; also enables cleanup). */
   readonly databaseUrl: string | undefined
-  /** Worker origin, e.g. https://openagents-staging.openagents.workers.dev */
+  /** Cloud Run origin, e.g. the staging monolith service URL. */
   readonly baseUrl: string | undefined
   /** Agent bearer token (http mode). Never printed. */
   readonly token: string | undefined

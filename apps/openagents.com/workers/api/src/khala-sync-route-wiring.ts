@@ -60,7 +60,6 @@ import { openAgentsDatabase } from './runtime'
 export type KhalaSyncRouteWiringEnv = Readonly<{
   OPENAGENTS_DB: D1Database
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
-  KHALA_SYNC_HUB?: unknown
   /** LiveHub cutover (CFG-5, #8520): both set ⇒ hub traffic goes to the
    * owned Cloud Run service instead of the DO binding. */
   KHALA_SYNC_LIVE_HUB_URL?: string | undefined
@@ -143,9 +142,8 @@ export const makeKhalaSyncRouteWiring = <
       db: openAgentsDatabase(env),
     })
 
-  // LiveHub-or-DO selection is config-driven (CFG-5, #8520): the HTTP
-  // adapter when KHALA_SYNC_LIVE_HUB_URL/_TOKEN are set, else the DO
-  // binding (absent ⇒ undefined, the routes' hub-unconfigured path).
+  // LiveHub is the sole live-sync authority. Missing configuration maps to
+  // the routes' existing hub-unconfigured response.
   const hubNamespace = (env: WorkerEnv) => resolveKhalaSyncHubNamespace(env)
 
   return {

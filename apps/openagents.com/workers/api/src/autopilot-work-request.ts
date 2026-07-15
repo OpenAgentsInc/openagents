@@ -95,7 +95,7 @@ export const OpenAgentsAutopilotPrivacyTier = S.Literals([
   'customer_local_pylon',
   'local_only',
   'maple_ai',
-  'openagents_shc',
+  'google_cloud',
   'public_beta',
   'tee',
 ])
@@ -106,10 +106,9 @@ export const OpenAgentsAutopilotRunnerKind = S.Literals([
   'cloud_sandbox',
   'hosted_gemini',
   'maple_ai',
-  'openagents_shc',
+  'google_cloud',
   'pylon_network',
   'requester_pylon',
-  'shc',
   'tee',
 ])
 export type OpenAgentsAutopilotRunnerKind =
@@ -755,7 +754,7 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
       settlementMode: 'no_worker_payout',
     },
     placementPolicy: {
-      allowedRunnerKinds: ['requester_pylon', 'openagents_shc'],
+      allowedRunnerKinds: ['requester_pylon', 'google_cloud'],
       disallowedRunnerKinds: [],
       localOnlyAllowed: false,
       preferredRunnerKinds: ['requester_pylon'],
@@ -823,11 +822,11 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
       settlementMode: 'no_worker_payout_until_accepted_work',
     },
     placementPolicy: {
-      allowedRunnerKinds: ['openagents_shc', 'cloud_sandbox'],
+      allowedRunnerKinds: ['google_cloud', 'cloud_sandbox'],
       disallowedRunnerKinds: [],
       localOnlyAllowed: false,
-      preferredRunnerKinds: ['openagents_shc'],
-      privacyTier: 'openagents_shc',
+      preferredRunnerKinds: ['google_cloud'],
+      privacyTier: 'google_cloud',
       publicTraceAllowed: false,
       requiresSecretBroker: false,
     },

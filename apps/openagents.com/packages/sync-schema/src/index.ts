@@ -94,7 +94,7 @@ export class CursorGap extends S.Class<CursorGap>('CursorGap')({
 export const RunnerRuntime = S.Literals(['opencode_codex', 'codex'])
 export type RunnerRuntime = typeof RunnerRuntime.Type
 
-export const RunnerBackend = S.Literals(['shc_vm', 'gcloud_vm'])
+export const RunnerBackend = S.Literal('gcloud_vm')
 export type RunnerBackend = typeof RunnerBackend.Type
 
 export const ArtifactPolicy = S.Literals([

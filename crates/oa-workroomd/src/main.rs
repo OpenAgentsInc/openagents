@@ -5742,9 +5742,7 @@ fn current_resource_host_snapshot() -> ResourceHostSnapshot {
 
 fn provider_lane_for_node(node_ref: &str) -> ProviderLane {
     let lower = node_ref.to_ascii_lowercase();
-    if lower.contains("shc") {
-        ProviderLane::Shc
-    } else if lower.contains("gcp") || lower.contains("gce") {
+    if lower.contains("gcp") || lower.contains("gce") {
         ProviderLane::Gcp
     } else if lower.contains("local") {
         ProviderLane::Local
@@ -7273,7 +7271,7 @@ echo '{"id":"evt_step_ended","type":"session.next.step.ended","providerID":"open
             contract_version: "openagents.codex_workroom_assignment.v1".to_string(),
             assignment_id: assignment_id.to_string(),
             workroom_id: "workroom_test".to_string(),
-            target_node_id: "oa-shc-test".to_string(),
+            target_node_id: "oa-gcp-test".to_string(),
             user_ref: "test-user".to_string(),
             organization_ref: None,
             project_ref: None,

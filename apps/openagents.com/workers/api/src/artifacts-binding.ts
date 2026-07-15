@@ -1,44 +1,24 @@
 /**
- * Fail-soft `ARTIFACTS` (R2) binding resolution (#8516, precursor to the
- * CFG-8 R2→GCS migration in #8523).
+ * Google Cloud Storage artifact resolution.
  *
- * The account-level Cloudflare R2 feature was disabled during the
- * Cloudflare→GCP consolidation (#8515), which made every `wrangler deploy`
- * carrying an `r2_buckets` binding fail with API error 10136 — the same
- * deploy-freeze class as the Analytics Engine binding removed in #8516.
- * The `ARTIFACTS` binding was therefore removed from `wrangler.jsonc`
- * (prod + staging) and `WorkerBindings.ARTIFACTS` became optional.
- *
- * Every consumer resolves the bucket through {@link artifactsBucketForEnv}:
- * an injected `ARTIFACTS` object (tests/local dev) wins; otherwise, when
- * the `ARTIFACTS_GCS_*` config is present, the CFG-8 (#8523) GCS-backed
- * adapter (`gcs-artifacts-bucket.ts`) serves the same call surface from
- * Google Cloud Storage; only when neither exists do operations reject
- * with the typed
- * {@link ArtifactsUnavailableError} instead of crashing at wiring time —
- * matching the failure mode those calls already had while the account
- * feature was disabled (every R2 API call failed). Artifact-dependent
- * features (trace blobs, raw Codex event archives, image generation,
- * site assets, packfile archives) degrade per-call; nothing on the
- * critical mobile/Khala Sync path reads through this binding.
- *
- * Do not re-add an `r2_buckets` binding — the replacement is the owned
- * BlobStore primitive on GCS (#8517/#8523).
+ * Production requires the `ARTIFACTS_GCS_*` configuration and uses the GCS
+ * adapter. The optional `ARTIFACTS` object is an in-process test/local double,
+ * not a host binding or production fallback. When neither is present,
+ * artifact-dependent operations reject with a typed error.
  */
 
 import { Data } from 'effect'
 
 import { makeGcsArtifactsBucket } from './gcs-artifacts-bucket'
 
-/** Typed rejection for R2 operations attempted while no ARTIFACTS
- * binding is configured (account-level R2 disabled, #8516). */
+/** Typed rejection when Google Cloud Storage is not configured. */
 export class ArtifactsUnavailableError extends Data.TaggedError(
   'ArtifactsUnavailableError',
 )<{
   readonly operation: string
 }> {
   override get message(): string {
-    return `ARTIFACTS R2 binding is not configured (account-level R2 disabled, #8516; R2→GCS migration is #8523): ${this.operation}`
+    return `Google Cloud Storage artifacts are not configured: ${this.operation}`
   }
 }
 
@@ -46,7 +26,7 @@ const rejectedArtifactsOperation = (operation: string): Promise<never> =>
   Promise.reject(new ArtifactsUnavailableError({ operation }))
 
 /**
- * A stand-in `R2Bucket` whose every operation rejects with
+ * A stand-in artifact bucket whose every operation rejects with
  * {@link ArtifactsUnavailableError}. R2 bucket methods are all
  * promise-returning, so callers' existing `.catch`/`try-await` fail-soft
  * handling sees an ordinary async failure — never a synchronous crash at
@@ -67,13 +47,13 @@ const disabledArtifactsBucket: R2Bucket = new Proxy({} as R2Bucket, {
 
 /** Env slice the artifacts resolution reads (all optional by design). */
 export type ArtifactsEnv = Readonly<{
-  /** Legacy binding slot; still honored first so tests can inject doubles. */
+  /** In-process test/local double. Production never configures this field. */
   ARTIFACTS?: R2Bucket | undefined
-  /** GCS bucket name (committed wrangler var), e.g. `openagentsgemini-oa-artifacts`. */
+  /** GCS bucket name, e.g. `openagentsgemini-oa-artifacts`. */
   ARTIFACTS_GCS_BUCKET?: string | undefined
   /** Optional endpoint override (default `https://storage.googleapis.com`). */
   ARTIFACTS_GCS_ENDPOINT?: string | undefined
-  /** HMAC key pair for the `oa-artifacts-rw` service account (Worker secrets). */
+  /** HMAC key pair for the `oa-artifacts-rw` service account (Secret Manager). */
   ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID?: string | undefined
   ARTIFACTS_GCS_HMAC_SECRET?: string | undefined
 }>
@@ -117,7 +97,7 @@ const gcsArtifactsBucketForEnv = (env: ArtifactsEnv): R2Bucket | undefined => {
  * 1. an explicitly injected `ARTIFACTS` binding object (tests, local dev);
  * 2. the GCS-backed adapter when `ARTIFACTS_GCS_BUCKET` +
  *    `ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID` + `ARTIFACTS_GCS_HMAC_SECRET` are
- *    configured (#8523 — the R2 replacement);
+ *    configured;
  * 3. the rejecting stub (typed per-call `ArtifactsUnavailableError`).
  */
 export const artifactsBucketForEnv = (env: ArtifactsEnv): R2Bucket =>

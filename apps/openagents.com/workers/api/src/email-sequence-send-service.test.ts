@@ -1,12 +1,13 @@
 import { describe, expect, test } from 'vitest'
-import { Effect } from 'effect'
+import { Effect, Redacted } from 'effect'
 
-import type { CloudflareEmailBinding, EmailLedgerSendResult } from './email'
+import { ResendEmailSender, WorkerSecret } from './config'
+import type { EmailLedgerSendResult } from './email'
 import {
   type EmailSequenceSendPlan,
   type EmailSequenceSendRow,
   isEmailSequenceSendEnabled,
-  makeCloudflareEmailSequenceSender,
+  makeResendEmailSequenceSender,
   makeEmailSequenceSendService,
   planEmailSequenceSend,
   renderEmailSequenceSend,
@@ -204,7 +205,7 @@ describe('makeEmailSequenceSendService (INERT default)', () => {
   })
 })
 
-describe('Cloudflare email sequence sender', () => {
+describe('Resend email sequence sender', () => {
   test('renders a receipt-first transactional sequence email', () => {
     const rendered = renderEmailSequenceSend(
       {
@@ -227,24 +228,29 @@ describe('Cloudflare email sequence sender', () => {
     )
   })
 
-  test('sends through the Cloudflare binding and records ledger receipts', async () => {
+  test('sends through Resend and records ledger receipts', async () => {
     const db = new RecordingD1Database()
-    const sentMessages: Array<Parameters<CloudflareEmailBinding['send']>[0]> =
-      []
-    const binding: CloudflareEmailBinding = {
-      send: message => {
-        sentMessages.push(message)
-
-        return Promise.resolve({ messageId: 'cf_sequence_1' })
-      },
+    const sentMessages: Array<Record<string, unknown>> = []
+    const fetcher: typeof fetch = async (_input, init) => {
+      sentMessages.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return new Response(JSON.stringify({ id: 'resend_sequence_1' }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
     }
-    const sender = makeCloudflareEmailSequenceSender(
+    const sender = makeResendEmailSequenceSender(
       db as unknown as D1Database,
-      binding,
+      {
+        apiKey: Redacted.make(WorkerSecret.make('re_test')),
+        fromEmail: ResendEmailSender.make(
+          'OpenAgents Sites <sites@openagents.com>',
+        ),
+      },
       {
         appOrigin: 'https://openagents.com',
         fromEmail: 'OpenAgents Sites <sites@openagents.com>',
       },
+      fetcher,
       runtime,
     )
 
@@ -253,13 +259,11 @@ describe('Cloudflare email sequence sender', () => {
     expect(result).toEqual({
       emailMessageId: 'email_msg_sequence_fixed',
       ok: true,
-      providerMessageId: 'cf_sequence_1',
+      providerMessageId: 'resend_sequence_1',
     })
     expect(sentMessages).toHaveLength(1)
-    expect(sentMessages[0]?.to).toBe('lead@example.com')
-    expect(sentMessages[0]?.from).toBe(
-      'OpenAgents Sites <sites@openagents.com>',
-    )
+    expect(sentMessages[0]?.to).toEqual(['lead@example.com'])
+    expect(sentMessages[0]?.from).toBe('OpenAgents Sites <sites@openagents.com>')
     expect(
       db.runs.some(run => run.query.includes('INSERT INTO email_messages')),
     ).toBe(true)

@@ -24,20 +24,20 @@ describe('Probe GEPA unpaid Pylon lease proof', () => {
     expect(proof.coordinatorImports).toHaveLength(3)
     expect(proof.acceptedCloseoutRefs).toHaveLength(2)
     expect(proof.rejectedCloseoutRefs).toEqual([
-      'probe_closeout.shc_harbor.db_wal_recovery.20260608',
+      'probe_closeout.limited_pilot_harbor.db_wal_recovery.20260608',
     ])
     expect(proof.progressRefs.length).toBeGreaterThanOrEqual(6)
     expect(proof.artifactRefs).toContain(
-      'artifact_manifest.probe.shc_harbor.db_wal_recovery.20260608',
+      'artifact_manifest.probe.limited_pilot_harbor.db_wal_recovery.20260608',
     )
     expect(proof.proofBundleRefs).toContain(
-      'proof_bundle.probe.shc_harbor.db_wal_recovery.20260608',
+      'proof_bundle.probe.limited_pilot_harbor.db_wal_recovery.20260608',
     )
     expect(proof.resourceUsageRefs).toContain(
-      'resource_usage_unavailable.probe.benchmark_run_probe_shc_harbor_db_wal_recovery_20260608',
+      'resource_usage_unavailable.probe.benchmark_run_probe_limited_pilot_harbor_db_wal_recovery_20260608',
     )
     expect(proof.verifierResultRefs).toContain(
-      'verifier_result.terminal_bench.db_wal_recovery.shc_harbor.20260608.reward_0',
+      'verifier_result.terminal_bench.db_wal_recovery.limited_pilot_harbor.20260608.reward_0',
     )
     expect(proof.paymentModes).toEqual(['rejected_no_pay', 'unpaid_smoke'])
     expect(proof.noPaidWorkClaim).toBe(true)

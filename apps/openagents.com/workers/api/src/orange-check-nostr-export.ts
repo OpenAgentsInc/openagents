@@ -10,7 +10,7 @@ import {
 
 import type { OrangeCheckEntitlement } from './orange-check-entitlements'
 
-const DEFAULT_ORANGE_CHECK_RELAY = 'wss://relay.openagents.com'
+const DEFAULT_ORANGE_CHECK_RELAY = 'wss://nos.lol'
 const OPENAGENTS_ORANGE_CHECK_BADGE_D = 'openagents-orange-check'
 const hexPubkeyPattern = /^[a-f0-9]{64}$/i
 const unsafePublicMaterialPattern =
@@ -84,20 +84,12 @@ const validationEvent = (
   }) as NostrEvent
 
 /**
- * NIP-01 kind-1 text note carrying the orange-check attestation in a form the
- * OWNED relay (`relay.openagents.com`, #5537) actually accepts. The relay's
- * write allowlist only covers the general coordination/discovery kinds
- * (NIP-01/02/17/28/38/65); the NIP-58 badge kinds (8 award, 30009 definition)
- * are NOT in that set, so the badge templates above cannot be stored on the
- * owned relay directly. This kind-1 attestation references the badge definition
+ * NIP-01 kind-1 text note carrying the orange-check attestation in a form
+ * accepted by ordinary public relays. This kind-1 attestation references the badge definition
  * address, the claim, the public receipt ref, the recipient pubkey, and the paid
  * amount as tags, so a published+read-back event id is a dereferenceable record
- * of the orange-check signal on the owned relay.
- *
- * It is write-gated: a publisher must either be on the provisioned-pubkey
- * allowlist or complete NIP-42 AUTH for the issuer key (see
- * `apps/nostr-relay/src/general-policy.ts`). This builder only produces the
- * unsigned template; signing + AUTH + publish + read-back happen in
+ * of the orange-check signal. This builder only produces the unsigned
+ * template; signing, publish, and read-back happen in
  * `scripts/orange-check-nostr-export-publish.ts`.
  */
 const ORANGE_CHECK_ATTESTATION_KIND = 1

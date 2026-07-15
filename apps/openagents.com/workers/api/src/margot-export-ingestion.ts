@@ -459,7 +459,7 @@ export const exampleMargotExportPacket = (): MargotExportPacketRecord => ({
   nextDiligenceRefs: ['diligence.public.facility_power_metering'],
   powerCostCentsPerMwh: 4500,
   provenanceRefs: ['provenance.public.oa_aibtc_model'],
-  scenarioRefs: ['scenario.public.shc_demo'],
+  scenarioRefs: ['scenario.public.retired_limited_pilot'],
   settlementRefs: [],
   simulatorName: 'oa_aibtc_model',
   simulatorVersionRef: 'simulator_version.public.oa_aibtc_model.v1',

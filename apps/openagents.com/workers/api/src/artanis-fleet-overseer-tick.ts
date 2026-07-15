@@ -798,7 +798,6 @@ export const runArtanisFleetOverseerTick = async (
   db: ArtanisDatabase,
   deps: Readonly<{
     assembleContext?: (() => Promise<ArtanisFleetOverseerContext>) | undefined
-    gatewayToken?: string | undefined
     geminiApiKey: string | null
     mindComplete?: MindComplete | undefined
     nowIso: string
@@ -843,9 +842,6 @@ export const runArtanisFleetOverseerTick = async (
   const mindComplete = deps.mindComplete ?? (input =>
     artanisMindComplete({
       apiKey: deps.geminiApiKey ?? '',
-      ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
-        ? {}
-        : { gatewayToken: deps.gatewayToken }),
       prompt: input.prompt,
       system: input.system,
     }))
@@ -954,7 +950,6 @@ export const runArtanisFleetOverseerTickScheduled = (
   db: ArtanisDatabase,
   deps: Readonly<{
     enabled: boolean
-    gatewayToken?: string | undefined
     geminiApiKey: string | null
     nowIso: string
     runnerStatusMirror?: PylonAgentRunnerStatusMirror | undefined

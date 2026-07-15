@@ -35,7 +35,7 @@ describe('service test fixtures', () => {
     expect(provided).toBe(db)
   })
 
-  test('provides fake SHC dispatch service layers', async () => {
+  test('provides fake Google Cloud dispatch service layers', async () => {
     const fixture = makeOmniDispatchServiceTestLayer()
     const queued = createQueuedAgentRun({
       appOrigin: 'https://openagents.com',

@@ -40,9 +40,9 @@ describe('Autopilot work quote service', () => {
       },
       placementPolicy: {
         ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].placementPolicy,
-        allowedRunnerKinds: ['openagents_shc', 'cloud_sandbox'] as const,
-        preferredRunnerKinds: ['openagents_shc'] as const,
-        privacyTier: 'openagents_shc' as const,
+        allowedRunnerKinds: ['google_cloud', 'cloud_sandbox'] as const,
+        preferredRunnerKinds: ['google_cloud'] as const,
+        privacyTier: 'google_cloud' as const,
         publicTraceAllowed: false,
         requiresSecretBroker: true,
       },

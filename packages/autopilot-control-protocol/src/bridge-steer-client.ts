@@ -38,7 +38,7 @@ function baseEnvelope(
 }
 
 // ── session.spawn (spawn_session) ──────────────────────────────────────────
-export type SpawnLane = "auto" | "local" | "cloud-gcp" | "cloud-shc"
+export type SpawnLane = "auto" | "local" | "cloud-gcp"
 
 export type BuildSpawnEnvelopeInput = BaseSteerInput & {
   adapter: "codex" | "claude_agent"

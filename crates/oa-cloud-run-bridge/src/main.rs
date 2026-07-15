@@ -1,17 +1,10 @@
 //! oa-cloud-run-bridge — narrow bearer-token-gated HTTPS reverse proxy
 //! (cloud/#issue: Agent Computers, openagents#8503).
 //!
-//! Cloudflare Workers run from Cloudflare's globally-distributed edge IPs,
-//! which cannot reach `oa-codex-control-1` through its IAP/single-static-IP
-//! firewall (`oa-codex-control-port`), and that firewall must not be widened
-//! to accept Cloudflare's broad IP ranges. This service is the ONLY new
-//! public entry point: it terminates HTTPS on Cloud Run, independently
-//! re-validates the same bearer token the Worker already sends (defense in
-//! depth — it does not just blindly forward), and forwards the request to
-//! the control node's *internal* IP over a Serverless VPC Access connector
-//! attached to the `default` network, where the existing
-//! `default-allow-internal` firewall rule (10.128.0.0/9) already permits the
-//! hop with no firewall change.
+//! The public OpenAgents Cloud Run application cannot reach the private
+//! `oa-codex-control-1` address directly. This narrow Cloud Run entry point
+//! re-validates the service bearer and forwards approved control paths to the
+//! node's internal IP over the Serverless VPC Access connector.
 //!
 //! Deliberately dependency-light (std `TcpListener` + a hand-rolled HTTP/1.1
 //! parser, matching the style of `oa-codex-control`), so this stays a single
@@ -29,7 +22,7 @@ use std::time::Duration;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 512 * 1024;
 const DEFAULT_PORT: &str = "8080";
-const DEFAULT_ALLOWED_PATH_PREFIXES: &str = "/v1/placement";
+const DEFAULT_ALLOWED_PATH_PREFIXES: &str = "/v1/placement,/v1/codex-runs,/healthz";
 const DEFAULT_UPSTREAM_TIMEOUT_SECS: u64 = 60;
 
 #[derive(Debug, Clone)]
@@ -298,12 +291,18 @@ fn route(request: &ParsedRequest, config: &Config) -> HttpResponse {
         None => false,
     };
     if !authorized {
-        eprintln!("oa-cloud-run-bridge: rejected unauthorized request path={}", request.path);
+        eprintln!(
+            "oa-cloud-run-bridge: rejected unauthorized request path={}",
+            request.path
+        );
         return HttpResponse::json(401, "Unauthorized", r#"{"error":"unauthorized"}"#);
     }
 
     if !is_path_allowed(&request.path, &config.allowed_path_prefixes) {
-        eprintln!("oa-cloud-run-bridge: rejected disallowed path={}", request.path);
+        eprintln!(
+            "oa-cloud-run-bridge: rejected disallowed path={}",
+            request.path
+        );
         return HttpResponse::json(404, "Not Found", r#"{"error":"not_found"}"#);
     }
 
@@ -317,7 +316,10 @@ fn forward(
     timeout: Duration,
 ) -> HttpResponse {
     let upstream_url = build_upstream_url(control_url, &request.path);
-    let client = match reqwest::blocking::Client::builder().timeout(timeout).build() {
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(timeout)
+        .build()
+    {
         Ok(client) => client,
         Err(error) => {
             eprintln!("oa-cloud-run-bridge: failed to build upstream client: {error}");
@@ -335,7 +337,11 @@ fn forward(
         "DELETE" => reqwest::Method::DELETE,
         other => {
             eprintln!("oa-cloud-run-bridge: rejected unsupported method={other}");
-            return HttpResponse::json(405, "Method Not Allowed", r#"{"error":"method_not_allowed"}"#);
+            return HttpResponse::json(
+                405,
+                "Method Not Allowed",
+                r#"{"error":"method_not_allowed"}"#,
+            );
         }
     };
 
@@ -356,7 +362,10 @@ fn forward(
                 .and_then(|value| value.to_str().ok())
                 .unwrap_or("application/json")
                 .to_string();
-            let body = upstream_response.bytes().map(|b| b.to_vec()).unwrap_or_default();
+            let body = upstream_response
+                .bytes()
+                .map(|b| b.to_vec())
+                .unwrap_or_default();
             HttpResponse {
                 status,
                 reason: status_reason(status),
@@ -399,7 +408,10 @@ fn main() {
         eprintln!("oa-cloud-run-bridge: WARNING starting with no OA_BRIDGE_CONTROL_URL configured; all forwarded routes will refuse with bridge_not_armed");
     }
     let listener = TcpListener::bind(&config.bind).unwrap_or_else(|error| {
-        eprintln!("oa-cloud-run-bridge: failed to bind {}: {error}", config.bind);
+        eprintln!(
+            "oa-cloud-run-bridge: failed to bind {}: {error}",
+            config.bind
+        );
         std::process::exit(1);
     });
     eprintln!("oa-cloud-run-bridge listening on {}", config.bind);
@@ -455,12 +467,18 @@ mod tests {
     #[test]
     fn rejects_oversized_body() {
         let header = b"POST /v1/placement HTTP/1.1\r\nContent-Length: 99999999\r\n\r\n";
-        assert_eq!(parse_http_request(header).unwrap_err(), ParseError::BodyTooLarge);
+        assert_eq!(
+            parse_http_request(header).unwrap_err(),
+            ParseError::BodyTooLarge
+        );
     }
 
     #[test]
     fn extracts_bearer_token() {
-        assert_eq!(extract_bearer_token(Some("Bearer secret-token")), Some("secret-token"));
+        assert_eq!(
+            extract_bearer_token(Some("Bearer secret-token")),
+            Some("secret-token")
+        );
         assert_eq!(extract_bearer_token(Some("Basic abc")), None);
         assert_eq!(extract_bearer_token(Some("Bearer ")), None);
         assert_eq!(extract_bearer_token(None), None);
@@ -523,7 +541,10 @@ mod tests {
         let request = ParsedRequest {
             method: "POST".to_string(),
             path: "/v1/placement".to_string(),
-            headers: vec![("authorization".to_string(), "Bearer wrong-token".to_string())],
+            headers: vec![(
+                "authorization".to_string(),
+                "Bearer wrong-token".to_string(),
+            )],
             body: vec![],
         };
         let response = route(&request, &config);
@@ -542,7 +563,10 @@ mod tests {
         let request = ParsedRequest {
             method: "POST".to_string(),
             path: "/v1/some-other-route".to_string(),
-            headers: vec![("authorization".to_string(), "Bearer expected-token".to_string())],
+            headers: vec![(
+                "authorization".to_string(),
+                "Bearer expected-token".to_string(),
+            )],
             body: vec![],
         };
         let response = route(&request, &config);

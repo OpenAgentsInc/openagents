@@ -76,12 +76,6 @@ export const normalizeAuthEmailOtpEmail = (email: string): string =>
   email.trim().toLowerCase()
 
 export const authEmailOtpClientIp = (request: Request): string => {
-  const cloudflareIp = request.headers.get('cf-connecting-ip')?.trim()
-
-  if (cloudflareIp !== undefined && cloudflareIp !== '') {
-    return cloudflareIp
-  }
-
   const forwardedFor = request.headers.get('x-forwarded-for')?.trim()
   const firstForwarded = forwardedFor?.split(',')[0]?.trim()
 

@@ -97,7 +97,7 @@ describe("CL-26 deploy.cloud node action", () => {
     expect(rec.calls[0]?.args).toEqual(["main", "--env", "production"])
   })
 
-  test("workers target builds the wrangler command when enabled", async () => {
+  test("rejects the retired Workers target without spawning", async () => {
     const rec = recordingSpawn()
     const actions = createDeployCloudActions({ isEnabled: () => true, spawn: rec.spawn })
 
@@ -105,10 +105,8 @@ describe("CL-26 deploy.cloud node action", () => {
       accepted: boolean
     }
 
-    expect(result.accepted).toBe(true)
-    expect(rec.calls.length).toBe(1)
-    expect(rec.calls[0]?.command).toBe("wrangler")
-    expect(rec.calls[0]?.args).toEqual(["deploy", "--env", "preview"])
+    expect(result.accepted).toBe(false)
+    expect(rec.calls.length).toBe(0)
   })
 })
 

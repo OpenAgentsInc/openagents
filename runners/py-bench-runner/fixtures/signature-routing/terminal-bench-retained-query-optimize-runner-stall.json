@@ -17,8 +17,8 @@
   "metadata": {
     "terminalBenchTaskId": "query-optimize",
     "retainedFailureFamily": "runner_stall_after_verifier",
-    "preservedRunRef": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md#operational-notes",
-    "sourceDoc": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md",
+    "preservedRunRef": "docs/bootstrap/CND-052-gcp-codex-terminal-bench-16task-preserved.md#operational-notes",
+    "sourceDoc": "docs/bootstrap/CND-052-gcp-codex-terminal-bench-16task-preserved.md",
     "taskChecksum": "593405b6a2f6970f0f4c2ca2aff455a3b32bce3eecf8b506cfeeb0fe93b14838",
     "rawCodexReward": 0.0,
     "rawCodexVerifier": "trial result existed without top-level runtime",

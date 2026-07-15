@@ -602,7 +602,7 @@ export const exampleArtanisHealthSnapshot =
     overclaimBlockerRefs: ['overclaim.public.artanis.health_stale'],
     pendingApprovalRefs: ['approval.public.artanis.pylon_dispatch_pending'],
     publicStatusRefs: ['health.public.artanis.status.stale'],
-    runnerBackendRefs: ['runner_backend.public.artanis.shc'],
+    runnerBackendRefs: ['runner_backend.public.artanis.gcp'],
     signals: [
       signal({
         blockerRefs: [],
@@ -786,7 +786,7 @@ export const exampleArtanisHealthSnapshot =
         publicRecoveryActionRefs: [],
         publicStatusRefs: ['health.public.artanis.runner_backend_available'],
         signalRefSuffix: 'runner_backend_availability',
-        sourceRefs: ['runner_backend.public.artanis.shc'],
+        sourceRefs: ['runner_backend.public.artanis.gcp'],
         state: 'available',
         subjectUpdatedAtIso: '2026-06-07T03:09:00.000Z',
       }),

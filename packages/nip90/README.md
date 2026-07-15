@@ -86,7 +86,7 @@ For the integrated scoped-relay proof:
 
 ```bash
 node --import tsx apps/openagents.com/scripts/nip-ds.ts smoke \
-  --relay https://relay.openagents.com
+  --relay wss://nos.lol
 ```
 
 The script signs and publishes a `30404` listing, `30406` offer, `5960` access
@@ -106,7 +106,7 @@ node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts
 # Relay smoke (optional): also publish the four events to a scoped market relay
 # and read them back, proving the lifecycle is dippable before the closeout
 # binds it.
-node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts --relay https://relay.openagents.com
+node --import tsx packages/nip90/scripts/lbr-closeout-proof.ts --relay wss://nos.lol
 ```
 
 It signs a `5934` request, two `7000` feedback events (quote + acceptance), and

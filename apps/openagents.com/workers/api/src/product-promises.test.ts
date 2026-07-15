@@ -1076,10 +1076,10 @@ describe('public product promises document', () => {
     // now exactly 24. The 2026-06-20.4 Pylon green-quality pass and
     // 2026-06-20.5 signature-metering de-stale pass and 2026-06-20.6
     // partner-payout projection de-stale pass flip no promise state, so green
-    // remains exactly 24. The 2026-06-20.7 pass clears the Nostr-export blocker
-    // on identity.orange_check_forum_signal.v1 (a real dereferenceable kind-1
-    // attestation on wss://relay.openagents.com); the promise stays yellow and
-    // green remains exactly 24. The 2026-06-20.8 workrooms live integration
+    // remains exactly 24. The former owned-relay attestation on
+    // identity.orange_check_forum_signal.v1 is retained as historical evidence
+    // only; the relay is retired and the promise stays yellow. The 2026-06-20.8
+    // workrooms live integration
     // pass and 2026-06-20.9 mobile approval projection honesty pass move
     // mobile.voice_approval_companion.v1 planned -> yellow without flipping
     // green, so green remains exactly 24. The 2026-06-20.10 pass ships the
@@ -1447,17 +1447,15 @@ describe('public product promises document', () => {
     )
     expect(multiplayerWorldPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
-        'apps/openagents-world/src/commands.test.ts',
-        'apps/openagents-world/src/subscriptions.test.ts',
         'packages/world-client/src/index.test.ts',
         'packages/world-contract/src/index.test.ts',
       ]),
     )
     expect(multiplayerWorldPromise?.safeCopy).toContain(
-      'WorldReadModel with avatar position projection tests',
+      'former backend prototype is deleted',
     )
     expect(multiplayerWorldPromise?.safeCopy).toContain(
-      'This is not yet a shipped walkable multiplayer world',
+      'Any future backend must be designed for Google Cloud',
     )
     const codexSuccessorPromise = decoded.promises.find(
       promise =>
@@ -1526,7 +1524,7 @@ describe('public product promises document', () => {
           'blocker.product_promises.orange_check_owner_signed_green_transition_missing',
         ],
         evidenceRefs: expect.arrayContaining([
-          'nostr_event:83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da@wss://relay.openagents.com',
+          'historical_nostr_event:83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da',
         ]),
         verification: expect.stringContaining(
           'owner-signed yellow->green transition receipt',

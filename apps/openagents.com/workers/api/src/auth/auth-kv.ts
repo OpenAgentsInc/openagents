@@ -1,28 +1,17 @@
-// CFG-3 (#8518): the AUTH_STORAGE Cloudflare KV namespace is evacuated to
-// owned Postgres behind @openagentsinc/oa-infra's KvStore interface. Cloudflare
-// killed two account-level features in one week (Analytics Engine #8501, R2
-// #8516); KV sat on the ENTIRE login path (github identity/write tokens,
-// mobile access-token revocation, device-login attempts, push-token prune
-// keys), so it moves off Cloudflare storage entirely — HARD CUT, no KV
-// fallback reads (owner-approved: existing KV-backed state invalidates once).
+// Auth key/value state is owned Postgres behind @openagentsinc/oa-infra's
+// KvStore interface. There is no external KV fallback.
 //
 // Storage home: the `oa_infra_kv` table in the khala-sync Cloud SQL database
 // (khala-sync-server migration 0041; identical DDL to oa-infra migrations
-// 0001+0004). The Worker reaches it exactly the way every other khala-sync
-// seam does — a transaction-mode-safe postgres.js client acquired per
-// operation via `defaultMakeKhalaSyncSqlClient` over the `KHALA_SYNC_DB`
-// Hyperdrive binding (SPEC §4 discipline: one connection, unnamed statements,
-// no session state). NOTE: until CFG-9 moves this Worker's runtime off
-// Cloudflare, auth reads traverse Hyperdrive (the #8409 pool-incident path);
-// every operation here FAILS CLOSED — callers already treat storage errors as
-// deny/absent — and CFG-9's direct-Postgres runtime removes Hyperdrive from
-// this path entirely.
+// 0001+0004). The Cloud Run API reaches it through a transaction-mode-safe
+// postgres.js client acquired per operation from `KHALA_SYNC_DB`. Every
+// operation fails closed; callers already treat storage errors as deny/absent.
 //
 // The SQL semantics live in ONE place: oa-infra's `makePostgresKvStore`
 // (packages/oa-infra/src/kv-store-postgres.ts), which passes the KvStore
 // conformance suite (lazy TTL expiry, literal-prefix listPrefix) against a
 // real Postgres in packages/oa-infra/src/postgres-backends.test.ts. This
-// module only adapts it to the Worker: per-operation client lifecycle, a
+// module only adapts it to the API: per-operation client lifecycle, a
 // Promise facade shaped like the KVNamespace subset the route code already
 // used (`get`/`get(_, 'json')`/`put({ expirationTtl })`/`delete`), and env
 // plumbing with an injectable store for tests.

@@ -126,7 +126,7 @@ describe('agent goal hardening guardrails', () => {
     expect(String(rejectedBudgetLimit)).toContain('blocked')
   })
 
-  test('keeps browser code away from SHC and OpenCode control endpoints', () => {
+  test('keeps browser code away from Google Cloud and OpenCode control endpoints', () => {
     const browserSources = [
       '../../../apps/start/src/routes/-public-agent-page.tsx',
       '../../../apps/start/src/routes/-use-khala-sync-collection.ts',
@@ -134,7 +134,7 @@ describe('agent goal hardening guardrails', () => {
     ].map(source)
     const joined = browserSources.join('\n')
 
-    expect(joined).not.toContain('SHC_CONTROL_API_URL')
+    expect(joined).not.toContain('GOOGLE_CLOUD_CONTROL_API_URL')
     expect(joined).not.toContain('/opencode')
     expect(joined).not.toContain('authGrantRef')
     expect(joined).not.toContain('callbackTokenRef')

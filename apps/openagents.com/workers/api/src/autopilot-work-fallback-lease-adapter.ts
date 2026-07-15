@@ -28,8 +28,7 @@ export type AutopilotFallbackLeaseIntentProjection = Readonly<{
 const fallbackRunnerKinds = new Set<OpenAgentsAutopilotRunnerKind>([
   'cloud_sandbox',
   'hosted_gemini',
-  'openagents_shc',
-  'shc',
+  'google_cloud',
 ])
 
 const jobKindForAssignment = (
@@ -53,10 +52,8 @@ const fallbackLaneRefForRunner = (
       return 'fallback_lane.openagents.cloud_sandbox'
     case 'hosted_gemini':
       return 'fallback_lane.openagents.hosted_gemini'
-    case 'openagents_shc':
-      return 'fallback_lane.openagents.shc'
-    case 'shc':
-      return 'fallback_lane.shc'
+    case 'google_cloud':
+      return 'fallback_lane.google_cloud'
     case 'maple_ai':
     case 'pylon_network':
     case 'requester_pylon':
@@ -79,15 +76,10 @@ const requiredCapabilityRefsForRunner = (
         'capability.fallback.assignment_ready',
         'capability.openagents.hosted_gemini',
       ]
-    case 'openagents_shc':
+    case 'google_cloud':
       return [
         'capability.fallback.assignment_ready',
-        'capability.openagents.shc',
-      ]
-    case 'shc':
-      return [
-        'capability.fallback.assignment_ready',
-        'capability.shc',
+        'capability.google_cloud',
       ]
     case 'maple_ai':
     case 'pylon_network':

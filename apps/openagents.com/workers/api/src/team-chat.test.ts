@@ -220,7 +220,7 @@ describe('team chat repository helpers', () => {
 
   test('merges run summaries into existing metadata', async () => {
     const runSummary = {
-      backend: 'shc_vm' as const,
+      backend: 'gcloud_vm' as const,
       durationSeconds: null,
       eventCount: 1,
       repository: 'repo',

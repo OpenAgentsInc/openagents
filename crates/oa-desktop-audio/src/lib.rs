@@ -111,7 +111,8 @@ impl MediaHeader {
                     h.channels,
                     h.payload_length,
                     &h.sha256,
-                ) && valid_ref(&h.turn_ref) && valid_ref(&h.speech_ref)
+                ) && valid_ref(&h.turn_ref)
+                    && valid_ref(&h.speech_ref)
                     && matches!(h.sample_rate_hz, 24_000 | 48_000)
             }
         }

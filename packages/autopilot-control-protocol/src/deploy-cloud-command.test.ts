@@ -29,32 +29,6 @@ describe("deploy cloud command builder", () => {
     })
   })
 
-  test("builds a Workers production command without passing the ref", () => {
-    expect(buildDeployCommand({
-      target: "workers",
-      ref: "refs/heads/main",
-      env: "production",
-    })).toEqual({
-      ok: true,
-      command: "wrangler",
-      args: ["deploy", "--env", "production"],
-      reason: "deploy command ready",
-    })
-  })
-
-  test("builds a Workers preview command", () => {
-    expect(buildDeployCommand({
-      target: "workers",
-      ref: "OpenAgentsInc/openagents#4932",
-      env: "preview",
-    })).toEqual({
-      ok: true,
-      command: "wrangler",
-      args: ["deploy", "--env", "preview"],
-      reason: "deploy command ready",
-    })
-  })
-
   test("rejects an unknown target", () => {
     expect(buildDeployCommand({
       target: "kubernetes",
@@ -64,7 +38,7 @@ describe("deploy cloud command builder", () => {
       ok: false,
       command: "",
       args: [],
-      reason: "target must be cloudrun or workers",
+      reason: "target must be cloudrun",
     })
   })
 
@@ -83,7 +57,7 @@ describe("deploy cloud command builder", () => {
 
   test("rejects an invalid env", () => {
     expect(buildDeployCommand({
-      target: "workers",
+      target: "cloudrun",
       ref: "refs/heads/main",
       env: "staging",
     } as unknown as Parameters<typeof buildDeployCommand>[0])).toEqual({

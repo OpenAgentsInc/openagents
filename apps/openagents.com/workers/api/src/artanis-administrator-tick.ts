@@ -261,7 +261,6 @@ export const runArtanisAdminTick = async (
   database: ArtanisDatabase,
   deps: Readonly<{
     geminiApiKey: string | null
-    gatewayToken?: string | undefined
     dispatch: AdminDispatchFn
     nowIso: string
   }>,
@@ -318,9 +317,6 @@ export const runArtanisAdminTick = async (
 
   const mindResult = await artanisMindComplete({
     apiKey: deps.geminiApiKey,
-    ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
-      ? {}
-      : { gatewayToken: deps.gatewayToken }),
     prompt: [
       'Administrator context for this tick:',
       `Eligible online Pylons (executor capability declared, heartbeat within 10 minutes): ${JSON.stringify(eligible.map(p => ({ lastHeartbeatAt: p.latest_heartbeat_at, pylonRef: p.pylon_ref })))}`,
@@ -464,7 +460,6 @@ export const runArtanisAdminTickScheduled = (
   deps: Readonly<{
     enabled: boolean
     geminiApiKey: string | null
-    gatewayToken?: string | undefined
     dispatch: AdminDispatchFn
     nowIso: string
   }>,

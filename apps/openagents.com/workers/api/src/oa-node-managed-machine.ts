@@ -15,7 +15,7 @@ export const OpenAgentsOaNodeMachineKind = S.Literals([
   'desktop',
   'gcloud_vm',
   'pylon_candidate',
-  'shc_vm',
+  'gcloud_vm',
 ])
 export type OpenAgentsOaNodeMachineKind =
   typeof OpenAgentsOaNodeMachineKind.Type
@@ -413,14 +413,14 @@ export const OPENAGENTS_OA_NODE_CONFORMANCE_FIXTURES:
       activeWorkroomRefs: ['workroom.site_public_otec'],
       artifactRefs: ['artifact.otec.preview_bundle'],
       availability: 'available',
-      backendKind: 'shc_vm',
+      backendKind: 'gcloud_vm',
       capabilityRefs: ['capability.codex_exec', 'capability.site_build'],
       displayNameRef: 'oa_node.bertha_public',
       healthRefs: ['health.heartbeat_ok', 'health.disk_ok'],
       heartbeatRefs: ['heartbeat.oa_node.bertha.latest'],
       id: 'oa_node_machine.bertha',
       lastHeartbeatAtIso: '2026-06-07T00:58:00.000Z',
-      machineKind: 'shc_vm',
+      machineKind: 'gcloud_vm',
       managedLiveness: 'healthy',
       maxWorkloadTrust: 'medium',
       nodeRef: 'oa_node.bertha',

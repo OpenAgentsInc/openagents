@@ -326,7 +326,7 @@ const scenarioFixture = (notes?: string) =>
     id: 'mullet_scenario_repo_fixture',
     name: 'Repository fixture scenario',
     schemaVersion: '2026-06-08.v1',
-    kind: 'tinybox_shc_power',
+    kind: 'tinybox_gcp_power',
     createdAt: timestamp,
     updatedAt: timestamp,
     dateRange: {

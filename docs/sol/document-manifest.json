@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "f8369dcc74c7cd527fc6d95e9f137b5bf5975a3df261ab56c1c6e9ac504c6c52",
+  "sourceTreeSha256": "c52dade2eaf9fd099fedc24d4f7d3421a3552a48adc47a19870d3a9cb3994d7e",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -802,13 +802,14 @@
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [
+        "docs/governance/2026-07-14-governance-native-architecture-review.md",
         "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
         "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/issues/README.md",
         "docs/sol/receipts/README.md"
       ],
-      "inboundSourceCount": 5,
+      "inboundSourceCount": 6,
       "issueLinks": [
         8706
       ]
@@ -1263,7 +1264,7 @@
       "owner": "OpenAgents client architecture",
       "disposition": "retain-decision",
       "dispatch": false,
-      "sha256": "b373218644f920aa5b7d00702178a02f3411729d25aeb03b8e1ae8da6d6ca86e",
+      "sha256": "b2d3029a9fbf9470950702e83db8851aade79491c22768e352ea8ae1c2846232",
       "status": "retain-decision",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1272,6 +1273,25 @@
         "docs/RETIRED.md",
         "docs/khala-cli/README.md",
         "docs/qa/khala-code-nightly-matrix.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/2026-07-14-google-cloud-authority-cleanup-after-action.md",
+      "class": "authority",
+      "owner": "OpenAgents Google Cloud infrastructure",
+      "disposition": "retain-authority",
+      "dispatch": false,
+      "sha256": "82ef406fbb63a84e93530240f8f542ae6dffef14d59ac1eb0bd181e9f923442f",
+      "status": "implemented; authoritative-DNS handoff remains owner-gated",
+      "snapshot": "2026-07-14",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/adr/0004-prefer-cloudflare-native-product-infrastructure.md",
+        "docs/adr/0014-use-google-cloud-as-the-sole-production-infrastructure.md",
+        "docs/sol/README.md"
       ],
       "inboundSourceCount": 3,
       "issueLinks": []
@@ -1600,6 +1620,7 @@
         "docs/fable/MASTER_ROADMAP.md",
         "docs/fable/README.md",
         "docs/fable/ROADMAP_QA.md",
+        "docs/governance/2026-07-14-governance-native-architecture-review.md",
         "docs/grok/README.md",
         "docs/mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md",
         "docs/mvp/README.md",
@@ -1637,7 +1658,7 @@
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 43,
+      "inboundSourceCount": 44,
       "issueLinks": [
         8547,
         8566,
@@ -1715,7 +1736,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "e0da96c128ab7b4dde61860a0f1e54df6e8bc891475ba00fbced76a88707d579",
+      "sha256": "60ba679d9c38961580147f62f28e0ac239d76d712d0bae304f413a7d8ac2238c",
       "status": "current",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",

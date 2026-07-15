@@ -1,9 +1,8 @@
 import type { IdentityDb } from './identity-db'
 import { Effect, Layer } from 'effect'
-import { WorkerEnvironment } from 'effect-cf'
 import { describe, expect, test } from 'vitest'
 
-import { OpenAgentsDatabase } from './bindings'
+import { OpenAgentsDatabase, OpenAgentsRuntimeEnvironment } from './bindings'
 import {
   ThreadFileRepository,
   type ThreadFileRepositoryShape,
@@ -309,9 +308,9 @@ describe('ThreadFileRepository', () => {
         }),
       ],
     })
-    const workerEnvironmentLayer = Layer.succeed(WorkerEnvironment, {
+    const workerEnvironmentLayer = Layer.succeed(OpenAgentsRuntimeEnvironment, {
       OPENAGENTS_DB: db,
-    })
+    } as never)
     const repositoryLayer = ThreadFileRepository.effectCfLayer(serviceIdentityDb).pipe(
       Layer.provide(OpenAgentsDatabase.layer),
       Layer.provide(workerEnvironmentLayer),

@@ -335,7 +335,7 @@ const budgetChecks = [
     // follow-up) for `notifyCanceledAgentRunSyncScopesEffect(env: Env, runId:
     // string)` in index.ts: the per-run sync-scope notify isolation helper
     // that closes the severe `enforceOutOfCreditsPolicy` landmine (a
-    // sync-notify failure could previously block the SHC compute-cleanup
+    // sync-notify failure could previously block the Google Cloud compute-cleanup
     // dispatch and out-of-credits email for a whole batch of canceled runs).
     // Same env-reading shape as the sibling index.ts handlers already
     // counted here. Do not raise further; ratchet back down when index.ts
@@ -376,7 +376,7 @@ const budgetChecks = [
       'Business code must consume OpenAgentsWorkerConfig instead of reading migrated secret/config fields directly from Cloudflare Env.',
     details: countByFile(
       workerFiles.filter(path => !path.endsWith('workers/api/src/config.ts')),
-      /\benv\.(GITHUB_CLIENT_ID|GITHUB_CLIENT_SECRET|OPENAGENTS_ADMIN_API_TOKEN|OPENAGENTS_APP_URL|OPENAUTH_CLIENT_ID|OPENAUTH_ISSUER_URL|RESEND_API_KEY|RESEND_FROM_EMAIL|RESEND_REPLY_TO_EMAIL|SHC_CONTROL_API_BEARER_TOKEN|SHC_CONTROL_API_URL|SHC_DISPATCH_MODE|SHC_RUNNER_CALLBACK_TOKEN)\b/g,
+      /\benv\.(GITHUB_CLIENT_ID|GITHUB_CLIENT_SECRET|OPENAGENTS_ADMIN_API_TOKEN|OPENAGENTS_APP_URL|OPENAUTH_CLIENT_ID|OPENAUTH_ISSUER_URL|RESEND_API_KEY|RESEND_FROM_EMAIL|RESEND_REPLY_TO_EMAIL|Google Cloud_CONTROL_API_BEARER_TOKEN|Google Cloud_CONTROL_API_URL|Google Cloud_DISPATCH_MODE|Google Cloud_RUNNER_CALLBACK_TOKEN)\b/g,
     ),
     name: 'direct migrated Worker config Env reads',
   },
@@ -864,7 +864,7 @@ const runPromiseAllowlist = new Map([
   // `notifyCanceledAgentRunSyncScopesEffect` bridges the isolated,
   // per-run sync-scope notify effect into `enforceOutOfCreditsPolicy`'s
   // Promise-shaped body, so one canceled run's notify failure can never
-  // again block the SHC compute-cleanup dispatch or the out-of-credits
+  // again block the Google Cloud compute-cleanup dispatch or the out-of-credits
   // email for the rest of the batch. Named bridge; ratchet down if
   // `enforceOutOfCreditsPolicy` becomes an Effect program end-to-end.
   // Raised 8 -> 9 on 2026-07-06 for the Khala Code mobile-only MVP $10

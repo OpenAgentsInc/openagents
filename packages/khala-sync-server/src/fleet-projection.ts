@@ -56,7 +56,7 @@ import type { SqlTag, SyncSql } from "./sql.js"
  *   (`khala_sync_scope_owners`), written on the scope's first projection
  *   append; the fleet mutators and the v1 read gate consult it.
  * - `canReadScopeV1` — the v1 scope-read gate: a user reads their own
- *   personal scope and the fleet_run scopes they own. Exported so Worker
+ *   personal scope and the fleet_run scopes they own. Exported so API
  *   read routes (KS-4.4 lane) can adopt it; when the shared scope-auth
  *   seam (KS-7) lands, this becomes one arm of it.
  * - `projectFleetEntitiesBestEffort` — the FAIL-SOFT wrapper for the v1
@@ -70,15 +70,11 @@ import type { SqlTag, SyncSql } from "./sql.js"
  * post-image. As defense in depth, `assertFleetPostImageRedacted` rejects
  * any serialized post-image matching the forbidden-material pattern.
  *
- * V1 DUAL-WRITE HONESTY: today the authoritative fleet/assignment business
- * writes live in Worker D1 (and Pylon-local SQLite); this projection is a
- * best-effort SECOND write into Khala Sync Postgres performed AFTER the
- * business write commits. A projection failure must therefore never fail
- * the business write — `projectFleetEntitiesBestEffort` swallows
- * everything into a typed diagnostic. KS-8.1 (#8307) migrates the business
- * write into the SAME Postgres transaction as the changelog append, at
- * which point the fail-soft wrapper is retired and invariant 5 holds for
- * fleet state end to end.
+ * Fleet and assignment business state is authoritative in Cloud SQL. This
+ * fail-soft projector appends the corresponding Khala Sync post-images after
+ * the business write and must never turn a committed control-plane operation
+ * into a caller-visible failure. A future same-transaction integration can
+ * tighten that seam without changing the public projection contract.
  */
 
 // ---------------------------------------------------------------------------
@@ -526,7 +522,7 @@ export type FleetProjectionOutcome =
 export interface ProjectFleetEntitiesInput {
   readonly sql: SyncSql
   /**
-   * The user the scope belongs to (for Worker assignment projections:
+   * The user the scope belongs to (for Cloud Run API assignment projections:
    * the assignment's `ownerAgentUserId`). Written to
    * `khala_sync_scope_owners` on the scope's first append; a scope already
    * owned by a DIFFERENT user refuses the projection (no cross-user
@@ -546,10 +542,8 @@ export interface ProjectFleetEntitiesInput {
  * constraint, redaction refusal, foreign owner) rolls back the projection
  * transaction and comes back as a typed diagnostic for the caller to log.
  *
- * v1 dual-write contract: the caller invokes this AFTER its authoritative
- * business write (Worker D1) has committed; a projection failure must
- * never fail that business write. KS-8.1 (#8307) replaces this wrapper by
- * moving the business write into the same transaction (invariant 5).
+ * The caller invokes this after its authoritative Cloud SQL business write
+ * has committed; a projection failure must never fail that business write.
  */
 export const projectFleetEntitiesBestEffort = async (
   input: ProjectFleetEntitiesInput,

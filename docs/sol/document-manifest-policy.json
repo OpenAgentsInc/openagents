@@ -33,6 +33,12 @@
       "disposition": "retain-decision",
       "dispatch": false
     },
+    "docs/sol/2026-07-14-google-cloud-authority-cleanup-after-action.md": {
+      "class": "authority",
+      "owner": "OpenAgents Google Cloud infrastructure",
+      "disposition": "retain-authority",
+      "dispatch": false
+    },
     "docs/sol/the-case-against-anthropic.md": {
       "class": "historical-analysis",
       "owner": "Christopher David",

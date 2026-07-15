@@ -16,7 +16,7 @@
  * expose the same `` sql`...` `` call shape; only parameterized
  * interpolation is used, never driver-specific helpers. This module MUST
  * stay free of `bun`/node-only imports — the Worker typechecks it under
- * `@cloudflare/workers-types`; the Bun-SQL Layer lives in
+ * host-runtime types; the Node SQL Layer lives in
  * kv-store-postgres-layer.ts for that reason.
  */
 import { Effect } from "effect"

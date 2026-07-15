@@ -8,7 +8,7 @@
  *   3. exactly-once writes ((producerId,epoch,seq) dedup/fence/gap)
  *   4. CDN-friendly fan-out (ETag/Cache-Control/Stream-Cursor)
  *
- * No Cloudflare or HTTP-framework import here — `core.ts` is pure and
+ * No cloud-provider or HTTP-framework import here — `core.ts` is pure and
  * Bun-unit-testable. The HTTP and SSE adapters (http.ts) translate Request /
  * Response to/from these normalized shapes.
  */

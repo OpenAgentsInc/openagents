@@ -195,11 +195,11 @@ export type MulletProviderSettlementState =
   typeof MulletProviderSettlementState.Type
 
 export const MulletScenarioKind = S.Literals([
-  'tinybox_shc_power',
+  'tinybox_gcp_power',
   'tinybox_residential_power',
   'tinybox_west_texas_power',
   'facility_100mw_80_20',
-  'shc_cpu_vps_colo',
+  'gcp_cpu_vps_colo',
   'miner_gpu_island',
   'custom',
 ])

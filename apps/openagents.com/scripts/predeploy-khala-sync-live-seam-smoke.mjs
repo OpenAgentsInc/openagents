@@ -3,7 +3,7 @@
 /**
  * ST-1 (#8507): deploy-gate mode of the khala-sync live-seam smoke.
  *
- * Runs inside `deploy:safe` right after the STAGING deploy: self-registers
+ * Runs after the staging Cloud Run deploy: self-registers
  * a throwaway staging agent (the exact mechanism
  * predeploy-parallel-dispatch-smoke.mjs uses), then drives the REAL
  * `createHttpKhalaSyncTransport` — bootstrap → logPage → connectLive, plus
@@ -27,7 +27,8 @@ import { spawnSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const defaultBaseUrl = 'https://openagents-staging.openagents.workers.dev'
+const defaultBaseUrl =
+  'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app'
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url))
 const clientPackageDir = resolve(

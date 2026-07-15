@@ -21,7 +21,9 @@ import {
   KIND_JOB_TEXT_GENERATION,
 } from "@openagentsinc/nip90"
 
-export const OPENAGENTS_MARKET_RELAY_URL = "wss://relay.openagents.com"
+// Public Nostr transport is external protocol infrastructure, not an owned
+// OpenAgents service. Override explicitly for another public relay.
+export const OPENAGENTS_MARKET_RELAY_URL = "wss://nos.lol"
 export const PYLON_NIP90_PROVIDER_CAPABILITY_REF = "capability.public.pylon.nip90.text_inference.v0.3"
 
 export function providerSupportedKinds() {

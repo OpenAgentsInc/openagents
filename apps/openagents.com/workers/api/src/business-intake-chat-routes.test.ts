@@ -579,7 +579,7 @@ describe('business intake typed spec object', () => {
 describe('makeBusinessIntakeChatRateLimiter', () => {
   const requestFromIp = (ip: string): Request =>
     new Request(`https://openagents.com${BUSINESS_INTAKE_CHAT_ENDPOINT}`, {
-      headers: { 'cf-connecting-ip': ip },
+      headers: { 'x-forwarded-for': ip },
       method: 'POST',
     })
 

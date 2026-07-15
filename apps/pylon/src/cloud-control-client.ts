@@ -3,13 +3,13 @@
 //
 // This is the HTTP seam that turns the already-merged lane plumbing (#4998,
 // #4999) into a live loop. When a control session is spawned with a cloud lane
-// (`cloud-gcp`, `cloud-shc`, or `auto` resolving to cloud), Pylon calls the
+// (`cloud-gcp`, or `auto` resolving to cloud), Pylon calls the
 // OpenAgents Cloud control plane (in-repo `crates/oa-codex-control`, #8591)
 // instead of running the agent locally:
 //
 //   1. POST /v1/placement  — lane-agnostic placement
 //      (`openagents.codex_placement_assignment.v1`) -> RunnerBinding +
-//      externalRunId. Lane maps GCE primary / SHC secondary per owner policy.
+//      externalRunId. Lane maps GCE primary / Google Cloud secondary per owner policy.
 //   2. GET  /v1/codex-runs/{externalRunId}/events?cursor=N — poll the cloud
 //      run's `openagents.codex_workroom_event.v1` events.
 //   3. POST /v1/codex-runs/{externalRunId}/cancel — propagate cancellation.
@@ -34,7 +34,7 @@ export const CLOUD_PLACEMENT_CONTRACT_VERSION =
 // The lane-agnostic compute lane understood by the cloud placement endpoint.
 // `local` is rejected by the cloud endpoint (it is resolved by the caller's own
 // Pylon), so the cloud client only ever sends a cloud or `auto` lane.
-export type CloudComputeLane = "auto" | "cloud-gcp" | "cloud-shc"
+export type CloudComputeLane = "auto" | "cloud-gcp"
 
 export type CloudControlConfig = {
   baseUrl: string
@@ -90,8 +90,8 @@ export type CloudRunnerBinding = {
   contractVersion: string
   runId: string
   externalRunId: string
-  lane: "cloud-gcp" | "cloud-shc"
-  providerLane: "gcp" | "shc"
+  lane: "cloud-gcp"
+  providerLane: "gcp"
   runnerId: string
   capacityClassId: string | null
   sandboxMode: string
@@ -233,15 +233,13 @@ export function resolveCloudEventKind(
 
 // Map a Pylon control-session lane to the cloud compute lane. `local` never
 // reaches the cloud client (the caller routes it locally). `auto` is sent as
-// `auto` so the cloud applies its own GCE-primary / SHC-secondary policy.
+// `auto` so the cloud applies its own Google Cloud placement policy.
 export function cloudLaneForControlLane(
-  lane: "auto" | "local" | "cloud-gcp" | "cloud-shc",
+  lane: "auto" | "local" | "cloud-gcp",
 ): CloudComputeLane {
   switch (lane) {
     case "cloud-gcp":
       return "cloud-gcp"
-    case "cloud-shc":
-      return "cloud-shc"
     case "auto":
     case "local":
     default:
@@ -273,8 +271,8 @@ function authHeaders(config: CloudControlConfig): Record<string, string> {
 
 function normalizeBinding(raw: unknown, fallbackRunId: string): CloudRunnerBinding {
   const record = (raw ?? {}) as Record<string, unknown>
-  const lane = record.lane === "cloud-shc" ? "cloud-shc" : "cloud-gcp"
-  const providerLane = record.providerLane === "shc" ? "shc" : "gcp"
+  const lane = "cloud-gcp"
+  const providerLane = "gcp"
   return {
     contractVersion:
       typeof record.contractVersion === "string"

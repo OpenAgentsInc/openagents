@@ -365,19 +365,19 @@ export const consumerProviderMinimumBidUsd = (
   (input.inconvenienceReserveUsd ?? 0) +
   input.desiredProfitUsd
 
-export const shcReservedHourlyCostUsd = (
+export const gcpReservedHourlyCostUsd = (
   annualCostUsd: number,
   utilizationPercent: number,
 ): number => safeDivide(annualCostUsd, 8760) / utilizationPercent
 
-export const shcReservedFractionalRuntimeCostUsd = (input: {
+export const gcpReservedFractionalRuntimeCostUsd = (input: {
   readonly annualCostUsd: number
   readonly utilizationPercent: number
   readonly allocationPercent: number
   readonly runtimeHours: number
   readonly supportMultiplier?: number
 }): number =>
-  shcReservedHourlyCostUsd(input.annualCostUsd, input.utilizationPercent) *
+  gcpReservedHourlyCostUsd(input.annualCostUsd, input.utilizationPercent) *
   input.allocationPercent *
   input.runtimeHours *
   (input.supportMultiplier ?? 1)

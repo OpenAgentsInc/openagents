@@ -2386,7 +2386,7 @@ export const parseAgentReadinessCliArgs = (
 export const domainsFromBatchFile = async (path: string): Promise<ReadonlyArray<string>> => {
   // Uses `node:fs/promises` rather than the Bun-only `Runtime.file` API so this
   // module stays safe to import from non-Bun consumers (the openagents.com
-  // Worker, which typechecks against `@cloudflare/workers-types`). Bun
+  // server runtime, which typechecks against the shared platform boundary). Node
   // itself supports `node:fs/promises`, so the CLI entry point is unaffected.
   const { readFile } = await import("node:fs/promises")
   const text = await readFile(path, "utf8")

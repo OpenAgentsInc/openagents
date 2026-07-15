@@ -61,7 +61,6 @@ export const BlueprintChatProgramSessionLane = S.Literals([
   'auto',
   'local',
   'cloud-gcp',
-  'cloud-shc',
 ])
 export type BlueprintChatProgramSessionLane =
   typeof BlueprintChatProgramSessionLane.Type

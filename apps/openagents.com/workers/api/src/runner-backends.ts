@@ -1,10 +1,6 @@
 import { Schema as S } from 'effect'
 
-export const OpenAgentsRunnerBackendKind = S.Literals([
-  'cloudflare_container',
-  'gcloud_vm',
-  'shc_vm',
-])
+export const OpenAgentsRunnerBackendKind = S.Literals(['gcloud_vm'])
 export type OpenAgentsRunnerBackendKind =
   typeof OpenAgentsRunnerBackendKind.Type
 

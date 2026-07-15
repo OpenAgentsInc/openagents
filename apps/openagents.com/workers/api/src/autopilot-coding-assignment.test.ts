@@ -78,7 +78,7 @@ const fallbackIntent = {
     'closeout.fallback_assignment.autopilot_work_order.test_2.task.autopilot_coder.paid_test_repair.tests_or_blocker_required',
     'closeout.fallback_assignment.autopilot_work_order.test_2.task.autopilot_coder.paid_test_repair.accepted_work_not_implied',
   ],
-  fallbackLaneRef: 'fallback_lane.openagents.shc',
+  fallbackLaneRef: 'fallback_lane.google_cloud',
   forumAutoPublishAllowed: false,
   jobKind: 'validation',
   noForumAutoPublishRefs: [
@@ -87,7 +87,7 @@ const fallbackIntent = {
   paymentMode: 'buyer_funded',
   requiredCapabilityRefs: [
     'capability.fallback.assignment_ready',
-    'capability.openagents.shc',
+    'capability.google_cloud',
   ],
   resultExpectationRefs: [
     'result.fallback_assignment.autopilot_work_order.test_2.task.autopilot_coder.paid_test_repair.public_safe_closeout',
@@ -95,10 +95,10 @@ const fallbackIntent = {
   rollbackRefs: [
     'rollback.fallback_assignment.autopilot_work_order.test_2.task.autopilot_coder.paid_test_repair.no_deploy_without_owner_acceptance',
   ],
-  runnerKind: 'openagents_shc',
+  runnerKind: 'google_cloud',
   selectionPolicyRefs: [
     'placement.selected.fallback',
-    'placement.fallback.openagents_shc',
+    'placement.fallback.google_cloud',
   ],
   spendCapRefs: ['spend_cap.buyer_funded.fallback_assignment'],
   taskRef: 'task.autopilot_coder.paid_test_repair',
@@ -247,9 +247,9 @@ describe('Autopilot coding assignment contract', () => {
         settlementMode: 'no_worker_payout_until_accepted_work',
         spendCapRefs: ['spend_cap.buyer_funded.fallback_assignment'],
       },
-      laneRef: 'fallback_lane.openagents.shc',
-      runnerKind: 'openagents_shc',
-      runnerRef: 'fallback_lane.openagents.shc',
+      laneRef: 'fallback_lane.google_cloud',
+      runnerKind: 'google_cloud',
+      runnerRef: 'fallback_lane.google_cloud',
       taskKind: 'test_repair',
     })
   })

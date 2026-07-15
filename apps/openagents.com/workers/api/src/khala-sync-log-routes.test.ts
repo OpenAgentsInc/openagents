@@ -29,7 +29,7 @@ import {
 import type {
   KhalaSyncHubNamespaceLike,
   KhalaSyncHubStubLike,
-} from './khala-sync-hub-do'
+} from './khala-sync-hub-routes'
 import {
   handleKhalaSyncLog,
   KHALA_SYNC_LOG_PATH,

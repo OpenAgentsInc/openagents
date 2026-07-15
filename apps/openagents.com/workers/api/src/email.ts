@@ -39,11 +39,7 @@ export type EmailMessageId = typeof EmailMessageId.Type
 export const EmailDeliveryId = S.String.pipe(S.brand('EmailDeliveryId'))
 export type EmailDeliveryId = typeof EmailDeliveryId.Type
 
-export const EmailProvider = S.Literals([
-  'resend',
-  'gmail',
-  'cloudflare_email',
-])
+export const EmailProvider = S.Literals(['resend', 'gmail'])
 export type EmailProvider = typeof EmailProvider.Type
 
 export const EmailKind = S.Literals([
@@ -320,20 +316,6 @@ export type OperatorEmailLedgerSmokeResult = Readonly<{
   templateSlug: string
 }>
 
-type CloudflareEmailSendMessage = Readonly<{
-  from: string
-  headers?: Readonly<Record<string, string>>
-  html: string
-  replyTo?: string
-  subject: string
-  text: string
-  to: string
-}>
-
-export type CloudflareEmailBinding = Readonly<{
-  send: (message: CloudflareEmailSendMessage) => Promise<unknown>
-}>
-
 export type EmailRuntime = Readonly<{
   nowIso: () => string
   randomId: (prefix: string) => string
@@ -498,15 +480,12 @@ export type EmailServiceShape = Readonly<{
     rendered: RenderedEmail,
     fetcher?: typeof fetch,
   ) => Effect.Effect<EmailProviderResult>
-  sendRenderedEmailViaCloudflareBinding: (
-    binding: CloudflareEmailBinding,
-    rendered: RenderedEmail,
-  ) => Effect.Effect<EmailProviderResult>
-  sendRenderedEmailViaCloudflareBindingWithLedger: (
+  sendRenderedEmailWithLedger: (
     db: CrmEmailDatabase,
-    binding: CloudflareEmailBinding,
+    config: ResendEmailConfig,
     rendered: RenderedEmail,
     context?: EmailIntentContext | undefined,
+    fetcher?: typeof fetch,
     runtime?: EmailRuntime,
   ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
 }>
@@ -1785,82 +1764,12 @@ const sendRenderedEmailToResend = (
     Effect.withSpan('EmailService.sendRenderedEmail'),
   )
 
-const cloudflareEmailProviderMessageId = (response: unknown): string | null => {
-  if (response === null || typeof response !== 'object') {
-    return null
-  }
-
-  const record = response as Readonly<Record<string, unknown>>
-  const messageId = record.messageId ?? record.id
-
-  return typeof messageId === 'string' && messageId.trim() !== ''
-    ? messageId
-    : null
-}
-
-const cloudflareEmailErrorName = (error: unknown): string =>
-  error !== null &&
-  typeof error === 'object' &&
-  'code' in error &&
-  typeof (error as Readonly<{ code?: unknown }>).code === 'string'
-    ? compactText(String((error as Readonly<{ code: string }>).code), 120)
-    : error instanceof Error
-      ? compactText(error.name, 120)
-      : 'cloudflare_email_send_error'
-
-const cloudflareEmailErrorMessage = (error: unknown): string =>
-  error instanceof Error
-    ? compactText(error.message, 500)
-    : compactText(String(error), 500)
-
-const renderedEmailToCloudflareMessage = (
-  rendered: RenderedEmail,
-): CloudflareEmailSendMessage => ({
-  from: rendered.from,
-  headers: {
-    'X-OpenAgents-Idempotency-Key': compactText(
-      rendered.idempotencyKey,
-      2048,
-    ),
-  },
-  html: rendered.html,
-  ...(rendered.replyTo === undefined ? {} : { replyTo: rendered.replyTo }),
-  subject: rendered.subject,
-  text: rendered.text,
-  to: rendered.to,
-})
-
-const sendRenderedEmailViaCloudflareBindingEffect = (
-  binding: CloudflareEmailBinding,
-  rendered: RenderedEmail,
-): Effect.Effect<EmailProviderResult> =>
-  Effect.tryPromise({
-    try: async () => {
-      const response = await binding.send(
-        renderedEmailToCloudflareMessage(rendered),
-      )
-
-      return new EmailProviderAccepted({
-        provider: 'cloudflare_email',
-        providerMessageId: cloudflareEmailProviderMessageId(response),
-      })
-    },
-    catch: error =>
-      new EmailProviderRejected({
-        errorMessage: cloudflareEmailErrorMessage(error),
-        errorName: cloudflareEmailErrorName(error),
-        provider: 'cloudflare_email',
-      }),
-  }).pipe(
-    Effect.catch(error => Effect.succeed(error)),
-    Effect.withSpan('EmailService.sendRenderedEmailViaCloudflareBinding'),
-  )
-
-const sendRenderedEmailViaCloudflareBindingWithLedgerEffect = (
+const sendRenderedEmailWithLedgerEffect = (
   db: CrmEmailDatabase,
-  binding: CloudflareEmailBinding,
+  config: ResendEmailConfig,
   rendered: RenderedEmail,
   context: EmailIntentContext | undefined = undefined,
+  fetcher: typeof fetch = fetch,
   runtime: EmailRuntime = systemEmailRuntime,
 ): Effect.Effect<EmailLedgerSendResult, EmailServiceError> =>
   Effect.gen(function* () {
@@ -1874,10 +1783,7 @@ const sendRenderedEmailViaCloudflareBindingWithLedgerEffect = (
       }
     }
 
-    const result = yield* sendRenderedEmailViaCloudflareBindingEffect(
-      binding,
-      rendered,
-    )
+    const result = yield* sendRenderedEmailToResend(config, rendered, fetcher)
 
     yield* result._tag === 'EmailProviderAccepted'
       ? markEmailMessageAccepted(
@@ -1910,11 +1816,7 @@ const sendRenderedEmailViaCloudflareBindingWithLedgerEffect = (
       errorName: result.errorName,
       ok: false as const,
     }
-  }).pipe(
-    Effect.withSpan(
-      'EmailService.sendRenderedEmailViaCloudflareBindingWithLedger',
-    ),
-  )
+  }).pipe(Effect.withSpan('EmailService.sendRenderedEmailWithLedger'))
 
 export const makeEmailService = (): EmailServiceShape => {
   const renderOutOfCreditsEmail = Effect.fn(
@@ -2592,10 +2494,7 @@ export const makeEmailService = (): EmailServiceShape => {
     sendOutOfCreditsEmailWithLedger,
     sendPrivateWorkspaceInviteEmailWithLedger,
     sendRenderedEmail,
-    sendRenderedEmailViaCloudflareBinding:
-      sendRenderedEmailViaCloudflareBindingEffect,
-    sendRenderedEmailViaCloudflareBindingWithLedger:
-      sendRenderedEmailViaCloudflareBindingWithLedgerEffect,
+    sendRenderedEmailWithLedger: sendRenderedEmailWithLedgerEffect,
     sendSiteReferralOnboardingEmailWithLedger,
     sendTargetedRemakeOutreachEmailWithLedger,
   }
@@ -2791,24 +2690,20 @@ export const sendOrderSitesTransactionalEmailWithLedger = (
     runtime,
   )
 
-export const sendRenderedEmailViaCloudflareBinding = (
-  binding: CloudflareEmailBinding,
-  rendered: RenderedEmail,
-): Effect.Effect<EmailProviderResult> =>
-  defaultEmailService.sendRenderedEmailViaCloudflareBinding(binding, rendered)
-
-export const sendRenderedEmailViaCloudflareBindingWithLedger = (
+export const sendRenderedEmailWithLedger = (
   db: CrmEmailDatabase,
-  binding: CloudflareEmailBinding,
+  config: ResendEmailConfig,
   rendered: RenderedEmail,
   context?: EmailIntentContext | undefined,
+  fetcher: typeof fetch = fetch,
   runtime: EmailRuntime = systemEmailRuntime,
 ): Effect.Effect<EmailLedgerSendResult, EmailServiceError> =>
-  defaultEmailService.sendRenderedEmailViaCloudflareBindingWithLedger(
+  defaultEmailService.sendRenderedEmailWithLedger(
     db,
-    binding,
+    config,
     rendered,
     context,
+    fetcher,
     runtime,
   )
 

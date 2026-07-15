@@ -23,7 +23,7 @@ describe('predeploy khala-sync live-seam smoke self-registration', () => {
 
     const result = await registerThrowawaySmokeAgent(
       fetchImpl,
-      'https://openagents-staging.openagents.workers.dev',
+      'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app',
       'run1',
     )
 
@@ -33,7 +33,7 @@ describe('predeploy khala-sync live-seam smoke self-registration', () => {
     })
     expect(requests).toHaveLength(1)
     expect(requests[0]!.url).toBe(
-      'https://openagents-staging.openagents.workers.dev/api/agents/register',
+      'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app/api/agents/register',
     )
     const body = requests[0]!.body as {
       externalId: string

@@ -765,17 +765,19 @@ export const exampleArtanisProductionLaunchGateRecord = (
       }),
       command({
         command:
-          'pnpm --dir workers/api run build:web && pnpm exec wrangler deploy --config workers/api/wrangler.jsonc --keep-vars --var ARTANIS_SCHEDULED_RUNNER_ENABLED:true',
+          'CLOUDSDK_CONFIG="$CLOUDSDK_CONFIG" gcloud run services update openagents-monolith --project openagentsgemini --region us-central1 --update-env-vars ARTANIS_SCHEDULED_RUNNER_ENABLED=true',
         description:
           'Enable scheduled Artanis execution for a controlled launch window after every required gate is passed.',
         kind: 'enable',
+        requiresEnvRefs: ['env:CLOUDSDK_CONFIG'],
       }),
       command({
         command:
-          'pnpm --dir workers/api run build:web && pnpm exec wrangler deploy --config workers/api/wrangler.jsonc --keep-vars --var ARTANIS_SCHEDULED_RUNNER_ENABLED:false',
+          'CLOUDSDK_CONFIG="$CLOUDSDK_CONFIG" gcloud run services update openagents-monolith --project openagentsgemini --region us-central1 --update-env-vars ARTANIS_SCHEDULED_RUNNER_ENABLED=false',
         description:
-          'Disable scheduled Artanis execution by removing or setting the flag false and redeploying the Worker.',
+          'Disable scheduled Artanis execution on the production Cloud Run service.',
         kind: 'disable',
+        requiresEnvRefs: ['env:CLOUDSDK_CONFIG'],
       }),
       command({
         command:
@@ -794,10 +796,11 @@ export const exampleArtanisProductionLaunchGateRecord = (
       }),
       command({
         command:
-          'pnpm exec wrangler d1 execute openagents-autopilot --remote --command "SELECT record_ref, record_type, updated_at FROM artanis_records ORDER BY updated_at DESC LIMIT 20;"',
+          'psql "$KHALA_SYNC_DB_URL" -c "SELECT record_ref, record_type, updated_at FROM artanis_records ORDER BY updated_at DESC LIMIT 20;"',
         description:
-          'Inspect recent retained Artanis records when a tick fails, duplicates, or becomes stale.',
+          'Inspect recent retained Artanis records in Cloud SQL when a tick fails, duplicates, or becomes stale.',
         kind: 'recover',
+        requiresEnvRefs: ['env:KHALA_SYNC_DB_URL'],
       }),
     ],
     updatedAtIso,

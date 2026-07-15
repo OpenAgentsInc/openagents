@@ -31,6 +31,14 @@ export type SyncBridgeData = {
   clientClosed: boolean
 }
 
+const webSocketFrame = (frame: string | Uint8Array): string | ArrayBuffer =>
+  typeof frame === 'string'
+    ? frame
+    : (frame.buffer.slice(
+        frame.byteOffset,
+        frame.byteOffset + frame.byteLength,
+      ) as ArrayBuffer)
+
 const SAFE_CLOSE_MIN = 1000
 const SAFE_CLOSE_MAX = 4999
 const RESERVED_CLOSE_CODES = new Set([1004, 1005, 1006, 1015])
@@ -113,7 +121,7 @@ export const makeSyncBridgeWebSocketHandlers = () => ({
       }
       for (const frame of ws.data.pending.splice(0)) {
         try {
-          upstream.send(frame)
+          upstream.send(webSocketFrame(frame))
         } catch {
           // upstream just closed
         }
@@ -162,7 +170,7 @@ export const makeSyncBridgeWebSocketHandlers = () => ({
           : new Uint8Array(message)
     if (upstream !== undefined && upstream.readyState === WebSocket.OPEN) {
       try {
-        upstream.send(frame)
+        upstream.send(webSocketFrame(frame))
       } catch {
         // upstream just closed
       }

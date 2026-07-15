@@ -421,8 +421,8 @@ const cloudTargetEvidence = (
   const lane = input.cloudRunner.lane
   const providerLane = input.cloudRunner.providerLane
   if (
-    (lane !== "cloud-gcp" && lane !== "cloud-shc") ||
-    (providerLane !== "gcp" && providerLane !== "shc") ||
+    lane !== "cloud-gcp" ||
+    providerLane !== "gcp" ||
     !validPublicRef(input.resourceUsageReceiptRef) ||
     (input.responseDigestRef !== null && !validPublicRef(input.responseDigestRef))
   ) {
@@ -466,7 +466,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
     dispatch: async (input) => {
       if (
         input.targetPreference !== "managed_cloud" ||
-        (lane !== "auto" && lane !== "cloud-gcp" && lane !== "cloud-shc")
+        (lane !== "auto" && lane !== "cloud-gcp")
       ) {
         return fixedResult({
           blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.targetRequired,

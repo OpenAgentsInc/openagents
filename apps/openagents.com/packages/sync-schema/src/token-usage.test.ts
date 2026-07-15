@@ -84,7 +84,7 @@ describe('Autopilot token usage compatibility decoder', () => {
     })
   })
 
-  test('reads Codex JSONL turn-completed usage inside an SHC runner log wrapper', () => {
+  test('reads Codex JSONL turn-completed usage inside an Google Cloud runner log wrapper', () => {
     const codexEvent = {
       type: 'turn.completed',
       usage: {

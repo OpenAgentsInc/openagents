@@ -12,7 +12,7 @@
  *     --d redacted-conversation-bundle --price-sats 50
  * - For integrated relay proof:
  *   node --import tsx apps/openagents.com/scripts/nip-ds.ts smoke \
- *     --relay https://openagents-market-relay.openagents.workers.dev
+ *     --relay wss://nos.lol
  *
  * This script builds protocol objects through @openagentsinc/nip90, which reuses
  * the sibling nostr-effect implementation. It does not create invoices, move
@@ -49,7 +49,7 @@ import {
 type Flags = Record<string, string | true>
 type RelayMessage = ReadonlyArray<unknown>
 
-const defaultRelay = "https://openagents-market-relay.openagents.workers.dev"
+const defaultRelay = "wss://nos.lol"
 const sellerSecretKey = new Uint8Array(32).fill(1)
 const buyerSecretKey = new Uint8Array(32).fill(2)
 

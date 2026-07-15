@@ -338,9 +338,9 @@ const d1CheckFromObservation = (
     expectedSignalRef:
       'signal.public.artanis.production_readiness.expected_artanis_tables',
     observedSignalRef: missing.length === 0
-      ? 'signal.public.artanis.production_readiness.d1_tables_present'
-      : 'signal.public.artanis.production_readiness.d1_tables_missing',
-    sourceRefs: ['source.public.cloudflare_d1_read_only'],
+      ? 'signal.public.artanis.production_readiness.cloud_sql_tables_present'
+      : 'signal.public.artanis.production_readiness.cloud_sql_tables_missing',
+    sourceRefs: ['source.public.google_cloud_sql_read_only'],
     stage: 'persistence_ready',
     status,
   }, nowIso)

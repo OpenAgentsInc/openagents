@@ -644,7 +644,7 @@ const currentArtanisHealthSnapshot = (input: {
       publicRecoveryActionRefs: [],
       publicStatusRefs: ['health.public.artanis.runner_backend_available'],
       signalRefSuffix: 'runner_backend_availability',
-      sourceRefs: ['runner_backend.public.artanis.shc'],
+      sourceRefs: ['runner_backend.public.artanis.gcp'],
       state: 'available' as const,
       subjectUpdatedAtIso: nowIso,
     }),
@@ -737,7 +737,7 @@ const currentArtanisHealthSnapshot = (input: {
         ? 'health.public.artanis.status.healthy'
         : 'health.public.artanis.status.stale',
     ],
-    runnerBackendRefs: ['runner_backend.public.artanis.shc'],
+    runnerBackendRefs: ['runner_backend.public.artanis.gcp'],
     signals,
     snapshotRef: `health.public.artanis.snapshot.${safeRefSuffix(nowIso)}`,
     sourceRefs: uniqueRefs([
@@ -746,7 +746,7 @@ const currentArtanisHealthSnapshot = (input: {
       ...modelLabSourceRefs,
       'pylon.public.stats',
       'omega.public.pylon_api.registrations',
-      'runner_backend.public.artanis.shc',
+      'runner_backend.public.artanis.gcp',
     ]),
     updatedAtIso: nowIso,
   })
@@ -1145,7 +1145,7 @@ const exampleProbeGepaOutcomeMetricsProjection =
       }),
       before: probeGepaOutcomeSnapshot(),
       benchmarkCampaignRefs: [
-        'campaign.probe_gepa.stage0.live_shc_harbor_smoke.2026_06_08',
+        'campaign.probe_gepa.stage0.limited_pilot_harbor_smoke.2026_06_08',
       ],
       benchmarkValidationRefs: [
         'benchmark_result.probe_gepa.live_stage0.retained.001',

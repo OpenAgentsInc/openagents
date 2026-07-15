@@ -77,16 +77,30 @@ fn main() {
                                         } => {
                                             serde_json::json!({"state":"playback","generation":generation,"sequence":sequence,"payloadLength":payload_length,"speechRef":speech_ref,"firstChunk":first_chunk,"underrunCount":underrun_count})
                                         }
-                                        NativeTransportEvent::PlaybackCanceled { speech_ref, outcome_ref } => {
+                                        NativeTransportEvent::PlaybackCanceled {
+                                            speech_ref,
+                                            outcome_ref,
+                                        } => {
                                             serde_json::json!({"state":"playback_canceled","speechRef":speech_ref,"outcomeRef":outcome_ref})
                                         }
-                                        NativeTransportEvent::Transcript { utterance_ref, text, final_result } => {
+                                        NativeTransportEvent::Transcript {
+                                            utterance_ref,
+                                            text,
+                                            final_result,
+                                        } => {
                                             serde_json::json!({"state":"transcript","utteranceRef":utterance_ref,"text":text,"final":final_result})
                                         }
                                         NativeTransportEvent::Activity { activity } => {
                                             serde_json::json!({"state":"activity","activity":activity})
                                         }
-                                        NativeTransportEvent::CommandProposal { proposal_ref, utterance_ref, turn_ref, target_ref, command_id, expires_at_ms } => {
+                                        NativeTransportEvent::CommandProposal {
+                                            proposal_ref,
+                                            utterance_ref,
+                                            turn_ref,
+                                            target_ref,
+                                            command_id,
+                                            expires_at_ms,
+                                        } => {
                                             serde_json::json!({"state":"command_proposal","proposalRef":proposal_ref,"utteranceRef":utterance_ref,"turnRef":turn_ref,"targetRef":target_ref,"commandId":command_id,"expiresAtMs":expires_at_ms})
                                         }
                                         NativeTransportEvent::Backpressured => {

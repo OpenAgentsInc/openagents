@@ -142,7 +142,6 @@ describe("submitSwarmRun (fixture path)", () => {
     )).toBe(true);
     expect(artifacts.swarm!.childRunIds.length).toBe(2);
     expect(artifacts.swarm!.tiers.some(tier => tier.backend === "gce-tier-2" && tier.status === "skipped")).toBe(true);
-    expect(artifacts.swarm!.tiers.some(tier => tier.backend === "cf-browser-rendering" && tier.status === "skipped")).toBe(true);
     expect(existsSync(artifacts.swarm!.projectionPath)).toBe(true);
   });
 

@@ -9,7 +9,7 @@ legacy generated binding import.
 
 ## API
 
-- `connect(request)` opens the Cloudflare world session through a typed
+- `connect(request)` opens a future world session through a typed
   transport and applies any initial snapshot/diagnostic deltas.
 - `subscribe(request)` requests a server-approved `WorldSubscriptionPlan` and
   carries the current cursor for resubscribe/reconnect paths.

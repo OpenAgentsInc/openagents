@@ -3,20 +3,20 @@
 A Node 24 and pnpm workspace for the OpenAgents application stack.
 
 - Web: TanStack Start/React host, Effect Native DOM surfaces, Vite
-- API: Cloudflare Workers, Durable Objects, D1, R2, Queues
+- API: Node service on Google Cloud Run
 - Auth: OpenAuth target
-- Sync: owned OpenAgents Sync packages
+- Data and sync: Cloud SQL Postgres, Cloud Run LiveHub, Cloud Storage
 - Agent: OpenCode
-- Workspace infra: SHC
+- Infrastructure: Google Cloud only
 
 ## Layout
 
 ```text
 apps/start/            TanStack Start host for retained Effect Native web UI
-workers/api/           Cloudflare Worker API and SyncRoom Durable Object
+workers/api/           retained path for the Node/Cloud Run API
 packages/sync-schema/  Effect Schema protocol models
 packages/sync-client/  browser-side sync helpers
-packages/sync-worker/  Worker-side sync helpers
+packages/sync-worker/  server-side sync helpers
 docs/                  architecture audits and migration plans
 ```
 
@@ -31,7 +31,7 @@ pnpm install
 pnpm run dev:web
 ```
 
-Worker dev:
+API dev:
 
 ```bash
 pnpm run dev:api

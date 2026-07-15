@@ -87,7 +87,7 @@ import {
   makeKhalaSyncAnonymousReadRateLimiter,
   type KhalaSyncAnonymousRateLimiter,
 } from './khala-sync-anonymous-rate-limit'
-import type { KhalaSyncHubNamespaceLike } from './khala-sync-hub-do'
+import type { KhalaSyncHubNamespaceLike } from './khala-sync-hub-routes'
 import type {
   KhalaSyncHyperdriveBinding,
   KhalaSyncPushSqlClient,

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-const defaultBaseUrl = 'https://openagents-staging.openagents.workers.dev'
+const defaultBaseUrl =
+  'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app'
 const defaultParallelism = 5
 
 const trimBaseUrl = baseUrl =>

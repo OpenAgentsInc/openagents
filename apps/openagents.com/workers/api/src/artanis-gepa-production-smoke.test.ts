@@ -16,7 +16,7 @@ import {
 const nowIso = '2026-06-08T05:50:00.000Z'
 
 describe('Artanis Probe GEPA production-equivalent smoke', () => {
-  test('projects retained SHC Harbor and Pylon closeout evidence without payout or mutation authority', () => {
+  test('projects retained Google Cloud Harbor and Pylon closeout evidence without payout or mutation authority', () => {
     const projection = projectArtanisGepaProductionSmoke(
       exampleArtanisGepaProductionSmokeRecord(),
       nowIso,
@@ -28,7 +28,7 @@ describe('Artanis Probe GEPA production-equivalent smoke', () => {
     expect(projection).toMatchObject({
       acceptedCloseoutCount: 1,
       campaignRef:
-        'campaign.probe_gepa.stage0.live_shc_harbor_smoke.2026_06_08',
+        'campaign.probe_gepa.stage0.limited_pilot_harbor_smoke.2026_06_08',
       completedMetricCalls: 2,
       mutationAuthorityAllowed: false,
       payoutClaimAllowed: false,

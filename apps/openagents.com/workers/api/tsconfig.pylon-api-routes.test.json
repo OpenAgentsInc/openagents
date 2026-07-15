@@ -3,7 +3,7 @@
   "compilerOptions": {
     "module": "preserve",
     "moduleResolution": "bundler",
-    "types": ["node", "vite-plus-matchers", "@cloudflare/workers-types"],
+    "types": ["node", "vite-plus-matchers", "openagents-platform"],
     "noEmit": true,
     "allowImportingTsExtensions": true
   },

@@ -12,7 +12,7 @@ const snapshot = (
   overrides: Partial<OpenAgentsRunnerBackendHealthSnapshot> = {},
 ): OpenAgentsRunnerBackendHealthSnapshot => ({
   availability: 'degraded',
-  backendKind: 'cloudflare_container',
+  backendKind: 'gcloud_vm',
   billingCaveatRefs: [
     'billing.container.metered_review_required',
     'billing.container.rate.5_cents_per_minute',
@@ -68,7 +68,7 @@ describe('runner backend health projection', () => {
     expect(projection).toMatchObject({
       audience: 'public',
       availability: 'degraded',
-      backendKind: 'cloudflare_container',
+      backendKind: 'gcloud_vm',
       billingCaveatRefs: [
         'caveat.container.review_required',
         'caveat.container.operator_review_required',

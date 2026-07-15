@@ -26,21 +26,18 @@
     "test:start": "pnpm --dir apps/start run test",
     "test:api": "pnpm --dir workers/api run test",
     "check:effect-topology": "node --import tsx scripts/check-effect-topology.mjs",
-    "test:cloudrun-env-origins": "vp test --run workers/api/scripts/cloudrun/render-env-yaml.test.ts",
     "check:effect-upgrade-metadata": "node --import tsx scripts/check-effect-upgrade-metadata.mjs",
     "check:agent-doc-links": "node --import tsx scripts/check-live-agent-doc-links.mjs",
     "check:public-projection-freshness": "node --import tsx scripts/check-public-projection-freshness.mjs",
     "check:architecture": "node --import tsx scripts/check-zero-debt-architecture.mjs",
     "check:contract-drift": "node --import tsx scripts/check-contract-drift.mjs",
-    "d1:zero-reference-sweep": "node --import tsx scripts/d1-zero-reference-sweep.mjs",
     "test:contract-drift-guard": "vitest run scripts/check-contract-drift.test.ts",
     "check:conflict-markers": "node --import tsx scripts/check-conflict-markers.mjs",
     "test:conflict-markers-guard": "vitest run scripts/check-conflict-markers.test.ts",
     "check:effect-native-vendor": "node --import tsx scripts/check-effect-native-vendor-freshness.ts",
     "test:effect-native-vendor-guard": "vitest run scripts/check-effect-native-vendor.test.ts",
     "test:command-composer-privacy-guard": "vitest run scripts/check-command-composer-privacy-fixtures.test.ts",
-    "check:deploy": "pnpm run check:conflict-markers && pnpm run check:no-github-actions && pnpm run test:cloudrun-env-origins && pnpm run check:effect-topology && pnpm run check:agent-doc-links && pnpm run check:architecture && pnpm run check:contract-drift && pnpm run check:public-projection-freshness && pnpm --dir ../../packages/agent-readiness run test && pnpm --dir ../../packages/agent-readiness run typecheck && pnpm --dir ../../packages/autopilot-control-protocol run typecheck && pnpm --dir ../../apps/pylon run typecheck && pnpm run typecheck:api-pylon-integration && pnpm --dir ../../apps/pylon run test tests/security-adversarial-harness.test.ts && pnpm --dir ../../packages/khala-sync-server run test:pending-migrations-guard && pnpm --dir ../../packages/khala-sync-client run test && pnpm run typecheck:start && pnpm run typecheck:api && pnpm run test:conflict-markers-guard && pnpm run test:effect-native-vendor-guard && pnpm run test:contract-drift-guard && pnpm run test:pending-migrations-guard && pnpm run test:predeploy-parallel-dispatch-smoke && pnpm run test:predeploy-khala-sync-live-seam-smoke && pnpm --dir apps/start run test && pnpm --dir workers/api run test src/lander-css-policy.test.ts src/worker-routes.test.ts src/redirect-policy.test.ts src/client-server-route-agreement.test.ts src/mullet/routes.test.ts src/product-promises.test.ts src/model-custody-lead-gen.test.ts src/reactor-need-to-know-access.test.ts src/reactor-data-liberation.test.ts src/reactor-improvement-ladder.test.ts src/wasm-plugin-marketplace.test.ts src/qualified-contributor-methodology.test.ts src/public-forum-activity-routes.test.ts src/inference/inference-privacy-receipt-routes.test.ts src/inference/gym/terminal-bench-khala-orchestration.test.ts src/tassadar-settled-feed-sync.test.ts src/khala-sync-public-settled-feed.test.ts src/public-settled-feed-routes.test.ts",
-    "private-workspace:setup-check": "node scripts/private-workspace-setup-check.mjs",
+    "check:deploy": "pnpm run check:conflict-markers && pnpm run check:no-github-actions && pnpm run check:effect-topology && pnpm run check:agent-doc-links && pnpm run check:architecture && pnpm run check:contract-drift && pnpm run check:public-projection-freshness && pnpm --dir ../../packages/agent-readiness run test && pnpm --dir ../../packages/agent-readiness run typecheck && pnpm --dir ../../packages/autopilot-control-protocol run typecheck && pnpm --dir ../../apps/pylon run typecheck && pnpm run typecheck:api-pylon-integration && pnpm --dir ../../apps/pylon run test tests/security-adversarial-harness.test.ts && pnpm --dir ../../packages/khala-sync-server run test:pending-migrations-guard && pnpm --dir ../../packages/khala-sync-client run test && pnpm run typecheck:start && pnpm run typecheck:api && pnpm run test:conflict-markers-guard && pnpm run test:effect-native-vendor-guard && pnpm run test:contract-drift-guard && pnpm --dir apps/start run test && pnpm --dir workers/api run test src/lander-css-policy.test.ts src/worker-routes.test.ts src/redirect-policy.test.ts src/client-server-route-agreement.test.ts src/mullet/routes.test.ts src/product-promises.test.ts src/model-custody-lead-gen.test.ts src/reactor-need-to-know-access.test.ts src/reactor-data-liberation.test.ts src/reactor-improvement-ladder.test.ts src/wasm-plugin-marketplace.test.ts src/qualified-contributor-methodology.test.ts src/public-forum-activity-routes.test.ts src/inference/inference-privacy-receipt-routes.test.ts src/inference/gym/terminal-bench-khala-orchestration.test.ts src/tassadar-settled-feed-sync.test.ts src/khala-sync-public-settled-feed.test.ts src/public-settled-feed-routes.test.ts",
     "artanis:readiness": "node scripts/artanis-production-readiness.mjs",
     "forum": "node scripts/forum.mjs",
     "smoke:forum:void": "node scripts/forum-void-smoke.mjs",
@@ -60,8 +57,6 @@
     "prepare": "node scripts/patch-effect-language-service.mjs",
     "check:no-github-actions": "node --import tsx scripts/check-no-github-actions.mjs",
     "check:deploy-from-main": "node --import tsx scripts/check-deploy-from-main.mjs",
-    "check:pending-migrations": "node --import tsx scripts/check-pending-migrations.mjs",
-    "test:pending-migrations-guard": "vitest run scripts/check-pending-migrations.test.ts",
     "test:predeploy-parallel-dispatch-smoke": "vitest run scripts/predeploy-parallel-dispatch-smoke.test.ts",
     "predeploy:khala-sync-live-seam-smoke": "node scripts/predeploy-khala-sync-live-seam-smoke.mjs",
     "test:predeploy-khala-sync-live-seam-smoke": "vitest run scripts/predeploy-khala-sync-live-seam-smoke.test.ts"
@@ -70,7 +65,6 @@
     "@openagentsinc/runtime-platform": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250601.0",
     "@effect/language-service": "^0.86.2",
     "@eslint/js": "^10.0.1",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
@@ -80,7 +74,6 @@
     "eslint": "^10.3.0",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.8",
-    "wrangler": "^4.50.0"
+    "vitest": "^4.1.8"
   }
 }

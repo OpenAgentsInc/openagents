@@ -1,7 +1,7 @@
 # @openagentsinc/effect-start
 
 Effect boundary helpers for TanStack Start server functions, route loaders,
-and Cloudflare Worker entries.
+and Node server entries.
 
 The package keeps `Effect.runPromise` at the handler boundary, stores the
 current request/env/execution context in `AsyncLocalStorage`, and maps typed

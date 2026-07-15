@@ -2,7 +2,7 @@
   "contract_version": "openagents.artanis_bootstrap_assignment.v1",
   "bootstrap_run_id": "artanis.bootstrap.pylon-launch.001",
   "workroom_id": "workroom.artanis.pylon-launch.001",
-  "target_node_id": "oa-shc-katy-01",
+  "target_node_id": "oa-gcp-katy-01",
   "operator_ref": "operator.admin.openagents",
   "organization_ref": "org.openagents",
   "provider_account_ref": "provider-account_admin_codex",
@@ -22,7 +22,7 @@
     "autopilot4-deprecated:src/benchmark_release_gates.rs"
   ],
   "objective_id": "artanis.pylon.launch.continual-learning.v1",
-  "objective_summary": "Bootstrap the next Pylon launch by turning Artanis source policy into SHC Codex workroom artifacts, capability routing, benchmark evidence gates, and continual-learning receipts.",
+  "objective_summary": "Bootstrap the next Pylon launch by turning Artanis source policy into Google Cloud Codex workroom artifacts, capability routing, benchmark evidence gates, and continual-learning receipts.",
   "pylon_launch_id": "pylon.launch.next.001",
   "settlement_intent": {
     "artanis_run_id": "artanis.bootstrap.pylon-launch.001",

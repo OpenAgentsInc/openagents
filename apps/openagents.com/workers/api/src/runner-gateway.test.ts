@@ -24,7 +24,7 @@ import {
 const adapter = (
   overrides: Partial<OpenAgentsRunnerGatewayAdapterState> = {},
 ): OpenAgentsRunnerGatewayAdapterState => ({
-  backendKind: 'cloudflare_container',
+  backendKind: 'gcloud_vm',
   capacityRef: 'capacity.container.low_medium_available',
   configured: true,
   enabled: true,
@@ -47,7 +47,7 @@ const dispatchRequest = (
     },
     assignmentRef: 'assignment.site_builder.revision_4',
     authGrantRef: 'grant.provider_account.codex.account_3',
-    backendKind: 'cloudflare_container',
+    backendKind: 'gcloud_vm',
     callbackRef: 'callback.runner.gateway.redacted_ref',
     githubWriteGrantRef: 'grant.github_write.repo_branch',
     goalRef: 'goal.site_builder.revision_4',
@@ -72,15 +72,15 @@ describe('OpenAgents runner gateway contract', () => {
     expect(
       S.decodeUnknownSync(OpenAgentsRunnerGatewayCancelRequest)({
         actorRef: 'operator.chris',
-        backendKind: 'shc_vm',
-        externalRunRef: 'shc.run.123',
-        policyRefs: ['policy.runner.shc_primary'],
+        backendKind: 'gcloud_vm',
+        externalRunRef: 'gcp.run.123',
+        policyRefs: ['policy.runner.gcp_only'],
         reasonRef: 'reason.customer_requested_cancel',
         requestId: 'runner_gateway.cancel.1',
         runRef: 'run.agent.123',
-        runnerId: 'runner.shc.primary',
+        runnerId: 'runner.gcp.primary',
       }).backendKind,
-    ).toBe('shc_vm')
+    ).toBe('gcloud_vm')
     expect(
       S.decodeUnknownSync(OpenAgentsRunnerGatewayHealthCheckRequest)({
         backendKind: 'gcloud_vm',
@@ -93,7 +93,7 @@ describe('OpenAgents runner gateway contract', () => {
     expect(
       S.decodeUnknownSync(OpenAgentsRunnerGatewayLifecycleCallback)({
         artifactManifestRef: 'manifest.site.preview_bundle',
-        backendKind: 'cloudflare_container',
+        backendKind: 'gcloud_vm',
         callbackRef: 'callback.runner.gateway.redacted_ref',
         dispatchStatus: 'completed',
         eventRefs: ['event.runner.completed'],
@@ -107,18 +107,15 @@ describe('OpenAgents runner gateway contract', () => {
 
   test('selects only an enabled, configured, policy-selected adapter', () => {
     const result = selectOpenAgentsRunnerGatewayAdapter({
-      backendKind: 'cloudflare_container',
+      backendKind: 'gcloud_vm',
       operation: 'dispatch',
-      states: [
-        adapter({ backendKind: 'shc_vm', policySelected: false }),
-        adapter(),
-      ],
+      states: [adapter()],
     })
 
     expect(result).toEqual({
       _tag: 'OpenAgentsRunnerGatewaySelected',
       selection: {
-        backendKind: 'cloudflare_container',
+        backendKind: 'gcloud_vm',
         capacityRef: 'capacity.container.low_medium_available',
         healthStatus: 'healthy',
         reasonRefs: ['policy.runner.container.operator_selected'],
@@ -128,7 +125,7 @@ describe('OpenAgents runner gateway contract', () => {
 
   test('denies backends that are not selected by policy', () => {
     const result = selectOpenAgentsRunnerGatewayAdapter({
-      backendKind: 'cloudflare_container',
+      backendKind: 'gcloud_vm',
       operation: 'dispatch',
       states: [adapter({ policySelected: false })],
     })
@@ -144,7 +141,7 @@ describe('OpenAgents runner gateway contract', () => {
 
   test('denies disabled or unconfigured backends without dispatch side effects', () => {
     const disabled = selectOpenAgentsRunnerGatewayAdapter({
-      backendKind: 'cloudflare_container',
+      backendKind: 'gcloud_vm',
       operation: 'dispatch',
       states: [adapter({ configured: false, enabled: true })],
     })
@@ -158,11 +155,11 @@ describe('OpenAgents runner gateway contract', () => {
     }
   })
 
-  test('maps unknown and unsupported backend failures to typed errors', () => {
+  test('maps missing adapters and unknown failures to typed errors', () => {
     const unsupported = selectOpenAgentsRunnerGatewayAdapter({
       backendKind: 'gcloud_vm',
       operation: 'health_check',
-      states: [adapter()],
+      states: [],
     })
     const malformed = openAgentsRunnerGatewayErrorFromUnknown(
       'dispatch',

@@ -60,7 +60,7 @@ export type ProbeBlueprintBackendCapabilitySupport = typeof ProbeBlueprintBacken
 export const ProbeBackendCapabilityReport = S.Struct({
   kind: S.Literal("probe_backend_capability_report"),
   runnerId: S.String,
-  runnerKind: S.Literals(["local", "shc", "pylon", "sandbox"]),
+  runnerKind: S.Literals(["local", "gcp", "pylon", "sandbox"]),
   backendKind: S.Literal(APPLE_FM_BACKEND_KIND),
   profileId: S.String,
   model: S.String,
@@ -92,7 +92,7 @@ export type ProbeBackendCapabilityReport = typeof ProbeBackendCapabilityReport.T
 export const ProbeGeminiBackendCapabilityReport = S.Struct({
   kind: S.Literal("probe_backend_capability_report"),
   runnerId: S.String,
-  runnerKind: S.Literals(["local", "shc", "pylon", "sandbox"]),
+  runnerKind: S.Literals(["local", "gcp", "pylon", "sandbox"]),
   backendKind: S.Literal(GEMINI_BACKEND_KIND),
   profileId: S.String,
   model: S.String,

@@ -17,15 +17,10 @@ import type { SyncSql } from "./sql.js"
  * Gym / Harbor live run-progress public scope projection (KS-6.5, #8415;
  * SPEC §2.1 `scope.public.<channel>`, §7 invariant 8/9).
  *
- * The `/gym` follow-along panel used to push per-run snapshots ONLY through
- * the legacy `sync-worker` outbox + `SyncRoomDurableObject`
- * (`publishGymRunProgressSnapshot` in the Worker's
- * `inference/gym/run-progress-sync.ts`). This module is the same shape of
- * dual-write the KS-6.1 fleet cockpit and KS-6.3 tokens-served projections
- * already proved: on every ingested snapshot, ALSO append the
- * already-public-safe `GymRunProgressPublicProjection` post-image to
+ * On every ingested snapshot, the Cloud Run API appends the already-public-safe
+ * `GymRunProgressPublicProjection` post-image directly to Cloud SQL at
  * `scope.public.gym-run-progress`, keyed by `entityId = runRef` — a
- * best-effort SECOND write that must never fail the caller's ingest.
+ * best-effort projection that must never fail the caller's ingest.
  *
  * NO SCOPE OWNER, NO AGGREGATE STATE: unlike `scope.fleet_run.<id>` (which
  * needs `khala_sync_scope_owners` for owner-gating) or the tokens-served
@@ -44,21 +39,9 @@ import type { SyncSql } from "./sql.js"
  * matching a forbidden-material SHAPE. Deliberately NOT a bare `token`
  * match: this entity legitimately carries `promptTokens`/`completionTokens`/
  * `totalTokens` COUNT fields (same reserved-shape discipline as the
- * Worker's own `checkGymRunProgressPublicSafety`).
- *
- * HONEST STATUS (KS-6.5): this is a DUAL-WRITE ADDITION, not a cutover. The
- * live `/gym` panel is read by ANONYMOUS/logged-out visitors, but
- * `GET/WS /api/sync/connect` (and /log, /bootstrap) require an
- * authenticated actor (browser session or agent bearer) even for
- * `scope.public.*` scopes — there is no anonymous read path on the khala-sync
- * connect surface yet. So the legacy sync-worker producer in
- * `run-progress-sync.ts` remains the ONLY delivery path for anonymous `/gym`
- * visitors; this projection exists so the run-progress changelog exists in
- * Postgres for parity/inspection/future migration, matching exactly what
- * KS-6.3 (#8304) already did for tokens-served before its own client
- * repoint. Deleting the legacy producer or repointing
- * `apps/web/src/subscriptions.ts` before that anonymous-read gap is closed
- * would silently break the public follow-along panel.
+ * API's own `checkGymRunProgressPublicSafety`). The public Khala Sync scope
+ * is served by Cloud Run and broadcast through LiveHub; there is no legacy
+ * edge-runtime delivery lane.
  */
 
 // ---------------------------------------------------------------------------
@@ -86,7 +69,7 @@ export const GYM_RUN_PROGRESS_PROJECTION_SYSTEM_REF =
  * contract ref/label patterns are the structural first line). Deliberately
  * NOT a bare `token` or `apiKey` camelCase match — this entity legitimately
  * carries `promptTokens`/`completionTokens`/`totalTokens` count fields;
- * these markers reserve leak SHAPES only, mirroring the Worker's own
+ * these markers reserve leak SHAPES only, mirroring the Cloud Run API's
  * `checkGymRunProgressPublicSafety` marker list.
  */
 export const GYM_RUN_PROGRESS_POST_IMAGE_FORBIDDEN_PATTERN =
@@ -114,7 +97,7 @@ const assertGymRunProgressPostImageRedacted = (postImage: unknown): void => {
 // ---------------------------------------------------------------------------
 
 /**
- * The Worker's `GymRunProgressPublicProjection` shape — ALREADY public-safe
+ * The Cloud Run API's `GymRunProgressPublicProjection` shape — ALREADY public-safe
  * (built by `buildGymRunProgress` + `projectPublicGymRunProgress` and
  * checked by `checkGymRunProgressPublicSafety` before this function is ever
  * called). This function still allowlist-maps field by field (never
@@ -267,9 +250,8 @@ const diagnosticFromUnknown = (
  * redaction refusal) rolls back the projection transaction and comes back
  * as a typed diagnostic for the caller to log.
  *
- * v1 dual-write contract: the caller invokes this AFTER (or alongside) its
- * legacy sync-worker outbox append; a projection failure must never fail
- * that ingest path.
+ * The caller invokes this from the authoritative Cloud Run ingest path; a
+ * projection failure must never fail that ingest path.
  */
 export const projectGymRunProgressBestEffort = async (
   sql: SyncSql,

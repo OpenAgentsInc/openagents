@@ -1,7 +1,7 @@
 // Khala Sync LiveHub HTTP client (CFG-5, #8520; epic #8515).
 //
 // The owned Google Cloud Run `khala-live-hub` service (apps/khala-live-hub)
-// replaces the `KhalaSyncHubDO` Durable Object as the per-scope live hub.
+// owns the per-scope live hub on Google Cloud.
 // This module adapts that HTTP/WS service to the EXISTING
 // `KhalaSyncHubNamespaceLike` seam every hub consumer already uses (the
 // /api/sync/connect WS proxy, the /api/sync/log hub-first read, the four
@@ -11,13 +11,11 @@
 //   env.KHALA_SYNC_LIVE_HUB_URL    — LiveHub base URL (e.g. the Cloud Run
 //                                    service URL). Set ⇒ hub traffic goes
 //                                    to LiveHub over HTTPS.
-//   env.KHALA_SYNC_LIVE_HUB_TOKEN  — shared service bearer (Worker secret /
-//                                    Secret Manager `khala-live-hub-token`).
+//   env.KHALA_SYNC_LIVE_HUB_TOKEN  — shared service bearer sourced from
+//                                    Secret Manager `khala-live-hub-token`.
 //
-// `resolveKhalaSyncHubNamespace(env)` prefers LiveHub when BOTH are set and
-// falls back to the DO binding otherwise, so a deployment missing either
-// half keeps its previous behavior (and after the DO deletion, missing
-// config degrades to the routes' existing honest 503/absent-hub paths).
+// `resolveKhalaSyncHubNamespace(env)` returns LiveHub when both values are set;
+// missing config degrades to the routes' honest 503/absent-hub paths.
 //
 // HOW THE WS PROXY STILL WORKS: consumers forward
 // `new Request(internalUrl, request)` into `stub.fetch`. This adapter
@@ -26,16 +24,14 @@
 // with the shared service bearer (the client's promoted `?token=` bearer
 // from `withBearerFromQueryToken` — commit b45071b9b6 — is for the ROUTE's
 // own end-user auth, which has already run; it must never travel to
-// LiveHub), and fetches. workerd supports WebSocket upgrades through plain
-// `fetch` to external origins: the 101 response carries `webSocket` back
-// through the route exactly like a DO stub's upgrade response did. This
-// module is runtime-agnostic (fetch + Headers only), so the same seam
-// serves the CFG-9 Cloud Run monolith unchanged.
+// LiveHub), and fetches. The Cloud Run service carries the WebSocket upgrade
+// over its HTTP transport. This module is runtime-agnostic (fetch + Headers
+// only) and is used directly by the Google Cloud monolith.
 
 import type {
   KhalaSyncHubNamespaceLike,
   KhalaSyncHubStubLike,
-} from './khala-sync-hub-do'
+} from './khala-sync-hub-routes'
 
 type HttpResponse = globalThis.Response
 
@@ -92,16 +88,14 @@ export const makeKhalaSyncLiveHubNamespace = (
  * tests can pass small fakes.
  */
 export type KhalaSyncLiveHubEnvSlice = Readonly<{
+  KHALA_SYNC_LIVE_HUB_FETCH?: ((request: Request) => Promise<HttpResponse>) | undefined
   KHALA_SYNC_LIVE_HUB_URL?: string | undefined
   KHALA_SYNC_LIVE_HUB_TOKEN?: string | undefined
-  KHALA_SYNC_HUB?: unknown
 }>
 
 /**
  * Resolve the hub namespace for a deployment: the LiveHub HTTP adapter when
- * `KHALA_SYNC_LIVE_HUB_URL` + `KHALA_SYNC_LIVE_HUB_TOKEN` are BOTH set,
- * else the `KHALA_SYNC_HUB` DO binding (absent ⇒ undefined, which every
- * consumer already maps to its honest hub-unconfigured behavior).
+ * `KHALA_SYNC_LIVE_HUB_URL` + `KHALA_SYNC_LIVE_HUB_TOKEN` are both set.
  */
 export const resolveKhalaSyncHubNamespace = (
   env: KhalaSyncLiveHubEnvSlice,
@@ -109,7 +103,13 @@ export const resolveKhalaSyncHubNamespace = (
   const url = env.KHALA_SYNC_LIVE_HUB_URL?.trim()
   const token = env.KHALA_SYNC_LIVE_HUB_TOKEN?.trim()
   if (url !== undefined && url !== '' && token !== undefined && token !== '') {
-    return makeKhalaSyncLiveHubNamespace({ baseUrl: url, token })
+    return makeKhalaSyncLiveHubNamespace({
+      baseUrl: url,
+      token,
+      ...(env.KHALA_SYNC_LIVE_HUB_FETCH === undefined
+        ? {}
+        : { fetchImpl: env.KHALA_SYNC_LIVE_HUB_FETCH }),
+    })
   }
-  return env.KHALA_SYNC_HUB as KhalaSyncHubNamespaceLike | undefined
+  return undefined
 }

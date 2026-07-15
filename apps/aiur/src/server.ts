@@ -14,9 +14,9 @@ const currentEnv = (): AiurEnv =>
   getStartRequestContext<AiurEnv>()?.env ?? {}
 
 /**
- * Worker-entry wrapper around `routeAiurSharedSurfaceRequest`
+ * Server-entry wrapper around `routeAiurSharedSurfaceRequest`
  * (`shared-surface.ts`) that reads `env` from the ambient Start request
- * context. The Cloud Run Bun entry (`cloudrun/server.ts`) calls the shared
+ * context. The Cloud Run Node entry (`cloudrun/server.ts`) calls the shared
  * router with an explicit `env` instead.
  */
 export async function routeAiurSharedSurface(
@@ -30,7 +30,7 @@ const server = createServerEntry({
     const sharedSurfaceResponse = await routeAiurSharedSurface(request)
     if (sharedSurfaceResponse !== undefined) {
       // A successful WebSocket upgrade (status 101) carries a
-      // Workers-runtime `webSocket` pairing that a
+      // runtime `webSocket` pairing that a
       // `new Response(response.body, ...)` reconstruction (what
       // `applySecurityHeaders` does) would silently drop.
       return sharedSurfaceResponse.status === 101
@@ -49,7 +49,7 @@ const server = createServerEntry({
   },
 })
 
-type StartWorkerEnv = Record<string, unknown>
+type StartServerEnv = Record<string, unknown>
 
 type StartExecutionContext = Readonly<{
   waitUntil(promise: Promise<unknown>): void
@@ -58,7 +58,7 @@ type StartExecutionContext = Readonly<{
 export default {
   fetch(
     request: Request,
-    env: StartWorkerEnv,
+    env: StartServerEnv,
     executionCtx: StartExecutionContext,
   ) {
     return withStartRequestContext({ request, env, executionCtx }, () =>

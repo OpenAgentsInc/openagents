@@ -165,19 +165,19 @@ export type OmniDispatchCall =
 
 export const makeOmniDispatchServiceTestLayer = (
   result: DispatchResult = {
-    externalId: 'shc:memory:run',
+    externalId: 'gcp:memory:run',
     mode: 'live',
     status: 'queued',
   },
 ) => {
   const calls: Array<OmniDispatchCall> = []
   const service = makeOmniDispatchService({
-    dispatchAgentRunToShc: async (assignment, config) => {
+    dispatchAgentRunToGoogleCloud: async (assignment, config) => {
       calls.push({ assignment, config, kind: 'agent-run' })
 
       return result
     },
-    dispatchDeploymentToShc: async (assignment, config) => {
+    dispatchDeploymentToGoogleCloud: async (assignment, config) => {
       calls.push({ assignment, config, kind: 'deployment' })
 
       return result

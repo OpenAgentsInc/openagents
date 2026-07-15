@@ -26,7 +26,7 @@ const badRequest = (reason: string) =>
 //     timeline). No private/draft/hidden content, no payment material, no token,
 //     no seeds, no raw addresses.
 //   - No forum/business authority lives here — this is a read-only projection.
-//     Cloudflare world authority stays out (the bridge writes world rows, this only
+//     retired world-service authority stays out (this route only
 //     surfaces public facts).
 
 export const PublicForumActivityEndpoint = '/api/public/forum-activity'

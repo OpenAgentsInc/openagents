@@ -106,7 +106,7 @@ export const AgentRunRuntime = S.Literals([
 export type AgentRunRuntime = typeof AgentRunRuntime.Type
 
 export const AgentRunBackend = S.Literals([
-  "shc_vm",
+  "gcloud_vm",
   "gcloud_vm",
   "pylon",
   "hosted",

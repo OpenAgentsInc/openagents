@@ -86,7 +86,7 @@ describe('Autopilot token usage extraction', () => {
     })
   })
 
-  test('reads Codex JSONL turn-completed usage inside an SHC runner log wrapper', () => {
+  test('reads Codex JSONL turn-completed usage inside an Google Cloud runner log wrapper', () => {
     const codexEvent = {
       type: 'turn.completed',
       usage: {
@@ -212,7 +212,7 @@ describe('Autopilot token usage extraction', () => {
         parentId: 'agent_run_1',
         payloadJson: null,
         sequence: 9,
-        source: 'shc',
+        source: 'gcp',
         status: null,
         summary: 'usage',
         type: 'runner.usage',

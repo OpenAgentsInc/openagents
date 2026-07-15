@@ -673,7 +673,7 @@ which re-exports the local `nostr-effect` protocol helpers.
 Environment controls:
 
 - `PYLON_NIP90_RELAYS`: comma-separated relay URLs; defaults to
-  `wss://relay.openagents.com`.
+  the configured public Nostr relay (default `wss://nos.lol`).
 - `PYLON_NIP90_PRICE_MSATS`: price floor and requested invoice amount;
   defaults to `1000`.
 - `PYLON_NIP90_REQUEST_TTL_SECONDS`: request age limit; defaults to one year.

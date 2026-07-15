@@ -1,11 +1,11 @@
 /**
- * Runtime-portable Aiur surface shared by BOTH deploy targets:
+ * Runtime-portable Aiur surface shared by the build and Cloud Run server:
  *
- * - the Cloudflare Worker entry (`src/server.ts`, TanStack Start SSR), and
- * - the Cloud Run Bun entry (`src/cloudrun/server.ts`, static shell + proxy).
+ * - the TanStack Start entry (`src/server.ts`), and
+ * - the Cloud Run Node entry (`src/cloudrun/server.ts`, static shell + proxy).
  *
  * Nothing in here may import `@tanstack/react-start/server-entry` (a
- * Vite-build-only virtual module) or any Workers-runtime-specific API — the
+ * Vite-build-only virtual module) or any vendor-runtime-specific API — the
  * Node server imports this file directly (bundled with `vp build`), so it
  * must stay pure fetch/Request/Response code.
  */

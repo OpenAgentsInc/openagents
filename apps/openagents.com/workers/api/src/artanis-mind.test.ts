@@ -45,51 +45,16 @@ describe('artanis cloud mind', () => {
     ])
   })
 
-  test('serves via the AI gateway when a gateway resolves', async () => {
-    const fetchImpl: typeof fetch = async input => {
-      const url = String(input)
-      if (url.includes('gateway.ai.cloudflare.com')) {
-        return new Response(geminiOk, { status: 200 })
-      }
-      throw new Error('direct path must not be reached')
-    }
-    const result = await artanisMindComplete({
-      apiKey: 'k',
-      fetchImpl,
-      // A cf-aig token opts back into the Cloudflare AI Gateway path (it is
-      // skipped when absent, since the gateway 401s without it post-CF-exit).
-      gatewayToken: 'gw',
-      prompt: 'p',
-      system: 's',
-    })
-    expect('error' in result).toBe(false)
-    if ('error' in result) return
-    expect(result.servedVia).toBe('cloudflare_ai_gateway')
-    expect(result.gatewayId).toBe('openagents-ai-gateway')
-    expect(result.text).toContain('verify')
-  })
-
-  // Regression for the prod bug where hosted-Khala inference routed through
-  // the now-401 Cloudflare AI Gateway and every chat turn failed (commit
-  // 4135071a9b). With no cf-aig token — the state after the CF exit — the
-  // gateway must be SKIPPED ENTIRELY (no guaranteed-401 round-trip) and the
-  // direct Google AI Studio path must serve. `fetchImpl` throws if any gateway
-  // URL is touched, so a regression that re-enables the tokenless gateway hop
-  // turns this red instead of silently orphaning replies.
-  test('without a gateway token, skips the Cloudflare AI gateway entirely and serves direct', async () => {
+  test('serves directly through Google AI Studio', async () => {
     const seen: string[] = []
     const fetchImpl: typeof fetch = async input => {
       const url = String(input)
       seen.push(url)
-      if (url.includes('gateway.ai.cloudflare.com')) {
-        throw new Error('tokenless gateway path must not be reached (it 401s)')
-      }
       return new Response(geminiOk, { status: 200 })
     }
     const result = await artanisMindComplete({
       apiKey: 'k',
       fetchImpl,
-      // No gatewayToken: the post-CF-exit reality.
       prompt: 'p',
       system: 's',
     })
@@ -98,29 +63,9 @@ describe('artanis cloud mind', () => {
     expect(result.servedVia).toBe('google_direct')
     expect(result.gatewayId).toBeNull()
     expect(result.text).toContain('verify')
-    // Not one request went to the Cloudflare gateway.
-    expect(seen.some(url => url.includes('gateway.ai.cloudflare.com'))).toBe(false)
-    expect(seen.some(url => url.includes('generativelanguage.googleapis.com'))).toBe(true)
-  })
-
-  test('falls back to direct Google when every gateway candidate fails', async () => {
-    const fetchImpl: typeof fetch = async input => {
-      const url = String(input)
-      if (url.includes('gateway.ai.cloudflare.com')) {
-        return new Response('{"error":[{"code":2009}]}', { status: 401 })
-      }
-      return new Response(geminiOk, { status: 200 })
-    }
-    const result = await artanisMindComplete({
-      apiKey: 'k',
-      fetchImpl,
-      prompt: 'p',
-      system: 's',
-    })
-    expect('error' in result).toBe(false)
-    if ('error' in result) return
-    expect(result.servedVia).toBe('google_direct')
-    expect(result.gatewayId).toBeNull()
+    expect(seen).toEqual([
+      expect.stringContaining('generativelanguage.googleapis.com'),
+    ])
   })
 
   test('never returns truncated MAX_TOKENS text; escalates the cap once and uses the complete answer', async () => {
@@ -140,7 +85,6 @@ describe('artanis cloud mind', () => {
     const result = await artanisMindComplete({
       apiKey: 'k',
       fetchImpl,
-      gatewayId: 'g',
       maxOutputTokens: 1024,
       prompt: 'p',
       system: 's',
@@ -160,7 +104,6 @@ describe('artanis cloud mind', () => {
     const result = await artanisMindComplete({
       apiKey: 'k',
       fetchImpl,
-      gatewayId: 'g',
       prompt: 'p',
       system: 's',
     })
@@ -180,16 +123,12 @@ describe('artanis cloud mind', () => {
     const result = await artanisMindComplete({
       apiKey: 'k',
       fetchImpl,
-      gatewayId: 'only-one',
-      // With a cf-aig token the gateway is attempted (then falls through to the
-      // direct path); both fail here, giving two attempt records.
-      gatewayToken: 'gw',
       prompt: 'p',
       system: 's',
     })
     expect('error' in result).toBe(true)
     if (!('error' in result)) return
     expect(result.error).toBe('artanis_mind_unavailable')
-    expect(result.attempts.length).toBe(2)
+    expect(result.attempts.length).toBe(1)
   })
 })

@@ -23,8 +23,6 @@ import { noStoreJsonResponse } from './http/responses'
 import type { OpenAgentsWorkerEnv } from './bindings'
 import {
   syncOutboxStoreLayer,
-  syncRoomNotifications,
-  syncScope,
 } from './runtime'
 import { RouteAccessError } from './thread-access'
 
@@ -293,15 +291,27 @@ const handleSnapshot = (scope: string) =>
 const handleStream = (request: Request, env: OpenAgentsWorkerEnv, scope: string) =>
   Effect.tryPromise({
     catch: error => new SyncStreamDispatchError({ error, scope }),
-    try: () => {
-      const headers = new Headers(request.headers)
-      headers.set('x-openagents-sync-scope', scope)
-      const syncRequest = new Request(request, { headers })
-      const notifications = syncRoomNotifications(env)
-      const id = syncScope(scope)
-      const room = notifications.roomForScope(id)
+    try: async () => {
+      const baseUrl = env.KHALA_SYNC_LIVE_HUB_URL?.trim()
+      const token = env.KHALA_SYNC_LIVE_HUB_TOKEN?.trim()
+      if (baseUrl === undefined || baseUrl === '' || token === undefined || token === '') {
+        return noStoreJsonResponse(
+          { error: 'sync_live_hub_unconfigured' },
+          { status: 503 },
+        )
+      }
 
-      return room.fetch(syncRequest)
+      const target = new URL(`${baseUrl.replace(/\/+$/, '')}/connect`)
+      target.searchParams.set('scope', scope)
+      const cursor = new URL(request.url).searchParams.get('cursor')
+      if (cursor !== null) target.searchParams.set('cursor', cursor)
+      const headers = new Headers(request.headers)
+      headers.set('authorization', `Bearer ${token}`)
+
+      const fetchImpl = (env as OpenAgentsWorkerEnv & {
+        KHALA_SYNC_LIVE_HUB_FETCH?: (request: Request) => Promise<Response>
+      }).KHALA_SYNC_LIVE_HUB_FETCH ?? fetch
+      return fetchImpl(new Request(target, { headers, method: 'GET' }))
     },
   })
 

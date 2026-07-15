@@ -102,35 +102,20 @@ describe('cloud coding sessions feature flag', () => {
 })
 
 describe('placement policy (authority boundary)', () => {
-  test('regulated repos are SHC-only', () => {
-    expect(admissibleLanesForTrustTier('regulated')).toEqual(['cloud-shc'])
+  test('regulated repos are Google Cloud-only', () => {
+    expect(admissibleLanesForTrustTier('regulated')).toEqual(['cloud-gcp'])
   })
 
-  test('private and public repos accept either cloud lane', () => {
-    expect(admissibleLanesForTrustTier('private')).toEqual([
-      'cloud-gcp',
-      'cloud-shc',
-    ])
-    expect(admissibleLanesForTrustTier('public')).toEqual([
-      'cloud-gcp',
-      'cloud-shc',
-    ])
+  test('private and public repos use the Google Cloud lane', () => {
+    expect(admissibleLanesForTrustTier('private')).toEqual(['cloud-gcp'])
+    expect(admissibleLanesForTrustTier('public')).toEqual(['cloud-gcp'])
   })
 
-  test('a regulated repo requesting cloud-gcp is refused', () => {
+  test('a regulated repo on cloud-gcp is allowed', () => {
     const decision = decidePlacement({ lane: 'cloud-gcp', tier: 'regulated' })
-    expect(decision.allowed).toBe(false)
-    if (!decision.allowed) {
-      expect(decision.admissibleLanes).toEqual(['cloud-shc'])
-      expect(decision.requestedLane).toBe('cloud-gcp')
-    }
-  })
-
-  test('a regulated repo on cloud-shc is allowed', () => {
-    const decision = decidePlacement({ lane: 'cloud-shc', tier: 'regulated' })
     expect(decision.allowed).toBe(true)
     if (decision.allowed) {
-      expect(decision.lane).toBe('cloud-shc')
+      expect(decision.lane).toBe('cloud-gcp')
     }
   })
 })
@@ -357,7 +342,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(over.status).toBe(400)
   })
 
-  test('refuses a regulated repo on cloud-gcp with 403 before any dispatch', async () => {
+  test('dispatches a regulated repo only on cloud-gcp', async () => {
     let launched = false
     const adapter: CloudCodingRuntimeAdapter = {
       ...stubCloudCodingAdapter,
@@ -376,14 +361,8 @@ describe('POST /v1/cloud-coding-sessions', () => {
         baseDeps({ adapter }),
       ),
     )
-    expect(response.status).toBe(403)
-    const body = (await response.json()) as {
-      error: string
-      admissibleLanes: ReadonlyArray<string>
-    }
-    expect(body.error).toBe('lane_not_admissible_for_trust_tier')
-    expect(body.admissibleLanes).toEqual(['cloud-shc'])
-    expect(launched).toBe(false)
+    expect(response.status).toBe(200)
+    expect(launched).toBe(true)
   })
 
   test('rejects caller-supplied user Pylon selectors before admission or placement', async () => {
@@ -566,12 +545,12 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.receipt_ref).toBeNull()
   })
 
-  test('honors an explicit cloud-shc lane on a regulated repo', async () => {
+  test('honors an explicit cloud-gcp lane on a regulated repo', async () => {
     const response = await run(
       handleCloudCodingSessionLaunch(
         launchRequest({
           ...validBody,
-          lane: 'cloud-shc',
+          lane: 'cloud-gcp',
           repoTrustTier: 'regulated',
         }),
         baseDeps(),
@@ -579,7 +558,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     )
     expect(response.status).toBe(200)
     const body = (await response.json()) as Record<string, unknown>
-    expect(body.lane).toBe('cloud-shc')
+    expect(body.lane).toBe('cloud-gcp')
     expect(body.repo_trust_tier).toBe('regulated')
   })
 
@@ -651,7 +630,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.agent_computer_ref).toBe('agent-computer.run_gce_1')
   })
 
-  test('Seam A: forwards work_context_b64 on cloud-gcp when the option is present', async () => {
+  test('Seam A: never forwards work_context_b64 on cloud-gcp', async () => {
     let placementBody: Record<string, unknown> | undefined
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',
@@ -695,7 +674,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
         sessionId: 'ccs_fixed',
       }),
     )
-    expect(placementBody?.work_context_b64).toBe('eyJhIjoxfQ==')
+    expect('work_context_b64' in (placementBody ?? {})).toBe(false)
   })
 
   test('Seam A: accepts the real daemon shape (workContextRef only in the cloud.gce.provisioning event, none on binding)', async () => {
@@ -836,7 +815,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     )
   })
 
-  test('Seam A: does NOT forward work_context_b64 on the cloud-shc lane', async () => {
+  test('Seam A: does NOT forward work_context_b64 on the cloud-gcp lane', async () => {
     let placementBody: Record<string, unknown> | undefined
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',
@@ -847,8 +826,8 @@ describe('POST /v1/cloud-coding-sessions', () => {
           agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
             externalRunId: 'run_shc_1',
-            lane: 'cloud-shc',
-            providerLane: 'shc',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
             runnerId: 'runner_shc_1',
             workContextRef: 'work-context.agent-computer.wc1',
           },
@@ -861,10 +840,10 @@ describe('POST /v1/cloud-coding-sessions', () => {
     await Effect.runPromise(
       adapter.launch({
         accountRef: 'agent:test-user',
-        lane: 'cloud-shc',
+        lane: 'cloud-gcp',
         request: {
           adapter: 'codex',
-          lane: 'cloud-shc',
+          lane: 'cloud-gcp',
           objective: 'seam-a',
           options: {
             authGrantRef: 'grant.public.test',

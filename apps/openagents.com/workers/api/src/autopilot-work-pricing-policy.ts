@@ -36,13 +36,13 @@ export const autopilotWorkPricingPolicy = {
     },
     {
       buyerDebitRequired: true,
-      laneRef: 'lane.autopilot_work.openagents_shc_fallback',
+      laneRef: 'lane.autopilot_work.google_cloud_fallback',
       meterKind: 'usd_credits',
       reasonRefs: [
         'pricing.autopilot_work.hosted_runner_metered',
         'placement.reason.your_pylon_unavailable_hosted_metered',
       ],
-      runnerKind: 'openagents_shc',
+      runnerKind: 'google_cloud',
       unitAmountCents: 1,
     },
     {

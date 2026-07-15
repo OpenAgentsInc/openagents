@@ -168,9 +168,9 @@ describe('programmatic agent registration', () => {
     const registration = await createProgrammaticAgentRegistration(
       store,
       {
-        displayName: 'SHC Runner',
-        slug: 'shc-runner',
-        externalId: 'shc-runner-1',
+        displayName: 'Google Cloud Runner',
+        slug: 'gcp-runner',
+        externalId: 'gcp-runner-1',
         metadata: { runtime: 'opencode' },
       },
       {
@@ -184,7 +184,7 @@ describe('programmatic agent registration', () => {
     expect(record?.user).toEqual({
       id: 'user_user-1',
       kind: 'agent',
-      displayName: 'SHC Runner',
+      displayName: 'Google Cloud Runner',
       primaryEmail: null,
       avatarUrl: null,
       status: 'active',
@@ -194,12 +194,12 @@ describe('programmatic agent registration', () => {
     expect(record?.identity).toMatchObject({
       id: 'auth_identity_identity-1',
       provider: 'agent_programmatic',
-      providerSubject: 'shc-runner-1',
+      providerSubject: 'gcp-runner-1',
       userId: 'user_user-1',
     })
     expect(record?.profile).toMatchObject({
       userId: 'user_user-1',
-      slug: 'shc-runner',
+      slug: 'gcp-runner',
       metadataJson: '{"runtime":"opencode"}',
     })
     expect(record?.credential.id).toBe('agent_credential_credential-1')

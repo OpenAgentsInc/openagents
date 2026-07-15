@@ -2,7 +2,10 @@
 //! WebSocket, and playback queues stay in this process; callers receive only
 //! bounded lifecycle events.
 
-use crate::{decode_media_header, MediaHeader, VoiceIdentity, AUDIO_PROTOCOL_VERSION, MAX_AUDIO_PAYLOAD_BYTES};
+use crate::{
+    decode_media_header, MediaHeader, VoiceIdentity, AUDIO_PROTOCOL_VERSION,
+    MAX_AUDIO_PAYLOAD_BYTES,
+};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use serde_json::{json, Value};
@@ -23,10 +26,28 @@ use tungstenite::{
     WebSocket,
 };
 
-fn connect_bounded_ipv4(request: tungstenite::http::Request<()>) -> Result<(WebSocket<MaybeTlsStream<TcpStream>>, tungstenite::handshake::client::Response), String> {
+fn connect_bounded_ipv4(
+    request: tungstenite::http::Request<()>,
+) -> Result<
+    (
+        WebSocket<MaybeTlsStream<TcpStream>>,
+        tungstenite::handshake::client::Response,
+    ),
+    String,
+> {
     let host = request.uri().host().ok_or("gateway_host_invalid")?;
-    let port = request.uri().port_u16().unwrap_or(if request.uri().scheme_str() == Some("wss") { 443 } else { 80 });
-    let addresses = (host, port).to_socket_addrs().map_err(|_| "gateway_dns_failed")?.filter(|address| address.is_ipv4());
+    let port = request
+        .uri()
+        .port_u16()
+        .unwrap_or(if request.uri().scheme_str() == Some("wss") {
+            443
+        } else {
+            80
+        });
+    let addresses = (host, port)
+        .to_socket_addrs()
+        .map_err(|_| "gateway_dns_failed")?
+        .filter(|address| address.is_ipv4());
     for address in addresses {
         if let Ok(stream) = TcpStream::connect_timeout(&address, Duration::from_secs(3)) {
             let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
@@ -78,7 +99,10 @@ pub enum NativeTransportEvent {
         first_chunk: bool,
         underrun_count: u64,
     },
-    PlaybackCanceled { speech_ref: String, outcome_ref: String },
+    PlaybackCanceled {
+        speech_ref: String,
+        outcome_ref: String,
+    },
     Transcript {
         utterance_ref: String,
         text: String,
@@ -389,8 +413,12 @@ fn enqueue_tts(
     let Ok(header) = serde_json::from_slice::<Value>(&frame[8..8 + header_len]) else {
         return None;
     };
-    let Ok(MediaHeader::ServerTts(header)) = decode_media_header(&header) else { return None; };
-    if &header.identity != identity || active_speech_ref != Some(header.speech_ref.as_str()) { return None; }
+    let Ok(MediaHeader::ServerTts(header)) = decode_media_header(&header) else {
+        return None;
+    };
+    if &header.identity != identity || active_speech_ref != Some(header.speech_ref.as_str()) {
+        return None;
+    }
     let payload = &frame[8 + header_len..];
     if payload.len() > MAX_AUDIO_PAYLOAD_BYTES as usize || !payload.len().is_multiple_of(2) {
         return None;
@@ -415,11 +443,7 @@ fn enqueue_tts(
         }
         queue.push_back(sample as f32 / i16::MAX as f32);
     }
-    Some((
-        header.sequence,
-        payload.len(),
-        header.speech_ref,
-    ))
+    Some((header.sequence, payload.len(), header.speech_ref))
 }
 
 fn cancel_playback(
@@ -429,9 +453,20 @@ fn cancel_playback(
     queue: &Arc<Mutex<VecDeque<f32>>>,
     events: &Sender<NativeTransportEvent>,
 ) -> bool {
-    if speech_ref.is_empty() || speech_ref.len() > 256 || outcome_ref.is_empty() || outcome_ref.len() > 256 || active_speech_ref.as_deref() != Some(speech_ref) { return false; }
-    queue.lock().unwrap().clear(); *active_speech_ref = None;
-    let _ = events.try_send(NativeTransportEvent::PlaybackCanceled { speech_ref: speech_ref.to_owned(), outcome_ref: outcome_ref.to_owned() });
+    if speech_ref.is_empty()
+        || speech_ref.len() > 256
+        || outcome_ref.is_empty()
+        || outcome_ref.len() > 256
+        || active_speech_ref.as_deref() != Some(speech_ref)
+    {
+        return false;
+    }
+    queue.lock().unwrap().clear();
+    *active_speech_ref = None;
+    let _ = events.try_send(NativeTransportEvent::PlaybackCanceled {
+        speech_ref: speech_ref.to_owned(),
+        outcome_ref: outcome_ref.to_owned(),
+    });
     true
 }
 
@@ -522,9 +557,12 @@ fn worker_once(
             match socket.read() {
                 Ok(Message::Text(text)) => {
                     if let Ok(frame) = serde_json::from_str::<Value>(&text) {
-                        let bound_identity = frame.get("identity").cloned()
+                        let bound_identity = frame
+                            .get("identity")
+                            .cloned()
                             .and_then(|value| serde_json::from_value::<VoiceIdentity>(value).ok());
-                        if frame.get("schema").and_then(Value::as_str) != Some(AUDIO_PROTOCOL_VERSION)
+                        if frame.get("schema").and_then(Value::as_str)
+                            != Some(AUDIO_PROTOCOL_VERSION)
                             || bound_identity.as_ref() != Some(identity)
                         {
                             continue;
@@ -545,8 +583,14 @@ fn worker_once(
                             }
                         } else if matches!(tag, Some("transcript_interim" | "transcript_final")) {
                             if let (Some(utterance_ref), Some(text)) = (
-                                frame.get("utteranceRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
-                                frame.get("text").and_then(Value::as_str).filter(|value| value.len() <= 16_384),
+                                frame
+                                    .get("utteranceRef")
+                                    .and_then(Value::as_str)
+                                    .filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame
+                                    .get("text")
+                                    .and_then(Value::as_str)
+                                    .filter(|value| value.len() <= 16_384),
                             ) {
                                 let _ = events.try_send(NativeTransportEvent::Transcript {
                                     utterance_ref: utterance_ref.to_owned(),
@@ -556,47 +600,114 @@ fn worker_once(
                             }
                         } else if matches!(tag, Some("speech_begin" | "speech_end")) {
                             let _ = events.try_send(NativeTransportEvent::Activity {
-                                activity: if tag == Some("speech_begin") { "speech_detected" } else { "listening" }.to_owned(),
+                                activity: if tag == Some("speech_begin") {
+                                    "speech_detected"
+                                } else {
+                                    "listening"
+                                }
+                                .to_owned(),
                             });
                         } else if tag == Some("command_proposal") {
-                            if let (Some(proposal_ref), Some(utterance_ref), Some(turn_ref), Some(target_ref), Some(command_id), Some(expires_at_ms)) = (
-                                frame.get("proposalRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
-                                frame.get("utteranceRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
-                                frame.get("turnRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
-                                frame.get("targetRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
-                                frame.get("commandId").and_then(Value::as_str).filter(|value| matches!(*value, "chat.open" | "workspace.files" | "workspace.home" | "workspace.review" | "conversation.interrupt" | "conversation.followup")),
+                            if let (
+                                Some(proposal_ref),
+                                Some(utterance_ref),
+                                Some(turn_ref),
+                                Some(target_ref),
+                                Some(command_id),
+                                Some(expires_at_ms),
+                            ) = (
+                                frame
+                                    .get("proposalRef")
+                                    .and_then(Value::as_str)
+                                    .filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame
+                                    .get("utteranceRef")
+                                    .and_then(Value::as_str)
+                                    .filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame
+                                    .get("turnRef")
+                                    .and_then(Value::as_str)
+                                    .filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame
+                                    .get("targetRef")
+                                    .and_then(Value::as_str)
+                                    .filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame
+                                    .get("commandId")
+                                    .and_then(Value::as_str)
+                                    .filter(|value| {
+                                        matches!(
+                                            *value,
+                                            "chat.open"
+                                                | "workspace.files"
+                                                | "workspace.home"
+                                                | "workspace.review"
+                                                | "conversation.interrupt"
+                                                | "conversation.followup"
+                                        )
+                                    }),
                                 frame.get("expiresAtMs").and_then(Value::as_u64),
                             ) {
                                 let _ = events.try_send(NativeTransportEvent::CommandProposal {
-                                    proposal_ref: proposal_ref.to_owned(), utterance_ref: utterance_ref.to_owned(),
-                                    turn_ref: turn_ref.to_owned(), target_ref: target_ref.to_owned(),
-                                    command_id: command_id.to_owned(), expires_at_ms,
+                                    proposal_ref: proposal_ref.to_owned(),
+                                    utterance_ref: utterance_ref.to_owned(),
+                                    turn_ref: turn_ref.to_owned(),
+                                    target_ref: target_ref.to_owned(),
+                                    command_id: command_id.to_owned(),
+                                    expires_at_ms,
                                 });
                             }
                         } else if tag == Some("tts_state") {
-                            if let (Some(speech_ref), Some(state)) = (frame.get("speechRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256), frame.get("state").and_then(Value::as_str)) {
+                            if let (Some(speech_ref), Some(state)) = (
+                                frame
+                                    .get("speechRef")
+                                    .and_then(Value::as_str)
+                                    .filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame.get("state").and_then(Value::as_str),
+                            ) {
                                 if state == "started" {
                                     playback.lock().unwrap().clear();
                                     *active_speech_ref = Some(speech_ref.to_owned());
-                                    *playback_chunks = 0; *underrun_count = 0;
-                                } else if state == "canceled" && active_speech_ref.as_deref() == Some(speech_ref) {
-                                    playback.lock().unwrap().clear(); *active_speech_ref = None;
+                                    *playback_chunks = 0;
+                                    *underrun_count = 0;
+                                } else if state == "canceled"
+                                    && active_speech_ref.as_deref() == Some(speech_ref)
+                                {
+                                    playback.lock().unwrap().clear();
+                                    *active_speech_ref = None;
                                 }
                             }
                         } else if tag == Some("playback_cancel") {
-                            if let (Some(speech_ref), Some(outcome_ref)) = (frame.get("speechRef").and_then(Value::as_str), frame.get("outcomeRef").and_then(Value::as_str)) {
-                                let _ = cancel_playback(speech_ref, outcome_ref, active_speech_ref, playback, events);
+                            if let (Some(speech_ref), Some(outcome_ref)) = (
+                                frame.get("speechRef").and_then(Value::as_str),
+                                frame.get("outcomeRef").and_then(Value::as_str),
+                            ) {
+                                let _ = cancel_playback(
+                                    speech_ref,
+                                    outcome_ref,
+                                    active_speech_ref,
+                                    playback,
+                                    events,
+                                );
                             }
                         }
                     }
                 }
                 Ok(Message::Binary(frame)) => {
                     let was_empty = playback.lock().unwrap().is_empty();
-                    if let Some((sequence, payload_length, speech_ref)) =
-                        enqueue_tts(&frame, identity, active_speech_ref.as_deref(), playback, playback_rate, playback_resampler)
-                    {
-                        if *playback_chunks > 0 && was_empty { *underrun_count += 1; }
-                        let first_chunk = *playback_chunks == 0; *playback_chunks += 1;
+                    if let Some((sequence, payload_length, speech_ref)) = enqueue_tts(
+                        &frame,
+                        identity,
+                        active_speech_ref.as_deref(),
+                        playback,
+                        playback_rate,
+                        playback_resampler,
+                    ) {
+                        if *playback_chunks > 0 && was_empty {
+                            *underrun_count += 1;
+                        }
+                        let first_chunk = *playback_chunks == 0;
+                        *playback_chunks += 1;
                         let _ = events.try_send(NativeTransportEvent::Playback {
                             generation: identity.generation,
                             sequence,
@@ -852,12 +963,19 @@ mod tests {
                 } => {
                     saw_ack = true;
                 }
-                NativeTransportEvent::Transcript { utterance_ref, text, final_result } => {
-                    saw_transcript = utterance_ref == "utterance.1" && text == "hello" && final_result;
+                NativeTransportEvent::Transcript {
+                    utterance_ref,
+                    text,
+                    final_result,
+                } => {
+                    saw_transcript =
+                        utterance_ref == "utterance.1" && text == "hello" && final_result;
                 }
                 _ => {}
             }
-            if saw_ack && saw_transcript { break; }
+            if saw_ack && saw_transcript {
+                break;
+            }
         }
         stop.store(true, Ordering::Release);
         client.join().unwrap();
@@ -866,7 +984,13 @@ mod tests {
     }
     #[test]
     fn validated_tts_pcm_is_resampled_into_bounded_playback_queue() {
-        let identity = VoiceIdentity { owner_ref: "o".into(), device_ref: "d".into(), thread_ref: "t".into(), session_ref: "s".into(), generation: 9 };
+        let identity = VoiceIdentity {
+            owner_ref: "o".into(),
+            device_ref: "d".into(),
+            thread_ref: "t".into(),
+            session_ref: "s".into(),
+            generation: 9,
+        };
         let payload: Vec<u8> = [0i16, i16::MAX, i16::MIN, 1000]
             .into_iter()
             .flat_map(i16::to_le_bytes)
@@ -880,12 +1004,42 @@ mod tests {
         frame.extend_from_slice(&header);
         frame.extend_from_slice(&payload);
         let queue = Arc::new(Mutex::new(VecDeque::new()));
-        assert_eq!(enqueue_tts(&frame, &identity, Some("speech.stale"), &queue, 48_000, &mut MonoResampler::default()), None);
-        let stale_identity = VoiceIdentity { generation: 8, ..identity.clone() };
-        assert_eq!(enqueue_tts(&frame, &stale_identity, Some("speech.1"), &queue, 48_000, &mut MonoResampler::default()), None);
+        assert_eq!(
+            enqueue_tts(
+                &frame,
+                &identity,
+                Some("speech.stale"),
+                &queue,
+                48_000,
+                &mut MonoResampler::default()
+            ),
+            None
+        );
+        let stale_identity = VoiceIdentity {
+            generation: 8,
+            ..identity.clone()
+        };
+        assert_eq!(
+            enqueue_tts(
+                &frame,
+                &stale_identity,
+                Some("speech.1"),
+                &queue,
+                48_000,
+                &mut MonoResampler::default()
+            ),
+            None
+        );
         assert!(queue.lock().unwrap().is_empty());
         assert_eq!(
-            enqueue_tts(&frame, &identity, Some("speech.1"), &queue, 48_000, &mut MonoResampler::default()),
+            enqueue_tts(
+                &frame,
+                &identity,
+                Some("speech.1"),
+                &queue,
+                48_000,
+                &mut MonoResampler::default()
+            ),
             Some((0, payload.len(), "speech.1".into()))
         );
         assert_eq!(queue.lock().unwrap().len(), 8);
@@ -893,22 +1047,71 @@ mod tests {
         *corrupt.last_mut().unwrap() ^= 1;
         let before = queue.lock().unwrap().len();
         assert_eq!(
-            enqueue_tts(&corrupt, &identity, Some("speech.1"), &queue, 48_000, &mut MonoResampler::default()),
+            enqueue_tts(
+                &corrupt,
+                &identity,
+                Some("speech.1"),
+                &queue,
+                48_000,
+                &mut MonoResampler::default()
+            ),
             None
         );
         assert_eq!(queue.lock().unwrap().len(), before);
     }
     #[test]
-    fn qualified_barge_in_flushes_bounded_playback_promptly_and_stale_cancel_cannot_touch_new_speech() {
-        let queue = Arc::new(Mutex::new(VecDeque::from(vec![0.5; PLAYBACK_QUEUE_SAMPLES]))); let (events, received) = bounded(32); let mut active = Some("speech.new".to_owned()); let started = std::time::Instant::now();
-        assert!(!cancel_playback("speech.old", "outcome.old", &mut active, &queue, &events));
+    fn qualified_barge_in_flushes_bounded_playback_promptly_and_stale_cancel_cannot_touch_new_speech(
+    ) {
+        let queue = Arc::new(Mutex::new(VecDeque::from(vec![
+            0.5;
+            PLAYBACK_QUEUE_SAMPLES
+        ])));
+        let (events, received) = bounded(32);
+        let mut active = Some("speech.new".to_owned());
+        let started = std::time::Instant::now();
+        assert!(!cancel_playback(
+            "speech.old",
+            "outcome.old",
+            &mut active,
+            &queue,
+            &events
+        ));
         assert_eq!(queue.lock().unwrap().len(), PLAYBACK_QUEUE_SAMPLES);
-        assert!(cancel_playback("speech.new", "outcome.new", &mut active, &queue, &events));
-        assert!(started.elapsed() < Duration::from_millis(750)); assert!(queue.lock().unwrap().is_empty());
-        assert_eq!(received.recv().unwrap(), NativeTransportEvent::PlaybackCanceled { speech_ref: "speech.new".into(), outcome_ref: "outcome.new".into() });
+        assert!(cancel_playback(
+            "speech.new",
+            "outcome.new",
+            &mut active,
+            &queue,
+            &events
+        ));
+        assert!(started.elapsed() < Duration::from_millis(750));
+        assert!(queue.lock().unwrap().is_empty());
+        assert_eq!(
+            received.recv().unwrap(),
+            NativeTransportEvent::PlaybackCanceled {
+                speech_ref: "speech.new".into(),
+                outcome_ref: "outcome.new".into()
+            }
+        );
         let mut samples = Vec::new();
-        for index in 0..20 { queue.lock().unwrap().extend(std::iter::repeat_n(0.5, PLAYBACK_QUEUE_SAMPLES)); active = Some(format!("speech.{index}")); let start = std::time::Instant::now(); assert!(cancel_playback(&format!("speech.{index}"), &format!("outcome.{index}"), &mut active, &queue, &events)); samples.push(start.elapsed()); }
-        samples.sort(); assert!(samples[18] < Duration::from_millis(750));
+        for index in 0..20 {
+            queue
+                .lock()
+                .unwrap()
+                .extend(std::iter::repeat_n(0.5, PLAYBACK_QUEUE_SAMPLES));
+            active = Some(format!("speech.{index}"));
+            let start = std::time::Instant::now();
+            assert!(cancel_playback(
+                &format!("speech.{index}"),
+                &format!("outcome.{index}"),
+                &mut active,
+                &queue,
+                &events
+            ));
+            samples.push(start.elapsed());
+        }
+        samples.sort();
+        assert!(samples[18] < Duration::from_millis(750));
     }
     #[test]
     fn reconnect_is_bounded_to_three_generation_preserving_attempts() {

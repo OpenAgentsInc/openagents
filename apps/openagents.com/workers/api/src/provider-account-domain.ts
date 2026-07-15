@@ -104,7 +104,7 @@ export type ProviderAccountAuthGrantStatus =
   | 'failed'
 
 export type ProviderConnectionAttemptSource =
-  | 'shc_broker'
+  | 'gcp_control_plane'
   | 'worker_device_code'
   | 'manual_placeholder'
   | 'browser_api_key'

@@ -70,7 +70,7 @@ export function buildCloudSessionRequest(input: {
 // ---------------------------------------------------------------------------
 //
 // When a control session is spawned with a cloud lane (`cloud-gcp`,
-// `cloud-shc`, or `auto` resolving to cloud) and a cloud control plane is
+// `cloud-gcp`, or `auto` resolving to cloud) and a cloud control plane is
 // configured, Pylon dispatches the run to the cloud instead of running it
 // locally. The cloud executor:
 //
@@ -78,12 +78,12 @@ export function buildCloudSessionRequest(input: {
 //      resolver (`makeOmegaGrantResolverFromEnv`, #4999) when grant refs are
 //      present, confirming the grant is usable before placing the run.
 //   2. Calls the cloud control plane `POST /v1/placement` to get a RunnerBinding
-//      (GCE primary / SHC secondary) + externalRunId, then drives the run.
+//      (GCE primary / Google Cloud secondary) + externalRunId, then drives the run.
 //   3. Polls the cloud run's `openagents.codex_workroom_event.v1` events and
 //      MAPS them into the same `emit` callback the local executor uses, so the
 //      existing `/sessions/:ref/events` stream is lane-transparent.
 //   4. Records the runner binding/provenance (lane + runner id) so the desktop
-//      "running on Google GCE / SHC" indicator is real, and surfaces artifacts
+//      "running on Google GCE / Google Cloud" indicator is real, and surfaces artifacts
 //      and the resource_usage_receipt ref on the terminal result.
 
 export const CLOUD_PROVIDER_DISPLAY_REF = "session.pylon.cloud.openagents_cloud"
@@ -108,7 +108,7 @@ export type CloudExecutorOptions = {
   // Polling cadence for the events feed.
   pollIntervalMs?: number
   // Optional sink for the resolved runner binding so the session can record
-  // provenance ("running on Google GCE / oa-shc-katy-01").
+  // provenance ("running on Google GCE / oa-gcp-katy-01").
   onBinding?: (sessionRef: string, binding: CloudRunnerBinding) => void
 }
 

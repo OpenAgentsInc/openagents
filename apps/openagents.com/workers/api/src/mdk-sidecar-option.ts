@@ -9,11 +9,9 @@ export const OpenAgentsMdkServiceMode = S.Literals([
 export type OpenAgentsMdkServiceMode = typeof OpenAgentsMdkServiceMode.Type
 
 export const OpenAgentsMdkSidecarRuntime = S.Literals([
-  'cloudflare_vpc_service',
   'gcp_cloud_run',
   'local_operator_only',
   'public_https_tunnel',
-  'shc_node_service',
 ])
 export type OpenAgentsMdkSidecarRuntime =
   typeof OpenAgentsMdkSidecarRuntime.Type
@@ -120,7 +118,7 @@ const docsRefs = [
 const sourceRefs = [
   'source.moneydevkit.mdkd.9ffea5f',
   'source.moneydevkit.mdk_checkout.ff64215',
-  'source.cloudflare.workers_service_bindings_and_vpc_docs',
+  'source.google_cloud.run_private_service_docs',
 ]
 
 const secretBoundaryRefs = [

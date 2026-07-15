@@ -8,14 +8,9 @@
     // is `noEmit`, so allowing `.ts` import specifiers here only affects
     // typechecking of that package's source, not any emitted output.
     "allowImportingTsExtensions": true,
-    // The Worker graph owns the Cloudflare ambient environment. Bun/Pylon
-    // integration tests use their dedicated project instead of widening every
-    // Worker source file to a second runtime's globals.
-    "types": ["@cloudflare/workers-types"]
+    "types": ["openagents-platform"]
   },
-  "include": ["src/**/*", "vitest.config.ts", "wrangler.jsonc"],
-  // CFG-9 (#8524): the Cloud Run entry layer typechecks under Node types via
-  // tsconfig.cloudrun.json (script `typecheck:cloudrun`), not workers-types.
+  "include": ["src/**/*", "vitest.config.ts"],
   "exclude": [
     "src/cloudrun/**",
     "src/pylon-api-routes.test.ts"

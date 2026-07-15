@@ -97,33 +97,27 @@ describe('makeKhalaSyncLiveHubNamespace', () => {
 })
 
 describe('resolveKhalaSyncHubNamespace', () => {
-  const doBinding = { idFromName: () => 'do', get: () => ({ fetch: async () => Response.json({}) }) }
-
-  test('prefers the LiveHub adapter when URL and token are BOTH set', () => {
+  test('uses the Google Cloud LiveHub adapter when URL and token are both set', () => {
     const namespace = resolveKhalaSyncHubNamespace({
       KHALA_SYNC_LIVE_HUB_URL: 'https://live-hub.example.run.app',
       KHALA_SYNC_LIVE_HUB_TOKEN: 'service-token',
-      KHALA_SYNC_HUB: doBinding,
     })
     expect(namespace).toBeDefined()
-    // The LiveHub adapter's idFromName is the identity on scopes — the DO
-    // fake above returns 'do', so this distinguishes the two.
     expect(namespace!.idFromName('scope.thread.t1')).toBe('scope.thread.t1')
   })
 
-  test('falls back to the DO binding when either half is missing/blank', () => {
+  test('fails closed when either LiveHub configuration half is missing', () => {
     for (const env of [
-      { KHALA_SYNC_HUB: doBinding },
-      { KHALA_SYNC_LIVE_HUB_URL: 'https://x', KHALA_SYNC_HUB: doBinding },
-      { KHALA_SYNC_LIVE_HUB_TOKEN: 't', KHALA_SYNC_HUB: doBinding },
+      {},
+      { KHALA_SYNC_LIVE_HUB_URL: 'https://x' },
+      { KHALA_SYNC_LIVE_HUB_TOKEN: 't' },
       {
         KHALA_SYNC_LIVE_HUB_URL: '  ',
         KHALA_SYNC_LIVE_HUB_TOKEN: 't',
-        KHALA_SYNC_HUB: doBinding,
       },
     ]) {
       const namespace = resolveKhalaSyncHubNamespace(env)
-      expect(namespace).toBe(doBinding as never)
+      expect(namespace).toBeUndefined()
     }
   })
 

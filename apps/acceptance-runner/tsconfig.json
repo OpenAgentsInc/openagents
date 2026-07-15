@@ -4,11 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    // Node types for the runtime; @cloudflare/workers-types supplies the ambient D1/Queue/
-    // R2 globals referenced by the bridged worker harness source (the runner never CALLS
-    // those D1 paths — they are dead branches here — but `tsc` follows the imports, so
-    // the ambient types must resolve for a clean typecheck).
-    "types": ["node", "vite-plus-matchers", "@cloudflare/workers-types"],
+    "types": ["node", "vite-plus-matchers", "openagents-platform"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,

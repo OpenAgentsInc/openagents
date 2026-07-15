@@ -51,23 +51,6 @@ describe('OpenAgentsWorkerConfig', () => {
       webhookBindingRef: null,
       webhookSource: 'dashboard_standard_webhooks',
     })
-    expect(config.runnerBackends).toEqual({
-      automaticFailoverEnabled: false,
-      cloudflareContainer: {
-        allowedWorkloadTrusts: ['low', 'medium'],
-        binding: {},
-        configured: false,
-        enabled: false,
-        policyApproved: false,
-        stagingSmokePassed: false,
-      },
-      gcloud: {
-        referenceEnabled: false,
-        sensitiveApproved: false,
-      },
-      policy: 'shc_primary_only',
-    })
-    expect(config.shc.dispatchMode).toBe('unconfigured')
   })
 
   test('decodes full env values and redacts secrets', async () => {
@@ -95,27 +78,6 @@ describe('OpenAgentsWorkerConfig', () => {
         RESEND_REPLY_TO_EMAIL: 'support@openagents.com',
         CRM_RESEND_FROM_EMAIL: 'Sarah <sarah@openagents.com>',
         CRM_RESEND_REPLY_TO_EMAIL: 'sarah@openagents.com',
-        RUNNER_AUTOMATIC_FAILOVER_ENABLED: 'false',
-        RUNNER_BACKEND_POLICY:
-          'shc_primary_cloudflare_container_backup_gcloud_reference',
-        RUNNER_CLOUDFLARE_CONTAINER_ALLOWED_TRUSTS: 'low,medium',
-        RUNNER_CLOUDFLARE_CONTAINER_CLASS_NAME: 'OpenAgentsSiteRunnerContainer',
-        RUNNER_CLOUDFLARE_CONTAINER_CONFIGURED: 'true',
-        RUNNER_CLOUDFLARE_CONTAINER_DURABLE_OBJECT_BINDING:
-          'SITE_RUNNER_CONTAINER',
-        RUNNER_CLOUDFLARE_CONTAINER_ENABLED: 'true',
-        RUNNER_CLOUDFLARE_CONTAINER_IMAGE_REF:
-          './containers/site-runner/Dockerfile',
-        RUNNER_CLOUDFLARE_CONTAINER_INSTANCE_TYPE: 'lite',
-        RUNNER_CLOUDFLARE_CONTAINER_MAX_INSTANCES: '2',
-        RUNNER_CLOUDFLARE_CONTAINER_POLICY_APPROVED: 'true',
-        RUNNER_CLOUDFLARE_CONTAINER_STAGING_SMOKE: 'true',
-        RUNNER_GCLOUD_REFERENCE_ENABLED: 'true',
-        RUNNER_GCLOUD_SENSITIVE_APPROVED: 'true',
-        SHC_CONTROL_API_BEARER_TOKEN: 'shc-token',
-        SHC_CONTROL_API_URL: 'https://shc.openagents.com/v1',
-        SHC_DISPATCH_MODE: 'live',
-        SHC_RUNNER_CALLBACK_TOKEN: 'runner-token',
       }),
     )
 
@@ -154,32 +116,6 @@ describe('OpenAgentsWorkerConfig', () => {
     expect(config.mdk.checkout.webhookSecret).toBeUndefined()
     expect(config.mdk.mnemonic).toBeUndefined()
     expect(config.mdk.walletMnemonic).toBeUndefined()
-    expect(config.runnerBackends).toEqual({
-      automaticFailoverEnabled: false,
-      cloudflareContainer: {
-        allowedWorkloadTrusts: ['low', 'medium'],
-        binding: {
-          className: 'OpenAgentsSiteRunnerContainer',
-          durableObjectBinding: 'SITE_RUNNER_CONTAINER',
-          imageRef: './containers/site-runner/Dockerfile',
-          instanceType: 'lite',
-          maxInstances: 2,
-        },
-        configured: true,
-        enabled: true,
-        policyApproved: true,
-        stagingSmokePassed: true,
-      },
-      gcloud: {
-        referenceEnabled: true,
-        sensitiveApproved: true,
-      },
-      policy: 'shc_primary_cloudflare_container_backup_gcloud_reference',
-    })
-    expect(redactedValue(config.shc.controlApiBearerToken)).toBe('shc-token')
-    expect(config.shc.controlApiUrl).toBe('https://shc.openagents.com/v1')
-    expect(config.shc.dispatchMode).toBe('live')
-    expect(redactedValue(config.shc.runnerCallbackToken)).toBe('runner-token')
   })
 
   test('fails when required config is missing', async () => {
@@ -209,31 +145,6 @@ describe('OpenAgentsWorkerConfig', () => {
       field: 'OPENAGENTS_APP_URL',
     })
 
-    await expect(
-      Effect.runPromise(
-        decodeOpenAgentsWorkerConfig({
-          ...minimalEnv(),
-          SHC_CONTROL_API_URL: 'bad shc url',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      _tag: 'OpenAgentsWorkerConfigError',
-      field: 'SHC_CONTROL_API_URL',
-    })
-  })
-
-  test('fails when live SHC dispatch is missing required settings', async () => {
-    await expect(
-      Effect.runPromise(
-        decodeOpenAgentsWorkerConfig({
-          ...minimalEnv(),
-          SHC_DISPATCH_MODE: 'live',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      _tag: 'OpenAgentsWorkerConfigError',
-      field: 'SHC_CONTROL_API_URL',
-    })
   })
 
   test('fails on malformed secret and email config values', async () => {
@@ -286,70 +197,6 @@ describe('OpenAgentsWorkerConfig', () => {
     ).rejects.toMatchObject({
       _tag: 'OpenAgentsWorkerConfigError',
       field: 'CRM_RESEND_REPLY_TO_EMAIL',
-    })
-  })
-
-  test('fails on malformed SHC dispatch mode', async () => {
-    await expect(
-      Effect.runPromise(
-        decodeOpenAgentsWorkerConfig({
-          ...minimalEnv(),
-          SHC_DISPATCH_MODE: 'dry-run',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      _tag: 'OpenAgentsWorkerConfigError',
-      field: 'SHC_DISPATCH_MODE',
-    })
-  })
-
-  test('fails on malformed runner backend config', async () => {
-    await expect(
-      Effect.runPromise(
-        decodeOpenAgentsWorkerConfig({
-          ...minimalEnv(),
-          RUNNER_BACKEND_POLICY: 'containers_first',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      _tag: 'OpenAgentsWorkerConfigError',
-      field: 'RUNNER_BACKEND_POLICY',
-    })
-
-    await expect(
-      Effect.runPromise(
-        decodeOpenAgentsWorkerConfig({
-          ...minimalEnv(),
-          RUNNER_CLOUDFLARE_CONTAINER_ENABLED: 'maybe',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      _tag: 'OpenAgentsWorkerConfigError',
-      field: 'RUNNER_CLOUDFLARE_CONTAINER_ENABLED',
-    })
-
-    await expect(
-      Effect.runPromise(
-        decodeOpenAgentsWorkerConfig({
-          ...minimalEnv(),
-          RUNNER_CLOUDFLARE_CONTAINER_ALLOWED_TRUSTS: 'low,critical',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      _tag: 'OpenAgentsWorkerConfigError',
-      field: 'RUNNER_CLOUDFLARE_CONTAINER_ALLOWED_TRUSTS',
-    })
-
-    await expect(
-      Effect.runPromise(
-        decodeOpenAgentsWorkerConfig({
-          ...minimalEnv(),
-          RUNNER_CLOUDFLARE_CONTAINER_INSTANCE_TYPE: 'huge',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      _tag: 'OpenAgentsWorkerConfigError',
-      field: 'RUNNER_CLOUDFLARE_CONTAINER_INSTANCE_TYPE',
     })
   })
 

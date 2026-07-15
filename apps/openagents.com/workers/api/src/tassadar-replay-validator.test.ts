@@ -35,7 +35,7 @@ describe('tassadar replay validator (worker as separate device)', () => {
     })
     expect(verdict.outcome).toBe('verified')
     expect(verdict.replayedTraceDigest).toBe(fixture.expectedTraceDigest)
-    expect(verdict.validatorDeviceRef).toBe('device.cloudflare_worker.openagents_api')
+    expect(verdict.validatorDeviceRef).toBe('device.gcp_cloud_run.openagents_api')
     expect(verdict.halted).toBe(true)
   })
 

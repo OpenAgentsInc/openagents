@@ -21,7 +21,7 @@ use openagents_cloud_contract::{
     ResourceUsageReceipt, RunResourceUsage, RunnerBinding, TokenCountSource, TrainingRetentionMode,
     TrainingRunAssignment, VirtualizationFacts, CODEX_AUTH_GRANT_VERSION,
     CODEX_WORKROOM_ASSIGNMENT_VERSION, GCE_EPHEMERAL_CAPACITY_CLASS_ID,
-    RESOURCE_USAGE_RECEIPT_VERSION, SHC_FALLBACK_RUNNER_ID,
+    RESOURCE_USAGE_RECEIPT_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -62,22 +62,11 @@ struct Config {
     /// Placement policy: whether the GCE primary lane is currently selectable
     /// (cloud#86/#88). Defaults to true so owner sessions land on GCE by
     /// default; full GCE provisioning/warm-pool is deferred to the density
-    /// phase. Set OA_CODEX_PLACEMENT_GCE_AVAILABLE=false to force SHC.
+    /// phase. Setting OA_CODEX_PLACEMENT_GCE_AVAILABLE=false fails placement
+    /// closed instead of routing to another provider.
     placement_gce_available: bool,
-    /// SHC secondary/fallback runner id; defaults to oa-shc-katy-01.
-    placement_shc_runner_id: String,
-    /// CND-042: whether `Auto` placement compares lanes on measured
-    /// cost-plus-10% instead of using the policy-driven Google-first default.
-    /// Default true per the CND-042 report; set
-    /// OA_CODEX_PLACEMENT_COST_DRIVEN=false to restore policy-driven Google-first.
-    /// Even when true, GCE wins ties/near-ties and SHC is chosen only when it is
-    /// materially cheaper AND `placement_shc_pilot_expand` is set.
+    /// Whether `Auto` placement records Google Cloud cost-plus-10% accounting.
     placement_cost_driven: bool,
-    /// CND-042: whether the SHC pilot recommendation is "expand". The report
-    /// recommends HOLD, so this defaults false: SHC is never promoted on cost
-    /// alone. Set OA_CODEX_PLACEMENT_SHC_PILOT_EXPAND=true only after a real SHC
-    /// invoice + metered GCE receipts justify expansion.
-    placement_shc_pilot_expand: bool,
     /// Which GCE provisioner backs the `cloud-gcp` lane: `fake` (default,
     /// dry-run, no GCP calls) or `live` (gated behind ADC + raw project id). Set
     /// OA_CODEX_GCE_PROVISIONER=live to attempt real provisioning. The live path
@@ -146,7 +135,6 @@ fn parse_compute_lane(value: &str) -> Option<ComputeLane> {
         "auto" => Some(ComputeLane::Auto),
         "local" => Some(ComputeLane::Local),
         "cloud-gcp" | "cloud_gcp" | "gcp" | "gce" => Some(ComputeLane::CloudGcp),
-        "cloud-shc" | "cloud_shc" | "shc" => Some(ComputeLane::CloudShc),
         _ => None,
     }
 }
@@ -203,7 +191,7 @@ struct ControlRequest {
     goal: String,
     /// Optional lane-agnostic selector (cloud#86). When set on a run
     /// assignment, the daemon resolves the runner/lane via placement policy
-    /// (GCE primary, SHC secondary) instead of trusting a caller-supplied
+    /// (Google Cloud only) instead of trusting a caller-supplied
     /// `runner_id`.
     lane: Option<ComputeLane>,
     /// Optional redacted owner ref for per-owner quota evaluation.
@@ -538,20 +526,12 @@ impl Config {
                     !(normalized == "0" || normalized == "false" || normalized == "no")
                 })
                 .unwrap_or(true),
-            placement_shc_runner_id: optional_env("OA_CODEX_PLACEMENT_SHC_RUNNER_ID")
-                .unwrap_or_else(|| SHC_FALLBACK_RUNNER_ID.to_string()),
             placement_cost_driven: optional_env("OA_CODEX_PLACEMENT_COST_DRIVEN")
                 .map(|value| {
                     let normalized = value.to_ascii_lowercase();
                     !(normalized == "0" || normalized == "false" || normalized == "no")
                 })
                 .unwrap_or(true),
-            placement_shc_pilot_expand: optional_env("OA_CODEX_PLACEMENT_SHC_PILOT_EXPAND")
-                .map(|value| {
-                    let normalized = value.to_ascii_lowercase();
-                    normalized == "1" || normalized == "true" || normalized == "yes"
-                })
-                .unwrap_or(false),
             gce_provisioner_kind: ProvisionerKind::from_env_value(
                 optional_env("OA_CODEX_GCE_PROVISIONER").as_deref(),
             ),
@@ -853,10 +833,16 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
         "/v1/portable-agent-computers/checkpoints/export" => {
             if !request.body.is_empty() {
                 request.body.fill(0);
-                return write_invalid_request(&mut stream, "checkpoint export requires an empty body".to_string());
+                return write_invalid_request(
+                    &mut stream,
+                    "checkpoint export requires an empty body".to_string(),
+                );
             }
             let required = |name: &str| {
-                request.header(name).map(str::to_string).ok_or_else(|| format!("missing {name}"))
+                request
+                    .header(name)
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("missing {name}"))
             };
             let export_request = portable_agent_computer::PortableCheckpointExportRequest {
                 operation_ref: required("x-oa-operation-ref")?,
@@ -864,11 +850,14 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
                 target_ref: required("x-oa-target-ref")?,
                 session_ref: required("x-oa-session-ref")?,
                 attachment_ref: required("x-oa-attachment-ref")?,
-                generation: required("x-oa-attachment-generation")?.parse()
+                generation: required("x-oa-attachment-generation")?
+                    .parse()
                     .map_err(|_| "invalid attachment generation".to_string())?,
                 checkpoint_ref: required("x-oa-checkpoint-ref")?,
             };
-            let _operation_guard = config.portable_agent_computer_lock.lock()
+            let _operation_guard = config
+                .portable_agent_computer_lock
+                .lock()
                 .map_err(|_| "portable Agent Computer operation lock was poisoned".to_string())?;
             match portable_agent_computer::export_checkpoint(
                 &config.state_root,
@@ -1575,22 +1564,17 @@ fn assignment_repo_ref(request: &ControlRequest) -> String {
 }
 
 /// Resolve a runner binding for a lane-agnostic assignment using fleet
-/// placement policy (cloud#86/#88). Cost-driven since CND-042: for a non-pinned
-/// `Auto` assignment with both lanes eligible, placement compares lanes on
-/// measured cost-plus-10% (per the CND-042 report). Google GCE wins ties and
-/// near-ties (owner direction); SHC is chosen only when materially cheaper AND
-/// the SHC pilot recommendation is "expand". Set OA_CODEX_PLACEMENT_COST_DRIVEN
-/// =false to restore the policy-driven Google-first default.
+/// placement policy (cloud#86/#88). Google Cloud is the sole managed compute
+/// authority. Cost-aware mode records its cost-plus-10% basis but never selects
+/// another provider.
 fn resolve_placement_binding(
     config: &Config,
     assignment: &PlacementAssignment,
 ) -> Result<RunnerBinding, String> {
     assignment.resolve_runner_binding_cost_aware(
         config.placement_gce_available,
-        &config.placement_shc_runner_id,
         ComputeQuotaCaps::default(),
         config.placement_cost_driven,
-        config.placement_shc_pilot_expand,
         LaneCostModel::default(),
     )
 }
@@ -1645,9 +1629,8 @@ fn placement_reason_summary(binding: &RunnerBinding) -> &'static str {
     use openagents_cloud_contract::PlacementReason;
     match binding.reason {
         PlacementReason::LanePinned => "caller-pinned lane",
-        PlacementReason::PolicyDefaultGce => "policy default GCE primary",
-        PlacementReason::GceUnavailableShcFallback => "GCE unavailable, SHC fallback",
-        PlacementReason::CostDriven => "cost-driven lane selection (CND-042)",
+        PlacementReason::PolicyDefaultGce => "policy default Google Cloud",
+        PlacementReason::CostDriven => "Google Cloud placement with cost accounting",
     }
 }
 
@@ -2341,7 +2324,7 @@ fn start_codex_run_async_with_initial_events(
             receipt_refs: Vec::new(),
             redacted: false,
             source: "control".to_string(),
-            summary: "Codex run queued on SHC control daemon.".to_string(),
+            summary: "Codex run queued on the Google Cloud control daemon.".to_string(),
             type_: "cloud.run.queued".to_string(),
         },
     )?;
@@ -2716,7 +2699,7 @@ fn training_assignment_initial_events(
             receipt_refs: Vec::new(),
             redacted: false,
             source: "control".to_string(),
-            summary: "Training assignment validated for SHC Codex runner.".to_string(),
+            summary: "Training assignment validated for the Google Cloud Codex runner.".to_string(),
             type_: "training.assignment.validated".to_string(),
         },
         JobEventInput {
@@ -2793,13 +2776,13 @@ fn artanis_bootstrap_initial_events(
                 "sourceRefs": &assignment.source_refs,
                 "retentionMode": retention_mode_label(&assignment.retention_mode),
             }))?),
-            detail: Some("Artanis bootstrap assignment accepted for SHC Codex execution.".to_string()),
+            detail: Some("Artanis bootstrap assignment accepted for Google Cloud Codex execution.".to_string()),
             digest: None,
             kind: "artanis_bootstrap".to_string(),
             receipt_refs: Vec::new(),
             redacted: false,
             source: "control".to_string(),
-            summary: "Artanis bootstrap assignment validated for SHC Codex runner.".to_string(),
+            summary: "Artanis bootstrap assignment validated for the Google Cloud Codex runner.".to_string(),
             type_: "artanis.bootstrap.validated".to_string(),
         },
         JobEventInput {
@@ -2882,7 +2865,7 @@ fn training_assignment_prompt(assignment: &TrainingRunAssignment) -> String {
         .unwrap_or_else(|| "none".to_string());
     let signature_playbooks = training_signature_playbook_lines(assignment);
     format!(
-        "Run a retained OpenAgents Benchmark Cloud task on this SHC workroom.\n\n\
+        "Run a retained OpenAgents Benchmark Cloud task on this Google Cloud workroom.\n\n\
 Contract:\n\
 - trainingRunId: {training_run_id}\n\
 - benchmarkRunId: {benchmark_run_id}\n\
@@ -2929,7 +2912,7 @@ fn artanis_bootstrap_prompt(assignment: &ArtanisBootstrapAssignment) -> String {
     let required_artifacts = assignment.required_artifacts.join(", ");
     let settlement_intent = artanis_settlement_intent_prompt_block(assignment);
     format!(
-        "Run the Artanis to Pylon launch bootstrap on this private SHC Codex workroom.\n\n\
+        "Run the Artanis to Pylon launch bootstrap on this private Google Cloud Codex workroom.\n\n\
 Contract:\n\
 - bootstrapRunId: {bootstrap_run_id}\n\
 - workroomId: {workroom_id}\n\
@@ -2947,7 +2930,7 @@ Imported Artanis source policy:\n\
 - Artanis is the public training-program overseer, but this workroom is private by default.\n\
 - Public output must be redacted projection only; do not expose raw prompts, raw logs, local paths, private repo contents, provider auth, wallet material, or internal fleet details.\n\
 - The useful source material is the Artanis identity/objective, capability labels, GitHub repository allowlist, Program policy types, runner events, health gates, recovery commands, launch checks, promotion gates, and public projection rules.\n\
-- Required coordination targets are Cloud SHC Codex workrooms, Vortex public/private projection and mission UI, OpenAgents/Pylon launch state, Psionic training/eval lanes, Probe/Blueprint signatures, benchmark evidence gates, and retained receipts.\n\n\
+- Required coordination targets are Google Cloud Codex workrooms, product public/private projection and mission UI, OpenAgents/Pylon launch state, Psionic training/eval lanes, Probe/Blueprint signatures, benchmark evidence gates, and retained receipts.\n\n\
 Work to perform:\n\
 1. Inspect the provided source refs and repository context. Pull only the relevant Artanis policy/code concepts into a current implementation plan; do not revive deprecated repo behavior as an authority.\n\
 2. Create a concrete next Pylon launch bootstrap plan: capability registry, assignment templates, health gates, dispatch blockers, benchmark gates, receipt fields, and public-safe projection events.\n\
@@ -3068,7 +3051,7 @@ fn run_codex_worker(config: Config, request: ControlRequest) -> Result<(), Strin
             receipt_refs: Vec::new(),
             redacted: false,
             source: "runner".to_string(),
-            summary: format!("{runtime_label} run started on SHC runner."),
+            summary: format!("{runtime_label} run started on the Google Cloud runner."),
             type_: "cloud.run.started".to_string(),
         },
     )?;
@@ -3177,7 +3160,7 @@ fn run_codex_worker(config: Config, request: ControlRequest) -> Result<(), Strin
                     receipt_refs: Vec::new(),
                     redacted: contains_secret_marker(&error),
                     source: "runner".to_string(),
-                    summary: format!("{runtime_label} run failed in SHC worker."),
+                    summary: format!("{runtime_label} run failed in the Google Cloud worker."),
                     type_: "cloud.run.failed".to_string(),
                 },
             )?;
@@ -3197,8 +3180,8 @@ fn run_codex_worker(config: Config, request: ControlRequest) -> Result<(), Strin
 /// Acquire an ephemeral GCE per-session VM lease for a `cloud-gcp` run and emit
 /// a `gce.provision` event. Returns `None` (and emits a degraded event) when the
 /// lease cannot be acquired so the run still proceeds on the local control host
-/// rather than failing outright; SHC fallback selection happens earlier in
-/// placement.
+/// rather than failing outright. This local process is itself hosted on the
+/// private Google Cloud control VM; no external provider fallback exists.
 fn acquire_gce_lease_for_run(
     config: &Config,
     request: &ControlRequest,
@@ -4568,7 +4551,7 @@ fn github_write_grant_resolved_event(grant: &GitHubResolvedWriteGrant) -> Contro
         kind: "github_write_grant_resolved".to_string(),
         receipt_refs: Vec::new(),
         redacted: false,
-        summary: "OpenAgents GitHub write grant resolved for SHC workroom.".to_string(),
+        summary: "OpenAgents GitHub write grant resolved for Google Cloud workroom.".to_string(),
     }
 }
 
@@ -5096,7 +5079,7 @@ fn path_str(path: &Path) -> Result<&str, String> {
 }
 
 fn external_run_id(runner_id: &str, run_id: &str) -> String {
-    format!("shc-codex:{runner_id}:{run_id}")
+    format!("gcp-codex:{runner_id}:{run_id}")
 }
 
 fn safe_path_component(value: &str) -> String {
@@ -5200,7 +5183,7 @@ mod tests {
             repository_ref: Some("main".to_string()),
             required_artifacts: None,
             retention_mode: None,
-            runner_id: "oa-shc-katy-01".to_string(),
+            runner_id: "oa-gcp-runner-test".to_string(),
             run_id: "agent_run_123".to_string(),
             sandbox_mode: Some("danger_full_access".to_string()),
             timeout_ms: Some(60_000),
@@ -5345,12 +5328,10 @@ mod tests {
 
     #[test]
     fn placement_defaults_to_gce_cost_driven_and_builds_control_request() {
-        // CND-042: default config is cost-driven (cost_driven=true), the report
-        // recommends HOLD (expand=false), and GCE is cheaper, so Auto resolves
-        // to GCE via the cost-driven path with a recorded cost basis.
+        // Cost-aware mode attaches a Google Cloud cost basis without creating
+        // a second provider lane.
         let config = test_config("placement-gce");
         assert!(config.placement_cost_driven);
-        assert!(!config.placement_shc_pilot_expand);
         let assignment = placement_assignment(ComputeLane::Auto);
         let binding = resolve_placement_binding(&config, &assignment).unwrap();
         assert_eq!(
@@ -5367,7 +5348,10 @@ mod tests {
             .cost_basis
             .as_ref()
             .expect("cost basis on cost-driven GCE");
-        assert!(basis.gce_micro_usd_per_vm_sec < basis.shc_micro_usd_per_vm_sec);
+        assert_eq!(
+            basis.chosen_micro_usd_per_vm_sec,
+            basis.gce_micro_usd_per_vm_sec
+        );
 
         let request = control_request_from_placement(&assignment, &binding);
         assert_eq!(request.run_id, "agent_run_99");
@@ -5395,16 +5379,11 @@ mod tests {
     }
 
     #[test]
-    fn placement_falls_back_to_shc_when_gce_disabled() {
-        let mut config = test_config("placement-shc");
+    fn placement_fails_closed_when_google_cloud_is_disabled() {
+        let mut config = test_config("placement-gcp-disabled");
         config.placement_gce_available = false;
         let assignment = placement_assignment(ComputeLane::Auto);
-        let binding = resolve_placement_binding(&config, &assignment).unwrap();
-        assert_eq!(
-            binding.provider_lane,
-            openagents_cloud_contract::ProviderLane::Shc
-        );
-        assert_eq!(binding.runner_id, SHC_FALLBACK_RUNNER_ID);
+        assert!(resolve_placement_binding(&config, &assignment).is_err());
     }
 
     #[test]
@@ -5672,9 +5651,7 @@ mod tests {
             event_ingest: None,
             workroomd_bin: PathBuf::from(DEFAULT_WORKROOMD_BIN),
             placement_gce_available: true,
-            placement_shc_runner_id: SHC_FALLBACK_RUNNER_ID.to_string(),
             placement_cost_driven: true,
-            placement_shc_pilot_expand: false,
             gce_provisioner_kind: ProvisionerKind::Fake,
             cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind::Fake,
             portable_agent_computer_lock: Arc::new(Mutex::new(())),
@@ -6474,13 +6451,13 @@ echo '{"status":"ok"}'
     fn claim_preserves_caller_pinned_lane() {
         let config = test_config("queue-claim-pinned");
         let mut request = test_request("queue_claim_pinned");
-        request.lane = Some(ComputeLane::CloudShc);
+        request.lane = Some(ComputeLane::CloudGcp);
         enqueue_codex_run(&config, request.clone()).unwrap();
 
         let claimed = claim_queued_job(&config, &request.run_id)
             .unwrap()
             .expect("claim");
-        assert_eq!(claimed.lane, Some(ComputeLane::CloudShc));
+        assert_eq!(claimed.lane, Some(ComputeLane::CloudGcp));
     }
 
     #[test]
@@ -6575,9 +6552,7 @@ echo '{"status":"ok"}'
             event_ingest: None,
             workroomd_bin: PathBuf::from(DEFAULT_WORKROOMD_BIN),
             placement_gce_available: true,
-            placement_shc_runner_id: SHC_FALLBACK_RUNNER_ID.to_string(),
             placement_cost_driven: true,
-            placement_shc_pilot_expand: false,
             gce_provisioner_kind: ProvisionerKind::Fake,
             cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind::Fake,
             portable_agent_computer_lock: Arc::new(Mutex::new(())),
@@ -6618,7 +6593,7 @@ echo '{"status":"ok"}'
             repository_ref: Some("main".to_string()),
             required_artifacts: None,
             retention_mode: None,
-            runner_id: "oa-shc-katy-01".to_string(),
+            runner_id: "oa-gcp-runner-test".to_string(),
             run_id: run_id.to_string(),
             sandbox_mode: Some("danger_full_access".to_string()),
             timeout_ms: Some(60_000),

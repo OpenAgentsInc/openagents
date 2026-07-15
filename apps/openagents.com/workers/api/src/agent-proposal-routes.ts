@@ -305,8 +305,8 @@ const checkedSourceUrls = (value: unknown): ReadonlyArray<string> => {
 
 const clientFingerprintInput = (request: Request): string => {
   const ip =
-    request.headers.get('cf-connecting-ip') ??
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    request.headers.get('x-real-ip')?.trim() ??
     'unknown-ip'
   const userAgent = request.headers.get('user-agent') ?? 'unknown-agent'
 

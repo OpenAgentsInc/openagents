@@ -30,7 +30,7 @@ export interface SubmitSwarmRunInput {
 }
 
 export interface QaSwarmRunTier {
-  readonly backend: "fixture" | "gce-tier-2" | "cf-browser-rendering";
+  readonly backend: "fixture" | "gce-tier-2";
   readonly jobId?: string;
   readonly reason?: string;
   readonly status: QaSwarmTierStatus;
@@ -179,13 +179,6 @@ export const writeQaSwarmRunSummary = (input: Readonly<{
       backend: "gce-tier-2",
       reason: input.includeLiveTiers
         ? "live tier requested; external runner receipt not attached in fixture composition"
-        : "skip-safe fixture tier: set includeLiveTiers with an armed daemon for live evidence",
-      status: "skipped",
-    },
-    {
-      backend: "cf-browser-rendering",
-      reason: input.includeLiveTiers
-        ? "live tier requested; CF Browser Rendering receipt not attached in fixture composition"
         : "skip-safe fixture tier: set includeLiveTiers with an armed daemon for live evidence",
       status: "skipped",
     },

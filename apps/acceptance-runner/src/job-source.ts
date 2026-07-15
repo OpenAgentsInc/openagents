@@ -1,9 +1,7 @@
-// The JOB-SOURCE seam for the out-of-Worker acceptance runner (EPIC #6017).
+// The job-source seam for the out-of-process acceptance runner (EPIC #6017).
 //
-// THE PROBLEM. The gateway (a Cloudflare Worker) must hand acceptance jobs to a node
-// with chromium — but a Cloudflare Queue CONSUMER is itself a Worker, and chromium can
-// NEVER run in a Worker. So the out-of-Worker runner cannot be a Queue consumer; it has
-// to PULL its work over an authenticated HTTP endpoint (a job lease) OR be handed a
+// The gateway must hand acceptance jobs to a node with Chromium. The runner pulls
+// its work over an authenticated HTTP endpoint (a job lease) or is handed a
 // single job locally for a one-shot run. This module is the pluggable seam for "where
 // does the next job come from", mirroring the `RunnerTransport` seam in the harness
 // (`acceptance-runner/harness.ts`) for "where does the artifact come from / where does
@@ -17,7 +15,7 @@
 import type { AcceptanceJobMessage } from './harness-bridge'
 
 // One leased job plus the lease handle the source needs to ack/extend it. `leaseId` is
-// opaque to the runner — it is echoed back to the source so the Worker can mark the job
+// opaque to the runner — it is echoed back so the API can mark the job
 // done / retryable. `message` is the typed `AcceptanceJobMessage` the harness runs.
 export type LeasedJob = Readonly<{
   leaseId: string

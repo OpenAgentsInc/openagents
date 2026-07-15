@@ -75,7 +75,7 @@ red_alert() { # http detail
     echo "detail: $detail"
     echo "action: investigate NOW. Likely classes (AAR 2026-06-25):"
     echo "  - code shipped ahead of schema -> run: pnpm --dir apps/openagents.com run check:pending-migrations"
-    echo "    (if pending: cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote)"
+    echo "    (if pending: run the production Cloud Run deploy script; it applies Cloud SQL migrations before traffic moves)"
     echo "  - a backing inference lane is 5xx -> check GET $BASE/models and lane health"
     echo "  - check recent deploys; the ONLY sanctioned deploy is deploy:safe"
     echo "runbook: docs/inference/2026-06-25-khala-heartbeat-runbook.md (Canary section)"

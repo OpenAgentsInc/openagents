@@ -85,7 +85,7 @@ const campaignId = 'probe_gepa.stage0.live_receipts.2026_06_08'
 const benchmarkSuiteRef = 'benchmark_suite.terminal_bench_2.harbor.retained.v1'
 const splitRef =
   'benchmark_split_manifest.terminal_bench_2.probe_gepa.stage_0_1.v1'
-const probeCommit = 'probe.commit.shc_live_smoke_20260608'
+const probeCommit = 'probe.commit.limited_pilot_live_smoke_20260608'
 
 const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
   [...new Set(refs.map(ref => ref.trim()).filter(ref => ref !== ''))].sort()
@@ -173,20 +173,20 @@ const leaseSpecs = (
       worker: workers[0]!,
     },
     {
-      artifactRef: 'artifact_manifest.probe.shc_harbor.db_wal_recovery.20260608',
+      artifactRef: 'artifact_manifest.probe.limited_pilot_harbor.db_wal_recovery.20260608',
       assignmentRef:
         'assignment.public.pylon_gepa_metric_call.stage0.db_wal_recovery.demo_beta',
       candidateHash:
         'sha256:0000000000000000000000000000000000000000000000000000000000004563',
       closeoutDecision: 'rejected',
-      closeoutRef: 'probe_closeout.shc_harbor.db_wal_recovery.20260608',
-      proofBundleRef: 'proof_bundle.probe.shc_harbor.db_wal_recovery.20260608',
+      closeoutRef: 'probe_closeout.limited_pilot_harbor.db_wal_recovery.20260608',
+      proofBundleRef: 'proof_bundle.probe.limited_pilot_harbor.db_wal_recovery.20260608',
       resourceUsageRef:
-        'resource_usage_unavailable.probe.benchmark_run_probe_shc_harbor_db_wal_recovery_20260608',
+        'resource_usage_unavailable.probe.benchmark_run_probe_limited_pilot_harbor_db_wal_recovery_20260608',
       taskRef: 'benchmark_task.terminal_bench.retained.db_wal_recovery.v1',
       verifierRef: 'verifier.terminal_bench.db_wal_recovery.v1',
       verifierResultRef:
-        'verifier_result.terminal_bench.db_wal_recovery.shc_harbor.20260608.reward_0',
+        'verifier_result.terminal_bench.db_wal_recovery.limited_pilot_harbor.20260608.reward_0',
       worker: workers[1]!,
     },
     {

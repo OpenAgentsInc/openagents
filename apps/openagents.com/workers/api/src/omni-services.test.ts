@@ -173,7 +173,7 @@ describe('Omni Effect services', () => {
           run.run.id,
           run.events,
           'running',
-          'shc:run',
+          'gcp:run',
         ),
       )
       const found = await Effect.runPromise(
@@ -181,7 +181,7 @@ describe('Omni Effect services', () => {
       )
 
       expect(found?.run.status).toBe('running')
-      expect(found?.run.externalRunId).toBe('shc:run')
+      expect(found?.run.externalRunId).toBe('gcp:run')
     }
 
     if (deployment !== undefined) {
@@ -190,7 +190,7 @@ describe('Omni Effect services', () => {
           deployment.deployment.id,
           deployment.events,
           'running',
-          'shc:deploy',
+          'gcp:deploy',
         ),
       )
       const found = await Effect.runPromise(
@@ -201,7 +201,7 @@ describe('Omni Effect services', () => {
       )
 
       expect(found?.deployment.status).toBe('running')
-      expect(found?.deployment.externalDeployId).toBe('shc:deploy')
+      expect(found?.deployment.externalDeployId).toBe('gcp:deploy')
     }
   })
 
@@ -229,7 +229,7 @@ describe('Omni Effect services', () => {
     expect(decoded.type).toBe('runner.started')
     expect(event.parentId).toBe('agent_run_test')
     expect(event.sequence).toBe(2)
-    const shcDecoded = await Effect.runPromise(
+    const gcpDecoded = await Effect.runPromise(
       service.decodeCallbackEvent({
         artifact_refs: ['artifact_1'],
         emitted_at_ms: Date.parse('2026-06-04T00:00:01.000Z'),
@@ -241,7 +241,7 @@ describe('Omni Effect services', () => {
         type: 'tool_use',
       }),
     )
-    const shcEvent = await Effect.runPromise(
+    const gcpEvent = await Effect.runPromise(
       service.eventsFromCallbackPayloads('agent_run_test', 3, [
         {
           artifact_refs: ['artifact_1'],
@@ -256,11 +256,11 @@ describe('Omni Effect services', () => {
       ]),
     )
 
-    expect(shcDecoded.createdAt).toBe('2026-06-04T00:00:01.000Z')
-    expect(shcDecoded.externalEventId).toBe('runner.event.1')
-    expect(shcEvent[0]?.artifactRefs).toEqual(['artifact_1'])
-    expect(shcEvent[0]?.externalEventId).toBe('runner.event.1')
-    const shcJobEvent = await Effect.runPromise(
+    expect(gcpDecoded.createdAt).toBe('2026-06-04T00:00:01.000Z')
+    expect(gcpDecoded.externalEventId).toBe('runner.event.1')
+    expect(gcpEvent[0]?.artifactRefs).toEqual(['artifact_1'])
+    expect(gcpEvent[0]?.externalEventId).toBe('runner.event.1')
+    const gcpJobEvent = await Effect.runPromise(
       service.eventsFromCallbackPayloads('agent_run_test', 4, [
         {
           dataJson: JSON.stringify({
@@ -278,25 +278,25 @@ describe('Omni Effect services', () => {
       ]),
     )
 
-    expect(shcJobEvent[0]?.sequence).toBe(4)
-    expect(shcJobEvent[0]?.summary).toBe('stdout JSON event captured.')
-    const shcQueuedEvent = await Effect.runPromise(
+    expect(gcpJobEvent[0]?.sequence).toBe(4)
+    expect(gcpJobEvent[0]?.summary).toBe('stdout JSON event captured.')
+    const gcpQueuedEvent = await Effect.runPromise(
       service.eventsFromCallbackPayloads('agent_run_test', 5, [
         {
           dataJson: JSON.stringify({
-            externalRunId: 'shc-codex:oa-shc-katy-01:run_1',
-            runnerId: 'oa-shc-katy-01',
+            externalRunId: 'gcp-codex:oa-gcp-katy-01:run_1',
+            runnerId: 'oa-gcp-katy-01',
           }),
           digest: null,
           source: 'control',
-          summary: 'Codex run queued on SHC control daemon.',
+          summary: 'Codex run queued on Google Cloud control daemon.',
           type: 'cloud.run.queued',
         },
       ]),
     )
 
-    expect(shcQueuedEvent[0]?.sequence).toBe(5)
-    expect(shcQueuedEvent[0]?.type).toBe('cloud.run.queued')
+    expect(gcpQueuedEvent[0]?.sequence).toBe(5)
+    expect(gcpQueuedEvent[0]?.type).toBe('cloud.run.queued')
     const redactedEvent = await Effect.runPromise(
       service.eventsFromCallbackPayloads('agent_run_test', 6, [
         {
@@ -417,45 +417,45 @@ describe('Omni Effect services', () => {
     expect(JSON.stringify(records)).not.toContain('OPENCODE_AUTH_CONTENT')
   })
 
-  test('dispatch service exposes SHC dispatch with typed failures', async () => {
+  test('dispatch service exposes Google Cloud dispatch with typed failures', async () => {
     const queued = makeQueuedAgentRun()
     const service = makeOmniDispatchService({
-      dispatchAgentRunToShc: async (): Promise<DispatchResult> => ({
-        externalId: 'shc:agent_run_test',
+      dispatchAgentRunToGoogleCloud: async (): Promise<DispatchResult> => ({
+        externalId: 'gcp:agent_run_test',
         mode: 'live',
         status: 'queued',
       }),
-      dispatchDeploymentToShc: async () => {
+      dispatchDeploymentToGoogleCloud: async () => {
         throw new Error('control plane unavailable')
       },
     })
     const result = await Effect.runPromise(
       service.dispatchAgentRun(queued.run.assignment, {
         controlApiBearerToken: 'secret',
-        controlApiUrl: 'https://shc.example.test/v1/codex-runs',
+        controlApiUrl: 'https://gcp.example.test/v1/codex-runs',
         dispatchMode: 'live',
       }),
     )
     const queuedDeployment = makeQueuedDeployment()
 
-    expect(result.externalId).toBe('shc:agent_run_test')
+    expect(result.externalId).toBe('gcp:agent_run_test')
     await expect(
       Effect.runPromise(
         service.dispatchDeployment(queuedDeployment.deployment.assignment, {
           controlApiBearerToken: 'secret',
-          controlApiUrl: 'https://shc.example.test/v1/codex-runs',
+          controlApiUrl: 'https://gcp.example.test/v1/codex-runs',
           dispatchMode: 'live',
         }),
       ),
     ).rejects.toThrow(OmniDispatchError)
   })
 
-  test('dispatch service classifies SHC control failures by tag', async () => {
+  test('dispatch service classifies Google Cloud control failures by tag', async () => {
     const queued = makeQueuedAgentRun()
     const service = makeOmniDispatchService()
     const config = (fetcher: typeof fetch) => ({
       controlApiBearerToken: 'secret',
-      controlApiUrl: 'https://shc.example.test/v1/codex-runs',
+      controlApiUrl: 'https://gcp.example.test/v1/codex-runs',
       dispatchMode: 'live',
       fetcher,
     })
@@ -534,7 +534,7 @@ describe('Omni Effect services', () => {
           queued.run.id,
           queued.events,
           'running',
-          'shc:run',
+          'gcp:run',
         ),
       ),
     ).rejects.toThrow(OmniRepositoryError)

@@ -24,7 +24,7 @@
     },
     {
       "reasonRef": "route_rejection.public.shc.not_selected_unpaid_smoke",
-      "routeKind": "shc",
+      "routeKind": "retired_pilot",
       "routeRef": "route.probe.shc"
     }
   ],

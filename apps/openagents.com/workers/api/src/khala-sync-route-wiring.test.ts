@@ -52,7 +52,7 @@ import {
 import type {
   KhalaSyncHubNamespaceLike,
   KhalaSyncHubStubLike,
-} from './khala-sync-hub-do'
+} from './khala-sync-hub-routes'
 import { KHALA_SYNC_LOG_PATH } from './khala-sync-log-routes'
 import { KHALA_SYNC_PUSH_PATH } from './khala-sync-push-routes'
 
@@ -177,7 +177,16 @@ const makeFakeEnv = async (
     // handle (Postgres-PRIMARY, never the 401-dead D1 bridge) — the fake env
     // serves the known agent through the IDENTITY_DB test-override slot.
     IDENTITY_DB: fakeIdentityDb(await sha256Hex(AGENT_BEARER)),
-    ...(options.hub === undefined ? {} : { KHALA_SYNC_HUB: options.hub }),
+    ...(options.hub === undefined
+      ? {}
+      : {
+          KHALA_SYNC_LIVE_HUB_FETCH: async (request: Request) => {
+            const scope = new URL(request.url).searchParams.get('scope') ?? ''
+            return options.hub!.get(options.hub!.idFromName(scope)).fetch(request)
+          },
+          KHALA_SYNC_LIVE_HUB_TOKEN: 'test-live-hub-token',
+          KHALA_SYNC_LIVE_HUB_URL: 'https://khala-live-hub.test',
+        }),
     // KHALA_SYNC_DB deliberately absent: every identity/remainder mirror
     // resolves to undefined and the scope resolver stays in-memory for
     // `scope.user.*` (no capability callback runs for an owner match).

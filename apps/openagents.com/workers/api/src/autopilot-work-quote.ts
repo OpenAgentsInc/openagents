@@ -59,7 +59,7 @@ const privacyTierAmountCents = (
       return 700
     case 'local_only':
       return 900
-    case 'openagents_shc':
+    case 'google_cloud':
       return 1500
     case 'maple_ai':
       return 3000
@@ -78,8 +78,7 @@ const runnerKindAmountCents = (
     case 'hosted_gemini':
     case 'cloud_sandbox':
       return 1000
-    case 'openagents_shc':
-    case 'shc':
+    case 'google_cloud':
       return 1800
     case 'maple_ai':
     case 'tee':

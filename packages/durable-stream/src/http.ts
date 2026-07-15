@@ -145,6 +145,6 @@ const formatSseData = (payload: string): string => {
 const base64Encode = (bytes: Uint8Array): string => {
   let binary = ""
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!)
-  // btoa is available in Workers and Bun
+  // btoa is available in modern Node and Bun runtimes.
   return btoa(binary)
 }

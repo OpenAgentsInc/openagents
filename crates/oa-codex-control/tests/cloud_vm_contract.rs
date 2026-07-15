@@ -316,14 +316,8 @@ fn cloud_vm_session_route_requires_authorization() {
 #[test]
 fn cloud_vm_readiness_is_authenticated_and_never_claims_fake_capacity() {
     let daemon = start_daemon("cloud-vm-readiness");
-    let (unauthorized, _) = http_request(
-        &daemon.addr,
-        "GET",
-        "/v1/cloud-vm/readiness",
-        None,
-        None,
-    )
-    .expect("unauthorized readiness request");
+    let (unauthorized, _) = http_request(&daemon.addr, "GET", "/v1/cloud-vm/readiness", None, None)
+        .expect("unauthorized readiness request");
     assert_eq!(unauthorized, 401);
 
     let (status, body) = http_request(

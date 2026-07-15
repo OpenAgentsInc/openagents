@@ -41,10 +41,9 @@ import {
   type InferenceStreamSource,
 } from './provider-adapter'
 
-// Structural typing for the DO namespace + stub surface, matching the package's
-// own convention of typing the Cloudflare runtime locally rather than depending
-// on `@cloudflare/workers-types` here. `getByName` is the repo's modern DO API
-// (runtime.ts), returning a stub whose `.fetch()` is the DO's `fetch()`.
+// Structural typing for the retained namespace + stub surface. Production uses
+// the Postgres-backed adapter; `getByName` returns an HTTP-like stub so the
+// stable stream wire contract does not leak storage implementation details.
 export interface DurableStreamStub {
   fetch(request: Request): Promise<Response>
 }

@@ -218,7 +218,7 @@ const placementDecision = (
 
   if (
     shcOnlyTiers.has(request.trustTier) &&
-    request.runnerBackendKind !== 'shc_vm'
+    request.runnerBackendKind !== 'gcloud_vm'
   ) {
     return 'blocked'
   }
@@ -270,7 +270,7 @@ const blockerRefsForDecision = (
 
   if (
     shcOnlyTiers.has(request.trustTier) &&
-    request.runnerBackendKind !== 'shc_vm'
+    request.runnerBackendKind !== 'gcloud_vm'
   ) {
     return ['blocker.repo_placement.backend_not_allowed_for_trust_tier']
   }

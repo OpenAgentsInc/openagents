@@ -92,8 +92,8 @@ def _directory_bytes(path: Path) -> Optional[int]:
 
 def _provider_lane() -> str:
     node_ref = os.environ.get("OA_NODE_ID", "benchmark-runner-local").lower()
-    if "shc" in node_ref:
-        return "shc"
+    if "gcp" in node_ref:
+        return "gcp"
     if "gcp" in node_ref or "gce" in node_ref:
         return "gcp"
     if "provider" in node_ref or "pylon" in node_ref:

@@ -3,7 +3,7 @@
   "compilerOptions": {
     "lib": ["ES2022", "WebWorker"],
     "noEmit": true,
-    "types": ["@cloudflare/workers-types"]
+    "types": ["openagents-platform"]
   },
   "include": ["src/**/*"]
 }

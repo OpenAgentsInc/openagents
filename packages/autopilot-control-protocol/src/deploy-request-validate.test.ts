@@ -17,27 +17,14 @@ describe("deploy request validation", () => {
     })
   })
 
-  test("accepts a Workers request and defaults env to preview", () => {
-    expect(validateDeployRequest({
-      target: "workers",
-      ref: "OpenAgentsInc/openagents#4932",
-    })).toEqual({
-      ok: true,
-      target: "workers",
-      ref: "OpenAgentsInc/openagents#4932",
-      env: "preview",
-      errors: [],
-    })
-  })
-
   test("trims refs before checking emptiness", () => {
     expect(validateDeployRequest({
-      target: "workers",
+      target: "cloudrun",
       ref: "  release-2026-06-13  ",
       env: "preview",
     })).toEqual({
       ok: true,
-      target: "workers",
+      target: "cloudrun",
       ref: "release-2026-06-13",
       env: "preview",
       errors: [],
@@ -54,7 +41,7 @@ describe("deploy request validation", () => {
       target: null,
       ref: "refs/heads/main",
       env: "preview",
-      errors: ["target must be cloudrun or workers"],
+      errors: ["target must be cloudrun"],
     })
   })
 
@@ -86,12 +73,12 @@ describe("deploy request validation", () => {
 
   test("rejects an invalid env and falls back to preview in the result", () => {
     expect(validateDeployRequest({
-      target: "workers",
+      target: "cloudrun",
       ref: "refs/heads/main",
       env: "staging",
     })).toEqual({
       ok: false,
-      target: "workers",
+      target: "cloudrun",
       ref: "refs/heads/main",
       env: "preview",
       errors: ["env must be production or preview"],
@@ -109,7 +96,7 @@ describe("deploy request validation", () => {
       ref: "",
       env: "preview",
       errors: [
-        "target must be cloudrun or workers",
+        "target must be cloudrun",
         "ref is required",
         "env must be production or preview",
       ],

@@ -86,7 +86,7 @@ export type ProviderConnectionAttemptMethod =
   typeof ProviderConnectionAttemptMethod.Type
 
 export const ProviderConnectionAttemptSource = S.Literals([
-  'shc_broker',
+  'gcp_control',
   'worker_device_code',
   'manual_placeholder',
   'browser_api_key',

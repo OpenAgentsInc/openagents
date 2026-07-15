@@ -137,22 +137,15 @@ const makeD1 = () => {
   return { db, rows }
 }
 
-const makeSyncRoom = (poked: Array<string>): DurableObjectNamespace =>
-  ({
-    getByName: (scope: string) => ({
-      fetch: async (request: Request) => {
-        poked.push(request.headers.get('x-openagents-sync-scope') ?? scope)
-        return new Response(null, { status: 204 })
-      },
-    }),
-    idFromName: (scope: string) => scope,
-    get: (scope: string) => ({
-      fetch: async (request: Request) => {
-        poked.push(request.headers.get('x-openagents-sync-scope') ?? scope)
-        return new Response(null, { status: 204 })
-      },
-    }),
-  }) as never
+const makeLiveHubEnv = (poked: Array<string>) => ({
+  KHALA_SYNC_LIVE_HUB_FETCH: async (request: Request) => {
+    const body = (await request.json()) as { scope: string }
+    poked.push(body.scope)
+    return new Response(null, { status: 204 })
+  },
+  KHALA_SYNC_LIVE_HUB_TOKEN: 'test-live-hub-token',
+  KHALA_SYNC_LIVE_HUB_URL: 'https://khala-live-hub.test',
+})
 
 const webRun = (runRef: string, completedPassed: number): GymRunProgress =>
   buildGymRunProgress({
@@ -185,7 +178,7 @@ describe('gym run-progress realtime push e2e (#6261)', () => {
   test('ingest -> sync-room delivery is sub-second and carries the run by runRef', async () => {
     const { db, rows } = makeD1()
     const poked: Array<string> = []
-    const env = { OPENAGENTS_DB: db, SYNC_ROOM: makeSyncRoom(poked) } as never
+    const env = { ...makeLiveHubEnv(poked), OPENAGENTS_DB: db } as never
     const repo = makeD1SyncOutboxRepository(db)
     const scope = 'public-gym-run-progress:network'
 
@@ -225,7 +218,7 @@ describe('gym run-progress realtime push e2e (#6261)', () => {
 
   test('a second ingest for the same run delivers a fresh put on the same runRef', async () => {
     const { db } = makeD1()
-    const env = { OPENAGENTS_DB: db, SYNC_ROOM: makeSyncRoom([]) } as never
+    const env = { ...makeLiveHubEnv([]), OPENAGENTS_DB: db } as never
     const repo = makeD1SyncOutboxRepository(db)
     const scope = 'public-gym-run-progress:network'
 

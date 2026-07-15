@@ -103,7 +103,7 @@ describe("qa async GCE trigger request", () => {
         url: String(input),
       })
       return Response.json({
-        externalRunId: "shc-codex:oa-gce-ephemeral-qa:qa-push-main-d91ea3e3792c",
+        externalRunId: "gcp-codex:oa-gce-ephemeral-qa:qa-push-main-d91ea3e3792c",
         status: "queued",
       })
     }

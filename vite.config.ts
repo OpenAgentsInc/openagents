@@ -82,27 +82,17 @@ export default defineConfig({
       typeCheck: false,
     },
   },
-  ssr: { noExternal: ["effect-cf"] },
   resolve: {
     alias: {
       "@opentui/core": resolve(import.meta.dirname, "scripts/vp3-opentui-test-stub.ts"),
-      "cloudflare:workers": resolve(
-        import.meta.dirname,
-        "apps/openagents.com/workers/api/src/test/cloudflare-workers.ts",
-      ),
     },
   },
   test: {
     projects: [
       {
-        ssr: { noExternal: ["effect-cf"] },
         resolve: {
           alias: {
             "@opentui/core": resolve(import.meta.dirname, "scripts/vp3-opentui-test-stub.ts"),
-            "cloudflare:workers": resolve(
-              import.meta.dirname,
-              "apps/openagents.com/workers/api/src/test/cloudflare-workers.ts",
-            ),
           },
         },
         test: {

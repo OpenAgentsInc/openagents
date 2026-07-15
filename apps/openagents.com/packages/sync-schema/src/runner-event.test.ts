@@ -10,7 +10,7 @@ describe('Omni runner event compatibility normalizer', () => {
           artifactRefs: ['artifact_1', 42, 'artifact_2'],
           externalEventId: 'runner:event:1',
           sequence: 7,
-          source: 'shc',
+          source: 'gcp',
           status: 'running',
           summary: 'Runner produced output.',
           type: 'runner.log',
@@ -25,14 +25,14 @@ describe('Omni runner event compatibility normalizer', () => {
         artifactRefs: ['artifact_1', 42, 'artifact_2'],
         externalEventId: 'runner:event:1',
         sequence: 7,
-        source: 'shc',
+        source: 'gcp',
         status: 'running',
         summary: 'Runner produced output.',
         type: 'runner.log',
         value: 'stdout: hello',
       },
       sequence: 7,
-      source: 'shc',
+      source: 'gcp',
       status: 'running',
       summary: 'Runner produced output.',
       type: 'runner.log',
@@ -50,7 +50,7 @@ describe('Omni runner event compatibility normalizer', () => {
     })
   })
 
-  test('preserves SHC snake case event ids and artifacts', () => {
+  test('preserves Google Cloud snake case event ids and artifacts', () => {
     expect(
       normalizeOmniRunnerEventPayload(
         {

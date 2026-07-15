@@ -84,17 +84,15 @@ type ControlSessionRepositoryRef = GitCheckoutWorkspace["repository"]
 //   - `auto`       — own-Pylon-first-and-free, then overflow to `cloud-gcp`
 //   - `local`      — run on this local Pylon node (today's behavior)
 //   - `cloud-gcp`  — OpenAgents Cloud on Google GCE (the default cloud lane)
-//   - `cloud-shc`  — OpenAgents Cloud SHC capacity (the cloud fallback)
 // Full cloud dispatch is tracked by #4997. Here we accept, default, persist, and
 // surface the requested lane so it round-trips on the session record; `local`
 // and `auto` (resolved local) execute as today.
-export type ControlSessionLane = "auto" | "local" | "cloud-gcp" | "cloud-shc"
+export type ControlSessionLane = "auto" | "local" | "cloud-gcp"
 export const DEFAULT_CONTROL_SESSION_LANE: ControlSessionLane = "auto"
 const CONTROL_SESSION_LANES: readonly ControlSessionLane[] = [
   "auto",
   "local",
   "cloud-gcp",
-  "cloud-shc",
 ]
 
 export type ControlSessionAdapter = PylonComposerAdapter | "apple_fm"
@@ -190,7 +188,7 @@ export type ControlSessionProjection = {
   sessionRef: string
   parentSessionRef: string | null
   adapter: ControlSessionAdapter
-  // Requested execution lane (#4998), surfaced for "running on Google GCE / SHC
+  // Requested execution lane (#4998), surfaced for "running on Google GCE / Google Cloud
   // / local" provenance. `auto`/`local` execute locally today; cloud lanes are
   // recorded pending full cloud dispatch (#4997).
   lane: ControlSessionLane
@@ -215,7 +213,7 @@ export type ControlSessionProjection = {
   eventCount: number
   // Latest human-readable action (for the session list — what it's doing now).
   latestActivity: string
-  // #4997: cloud runner provenance for the "running on Google GCE / SHC"
+  // #4997: cloud runner provenance for the "running on Google GCE / Google Cloud"
   // indicator. `null` for local/auto-resolved-local sessions.
   cloudRunner: ControlSessionCloudRunner | null
   // #4997: the resource_usage_receipt ref surfaced by a cloud run, if any.
@@ -375,7 +373,7 @@ export type ControlSessionExecutorResult = {
   sandboxMode?: "read-only" | "workspace-write" | "danger-full-access"
   totalTokens: number
   // #4997: when the session ran on a cloud runner, the resolved runner
-  // provenance ("running on Google GCE / SHC") and the surfaced
+  // provenance ("running on Google GCE / Google Cloud") and the surfaced
   // resource_usage_receipt ref, so the desktop indicator is real.
   cloudRunner?: ControlSessionCloudRunner
   resourceUsageReceiptRef?: string | null
@@ -385,8 +383,8 @@ export type ControlSessionExecutorResult = {
 // No raw owner identity, cost, GCP project id, instance name, IP, credentials,
 // or topology — only the lane and the runner id/label.
 export type ControlSessionCloudRunner = {
-  lane: "cloud-gcp" | "cloud-shc"
-  providerLane: "gcp" | "shc"
+  lane: "cloud-gcp"
+  providerLane: "gcp"
   runnerId: string
   externalRunId: string
 }
@@ -637,7 +635,7 @@ function parseLane(value: unknown): ControlSessionLane {
   }
   throw new ControlCommandValidationError(
     "lane_invalid",
-    "session.spawn lane must be one of auto|local|cloud-gcp|cloud-shc",
+    "session.spawn lane must be one of auto|local|cloud-gcp",
   )
 }
 
@@ -1220,8 +1218,7 @@ export function createControlSessionActions(options: {
   const cloudExecutor =
     options.cloudExecutor ??
     (options.cloudExecutorFactory ? options.cloudExecutorFactory(baseEnv) : null)
-  const laneIsCloud = (lane: ControlSessionLane): boolean =>
-    lane === "cloud-gcp" || lane === "cloud-shc"
+  const laneIsCloud = (lane: ControlSessionLane): boolean => lane === "cloud-gcp"
   const selectExecutor = (lane: ControlSessionLane): ControlSessionExecutor => {
     if (laneIsCloud(lane) && cloudExecutor) return cloudExecutor
     return executor

@@ -20,7 +20,7 @@
 //! dry-run path used by unit tests and any no-cloud environment; the
 //! [`LiveGceProvisioner`] is the gated real path that drives real Compute Engine
 //! `gcloud` calls when Application Default Credentials are present and refuses
-//! (so the caller can fall back to SHC) when ADC is absent.
+//! when ADC is absent; it never routes to another infrastructure provider.
 //!
 //! The live path shells out to the `gcloud` CLI (the same surface the
 //! `scripts/gcp-node-*.sh` bootstrap lane uses) with the host's Application
@@ -323,7 +323,7 @@ fn env_or(key: &str, default: &str) -> String {
 /// Drives real Compute Engine `gcloud` calls (instances create / list / delete,
 /// firewall-rules create / delete) using the host's ADC. When ADC or the raw
 /// project id are absent, `acquire` refuses so the placement layer falls back to
-/// the fake provisioner or SHC. Failed acquire always tears down any partially
+/// the fake provisioner. Failed acquire always tears down any partially
 /// created resources before returning, honoring the contract's "failed acquire
 /// must degrade or refuse, never advertise a healthy VM" rule.
 #[derive(Clone, Debug)]
@@ -463,7 +463,7 @@ impl GceProvisioner for LiveGceProvisioner {
         let Some(config) = &self.config else {
             return Err(
                 "live GCE provisioner requires OA_CODEX_GCE_PROJECT_ID (raw project id) \
-                 to be set; refusing so the lane falls back to fake/SHC."
+                 to be set; refusing so the lane falls back to the fake provisioner."
                     .to_string(),
             );
         };
@@ -1198,7 +1198,11 @@ mod tests {
         let kind = ProvisionerKind::from_env_value(
             std::env::var("OA_CODEX_GCE_PROVISIONER").ok().as_deref(),
         );
-        assert_eq!(kind, ProvisionerKind::Live, "set OA_CODEX_GCE_PROVISIONER=live");
+        assert_eq!(
+            kind,
+            ProvisionerKind::Live,
+            "set OA_CODEX_GCE_PROVISIONER=live"
+        );
         let (provisioner, effective) = provisioner_for(kind);
         assert_eq!(
             effective,
@@ -1235,7 +1239,10 @@ mod tests {
         };
         let instance = lease.instance.clone();
         let vm_name = LiveGceProvisioner::vm_name(&instance.instance_ref);
-        println!("LIVE-PROOF acquired vm_name={vm_name} ref={}", lease.instance_ref());
+        println!(
+            "LIVE-PROOF acquired vm_name={vm_name} ref={}",
+            lease.instance_ref()
+        );
         assert_eq!(lease.projection.state, LeaseState::Ready);
 
         lease.mark_in_use();
@@ -1247,12 +1254,22 @@ mod tests {
         let remaining = verifier
             .count_session_vms(&config, &vm_name)
             .expect("count session vms");
-        println!("LIVE-PROOF release result={:?} remaining_session_vms={remaining}", receipt);
+        println!(
+            "LIVE-PROOF release result={:?} remaining_session_vms={remaining}",
+            receipt
+        );
 
         let receipt = receipt.expect("release receipt");
         assert!(receipt.deleted_vm, "VM must be deleted");
-        assert!(receipt.removed_firewall_rule, "firewall rule must be removed");
-        assert_eq!(receipt.result, CleanupResult::Completed, "teardown must be clean");
+        assert!(
+            receipt.removed_firewall_rule,
+            "firewall rule must be removed"
+        );
+        assert_eq!(
+            receipt.result,
+            CleanupResult::Completed,
+            "teardown must be clean"
+        );
         assert_eq!(remaining, 0, "NO leftover session VMs allowed");
     }
 

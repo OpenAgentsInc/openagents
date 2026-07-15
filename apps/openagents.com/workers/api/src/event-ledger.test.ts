@@ -688,23 +688,6 @@ describe('event ledger ingest', () => {
     expect(stateOnly.entries[0]).not.toHaveProperty('subjectRef')
   })
 
-  test('keeps the Durable Object binding registered and the queues block deleted', () => {
-    const wrangler = readFileSync(
-      new URL('../wrangler.jsonc', import.meta.url),
-      'utf8',
-    )
-
-    // CFG-7 (#8522): the Cloudflare `queues` block is gone — event-ledger
-    // ingest rides the oa-infra Postgres JobQueue. The ordering Durable
-    // Object stays.
-    expect(wrangler).not.toContain('"queues":')
-    expect(wrangler).not.toContain('EVENT_LEDGER_INGEST_QUEUE')
-    expect(wrangler).toContain('"name": "EVENT_LEDGER_OWNER"')
-    expect(wrangler).toContain('"class_name": "EventLedgerOwnerDurableObject"')
-    expect(wrangler).toContain(
-      '"new_sqlite_classes": ["EventLedgerOwnerDurableObject"]',
-    )
-  })
 })
 
 // ---------------------------------------------------------------------------

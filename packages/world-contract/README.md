@@ -1,12 +1,12 @@
 # @openagentsinc/world-contract
 
-Effect Schema contracts for the Cloudflare Verse World Service.
+Effect Schema contracts retained from the retired Verse World Service.
 
 This package is transport-neutral. It defines the public-safe world rows,
 commands, receipts, deltas, subscription plans, diagnostics, bridge payloads,
-errors, and read-model projection shapes that both the Worker and clients use.
-It intentionally imports no Worker, Durable Object, D1, WebSocket, Three.js,
-Foldkit, or backend runtime code.
+errors, and read-model projection shapes. The former service and clients have
+been removed. This library intentionally imports no backend runtime, database,
+WebSocket, Three.js, Foldkit, or rendering code.
 
 ## P1 Scope
 
@@ -25,7 +25,8 @@ Foldkit, or backend runtime code.
 
 ## Projection Bridge Notes
 
-P8 consumes these contracts from `apps/openagents-world/src/bridge.ts`.
+The former backend consumer is deleted. These schemas remain a library only;
+any future backend requires a new Google Cloud design.
 `WorldBridgePayload` is intentionally row-shaped and public-safe: bridge code
 must replay public source refs into `WorldRow` values, run
 `assertWorldPublicSafety`, and key persistence with `worldRowKey`. The contract

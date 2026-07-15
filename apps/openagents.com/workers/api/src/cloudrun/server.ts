@@ -2,19 +2,18 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * CFG-9 (#8524): the openagents.com monolith on Google Cloud Run.
  *
- * A Bun HTTP entrypoint wrapping the EXISTING Worker `export default`
+ * A Node HTTP entrypoint wrapping the existing application handler
  * handler (`src/index.ts`) with a process.env-backed Env (env.ts):
  *
- * - every HTTP route the Worker serves, same hostname-based issuer routing
+ * - every HTTP route the application serves, same hostname-based issuer routing
  *   (openagents.com vs auth.openagents.com), same SPA asset fallback
- * - `POST /internal/cron` (bearer-protected) invokes the Worker's
+ * - `POST /internal/cron` (bearer-protected) invokes the application's
  *   `scheduled()` task table — driven by Cloud Scheduler every minute
  * - `GET /internal/healthz` liveness probe
  * - queue delivery arrives over HTTP from the oa-queue-worker pump (CFG-7)
  * - `ctx.waitUntil` work is tracked and drained on SIGTERM
  *
- * Run with the cloudflare:workers stub preloaded:
- *   node --import tsx --import ./src/cloudrun/preload.ts ./src/cloudrun/server.ts
+ * Run with `node --import tsx ./src/cloudrun/server.ts`.
  */
 
 import worker from '../index'
@@ -113,7 +112,7 @@ const main = async (): Promise<void> => {
       // Sarah removed at owner direction 2026-07-10 (epic #8610; supersedes
       // the #8594 SM-5 path mount): the web surface AND every /sarah/api/*
       // route are gone (apps/sarah deleted). Explicit 404 tombstone so the
-      // Worker's SPA unknown-document 302-to-home never resurrects a /sarah
+        // application's unknown-document 302-to-home never resurrects a /sarah
       // page and stale clients get a typed not_found instead of HTML.
       if (url.pathname === '/sarah' || url.pathname.startsWith('/sarah/')) {
         return Response.json(
@@ -153,7 +152,7 @@ const main = async (): Promise<void> => {
 
       // #8813: apps/start owns retained documents after the dedicated EN
       // mounts and root holding-page interception above. API/auth/unknown
-      // paths continue into the Worker unchanged.
+      // paths continue into the application handler unchanged.
       const startResponse = await handleStartUiRequest(
         request,
         runtime.env as unknown as Readonly<Record<string, unknown>>,
@@ -164,7 +163,7 @@ const main = async (): Promise<void> => {
       }
 
       // CFG-5 LiveHub WS bridge: Bun fetch cannot carry a WebSocket upgrade,
-      // so run the worker route's full pre-upgrade pipeline (upgrade headers
+      // so run the route's full pre-upgrade pipeline (upgrade headers
       // stripped) and bridge the socket only on its documented 426 success
       // sentinel — see sync-connect-bridge.ts.
       if (liveHub !== undefined && isSyncConnectUpgrade(request)) {

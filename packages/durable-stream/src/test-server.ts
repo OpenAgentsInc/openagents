@@ -3,7 +3,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  * A minimal Bun-hostable Durable Streams server backed by per-stream in-memory
  * stores. This is the local target for the conformance subset tests (the
  * "conformance suite as oracle" loop) — it exercises the SAME `core.ts` +
- * `http.ts` code paths the Cloudflare DO adapter uses, with `MemoryStreamStore`
+ * `http.ts` code paths the production adapter uses, with `MemoryStreamStore`
  * standing in for the DO's SQLite store.
  *
  * Each `/v1/stream/{path}` is keyed to its own `MemoryStreamStore`, exactly as

@@ -295,7 +295,7 @@ export const makeLiveForumWorkRequestRelayPublisher = (
 
 /**
  * Env-driven construction: returns the live publisher only when the operator
- * has configured `FORUM_WORK_REQUEST_MARKET_SECRET_KEY` (wrangler secret).
+ * has configured `FORUM_WORK_REQUEST_MARKET_SECRET_KEY` through Secret Manager.
  * Unconfigured deploys keep the rejecting default publisher.
  */
 export const forumWorkRequestRelayPublisherForEnv = (

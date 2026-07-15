@@ -145,7 +145,6 @@ export const runArtanisComposerTick = async (
      * ride the Postgres-authoritative credits ledger handle. */
     ledgerDb: PaymentsLedgerDb
     geminiApiKey: string | null
-    gatewayToken?: string | undefined
     forumPost: ComposerForumPost
     tip: ComposerTip
     artanisActorRef: string
@@ -237,9 +236,6 @@ export const runArtanisComposerTick = async (
 
     const mindResult = await artanisMindComplete({
       apiKey: deps.geminiApiKey,
-      ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
-        ? {}
-        : { gatewayToken: deps.gatewayToken }),
       // Grounded replies are long (150-350 words over a rich grounding
       // payload); give them headroom up front and let the mind escalate
       // once more on truncation rather than posting a cut-off answer (#5540
@@ -422,7 +418,6 @@ export const runArtanisComposerScheduled = (
     /** CFG-4 (#8519): the Postgres-authoritative credits ledger handle. */
     ledgerDb: PaymentsLedgerDb
     geminiApiKey: string | null
-    gatewayToken?: string | undefined
     forumPost: ComposerForumPost
     tip: ComposerTip
     artanisActorRef: string

@@ -6,6 +6,6 @@ output "openagents_lb_ip" {
 }
 
 output "openagents_lb_dns_authorization_records" {
-  description = "Cert pre-provisioning CNAMEs — add at Cloudflare DNS immediately (no traffic impact)"
+  description = "Google-managed certificate DNS authorization records"
   value       = module.openagents_lb.dns_authorization_records
 }

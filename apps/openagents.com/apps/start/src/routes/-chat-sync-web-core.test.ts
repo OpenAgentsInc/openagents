@@ -37,9 +37,9 @@ describe('Khala Sync web wire helpers (#8413)', () => {
 
   test('buildConnectUrl carries scope + cursor and maps https to wss on the local origin', () => {
     expect(
-      buildConnectUrl('scope.thread.t1', 3, { protocol: 'https:', host: 'openagents-com-start-staging.workers.dev' }),
+      buildConnectUrl('scope.thread.t1', 3, { protocol: 'https:', host: 'openagents.com' }),
     ).toBe(
-      'wss://openagents-com-start-staging.workers.dev/api/khala-sync/connect?scope=scope.thread.t1&cursor=3',
+      'wss://openagents.com/api/khala-sync/connect?scope=scope.thread.t1&cursor=3',
     )
   })
 

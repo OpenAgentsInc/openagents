@@ -462,8 +462,8 @@ function routeKindForAssignment(assignment: ProbeBenchmarkAssignment): ProbeBenc
     return "pylon";
   }
 
-  if (combined.includes("shc")) {
-    return "shc";
+  if (combined.includes("gcp")) {
+    return "gcp";
   }
 
   if (combined.includes("probe") && combined.includes("codex")) {
@@ -487,8 +487,10 @@ function isolationProfileForRoute(routeKind: ProbeBenchmarkRouteKind): string {
       return "isolation.workspace_shell";
     case "pylon":
       return "isolation.pylon_worker_sandbox";
-    case "shc":
-      return "isolation.shc_box";
+    case "gcp":
+      return "isolation.gcp_vm";
+    case "retired_pilot":
+      return "isolation.retired_pilot";
   }
 }
 
@@ -497,8 +499,10 @@ function privacyTierForRoute(routeKind: ProbeBenchmarkRouteKind): ProbeBenchmark
     case "apple_fm":
     case "local_qwen":
       return "local_only";
-    case "shc":
-      return "shc_box";
+    case "gcp":
+      return "gcp_vm";
+    case "retired_pilot":
+      return "remote_api";
     case "pylon":
       return "pylon_worker";
     case "codex":
@@ -512,8 +516,10 @@ function trustTierForRoute(routeKind: ProbeBenchmarkRouteKind): ProbeBenchmarkRo
     case "apple_fm":
     case "local_qwen":
       return "self_hosted";
-    case "shc":
+    case "gcp":
       return "owned_worker";
+    case "retired_pilot":
+      return "external_provider";
     case "pylon":
       return "registered_pylon";
     case "codex":
@@ -528,7 +534,7 @@ function rejectedRoutesForSelectedRoute(routeKind: ProbeBenchmarkRouteKind): Rea
     "probe_codex",
     "apple_fm",
     "local_qwen",
-    "shc",
+    "gcp",
     "pylon",
   ];
 

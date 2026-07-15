@@ -76,7 +76,7 @@ const accountingRecord = (
       'operator_accounting.probe_gepa.stage_0.configure_git_webserver.1',
     assignmentRef: assignment.assignmentRef,
     closeoutResultRefs: assignment.closeoutResultRefs,
-    operatorRef: 'operator.public.shc.benchmark_pool',
+    operatorRef: 'operator.public.gcp.benchmark_pool',
     paymentReceiptRefs: ['credit_receipt.public.probe_gepa.stage_0.1'],
     proofBundleRefs: assignment.proofBundleRefs,
     resourceUsageRefs: assignment.resourceUsageRefs,

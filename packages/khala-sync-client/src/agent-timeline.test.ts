@@ -63,7 +63,7 @@ const runEntry = entry(
     teamId: null,
     projectId: null,
     runtime: "codex",
-    backend: "shc_vm",
+    backend: "gcloud_vm",
     status: "running",
     goalId: null,
     goal: "private objective omitted by the client projection",
@@ -136,7 +136,7 @@ describe("contract khala_sync.client.confirmed_agent_timeline.v1", () => {
       expect(opened).toEqual(["scope.agent_run.run.timeline.1"])
       expect(snapshot.status).toEqual({ phase: "live", cursor: 4, pendingMutationCount: 1 })
       expect(snapshot.run).toEqual({
-        backend: "shc_vm",
+        backend: "gcloud_vm",
         runRef: RUN,
         routeRef: "thread.timeline.1",
         runtime: "codex",

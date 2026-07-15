@@ -11,7 +11,7 @@
  *   so app code can be exercised without a cloud bucket.
  *
  * Backends: in-memory (blob-store-memory.ts) and GCS (blob-store-gcs.ts).
- * Swap targets per the audit: S3, MinIO on SHC metal.
+ * Swap targets per the audit: S3, MinIO on Google Cloud metal.
  */
 import { Context, Schema } from "effect"
 import type { Effect } from "effect"

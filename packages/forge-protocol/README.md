@@ -1,7 +1,9 @@
 # OpenAgents Forge Protocol
 
 `@openagentsinc/forge-protocol` is the shared contract package for
-`forge.openagents.com` coordination records.
+historical Forge coordination records. The standalone Forge service is
+deleted; current API authority is the Google Cloud-hosted `openagents.com`
+service.
 
 Phase 0 defines the D1 source-of-truth row shapes for Forge issues, change
 records, NIP-34-aligned status rows, dispatch leases, and virtual merge-queue

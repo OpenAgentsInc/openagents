@@ -24,7 +24,7 @@ import {
   type RelayHealthTransitionEvent,
 } from './relay-health'
 
-const RELAY_URL = 'wss://relay.openagents.com'
+const RELAY_URL = 'wss://nos.lol'
 
 const tickingClock = (startMs = 1000, stepMs = 25) => {
   let now = startMs
@@ -178,16 +178,16 @@ describe('relay health migration shape', () => {
 })
 
 describe('canonicalMarketRelayUrl', () => {
-  test('defaults to the shared workers.dev market relay constant', () => {
+  test('defaults to the public Nostr relay constant', () => {
     expect(canonicalMarketRelayUrl({})).toBe(RELAY_URL)
   })
 
   test('reads the MARKET_RELAY_URL override so #4863 lands as config', () => {
     expect(
       canonicalMarketRelayUrl({
-        MARKET_RELAY_URL: 'wss://relay.openagents.com',
+        MARKET_RELAY_URL: 'wss://nos.lol',
       }),
-    ).toBe('wss://relay.openagents.com')
+    ).toBe('wss://nos.lol')
   })
 
   test('ignores an empty override', () => {
@@ -297,7 +297,7 @@ describe('probeRelayNip11', () => {
     expect(leg.relayName).toBe('Scoped Market Relay')
     expect(leg.latencyMs).toBeGreaterThan(0)
     expect(requested[0]?.url).toBe(
-      'https://relay.openagents.com',
+      'https://nos.lol',
     )
     expect(requested[0]?.headers).toEqual({
       Accept: 'application/nostr+json',

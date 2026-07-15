@@ -40,8 +40,8 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
  *
  * ## Snapshot + compaction interplay
  *
- * The pull is ONE REPEATABLE READ transaction (Hyperdrive
- * transaction-mode safe: nothing spans requests): the scope counter and
+ * The pull is ONE REPEATABLE READ Cloud SQL transaction (nothing spans
+ * requests): the scope counter and
  * every row come from one snapshot, and the snapshot cursor is always the
  * CURRENT `last_version` — never a client-supplied cursor — so a CVR pull
  * can never be behind the retained window. The current row set is the

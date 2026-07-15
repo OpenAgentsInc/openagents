@@ -186,11 +186,8 @@ module "terraform_state_bucket" {
 }
 
 # ---------------------------------------------------------------------------
-# Artifact/blob storage (CFG-8, #8523) — replaces the Cloudflare R2
-# `ARTIFACTS` buckets (`openagents-autopilot-artifacts` /
-# `openagents-autopilot-artifacts-staging`) that were account-disabled
-# during the Cloudflare→GCP consolidation (#8515). The old R2 usage had no
-# object TTL/lifecycle in code, so none is configured here.
+# Artifact/blob storage (CFG-8, #8523). Google Cloud Storage is the sole
+# production artifact authority.
 # ---------------------------------------------------------------------------
 
 module "oa_artifacts_bucket" {

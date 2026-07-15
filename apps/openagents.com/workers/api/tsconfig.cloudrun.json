@@ -4,10 +4,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    // CFG-9 (#8524): the Cloud Run monolith entry runs under Bun, so this
-    // config pairs Node types with the Workers ambient types the shared worker
-    // sources expect (D1Database, KVNamespace, Queue, ExecutionContext, ...).
-    "types": ["node", "vite-plus-matchers", "@cloudflare/workers-types"]
+    "types": ["node", "vite-plus-matchers", "openagents-platform"]
   },
   "include": ["src/cloudrun/**/*"]
 }

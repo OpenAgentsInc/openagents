@@ -78,7 +78,7 @@ const usage = (
     paymentState: 'not_charged',
     pricingState: 'known',
     processRuntimeMs: 10_000,
-    providerRef: 'provider.openagents.shc',
+    providerRef: 'provider.google_cloud',
     rateLimitResetRef: null,
     receiptRefs: ['receipt.pack_a.usage.1'],
     scheduleRef: 'schedule.pack_a.1',

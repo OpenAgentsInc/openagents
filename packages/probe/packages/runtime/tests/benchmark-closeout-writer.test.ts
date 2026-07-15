@@ -263,7 +263,7 @@ describe("Probe benchmark closeout writer", () => {
           scorecardRef: "route_scorecard.probe.configure_git_webserver.pylon.1",
           selectedAgentOrModelRef: "model_backend.local_qwen.coder.v1",
           selectedRunnerRef: "runner.probe.pylon_worker.v1",
-          selectedProviderRef: "pylon.public.shc_box_1",
+          selectedProviderRef: "pylon.public.gcp_vm_1",
           selectedIsolationProfileRef: "isolation.pylon_worker_sandbox",
           selectedVerifierRef: "verifier.terminal_bench.configure_git_webserver.v1",
           selectedRouteKind: "pylon",

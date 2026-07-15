@@ -5,14 +5,13 @@ import {
   scheduleBackgroundWork,
 } from './runtime'
 
-// Edge cache for the server-rendered lander family. The family's remaining
-// cost is the per-request live-at-read D1 ledger SUM (~100 ms median, 2 s
-// outliers). This helper serves the rendered document from the Cloudflare
-// Cache API for a short window (20 s) so the hit path skips the Worker render
-// AND the D1 read entirely, while the browser itself never caches
+// Optional Cache API acceleration for the server-rendered lander family. The
+// Cloud Run runtime normally renders directly; a host-provided standards-based
+// Cache API may cache the document for a short window (20 s), while the browser
+// itself never caches
 // (`no-store` to the client): every navigation revalidates at the edge, and
 // the inline counter refresher keeps the number live within 5 s regardless.
-// Where the Cache API is unavailable (vitest, workers.dev previews), it
+// Where the Cache API is unavailable (Cloud Run and tests), it
 // degrades to a plain render.
 
 const EDGE_TTL_SECONDS = 20

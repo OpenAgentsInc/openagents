@@ -27,7 +27,7 @@ function makeFakeCloudControlPlane(options?: {
   scriptedEvents?: CloudWorkroomEvent[]
 }) {
   const calls: { url: string; method: string; body?: unknown }[] = []
-  const externalRunId = "shc-codex:oa-gce-ephemeral-test:test_run"
+  const externalRunId = "gcp-codex:oa-gce-ephemeral-test:test_run"
 
   const queue: CloudWorkroomEvent[][] = options?.scriptedEvents
     ? [options.scriptedEvents]
@@ -536,7 +536,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
       expect(row?.lane).toBe("cloud-gcp")
 
       // MOST IMPORTANT: the resource_usage_receipt.v1 ref round-trips to the
-      // session exactly like SHC/local. Provision/cleanup receipts are
+      // session exactly like Google Cloud/local. Provision/cleanup receipts are
       // lifecycle provenance only and must not mask the usage receipt.
       expect(row?.resourceUsageReceiptRef).toBe("sha256:resource-usage-receipt-1")
 

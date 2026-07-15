@@ -25,10 +25,10 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
  * and `bootstrap` — consistent snapshot pages of a scope's current entity
  * states stitched to the scope version (the stitch cursor).
  *
- * Both run on the Worker's **Hyperdrive** path: transaction-mode pooling, so
- * no session state may span requests. Each call is one self-contained
- * Postgres transaction (REPEATABLE READ, so the scope counter and the page
- * rows come from ONE snapshot); nothing is held between pages.
+ * Both run on the Cloud Run API's direct Cloud SQL path. No session state may
+ * span requests: each call is one self-contained Postgres transaction
+ * (REPEATABLE READ, so the scope counter and the page rows come from ONE
+ * snapshot); nothing is held between pages.
  *
  * ## Bootstrap snapshot design (v1)
  *
@@ -45,9 +45,9 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
  * visible in our snapshot. There is no window where `v` is visible but
  * `v - 1` is not.
  *
- * **Why multi-page works without holding a transaction:** Hyperdrive cannot
- * pin one Postgres session across HTTP requests, so a classic
- * held-open-snapshot cursor is impossible. Instead page tokens are
+ * **Why multi-page works without holding a transaction:** Cloud Run requests
+ * do not pin one Postgres session across HTTP requests, so a classic
+ * held-open-snapshot cursor is not part of the API contract. Page tokens are
  * self-contained: they encode `(snapshotCursor, lastEntityKey)`, and every
  * subsequent page re-derives latest-per-entity under the predicate
  * `version <= snapshotCursor AND (entity_type, entity_id) > lastEntityKey`.
@@ -81,7 +81,7 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
  * rebuild-on-cron public projection like `scope.public.activity-timeline`
  * re-writes its whole ~600 KB snapshot as a new changelog version every
  * cron tick, so `limit` versions is a multi-hundred-MB page that overruns the
- * Worker isolate's CPU/memory/response budget and returns a bare 500 with no
+ * API instance's CPU/memory/response budget and returns a bare 500 with no
  * body (issue #8535). The byte budget caps the summed stored size
  * (`pg_column_size(post_image_json)`) of the versions in a page: versions are
  * admitted in ascending order until the running total would exceed the
@@ -105,7 +105,7 @@ export const MAX_LOG_PAGE_LIMIT = 1_000
  * summed stored size (`pg_column_size(post_image_json)`) of the versions in a
  * page. Bounds pages for scopes with large per-version post-images (e.g. the
  * `scope.public.activity-timeline` rebuild-on-cron snapshot) so a page can
- * never overrun the Worker isolate and 500 (issue #8535). Compressed/stored
+ * never overrun the API instance and 500 (issue #8535). Compressed/stored
  * bytes typically expand ~an order of magnitude when decoded/serialized, so
  * 512 KiB stored keeps the decoded response comfortably in the low single-digit
  * MB range. The first version of a page is always admitted regardless of this
@@ -302,7 +302,7 @@ export const logPage = async (sql: SyncSql, input: LogPageInput): Promise<LogPag
 }
 
 // ---------------------------------------------------------------------------
-// Bootstrap page tokens (self-contained — Hyperdrive holds no session state)
+// Bootstrap page tokens (self-contained — no request-spanning session state)
 // ---------------------------------------------------------------------------
 
 interface BootstrapPageToken {
@@ -378,7 +378,7 @@ interface SnapshotRow {
  * (`khala_sync_scopes.last_version`, read in the same REPEATABLE READ
  * transaction as the page rows); later pages are made consistent relative to
  * that cursor purely by the `version <= snapshotCursor` predicate plus
- * key-set pagination, so no transaction spans requests (Hyperdrive). The
+ * key-set pagination, so no transaction spans Cloud Run requests. The
  * final page carries `cursor = snapshotCursor` and no `nextPageToken`.
  *
  * Note: a page may return fewer than `pageSize` entities without being the

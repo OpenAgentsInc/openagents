@@ -11,7 +11,7 @@ const FORBIDDEN =
   /apikey|authorization:|bearer[:\s]|mnemonic|secret|providerAccountRef|authGrantRef|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/i
 
 const queuedRun = (runId: string, overrides: Record<string, unknown> = {}) => ({
-  backend: 'shc_vm',
+  backend: 'gcloud_vm',
   canceledAt: null,
   completedAt: null,
   createdAt: '2026-07-05T12:00:00.000Z',
@@ -195,7 +195,7 @@ const runnerEvent = (
   payloadJson: null,
   runId,
   sequence,
-  source: 'shc',
+  source: 'gcp',
   status: null,
   summary: `event #${sequence}`,
   type: 'runner.progress',

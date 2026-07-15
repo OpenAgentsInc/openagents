@@ -49,7 +49,7 @@ const publicPlacementRecord = () =>
     providerGrantRefs: [],
     publicProofProjectionRefs: ['public_proof.repo_placement.aperture_1'],
     repoRef: 'repo.github.OpenAgentsInc.openagents',
-    runnerBackendKind: 'cloudflare_container',
+    runnerBackendKind: 'gcloud_vm',
     runnerWorkloadTrust: 'low',
     trustTier: 'public',
     workroomRefs: ['workroom.aperture_1'],
@@ -112,7 +112,7 @@ describe('Autopilot Aperture contracts', () => {
         ],
         policyRefs: [
           'policy.repo_trust.private',
-          'policy.repo_placement.cloudflare_container',
+          'policy.repo_placement.gcloud_vm',
         ],
       },
       nowIso,

@@ -1,6 +1,6 @@
 import type { DeployValidationResult } from "./cloud-deploy.js"
 
-export type DeployRequestTarget = "cloudrun" | "workers"
+export type DeployRequestTarget = "cloudrun"
 export type DeployRequestEnv = "production" | "preview"
 
 export type DeployRequestValidationResult = DeployValidationResult & {
@@ -9,7 +9,7 @@ export type DeployRequestValidationResult = DeployValidationResult & {
   env: DeployRequestEnv
 }
 
-const DEPLOY_REQUEST_TARGETS = new Set<DeployRequestTarget>(["cloudrun", "workers"])
+const DEPLOY_REQUEST_TARGETS = new Set<DeployRequestTarget>(["cloudrun"])
 const DEPLOY_REQUEST_ENVS = new Set<DeployRequestEnv>(["production", "preview"])
 
 function parseTarget(target: unknown): DeployRequestTarget | null {
@@ -37,7 +37,7 @@ export function validateDeployRequest(input: {
   const env = parsedEnv ?? "preview"
 
   if (target === null) {
-    errors.push("target must be cloudrun or workers")
+    errors.push("target must be cloudrun")
   }
 
   if (ref.length === 0) {

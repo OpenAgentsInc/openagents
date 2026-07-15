@@ -81,7 +81,7 @@ export class ArtanisGepaProductionSmokeRecord extends S.Class<ArtanisGepaProduct
   retainedResultRefs: S.Array(S.String),
   routeScorecardRefs: S.Array(S.String),
   schemaVersion: S.Literal(ArtanisGepaProductionSmokeSchemaVersion),
-  shcRunRefs: S.Array(S.String),
+  pilotRunRefs: S.Array(S.String),
   smokeRef: S.String,
   splitManifestRefs: S.Array(S.String),
   stageRef: S.String,
@@ -114,7 +114,7 @@ export class ArtanisGepaProductionSmokeProjection extends S.Class<ArtanisGepaPro
   retainedResultRefs: S.Array(S.String),
   routeScorecardRefs: S.Array(S.String),
   schemaVersion: S.Literal(ArtanisGepaProductionSmokeSchemaVersion),
-  shcRunRefs: S.Array(S.String),
+  pilotRunRefs: S.Array(S.String),
   smokeRef: S.String,
   splitManifestRefs: S.Array(S.String),
   state: ArtanisGepaProductionSmokeState,
@@ -258,7 +258,7 @@ const assertRecord = (record: ArtanisGepaProductionSmokeRecord): void => {
     ...record.psionicImportRefs,
     ...record.retainedResultRefs,
     ...record.routeScorecardRefs,
-    ...record.shcRunRefs,
+    ...record.pilotRunRefs,
     ...record.splitManifestRefs,
   ])
 
@@ -278,7 +278,7 @@ const assertRecord = (record: ArtanisGepaProductionSmokeRecord): void => {
   if (
     record.completedMetricCalls < 2 ||
     record.pylonCloseouts.length < 2 ||
-    record.shcRunRefs.length === 0 ||
+    record.pilotRunRefs.length === 0 ||
     record.harborRunRefs.length === 0 ||
     record.probeCloseoutRefs.length === 0 ||
     record.closeoutBundleRefs.length === 0 ||
@@ -289,7 +289,7 @@ const assertRecord = (record: ArtanisGepaProductionSmokeRecord): void => {
   ) {
     throw new ArtanisGepaProductionSmokeUnsafe({
       reason:
-        'Probe GEPA production smoke requires SHC, Harbor, Probe closeout, closeout bundle, retained result, route scorecard, Forum summary, Psionic import, and at least two Pylon closeout refs.',
+        'Probe GEPA production smoke requires Google Cloud, Harbor, Probe closeout, closeout bundle, retained result, route scorecard, Forum summary, Psionic import, and at least two Pylon closeout refs.',
     })
   }
 
@@ -357,7 +357,7 @@ export const projectArtanisGepaProductionSmoke = (
     retainedResultRefs: uniqueRefs(record.retainedResultRefs),
     routeScorecardRefs: uniqueRefs(record.routeScorecardRefs),
     schemaVersion: ArtanisGepaProductionSmokeSchemaVersion,
-    shcRunRefs: uniqueRefs(record.shcRunRefs),
+    pilotRunRefs: uniqueRefs(record.pilotRunRefs),
     smokeRef: record.smokeRef,
     splitManifestRefs: uniqueRefs(record.splitManifestRefs),
     state,
@@ -381,7 +381,7 @@ export const artanisProductionLaunchGateCheckInputFromGepaSmoke = (
     category: 'production_e2e_smoke',
     checkRef: 'check.public.artanis.launch_gate.probe_gepa_pylon_smoke',
     description:
-      'Retained Probe GEPA/Pylon production-equivalent smoke evidence exists with SHC Harbor refs, Probe closeouts, accepted and rejected Pylon closeouts, no-spend payment mode, Psionic import refs, and public-safe Forum summary refs.',
+      'Retained Probe GEPA/Pylon production-equivalent smoke evidence exists with Google Cloud Harbor refs, Probe closeouts, accepted and rejected Pylon closeouts, no-spend payment mode, Psionic import refs, and public-safe Forum summary refs.',
     issueRefs: [
       'issue:#511',
       'issue:OpenAgentsInc/probe#188',
@@ -427,7 +427,7 @@ export const exampleArtanisGepaProductionSmokeRecord = (
     },
     benchmarkSuiteRefs: ['benchmark_suite.terminal_bench_2.harbor.v1'],
     blockerRefs: [],
-    campaignRef: 'campaign.probe_gepa.stage0.live_shc_harbor_smoke.2026_06_08',
+    campaignRef: 'campaign.probe_gepa.stage0.limited_pilot_harbor_smoke.2026_06_08',
     candidateHashRefs: [
       'sha256:0000000000000000000000000000000000000000000000000000000000001880',
     ],
@@ -517,11 +517,11 @@ export const exampleArtanisGepaProductionSmokeRecord = (
       'route_scorecard.probe_gepa.live_stage0.demo_2',
     ],
     schemaVersion: ArtanisGepaProductionSmokeSchemaVersion,
-    shcRunRefs: ['shc_run.probe_gepa.live_stage0.harbor_smoke.001'],
+    pilotRunRefs: ['pilot_run.probe_gepa.live_stage0.harbor_smoke.001'],
     smokeRef: 'smoke.public.artanis.probe_gepa_pylon.live_stage0.001',
     splitManifestRefs: [
       'benchmark_split_manifest.terminal_bench_2.probe_gepa.stage_0_1.v1',
     ],
-    stageRef: 'stage.probe_gepa.stage0.live_shc_harbor_smoke',
+    stageRef: 'stage.probe_gepa.stage0.limited_pilot_harbor_smoke',
     updatedAtIso,
   })

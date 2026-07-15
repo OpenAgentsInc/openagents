@@ -129,7 +129,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
-        "This contract binds dispatch budget enforcement for background-agent definitions at the openagents.com Worker dispatch boundary. It does not authorize public budget or reliability claims beyond the tested definition-run and trigger-store oracles.",
+        "This contract binds dispatch budget enforcement for background-agent definitions at the openagents.com Cloud Run API dispatch boundary. It does not authorize public budget or reliability claims beyond the tested definition-run and trigger-store oracles.",
       blockerRefs: [],
       contractId: "background_agents.dispatch.budget_caps_enforced.v1",
       enforcementTier: "test-sweep",
@@ -169,9 +169,9 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       state: "enforced",
       statement:
         "Auto-pause after 3 consecutive failures; maxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "BA-B4 is enforced by the openagents.com Worker definition-run route tests and trigger-store tests in the normal pnpm exec vp test sweep.",
+        "BA-B4 is enforced by the openagents.com Cloud Run API definition-run route tests and trigger-store tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -286,9 +286,9 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       state: "enforced",
       statement:
         "Definition toolset compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access; ask entries route to escalation instead of failing; no lane may reach tools outside compiled policy.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "BA-A5 is enforced by the agent-runtime-schema compiler test, the packages/khala-tools dispatcher test, and the openagents.com Worker Forge git-token scope test in their normal pnpm exec vp test sweeps.",
+        "BA-A5 is enforced by the agent-runtime-schema compiler test, the packages/khala-tools dispatcher test, and the openagents.com Cloud Run API Forge git-token scope test in their normal pnpm exec vp test sweeps.",
     },
     {
       authorityBoundary:
@@ -321,9 +321,9 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       state: "enforced",
       statement:
         "Autopilot Lead Gen v0 is a drafting-only standing background agent: target discovery, agent-readiness analysis, report drafts, sequence-entry drafts, receipt writing, and operator-inbox escalation are permitted; outreach send/activation tools are denied and absent from allow/ask.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "LG-7 is enforced by the openagents.com Worker lead-gen agent-definition test in the normal pnpm exec vp test sweep.",
+        "LG-7 is enforced by the openagents.com Cloud Run API lead-gen agent-definition test in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -357,9 +357,9 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       state: "enforced",
       statement:
         "Autopilot Lead Gen may produce reports and sequence drafts, but no outreach leaves the system unless a separate LG-4 approval receipt exists; the v0 dogfood receipt records sendAuthority.allowed=false.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "LG-7 is enforced by the openagents.com Worker lead-gen agent-definition test in the normal pnpm exec vp test sweep.",
+        "LG-7 is enforced by the openagents.com Cloud Run API lead-gen agent-definition test in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -401,8 +401,8 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "Worker-side background-agent Git credentials are brokered: dispatch sends only ref metadata, and the Pylon materializer installs a per-task Git credential helper that scopes requests by protocol, host, and path, uses a bounded cache, and never reads embedded SCM credentials from the workspace.",
-      surface: "pylon-worker + openagents.com-worker",
+        "Cloud-hosted background-agent Git credentials are brokered: dispatch sends only ref metadata, and the Pylon materializer installs a per-task Git credential helper that scopes requests by protocol, host, and path, uses a bounded cache, and never reads embedded SCM credentials from the workspace.",
+      surface: "pylon-worker + openagents.com-api",
       verification:
         "BA-D2 is enforced by the agent-definition run route test plus the Pylon workspace materializer test in their normal sweeps.",
     },
@@ -616,9 +616,9 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       state: "enforced",
       statement:
         "Forum-triggered background-agent runs follow one integration template: signed source event, verified Forum source post, bounded normalization, owner-scoped definition dispatch, and a completion callback that can post only back to the stored source Forum thread through Forum write authority.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "BA-G1 is enforced by agent-runtime-schema Forum webhook normalization tests and openagents.com Worker Forum webhook/completion route tests in the normal pnpm exec vp test sweep.",
+        "BA-G1 is enforced by agent-runtime-schema Forum webhook normalization tests and openagents.com Cloud Run API Forum webhook/completion route tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -661,9 +661,9 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       state: "enforced",
       statement:
         "GitHub @mention background-agent runs follow the shared integration template: signed issue_comment.created event, configured mention extraction, bounded normalization, owner-scoped definition dispatch, and a result comment posted only back to the stored source issue or PR thread without loose issue spam.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "BA-G2 is enforced by agent-runtime-schema GitHub mention normalization tests and openagents.com Worker GitHub webhook/completion route tests in the normal pnpm exec vp test sweep.",
+        "BA-G2 is enforced by agent-runtime-schema GitHub mention normalization tests and openagents.com Cloud Run API GitHub webhook/completion route tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -684,7 +684,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       oracles: [
         {
           description:
-            "The event ledger projects signed GitHub webhook events into owner-scoped queue messages and D1 rows with source, externalRef, actor, contentRef, subjectRef, timestamps, false training consent, no raw comment/title content, and per-owner deduped ordering.",
+            "The event ledger projects signed GitHub webhook events into owner-scoped Cloud SQL rows with source, externalRef, actor, contentRef, subjectRef, timestamps, false training consent, no raw comment/title content, and transactional per-owner deduped ordering.",
           id: "background_agents.inbox.event_ledger_private_rows",
           kind: "bun-test",
           mode: "unit",
@@ -707,10 +707,10 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "event_ledger.v1 ingests matched GitHub source events through Queues into owner-scoped private D1 rows, orders and dedupes through a per-owner Durable Object, stores refs and bounded summaries rather than raw content, and is never training data or cross-account projection material.",
-      surface: "openagents.com-worker",
+        "event_ledger.v1 ingests matched GitHub source events through the Cloud Run API into owner-scoped private Cloud SQL rows, orders and dedupes transactionally per owner, stores refs and bounded summaries rather than raw content, and is never training data or cross-account projection material.",
+      surface: "openagents.com-api",
       verification:
-        "BA-H1 is enforced by the openagents.com Worker event-ledger and GitHub webhook route tests in the normal pnpm exec vp test sweep.",
+        "BA-H1 is enforced by the openagents.com Cloud Run API event-ledger and GitHub webhook route tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -755,9 +755,9 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       state: "enforced",
       statement:
         "event_ledger.v1 treats handled-state as first-class (`open`, `handled`, `responded`, `ignored`), records the definition run that touched an entry, and exposes owner-scoped definition reads only through a toolset-gated gateway that redacts according to secretPolicy.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "BA-H2 is enforced by the openagents.com Worker event-ledger store and definition event-ledger gateway route tests in the normal pnpm exec vp test sweep.",
+        "BA-H2 is enforced by the openagents.com Cloud Run API event-ledger store and definition event-ledger gateway route tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -795,7 +795,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         },
         {
           description:
-            "The event ledger accepts Slack source rows through the widened D1 source contract, preserves owner-scoped ordering, fixes training consent false, and stores refs plus bounded summaries rather than raw message text.",
+            "The event ledger accepts Slack source rows through the widened Cloud SQL source contract, preserves owner-scoped ordering, fixes training consent false, and stores refs plus bounded summaries rather than raw message text.",
           id: "background_agents.inbox.slack_event_ledger_private_rows",
           kind: "bun-test",
           mode: "unit",
@@ -811,9 +811,9 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       state: "enforced",
       statement:
         "Slack webhook events enter event_ledger.v1 only after Slack signature verification and typed normalization, then become owner-scoped private rows with refs and bounded summaries rather than raw message text.",
-      surface: "openagents.com-worker",
+      surface: "openagents.com-api",
       verification:
-        "BA-H3 is enforced by agent-runtime-schema Slack normalization tests plus openagents.com Worker Slack webhook route and event-ledger store tests in the normal pnpm exec vp test sweep.",
+        "BA-H3 is enforced by agent-runtime-schema Slack normalization tests plus openagents.com Cloud Run API Slack webhook route and event-ledger store tests in the normal pnpm exec vp test sweep.",
     },
     {
       authorityBoundary:
@@ -893,5 +893,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-11.2",
+  version: "2026-07-14.1",
 }

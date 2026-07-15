@@ -24,7 +24,7 @@ const baseRequest = (
   providerGrantRefs: [],
   publicProofProjectionRefs: ['public_proof.repo_placement.public_site'],
   repoRef: 'repo.OpenAgentsInc.otec_public',
-  runnerBackendKind: 'cloudflare_container',
+  runnerBackendKind: 'gcloud_vm',
   runnerWorkloadTrust: 'low',
   trustTier: 'public',
   workroomRefs: ['workroom.otec_site_revision_4'],
@@ -79,19 +79,19 @@ describe('Coding on Autopilot repo placement', () => {
     ])
   })
 
-  test('blocks legal/payment/regulated trust tiers from non-SHC backends and gates payment-sensitive placement', () => {
+  test('admits sensitive work only on Google Cloud and gates payment-sensitive placement', () => {
     const legalRecord = evaluateCodingAutopilotRepoPlacement(baseRequest({
       customerGrantRefs: ['customer_grant.repo_access'],
       dataClassification: 'legal_sensitive',
       operatorApprovalRefs: ['operator_approval.legal_review'],
-      runnerBackendKind: 'cloudflare_container',
+      runnerBackendKind: 'gcloud_vm',
       trustTier: 'legal_sensitive',
     }))
     const paymentNeedsProvider = evaluateCodingAutopilotRepoPlacement(baseRequest({
       customerGrantRefs: ['customer_grant.repo_access'],
       dataClassification: 'payment_private',
       operatorApprovalRefs: ['operator_approval.payment_review'],
-      runnerBackendKind: 'shc_vm',
+      runnerBackendKind: 'gcloud_vm',
       runnerWorkloadTrust: 'sensitive',
       trustTier: 'payment_sensitive',
     }))
@@ -100,19 +100,17 @@ describe('Coding on Autopilot repo placement', () => {
       dataClassification: 'payment_private',
       operatorApprovalRefs: ['operator_approval.payment_review'],
       providerGrantRefs: ['provider_grant.runner_account'],
-      runnerBackendKind: 'shc_vm',
+      runnerBackendKind: 'gcloud_vm',
       runnerWorkloadTrust: 'sensitive',
       trustTier: 'payment_sensitive',
     }))
 
     expect(legalRecord).toMatchObject({
-      decision: 'blocked',
-      eligible: false,
+      decision: 'eligible',
+      eligible: true,
       publicClaimAllowed: false,
     })
-    expect(legalRecord.blockerRefs).toEqual([
-      'blocker.repo_placement.backend_not_allowed_for_trust_tier',
-    ])
+    expect(legalRecord.blockerRefs).toEqual([])
     expect(paymentNeedsProvider.decision).toBe('needs_provider_grant')
     expect(paymentEligible).toMatchObject({
       decision: 'eligible',

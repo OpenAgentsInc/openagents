@@ -64,8 +64,8 @@ const admitWindow = (
 }
 
 const clientIp = (request: Request): string =>
-  request.headers.get('cf-connecting-ip') ??
   request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+  request.headers.get('x-real-ip')?.trim() ??
   'unknown'
 
 export type KhalaSyncAnonymousRateLimiter = (request: Request) => boolean

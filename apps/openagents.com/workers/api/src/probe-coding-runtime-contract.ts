@@ -530,7 +530,7 @@ const probeRequestFixture: OpenAgentsProbeRunRequest = {
   objectiveRef: 'objective.site_revision.public_safe',
   policyRefs: ['policy.probe.no_raw_logs'],
   programRunRef: 'program_run.probe.otec.1',
-  routeRefs: ['route.probe.shc_vm'],
+  routeRefs: ['route.probe.gcloud_vm'],
   runtimeRef: 'runtime.probe.coding_adapter',
   sourceAuthorityRefs: ['source_authority.order.summary'],
   trustLevel: 'medium',

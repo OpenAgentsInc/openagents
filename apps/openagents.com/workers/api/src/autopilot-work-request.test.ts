@@ -46,7 +46,7 @@ describe('OpenAgents Autopilot work request contract', () => {
         quotedAmountCents: 2500,
       },
       placementPolicy: {
-        preferredRunnerKinds: ['openagents_shc'],
+        preferredRunnerKinds: ['google_cloud'],
       },
     })
   })

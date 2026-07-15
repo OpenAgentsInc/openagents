@@ -62,7 +62,7 @@ describe("Probe backend capability reporting", () => {
   test("reports unsupported Apple FM state without advertising the capability", async () => {
     const report = await Effect.runPromise(
       reportAppleFmBackendCapability({
-        runner: runner("shc"),
+        runner: runner("gcp"),
         fetch: async () =>
           Response.json({
             ready: false,

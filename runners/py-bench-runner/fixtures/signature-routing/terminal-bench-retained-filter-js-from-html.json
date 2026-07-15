@@ -17,8 +17,8 @@
   "metadata": {
     "terminalBenchTaskId": "filter-js-from-html",
     "retainedFailureFamily": "xss_sanitizer_policy",
-    "preservedRunRef": "docs/bootstrap/CND-051-shc-codex-terminal-bench-8task.md#failure-notes",
-    "sourceDoc": "docs/bootstrap/CND-051-shc-codex-terminal-bench-8task.md",
+    "preservedRunRef": "docs/bootstrap/CND-051-gcp-codex-terminal-bench-8task.md#failure-notes",
+    "sourceDoc": "docs/bootstrap/CND-051-gcp-codex-terminal-bench-8task.md",
     "taskChecksum": "53d156752f8706d9e88c598e0e562ddacf52ab478c7655352e939b8f44a5d13b",
     "rawCodexReward": 0.0,
     "rawCodexVerifier": "0 passed / 2 failed",

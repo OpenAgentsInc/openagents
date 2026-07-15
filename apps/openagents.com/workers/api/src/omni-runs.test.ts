@@ -4,16 +4,16 @@ import {
   agentRunMissionProjection,
   agentRunRouteId,
   buildAgentRunAssignment,
-  checkShcControlHealth,
-  continueAgentRunOnShc,
+  checkGoogleCloudControlHealth,
+  continueAgentRunOnGoogleCloud,
   createGitHubWorkOrder,
   createQueuedAgentRun,
   createQueuedDeployment,
-  dispatchAgentRunToShc,
+  dispatchAgentRunToGoogleCloud,
   dispatchEventForAgentRun,
-  dispatchDeploymentToShc,
+  dispatchDeploymentToGoogleCloud,
   eventFromRunnerPayload,
-  fetchAgentRunEventsFromShc,
+  fetchAgentRunEventsFromGoogleCloud,
   legacyAgentRunIdFromUuid,
   makeD1OmniRunStore,
   parseGithubRepository,
@@ -48,7 +48,7 @@ const nextEvent = (
   parentId: runId,
   payloadJson: null,
   sequence,
-  source: 'shc',
+  source: 'gcp',
   status: null,
   summary,
   type: 'runner.progress',
@@ -167,7 +167,7 @@ describe('makeD1OmniRunStore afterAgentRunSyncChanges hook (KS-6.6, #8416)', () 
   })
 })
 
-describe('OpenAgents SHC/OpenCode assignments', () => {
+describe('OpenAgents Google Cloud/OpenCode assignments', () => {
   test('parses GitHub repository names and URLs', () => {
     expect(parseGithubRepository('OpenAgentsInc/autopilot-omega')).toEqual({
       owner: 'OpenAgentsInc',
@@ -195,7 +195,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     })
   })
 
-  test('builds a Cloudflare-to-SHC OpenCode/Codex assignment without raw credentials', () => {
+  test('builds a Cloudflare-to-Google Cloud OpenCode/Codex assignment without raw credentials', () => {
     const assignment = buildAgentRunAssignment({
       appOrigin: 'https://openagents.com',
       authGrantRef: 'codex-auth-grant_1',
@@ -216,7 +216,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
 
     expect(assignment.schemaVersion).toBe('openagents.agent_run_assignment.v1')
     expect(assignment.runtime).toBe('opencode_codex')
-    expect(assignment.backend).toBe('shc_vm')
+    expect(assignment.backend).toBe('gcloud_vm')
     expect(assignment.callback.url).toBe(
       'https://openagents.com/api/omni/agent-runs/agent_run_1/events/ingest',
     )
@@ -422,7 +422,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     expect(legacyAgentRunIdFromUuid(routeId)).toBe(legacyRunId)
   })
 
-  test('rejects SHC dispatch unless live Worker config is explicitly enabled', async () => {
+  test('rejects Google Cloud dispatch unless live Worker config is explicitly enabled', async () => {
     const queued = createQueuedAgentRun({
       appOrigin: 'https://openagents.com',
       authGrantRef: 'codex-auth-grant_1',
@@ -441,7 +441,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     })
 
     await expect(
-      dispatchAgentRunToShc(queued.run.assignment, {
+      dispatchAgentRunToGoogleCloud(queued.run.assignment, {
         controlApiBearerToken: 'secret',
         controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
         dispatchMode: 'fake',
@@ -449,7 +449,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     ).rejects.toThrow(/Computer live dispatch is not configured/)
   })
 
-  test('dispatches agent runs with the current flat SHC Codex control contract', async () => {
+  test('dispatches agent runs with the current flat Google Cloud Codex control contract', async () => {
     const queued = createQueuedAgentRun({
       appOrigin: 'https://openagents.com',
       authGrantRef: 'codex-auth-grant_1',
@@ -480,12 +480,12 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
       })
 
       return Response.json({
-        externalRunId: 'shc:oa-shc-katy-01:agent_run_1',
+        externalRunId: 'gcp:oa-gcp-katy-01:agent_run_1',
         status: 'queued',
       })
     }
 
-    const result = await dispatchAgentRunToShc(queued.run.assignment, {
+    const result = await dispatchAgentRunToGoogleCloud(queued.run.assignment, {
       controlApiBearerToken: 'secret',
       controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
       dispatchMode: 'live',
@@ -509,7 +509,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
       repositoryRef: 'main',
       requiredArtifacts: ['result.md', 'github-writeback.json'],
       retentionMode: 'openagents_durable',
-      runnerId: 'oa-shc-katy-01',
+      runnerId: 'oa-gcp-katy-01',
       runId: 'agent_run_1',
       sandboxMode: 'danger_full_access',
       timeoutMs: 300000,
@@ -520,7 +520,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     expect(JSON.stringify(body)).not.toContain('gho_')
   })
 
-  test('dispatches Blueprint scope refs through the flat SHC control payload', async () => {
+  test('dispatches Blueprint scope refs through the flat Google Cloud control payload', async () => {
     const blueprint = buildProbeBlueprintAssignmentScope({
       contextPackRefs: ['context_pack.openagents.thread_1'],
       includeRegistry: true,
@@ -542,12 +542,12 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
       requests.push({ body: String(init?.body ?? '') })
 
       return Response.json({
-        externalRunId: 'shc:oa-shc-katy-01:agent_run_blueprint_1',
+        externalRunId: 'gcp:oa-gcp-katy-01:agent_run_blueprint_1',
         status: 'queued',
       })
     }
 
-    await dispatchAgentRunToShc(queued.run.assignment, {
+    await dispatchAgentRunToGoogleCloud(queued.run.assignment, {
       controlApiBearerToken: 'secret',
       controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
       dispatchMode: 'live',
@@ -573,7 +573,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     )
   })
 
-  test('separates SHC callback-ingest failure from retained runner state', async () => {
+  test('separates Google Cloud callback-ingest failure from retained runner state', async () => {
     const queued = createQueuedAgentRun({
       appOrigin: 'https://openagents.com',
       authGrantRef: 'codex-auth-grant_1',
@@ -592,7 +592,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
             type: 'cloud.run.completed',
           },
           run: {
-            externalRunId: 'shc:oa-shc-katy-01:artanis.bootstrap',
+            externalRunId: 'gcp:oa-gcp-katy-01:artanis.bootstrap',
             status: 'completed',
           },
           status: 'runner_failed',
@@ -600,7 +600,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
         { status: 500 },
       )
 
-    const result = await dispatchAgentRunToShc(queued.run.assignment, {
+    const result = await dispatchAgentRunToGoogleCloud(queued.run.assignment, {
       controlApiBearerToken: 'secret',
       controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
       dispatchMode: 'live',
@@ -637,7 +637,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     expect(JSON.stringify(publicBundle)).not.toContain('secret')
   })
 
-  test('reports SHC control timeouts with endpoint context', async () => {
+  test('reports Google Cloud control timeouts with endpoint context', async () => {
     const queued = createQueuedAgentRun({
       appOrigin: 'https://openagents.com',
       authGrantRef: 'codex-auth-grant_1',
@@ -657,7 +657,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     }
 
     await expect(
-      dispatchAgentRunToShc(queued.run.assignment, {
+      dispatchAgentRunToGoogleCloud(queued.run.assignment, {
         controlApiBearerToken: 'secret',
         controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
         dispatchMode: 'live',
@@ -668,7 +668,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     )
   })
 
-  test('checks SHC health through the control health endpoint', async () => {
+  test('checks Google Cloud health through the control health endpoint', async () => {
     const requests: Array<
       Readonly<{ method: string | undefined; url: string }>
     > = []
@@ -684,7 +684,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
       return Response.json({ service: 'oa-codex-control', status: 'ok' })
     }
 
-    const result = await checkShcControlHealth({
+    const result = await checkGoogleCloudControlHealth({
       controlApiBearerToken: 'secret',
       controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
       dispatchMode: 'live',
@@ -698,7 +698,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     })
   })
 
-  test('fetches SHC run events by current Cloudflare cursor', async () => {
+  test('fetches Google Cloud run events by current Cloudflare cursor', async () => {
     const queued = createQueuedAgentRun({
       appOrigin: 'https://openagents.com',
       goal: 'Run tests.',
@@ -736,7 +736,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
       })
     }
 
-    const result = await fetchAgentRunEventsFromShc(queued.run, {
+    const result = await fetchAgentRunEventsFromGoogleCloud(queued.run, {
       controlApiBearerToken: 'secret',
       controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
       cursor: 1,
@@ -756,7 +756,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     })
   })
 
-  test('queues continuation turns on SHC without leaking prompt in URL', async () => {
+  test('queues continuation turns on Google Cloud without leaking prompt in URL', async () => {
     const queued = createQueuedAgentRun({
       appOrigin: 'https://openagents.com',
       authGrantRef: 'codex-auth-grant_1',
@@ -793,7 +793,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
       )
     }
 
-    const result = await continueAgentRunOnShc(queued.run, {
+    const result = await continueAgentRunOnGoogleCloud(queued.run, {
       authGrantRef: 'codex-auth-grant_2',
       controlApiBearerToken: 'secret',
       controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
@@ -827,7 +827,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     ).toThrow(/credential-shaped/)
   })
 
-  test('dispatches deploy assignments through the SHC codex-runs lane when live is enabled', async () => {
+  test('dispatches deploy assignments through the Google Cloud codex-runs lane when live is enabled', async () => {
     const queued = createQueuedDeployment({
       appOrigin: 'https://openagents.com',
       repository: parseGithubRepository('OpenAgentsInc/autopilot-omega'),
@@ -844,12 +844,12 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
       })
 
       return Response.json({
-        externalRunId: 'shc:oa-shc-katy-01:deploy_1',
+        externalRunId: 'gcp:oa-gcp-katy-01:deploy_1',
         status: 'queued',
       })
     }
 
-    const result = await dispatchDeploymentToShc(queued.deployment.assignment, {
+    const result = await dispatchDeploymentToGoogleCloud(queued.deployment.assignment, {
       controlApiBearerToken: 'secret',
       controlApiUrl: 'http://23.182.128.195:8787/v1/codex-runs',
       dispatchMode: 'live',
@@ -857,7 +857,7 @@ describe('OpenAgents SHC/OpenCode assignments', () => {
     })
 
     expect(result.mode).toBe('live')
-    expect(result.externalId).toBe('shc:oa-shc-katy-01:deploy_1')
+    expect(result.externalId).toBe('gcp:oa-gcp-katy-01:deploy_1')
     expect(requests[0]?.url).toBe('http://23.182.128.195:8787/v1/codex-runs')
     expect(JSON.parse(requests[0]?.body ?? '{}')).toMatchObject({
       action: 'start',

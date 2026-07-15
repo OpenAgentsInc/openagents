@@ -199,8 +199,8 @@ const recordScorecard = (
         selectedAccountRef: 'account_pool_chatgpt_fleet_1',
         selectedModelRef: 'model_gpt_5_codex',
         selectedProviderRef: 'provider_openai_codex',
-        selectedRouteRef: 'route_shc_codex_account_pool_1',
-        selectedRuntimeRef: 'runtime_shc_archlinux_1',
+        selectedRouteRef: 'route_gcp_codex_account_pool_1',
+        selectedRuntimeRef: 'runtime_gcp_archlinux_1',
         trustTier: 'reviewed',
         workKind: 'site',
         workroomId: 'omni_workroom_site_1',
@@ -228,12 +228,12 @@ describe('Omni route scorecards', () => {
       postCloseoutScore: 92,
       publicCaveatRef: 'route_public_caveat_customer_safe',
       selectedModelRef: 'model_gpt_5_codex',
-      selectedRuntimeRef: 'runtime_shc_archlinux_1',
+      selectedRuntimeRef: 'runtime_gcp_archlinux_1',
       trustTier: 'reviewed',
       workKind: 'site',
       workroomId: 'omni_workroom_site_1',
     })
-    expect(customer.selectedRouteRef).toBe('route_shc_codex_account_pool_1')
+    expect(customer.selectedRouteRef).toBe('route_gcp_codex_account_pool_1')
     expect(customer).not.toHaveProperty('selectedAccountRef')
     expect(operator.selectedAccountRef).toBe('account_pool_chatgpt_fleet_1')
     expect(operator.rejectedCandidates).toHaveLength(1)

@@ -9,7 +9,6 @@ export default defineConfig({
   pack: {
     deps: {
       alwaysBundle: shouldBundleCloudRunDependency,
-      neverBundle: ["cloudflare:workers", "@cloudflare/playwright"],
       onlyBundle: false,
     },
   },

@@ -6,8 +6,8 @@
  * Promise: `identity.orange_check_forum_signal.v1`.
  * Blocker cleared: `orange_check_nostr_export_missing` — the orange-check signal
  * had a build-only NIP-58 export (`buildOrangeCheckNostrExport`) but was never
- * published anywhere dereferenceable. The owned relay (#5537,
- * `wss://relay.openagents.com`) now accepts the general coordination kinds
+ * published anywhere dereferenceable. A public relay
+ * a public relay such as `wss://nos.lol`) accepts the coordination event
  * (NIP-01/02/17/28/38/65) gated by a provisioned-pubkey allowlist or NIP-42
  * AUTH. The NIP-58 badge kinds (8 award, 30009 definition) are NOT in that
  * allowlist, so the dereferenceable on-relay form of the signal is a NIP-01
@@ -28,7 +28,7 @@
  *
  * Usage:
  *   node --import tsx apps/openagents.com/scripts/orange-check-nostr-export-publish.ts publish \
- *     [--relay wss://relay.openagents.com] [--recipient <64-hex>]
+ *     [--relay wss://nos.lol] [--recipient <64-hex>]
  *   node --import tsx apps/openagents.com/scripts/orange-check-nostr-export-publish.ts plan
  *     (offline: builds + prints the attestation, no relay)
  */
@@ -50,7 +50,7 @@ import type { OrangeCheckEntitlement } from '../workers/api/src/orange-check-ent
 type Flags = Record<string, string | true>
 type RelayMessage = ReadonlyArray<unknown>
 
-const defaultRelay = 'wss://relay.openagents.com'
+const defaultRelay = 'wss://nos.lol'
 
 const usage = () => `Usage:
   node --import tsx apps/openagents.com/scripts/orange-check-nostr-export-publish.ts publish [--relay URL] [--recipient 64-hex]
@@ -284,7 +284,7 @@ const summarise = (
       noteKind: attestation.note.kind,
       eventId,
       dereference: eventId
-        ? `wss://relay.openagents.com REQ ["REQ","oc",{"ids":["${eventId}"]}]`
+        ? `wss://nos.lol REQ ["REQ","oc",{"ids":["${eventId}"]}]`
         : '(plan mode: not published)',
     },
     null,

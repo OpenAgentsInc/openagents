@@ -3,8 +3,7 @@
 // blowing past Cloud Run's 100-connections-per-instance cap to khala-sync-pg.
 // These tests pin the shared-pool contract that fixes it: on the server
 // runtime one client is constructed per (connectionString, variant) and reused
-// (with a no-op end), and on Workers the legacy fresh-per-acquire client with a
-// real teardown is preserved.
+// with a no-op end.
 
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -51,14 +50,12 @@ describe('acquireSharedPostgresClient (server runtime)', () => {
       connectionString: 'postgres://x/db',
       createClient,
       options: { prepare: false },
-      runtime: 'server',
       variant: 'sync',
     })
     const b = await acquireSharedPostgresClient<FakeClient>({
       connectionString: 'postgres://x/db',
       createClient,
       options: { prepare: false },
-      runtime: 'server',
       variant: 'sync',
     })
 
@@ -75,7 +72,6 @@ describe('acquireSharedPostgresClient (server runtime)', () => {
       connectionString: 'postgres://x/db',
       createClient,
       options: {},
-      runtime: 'server',
       variant: 'sync',
     })
     await handle.end()
@@ -90,7 +86,6 @@ describe('acquireSharedPostgresClient (server runtime)', () => {
       connectionString: 'postgres://x/db',
       createClient,
       options: { prepare: false },
-      runtime: 'server',
       variant: 'sync',
     })
 
@@ -106,14 +101,12 @@ describe('acquireSharedPostgresClient (server runtime)', () => {
       connectionString: 'postgres://x/db',
       createClient,
       options: {},
-      runtime: 'server',
       variant: 'sync',
     })
     const d1 = await acquireSharedPostgresClient<FakeClient>({
       connectionString: 'postgres://x/db',
       createClient,
       options: {},
-      runtime: 'server',
       variant: 'd1-bigint',
     })
 
@@ -129,51 +122,16 @@ describe('acquireSharedPostgresClient (server runtime)', () => {
       connectionString: 'postgres://x/db-a',
       createClient,
       options: {},
-      runtime: 'server',
       variant: 'sync',
     })
     await acquireSharedPostgresClient<FakeClient>({
       connectionString: 'postgres://x/db-b',
       createClient,
       options: {},
-      runtime: 'server',
       variant: 'sync',
     })
 
     expect(created).toHaveLength(2)
-  })
-})
-
-describe('acquireSharedPostgresClient (workers runtime)', () => {
-  test('constructs a FRESH max:1 client per acquire with a real teardown', async () => {
-    const { created, createClient } = makeFactory()
-
-    const a = await acquireSharedPostgresClient<FakeClient>({
-      connectionString: 'postgres://x/db',
-      createClient,
-      options: { prepare: false },
-      runtime: 'workers',
-      variant: 'sync',
-    })
-    const b = await acquireSharedPostgresClient<FakeClient>({
-      connectionString: 'postgres://x/db',
-      createClient,
-      options: { prepare: false },
-      runtime: 'workers',
-      variant: 'sync',
-    })
-
-    // Fresh client each time (Workers cannot reuse sockets across requests).
-    expect(a.sql).not.toBe(b.sql)
-    expect(created).toHaveLength(2)
-    expect(created[0]!.optionsSeen['max']).toBe(1)
-
-    // end() really tears the per-acquire client down.
-    await a.end()
-    expect(created[0]!.end).toHaveBeenCalledTimes(1)
-
-    // Workers acquires never populate the server pool cache.
-    expect(__sharedPostgresPoolCountForTests()).toBe(0)
   })
 })
 

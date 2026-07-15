@@ -3,6 +3,23 @@
 This is the root invariant ledger for the rebuilt `openagents` Effect workspace.
 More specific invariant ledgers apply inside imported apps and packages.
 
+## Google Cloud Production Authority
+
+- Google Cloud is the sole production infrastructure authority: Cloud Run and
+  GCE for compute, Cloud SQL for relational state, Cloud Storage for blobs,
+  Secret Manager for secrets, and Google Cloud scheduling/networking for
+  operations.
+- No supported runtime, deploy, operator, migration, storage, queue, email,
+  browser, AI-gateway, or fallback path may require Cloudflare or Wrangler.
+  Historical Cloudflare records are evidence only and cannot be used as
+  current instructions or authority.
+- SHC was a limited pilot. It is retired, was never the primary production
+  lane, and may not appear in active placement, pricing, provisioning,
+  fallback, environment configuration, or public current-state claims.
+- Historical receipts may describe former provider implementations, but this
+  invariant ledger and every active runbook must describe Google Cloud only.
+  Retired-provider prose cannot authorize implementation.
+
 ## Preserved Transcript Archive
 
 - `docs/transcripts/` is retained historical material and must not be deleted,
@@ -145,10 +162,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   its local invariant ledger.
 - `apps/forum/` owns forum-specific code and must mount under `/forum` when it
   is served by `openagents.com`.
-- `apps/forge/` owns the separate `forge.openagents.com` UI surface. It may
-  consume shared Effect Native primitives/tokens and Forge API contracts,
-  but it does not own runtime promotion, settlement, payout, accepted-work
-  authority, or the main `openagents.com` logged-in route tree.
+- The deleted `apps/forge/`, `apps/nostr-relay/`, and
+  `apps/openagents-world/` paths have no production authority. Git history is
+  their archive.
 - `apps/pylon/` owns contributor-node UX, CLI, and local runtime orchestration.
   It owns no wallet, payout, settlement, or paid-capacity authority.
 - `packages/probe/` owns Probe runtime code and evidence submission helpers.
@@ -165,7 +181,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   paths remain runtime/Secret Manager only.
 - Cloud daemons execute and emit redacted non-money receipts. They do not own
   user credit ledgers, public claim promotion, wallet, payout, payment, or
-  settlement authority. The former Worker and MDK/Nexus money authority is
+  settlement authority. The former edge-runtime and MDK/Nexus money authority is
   retired under VP-1; preserved records are recovery evidence only.
 - Fake GCE and fake Cloud-VM provisioners are the default. Live Firecracker
   and live GCE lanes are explicit env-gated owner modes.
@@ -460,14 +476,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   before any work starts. Inbound webhook trigger rows likewise store typed
   source/condition configuration only; verified ingress, normalization, and
   condition evaluation are separate authority steps.
-- Cron trigger dispatch must be serialized through the named
-  `AGENT_DEFINITION_SCHEDULER` Durable Object woken by Worker `scheduled()`.
-  Request isolates, routes, webhook ingress, or ad hoc workers must not scan
-  and dispatch due cron rows directly. Each scheduler tick processes due rows
-  oldest-first under a bounded cap, and every attempted cron dispatch must move
-  `next_run_at` to the next cron instant before another tick can consider the
-  row again. Refusals and failures increment/preserve the failure streak rather
-  than retrying in a tight duplicate loop.
+- Cron trigger dispatch enters through Google Cloud Scheduler and the bounded
+  Cloud Run cron endpoint. Cloud SQL row locking owns serialization; request
+  routes, webhook ingress, and ad hoc processes must not scan and dispatch due
+  cron rows directly. Each scheduler tick processes due rows oldest-first under
+  a bounded cap, and every attempted dispatch must move `next_run_at` to the
+  next cron instant before another tick can consider the row again. Refusals
+  and failures increment/preserve the failure streak rather than retrying in a
+  tight duplicate loop.
 - Auto-pause after 3 consecutive failures; `maxRunsPerDay` /
   `maxRunSeconds` / `maxCreditsPerDay` are enforced at dispatch with typed
   refusals - a buggy background watcher must never be a money pump. Dispatch
@@ -523,27 +539,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   toolset, Pylon, Forge, and exact-accounting gates as any other trigger.
   Manual run-now must not become an owner-scope bypass or a second dispatch
   path.
-- A per-run live Durable Object is not a default background-agent transport.
-  Durable Streams remain the default run-live/resume surface until WS-10 grows
-  an explicit client-facing live channel and an operator enablement gate opens
-  the thin-DO candidate. Any future live object must be keyed by
-  owner+definition-run, act only as a thin transport shell around injected
-  services, track in-object SQLite migrations through `_sql_schema_migrations`
-  rather than `PRAGMA user_version`, persist hibernatable WebSocket attachment
-  metadata without raw prompts/provider payloads/tokens/secrets, and multiplex
-  all scheduled work through one durable alarm task table. Regression coverage
-  for the design gate lives in
-  `apps/openagents.com/workers/api/src/agent-definition-live-surface-spike.test.ts`.
+- The Google Cloud LiveHub service is the client-facing live notification
+  transport. Cloud SQL remains authoritative; LiveHub may cache only bounded,
+  replayable public-safe frames and connection metadata. It must not become a
+  second scheduler, business-state database, or credential store.
 - `event_ledger.v1` rows for the background-agent unified inbox are private,
   owner-scoped account-boundary data. GitHub and Slack source events may enter
   only after source-specific signature verification and typed normalization,
   and only matched owner triggers provide the owner boundary for ledger ingest.
-  Queue messages and D1 rows store source refs, external refs, actor refs,
+  Cloud SQL rows store source refs, external refs, actor refs,
   content refs, subject refs, bounded summaries, and timestamps; they must not
   store raw webhook bodies, raw comment/message text, provider payloads,
   secrets, signatures, tokens, or training/eval consent. The per-owner
-  `EVENT_LEDGER_OWNER` Durable Object owns ordering and dedupe before D1
-  persistence.
+  Cloud SQL transactions and owner-scoped unique keys own ordering and dedupe.
 - Handled-state is now part of the private event-ledger contract. Ledger rows
   may move only among `open`, `handled`, `responded`, and `ignored`, and any
   handled-state mutation must record the owner-scoped definition run and
@@ -559,7 +567,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`,
   and `packages/agent-runtime-schema/src/webhooks.test.ts` plus
   `apps/openagents.com/workers/api/src/agent-definition-event-ledger-routes.test.ts`.
-- Any Worker, Pylon, desktop, or cloud-workroom executor that claims
+- Any Cloud Run API, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests
   for deny precedence, ask escalation, allow, and default-deny behavior.
@@ -618,45 +626,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   raw provider material in context/history/logs, missing app-owned idempotency,
   generic provider tools, and platform-authority widening.
 
-## Cloudflare Verse World Service
+## Retired Verse World Service
 
-- Live Verse world work belongs to `apps/openagents-world/`, a Cloudflare
-  Worker + Region Durable Object service written in TypeScript, Effect, and
-  Effect Schema. Durable Objects are the coordination atoms for live presence,
-  local interaction, interest-scoped fanout, hibernatable WebSockets, handshake
-  buffering, sequence acknowledgements, TTL expiry, and per-region world state.
-- `packages/world-contract/` owns public-safe world schemas and command/delta
-  contracts. `packages/world-client/` owns the desktop/web client projection
-  that mirrors snapshots and deltas into a read-only `WorldReadModel`.
-- Worker/D1 public product surfaces remain authoritative for public training
-  truth, product promises, receipt-backed proof claims, settlement/payout
-  projection, and Forum/product state. The Verse world service owns only
-  public-safe presence, local interaction, interest-scoped fanout, diagnostic
-  rows, and replayable projection rows derived from public source refs.
-- The world service and client projection do not own settlement, payout,
-  training truth, product promises, receipt validation, accepted-work authority,
-  wallet state, provider credentials, private prompts, private repo content,
-  private customer data, or unpublished provider payloads.
-- Public world rows and deltas may expose only public-safe refs, labels,
-  positions, timestamps, staleness metadata, movement caveats, moderation state,
-  and dereferenceable proof URLs that are already safe for public OpenAgents
-  surfaces.
-- Browser/user commands may update only explicitly modeled interaction state,
-  such as joining/leaving a region, bounded avatar pose, focus, local chat,
-  emotes, and ephemeral intent. Service-only commands that create or mutate run,
-  entity, edge, proof, settlement, event, cursor, bridge-health, or projection
-  rows must require an allowlisted service identity.
-- Actor command authority is modeled in
-  `docs/game/2026-06-22-cloudflare-world-actor-command-authority-model.md` and
-  enforced by `packages/world-contract` plus `apps/openagents-world` command
-  tests. Counterexamples must become tests before broadening command authority.
-- `/tassadar` authority remains the Worker/D1 public summary path until a later
-  invariant change explicitly promotes a different authority. The Verse world
-  service may enrich or animate the scene only from public refs or timestamped
-  projection transitions.
-- The deleted self-hosted world module is historical source material only. Do
-  not reintroduce it for production world behavior; port useful schema or
-  reducer ideas into the Cloudflare/Effect world service.
+- The Verse world service is retired and `apps/openagents-world/` is deleted.
+  `packages/world-contract/` and `packages/world-client/` are retained shared
+  libraries, not a deployed backend or production authority.
+- Any future world backend requires a new Google Cloud design, explicit
+  product authority, and updated invariants. Historical world-service designs
+  and Git history cannot be used as deployment instructions.
 
 ## Public Projection Staleness
 
@@ -703,7 +680,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 ## Khala Sync Replication Substrate
 
-- Khala Sync (Cloud SQL Postgres → per-scope Durable Object hubs → SQLite
+- Khala Sync (Cloud SQL Postgres → per-scope Cloud Run LiveHub → SQLite
   clients) carries scoped state under the nine invariants of
   `docs/khala-sync/SPEC.md` §7: dense server-assigned versions, no
   optimistic effects in durable client stores, attributable changelog
@@ -713,8 +690,8 @@ More specific invariant ledgers apply inside imported apps and packages.
 - The full registration — per-invariant statements, the exact enforcing
   test files and test names, and honest `partial`/`pending` statuses with
   blocking issue refs — lives in `apps/openagents.com/INVARIANTS.md`
-  ("Khala Sync (SPEC §7 invariant set)"), because that Worker owns the sync
-  routes and the hub DO. Substrate and client enforcement lives in
+  ("Khala Sync (SPEC §7 invariant set)"), because the Cloud Run API owns the
+  sync routes and LiveHub owns live fanout. Substrate and client enforcement lives in
   `packages/khala-sync-server` and `packages/khala-sync-client` test
   suites named there.
 - Desktop `node:sqlite` and mobile Expo SQLite are thin host adapters over the
@@ -1570,5 +1547,5 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   exchanged. Explicit sign-out must obtain a server response proving both
   access and refresh revocation before the local SecureStore record is cleared.
 - Operations (Cloud SQL monitoring, migration runner, compaction, capture
-  daemon, hub reset, Hyperdrive saturation, secrets locations) are in
+  daemon, hub reset, connection-pool saturation, secrets locations) are in
   `docs/khala-sync/RUNBOOK.md`.

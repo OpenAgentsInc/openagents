@@ -52,11 +52,12 @@ export const ProbeBenchmarkRouteKind = S.Literals([
   "local_qwen",
   "probe_codex",
   "pylon",
-  "shc",
+  "gcp",
+  "retired_pilot",
 ]);
 export type ProbeBenchmarkRouteKind = typeof ProbeBenchmarkRouteKind.Type;
 
-export const ProbeBenchmarkPrivacyTier = S.Literals(["local_only", "shc_box", "pylon_worker", "remote_api"]);
+export const ProbeBenchmarkPrivacyTier = S.Literals(["local_only", "gcp_vm", "pylon_worker", "remote_api"]);
 export type ProbeBenchmarkPrivacyTier = typeof ProbeBenchmarkPrivacyTier.Type;
 
 export const ProbeBenchmarkTrustTier = S.Literals([

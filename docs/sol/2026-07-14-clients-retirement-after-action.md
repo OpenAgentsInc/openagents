@@ -90,23 +90,16 @@ The supported mobile production procedure is
 
 The retirement guard, QA matrix/pre-push checks, Sol document policy, affected
 package typechecks, OpenAgents mobile (126 tests), Start (180 tests), Pylon
-(2,157 tests), behavior contracts (36 tests), and the focused Worker
+(2,157 tests), behavior contracts (36 tests), and the focused API
 promise/auth/push suite (47 tests) passed on Node 24.13.1.
 
-The canonical Worker `check:deploy` command stopped at the repository's existing
-zero-debt architecture gate because
-`packages/effect-native-render-dom/src/react-lowering.ts` and
-`packages/effect-native-render-dom/src/react.ts` contain one unallowlisted
-`Effect.runPromise` call each. Neither file changed in this retirement. This cut
-does not weaken that invariant or rewrite unrelated renderer code; deployment
-uses the same staging, live-seam smoke, and production Wrangler stages after the
-scoped tests above.
+The initial after-action incorrectly described a retired edge-provider quota as
+a production migration blocker. That was false: Google Cloud was already the
+production authority, and Cloud SQL was the live database. The attempted edge
+deployment was itself the error; its staging upload was deleted and was never a
+valid production promotion path.
 
-Staging accepted the minified bundle as Worker version
-`e98252be-41c6-46cf-9169-24e2972eefaf`. The unminified bundle exceeded the
-account's 3 MiB Worker limit, so `deploy:safe` now minifies both staging and
-production uploads. Production was not advanced: Cloudflare rejected the eight
-already-pending staging migrations with D1 error 7500 (account storage limit),
-the dispatch smoke then returned HTTP 500, and the production pending-migration
-guard correctly refused to let Worker code ship ahead of schema. Raising the D1
-quota is an owner/platform prerequisite; bypassing the guard is not.
+The corrected deployment boundary is the Google Cloud Run monolith. The
+repository now rejects edge-provider packages, configs, deploy commands, and
+active SHC references before the Cloud Run build begins. SHC is recorded only
+as a retired limited pilot, never as primary infrastructure.

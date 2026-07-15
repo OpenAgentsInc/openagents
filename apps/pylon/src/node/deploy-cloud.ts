@@ -1,6 +1,6 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
 // CL-26 "Deploy to Cloud": a node-triggered deploy through OUR cloud pipeline
-// (Cloud Run / Workers), surfaced as a button + status on the desktop and
+// (Google Cloud Run), surfaced as a button + status on the desktop and
 // mobile clients. The deployable target is one of the node's OWN cloud services
 // via the existing deploy scripts (e.g. apps/oa-updates/scripts/deploy-cloudrun.sh).
 //

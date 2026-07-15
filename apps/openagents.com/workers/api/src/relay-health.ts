@@ -59,8 +59,7 @@ const DEFAULT_WS_EOSE_TIMEOUT_MS = 10_000
 
 /**
  * Canonical market relay URL: `MARKET_RELAY_URL` env override, defaulting
- * to the shared workers.dev constant. #4863 may move the relay to
- * relay.openagents.com; that lands here as a config value, not a code edit.
+ * to the shared public Nostr relay constant.
  */
 export const canonicalMarketRelayUrl = (environment: unknown): string => {
   const override = (environment as { MARKET_RELAY_URL?: string })

@@ -20,20 +20,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 
 export type WorkerBindings = Readonly<{
   OPENAGENTS_DB: D1Database
-  SYNC_ROOM: DurableObjectNamespace
-  // NOTE: the former INFERENCE_DURABLE_STREAM DO binding (#6058) was deleted
-  // in CFG-6 (#8521): durable inference streams are Postgres-backed via the
-  // KHALA_SYNC_DB Hyperdrive binding below.
-  // GLM internal-stress scheduler (#6318). Optional SQLite-class DO namespace;
-  // one named DO coordinates short-lived `internal_stress` leases so external
-  // demand can preempt stress across Worker isolates. Absent => same-isolate
-  // in-memory preemption only.
-  GLM_STRESS_SCHEDULER?: DurableObjectNamespace
-  // Khala Sync Hyperdrive binding (KS-0.2, #8284). Optional: absent until the
-  // wrangler `hyperdrive` binding is deployed. Worker request paths reach the
-  // Khala Sync Cloud SQL Postgres ONLY through this transaction-mode pool
-  // (docs/khala-sync/SPEC.md §4); typed structurally so packages do not need
-  // the workers-types `Hyperdrive` ambient.
+  // Cloud SQL compatibility handle injected by the Cloud Run Node process.
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }>
   // KS-8.1 (#8307) pylon assignments/dispatch migration flags. Dual-write
   // defaults ON wherever KHALA_SYNC_DB exists ('off'|'0'|'false'|'disabled'
@@ -62,50 +49,23 @@ export type WorkerBindings = Readonly<{
   // "Inference entitlements domain cutover".
   KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE?: string
   KHALA_SYNC_ENTITLEMENTS_READS?: string
-  // Khala Sync hub (KS-4.2, #8295). Optional SQLite-class DO namespace; one
-  // KhalaSyncHubDO per scope (`idFromName(scope)`) holds the recent changelog
-  // window + hibernating WebSockets (docs/khala-sync/SPEC.md §5). Absent
-  // until the wrangler binding + migration are deployed.
-  KHALA_SYNC_HUB?: DurableObjectNamespace
-  // LiveHub cutover (CFG-5, #8520; epic #8515): when BOTH are set, Khala
-  // Sync hub traffic (connect WS proxy, log hub-first read, internal hub
-  // routes, access-changed) goes to the owned Cloud Run `khala-live-hub`
-  // service over HTTPS instead of the KhalaSyncHubDO binding. URL is a
-  // plain var; the token is a Worker secret (Secret Manager
-  // `khala-live-hub-token` is the source of truth).
+  // Khala live traffic is owned by the Cloud Run LiveHub service.
   KHALA_SYNC_LIVE_HUB_URL?: string
   KHALA_SYNC_LIVE_HUB_TOKEN?: string
   MARKET_RELAY_SERVICE?: Fetcher
-  // Optional since #8516: the account-level Cloudflare R2 feature was
-  // disabled (Cloudflare→GCP consolidation, #8515), so the `r2_buckets`
-  // wrangler binding was removed to unfreeze deploys (API error 10136).
-  // Consumers resolve through `artifactsBucketForEnv` (workers/api
-  // `src/artifacts-binding.ts`): an injected `ARTIFACTS` object wins,
-  // then the CFG-8 (#8523) GCS-backed adapter configured below, then
-  // typed per-call rejections.
+  // Optional in-process object-store double for tests; production uses GCS.
   ARTIFACTS?: R2Bucket
-  // CFG-8 (#8523): GCS replacement for the R2 ARTIFACTS bucket. Bucket
-  // name + optional endpoint are committed wrangler vars; the HMAC key
-  // pair for the `oa-artifacts-rw` service account arrives via
-  // `wrangler secret put` (source of truth: GCP Secret Manager secrets
+  // GCS artifact configuration. HMAC credentials arrive from GCP Secret
+  // Manager secrets
   // `oa-artifacts-gcs-hmac-access-key-id` / `oa-artifacts-gcs-hmac-secret`,
   // project openagentsgemini). Absent config degrades per-call as before.
   ARTIFACTS_GCS_BUCKET?: string
   ARTIFACTS_GCS_ENDPOINT?: string
   ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID?: string
   ARTIFACTS_GCS_HMAC_SECRET?: string
-  // CFG-7 (#8522): the four Cloudflare Queue bindings (RUNNER_EVENTS,
-  // ADJUTANT_ENRICHMENT_QUEUE, EVENT_LEDGER_INGEST_QUEUE,
-  // PYLON_CODEX_RAW_EVENT_METADATA_QUEUE) were deleted. Queue lanes ride
-  // the oa-infra Postgres JobQueue (`oa_infra_jobs`): producers enqueue
-  // over the KHALA_SYNC_DB connection (workers/api
-  // src/oa-job-queue-producer.ts) and the Cloud Run pump
-  // (apps/oa-queue-worker) leases + delivers to the internal queue
-  // delivery route.
+  // Static asset fetcher injected by the Node application.
   ASSETS: Fetcher
-  // CFG-3 (#8518): the AUTH_STORAGE KV namespace is evacuated — auth
-  // key/value state lives in Postgres (oa_infra_kv via KHALA_SYNC_DB;
-  // workers/api/src/auth/auth-kv.ts). No KV binding remains.
+  // Auth key/value state lives in Postgres (oa_infra_kv).
   GITHUB_CLIENT_ID: string
   GITHUB_CLIENT_SECRET: string
   GEMINI_API_KEY?: string
@@ -113,10 +73,6 @@ export type WorkerBindings = Readonly<{
   OPENAUTH_ISSUER_URL: string
   OPENAGENTS_APP_URL: string
   OPENAGENTS_ADMIN_API_TOKEN?: string
-  SHC_CONTROL_API_URL?: string
-  SHC_CONTROL_API_BEARER_TOKEN?: string
-  SHC_DISPATCH_MODE?: string
-  SHC_RUNNER_CALLBACK_TOKEN?: string
 }>
 
 export const jsonResponse = (

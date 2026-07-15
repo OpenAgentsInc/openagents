@@ -3079,7 +3079,7 @@ CREATE TABLE backend_incident_events (
   source TEXT NOT NULL, kind TEXT NOT NULL, severity TEXT NOT NULL,
   route_pattern TEXT NOT NULL DEFAULT 'unknown', method TEXT NOT NULL DEFAULT 'UNKNOWN',
   status_code INTEGER, error_name TEXT NOT NULL DEFAULT 'unknown',
-  runtime_name TEXT NOT NULL DEFAULT 'cloudflare_workers', occurrence_count INTEGER NOT NULL DEFAULT 1,
+  runtime_name TEXT NOT NULL DEFAULT 'gcp_cloud_run', occurrence_count INTEGER NOT NULL DEFAULT 1,
   safe_metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
 );
 CREATE TABLE hygiene_debt_receipts (

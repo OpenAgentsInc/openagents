@@ -233,7 +233,7 @@ export type OmniRunStoreHooks = Readonly<{
   ) => Promise<void>
 }>
 
-export type ShcControlActionResult =
+export type GoogleCloudControlActionResult =
   | Readonly<{
       ok: true
       payload?: unknown
@@ -246,7 +246,7 @@ export type ShcControlActionResult =
       targetPath?: string | undefined
     }>
 
-export type ShcControlEventsResult =
+export type GoogleCloudControlEventsResult =
   | Readonly<{
       events: ReadonlyArray<Record<string, unknown>>
       nextCursor: number
@@ -334,11 +334,11 @@ type EventRow = Readonly<{
   created_at: string
 }>
 
-const DEFAULT_RUNNER_ID = 'oa-shc-katy-01'
+const DEFAULT_RUNNER_ID = 'oa-gcp-katy-01'
 const DEFAULT_AGENT_RUNTIME: RunnerRuntime = 'opencode_codex'
 const DEFAULT_REPOSITORY_REF = 'main'
 const DEFAULT_ASSIGNMENT_APP_ORIGIN = 'https://openagents.com'
-const SHC_CONTROL_REQUEST_TIMEOUT_MS = 10_000
+const GOOGLE_CLOUD_CONTROL_REQUEST_TIMEOUT_MS = 10_000
 const DEFAULT_TIMEOUT_MS = 300_000
 
 export class OmniRunValidationError extends S.TaggedErrorClass<OmniRunValidationError>()(
@@ -1604,7 +1604,7 @@ export const buildAgentRunAssignment = (
     schemaVersion: 'openagents.agent_run_assignment.v1',
     runId: input.runId,
     runtime: input.runtime ?? DEFAULT_AGENT_RUNTIME,
-    backend: input.backend ?? 'shc_vm',
+    backend: input.backend ?? 'gcloud_vm',
     assignmentKind: 'workroom_agent',
     goal: clampText(input.dispatchGoal ?? input.goal, 8_000),
     repository: input.repository,
@@ -1668,7 +1668,7 @@ export const buildAppDeployAssignment = (
     schemaVersion: 'openagents.app_deploy_assignment.v1',
     deployId: input.deployId,
     runtime: DEFAULT_AGENT_RUNTIME,
-    primaryBackend: 'shc_vm',
+    primaryBackend: 'gcloud_vm',
     fallbackBackend: 'gcloud_vm',
     service: 'openagents-autopilot',
     repository: input.repository,
@@ -1677,7 +1677,7 @@ export const buildAppDeployAssignment = (
       typecheck: 'pnpm run typecheck',
       test: 'pnpm run test',
       build: 'pnpm run build',
-      smoke: 'pnpm run smoke:shc',
+      smoke: 'pnpm run smoke:gcp',
     },
     callback: {
       url: callbackUrl(
@@ -2014,7 +2014,7 @@ const safeDispatchMessage = (text: string, fallback: string): string => {
 const optionalNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
 
-const parseOptionalShcPayload = (
+const parseOptionalGoogleCloudPayload = (
   text: string,
 ): Record<string, unknown> | undefined => {
   if (text.trim() === '') {
@@ -2028,7 +2028,7 @@ const parseOptionalShcPayload = (
   }
 }
 
-const shcCallbackDeliveryFailure = (
+const gcpCallbackDeliveryFailure = (
   payload: Record<string, unknown> | undefined,
   text: string,
   httpStatus: number,
@@ -2074,7 +2074,7 @@ const shcCallbackDeliveryFailure = (
   }
 }
 
-const shcDispatchStatusFromPayload = (
+const gcpDispatchStatusFromPayload = (
   payload: Record<string, unknown> | undefined,
   callbackDelivery: RunnerCallbackDeliveryProjection | undefined,
 ): string | undefined => {
@@ -2106,7 +2106,7 @@ const isTimeoutAbort = (error: unknown): boolean =>
         error.name === 'AbortError' ||
         error.message.toLowerCase().includes('timeout'))
 
-const fetchShcControl = async (
+const fetchGoogleCloudControl = async (
   fetcher: typeof fetch,
   url: string,
   init: RequestInit,
@@ -2115,15 +2115,15 @@ const fetchShcControl = async (
   try {
     return await fetcher(url, {
       ...init,
-      signal: AbortSignal.timeout(SHC_CONTROL_REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(GOOGLE_CLOUD_CONTROL_REQUEST_TIMEOUT_MS),
     })
   } catch (error) {
     if (isTimeoutAbort(error)) {
       throw new OmniDispatchTimeout({
         endpoint: controlUrlForError(url),
-        message: `Computer control API did not respond within ${SHC_CONTROL_REQUEST_TIMEOUT_MS / 1000}s for ${controlUrlForError(url)}. Check runner control health.`,
+        message: `Computer control API did not respond within ${GOOGLE_CLOUD_CONTROL_REQUEST_TIMEOUT_MS / 1000}s for ${controlUrlForError(url)}. Check runner control health.`,
         operation,
-        timeoutMs: SHC_CONTROL_REQUEST_TIMEOUT_MS,
+        timeoutMs: GOOGLE_CLOUD_CONTROL_REQUEST_TIMEOUT_MS,
       })
     }
 
@@ -2135,7 +2135,7 @@ const fetchShcControl = async (
   }
 }
 
-const parseShcDispatchJson = (
+const parseGoogleCloudDispatchJson = (
   text: string,
   url: string,
   operation: string,
@@ -2151,7 +2151,7 @@ const parseShcDispatchJson = (
   }
 }
 
-const shcDispatchPayload = (
+const gcpDispatchPayload = (
   text: string,
   url: string,
   operation: string,
@@ -2160,7 +2160,7 @@ const shcDispatchPayload = (
     return undefined
   }
 
-  const payload = optionalRecord(parseShcDispatchJson(text, url, operation))
+  const payload = optionalRecord(parseGoogleCloudDispatchJson(text, url, operation))
 
   if (payload === undefined) {
     throw new OmniDispatchMalformedResponse({
@@ -2173,7 +2173,7 @@ const shcDispatchPayload = (
   return payload
 }
 
-const shcCodexSandboxMode = (assignment: AgentRunAssignment): string => {
+const gcpCodexSandboxMode = (assignment: AgentRunAssignment): string => {
   if (assignment.sandbox.mode === 'workspace_write') {
     return 'danger_full_access'
   }
@@ -2181,7 +2181,7 @@ const shcCodexSandboxMode = (assignment: AgentRunAssignment): string => {
   return assignment.sandbox.mode
 }
 
-const shcCodexControlRequest = (assignment: AgentRunAssignment) => ({
+const gcpCodexControlRequest = (assignment: AgentRunAssignment) => ({
   agentRuntime: assignment.runtime,
   authGrantRef: assignment.authGrantRef,
   blueprint: assignment.blueprint,
@@ -2201,11 +2201,11 @@ const shcCodexControlRequest = (assignment: AgentRunAssignment) => ({
   retentionMode: assignment.retentionMode,
   runnerId: DEFAULT_RUNNER_ID,
   runId: assignment.runId,
-  sandboxMode: shcCodexSandboxMode(assignment),
+  sandboxMode: gcpCodexSandboxMode(assignment),
   timeoutMs: assignment.sandbox.timeoutMs,
 })
 
-export const dispatchAgentRunToShc = async (
+export const dispatchAgentRunToGoogleCloud = async (
   assignment: AgentRunAssignment,
   input: Readonly<{
     controlApiBearerToken?: string | undefined
@@ -2214,7 +2214,7 @@ export const dispatchAgentRunToShc = async (
     fetcher?: typeof fetch | undefined
   }>,
 ): Promise<DispatchResult> => {
-  const operation = 'dispatch_agent_run_to_shc'
+  const operation = 'dispatch_agent_run_to_gcp'
 
   if (
     input.dispatchMode !== 'live' ||
@@ -2230,11 +2230,11 @@ export const dispatchAgentRunToShc = async (
   const fetcher = input.fetcher ?? fetch
 
   for (const url of controlCandidates(input.controlApiUrl)) {
-    const response = await fetchShcControl(
+    const response = await fetchGoogleCloudControl(
       fetcher,
       url,
       {
-        body: JSON.stringify(shcCodexControlRequest(assignment)),
+        body: JSON.stringify(gcpCodexControlRequest(assignment)),
         headers: {
           Authorization: `Bearer ${input.controlApiBearerToken}`,
           'content-type': 'application/json',
@@ -2250,8 +2250,8 @@ export const dispatchAgentRunToShc = async (
     }
 
     if (!response.ok) {
-      const payload = parseOptionalShcPayload(text)
-      const callbackDelivery = shcCallbackDeliveryFailure(
+      const payload = parseOptionalGoogleCloudPayload(text)
+      const callbackDelivery = gcpCallbackDeliveryFailure(
         payload,
         text,
         response.status,
@@ -2262,7 +2262,7 @@ export const dispatchAgentRunToShc = async (
         const externalId =
           optionalText(payload?.externalRunId) ??
           optionalText(run?.externalRunId) ??
-          `shc:${DEFAULT_RUNNER_ID}:${assignment.runId}`
+          `gcp:${DEFAULT_RUNNER_ID}:${assignment.runId}`
 
         return {
           callbackDelivery,
@@ -2270,7 +2270,7 @@ export const dispatchAgentRunToShc = async (
           mode: 'live',
           payload,
           status:
-            shcDispatchStatusFromPayload(payload, callbackDelivery) ??
+            gcpDispatchStatusFromPayload(payload, callbackDelivery) ??
             'running',
         }
       }
@@ -2283,9 +2283,9 @@ export const dispatchAgentRunToShc = async (
       })
     }
 
-    const payload = shcDispatchPayload(text, url, operation)
+    const payload = gcpDispatchPayload(text, url, operation)
     const run = optionalRecord(payload?.run)
-    const callbackDelivery = shcCallbackDeliveryFailure(
+    const callbackDelivery = gcpCallbackDeliveryFailure(
       payload,
       text,
       response.status,
@@ -2293,14 +2293,14 @@ export const dispatchAgentRunToShc = async (
     const externalId =
       optionalText(payload?.externalRunId) ??
       optionalText(run?.externalRunId) ??
-      `shc:${DEFAULT_RUNNER_ID}:${assignment.runId}`
+      `gcp:${DEFAULT_RUNNER_ID}:${assignment.runId}`
 
     return {
       ...(callbackDelivery === undefined ? {} : { callbackDelivery }),
       externalId,
       mode: 'live',
       payload,
-      status: shcDispatchStatusFromPayload(payload, callbackDelivery) ?? 'queued',
+      status: gcpDispatchStatusFromPayload(payload, callbackDelivery) ?? 'queued',
     }
   }
 
@@ -2312,7 +2312,7 @@ export const dispatchAgentRunToShc = async (
   })
 }
 
-export const cancelAgentRunOnShc = async (
+export const cancelAgentRunOnGoogleCloud = async (
   run: AgentRunRecord,
   input: Readonly<{
     controlApiBearerToken?: string | undefined
@@ -2321,7 +2321,7 @@ export const cancelAgentRunOnShc = async (
     fetcher?: typeof fetch | undefined
     reason: string
   }>,
-): Promise<ShcControlActionResult> => {
+): Promise<GoogleCloudControlActionResult> => {
   if (
     input.dispatchMode !== 'live' ||
     input.controlApiUrl === undefined ||
@@ -2337,7 +2337,7 @@ export const cancelAgentRunOnShc = async (
   const fetcher = input.fetcher ?? fetch
 
   for (const url of controlActionCandidates(input.controlApiUrl, 'cancel')) {
-    const response = await fetchShcControl(
+    const response = await fetchGoogleCloudControl(
       fetcher,
       url,
       {
@@ -2353,7 +2353,7 @@ export const cancelAgentRunOnShc = async (
         },
         method: 'POST',
       },
-      'cancel_agent_run_on_shc',
+      'cancel_agent_run_on_gcp',
     )
     const text = await response.text()
     const targetPath = new URL(url).pathname
@@ -2377,7 +2377,7 @@ export const cancelAgentRunOnShc = async (
         text === ''
           ? undefined
           : optionalRecord(
-              parseShcDispatchJson(text, url, 'cancel_agent_run_on_shc'),
+              parseGoogleCloudDispatchJson(text, url, 'cancel_agent_run_on_gcp'),
             ),
       status: response.status,
     }
@@ -2390,14 +2390,14 @@ export const cancelAgentRunOnShc = async (
   }
 }
 
-export const checkShcControlHealth = async (
+export const checkGoogleCloudControlHealth = async (
   input: Readonly<{
     controlApiBearerToken?: string | undefined
     controlApiUrl?: string | undefined
     dispatchMode?: string | undefined
     fetcher?: typeof fetch | undefined
   }>,
-): Promise<ShcControlActionResult> => {
+): Promise<GoogleCloudControlActionResult> => {
   if (
     input.dispatchMode !== 'live' ||
     input.controlApiUrl === undefined ||
@@ -2413,7 +2413,7 @@ export const checkShcControlHealth = async (
   const fetcher = input.fetcher ?? fetch
 
   for (const url of controlHealthCandidates(input.controlApiUrl)) {
-    const response = await fetchShcControl(
+    const response = await fetchGoogleCloudControl(
       fetcher,
       url,
       {
@@ -2422,7 +2422,7 @@ export const checkShcControlHealth = async (
         },
         method: 'GET',
       },
-      'check_shc_control_health',
+      'check_gcp_control_health',
     )
     const text = await response.text()
     const targetPath = new URL(url).pathname
@@ -2446,7 +2446,7 @@ export const checkShcControlHealth = async (
         text === ''
           ? undefined
           : optionalRecord(
-              parseShcDispatchJson(text, url, 'check_shc_control_health'),
+              parseGoogleCloudDispatchJson(text, url, 'check_gcp_control_health'),
             ),
       status: response.status,
     }
@@ -2459,7 +2459,7 @@ export const checkShcControlHealth = async (
   }
 }
 
-export const fetchAgentRunEventsFromShc = async (
+export const fetchAgentRunEventsFromGoogleCloud = async (
   run: AgentRunRecord,
   input: Readonly<{
     controlApiBearerToken?: string | undefined
@@ -2468,7 +2468,7 @@ export const fetchAgentRunEventsFromShc = async (
     dispatchMode?: string | undefined
     fetcher?: typeof fetch | undefined
   }>,
-): Promise<ShcControlEventsResult> => {
+): Promise<GoogleCloudControlEventsResult> => {
   if (
     input.dispatchMode !== 'live' ||
     input.controlApiUrl === undefined ||
@@ -2492,7 +2492,7 @@ export const fetchAgentRunEventsFromShc = async (
 
     url.searchParams.set('cursor', String(input.cursor))
 
-    const response = await fetchShcControl(
+    const response = await fetchGoogleCloudControl(
       fetcher,
       url.toString(),
       {
@@ -2501,7 +2501,7 @@ export const fetchAgentRunEventsFromShc = async (
         },
         method: 'GET',
       },
-      'fetch_agent_run_events_from_shc',
+      'fetch_agent_run_events_from_gcp',
     )
     const text = await response.text()
     const targetPath = url.pathname
@@ -2519,10 +2519,10 @@ export const fetchAgentRunEventsFromShc = async (
       }
     }
 
-    const payload = shcDispatchPayload(
+    const payload = gcpDispatchPayload(
       text,
       url.toString(),
-      'fetch_agent_run_events_from_shc',
+      'fetch_agent_run_events_from_gcp',
     )
     const events = Array.isArray(payload?.events)
       ? payload.events.filter(recordFromUnknown)
@@ -2552,7 +2552,7 @@ export const fetchAgentRunEventsFromShc = async (
   }
 }
 
-export const continueAgentRunOnShc = async (
+export const continueAgentRunOnGoogleCloud = async (
   run: AgentRunRecord,
   input: Readonly<{
     authGrantRef?: string | undefined
@@ -2563,7 +2563,7 @@ export const continueAgentRunOnShc = async (
     prompt: string
     turnId: string
   }>,
-): Promise<ShcControlActionResult> => {
+): Promise<GoogleCloudControlActionResult> => {
   if (
     input.dispatchMode !== 'live' ||
     input.controlApiUrl === undefined ||
@@ -2592,7 +2592,7 @@ export const continueAgentRunOnShc = async (
   ]
 
   for (const url of urls) {
-    const response = await fetchShcControl(
+    const response = await fetchGoogleCloudControl(
       fetcher,
       url,
       {
@@ -2603,7 +2603,7 @@ export const continueAgentRunOnShc = async (
         },
         method: 'POST',
       },
-      'continue_agent_run_on_shc',
+      'continue_agent_run_on_gcp',
     )
     const text = await response.text()
     const targetPath = new URL(url).pathname
@@ -2627,7 +2627,7 @@ export const continueAgentRunOnShc = async (
         text === ''
           ? undefined
           : optionalRecord(
-              parseShcDispatchJson(text, url, 'continue_agent_run_on_shc'),
+              parseGoogleCloudDispatchJson(text, url, 'continue_agent_run_on_gcp'),
             ),
       status: response.status,
     }
@@ -2640,7 +2640,7 @@ export const continueAgentRunOnShc = async (
   }
 }
 
-export const dispatchDeploymentToShc = async (
+export const dispatchDeploymentToGoogleCloud = async (
   assignment: AppDeployAssignment,
   input: Readonly<{
     controlApiBearerToken?: string | undefined
@@ -2649,7 +2649,7 @@ export const dispatchDeploymentToShc = async (
     fetcher?: typeof fetch | undefined
   }>,
 ): Promise<DispatchResult> => {
-  const operation = 'dispatch_deployment_to_shc'
+  const operation = 'dispatch_deployment_to_gcp'
 
   if (
     input.dispatchMode !== 'live' ||
@@ -2670,7 +2670,7 @@ export const dispatchDeploymentToShc = async (
   ].join(' ')
 
   for (const url of controlCandidates(input.controlApiUrl)) {
-    const response = await fetchShcControl(
+    const response = await fetchGoogleCloudControl(
       fetcher,
       url,
       {
@@ -2709,12 +2709,12 @@ export const dispatchDeploymentToShc = async (
       })
     }
 
-    const payload = shcDispatchPayload(text, url, operation)
+    const payload = gcpDispatchPayload(text, url, operation)
     const run = optionalRecord(payload?.run)
     const externalId =
       optionalText(payload?.externalRunId) ??
       optionalText(run?.externalRunId) ??
-      `shc:${DEFAULT_RUNNER_ID}:${assignment.deployId}`
+      `gcp:${DEFAULT_RUNNER_ID}:${assignment.deployId}`
 
     return {
       externalId,
@@ -2752,7 +2752,7 @@ export const dispatchEventForAgentRun = (
         mode: result.mode,
         status: result.status,
       },
-      source: 'shc',
+      source: 'gcp',
       status: result.status,
     },
   )
@@ -2773,7 +2773,7 @@ export const dispatchEventForDeployment = (
         mode: result.mode,
         status: result.status,
       },
-      source: 'shc',
+      source: 'gcp',
       status: result.status,
     },
   )

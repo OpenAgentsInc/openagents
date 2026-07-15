@@ -87,15 +87,13 @@ Historical Foldkit docs remain migration evidence only.
   automation service-account config from the workspace `AGENTS.md`; do not fall
   back to interactive `gcloud`.
 - The old Wrangler/Cloudflare Worker deploy path is legacy for this app. Do not
-  report an `openagents.com` production deploy as complete because a Worker or
-  `workers.dev` target deployed. Never use raw `pnpm exec wrangler deploy` /
-  `npx wrangler deploy` for `openagents.com` production.
+  restore or invoke it. Google Cloud is the only deploy authority for this app.
 - Never report deployment success until live smoke checks prove both the document
   and JS asset are reachable on the public domain: `curl -fsSI
 https://openagents.com/` and the concrete `/assets/index-*.js` URL referenced
   by the served HTML must both return 200. For route-specific requests, also
   smoke that route directly, for example `curl -fsSI https://openagents.com/new`.
-- Before changing Worker route/service boundaries, sync/runtime/config code,
+- Before changing API route/service boundaries, sync/runtime/config code,
   provider-account or GitHub-write error handling, logged-in update routing,
   login/root route behavior, UI family modules, or other zero-tech-debt
   cleanup surfaces, read
@@ -107,7 +105,7 @@ https://openagents.com/` and the concrete `/assets/index-*.js` URL referenced
   deletion conditions, and an architecture guardrail.
 - User-facing product copy must not explain implementation mechanics,
   internal dispatch paths, grant plumbing, auth materialization, sync internals,
-  SHC handoff details, or "how it works" process notes. Put that material in
+  retired-pilot handoff details, or "how it works" process notes. Put that material in
   docs, logs, metadata dialogs, runbooks, or operator-only surfaces. Product UI
   should use short labels, values, statuses, and direct actions such as
   "Connect", "Reconnect", "Open Settings", or "Check status".
@@ -216,12 +214,13 @@ For DOM operations (focus, scroll, modals, scroll lock), Foldkit ships a `Dom` m
 This directory is part of the pnpm workspace and uses the Vite Plus toolchain:
 
 - `apps/web/` is the Foldkit/Vite browser app.
-- `workers/api/` is the Cloudflare Worker API and Durable Object surface.
-- `packages/sync-schema/` holds Effect Schema protocol models shared by browser and Worker code.
+- `workers/api/` is the retained directory name for the Node API deployed to
+  Google Cloud Run. It has no Cloudflare runtime or deploy authority.
+- `packages/sync-schema/` holds Effect Schema protocol models shared by browser and API code.
 - `packages/sync-client/` holds browser-side sync helpers.
-- `packages/sync-worker/` holds Worker-side sync helpers.
+- `packages/sync-worker/` is a retained package name for server-side sync helpers.
 
-Keep Cloudflare runtime code out of `apps/web/`. Keep browser/Foldkit code out
+Keep server runtime code out of `apps/web/`. Keep browser/Foldkit code out
 of `workers/api/`. Shared code belongs in `packages/*` and must stay Effect
 Schema-first at every external boundary.
 

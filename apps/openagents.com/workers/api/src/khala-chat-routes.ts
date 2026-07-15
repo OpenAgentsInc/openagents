@@ -365,8 +365,8 @@ type Bucket = { tokens: number; updatedAt: number }
 const buckets = new Map<string, Bucket>()
 
 const clientIp = (request: Request): string =>
-  request.headers.get('cf-connecting-ip') ??
   request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+  request.headers.get('x-real-ip')?.trim() ??
   'unknown'
 
 const defaultRateLimit = (request: Request): boolean => {

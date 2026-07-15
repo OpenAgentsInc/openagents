@@ -39,10 +39,10 @@ const registration = (
 })
 
 const placementPolicy = {
-  allowedRunnerKinds: ['requester_pylon', 'openagents_shc', 'cloud_sandbox'],
+  allowedRunnerKinds: ['requester_pylon', 'google_cloud', 'cloud_sandbox'],
   disallowedRunnerKinds: [],
   localOnlyAllowed: false,
-  preferredRunnerKinds: ['requester_pylon', 'openagents_shc'],
+  preferredRunnerKinds: ['requester_pylon', 'google_cloud'],
   privacyTier: 'public_beta',
   publicTraceAllowed: true,
   requiresSecretBroker: false,
@@ -61,7 +61,7 @@ describe('Autopilot work placement selector', () => {
     })
 
     expect(decision).toMatchObject({
-      fallbackRunnerKind: 'openagents_shc',
+      fallbackRunnerKind: 'google_cloud',
       reasonRefs: [
         'placement.selected.requester_pylon',
         'placement.pylon.preferred_before_fallback',
@@ -106,15 +106,15 @@ describe('Autopilot work placement selector', () => {
     })
 
     expect(decision).toMatchObject({
-      fallbackRunnerKind: 'openagents_shc',
+      fallbackRunnerKind: 'google_cloud',
       reasonRefs: [
         'placement.selected.fallback',
-        'placement.fallback.openagents_shc',
+        'placement.fallback.google_cloud',
         'pricing.autopilot_work.hosted_runner_metered',
         'placement.reason.your_pylon_unavailable_hosted_metered',
       ],
       selectedPylonRef: null,
-      selectedRunnerKind: 'openagents_shc',
+      selectedRunnerKind: 'google_cloud',
       source: 'fallback',
     })
     expect(decision.pylonCandidates[0]).toMatchObject({
@@ -140,7 +140,7 @@ describe('Autopilot work placement selector', () => {
 
     expect(decision).toMatchObject({
       selectedPylonRef: null,
-      selectedRunnerKind: 'openagents_shc',
+      selectedRunnerKind: 'google_cloud',
       source: 'fallback',
     })
     expect(decision.pylonCandidates[0]).toMatchObject({

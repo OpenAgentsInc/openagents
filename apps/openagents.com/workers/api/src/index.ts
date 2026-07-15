@@ -8,9 +8,7 @@ import {
 import {
   type WorkerBindings,
   badRequest,
-  cursorGap,
   jsonResponse,
-  makeD1SyncOutboxRepository,
   notFound,
 } from '@openagentsinc/sync-worker'
 import { issuer } from '@openauthjs/openauth'
@@ -24,7 +22,6 @@ import { createSubjects } from '@openauthjs/openauth/subject'
 import { CodeUI } from '@openauthjs/openauth/ui/code'
 import { Cause, Effect, Layer, Option, Redacted, Schema as S } from 'effect'
 import { Exit } from 'effect'
-import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
@@ -53,7 +50,6 @@ import {
   revokeAgentDefinitionRunForgeGitTokensForAssignment,
 } from './agent-definition-run-routes'
 import {
-  AGENT_DEFINITION_SCHEDULER_SINGLETON_NAME,
   makeAgentDefinitionSchedulerDependencies,
   runAgentDefinitionSchedulerTick,
 } from './agent-definition-scheduler'
@@ -270,6 +266,7 @@ import {
 } from './backend-incident-events'
 import {
   OpenAgentsDatabase,
+  OpenAgentsRuntimeEnvironment,
   type OpenAgentsWorkerEnv,
   ThreadFileArtifacts,
 } from './bindings'
@@ -321,7 +318,6 @@ import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import { handleBusinessSignupApi } from './business-signup-routes'
-import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
 // "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
 // (default off). When enabled, launch defaults to the real cloud control-plane
@@ -413,7 +409,6 @@ import { makeD1EcommerceCampaignReceiptStore } from './ecommerce-campaign-receip
 import { makeEcommerceCampaignSelfServeRoutes } from './ecommerce-campaign-self-serve-routes'
 import {
   AutopilotDecisionEmailInput,
-  type CloudflareEmailBinding,
   OrderSitesTransactionalEmailInput,
   buildOrderSitesTransactionalEmailIdempotencyKey,
   sendAutopilotDecisionEmailWithLedger,
@@ -427,7 +422,7 @@ import {
 import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
 import {
   isEmailSequenceSendEnabled,
-  makeCloudflareEmailSequenceSender,
+  makeResendEmailSequenceSender,
 } from './email-sequence-send-service'
 import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
 import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
@@ -436,7 +431,6 @@ import {
   EventLedgerIngestQueueMessage,
   type EventLedgerSql,
   makePostgresEventLedgerStore,
-  recordEventLedgerMessageWithOwnerObject,
 } from './event-ledger'
 import { recordEventLedgerMessageWithOwnerMutex } from './event-ledger-owner-sequence-store'
 import {
@@ -799,7 +793,7 @@ import {
   KHALA_SYNC_HUB_LOG_PATH,
   handleKhalaSyncHubAccessChangedRoute,
   handleKhalaSyncHubInternalRoute,
-} from './khala-sync-hub-do'
+} from './khala-sync-hub-routes'
 import { resolveKhalaSyncHubNamespace } from './khala-sync-live-hub-client'
 import { handleKhalaSyncLog } from './khala-sync-log-routes'
 import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
@@ -1307,17 +1301,12 @@ import {
 import { routeWellKnownAgentSurfaceRequest } from './well-known-agent-surfaces-routes'
 import { makeWorkerRouteRequest } from './worker-routes'
 
-export { EventLedgerOwnerDurableObject } from './event-ledger'
-
-export { KhalaSyncHubDO } from './khala-sync-hub-do'
-
 export type Env = OpenAgentsWorkerEnv
 
 type MobileAuthSessionBindings = WorkerBindings & OpenAgentsWorkerConfigEnv
 
 type EmailCampaignDispatcherBindings = WorkerBindings &
-  OpenAgentsWorkerConfigEnv &
-  Readonly<{ EMAIL?: CloudflareEmailBinding | undefined }>
+  OpenAgentsWorkerConfigEnv
 export {
   SESSION_MAX_AGE_SECONDS,
   appendClearSessionCookies,
@@ -1689,9 +1678,6 @@ const getAppOrigin = (env: OpenAgentsWorkerConfigEnv): string =>
 
 const getResendEmailConfig = (env: EmailCampaignDispatcherBindings) =>
   getOpenAgentsWorkerConfig(env).email.resend
-
-const getRunnerBackendConfig = (env: OpenAgentsWorkerConfigEnv) =>
-  getOpenAgentsWorkerConfig(env).runnerBackends
 
 const getIssuerOrigin = (env: OpenAgentsWorkerEnv): string =>
   getOpenAgentsWorkerConfig(env).openauth.issuerOrigin
@@ -2978,18 +2964,9 @@ const teamAutopilotFileExcerpt = async (
       return compactTeamContextText(text, TEAM_AUTOPILOT_FILE_CONTEXT_MAX_CHARS)
     }).pipe(
       Effect.provide(
-        ThreadFileArtifacts.layer({ binding: 'ARTIFACTS' }).pipe(
-          // CFG-8 (#8523): resolve ARTIFACTS (GCS adapter when configured)
-          // before the effect-cf R2 tag reads it off the env.
-          Layer.provide(
-            Layer.succeed(WorkerEnvironment, {
-              ...env,
-              ARTIFACTS: artifactsBucketForEnv(env),
-            }),
-          ),
-        ),
+        ThreadFileArtifacts.layer(artifactsBucketForEnv(env)),
       ),
-      Effect.catchTag('R2OperationError', () =>
+      Effect.catchTag('ArtifactOperationError', () =>
         Effect.sync((): undefined => undefined),
       ),
     ),
@@ -5193,9 +5170,7 @@ const requireRunnerCallbackAuth = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
 ): Promise<boolean> => {
-  const expected = redactedValue(
-    getOpenAgentsWorkerConfig(env).shc.runnerCallbackToken,
-  )
+  const expected = env.OA_CLOUD_CONTROL_TOKEN
   const actual = readBearerToken(request)
 
   if (
@@ -5223,13 +5198,18 @@ const requireAdminApiToken = async (
   return timingSafeEqual(actual, expected)
 }
 
-const shcDispatchConfig = (env: OpenAgentsWorkerEnv) => {
-  const config = getOpenAgentsWorkerConfig(env)
+const gcpDispatchConfig = (env: OpenAgentsWorkerEnv) => {
+  const controlApiUrl = env.OA_CLOUD_CONTROL_URL?.trim()
+  const controlApiBearerToken = env.OA_CLOUD_CONTROL_TOKEN?.trim()
 
   return {
-    controlApiBearerToken: redactedValue(config.shc.controlApiBearerToken),
-    controlApiUrl: config.shc.controlApiUrl,
-    dispatchMode: config.shc.dispatchMode,
+    controlApiBearerToken,
+    controlApiUrl,
+    dispatchMode:
+      controlApiUrl !== undefined && controlApiUrl !== '' &&
+      controlApiBearerToken !== undefined && controlApiBearerToken !== ''
+        ? 'live'
+        : 'unconfigured',
   }
 }
 
@@ -5680,7 +5660,7 @@ const makeBillingAwareOmniRunStore = (
 const tokenUsageLeaderboardsLayer = (env: OpenAgentsWorkerEnv) =>
   TokenUsageLeaderboards.effectCfLayer(identityDbForEnv(env)).pipe(
     Layer.provide(OpenAgentsDatabase.layer),
-    Layer.provide(Layer.succeed(WorkerEnvironment, env)),
+    Layer.provide(Layer.succeed(OpenAgentsRuntimeEnvironment, env)),
   )
 
 const emptyEmailCampaignDispatcherResult =
@@ -5695,7 +5675,7 @@ const emptyEmailCampaignDispatcherResult =
 
 const emailCampaignDispatcherLayer = (env: EmailCampaignDispatcherBindings) =>
   OpenAgentsDatabase.layer.pipe(
-    Layer.provide(Layer.succeed(WorkerEnvironment, env)),
+    Layer.provide(Layer.succeed(OpenAgentsRuntimeEnvironment, env)),
   )
 
 const dispatchDueEmailCampaignSendsScheduled = (
@@ -5706,15 +5686,16 @@ const dispatchDueEmailCampaignSendsScheduled = (
     // KS-8.11 (#8322): the dispatch cron rides the dual-write seam — every
     // claim/skip/suppress/sent write mirrors its Postgres twin fail-soft.
     const db = makeCrmEmailDatabaseForEnv(env)
+    const resend = config.email.resend
     const emailSequenceFromEmail =
-      env.EMAIL_SEQUENCE_FROM_EMAIL ?? config.email.resend?.fromEmail
+      env.EMAIL_SEQUENCE_FROM_EMAIL ?? resend?.fromEmail
     const sequenceSend =
-      env.EMAIL === undefined || emailSequenceFromEmail === undefined
+      resend === undefined || emailSequenceFromEmail === undefined
         ? undefined
         : {
             isEnabled: () =>
               isEmailSequenceSendEnabled(env.EMAIL_SEQUENCE_SEND_ENABLED),
-            send: makeCloudflareEmailSequenceSender(db, env.EMAIL, {
+            send: makeResendEmailSequenceSender(db, resend, {
               appOrigin: config.app.origin,
               fromEmail: emailSequenceFromEmail,
               replyToEmail:
@@ -6736,8 +6717,8 @@ const makeTokensServedReconcileDeps = (
 // #8467 follow-up: server-side hosted-Khala runtime dispatch. Claims `queued`
 // `hosted_khala` turns (mobile Khala Code chat turns with no local Pylon) and
 // answers them with hosted Gemini inference, writing the response back as
-// runtime events through the push engine. Postgres + pure-HTTP inference only
-// — no Cloudflare bindings, no D1. Fail-soft: a missing KHALA_SYNC_DB binding
+// runtime events through the push engine. Postgres + Google inference only.
+// Fail-soft: a missing KHALA_SYNC_DB binding
 // or GEMINI_API_KEY is a clean no-op, and per-turn failures are isolated.
 const runHostedRuntimeTurnDispatchForEnv = async (
   env: OpenAgentsWorkerEnv,
@@ -6752,7 +6733,6 @@ const runHostedRuntimeTurnDispatchForEnv = async (
   ) {
     return
   }
-  const gatewayToken = (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN
   const complete: HostedRuntimeCompleteFn = async ({
     images,
     prompt,
@@ -6760,9 +6740,6 @@ const runHostedRuntimeTurnDispatchForEnv = async (
   }) => {
     const result = await artanisMindComplete({
       apiKey,
-      ...(gatewayToken === undefined || gatewayToken === ''
-        ? {}
-        : { gatewayToken }),
       model: DEFAULT_HOSTED_RUNTIME_MODEL,
       prompt,
       system,
@@ -7198,16 +7175,6 @@ const adminOverviewHandlers = makeAdminOverviewHandlers({
   requireBrowserSession,
 })
 
-// Admin-gated Cloudflare Browser Rendering smoke (#6205). Reuses the SAME admin
-// mechanism as every other `/api/admin/*` route. `launch` defaults to the real
-// `@cloudflare/playwright`; `env.BROWSER` is read off the runtime binding (not on
-// the statically-typed `Env`).
-const handleCfBrowserSmokeApi = makeCfBrowserSmokeHandler({
-  appendRefreshedSessionCookies,
-  isOpenAgentsAdminEmail,
-  requireBrowserSession,
-})
-
 const tokenUsageLedgerRoutes = makeTokenUsageLedgerRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -7579,7 +7546,7 @@ const autopilotWorkRouteDependencies = {
   // Feed the registered-pylon registry into the work-order placement selector
   // so an owner's online, heartbeat-fresh Pylon is eligible for `requester_pylon`
   // placement (own jobs run on the owner's own node). Without this the selector
-  // only ever sees an empty list and every order falls back to the SHC lane,
+  // only ever sees an empty list and every order falls back to the Google Cloud lane,
   // which is what blocked the spare-capacity provider from picking up its
   // owner's job (#4782). The selector itself enforces owner-match + active +
   // fresh-heartbeat eligibility.
@@ -8265,7 +8232,6 @@ const omniHandlers = makeOmniHandlers({
   authenticateRequestActor,
   getAppOrigin,
   getResendEmailConfig,
-  getRunnerBackendConfig,
   isOpenAgentsAdminEmail,
   isRouteAccessError,
   makeBillingAwareOmniRunStore,
@@ -8275,7 +8241,7 @@ const omniHandlers = makeOmniHandlers({
   requireAdminApiToken,
   requireBrowserSession,
   requireRunnerCallbackAuth,
-  shcDispatchConfig,
+  gcpDispatchConfig,
   threadRouteAccessBundle,
 })
 
@@ -9953,7 +9919,13 @@ const makeKhalaChatStreamClient = (
 
 const makeArtanisResponderKhalaClient = (
   env: OnboardingInferenceEnv &
-    Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM' | 'KHALA_SYNC_DB'>,
+    Pick<
+      WorkerBindings,
+      | 'OPENAGENTS_DB'
+      | 'KHALA_SYNC_DB'
+      | 'KHALA_SYNC_LIVE_HUB_URL'
+      | 'KHALA_SYNC_LIVE_HUB_TOKEN'
+    >,
 ): ArtanisResponderKhalaClient => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
@@ -11145,7 +11117,6 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           try {
             return (await request.json()) as {
               forumPost?: boolean
-              gatewayId?: string
               model?: string
               prompt?: string
             }
@@ -11156,16 +11127,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         const prompt =
           body.prompt ??
           'State in one sentence what the Artanis administrator should verify before dispatching executor-trace work to an idle Pylon.'
-        const gatewayToken = (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN
         const result = yield* Effect.promise(() =>
           artanisMindComplete({
             apiKey,
-            ...(body.gatewayId === undefined
-              ? {}
-              : { gatewayId: body.gatewayId }),
-            ...(gatewayToken === undefined || gatewayToken === ''
-              ? {}
-              : { gatewayToken }),
             ...(body.model === undefined ? {} : { model: body.model }),
             prompt,
             system: ArtanisMindSmokeSystem,
@@ -11579,13 +11543,6 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ),
   },
   {
-    // Admin-gated Cloudflare Browser Rendering smoke (#6205). Proves the real
-    // `env.BROWSER` binding from a deployed Worker; honest `{ ok:false, reason }`
-    // if the binding is absent or Browser Rendering errors.
-    path: '/api/admin/cf-browser-smoke',
-    handler: (request, env, ctx) => handleCfBrowserSmokeApi(request, env, ctx),
-  },
-  {
     // CFG-7 (#8522): Postgres JobQueue delivery seam. Admin bearer only —
     // the Cloud Run pump (apps/oa-queue-worker) leases jobs from
     // oa_infra_jobs and posts each one here; the original queue-consumer
@@ -11712,7 +11669,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
-          doPath: '/append',
+          hubPath: '/append',
           namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
@@ -11723,7 +11680,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
-          doPath: '/log',
+          hubPath: '/log',
           namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
@@ -11734,7 +11691,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
-          doPath: '/connect',
+          hubPath: '/connect',
           namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
@@ -13899,299 +13856,31 @@ const routeRequest = makeWorkerRouteRequest({
     trainingVerificationRoutes.routeTrainingVerificationRequest,
 })
 
-type SyncSocketAttachment = Readonly<{
-  cursor: number
-  scope: string
-}>
-
-const syncSocketClose = (
-  socket: WebSocket,
-  code: number,
-  reason: string,
-): void => {
-  try {
-    socket.close(code, reason)
-  } catch {
-    // The browser may already have closed the WebSocket while replay is pending.
-  }
-}
-
-const syncSocketSendJson = (socket: WebSocket, value: unknown): boolean => {
-  try {
-    socket.send(JSON.stringify(value))
-    return true
-  } catch {
-    syncSocketClose(socket, 1011, 'sync replay failed')
-    return false
-  }
-}
-
-const syncSocketAttachment = (
-  value: unknown,
-): SyncSocketAttachment | undefined => {
-  if (!isRecord(value)) {
-    return undefined
-  }
-
-  return typeof value.scope === 'string' && typeof value.cursor === 'number'
-    ? { cursor: value.cursor, scope: value.scope }
-    : undefined
-}
-
-const syncCursorFromUrl = (url: URL): number => {
-  const cursor = Number(url.searchParams.get('cursor') ?? '0')
-
-  return Number.isInteger(cursor) && cursor >= 0 ? cursor : 0
-}
-
-const syncScopeFromRequest = (request: Request, url: URL): string | undefined =>
-  request.headers.get('x-openagents-sync-scope') ??
-  url.searchParams.get('scope') ??
-  undefined
-
-// The former `DurableInferenceStreamObject` Durable Object (#6058) was
-// REPLACED by the Postgres-backed durable stream (CFG-6 #8521, epic #8515):
-// per-request durable offset logs now live in `oa_infra_streams` /
-// `oa_infra_stream_chunks` behind the oa-infra DurableStream interface,
-// reached through the KHALA_SYNC_DB Hyperdrive binding
-// (src/inference/durable-inference-stream-backend.ts). The wrangler DO
-// binding + class were deleted (`deleted_sqlite_classes` migration).
-
-export class SyncRoomDurableObject {
-  constructor(
-    private readonly state: DurableObjectState,
-    private readonly env: OpenAgentsWorkerEnv,
-  ) {}
-
-  private async replaySocket(
-    socket: WebSocket,
-    scope: string,
-    cursor: number,
-  ): Promise<void> {
-    try {
-      const repository = makeD1SyncOutboxRepository(
-        openAgentsDatabase(this.env),
-      )
-      const snapshot = await repository.readSnapshot(scope)
-
-      if (cursor > snapshot.cursor) {
-        if (
-          syncSocketSendJson(socket, cursorGap(scope, snapshot.cursor, cursor))
-        ) {
-          socket.serializeAttachment({ cursor: snapshot.cursor, scope })
-        }
-        return
-      }
-
-      const patches = await repository.readChangesAfter(scope, cursor)
-      let nextCursor = cursor
-
-      for (const patch of patches) {
-        if (!syncSocketSendJson(socket, patch)) {
-          return
-        }
-
-        nextCursor = patch.seq
-      }
-
-      socket.serializeAttachment({ cursor: nextCursor, scope })
-    } catch (error) {
-      logWorkerRouteError('sync_replay_failed', error, {
-        errorName: errorName(error),
-        scope,
-      })
-      syncSocketClose(socket, 1011, 'sync replay failed')
-    }
-  }
-
-  private async broadcastScope(scope: string): Promise<void> {
-    await Promise.all(
-      this.state.getWebSockets(scope).map(async socket => {
-        const attachment = syncSocketAttachment(socket.deserializeAttachment())
-
-        await this.replaySocket(socket, scope, attachment?.cursor ?? 0)
-      }),
-    )
-  }
-
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-    const scope = syncScopeFromRequest(request, url)
-
-    if (url.pathname === '/__sync/notify' && request.method === 'POST') {
-      if (scope === undefined) {
-        return badRequest('scope is required')
-      }
-
-      this.state.waitUntil(this.broadcastScope(scope))
-
-      return jsonResponse({ ok: true, scope })
-    }
-
-    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
-      return badRequest('websocket upgrade is required')
-    }
-
-    if (scope === undefined) {
-      return badRequest('scope is required')
-    }
-
-    const pair = new WebSocketPair()
-    const client = pair[0]
-    const server = pair[1]
-    const cursor = syncCursorFromUrl(url)
-
-    server.serializeAttachment({ cursor, scope })
-    this.state.acceptWebSocket(server, [scope])
-    this.state.waitUntil(this.replaySocket(server, scope, cursor))
-
-    return new Response(null, {
-      status: 101,
-      webSocket: client,
-    })
-  }
-
-  async webSocketMessage(socket: WebSocket, message: string): Promise<void> {
-    if (message !== 'replay') {
-      return
-    }
-
-    const attachment = syncSocketAttachment(socket.deserializeAttachment())
-
-    if (attachment === undefined) {
-      syncSocketClose(socket, 1008, 'missing sync attachment')
-      return
-    }
-
-    await this.replaySocket(socket, attachment.scope, attachment.cursor)
-  }
-
-  webSocketClose(
-    socket: WebSocket,
-    _code: number,
-    _reason: string,
-    _wasClean: boolean,
-  ): void {
-    socket.serializeAttachment(null)
-  }
-
-  webSocketError(socket: WebSocket): void {
-    syncSocketClose(socket, 1011, 'sync socket error')
-  }
-}
-
-const agentDefinitionSchedulerJsonResponse = (
-  body: unknown,
-  init: ResponseInit = {},
-) =>
-  new Response(JSON.stringify(body), {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  })
-
-const readAgentDefinitionSchedulerScheduledAt = async (
-  request: Request,
-): Promise<string> => {
-  try {
-    const body = await request.json()
-    if (
-      typeof body === 'object' &&
-      body !== null &&
-      'scheduledAt' in body &&
-      typeof body.scheduledAt === 'string'
-    ) {
-      return body.scheduledAt
-    }
-  } catch {
-    return currentIsoTimestamp()
-  }
-
-  return currentIsoTimestamp()
-}
-
-export class AgentDefinitionSchedulerDurableObject {
-  constructor(
-    private readonly state: DurableObjectState,
-    private readonly env: OpenAgentsWorkerEnv,
-  ) {}
-
-  async fetch(request: Request) {
-    const url = new URL(request.url)
-
-    if (request.method !== 'POST' || url.pathname !== '/tick') {
-      return agentDefinitionSchedulerJsonResponse(
-        { error: 'agent_definition_scheduler_not_found' },
-        { status: 404 },
-      )
-    }
-
-    const scheduledAt = await readAgentDefinitionSchedulerScheduledAt(request)
-    const durableStreamNamespace = durableInferenceStreamNamespaceForEnv(
-      this.env,
-      {
-        enabled: isInferenceDurableStreamEnabled(
-          this.env.INFERENCE_DURABLE_STREAM_ENABLED,
-        ),
-      },
-    )
-    const result = await runAgentDefinitionSchedulerTick(
-      makeAgentDefinitionSchedulerDependencies({
-        db: openAgentsDatabase(this.env),
-        // KS-8.5 (#8316): scheduler ticks ride the agent-runtime
-        // dual-write seam (definition/run mirrors + flag-routed
-        // due-trigger scans).
-        definitionStore: makeAgentDefinitionStoreForEnv(this.env),
-        durableStreamNamespace,
-        // KS-8.16 (#8327): scheduler-dispatched definition runs mint
-        // forge git tokens and upsert coordination issues — those writes
-        // ride the forge domain dual-write seam.
-        forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(this.env),
-        forgeStore: makeForgeCoordinationStoreForEnv(this.env),
-        // KS-8.1 (#8307): scheduler-dispatched assignments ride the same
-        // dual-write store as the request-path writers.
-        pylonStore: makePylonApiStoreForEnv(this.env),
-        runStore: makeAgentDefinitionRunStoreForEnv(this.env),
-        triggerStore: makeAgentDefinitionTriggerStoreForEnv(this.env),
-      }),
-      { nowIso: scheduledAt },
-    )
-
-    await this.state.storage.put('last_tick', result)
-
-    return agentDefinitionSchedulerJsonResponse(result)
-  }
-}
-
 const pokeAgentDefinitionScheduler = async (
   env: OpenAgentsWorkerEnv,
   scheduledTimeMs: number,
 ) => {
-  const namespace = (
-    env as Env & {
-      AGENT_DEFINITION_SCHEDULER?: DurableObjectNamespace
-    }
-  ).AGENT_DEFINITION_SCHEDULER
+  const durableStreamNamespace = durableInferenceStreamNamespaceForEnv(env, {
+    enabled: isInferenceDurableStreamEnabled(
+      env.INFERENCE_DURABLE_STREAM_ENABLED,
+    ),
+  })
 
-  if (namespace === undefined) {
-    return { ok: false, reason: 'agent_definition_scheduler_binding_missing' }
-  }
-
-  const id = namespace.idFromName(AGENT_DEFINITION_SCHEDULER_SINGLETON_NAME)
-  const stub = namespace.get(id)
-  const response = await stub.fetch(
-    new Request('https://agent-definition-scheduler.openagents.internal/tick', {
-      body: JSON.stringify({
-        scheduledAt: epochMillisToIsoTimestamp(scheduledTimeMs),
-      }),
-      method: 'POST',
+  await runAgentDefinitionSchedulerTick(
+    makeAgentDefinitionSchedulerDependencies({
+      db: openAgentsDatabase(env),
+      definitionStore: makeAgentDefinitionStoreForEnv(env),
+      durableStreamNamespace,
+      forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
+      forgeStore: makeForgeCoordinationStoreForEnv(env),
+      pylonStore: makePylonApiStoreForEnv(env),
+      runStore: makeAgentDefinitionRunStoreForEnv(env),
+      triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
     }),
+    { nowIso: epochMillisToIsoTimestamp(scheduledTimeMs) },
   )
 
-  return response.ok
-    ? { ok: true }
-    : { ok: false, reason: `agent_definition_scheduler_${response.status}` }
+  return { ok: true }
 }
 
 const workerFetchProgram = Effect.gen(function* () {
@@ -14291,36 +13980,20 @@ export const dispatchOaQueueMessage = async (
   if (schemaVersion === EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION) {
     const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body)
 
-    // CFG-17 (#8533): on Cloud Run there is no EVENT_LEDGER_OWNER Durable
-    // Object (it is a typed-unavailable shim). When KHALA_SYNC_DB is
-    // configured, serialize the per-owner append with the owned oa-infra
-    // Mutex (pg_advisory_xact_lock) instead of the DO's single thread.
     const connectionString = (
       env as { KHALA_SYNC_DB?: { connectionString?: string } }
     ).KHALA_SYNC_DB?.connectionString
 
-    if (connectionString !== undefined && connectionString.length > 0) {
-      await recordEventLedgerMessageWithOwnerMutex(
-        env as unknown as Parameters<
-          typeof recordEventLedgerMessageWithOwnerMutex
-        >[0],
-        decoded,
-      )
-      return
+    if (connectionString === undefined || connectionString.length === 0) {
+      throw new Error('event ledger requires the Cloud SQL connection')
     }
 
-    // Legacy Cloudflare Worker path: the real EVENT_LEDGER_OWNER DO.
-    const namespace = (
-      env as Env & {
-        EVENT_LEDGER_OWNER?: DurableObjectNamespace
-      }
-    ).EVENT_LEDGER_OWNER
-
-    if (namespace === undefined) {
-      throw { error: 'event_ledger_owner_binding_missing' }
-    }
-
-    await recordEventLedgerMessageWithOwnerObject(namespace, decoded)
+    await recordEventLedgerMessageWithOwnerMutex(
+      env as unknown as Parameters<
+        typeof recordEventLedgerMessageWithOwnerMutex
+      >[0],
+      decoded,
+    )
     return
   }
 
@@ -14518,16 +14191,7 @@ export default {
       observedEffect(
         'AgentDefinitionScheduler.tick',
         Effect.promise(async () => {
-          const result = await pokeAgentDefinitionScheduler(
-            env,
-            event.scheduledTime,
-          )
-
-          if (!result.ok) {
-            logWorkerRouteWarning('agent_definition_scheduler_tick_skipped', {
-              reason: result.reason,
-            })
-          }
+          await pokeAgentDefinitionScheduler(env, event.scheduledTime)
         }),
       ),
       observedEffect(
@@ -14590,7 +14254,6 @@ export default {
           enabled:
             (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })
               .ARTANIS_FORUM_RESPONDER_ENABLED === 'true',
-          gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           khalaClient: makeArtanisResponderKhalaClient(env),
@@ -14636,7 +14299,6 @@ export default {
           enabled:
             (env as { ARTANIS_ADMIN_TICK_ENABLED?: string })
               .ARTANIS_ADMIN_TICK_ENABLED === 'true',
-          gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
@@ -14646,7 +14308,6 @@ export default {
         'ArtanisFleet.tick',
         runArtanisFleetOverseerTickScheduled(makeArtanisDatabaseForEnv(env), {
           enabled: config.artanis.fleetOverseerEnabled,
-          gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
@@ -14755,7 +14416,6 @@ export default {
             (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })
               .ARTANIS_FORUM_RESPONDER_ENABLED === 'true',
           forumPost: artanisComposerForumPostForEnv(env),
-          gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),

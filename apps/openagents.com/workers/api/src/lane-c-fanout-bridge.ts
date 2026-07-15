@@ -35,7 +35,7 @@ export type LaneCFanoutBridgeInput = Readonly<{
 
 // Maps the product order's placement state to the Lane C owned-capacity state.
 // Owned capacity is "available" only when the order was actually placed on the
-// owner's Pylon (requester_pylon selected). A fallback to SHC or a
+// owner's Pylon (requester_pylon selected). A fallback to Google Cloud or a
 // none-available placement means owned capacity is dark/limited and the order is
 // a Lane C candidate.
 export const ownedCapacityStateFromPlacement = (
@@ -51,7 +51,7 @@ export const ownedCapacityStateFromPlacement = (
   if (placementAvailabilityState === 'none_available') {
     return 'dark'
   }
-  // SHC/fallback placement: owned (first-party) Pylon capacity is dark; SHC is a
+  // Google Cloud/fallback placement: owned (first-party) Pylon capacity is dark; Google Cloud is a
   // first-party lane but not the owner's own node, so for Lane C purposes the
   // owner's owned capacity is limited and the order may burst to the market.
   return 'limited'

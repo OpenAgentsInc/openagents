@@ -84,6 +84,10 @@ not current queues:
   — closed after-action record for the removed Native SDK experiment; explains
   why the hybrid did not meet the adoption bar, retains only component and
   automation lessons, and establishes Electron as the sole Desktop host.
+- [`2026-07-14-google-cloud-authority-cleanup-after-action.md`](./2026-07-14-google-cloud-authority-cleanup-after-action.md)
+  — corrective authority record: Google Cloud is the sole production
+  infrastructure, SHC was only a retired limited pilot, and Cloudflare account
+  residue was archived and removed without treating it as a migration target.
 - [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
   — durable process/data/authority topology plus a dated delivery baseline.
 - [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)

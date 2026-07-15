@@ -1,12 +1,11 @@
 // HTTP job source: leases acceptance jobs from the gateway over an authenticated pull
 // endpoint (EPIC #6017).
 //
-// The out-of-Worker runner CANNOT be a Cloudflare Queue consumer (a consumer is a
-// Worker; chromium never runs in a Worker), so it PULLS its work. This source polls an
+// The out-of-process runner polls its work. This source calls an
 // authenticated `GET <leaseUrl>` that returns the next pending acceptance job (or 204 /
 // `{ job: null }` when the queue is empty), runs it, and reports the outcome back with
 // `POST <ackUrl>`. Both calls carry the runner bearer token. The lease/ack endpoints are
-// the Worker-side counterpart (`acceptance-job-lease-routes.ts`), INERT by default.
+// the API counterpart (`acceptance-job-lease-routes.ts`), INERT by default.
 //
 // FAIL-CLOSED: a missing token or URL means no source (the daemon does nothing). A
 // non-2xx is a typed transport fault the daemon treats as a transient idle (back off,

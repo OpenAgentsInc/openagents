@@ -1,7 +1,6 @@
 import { identityDbForEnv } from './identity-db'
 import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Layer, Option } from 'effect'
-import { WorkerEnvironment } from 'effect-cf'
 
 import { artifactsBucketForEnv } from './artifacts-binding'
 
@@ -49,7 +48,12 @@ type ThreadFileRouteDependencies<Session extends BrowserSessionShape> =
       session: Session,
     ) => Response
     publishTeamThreadFileSync: (
-      env: Pick<OpenAgentsWorkerEnv, 'OPENAGENTS_DB' | 'SYNC_ROOM'>,
+      env: Pick<
+        OpenAgentsWorkerEnv,
+        | 'OPENAGENTS_DB'
+        | 'KHALA_SYNC_LIVE_HUB_URL'
+        | 'KHALA_SYNC_LIVE_HUB_TOKEN'
+      >,
       ctx: SyncNotificationContext,
       file: PublicThreadFile,
       actorId: string,
@@ -69,13 +73,6 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
   const makeThreadFileId = dependencies.makeThreadFileId ?? randomUuid
 
   const threadFileStorageLayer = (env: OpenAgentsWorkerEnv) => {
-    // CFG-8 (#8523): the effect-cf R2 tag reads `env.ARTIFACTS` directly,
-    // so hand it an env whose ARTIFACTS slot is already resolved (GCS
-    // adapter when configured, rejecting stub otherwise).
-    const workerEnvironmentLayer = Layer.succeed(WorkerEnvironment, {
-      ...env,
-      ARTIFACTS: artifactsBucketForEnv(env),
-    })
     const repositoryLayer = ThreadFileRepository.layer(
       khalaCodeProductStateDatabaseForEnv(env),
       identityDbForEnv(env),
@@ -83,8 +80,8 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
 
     return Layer.mergeAll(
       repositoryLayer,
-      ThreadFileArtifacts.layer({ binding: 'ARTIFACTS' }),
-    ).pipe(Layer.provide(workerEnvironmentLayer))
+      ThreadFileArtifacts.layer(artifactsBucketForEnv(env)),
+    )
   }
 
   const threadFileRepositoryErrorResponse = (
@@ -95,12 +92,6 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
         error: 'thread_file_repository_error',
         message: error.message,
       },
-      { status: 500 },
-    )
-
-  const threadFileBindingErrorResponse = (): Response =>
-    noStoreJsonResponse(
-      { error: 'thread_file_binding_unavailable' },
       { status: 500 },
     )
 
@@ -279,23 +270,17 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
       Effect.catchTag('ThreadFileRepositoryError', error =>
         Effect.succeed(threadFileRepositoryErrorResponse(error)),
       ),
-      Effect.catchTag('R2OperationError', error =>
+      Effect.catchTag('ArtifactOperationError', error =>
         Effect.succeed(
           noStoreJsonResponse(
             {
               error: 'thread_file_artifact_error',
-              message: `R2 ${error.operation} failed for ${error.binding}`,
+              message: `Artifact ${error.operation} failed`,
             },
             { status: 500 },
           ),
         ),
       ),
-      Effect.catchTags({
-        BindingNotFoundError: () =>
-          Effect.succeed(threadFileBindingErrorResponse()),
-        BindingValidationError: () =>
-          Effect.succeed(threadFileBindingErrorResponse()),
-      }),
     )
 
   const handleTeamFilesApi = (
@@ -345,12 +330,6 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
       Effect.catchTag('ThreadFileRepositoryError', error =>
         Effect.succeed(threadFileRepositoryErrorResponse(error)),
       ),
-      Effect.catchTags({
-        BindingNotFoundError: () =>
-          Effect.succeed(threadFileBindingErrorResponse()),
-        BindingValidationError: () =>
-          Effect.succeed(threadFileBindingErrorResponse()),
-      }),
     )
 
   const handleThreadFileApi = (
@@ -453,12 +432,6 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
       Effect.catchTag('ThreadFileRepositoryError', error =>
         Effect.succeed(threadFileRepositoryErrorResponse(error)),
       ),
-      Effect.catchTags({
-        BindingNotFoundError: () =>
-          Effect.succeed(threadFileBindingErrorResponse()),
-        BindingValidationError: () =>
-          Effect.succeed(threadFileBindingErrorResponse()),
-      }),
     )
 
   const handleThreadFileDownloadApi = (
@@ -530,23 +503,17 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
       Effect.catchTag('ThreadFileRepositoryError', error =>
         Effect.succeed(threadFileRepositoryErrorResponse(error)),
       ),
-      Effect.catchTag('R2OperationError', error =>
+      Effect.catchTag('ArtifactOperationError', error =>
         Effect.succeed(
           noStoreJsonResponse(
             {
               error: 'thread_file_artifact_error',
-              message: `R2 ${error.operation} failed for ${error.binding}`,
+              message: `Artifact ${error.operation} failed`,
             },
             { status: 500 },
           ),
         ),
       ),
-      Effect.catchTags({
-        BindingNotFoundError: () =>
-          Effect.succeed(threadFileBindingErrorResponse()),
-        BindingValidationError: () =>
-          Effect.succeed(threadFileBindingErrorResponse()),
-      }),
     )
 
   const routeThreadFileRequest = (

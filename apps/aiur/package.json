@@ -5,15 +5,14 @@
   "type": "module",
   "sideEffects": false,
   "scripts": {
-    "dev": "vp dev",
-    "build": "vp build --logLevel warn",
-    "preview": "vp preview",
-    "deploy": "pnpm run build && wrangler deploy",
+    "dev": "vp dev --config vite.config.cloudrun.ts",
+    "build": "pnpm run build:cloudrun",
+    "preview": "vp preview --config vite.config.cloudrun.ts",
+    "deploy": "pnpm run deploy:cloudrun",
     "build:cloudrun": "vp build --config vite.config.cloudrun.ts --logLevel warn && vp pack src/cloudrun/server.ts --format esm --platform node --out-dir dist/cloudrun",
     "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "cf:typegen": "wrangler types"
+    "test": "vitest run"
   },
   "dependencies": {
     "@effect-native/tokens": "workspace:*",
@@ -38,8 +37,6 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.42.0",
-    "@cloudflare/workers-types": "^4.20260609.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
@@ -50,7 +47,6 @@
     "tailwindcss": "^4.2.2",
     "typescript": "catalog:",
     "vite": "^8.0.13",
-    "vitest": "^4.1.8",
-    "wrangler": "^4.102.0"
+    "vitest": "^4.1.8"
   }
 }

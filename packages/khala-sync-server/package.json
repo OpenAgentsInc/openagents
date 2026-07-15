@@ -25,8 +25,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.port03-production-driver.json --noEmit",
     "capture": "node --import tsx scripts/capture.ts",
     "check:pending-migrations": "node --import tsx scripts/check-pending-migrations.ts",
-    "test:pending-migrations-guard": "vp test --run scripts/check-pending-migrations.test.ts",
-    "query-compare-soak": "node --import tsx scripts/query-compare-soak.ts"
+    "test:pending-migrations-guard": "vp test --run scripts/check-pending-migrations.test.ts"
   },
   "dependencies": {
     "@openagentsinc/khala-fleet-intents": "workspace:*",
