@@ -15,10 +15,12 @@ workbench. `?renderer=compatibility` is the one explicit exclusive fallback
 for non-converted specialist surfaces and the broad legacy acceptance oracle.
 The two backends never render the same authoritative surface together.
 
-This is an implementation and deterministic integration receipt. It is not a
-signed/notarized artifact receipt, a real-account acceptance record, an owner
-ProductSpec admission, an independent visual-review acceptance, or publication
-authority. Those external gates remain open on issue #8823.
+This is an implementation and deterministic integration receipt. The exact
+signed/notarized artifact and reversible release lifecycle are recorded in
+`2026-07-14-openagents-desktop-react-rc13-release-receipt.md`. Neither receipt
+is a real-account acceptance record, an owner ProductSpec admission, an
+independent visual-review acceptance, or publication authority. Those external
+gates remain open on issue #8823.
 
 ## Integrated default-backend proof
 
@@ -75,13 +77,21 @@ management scope. React is the default only for the scoped workbench: session
 rail, typed conversation, composer, decisions, status/recovery, and read-only
 review.
 
+## Release-boundary follow-up
+
+Exact RC13 subsequently passed Developer ID signing, app and outer-DMG Apple
+notarization/stapling, artifact-bound Gatekeeper preflight, read-only-DMG React
+smoke with a pristine user-data root, and the reversible RC12-to-RC13
+update/rollback/downgrade-refusal/reinstall/cleanup driver. See
+`2026-07-14-openagents-desktop-react-rc13-release-receipt.md` for the immutable
+digest, Apple submission, and bounded public-safe evidence.
+
 ## External gates not claimed
 
 The following #8823 close-rule evidence is not produced by this packet:
 
-- signed and notarized installed macOS ARM64 artifact identity;
-- clean install/reinstall/update/rollback/downgrade receipts;
 - a real ordinary-session Codex run with private evidence handling;
+- an integrated authoritative question/approval/plan-review disposition;
 - owner/admission disposition for ProductSpec revision 1;
 - independent visual and interaction reviewer acceptance;
 - full VoiceOver/keyboard-only and measured WCAG contrast receipt;

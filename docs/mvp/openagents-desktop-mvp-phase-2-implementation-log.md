@@ -311,9 +311,9 @@ effects authority.
 
 ## MVP-02F — Default React cutover and integrated receipt (#8823)
 
-Status: implementation cutover complete; release-proof issue remains open for
-external signed-artifact, real-account, owner/admission, and independent-review
-evidence.
+Status: implementation cutover and signed release-boundary proof complete;
+release-proof issue remains open for real-account, authoritative-decision,
+owner/admission, accessibility/performance, and independent-review evidence.
 
 Ordinary Desktop launches now install the React workbench by default. The
 catalog renderer remains available only through the explicit exclusive
@@ -332,3 +332,12 @@ Effect Native resolver rather than recording the unvalidated second argument.
 
 The normalized receipt and explicit non-claims live in
 `docs/mvp/2026-07-14-openagents-desktop-react-cutover-receipt.md`.
+
+Exact `origin/main` commit `a66b8d4ea7` was then packaged as the ARM64 RC13
+candidate. Apple accepted the app and outer DMG; Gatekeeper, stapler,
+`syspolicy_check`, DMG verification, and a read-only-DMG pristine-profile
+React smoke passed. The real update client/applier also passed the exact
+notarized RC12-to-RC13 interrupted-stage, atomic update, downgrade refusal,
+rollback, diagnostics, uninstall, reinstall, and cleanup sequence without
+deployment. The immutable artifact identity and honest remaining boundary live
+in `docs/mvp/2026-07-14-openagents-desktop-react-rc13-release-receipt.md`.
