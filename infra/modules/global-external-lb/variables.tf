@@ -23,18 +23,8 @@ variable "cloud_run_service" {
   type        = string
 }
 
-variable "docs_cloud_run_service" {
-  description = "Cloud Run service name for the static /docs backend"
-  type        = string
-}
-
-variable "docs_host" {
-  description = "Hostname whose /docs paths route to the docs backend"
-  type        = string
-}
-
-variable "monolith_only_hosts" {
-  description = "Hostnames that always route to the monolith"
+variable "monolith_hosts" {
+  description = "Hostnames that route every path to the monolith"
   type        = list(string)
 }
 

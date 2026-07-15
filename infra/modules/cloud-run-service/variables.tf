@@ -24,3 +24,9 @@ variable "placeholder_image" {
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
+
+variable "deletion_protection" {
+  description = "Terraform-side guard against accidental service deletion"
+  type        = bool
+  default     = true
+}

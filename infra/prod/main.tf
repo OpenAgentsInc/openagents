@@ -246,10 +246,12 @@ module "openagents_monolith" {
   region  = var.region
 }
 
-# Static-only Blume documentation service. Terraform owns the service shell;
-# the checked-in docs deploy script owns immutable build revisions.
+# Detached rollback shell for the former Blume documentation service. It is no
+# longer in the URL map; deletion protection is disabled so it can be retired
+# after the unified TanStack reader passes its public production soak.
 module "openagents_docs" {
-  source = "../modules/cloud-run-service"
+  source              = "../modules/cloud-run-service"
+  deletion_protection = false
 
   project = var.project_id
   name    = "openagents-docs"
@@ -268,9 +270,7 @@ module "openagents_lb" {
   region                     = var.region
   domains                    = ["openagents.com", "auth.openagents.com"]
   cloud_run_service          = module.openagents_monolith.service_name
-  docs_cloud_run_service     = module.openagents_docs.service_name
-  docs_host                  = "openagents.com"
-  monolith_only_hosts        = ["auth.openagents.com"]
+  monolith_hosts             = ["openagents.com", "auth.openagents.com"]
   components_host            = "components.openagents.com"
   components_backend_service = "effect-native-gallery-backend"
 }

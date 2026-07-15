@@ -100,33 +100,6 @@ resource "google_compute_backend_service" "this" {
   }
 }
 
-resource "google_compute_region_network_endpoint_group" "docs" {
-  project               = var.project
-  name                  = "${var.name}-docs-neg"
-  region                = var.region
-  network_endpoint_type = "SERVERLESS"
-
-  cloud_run {
-    service = var.docs_cloud_run_service
-  }
-}
-
-resource "google_compute_backend_service" "docs" {
-  project               = var.project
-  name                  = "${var.name}-docs-backend"
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  protocol              = "HTTPS"
-
-  backend {
-    group = google_compute_region_network_endpoint_group.docs.id
-  }
-
-  log_config {
-    enable      = true
-    sample_rate = 1.0
-  }
-}
-
 # ---------------------------------------------------------------------------
 # URL map, proxies, forwarding rules
 # ---------------------------------------------------------------------------
@@ -142,28 +115,13 @@ resource "google_compute_url_map" "this" {
   default_service = google_compute_backend_service.this.id
 
   host_rule {
-    hosts        = [var.docs_host]
-    path_matcher = "openagents"
-  }
-
-  host_rule {
-    hosts        = var.monolith_only_hosts
+    hosts        = var.monolith_hosts
     path_matcher = "monolith"
   }
 
   host_rule {
     hosts        = [var.components_host]
     path_matcher = "effect-native-gallery"
-  }
-
-  path_matcher {
-    name            = "openagents"
-    default_service = google_compute_backend_service.this.id
-
-    path_rule {
-      paths   = ["/docs", "/docs/*"]
-      service = google_compute_backend_service.docs.id
-    }
   }
 
   path_matcher {

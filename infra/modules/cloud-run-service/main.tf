@@ -13,7 +13,7 @@ resource "google_cloud_run_v2_service" "this" {
   ingress  = var.ingress
 
   # Terraform-side guard: refuse to plan a destroy of the service.
-  deletion_protection = true
+  deletion_protection = var.deletion_protection
 
   template {
     containers {
