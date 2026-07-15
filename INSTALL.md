@@ -26,20 +26,19 @@ Native/Expo) and OpenAgents Desktop (`apps/openagents-desktop`, Effect Native +
 Electron) are greenfield builds tracked by #8597 and #8574. They are not yet
 installable and must not be represented as released.
 
-Do not install or distribute `clients/khala-mobile` or
-`clients/khala-ios/Khala` as current products. They are frozen migration,
-contract, native-module, and service-extraction references. The superseded
-`clients/khala-code-desktop` app was removed in #8793; use OpenAgents Desktop.
+All former `clients/` applications have been removed. Do not recover or
+distribute them as current products; use OpenAgents mobile, OpenAgents Desktop,
+or Pylon.
 
 **Connect coding capacity from the terminal**
 
 ```sh
-npm install -g @openagentsinc/khala     # Node 20+
-khala fleet connect     # link a Codex account (isolated home; paste-free device login)
-khala fleet status      # see your fleet
+npm install -g @openagentsinc/pylon
+pylon auth codex             # isolated, paste-free device login
+pylon accounts list --json   # inspect connected accounts
 ```
 
-`khala fleet connect` uses an **isolated per-account home** — it never
+`pylon auth codex` uses an **isolated per-account home** — it never
 touches your live `~/.codex` session. Each distinct Codex account you connect
 adds real concurrency for delegated coding work.
 
@@ -73,7 +72,7 @@ settlement stay behind their own gated public promises.
   any device-auth flow) against the default `~/.codex` home if a session
   already exists there, unless the owner explicitly asks — the flow wipes
   the stored login at start and kills the owner's live session. Fleet flows
-  (`khala fleet connect`) already use isolated per-account homes.
+  (`pylon auth codex`) already use isolated per-account homes.
 - **Report honestly.** After installing, report what you ran and what you
   observed (versions, the command that launched, any errors) — don't claim
   earning, payout, or settlement capability from an install alone.

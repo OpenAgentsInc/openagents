@@ -167,43 +167,33 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - Strict bug form:
   <https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml>
 
-## Help a user connect their Codex fleet to Khala
+## Help a user connect their Codex fleet through Pylon
 
 Use this when an outside/community user wants to connect their own Codex
-account(s) to Khala so a per-user Artanis can burn down a backlog across their
-fleet ("Artanis as a Service"). It is intentionally DEAD SIMPLE — one short
-command, no long-string pasting, no `PYLON_HOME` or repo-path knowledge.
+account(s) so a per-user Artanis can burn down a backlog across their fleet.
+Pylon is the supported terminal front door; the retired Khala CLI no longer is.
 
 Walk the user through exactly this:
 
 ```sh
-npm install -g @openagentsinc/khala     # Node 20+
-khala fleet connect                     # connect a Codex account (paste-free device login)
-khala fleet status                      # see your fleet
+npm install -g @openagentsinc/pylon
+pylon auth codex                         # isolated, paste-free device login
+pylon accounts list --json              # inspect connected accounts
 ```
 
-Zero-install front door (#8784): `npx @openagentsinc/khala up`
-needs no install and no account — it initializes/migrates the device-local
-store, starts the local runtime on 127.0.0.1 only, and prints a single-use,
-short-lived pairing URL with the token in the URL fragment
-(`http://127.0.0.1:<port>/pair#token=…`; add `--open` to open the browser).
-Pairing creates a device-local grant that gates every local control route.
-`khala fleet connect` semantics above are unchanged and remain the path for
-connecting Codex accounts.
-
-What the user will see: `khala fleet connect` drives the standard
+What the user will see: `pylon auth codex` drives the standard
 `codex login --device-auth` flow — it opens the browser to the device URL and
 shows a SHORT code to enter (no long auth string to copy). It then confirms with
 the linked account email. The `codex` CLI must be installed
-(`npm install -g @openai/codex`); if it is missing, `khala fleet connect` prints
+(`npm install -g @openai/codex`); if it is missing, Pylon prints
 a friendly install hint.
 
-- **More accounts = more throughput.** Each `khala fleet connect` auto-assigns
+- **More accounts = more throughput.** Each `pylon auth codex` auto-assigns
   the next ref (`codex`, then `codex-2`, `codex-3`, …); pass `--account <ref>`
   to name one. Distinct ChatGPT accounts have distinct rate budgets, so each new
   _distinct_ account is real added concurrency.
-- **`khala fleet status`** (alias `khala fleet list`) prints a table of
-  connected accounts with readiness (`ready` / `credentials-missing`) and email.
+- **`pylon accounts list`** prints connected account metadata and readiness;
+  use `pylon codex accounts list --json` for the public-safe Codex alias.
 - **Automatic dispatch uses the connected-account pool.** When Pylon has ready
   isolated Codex accounts in its registry, local Codex control sessions and
   fleet work start from those accounts instead of the display/default
@@ -685,7 +675,7 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   mobile at `apps/openagents-mobile` with Effect Native on a React Native/Expo
   host; its product name is `OpenAgents`, its iOS bundle identifier and Android
   application ID are exactly `com.openagents.app`, and its checked-in icon is
-  an exact copy of `clients/khala-mobile/assets/images/icon.png` (SHA-256
+  the canonical `apps/openagents-mobile/assets/images/icon.png` (SHA-256
   `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`). Build
   OpenAgents Desktop at `apps/openagents-desktop` with Effect Native on an
   Electron host, using
@@ -699,13 +689,8 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   IPC/application state with the narrow, mechanically checked Effect Schema/
   Effect Native boundary before adding product capability. Freeze the full
   platform/protocol/data/update/OAuth identity set in `NEEDS_OWNER.md` before
-  the first packaged build. `clients/khala-mobile` and
-  `clients/khala-ios/Khala` are deprecated, frozen migration, contract,
-  native-module, and service-extraction sources: no new product features, UI,
-  branding work, or releases. Do not import their app packages into the new
-  apps or resurrect the deleted Electrobun `clients/openagents-desktop` stub.
-  Extract reusable typed services/contracts to shared packages; remove those
-  mobile clients only after parity, migration, and release proof.
+  the first packaged build. The retired Khala mobile clients were removed on
+  2026-07-14 and must not be restored or imported into the supported apps.
 - **Supersession removals (owner decision, 2026-07-14):** the owner directed
   ("khala-code-desktop must itself be deprecated and all relevant promises
   removed (OpenAgents desktop supercedes it). ditto for apps/autopilot-desktop.
@@ -718,6 +703,10 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   `openagents-supersession-prune-2026-07-14/` in the backroom repo). The
   affected promises are withdrawn in registry pass `2026-07-14.1`
   (`docs/promises/2026-07-14-owner-supersession-removals.md`).
+  A later owner direction on 2026-07-14 removed all three remaining `clients/`
+  applications (`khala-cli`, `khala-ios`, and `khala-mobile`) and their live
+  release/onboarding dependents. Historical evidence remains recoverable from
+  Git; Pylon, OpenAgents mobile, and OpenAgents Desktop are the supported paths.
   `clients/khala-code-desktop` was deleted after its live Pylon/QA dependents
   were migrated in #8793. Recover its final source with
   `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`; QA-owned fixture
@@ -804,18 +793,14 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   seed → deploy), fully off Expo's CDN.** JS/OTA updates ship through that
   server — never `eas update`. **Builds are local for now** (`expo
 prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
-  the owner explicitly changes that. Note: `publish-ota.sh` currently
-  points at the retired `AutopilotRemoteControl` path and must be
-  repointed to the new Expo app when it lands (TS-8).
+  the owner explicitly changes that. `publish-ota.sh` targets only the
+  supported `apps/openagents-mobile` application by default.
   The new app's display name is exactly `OpenAgents`; its iOS bundle identifier
   and Android application ID are exactly `com.openagents.app`; its icon is the
   exact Khala Code mobile icon pinned above. Store build/version numbers and
   signing/provisioning must remain monotonic and valid against the owner-
-  designated existing store records before upload. `clients/khala-mobile` and
-  the native SwiftUI `clients/khala-ios/Khala` app are deprecated references,
-  not interim shipping destinations. Their auth, Sync, push, OTA, native-module,
-  and behavior contracts may be extracted or ported, but their product shells
-  receive no new features or releases. The earlier Expo app
+  designated existing store records before upload. The deleted Khala RN and
+  native SwiftUI clients are historical evidence only. The earlier Expo app
   `AutopilotRemoteControl` remains retired
   (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`).
 - Route new user-facing and agent-facing product claim systems through
@@ -828,8 +813,7 @@ prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
   in conversation. Until the greenfield app roots exist, new cross-app
   expectations belong in a pending shared registry under
   `packages/behavior-contracts`; once scaffolded, each new app owns its registry.
-  The legacy registries under `clients/khala-mobile` and
-  `clients/khala-code-desktop/src/contracts/ux-contracts.ts`, plus the human doc
+  Historical client registries in Git and the human doc
   at `docs/khala-code/khala-code-ux-contract.md`, are parity/migration inputs
   only, not destination authority. The shared schema and coverage checker live
   in `packages/behavior-contracts`

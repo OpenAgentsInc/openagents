@@ -23,8 +23,8 @@ export const USER_FACING_SURFACE_PREFIXES = [
   "apps/qa-runner/",
   "apps/forum/",
   "apps/openagents-world/",
+  "apps/openagents-mobile/",
   "apps/pylon/",
-  "clients/khala-ios/",
   "packages/input-bindings/",
 ] as const
 

@@ -12,9 +12,8 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
-# TS-8 (#8597): the default publish target is the greenfield OpenAgents app.
-# The deprecated clients/khala-mobile app is frozen — publish for it only with
-# an explicit OA_MOBILE_APP_DIR/OA_UPDATES_OWNER/OA_UPDATES_CHANNEL override.
+# The only supported publish target is the OpenAgents mobile app. Environment
+# overrides remain available for isolated development builds, not retired apps.
 MOBILE="${OA_MOBILE_APP_DIR:-apps/openagents-mobile}"
 PLATFORM="${OA_MOBILE_PLATFORM:-ios}"
 UPDATES_OWNER="${OA_UPDATES_OWNER:-openagents-mobile}"

@@ -486,10 +486,10 @@ describe('public product promises document', () => {
     // khala_code.bundled_fleet_skill.v1) flip to withdrawn; green 34 -> 33
     // (autopilot.agent_world_scene.v1 was the one green), planned 78 -> 72.
     expect(stateCounts).toEqual({
-      green: 26,
+      green: 25,
       planned: 54,
       red: 2,
-      withdrawn: 46,
+      withdrawn: 47,
       yellow: 17,
     })
   })
@@ -1263,9 +1263,12 @@ describe('public product promises document', () => {
     // The 2026-07-14.1 owner-directed supersession pass withdraws
     // autopilot.agent_world_scene.v1 (apps/autopilot-desktop removed;
     // OpenAgents Desktop supersedes it), so green is now exactly 33.
+    // The 2026-07-14.3 owner-directed clients/ retirement withdraws
+    // khala.cli_terminal_client.v1; Pylon is the supported terminal successor.
+    // Green is now exactly 25.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(26)
+    ).toBe(25)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -1489,17 +1492,17 @@ describe('public product promises document', () => {
     const khalaCliPromise = decoded.promises.find(
       promise => promise.promiseId === 'khala.cli_terminal_client.v1',
     )
-    expect(khalaCliPromise?.state).toBe('green')
-    expect(khalaCliPromise?.safeCopy).toContain('khala fleet status')
-    expect(khalaCliPromise?.safeCopy).toContain('owner-scoped fleet state')
-    expect(khalaCliPromise?.unsafeCopy).toContain('cross-owner fleet browser')
+    expect(khalaCliPromise?.state).toBe('withdrawn')
+    expect(khalaCliPromise?.safeCopy).toContain('retired and removed')
+    expect(khalaCliPromise?.safeCopy).toContain('pylon.cli_tui_probe_background.v1')
+    expect(khalaCliPromise?.unsafeCopy).toContain('Do not advertise')
     expect(khalaCliPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'clients/khala-cli/src/fleet.ts',
         'apps/openagents.com/workers/api/src/operator-fleet-status-routes.ts',
       ]),
     )
-    expect(khalaCliPromise?.authorityBoundary).toContain('fleet visibility')
+    expect(khalaCliPromise?.authorityBoundary).toContain('withdrawn client')
     const browserSchemaExpectations = [
       expect.objectContaining({
         promiseId: 'autopilot.mission_briefing.v1',

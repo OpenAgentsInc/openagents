@@ -1,8 +1,7 @@
 # Vendored `@effect-native/render-rn` (EN-3, issue #8568)
 
 `@effect-native/render-rn` is the React Native renderer for the Effect Native
-component set — renderer **adapter #1** for `clients/khala-mobile`
-(MASTER_ROADMAP §EN unlock #3). It is a vendored snapshot of the public
+component set — the renderer used by `apps/openagents-mobile`. It is a vendored snapshot of the public
 [`OpenAgentsInc/effect-native`](https://github.com/OpenAgentsInc/effect-native)
 framework, sitting next to the EN-1 web packages
 (`effect-native-core`, `effect-native-tokens`, `effect-native-render-dom`).

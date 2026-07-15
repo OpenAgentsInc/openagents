@@ -31,9 +31,9 @@ complete useful remote coding. Effect Native owns application/component/intent
 semantics; React Native/Expo and native modules are least-authority hosts/
 renderers.
 
-This is not a rename or in-place conversion of `clients/khala-mobile`. The
-legacy app remains a frozen contract/native/release extraction source until
-successor and migration proof.
+The legacy Khala RN and Swift clients were removed by owner direction on
+2026-07-14. Their source is historical Git evidence only; this app owns the
+current mobile contract and release path.
 
 The useful Khala Code MVP behavior and QA corpus must be ported or explicitly
 dispositioned. Importing the legacy package/component tree is forbidden.
@@ -165,7 +165,7 @@ dispositioned. Importing the legacy package/component tree is forbidden.
 - demo Minerals/pricing or StoreKit work;
 - aesthetic Liquid Glass iteration not required for accessibility, correctness,
   platform support, or R0–R7;
-- conversion or continued shipping of `clients/khala-mobile`.
+- restoration or continued shipping of any retired client.
 
 ## Exit
 

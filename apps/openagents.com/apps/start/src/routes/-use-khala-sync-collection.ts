@@ -14,8 +14,7 @@ import {
  * Bootstraps one Khala Sync scope for entities of a single type through the
  * local same-origin proxy (`../khala-sync-proxy.ts`), then live-tails the
  * proxied `/api/khala-sync/connect` WebSocket and merges each `DeltaFrame`
- * in. Ported from `clients/khala-mobile/src/sync/use-khala-sync-collection.ts`
- * (issue #8413) — the web version needs no header trick on the `WebSocket`
+ * in. The web version needs no header trick on the `WebSocket`
  * constructor because the proxy (not this hook) holds the bearer token and
  * attaches it upstream; the browser's own cookie carries the session to the
  * proxy, same-origin, automatically.

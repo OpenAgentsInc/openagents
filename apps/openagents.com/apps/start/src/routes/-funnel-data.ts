@@ -298,12 +298,12 @@ export const docsPages: ReadonlyArray<DocPage> = [
     listed: false,
     title: 'Connect Your Codex Fleet',
     summary:
-      'Use Khala CLI to connect your own Codex accounts so Artanis can route bounded coding backlog work through your local capacity.',
+      'Use Pylon to connect your own Codex accounts so Artanis can route bounded coding backlog work through your local capacity.',
     description: [
-      'Install Khala CLI, connect a Codex account with the paste-free device-login flow, then check fleet readiness.',
-      'The public onboarding path is deliberately short: npm install -g @openagentsinc/khala, khala fleet connect, then khala fleet status.',
+      'Install Pylon, connect a Codex account with the paste-free device-login flow, then check account readiness.',
+      'The public onboarding path is deliberately short: npm install -g @openagentsinc/pylon, pylon auth codex, then pylon accounts list --json.',
       'Each connected account uses an isolated home under your Pylon home. The flow never touches the default ~/.codex home, credentials stay on your machine, and tokens are not printed.',
-      'Run khala fleet connect again to add another distinct account. More distinct accounts mean more usable throughput for your own Artanis-backed backlog work.',
+      'Run pylon auth codex again to add another distinct account. More distinct accounts mean more usable throughput for your own Artanis-backed backlog work.',
       'Claude capacity is exposed through the Pylon local-Claude lane and operator runbooks; the zero-paste public fleet command is Codex-first today.',
     ],
   },
@@ -498,10 +498,10 @@ export const khalaCodeInstall = {
   codexLoginCommand: 'codex login',
   counterEndpoint: '/api/public/khala-code/download-counts',
   desktopProduct: 'khala-code-desktop',
-  khalaCliInstallCommand: 'npm install -g @openagentsinc/khala',
+  pylonInstallCommand: 'npm install -g @openagentsinc/pylon',
   promiseId: 'khala_code.desktop_codex_wrapper.v1',
   promiseSafeCopy:
-    'Khala Code wraps the user-owned local Codex install. The public npm khala CLI install path is available; the desktop DMG path is release-lane ready but pending a signed public artifact and outside-user evidence.',
+    'The legacy Khala Code clients and CLI are withdrawn. Pylon is the supported terminal path for connecting local Codex capacity; OpenAgents Desktop release claims remain receipt-gated.',
   releaseFeedUrl:
     'https://updates.openagents.com/desktop/khala-code-desktop/rc/feed.json',
   sourceBuildCommands:

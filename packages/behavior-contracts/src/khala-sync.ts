@@ -342,7 +342,6 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "packages/khala-sync-server/src/user-credit-balance-projection.ts",
         "apps/khala-live-hub/src/scope-hub.ts",
         "apps/khala-live-hub/src/server.ts",
-        "clients/khala-mobile/src/components/drawer-credits-balance.tsx",
         "apps/khala-live-hub/src/credit-balance-live-delivery.test.ts",
       ],
       oracles: [

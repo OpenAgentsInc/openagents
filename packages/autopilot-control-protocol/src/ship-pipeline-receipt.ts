@@ -1,7 +1,7 @@
-import type { ShipPipelinePlan } from "./ship-pipeline-plan.js"
+export type ShipPipelineAction = "ota" | "rebuild" | "noop"
 
 export type ShipPipelineReceiptInput = {
-  action: ShipPipelinePlan["action"]
+  action: ShipPipelineAction
   version: string
   spendDecision: "allow" | "deny"
   ranAt: string
@@ -54,7 +54,7 @@ export function validate(receipt: unknown): boolean {
 }
 
 function formatPipelineReceiptLine(receipt: {
-  action: ShipPipelinePlan["action"]
+  action: ShipPipelineAction
   version: string
   allowed: boolean
   ranAt: string
@@ -69,7 +69,7 @@ function formatPipelineReceiptLine(receipt: {
   return `${action} ${receipt.version} pipeline ${decision} at ${receipt.ranAt}.`
 }
 
-function isPipelineAction(value: unknown): value is ShipPipelinePlan["action"] {
+function isPipelineAction(value: unknown): value is ShipPipelineAction {
   return value === "ota" || value === "rebuild" || value === "noop"
 }
 

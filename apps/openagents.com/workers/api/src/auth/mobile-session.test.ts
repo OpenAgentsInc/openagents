@@ -9,11 +9,10 @@ import {
 } from '@openagentsinc/khala-sync'
 
 import {
-  DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+  DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
   DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID,
-  KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+  OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
   OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH,
-  TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
   authIssuerAllowsRedirect,
   isMobileAccessTokenRevoked,
   makeUserBearerSessionBoundary,
@@ -107,7 +106,7 @@ const workerConfig = {
   OPENAGENTS_APP_URL: 'https://openagents.com',
   OPENAUTH_CLIENT_ID: 'openagents-web',
   OPENAUTH_ISSUER_URL: 'https://auth.openagents.com',
-  OPENAUTH_MOBILE_CLIENT_ID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+  OPENAUTH_MOBILE_CLIENT_ID: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
 }
 
 const makeMemoryKv = (): KVNamespace => {
@@ -177,7 +176,7 @@ const seedAuthorizationCode = async (
   await storage.set(
     ['oauth:code', input.code],
     {
-      clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+      clientID: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
       pkce: {
         challenge: input.challenge,
         method: input.method,
@@ -191,7 +190,7 @@ const seedAuthorizationCode = async (
         name: 'Octo Mobile',
         avatarUrl: 'https://avatars.example/octo.png',
       },
-      redirectURI: input.redirectURI ?? KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+      redirectURI: input.redirectURI ?? OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
       subject: 'github:12345',
       ttl: {
         access: 3600,
@@ -313,7 +312,7 @@ describe('Khala mobile OpenAuth session policy', () => {
     expect(allowed(
       'http://127.0.0.1:49152/auth/callback',
       allowedRequest,
-      DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+      DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
     )).toBe(false)
   })
 
@@ -325,8 +324,8 @@ describe('Khala mobile OpenAuth session policy', () => {
     expect(
       authIssuerAllowsRedirect(
         {
-          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
-          redirectURI: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+          clientID: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
+          redirectURI: OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
         },
         allowedRequest,
         { webClientId: 'openagents-web' },
@@ -336,19 +335,8 @@ describe('Khala mobile OpenAuth session policy', () => {
     expect(
       authIssuerAllowsRedirect(
         {
-          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
-          redirectURI: TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
-        },
-        allowedRequest,
-        { webClientId: 'openagents-web' },
-      ),
-    ).toBe(true)
-
-    expect(
-      authIssuerAllowsRedirect(
-        {
-          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
-          redirectURI: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+          clientID: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
+          redirectURI: OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
         },
         new Request(
           'https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=plain&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
@@ -361,7 +349,7 @@ describe('Khala mobile OpenAuth session policy', () => {
       authIssuerAllowsRedirect(
         {
           clientID: 'configured-other-mobile-client',
-          redirectURI: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+          redirectURI: OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
         },
         allowedRequest,
         {
@@ -375,7 +363,7 @@ describe('Khala mobile OpenAuth session policy', () => {
       authIssuerAllowsRedirect(
         {
           clientID: 'unknown-client',
-          redirectURI: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+          redirectURI: OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
         },
         allowedRequest,
         { webClientId: 'openagents-web' },
@@ -385,7 +373,7 @@ describe('Khala mobile OpenAuth session policy', () => {
     expect(
       authIssuerAllowsRedirect(
         {
-          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          clientID: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
           redirectURI: 'openagents://auth?callback=1',
         },
         allowedRequest,
@@ -396,7 +384,7 @@ describe('Khala mobile OpenAuth session policy', () => {
     expect(
       authIssuerAllowsRedirect(
         {
-          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          clientID: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
           redirectURI: 'openagents://auth/',
         },
         allowedRequest,
@@ -407,7 +395,7 @@ describe('Khala mobile OpenAuth session policy', () => {
     expect(
       authIssuerAllowsRedirect(
         {
-          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          clientID: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
           redirectURI: 'https://openagents.com/auth/callback',
         },
         allowedRequest,
@@ -448,11 +436,11 @@ describe('Khala mobile OpenAuth session policy', () => {
       const exchanged = await postToken(
         env,
         new URLSearchParams({
-          client_id: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          client_id: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
           code,
           code_verifier: pkce.verifier,
           grant_type: 'authorization_code',
-          redirect_uri: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+          redirect_uri: OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
         }),
       )
       const tokens = (await exchanged.json()) as {
@@ -643,11 +631,11 @@ describe('Khala mobile OpenAuth session policy', () => {
       const exchanged = await postToken(
         env,
         new URLSearchParams({
-          client_id: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          client_id: DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
           code,
           code_verifier: 'wrong-verifier',
           grant_type: 'authorization_code',
-          redirect_uri: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+          redirect_uri: OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
         }),
       )
       const body = (await exchanged.json()) as { error: string }
@@ -659,39 +647,4 @@ describe('Khala mobile OpenAuth session policy', () => {
     }
   })
 
-  test('exchanges the temporary rollback khala://auth authorization-code tuple', async () => {
-    const { close, env, storage } = makeEnv()
-    const pkce = await generatePKCE()
-    const code = 'mobile-auth-code-rollback-ok'
-
-    try {
-      await seedAuthorizationCode(storage, {
-        challenge: pkce.challenge,
-        code,
-        method: 'S256',
-        redirectURI: TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
-      })
-
-      const exchanged = await postToken(
-        env,
-        new URLSearchParams({
-          client_id: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
-          code,
-          code_verifier: pkce.verifier,
-          grant_type: 'authorization_code',
-          redirect_uri: TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
-        }),
-      )
-      const tokens = (await exchanged.json()) as {
-        access_token: string
-        refresh_token: string
-      }
-
-      expect(exchanged.status).toBe(200)
-      expect(tokens.access_token).toMatch(/^ey/)
-      expect(tokens.refresh_token).toContain('github:12345:')
-    } finally {
-      close()
-    }
-  })
 })

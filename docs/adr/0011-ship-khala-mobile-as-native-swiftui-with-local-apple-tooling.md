@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "superseded"
 date: 2026-06-29
 decision-makers: OpenAgents maintainers
 consulted: Root AGENTS.md, docs/DEPLOYMENT.md, docs/mobile/2026-06-26-khala-voice-app-spec.md, docs/mobile/2026-06-26-autopilot-remote-control-retirement.md
@@ -7,6 +7,11 @@ informed: OpenAgents contributors, agents, and release operators
 ---
 
 # Ship Khala mobile as native SwiftUI with local Apple tooling
+
+> Superseded 2026-07-14. The SwiftUI client was removed. The current mobile
+> boundary is `apps/openagents-mobile`; use
+> `docs/deploy/openagents-mobile-production-release.md`. The decision body below
+> is retained as historical context.
 
 ## Context and Problem Statement
 

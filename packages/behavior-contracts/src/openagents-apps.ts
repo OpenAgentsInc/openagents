@@ -89,7 +89,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       evidenceRefs: [
         "docs/sol/2026-07-09-greenfield-mobile-desktop-decision.md",
         "docs/sol/issues/app-mobile.md",
-        "clients/khala-mobile/assets/images/icon.png",
+        "apps/openagents-mobile/assets/images/icon.png",
       ],
       oracles: [
         {

@@ -10,8 +10,7 @@ import { join } from "node:path"
  * 1. Display/product name: `OpenAgents`.
  * 2. iOS bundle identifier: `com.openagents.app`.
  * 3. Android package/application ID: `com.openagents.app`.
- * 4. The checked-in icon is an exact copy of the canonical Khala Code mobile
- *    icon (`clients/khala-mobile/assets/images/icon.png`), pinned by SHA-256.
+ * 4. The checked-in canonical OpenAgents mobile icon is pinned by SHA-256.
  */
 
 const appRoot = join(import.meta.dirname, "..")

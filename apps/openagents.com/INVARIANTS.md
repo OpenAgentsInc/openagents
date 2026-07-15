@@ -651,8 +651,7 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
   `workers/api/src/inference/chat-completions-routes.test.ts`,
   `workers/api/src/inference/hydralisk-adapter.test.ts`,
   `workers/api/src/inference/fireworks-adapter.test.ts`,
-  `workers/api/src/khala-chat-routes.test.ts`, and
-  `clients/khala-cli/src/sse.test.ts`.
+  `workers/api/src/khala-chat-routes.test.ts`.
 - "The whole Khala lane" above means the PUBLIC `openagents/khala` id. The
   persona-neutral internal lane below is the single deliberate exception.
 
@@ -1946,7 +1945,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   `provider_account_token_custody` row for that owner/account. Regression
   coverage lives in `workers/api/src/provider-account-api-key.test.ts`,
   `workers/api/src/provider-account-token-custody.test.ts`, and
-  `clients/khala-mobile/tests/khala-mobile-codex-accounts-api.test.ts`.
+  `apps/openagents-mobile/tests/mobile-account-control.test.ts`.
 - Owner-linked Pylon Codex accounts re-prime from the same custody authority
   before Codex assignment execution or account-usage refresh. The Pylon route
   `/api/pylon/provider-accounts/chatgpt-codex/auth-material` accepts only a

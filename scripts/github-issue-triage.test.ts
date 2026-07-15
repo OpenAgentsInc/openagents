@@ -107,11 +107,11 @@ describe("github issue triage duplicate and file inference", () => {
         }),
         [
           "apps/pylon/src/accounts.ts",
-          "clients/khala-cli/src/accounts.ts",
+          "apps/pylon/src/legacy-accounts.ts",
           "docs/promises/registry.md",
         ],
       ),
-    ).toEqual(["apps/pylon/src/accounts.ts", "clients/khala-cli/src/accounts.ts"])
+    ).toEqual(["apps/pylon/src/accounts.ts", "apps/pylon/src/legacy-accounts.ts"])
   })
 })
 

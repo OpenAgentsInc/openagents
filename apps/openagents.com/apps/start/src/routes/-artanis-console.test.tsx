@@ -47,9 +47,9 @@ describe('Start /artanis route', () => {
     const html = renderToStaticMarkup(<ArtanisConsolePage />)
 
     expect(html).toContain('Have Codex or Claude? Join the fleet.')
-    expect(html).toContain('npm install -g @openagentsinc/khala')
-    expect(html).toContain('khala fleet connect')
-    expect(html).toContain('khala fleet status')
+    expect(html).toContain('npm install -g @openagentsinc/pylon')
+    expect(html).toContain('pylon auth codex')
+    expect(html).toContain('pylon accounts list --json')
     expect(html).toContain('href="/docs/connect-codex-fleet"')
   })
 

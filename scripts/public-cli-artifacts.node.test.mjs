@@ -9,7 +9,7 @@ import { publicCliArtifacts } from "./public-cli-artifact-catalog.mjs"
 
 const root = resolve(import.meta.dirname, "..")
 
-test("seven staged public CLI packages contain compiled Node artifacts and no Bun runtime", () => {
+test("six staged public CLI packages contain compiled Node artifacts and no Bun runtime", () => {
   const stage = mkdtempSync(join(tmpdir(), "openagents-public-cli-"))
   try {
     const build = spawnSync(process.execPath, [join(root, "scripts/build-public-cli-artifacts.mjs"), "--stage-dir", stage], {
@@ -18,7 +18,7 @@ test("seven staged public CLI packages contain compiled Node artifacts and no Bu
       env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=8192" },
     })
     assert.equal(build.status, 0, `${build.stdout}\n${build.stderr}`)
-    assert.equal(publicCliArtifacts.length, 7)
+    assert.equal(publicCliArtifacts.length, 6)
     for (const record of publicCliArtifacts) {
       const packageRoot = join(stage, record.name.replace(/^@/, "").replaceAll("/", "__"))
       const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"))

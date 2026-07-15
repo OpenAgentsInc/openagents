@@ -21,9 +21,6 @@ packages:
   - apps/openagents-world
   - apps/pylon
   - apps/pylon/packages/*
-  - clients/khala-cli
-  - clients/khala-mobile
-  - clients/khala-ios/*
   - packages/*
   - packages/probe
   - packages/probe/packages/*

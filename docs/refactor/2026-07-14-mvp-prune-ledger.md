@@ -190,3 +190,17 @@ All checks below were re-run after rebasing onto `origin/main`
   time/id/random 2/0, semantic Response surfaces 758/752, Response
   materialization 3142/3123, Response return surfaces 137/135 — byte-identical
   at pristine `origin/main` with a fresh install.
+
+## Part 3 — final `clients/` retirement (2026-07-14)
+
+A later owner direction superseded Part 1's explicit retention of the three
+remaining clients. `clients/khala-cli`, `clients/khala-ios`, and
+`clients/khala-mobile` plus their active workspace, QA, release, install, and
+promise dependents are removed. Shared packages with supported consumers stay.
+
+- Recovery commit: `bbb450df1c3158178c93039540969b1ed629734f`.
+- Terminal successor: `@openagentsinc/pylon`.
+- Mobile successor: `apps/openagents-mobile`.
+- Full analysis: `docs/sol/2026-07-14-clients-retirement-after-action.md`.
+- Frozen/admitted assurance and dated receipt bytes remain historical truth and
+  were not rewritten.

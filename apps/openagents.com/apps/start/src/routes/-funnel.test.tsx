@@ -73,7 +73,7 @@ describe('Start funnel routes', () => {
     expect(html).toContain('data-route="khala-code-download"')
     expect(html).toContain('npm install -g @openai/codex')
     expect(html).toContain('codex login')
-    expect(html).toContain('npm install -g @openagentsinc/khala')
+    expect(html).toContain('npm install -g @openagentsinc/pylon')
     expect(html).toContain('public artifact pending')
     expect(html).toContain('/api/public/khala-code/download-counts')
     expect(html).toContain('empty counts array')

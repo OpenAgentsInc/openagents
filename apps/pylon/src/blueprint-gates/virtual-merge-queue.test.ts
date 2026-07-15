@@ -118,7 +118,7 @@ describe("virtual merge queue", () => {
           baseCommit: A,
           patchCommit: D,
           changedFiles: [
-            { path: "clients/khala-ios/Khala/README.md", status: "deleted" },
+            { path: "apps/retired-mobile/README.md", status: "deleted" },
             { path: "INVARIANTS.md", status: "deleted" },
           ],
         }),

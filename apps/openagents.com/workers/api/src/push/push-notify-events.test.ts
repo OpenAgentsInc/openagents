@@ -110,7 +110,7 @@ describe('buildNotificationPayload — payload safety oracle', () => {
 })
 
 describe('runtimeNotifyDeepLink', () => {
-  test('URL-encodes the thread id into the khala:// scheme', () => {
-    expect(runtimeNotifyDeepLink('thread with spaces')).toBe('khala://thread/thread%20with%20spaces')
+  test('URL-encodes the thread id into the openagents:// scheme', () => {
+    expect(runtimeNotifyDeepLink('thread with spaces')).toBe('openagents://thread/thread%20with%20spaces')
   })
 })

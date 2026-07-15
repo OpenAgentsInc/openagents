@@ -5,6 +5,11 @@ indexes the per-surface runbooks (the sources of truth) and gives the one-line
 recipe, where the secrets live, and the conventions. When a surface's mechanics
 change, update its linked runbook **and** fix the pointer here.
 
+> Client retirement update (2026-07-14): every former `clients/` application
+> (`khala-cli`, `khala-ios`, and `khala-mobile`) has been removed. Any legacy
+> row below is historical/lockout context only, never a release target. Use
+> Pylon, `apps/openagents-mobile`, and `apps/openagents-desktop`.
+
 > Found this because you're about to ship something? Good. Read the linked runbook
 > for the surface before running anything destructive/outward-facing.
 

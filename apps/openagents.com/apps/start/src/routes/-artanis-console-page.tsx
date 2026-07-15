@@ -133,9 +133,9 @@ const virtualMergeQueueSteps = [
 ] as const
 
 const fleetOnboardingCommands = [
-  'npm install -g @openagentsinc/khala',
-  'khala fleet connect',
-  'khala fleet status',
+  'npm install -g @openagentsinc/pylon',
+  'pylon auth codex',
+  'pylon accounts list --json',
 ] as const
 
 // Verbatim from the Foldkit original's `campaignObjective` constant.

@@ -1208,11 +1208,25 @@ More specific invariant ledgers apply inside imported apps and packages.
   canonical graph, which deliberately carries no usage fields.
   This CUT-12 client boundary is enforced by
   `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`,
-  `clients/khala-mobile/tests/live-agent-graph-panel.test.tsx`,
   `apps/openagents-mobile/tests/mobile-agent-graph.test.ts`,
   `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`, and
   `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`; physical-
   device equivalence remains pending.
+
+## Retired Client Boundary
+
+- `clients/khala-cli`, `clients/khala-ios`, and `clients/khala-mobile` were
+  removed by owner direction on 2026-07-14. They are Git-history evidence, not
+  workspace members, install surfaces, release inputs, or compatibility roots.
+- Pylon is the supported terminal/Codex-capacity path; `apps/openagents-mobile`
+  is the only supported mobile app; `apps/openagents-desktop` is the only
+  supported desktop app.
+- Shared Effect Native, Khala Sync, protocol, runtime, and QA packages remain
+  only when a supported app/service consumes them. A removed client path may
+  appear in historical docs or explicit negative sentinels, never in a live
+  command, workspace entry, deploy gate, product claim, or runtime deep link.
+- Enforced by `scripts/retired-clients-removal.test.ts` plus the supported app
+  test/typecheck gates.
 
 - CUT-13 canonical coding identities are durable product refs, never host,
   filesystem-path, process, provider-session, credential, or transport

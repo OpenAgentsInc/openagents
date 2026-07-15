@@ -1,5 +1,4 @@
 export const publicCliArtifacts = [
-  { root: "clients/khala-cli", name: "@openagentsinc/khala", entries: { index: "src/index.ts" }, bin: { khala: "dist/index.mjs" } },
   { root: "packages/agent-readiness", name: "@openagentsinc/agent-readiness", entries: { index: "src/index.ts", cli: "src/cli.ts" }, bin: { "agent-readiness": "dist/cli.mjs" } },
   { root: "packages/product-spec", name: "@openagentsinc/product-spec", entries: { index: "src/index.ts", cli: "src/cli.ts" }, bin: { "product-spec": "dist/cli.mjs" } },
   { root: "packages/assurance-spec", name: "@openagentsinc/assurance-spec", entries: { index: "src/index.ts", browser: "src/browser.ts", cli: "src/cli.ts" }, bin: { "assurance-spec": "dist/cli.mjs" }, assets: ["skills", "starter-kit"] },

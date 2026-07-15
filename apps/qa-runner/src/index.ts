@@ -60,24 +60,6 @@ export * from "./assurance-swarm";
 
 // Backends — the isolation abstraction; localBackend is the OSS default.
 export { localBackend, type Backend, type BackendSession, type LocalBackendOptions } from "./backend";
-export {
-  KHALA_MOBILE_NIGHTLY_ROW_SCHEMA,
-  assertKhalaMobileNightlyPublicSafe,
-  buildKhalaMobileNightlyFailureDigest,
-  buildKhalaMobileNightlyReport,
-  buildKhalaMobileNightlySteps,
-  evaluateKhalaMobileConsecutiveNightlyReceipts,
-  khalaMobileNightlyPerfBudgetIds,
-  renderKhalaMobileNightlyLaunchdPlist,
-  type KhalaMobileNightlyPerfBudgetId,
-  type KhalaMobileNightlyReceiptSummary,
-  type KhalaMobileNightlyReport,
-  type KhalaMobileNightlySeamProbeId,
-  type KhalaMobileNightlyStep,
-  type KhalaMobileNightlyStepId,
-  type KhalaMobileNightlyVerdict,
-} from "./mobile-nightly";
-
 // The fixed-step runner (runQaSession) and the autonomous model-driven runner.
 export { runQaSession, type RunInput, type RunOutcome } from "./runner";
 export { runKhalaSession, type KhalaSessionInput, type KhalaSessionOutcome } from "./khala-session";

@@ -31,37 +31,6 @@ describe("qa nightly matrix plan", () => {
     )
   })
 
-  test("omits the opt-in mobile step unless includeMobile is set", () => {
-    const steps = buildQaNightlySteps({ artifactDir: "var/qa-nightly/run" })
-    expect(steps.some(step => step.id === "mobile-signed-in-thread-smoke")).toBe(false)
-  })
-
-  test("appends the opt-in Khala Mobile SignedInThreadSmoke step as the last step when includeMobile is set", () => {
-    const steps = buildQaNightlySteps({ artifactDir: "var/qa-nightly/run", includeMobile: true })
-    const mobile = steps.find(step => step.id === "mobile-signed-in-thread-smoke")
-    expect(steps.at(-1)?.id).toBe("mobile-signed-in-thread-smoke")
-    expect(mobile?.command).toEqual([
-      "bash",
-      "clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh",
-    ])
-    expect(mobile?.cwd).toBe(".")
-  })
-
-  test("omits the opt-in Android emulator step unless includeMobileAndroid is set", () => {
-    const steps = buildQaNightlySteps({ artifactDir: "var/qa-nightly/run", includeMobile: true })
-    expect(steps.some(step => step.id === "mobile-android-emulator-smoke")).toBe(false)
-  })
-
-  test("appends the opt-in Khala Mobile Android emulator smoke step when includeMobileAndroid is set", () => {
-    const steps = buildQaNightlySteps({ artifactDir: "var/qa-nightly/run", includeMobileAndroid: true })
-    const android = steps.find(step => step.id === "mobile-android-emulator-smoke")
-    expect(steps.at(-1)?.id).toBe("mobile-android-emulator-smoke")
-    expect(android?.command).toEqual([
-      "bash",
-      "clients/khala-mobile/scripts/android-emulator-test-run.sh",
-    ])
-    expect(android?.cwd).toBe(".")
-  })
 })
 
 describe("qa nightly matrix report", () => {

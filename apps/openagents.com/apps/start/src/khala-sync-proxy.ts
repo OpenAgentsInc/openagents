@@ -11,15 +11,12 @@
  *    need CORS headers the production Worker does not (and, per
  *    docs/khala-sync/SPEC.md, should not) grant to arbitrary web origins.
  * 2. The standard browser `WebSocket` constructor cannot set an
- *    `Authorization` header on the upgrade request (unlike React Native's
- *    3-arg constructor, see `clients/khala-mobile/src/sync/
- *    use-khala-sync-collection.ts`), so a bearer token can never reach
+ *    `Authorization` header on the upgrade request, so a bearer token can never reach
  *    `/api/sync/connect` directly from browser JS.
  *
  * This module solves both by keeping the bearer token OUT of the browser
  * entirely: it lives only in an httpOnly cookie set by `POST
- * /api/khala-sync/session` after a real bootstrap-backed credential check
- * (mirrors `clients/khala-mobile/src/auth/khala-auth-validate.ts`). Every
+ * /api/khala-sync/session` after a real bootstrap-backed credential check. Every
  * other route here is a same-origin server-to-server proxy: the browser
  * talks to THIS Worker's own origin (no CORS, cookies attach automatically),
  * and THIS Worker attaches the real `Authorization: Bearer <token>` header
@@ -111,8 +108,7 @@ type SignInValidation = Readonly<{ ok: true }> | Readonly<{ ok: false; messageSa
 /**
  * Confirms a token/ownerUserId pair actually authenticates against Khala
  * Sync before saving it — a real `POST /api/sync/bootstrap` call against the
- * owner's own personal scope, mirroring
- * `clients/khala-mobile/src/auth/khala-auth-validate.ts`.
+ * owner's own personal scope.
  */
 export const validateKhalaSyncCredentials = async (
   deps: KhalaSyncProxyDeps,

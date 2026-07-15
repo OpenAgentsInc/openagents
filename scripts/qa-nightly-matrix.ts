@@ -1049,8 +1049,6 @@ export const emitQaNightlyCoverageArtifacts = async (input: Readonly<{
 
 export const buildQaNightlySteps = (input: Readonly<{
   artifactDir: string
-  includeMobile?: boolean | undefined
-  includeMobileAndroid?: boolean | undefined
   monkeyRuns?: number | undefined
   monkeySteps?: number | undefined
 }>): readonly QaNightlyStep[] => {
@@ -1105,39 +1103,6 @@ export const buildQaNightlySteps = (input: Readonly<{
       label: "Model-based tier",
     },
   ]
-  // Opt-in mobile step (macOS runner only). The Khala Mobile SignedInThreadSmoke
-  // Maestro flow needs a booted iOS simulator with an installed Release build,
-  // which the headless Linux owned runner does not have — so it is appended only
-  // when OA_QA_NIGHTLY_INCLUDE_MOBILE=1. It is the launched-app-smoke tier oracle
-  // for khala_mobile.platform.launched_app_interaction_smoke.v1
-  // (docs/qa/khala-code-nightly-matrix.md; runner resets the seeded thread's turn
-  // state, then runs the flow against the seeded public-safe account).
-  if (input.includeMobile === true) {
-    steps.push({
-      command: ["bash", "clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh"],
-      cwd: ".",
-      id: "mobile-signed-in-thread-smoke",
-      label: "Khala Mobile SignedInThreadSmoke (iOS Release simulator)",
-    })
-  }
-  // Opt-in Android emulator step (macOS runner only, QAM-6 / #8541). It needs a
-  // booted Android emulator (AVD `khala_test`), the Homebrew Android SDK, a
-  // JDK 17, and `maestro` on PATH — none of which the headless Linux owned
-  // runner has — so it is appended only when
-  // OA_QA_NIGHTLY_INCLUDE_MOBILE_ANDROID=1. The harness creates/boots the AVD,
-  // waits for `sys.boot_completed`, builds/installs the app, runs the shared
-  // launch/sign-in Maestro flows, and captures `adb exec-out screencap` PNGs
-  // for the Android-keyed visual tier. It is the Android parity of the
-  // launched-app-smoke tier oracle for
-  // khala_mobile.platform.launched_app_interaction_smoke.v1.
-  if (input.includeMobileAndroid === true) {
-    steps.push({
-      command: ["bash", "clients/khala-mobile/scripts/android-emulator-test-run.sh"],
-      cwd: ".",
-      id: "mobile-android-emulator-smoke",
-      label: "Khala Mobile Android emulator launch/sign-in smoke",
-    })
-  }
   return steps
 }
 
@@ -1749,12 +1714,8 @@ export const runQaNightlyMatrix = async (input: Readonly<{
     input.stepTimeoutMs ?? positiveInt(env.OA_QA_NIGHTLY_STEP_TIMEOUT_MS, QA_NIGHTLY_DEFAULT_STEP_TIMEOUT_MS)
   const monkeyRuns = positiveInt(env.OA_QA_NIGHTLY_MONKEY_RUNS, QA_NIGHTLY_DEFAULT_RUNS)
   const monkeySteps = positiveInt(env.OA_QA_NIGHTLY_MONKEY_STEPS, QA_NIGHTLY_DEFAULT_STEPS)
-  const includeMobile = env.OA_QA_NIGHTLY_INCLUDE_MOBILE === "1"
-  const includeMobileAndroid = env.OA_QA_NIGHTLY_INCLUDE_MOBILE_ANDROID === "1"
   const steps = buildQaNightlySteps({
     artifactDir,
-    includeMobile,
-    includeMobileAndroid,
     monkeyRuns,
     monkeySteps,
   })

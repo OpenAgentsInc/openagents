@@ -154,8 +154,8 @@ there is no remaining AssuranceSpec program queue.
    `apps/openagents-mobile` (Effect Native/React Native/Expo), both named
    `OpenAgents`; mobile uses `com.openagents.app`. Deprecated clients are
    extraction/migration sources, not conversion targets. The owner-designated
-   mobile icon remains the exact
-   `clients/khala-mobile/assets/images/icon.png` bytes with SHA-256
+   mobile icon is owned at
+   `apps/openagents-mobile/assets/images/icon.png` with SHA-256
    `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`.
 8. **Terra is an execution lane under Sol.** Terra may claim ready,
    low-collision vertical slices. Sol owns priority, dependency order,

@@ -563,13 +563,12 @@ export function KhalaCodeDownloadPage() {
               </div>
             </dl>
           </InstallPanel>
-          <InstallPanel label="Terminal" status="npm package" title="Install the khala CLI">
+          <InstallPanel label="Terminal" status="npm package" title="Install Pylon">
             <p className="m-0 text-base/7">
-              The CLI is the public terminal path for Khala chat, Codex account
-              connection, and fleet commands. Fleet coding still requires your
-              own Codex account.
+              Pylon is the supported terminal path for Codex account connection
+              and local capacity. Fleet coding still requires your own account.
             </p>
-            <CommandBlock command={khalaCodeInstall.khalaCliInstallCommand} />
+            <CommandBlock command={khalaCodeInstall.pylonInstallCommand} />
           </InstallPanel>
           <InstallPanel label="Desktop from source" title="Run Khala Code from the repo">
             <p className="m-0 text-base/7">

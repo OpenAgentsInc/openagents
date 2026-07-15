@@ -27,6 +27,12 @@
       "disposition": "retain-decision",
       "dispatch": false
     },
+    "docs/sol/2026-07-14-clients-retirement-after-action.md": {
+      "class": "historical-analysis",
+      "owner": "OpenAgents client architecture",
+      "disposition": "retain-decision",
+      "dispatch": false
+    },
     "docs/sol/the-case-against-anthropic.md": {
       "class": "historical-analysis",
       "owner": "Christopher David",

@@ -1,9 +1,8 @@
 # @openagentsinc/autopilot-control-protocol
 
-The shared spine for the Autopilot clients — web (`apps/openagents.com/apps/web`),
-desktop (`apps/autopilot-desktop`, Electrobun), and mobile
-(`clients/khala-ios`, Expo/React Native). One typed protocol, implemented and
-tested once, imported by every client.
+The retained typed control and bridge protocol used by Pylon and compatible
+OpenAgents services. It no longer owns a desktop/mobile application or native
+build-and-release lane.
 
 (Pylon is the internal node/runtime name; this package is the client-facing
 protocol. The live wire schema tag remains `openagents.pylon.control.v0.3`.)

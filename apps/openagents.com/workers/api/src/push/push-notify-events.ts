@@ -53,14 +53,13 @@ export type PushNotificationPayload = Readonly<{
   }>
 }>
 
-/** `khala://thread/<threadId>` — the app's own URL scheme (see
- * `clients/khala-mobile/app.json`'s `expo.scheme`), a NEW convention this
- * issue introduces for notification-tap deep-linking. Client-side tap
+/** `openagents://thread/<threadId>` — the supported app's URL scheme.
+ * Client-side tap
  * handling (subscribing to the notification-response listener and
  * navigating on it) is NOT wired by this server-only issue — see the
  * route/issue closing comment for that honest gap. */
 export const runtimeNotifyDeepLink = (threadId: string): string =>
-  `khala://thread/${encodeURIComponent(threadId)}`
+  `openagents://thread/${encodeURIComponent(threadId)}`
 
 const TURN_COMPLETED_BODIES = {
   branch: 'Your task finished — a branch is ready to review.',

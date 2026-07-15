@@ -6,12 +6,11 @@ React Native and Expo are host and renderer machinery only.
 
 - Display name: `OpenAgents`
 - iOS bundle identifier / Android application ID: `com.openagents.app`
-- Icon: exact copy of the canonical Khala Code mobile icon (SHA-256 pinned by
+- Icon: canonical OpenAgents mobile icon (SHA-256 pinned by
   `tests/app-identity.test.ts`)
 
-This is **not** a rename of `clients/khala-mobile`. That package is deprecated
-and frozen as a parity/contract/native-module/migration reference. This app
-imports nothing from it.
+The retired Khala mobile clients were removed on 2026-07-14. This app is the
+only supported mobile product and imports no legacy client source.
 
 ## Architecture
 

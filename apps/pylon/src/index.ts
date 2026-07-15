@@ -641,21 +641,13 @@ function startCoordinator(
           stderr: 'ignore',
         })
       } else if (decision.shipMode === 'rebuild') {
-        // CL-39: auto local build + Apple altool submit when a rebuild is needed
-        // (no EAS). Requires the extra OA_SHIP_REBUILD_AUTO=1 since builds are heavy.
-        if (Runtime.env.OA_SHIP_REBUILD_AUTO !== '1') {
-          logToUi(
-            `[ship] ${intentId} rebuild needed — escalating (set OA_SHIP_REBUILD_AUTO=1 to auto-build locally)`,
-            'info',
-          )
-          return
-        }
-        logToUi(`[ship] ${intentId} auto local rebuild -> build-and-submit.sh`, 'info')
-        Runtime.spawn(['bash', 'clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh'], {
-          cwd: repoRoot,
-          stdout: 'ignore',
-          stderr: 'ignore',
-        })
+        // Native rebuilds require app-specific signing and release authority.
+        // Pylon records and escalates the decision; it does not launch a retired
+        // client script or infer a replacement release command.
+        logToUi(
+          `[ship] ${intentId} rebuild needed — escalating to the current app release owner`,
+          'info',
+        )
       }
     },
     log: (message) => logToUi(message, 'info'),

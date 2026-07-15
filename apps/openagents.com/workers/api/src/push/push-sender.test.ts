@@ -34,7 +34,7 @@ const makeDb = (): PushDeviceTokenDb => makeLedgerSqliteDb(PUSH_DEVICE_TOKENS_SQ
 
 const payload: PushNotificationPayload = {
   body: 'Your task finished.',
-  data: { deepLink: 'khala://thread/t1', kind: 'turn_completed', threadId: 't1' },
+  data: { deepLink: 'openagents://thread/t1', kind: 'turn_completed', threadId: 't1' },
   title: 'Task finished',
 }
 

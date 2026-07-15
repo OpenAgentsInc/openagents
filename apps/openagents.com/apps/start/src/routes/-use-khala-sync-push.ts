@@ -16,7 +16,7 @@ export type PendingMutation = Readonly<{
 /**
  * POSTs a batch of mutations to the local same-origin `/api/khala-sync/push`
  * proxy and returns the decoded response — ported from
- * `clients/khala-mobile/src/sync/use-khala-sync-push.ts` (issue #8413).
+ * the shared Khala Sync push contract (issue #8413).
  * Generates a fresh clientId per page load (not persisted across reloads) so
  * the mutationId counter can always start at 1 without colliding with a
  * stale server-side ledger watermark from a prior session.

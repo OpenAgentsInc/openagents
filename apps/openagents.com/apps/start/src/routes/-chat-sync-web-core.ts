@@ -1,7 +1,6 @@
 /**
- * Pure Khala Sync wire-protocol helpers for the web Start app — ported
- * near-verbatim from `clients/khala-mobile/src/sync/khala-sync-entities-core.ts`
- * and `khala-sync-push-core.ts` (issue #8413). No React/DOM dependency
+ * Pure Khala Sync wire-protocol helpers for the web Start app (issue #8413).
+ * No React/DOM dependency
  * beyond `URL`, so this stays unit-testable under `vitest`.
  *
  * Unlike the mobile version, these builders always point at THIS APP'S OWN

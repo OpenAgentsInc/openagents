@@ -27,10 +27,9 @@ git worktree add --detach /tmp/openagents-mobile-release origin/main
 cd /tmp/openagents-mobile-release
 test -z "$(git status --porcelain)"
 
-bun install --frozen-lockfile
-bun test apps/openagents-mobile/tests/app-identity.test.ts
-bun test apps/openagents-mobile
-bun run --cwd apps/openagents-mobile typecheck
+pnpm install --frozen-lockfile
+pnpm --dir apps/openagents-mobile run test
+pnpm --dir apps/openagents-mobile run typecheck
 ```
 
 Before a store upload, increase `expo.ios.buildNumber` in
@@ -44,10 +43,8 @@ Expo prebuild output is derived and untracked. Regenerate it from the exact
 release commit:
 
 ```sh
-cd apps/openagents-mobile
-CI=1 bunx expo prebuild --clean --platform ios
-CI=1 bunx expo prebuild --clean --platform android
-cd ../..
+CI=1 pnpm --dir apps/openagents-mobile exec expo prebuild --clean --platform ios
+CI=1 pnpm --dir apps/openagents-mobile exec expo prebuild --clean --platform android
 ```
 
 Confirm the derived iOS identity before continuing:
@@ -221,4 +218,3 @@ promoting the revision, because `oa-updates` serves both products.
   process replacement, accessibility, diagnostics, and crash-free relaunch.
 - Keep secrets, raw tokens, prompts, account IDs, and unredacted device stores
   out of receipts.
-
