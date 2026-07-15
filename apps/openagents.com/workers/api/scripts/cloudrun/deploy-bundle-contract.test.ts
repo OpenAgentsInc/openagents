@@ -15,6 +15,8 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(deployScript).toContain('vp pack src/cloudrun/server.ts')
     expect(deployScript).toContain('pnpm run build:start')
     expect(deployScript).toContain('CI=true pnpm run build:start')
+    expect(deployScript).toContain('OPENAGENTS_SKIP_START_BUILD')
+    expect(deployScript).toContain('apps/start/dist/cloudrun/server.mjs')
     expect(deployScript).not.toContain('build:astro')
     expect(deployScript).toContain('pnpm install --frozen-lockfile --ignore-scripts')
     expect(deployScript).not.toContain('astro-ui')

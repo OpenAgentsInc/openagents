@@ -60,8 +60,16 @@ fi
 node "$REPO_ROOT/scripts/google-cloud-authority-guard.mjs"
 
 cd "$APP_DIR"
-echo "==> Building unified TanStack Start application (apps/start/dist)"
-CI=true pnpm run build:start >/dev/null
+if [[ "${OPENAGENTS_SKIP_START_BUILD:-}" == "1" ]]; then
+  echo "==> Reusing prebuilt TanStack Start application (apps/start/dist)"
+  if [[ ! -f apps/start/dist/cloudrun/server.mjs || ! -d apps/start/dist/client ]]; then
+    echo "FATAL: OPENAGENTS_SKIP_START_BUILD=1 requires complete apps/start/dist artifacts" >&2
+    exit 1
+  fi
+else
+  echo "==> Building unified TanStack Start application (apps/start/dist)"
+  CI=true pnpm run build:start >/dev/null
+fi
 
 cd "$API_DIR"
 echo "==> Bundling Node server (Vite Plus pack)"
