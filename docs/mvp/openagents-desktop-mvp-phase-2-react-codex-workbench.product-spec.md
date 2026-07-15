@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop MVP Phase 2 — React-backed Codex Workbench"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-14T00:00:00Z"
 updated_at: "2026-07-14T00:00:00Z"
@@ -344,7 +344,7 @@ the need and a separate dependency decision records the cost and boundary.
 - id: AC-4
   criterion: The React session rail paints bounded top-level metadata before transcript hydration and supports new, search, select, resume, archive, delete, and paging while preserving stable ordering, titles, status, attention, selection, and restart restoration.
 - id: AC-5
-  criterion: The React timeline renders stable keyed text plus plan, tool, change, usage, blocker, error, interruption, gap, and terminal items in causal order; live updates do not duplicate or reorder items, and prepending older variable-height content preserves the first visible item without a stale intermediate frame.
+  criterion: The React timeline renders stable keyed authored text plus compact plan, tool, change, blocker, error, interruption, gap, and terminal treatments in causal order; transport, metadata, context, and token-accounting events do not appear as conversation messages, settled consecutive work folds behind a bounded disclosure, active work and streaming state remain visible without duplicating or reordering items, and prepending older variable-height content preserves the first visible item without a stale intermediate frame.
 - id: AC-6
   criterion: The React composer captures the first keystroke, preserves IME composition, grows within its bound, and exposes the correct send, stop, steer, or queue action for the current state; pointer, keyboard, command-palette, and native-menu entry points resolve to the same registered command identity.
 - id: AC-7
@@ -587,6 +587,14 @@ release receipts through the owning promise registry.
   and runtime-boundary additions changed intent-bearing bytes without the
   required revision bump. This revision repairs that identity error; it does
   not transfer the separate revision-1 owner admission to revision 2.
+- **2026-07-14 — Make the transcript a conversation in proposed revision 3.**
+  The owner rejected the event-log presentation and directed the workbench to
+  adapt the reference's authored-message, compact-work, disclosure, and live
+  streaming hierarchy. Usage, session, context, and metadata records remain
+  bounded host/history data but are no longer conversation rows. Consecutive
+  settled work folds behind a `Worked` disclosure; active work stays visible.
+  This is a material acceptance change from revision 2 and does not inherit
+  revision 1 admission or admit revision 2.
 - **Adoption state: proposed.** This checked-in document records requested
   product intent. It has no ProductSpec host admission receipt in this change
   and therefore cannot dispatch work, admit an invariant exception, verify an

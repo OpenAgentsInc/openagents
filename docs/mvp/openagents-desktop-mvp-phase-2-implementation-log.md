@@ -417,3 +417,26 @@ exact published-RC13 to RC15 interrupted-stage/update/downgrade-refusal/
 rollback/diagnostics/uninstall/reinstall/cleanup sequence. No feed or artifact
 was published. The exact receipt is
 `docs/mvp/2026-07-14-openagents-desktop-react-rc15-release-receipt.md`.
+
+### Post-RC15 conversation hierarchy correction
+
+Owner review rejected the release candidate's event-log-shaped transcript.
+The React timeline now follows the pinned reference's core hierarchy instead:
+authored user and assistant messages are primary prose, tool/reasoning/approval
+activity is a compact one-line work log with explicit disclosure, consecutive
+settled work folds behind one `Worked · N activities` row, and an active run
+keeps only its latest work visible beside a bounded working indicator. Raw tool
+arguments and results are collapsed by default.
+
+Session, context, metadata, and token-accounting records no longer render as
+conversation messages, and a redacted reasoning placeholder is treated as
+absent reasoning rather than a red failure card. Actual authored redaction,
+gaps, interruptions, and failures remain visible. The session rail's shadcn
+`ScrollArea` now owns the bounded flex height and viewport scrolling, fixing
+the non-scrolling rail. Existing item-key streaming replacement, live-edge
+following, manual-reader anchoring, paging, Markdown safety, and Effect-owned
+state/intent boundaries remain intact.
+
+This owner-directed correction changes AC-5 and is recorded as proposed
+ProductSpec revision 3. It is post-RC15 source work; it does not relabel the
+RC15 artifact or claim a new release candidate.

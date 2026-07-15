@@ -135,7 +135,7 @@ describe("React typed timeline projection", () => {
     expect(records.filter(value => value.kind === "lifecycle")).toHaveLength(1)
   })
 
-  test("keeps gap, redaction, usage, failure, and plan records distinct", () => {
+  test("keeps authored loss, failure, and plan records while suppressing usage scaffolding", () => {
     const records = projectReactTimelineRecords([
       historyItem(0, "gap", "Cursor gap"),
       historyItem(1, "assistant_message", "[REDACTED: withheld]", { redacted: true }),
@@ -143,8 +143,20 @@ describe("React typed timeline projection", () => {
       historyItem(3, "error", "Turn failed", { status: "failed" }),
       historyItem(4, "plan", "Plan updated", { fields: [{ label: "1", value: "done" }] }),
     ])
-    expect(records.map(value => value.kind)).toEqual(["gap", "assistant_message", "usage", "error", "plan"])
+    expect(records.map(value => value.kind)).toEqual(["gap", "assistant_message", "error", "plan"])
     expect(records[1]?.redacted).toBe(true)
+  })
+
+  test("suppresses internal history scaffolding and redacted reasoning placeholders", () => {
+    const records = projectReactTimelineRecords([
+      historyItem(0, "session", "Session metadata"),
+      historyItem(1, "context", "Working directory"),
+      historyItem(2, "metadata", "Provider metadata"),
+      historyItem(3, "usage", "Token usage update"),
+      historyItem(4, "reasoning", "[REDACTED: reasoning not persisted as summary]", { redacted: true }),
+      historyItem(5, "assistant_message", "Useful answer"),
+    ])
+    expect(records.map(value => value.body)).toEqual(["Useful answer"])
   })
 
   test("uses the bounded Markdown parser and never creates an attacker-controlled link", async () => {
@@ -162,6 +174,25 @@ describe("React typed timeline projection", () => {
 })
 
 describe("React timeline scroll contract", () => {
+  test("folds settled work, exposes active work, and shows streaming state without accounting noise", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const work = (key: string, sequence: number, status: string): ReactTimelineRecord => ({
+      ...record(key, sequence), kind: "tool_call", label: "Run command", status, resultBody: `${key} result`,
+    })
+    root.render(<ReactTimeline sessionKey="thread-1" records={[
+      work("done-a", 0, "completed"), work("done-b", 1, "completed"), record("answer", 2),
+      work("prior", 3, "completed"), work("active", 4, "running"),
+    ]} loadedItemCount={5} offset={0} totalItems={5} loadingEdge={null} working report={report} />)
+    await settle()
+    const summaries = [...container.querySelectorAll(".oa-react-work-group-summary")].map(node => node.textContent)
+    expect(summaries).toEqual(["Worked2 activities", "+1 previous1 activity"])
+    expect(container.querySelector('[data-timeline-key="active"]')?.textContent).toContain("Running")
+    expect(container.querySelector('.oa-react-working[aria-label="Codex is working"]')).not.toBeNull()
+    expect(container.textContent).not.toContain("Token usage update")
+    root.unmount()
+  })
+
   test("preserves the first visible variable-height row synchronously on prepend", async () => {
     const { container } = installDom()
     const root = createRoot(container)

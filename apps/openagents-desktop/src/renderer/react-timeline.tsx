@@ -82,6 +82,12 @@ export const projectReactTimelineRecords = (
   const consumed = new Set<string>()
   const records: Array<ReactTimelineRecord> = []
   for (const item of items) {
+    // Transport/accounting scaffolding stays available in the bounded history
+    // inspector; it is not a primary conversation row.
+    if (["session", "context", "metadata", "usage"].includes(item.kind)) continue
+    // Persisted reasoning can intentionally be only a redaction marker. Absence
+    // is the honest primary presentation, not a false failure card.
+    if (item.kind === "reasoning" && item.redacted) continue
     if (isTerminal(item) && item.itemRef !== newestTerminal) continue
     if (item.kind === "tool_call") {
       const callRef = field(item, "call")
@@ -98,24 +104,50 @@ export const projectReactTimelineRecords = (
 
 export const projectLocalTimelineRecords = (
   notes: ReadonlyArray<DesktopNoteEntry>,
-): ReadonlyArray<ReactTimelineRecord> => notes.map((note, index) => ({
-  key: note.key,
-  itemRef: note.key,
-  sequence: index,
-  kind: note.question === undefined ? "local_message" : "question",
-  label: note.question === undefined
-    ? note.role === "user" ? "You" : note.role === "assistant" ? "Assistant" : "System"
-    : note.question.kind === "tool_approval" ? "Tool approval"
-      : note.question.kind === "plan_review" ? "Plan review" : "Question",
-  body: note.question?.questions[0]?.question ?? note.text,
-  timestamp: note.timestamp,
-  status: note.question?.status ?? note.runtime?.kind ?? null,
-  redacted: false,
-  fields: [],
-  resultRef: null,
-  resultBody: null,
-  resultStatus: null,
-}))
+): ReadonlyArray<ReactTimelineRecord> => notes.flatMap((note, index) => {
+  if (note.role === "system" && /^(Usage|Connected)\s*·/i.test(note.text)) return []
+  const kind: ReactTimelineRecord["kind"] = note.question !== undefined
+    ? "question"
+    : note.role !== "system"
+      ? "local_message"
+      : /^Reasoning\s*·/i.test(note.text)
+        ? "reasoning"
+        : /^Plan\s*·/i.test(note.text)
+          ? "plan"
+          : /^Approval\s*·/i.test(note.text)
+            ? "approval"
+            : /^Turn (completed|complete|canceled|cancelled)$/i.test(note.text)
+              ? "lifecycle"
+              : /^Turn (failed|interrupted)|error/i.test(note.text)
+                ? "error"
+                : /\s·\s(?:running|completed|failed|errored)$/i.test(note.text)
+                  ? "tool_call"
+                  : "system_message"
+  const label = note.question !== undefined
+    ? note.question.kind === "tool_approval" ? "Tool approval"
+      : note.question.kind === "plan_review" ? "Plan review" : "Question"
+    : note.role === "user" ? "You"
+      : note.role === "assistant" ? "Assistant"
+        : kind === "tool_call" ? note.text.split(" · ")[0] || "Tool"
+          : kind === "reasoning" ? "Reasoning"
+            : kind === "plan" ? "Plan"
+              : "System"
+  return [{
+    key: note.key,
+    itemRef: note.key,
+    sequence: index,
+    kind,
+    label,
+    body: note.question?.questions[0]?.question ?? note.text.replace(/^(Reasoning|Plan|Approval)\s*·\s*/i, ""),
+    timestamp: note.timestamp,
+    status: note.question?.status ?? note.runtime?.kind ?? null,
+    redacted: false,
+    fields: [],
+    resultRef: null,
+    resultBody: null,
+    resultStatus: null,
+  }]
+})
 
 const Inline = ({ nodes }: { readonly nodes: ReadonlyArray<MarkdownInline> }): ReactNode => nodes.map((node, index) => {
   if (node.kind === "text") return <span key={index}>{node.text}</span>
@@ -145,15 +177,18 @@ export const SafeReactMarkdown = ({ value }: { readonly value: string }): ReactE
         : <hr key={index} />)}
   </div>
 
-const recordTone = (record: ReactTimelineRecord): string => {
-  if (record.redacted) return "redacted"
-  if (record.kind === "gap") return "gap"
-  if (record.kind === "error" || ["failed", "errored", "interrupted"].includes(record.status ?? "")) return "danger"
-  if (record.kind === "reasoning" || record.kind === "plan") return "reasoning"
-  if (record.kind === "tool_call" || record.kind === "tool_result" || record.kind === "approval") return "tool"
-  if (record.kind === "usage" || record.kind === "metadata" || record.kind === "context") return "muted"
-  if (record.kind === "user_message" || record.label === "You") return "user"
-  return "default"
+const isUserRecord = (record: ReactTimelineRecord): boolean =>
+  record.kind === "user_message" || record.label === "You"
+
+const isMessageRecord = (record: ReactTimelineRecord): boolean =>
+  isUserRecord(record) || ["assistant_message", "agent_message", "local_message"].includes(record.kind)
+
+const isWorkRecord = (record: ReactTimelineRecord): boolean =>
+  ["reasoning", "tool_call", "tool_result", "approval", "collaboration"].includes(record.kind)
+
+const compact = (value: string, limit = 180): string => {
+  const normalized = value.replaceAll("\\n", " ").replaceAll(/\s+/g, " ").trim()
+  return normalized.length <= limit ? normalized : `${normalized.slice(0, limit - 1)}…`
 }
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
@@ -166,31 +201,49 @@ export const TimelineItem = ({ record, report }: {
   readonly record: ReactTimelineRecord
   readonly report: IntentReporter
 }): ReactElement => {
-  const prose = ["assistant_message", "user_message", "agent_message", "local_message"].includes(record.kind)
+  if (record.kind === "lifecycle" && !["failed", "errored", "interrupted"].includes(record.status ?? "")) {
+    return <span data-timeline-key={record.key} data-kind="lifecycle" hidden />
+  }
+  if (isWorkRecord(record)) return <details className="oa-react-work-entry"
+    data-timeline-key={record.key} data-kind={record.kind} role="listitem">
+    <summary>
+      <span className="oa-react-work-label">{record.label}</span>
+      <span className="oa-react-work-preview">{compact(record.resultBody || record.body)}</span>
+      <span className="oa-react-work-status" data-status={record.status ?? "completed"}>
+        {["failed", "errored", "interrupted"].includes(record.status ?? "") ? "Failed" : record.status === "running" ? "Running" : "Done"}
+      </span>
+    </summary>
+    <div className="oa-react-work-detail">
+      {record.redacted ? <p>Details unavailable.</p> : <pre><code>{record.body}</code></pre>}
+      {record.resultBody === null ? null : <><strong>{record.resultStatus === "failed" ? "Result · failed" : "Result"}</strong><pre><code>{record.resultBody}</code></pre></>}
+      <Button className="oa-react-item-details" type="button" variant="ghost" size="xs"
+        onClick={() => dispatch(report, "HistoryItemSelected", record.itemRef)}>Inspect event</Button>
+    </div>
+  </details>
+
+  if (record.kind === "plan") return <article className="oa-react-plan" data-timeline-key={record.key} data-kind="plan" role="listitem">
+    <header><strong>Plan</strong><span>{record.status}</span></header>
+    <SafeReactMarkdown value={record.body} />
+    {record.fields.length > 0 ? <ol>{record.fields.map((entry, index) => <li key={`${entry.label}:${index}`}><span>{entry.value}</span><small>{entry.label}</small></li>)}</ol> : null}
+  </article>
+
+  const danger = record.kind === "error" || record.kind === "gap" || ["failed", "errored", "interrupted"].includes(record.status ?? "")
+  if (!isMessageRecord(record) || danger || record.redacted) return <article className="oa-react-notice"
+    data-timeline-key={record.key} data-kind={record.kind} data-danger={danger ? "true" : "false"} role="listitem">
+    <strong>{danger ? record.label : "Update"}</strong>
+    <span>{record.redacted ? "Message content unavailable." : record.body}</span>
+  </article>
+
   return <article
     className="oa-react-timeline-item"
     data-timeline-key={record.key}
     data-kind={record.kind}
-    data-tone={recordTone(record)}
+    data-tone={isUserRecord(record) ? "user" : "assistant"}
     role="listitem"
     aria-label={`${record.label}. Item ${record.sequence + 1}`}
   >
-    <header><strong>{record.label}</strong><span>{record.status ?? record.timestamp}</span></header>
-    {record.redacted
-      ? <p className="oa-react-loss-notice">Content withheld by the history redaction policy.</p>
-      : prose
-        ? <SafeReactMarkdown value={record.body} />
-        : <p>{record.body}</p>}
-    {record.kind === "plan" && record.fields.length > 0
-      ? <ol className="oa-react-plan-steps">{record.fields.map((entry, index) => <li key={`${entry.label}:${index}`}><strong>{entry.label}</strong><span>{entry.value}</span></li>)}</ol>
-      : null}
-    {record.kind === "usage" && record.fields.length > 0
-      ? <dl className="oa-react-usage">{record.fields.map((entry, index) => <div key={`${entry.label}:${index}`}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}</dl>
-      : null}
-    {record.resultRef === null ? null : <div className="oa-react-tool-result" data-result-ref={record.resultRef}>
-      <strong>{record.resultStatus === "failed" ? "Tool failed" : "Tool result"}</strong>
-      <p>{record.resultBody || "No result text"}</p>
-    </div>}
+    <div className="oa-react-message-meta"><strong>{record.label}</strong><span>{record.timestamp}</span></div>
+    <SafeReactMarkdown value={record.body} />
     {record.kind === "local_message" || record.kind === "question" ? null
       : <Button className="oa-react-item-details" type="button" variant="ghost" size="xs"
           onClick={() => dispatch(report, "HistoryItemSelected", record.itemRef)}
@@ -221,6 +274,7 @@ type TimelineProps = Readonly<{
   offset: number
   totalItems: number
   loadingEdge: "top" | "bottom" | null
+  working?: boolean
   report: IntentReporter
 }>
 type TimelineState = Readonly<{ newActivity: boolean; announcement: string }>
@@ -236,6 +290,38 @@ type ScrollSnapshot = Readonly<{
 
 const atLiveEdge = (element: HTMLElement): boolean =>
   element.scrollHeight - element.scrollTop - element.clientHeight <= 2
+
+const TimelineRecords = ({ records, report }: {
+  readonly records: ReadonlyArray<ReactTimelineRecord>
+  readonly report: IntentReporter
+}): ReactElement => {
+  const output: Array<ReactElement> = []
+  for (let index = 0; index < records.length;) {
+    const record = records[index]!
+    if (!isWorkRecord(record)) {
+      output.push(<TimelineItemBoundary key={record.key} record={record} report={report} />)
+      index += 1
+      continue
+    }
+    const group: Array<ReactTimelineRecord> = []
+    while (index < records.length && isWorkRecord(records[index]!)) group.push(records[index++]!)
+    if (group.length === 1) {
+      output.push(<TimelineItemBoundary key={group[0]!.key} record={group[0]!} report={report} />)
+      continue
+    }
+    const running = group.some(entry => entry.status === "running")
+    const visible = running ? group.slice(-1) : []
+    const folded = running ? group.slice(0, -1) : group
+    output.push(<div className="oa-react-work-group" key={`work:${group[0]!.key}:${group.at(-1)!.key}`} role="listitem">
+      <details>
+        <summary className="oa-react-work-group-summary"><strong>{running ? `+${folded.length} previous` : "Worked"}</strong><span>{folded.length} {folded.length === 1 ? "activity" : "activities"}</span></summary>
+        <div role="list">{folded.map(entry => <TimelineItemBoundary key={entry.key} record={entry} report={report} />)}</div>
+      </details>
+      {visible.map(entry => <TimelineItemBoundary key={entry.key} record={entry} report={report} />)}
+    </div>)
+  }
+  return <>{output}</>
+}
 
 /** getSnapshotBeforeUpdate captures old geometry before React mutates rows. */
 export class ReactTimeline extends Component<TimelineProps, TimelineState> {
@@ -336,7 +422,10 @@ export class ReactTimeline extends Component<TimelineProps, TimelineState> {
           : this.props.offset > 0
             ? <p className="oa-react-timeline-position">Showing items {this.props.offset + 1}–{this.props.offset + this.props.loadedItemCount} of {this.props.totalItems}</p>
             : null}
-        {this.props.records.map(record => <TimelineItemBoundary key={record.key} record={record} report={this.props.report} />)}
+        <TimelineRecords records={this.props.records} report={this.props.report} />
+        {this.props.working ? <div className="oa-react-working" role="listitem" aria-label="Codex is working">
+          <span>Working</span><i /><i /><i />
+        </div> : null}
         {this.props.loadingEdge === "bottom" ? <p className="oa-react-timeline-loading" role="status">Fetching newer items…</p> : null}
       </div>
       {this.state.newActivity ? <Button className="oa-react-new-activity" size="sm" type="button" onClick={this.jumpToLatest}>Jump to latest</Button> : null}
@@ -344,15 +433,16 @@ export class ReactTimeline extends Component<TimelineProps, TimelineState> {
   }
 }
 
-export const ConversationTimeline = ({ page, notes, loadingEdge, report }: {
+export const ConversationTimeline = ({ page, notes, loadingEdge, working, report }: {
   readonly page: CodexHistoryPage | null
   readonly notes: ReadonlyArray<DesktopNoteEntry>
   readonly loadingEdge: "top" | "bottom" | null
+  readonly working?: boolean
   readonly report: IntentReporter
 }): ReactElement => {
   if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation"><p>Start a conversation with Codex.</p></section>
   const records = page === null ? projectLocalTimelineRecords(notes) : projectReactTimelineRecords(page.items)
   return <ReactTimeline sessionKey={page?.selectedThreadRef ?? "local"} records={records}
     loadedItemCount={page?.items.length ?? records.length} offset={page?.offset ?? 0}
-    totalItems={page?.totalItems ?? records.length} loadingEdge={loadingEdge} report={report} />
+    totalItems={page?.totalItems ?? records.length} loadingEdge={loadingEdge} working={working} report={report} />
 }
