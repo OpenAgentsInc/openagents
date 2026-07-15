@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from "node:fs"
-import { basename, extname } from "node:path"
+import { basename, dirname, extname, resolve } from "node:path"
 import { execFileSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 
 const trackedAndUntrackedFiles = execFileSync(
   "git",
   ["ls-files", "-co", "--exclude-standard"],
-  { encoding: "utf8" },
+  { cwd: repositoryRoot, encoding: "utf8" },
 )
   .split("\n")
   .map(value => value.trim())
   .filter(Boolean)
-  .filter(path => existsSync(path))
+  .filter(path => existsSync(resolve(repositoryRoot, path)))
 
 const retiredPaths = [
   "clients",
@@ -81,7 +84,7 @@ for (const path of trackedAndUntrackedFiles) {
   }
   if (!activeExtensions.has(extname(path)) || excludedActivePath(path)) continue
 
-  const source = readFileSync(path, "utf8")
+  const source = readFileSync(resolve(repositoryRoot, path), "utf8")
   for (const [label, pattern] of forbiddenPatterns) {
     if (pattern.test(source)) violations.push(`${path}: ${label}`)
   }
@@ -98,14 +101,17 @@ const authorityFiles = [
 ]
 
 for (const path of authorityFiles) {
-  const source = readFileSync(path, "utf8")
+  const source = readFileSync(resolve(repositoryRoot, path), "utf8")
   if (!/Google Cloud/.test(source)) {
     violations.push(`${path}: missing explicit Google Cloud authority`)
   }
 }
 
 const retiredCloudflareDecision = readFileSync(
-  "docs/adr/0004-prefer-cloudflare-native-product-infrastructure.md",
+  resolve(
+    repositoryRoot,
+    "docs/adr/0004-prefer-cloudflare-native-product-infrastructure.md",
+  ),
   "utf8",
 )
 if (!/^status: "superseded"$/m.test(retiredCloudflareDecision)) {
@@ -113,7 +119,10 @@ if (!/^status: "superseded"$/m.test(retiredCloudflareDecision)) {
 }
 
 const googleCloudDecision = readFileSync(
-  "docs/adr/0014-use-google-cloud-as-the-sole-production-infrastructure.md",
+  resolve(
+    repositoryRoot,
+    "docs/adr/0014-use-google-cloud-as-the-sole-production-infrastructure.md",
+  ),
   "utf8",
 )
 if (!/^status: "accepted"$/m.test(googleCloudDecision)) {
