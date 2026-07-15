@@ -14,7 +14,6 @@ packages:
   - apps/oa-queue-worker
   - apps/oa-updates
   - apps/openagents-mobile
-  - apps/native-sdk-effect-native-spike
   - apps/nostr-relay
   - apps/openagents-audio
   - apps/openagents-audio-edge

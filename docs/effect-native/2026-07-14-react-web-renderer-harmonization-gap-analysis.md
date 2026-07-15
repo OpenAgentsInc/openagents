@@ -758,7 +758,7 @@ wrapping the existing renderer forever would throw away most of React's value.
 | Server-shim test | [`-privacy-effect-native.test.tsx`](../../apps/openagents.com/apps/start/src/routes/-privacy-effect-native.test.tsx) |
 | T3 frontend/runtime evidence | [T3 Code teardown](../teardowns/2026-07-13-t3-code-teardown.md) |
 | Cross-product adaptation | [OpenAgents adaptation analysis](../teardowns/2026-07-10-openagents-product-adaptation-analysis.md) |
-| Native renderer precedent | [Native SDK / Effect Native audit](../sol/2026-07-14-vercel-native-sdk-effect-native-desktop-audit.md) |
+| Native host experiment disposition | [Native SDK desktop after-action audit](../sol/2026-07-14-native-sdk-desktop-after-action-audit.md) |
 | Current product scope | [Sol subsystem implications](../sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md) |
 
 ## Evidence limitations

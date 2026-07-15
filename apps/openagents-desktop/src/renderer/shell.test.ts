@@ -11,7 +11,6 @@ import type { DesktopVoiceState } from "../voice-host.ts"
 import {
   chatMessageMetadataFields,
   desktopShellIntents,
-  desktopShellMainView,
   desktopShellView,
   desktopConversationShortcutTargets,
   desktopSidebarHistoryDisclosure,
@@ -58,16 +57,6 @@ import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.t
 import { desktopCanonicalCommandRegistry } from "../desktop-command-contract.ts"
 
 const { makeIntentRegistry } = await import("@effect-native/core")
-
-test("portable center pane composes once beneath the Electron shell sidebar", () => {
-  const state = initialDesktopShellState("electron/darwin", "18:04")
-  const shell = JSON.stringify(desktopShellView(state))
-  const main = JSON.stringify(desktopShellMainView(state))
-  expect(shell.split('"key":"shell-sidebar"')).toHaveLength(2)
-  expect(shell.split('"key":"shell-main"')).toHaveLength(2)
-  expect(main).toContain('"key":"shell-main"')
-  expect(main).not.toContain('"key":"shell-sidebar"')
-})
 
 test("delegated-card selection resolves the same child transcript used by the agent rail", () => {
   const transcript = [

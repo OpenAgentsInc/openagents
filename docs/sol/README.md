@@ -80,12 +80,10 @@ not current queues:
   public-content, and
   same-origin `/docs` hosting analysis; implementation requires a new bounded
   post-VP-4 issue and claim.
-- [`2026-07-14-vercel-native-sdk-effect-native-desktop-audit.md`](./2026-07-14-vercel-native-sdk-effect-native-desktop-audit.md)
-  — pinned Native SDK architecture, platform, security, and maturity analysis;
-  records the completed Native SDK + Effect Native hybrid spike and component
-  adoption matrix, retains Electron as the shipping Desktop host, and scopes
-  any future work to a real native Effect Native renderer proof rather than a
-  product rewrite.
+- [`2026-07-14-native-sdk-desktop-after-action-audit.md`](./2026-07-14-native-sdk-desktop-after-action-audit.md)
+  — closed after-action record for the removed Native SDK experiment; explains
+  why the hybrid did not meet the adoption bar, retains only component and
+  automation lessons, and establishes Electron as the sole Desktop host.
 - [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
   — durable process/data/authority topology plus a dated delivery baseline.
 - [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)

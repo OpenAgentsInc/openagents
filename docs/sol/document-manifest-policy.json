@@ -21,10 +21,10 @@
       "disposition": "retain-historical",
       "dispatch": false
     },
-    "docs/sol/2026-07-14-vercel-native-sdk-effect-native-desktop-audit.md": {
+    "docs/sol/2026-07-14-native-sdk-desktop-after-action-audit.md": {
       "class": "historical-analysis",
-      "owner": "OpenAgents Desktop and Effect Native architecture",
-      "disposition": "retain-historical",
+      "owner": "OpenAgents Desktop architecture",
+      "disposition": "retain-decision",
       "dispatch": false
     },
     "docs/sol/the-case-against-anthropic.md": {
