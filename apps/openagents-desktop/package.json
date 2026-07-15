@@ -23,6 +23,7 @@
     "smoke:codex-supervisor": "node --import tsx scripts/codex-app-server-supervisor-smoke.ts",
     "smoke:codex-ecosystem": "node --import tsx scripts/codex-ecosystem-smoke.ts",
     "smoke:codex-host-services": "node --import tsx scripts/codex-host-services-smoke.ts",
+    "smoke:codex-experimental": "node --import tsx scripts/codex-experimental-runtime-smoke.ts",
     "smoke:codex-control-plane": "node --import tsx scripts/codex-control-plane-smoke.ts",
     "smoke:codex-thread-lifecycle": "node --import tsx scripts/codex-thread-lifecycle-smoke.ts",
     "smoke:codex-turn-control": "node --import tsx scripts/codex-turn-control-smoke.ts",

@@ -69,6 +69,17 @@ const waitForMessages = async (messages: ReadonlyArray<unknown>, count: number):
 }
 
 describe("Codex app-server native integration", () => {
+  test("opts into experimental API only when the complete host explicitly requests it", async () => {
+    const fake = fakeServer()
+    const client = openCodexAppServerClient({ binary: "/packaged/codex", env: {}, cwd: "/workspace", spawnImpl: fake.spawn, experimentalApi: true })
+    const initialized = client.initialize()
+    await waitForMessages(fake.messages, 1)
+    expect(fake.messages[0]).toMatchObject({ method: "initialize", params: { capabilities: { experimentalApi: true } } })
+    fake.respond(1, {})
+    await initialized
+    client.close()
+  })
+
   test("uses initialize/initialized and proves native skill discovery", async () => {
     const fake = fakeServer()
     const client = openCodexAppServerClient({

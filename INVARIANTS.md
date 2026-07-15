@@ -203,6 +203,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   renderer has no raw app-server, absolute-path, shell, environment, or generic
   process capability. Watches, command processes, searches, and imports belong
   to one app-server generation and must surface disconnect/overflow explicitly.
+- Codex experimental API opt-in requires an exact generated manifest/handler
+  match and uses a separate pooled connection identity. Remote credentials,
+  environment IDs, pairing codes, installation/client IDs, raw process output,
+  transcript text, SDP, and audio never enter public projections. Unsandboxed
+  processes, PTYs, remote grants, and realtime sessions are generation-owned,
+  bounded, revocable, and cleaned on disconnect; destructive experimental
+  controls consume one-shot confirmation-bound authority and emit hashed
+  private receipts.
 - Payments, markets, Sites, tipping, wallet custody, payout, billing credits,
   and settlement are not part of the accepted MVP. VP-1 retires rather than
   ports them: mutation surfaces return typed `money_surface_retired`, runtime

@@ -215,6 +215,8 @@ import { makeCodexControlPlaneRegistry } from "./codex-control-plane.ts"
 import { makeCodexEcosystemRegistry } from "./codex-ecosystem.ts"
 import { makeCodexHostServiceRegistry } from "./codex-host-services.ts"
 import { CodexHostRequestChannel, CodexHostSnapshotChannel, decodeCodexHostRequest } from "./codex-host-contract.ts"
+import { makeCodexExperimentalRuntimeRegistry } from "./codex-experimental-runtime.ts"
+import { CodexExperimentalRequestChannel, CodexExperimentalSnapshotChannel, decodeCodexExperimentalRequest } from "./codex-experimental-contract.ts"
 import {
   CodexEcosystemMutationChannel,
   CodexEcosystemSnapshotChannel,
@@ -1916,6 +1918,11 @@ const codexHostServices = makeCodexHostServiceRegistry({
   spoolRoot: path.join(app.getPath("userData"), "codex-host-spool"),
   receiptRoot: path.join(app.getPath("userData"), "codex-host-receipts"),
 })
+const codexExperimentalRuntimes = makeCodexExperimentalRuntimeRegistry({
+  supervisor: codexAppServerSupervisor,
+  spoolRoot: path.join(app.getPath("userData"), "codex-experimental-spool"),
+  receiptRoot: path.join(app.getPath("userData"), "codex-experimental-receipts"),
+})
 codexLifecycleAuthority = async () => {
   const binary = codexRuntimeAuthority.executable()
   if (binary === null) throw new Error("Codex runtime is unavailable")
@@ -1943,6 +1950,13 @@ const currentCodexHostServices = async () => {
   const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
   return codexHostServices.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" }, workroom.workspaceRoot)
+}
+const currentCodexExperimentalRuntime = async () => {
+  const binary = codexRuntimeAuthority.executable()
+  if (binary === null) throw new Error("Codex runtime is unavailable")
+  const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
+  mkdirSync(runtimeCwd, { recursive: true })
+  return codexExperimentalRuntimes.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" })
 }
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
@@ -2879,6 +2893,48 @@ ipcMain.handle(CodexHostRequestChannel, async (event, value: unknown) => {
     }
     return { ok: true, result, snapshot: host.snapshot() }
   } catch (error) { return { ok: false, reason: typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string" ? error.reason : "host_request_failed" } }
+})
+ipcMain.handle(CodexExperimentalSnapshotChannel, async event => {
+  if (!isTrustedRuntimeGatewaySender(event)) return null
+  try { return (await currentCodexExperimentalRuntime()).snapshot() } catch { return null }
+})
+ipcMain.handle(CodexExperimentalRequestChannel, async (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { ok: false, reason: "untrusted_sender" }
+  const request = decodeCodexExperimentalRequest(value)
+  if (request === null) return { ok: false, reason: "invalid_request" }
+  try {
+    const runtime = await currentCodexExperimentalRuntime()
+    const authorize = (kind: Parameters<typeof runtime.authorize>[0], payload: unknown) => runtime.authorize(kind, payload, runtime.snapshot().revision)
+    let result: unknown
+    switch (request.operation) {
+      case "environment_add": { const input = { environmentId: request.environmentId, execServerUrl: request.execServerUrl, ...(request.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: request.connectTimeoutMs }) }; await runtime.addEnvironment(input, authorize("environment_add", input)); break }
+      case "environment_reconnect": { const input = { environmentId: request.environmentId, execServerUrl: request.execServerUrl }; await runtime.reconnectEnvironment(request.environmentId, request.execServerUrl, authorize("environment_add", input)); break }
+      case "environment_target": result = runtime.turnEnvironment(request.environmentRef, request.cwd); break
+      case "process_spawn": { const input = { command: request.command, cwd: request.cwd, ...(request.tty === undefined ? {} : { tty: request.tty }), ...(request.rows === undefined ? {} : { rows: request.rows }), ...(request.cols === undefined ? {} : { cols: request.cols }), ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }) }; result = await runtime.spawnProcess(input, authorize("process_spawn", input)); break }
+      case "process_write": await runtime.writeProcess(request.processRef, request.dataBase64, request.closeStdin); break
+      case "process_resize": await runtime.resizeProcess(request.processRef, request.rows, request.cols); break
+      case "process_kill": await runtime.killProcess(request.processRef, authorize("process_control", { processRef: request.processRef, operation: "kill" })); break
+      case "terminal_list": await runtime.listBackgroundTerminals(request.threadId); break
+      case "terminal_clean": { const payload = { threadId: request.threadId, operation: "clean" }; await runtime.cleanBackgroundTerminals(request.threadId, authorize("terminal_mutation", payload)); break }
+      case "terminal_terminate": { const payload = { threadId: request.threadId, processRef: request.processRef, operation: "terminate" }; result = await runtime.terminateBackgroundTerminal(request.threadId, request.processRef, authorize("terminal_mutation", payload)); break }
+      case "realtime_start": { const input = { threadId: request.threadId, outputModality: request.outputModality, transport: request.transport, ...(request.voice === undefined ? {} : { voice: request.voice }) }; await runtime.startRealtime(input, authorize("realtime_start", input)); break }
+      case "realtime_audio": { const payload = { threadId: request.threadId, audio: request.audio }; await runtime.appendRealtimeAudio(request.threadId, request.audio, authorize("realtime_audio", payload)); break }
+      case "realtime_text": await runtime.appendRealtimeText(request.threadId, request.text, request.role); break
+      case "realtime_speech": await runtime.appendRealtimeSpeech(request.threadId, request.text); break
+      case "realtime_stop": await runtime.stopRealtime(request.threadId); break
+      case "realtime_voices": result = await runtime.listVoices(); break
+      case "remote_enable": await runtime.enableRemoteControl(authorize("remote_control", { operation: "enable" })); break
+      case "remote_disable": await runtime.disableRemoteControl(authorize("remote_control", { operation: "disable" })); break
+      case "remote_status": await runtime.remoteStatus(); break
+      case "remote_pair": { const payload = { operation: "pair", manualCode: request.manualCode }; result = await runtime.startPairing(request.manualCode, authorize("remote_control", payload)); break }
+      case "remote_pair_status": result = await runtime.pairingStatus(request.pairingRef); break
+      case "remote_clients": await runtime.listRemoteClients(request.environmentId); break
+      case "remote_revoke": { const payload = { environmentId: request.environmentId, clientRef: request.clientRef }; await runtime.revokeRemoteClient(request.environmentId, request.clientRef, authorize("remote_revoke", payload)); break }
+      case "memory_reset": await runtime.resetMemory(request.confirmation, authorize("memory_reset", { confirmation: request.confirmation })); break
+      case "thread_elicitation": { const payload = { threadId: request.threadId, direction: request.direction }; await runtime.adjustElicitation(request.threadId, request.direction, authorize("thread_control", payload)); break }
+    }
+    return { ok: true, result, snapshot: runtime.snapshot() }
+  } catch (error) { return { ok: false, reason: typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string" ? error.reason : "experimental_request_failed" } }
 })
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
@@ -5820,6 +5876,7 @@ app.on("before-quit", () => {
   codexThreadLifecycles.close()
   codexEcosystems.close()
   codexHostServices.close()
+  codexExperimentalRuntimes.close()
   codexDurableQueue.close()
   codexAppServerSupervisor.close()
   usageLedger.dispose()

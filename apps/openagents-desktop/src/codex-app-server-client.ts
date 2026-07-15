@@ -91,6 +91,7 @@ export const openCodexAppServerClient = (input: Readonly<{
   onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>
   onProtocolMessage?: (message: CodexAppServerProtocolMessage) => void
   strictGeneratedDecoding?: boolean
+  experimentalApi?: boolean
   onClose?: (error: CodexAppServerError) => void
   onStderr?: (chunk: string) => void
 }>): CodexAppServerClient => {
@@ -268,7 +269,7 @@ export const openCodexAppServerClient = (input: Readonly<{
       if (initialized !== null) return initialized
       initialized = request("initialize", {
         clientInfo: { name: "openagents_desktop", title: "OpenAgents Desktop", version: "0.1.0" },
-        capabilities: { experimentalApi: false },
+        capabilities: { experimentalApi: input.experimentalApi === true },
       }).then(() => write({ method: "initialized", params: {} }))
       return initialized
     },

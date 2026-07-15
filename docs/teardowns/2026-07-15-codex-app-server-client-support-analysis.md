@@ -324,6 +324,47 @@ absent on non-Windows hosts and has a dedicated `windows-latest` contract job,
 including junction-escape coverage. An exact packaged-binary smoke performs a
 real filesystem round trip and bounded command execution through app-server.
 
+### Implementation status: CAP-10
+
+CAP-10 introduces a separate pooled connection whose initialize handshake sets
+`experimentalApi: true` only when a programmatically generated gate proves an
+exact 45/45 match. That inventory combines every bundled experimental-gated
+request except the protocol's mock method with the runtime-declared process,
+remote-control, and realtime notifications that must be retained. Earlier
+CAPs own collaboration modes, fuzzy sessions, and thread paging/settings;
+CAP-10 owns environments, unsandboxed processes, background terminals,
+realtime, remote control, memory reset, and the remaining elicitation controls.
+Any missing or extra handler keeps the experimental connection disabled.
+
+Remote environments retain the private environment ID and exec-server URL only
+in main. Public state uses hashed refs, records connected/disconnected/failed,
+and refuses a turn environment selector while disconnected. Reconnect re-adds
+the same identity explicitly. The exact-binary smoke launches a real local
+`codex exec-server`, adds it as a remote environment, starts an ephemeral thread
+with its `{environmentId,cwd}` target, and then proves a separate unsandboxed
+`process/spawn` lifecycle through the packaged app-server.
+
+Unsandboxed processes consume one-shot spawn authority and receive a
+connection-scoped random handle. Output can arrive before spawn acknowledgement;
+the runtime retains and replays that bounded race by handle before publishing
+the process. Raw stdout/stderr is mode-0600 private spool data; public state has
+only opaque process/spool refs, byte counts, cap state, lifecycle, and exit code.
+PTY input/resize is restricted to a live owned ref, kill consumes confirmed
+control authority, and disconnect/close marks or kills every owned process.
+Background terminal command/cwd/PID data is reduced to opaque refs and exact
+thread/process ownership before clean/terminate can run.
+
+Realtime sessions similarly expose only thread/session refs, transport, state,
+counts, SDP readiness, and cap state. Transcript text, SDP, and output audio are
+privately spooled; audio input has per-chunk and per-session budgets. WebSocket
+and WebRTC start, input audio/text/speech, item/transcript/audio/SDP events,
+error, stop, close, and generation interruption all have explicit terminal
+states. Pairing codes, installation IDs, client IDs, and environment IDs never
+enter public projections: correlated refs drive claim status, client listing,
+and exact revocation. Memory reset requires the literal `RESET`; elicitation
+increment/decrement, remote enable/disable, and all other dangerous mutations
+consume confirmation-bound authority and append hashed private receipts.
+
 ## Scope and source snapshots
 
 This is a source audit, not a runtime certification. Counts refer to these

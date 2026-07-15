@@ -40,6 +40,8 @@ export type CodexAppServerPoolTarget = Readonly<{
   accountRef: string | null
   /** Stable local/remote host identity selected by the main process. */
   hostTarget: string
+  /** Enabled only by a complete generated experimental-family host. */
+  experimentalApi?: boolean
 }>
 
 export type CodexAppServerPoolIdentity = Readonly<{
@@ -48,6 +50,7 @@ export type CodexAppServerPoolIdentity = Readonly<{
   codexHome: string | null
   accountRef: string | null
   hostTarget: string
+  experimentalApi: boolean
 }>
 
 export const codexAppServerPoolIdentity = (
@@ -58,6 +61,7 @@ export const codexAppServerPoolIdentity = (
   codexHome: target.env.CODEX_HOME ?? null,
   accountRef: target.accountRef,
   hostTarget: target.hostTarget,
+  experimentalApi: target.experimentalApi === true,
 })
 
 export const codexAppServerPoolKey = (target: CodexAppServerPoolTarget): string => {
@@ -68,6 +72,7 @@ export const codexAppServerPoolKey = (target: CodexAppServerPoolTarget): string 
     identity.codexHome,
     identity.accountRef,
     identity.hostTarget,
+    identity.experimentalApi,
   ])
 }
 
@@ -214,6 +219,7 @@ const defaultFactory: CodexAppServerClientFactory = ({
     onClose,
     onProtocolMessage,
     strictGeneratedDecoding,
+    experimentalApi: target.experimentalApi === true,
     ...(target.spawnImpl === undefined ? {} : { spawnImpl: target.spawnImpl }),
     ...(target.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: target.requestTimeoutMs }),
   })
