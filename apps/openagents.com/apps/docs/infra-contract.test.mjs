@@ -43,3 +43,19 @@ test('the docs deploy is static, secretless, and pinned to its own service', () 
   assert.match(deploy, /gcloud run deploy "\$SERVICE"/)
   assert.doesNotMatch(deploy, /--set-secrets|--set-env-vars|--add-cloudsql-instances/)
 })
+
+test('the drawer toggle disappears when Blume switches to its static desktop sidebar', () => {
+  const theme = readRepoFile(
+    'apps',
+    'openagents.com',
+    'apps',
+    'docs',
+    'theme.css',
+  )
+
+  assert.match(theme, /@media \(min-width: 64rem\)/)
+  assert.match(
+    theme,
+    /\.oa-icon-button\[data-blume-nav-toggle\]\s*\{\s*display:\s*none;/,
+  )
+})

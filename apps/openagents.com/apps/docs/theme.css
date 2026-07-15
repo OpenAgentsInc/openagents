@@ -171,6 +171,14 @@ article a {
   }
 }
 
+/* The docs drawer becomes a static sidebar at Blume's lg breakpoint. Keep the
+   toggle out of the desktop header even though our button base sets display. */
+@media (min-width: 64rem) {
+  .oa-icon-button[data-blume-nav-toggle] {
+    display: none;
+  }
+}
+
 @media (max-width: 30rem) {
   .oa-docs-brand small,
   .oa-product-links {
