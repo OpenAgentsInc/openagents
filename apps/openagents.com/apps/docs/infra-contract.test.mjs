@@ -52,6 +52,9 @@ test('docs navigation uses the Astro client router without a visible page crossf
 
   assert.match(header, /import \{ ClientRouter \} from 'astro:transitions'/)
   assert.match(header, /<ClientRouter fallback="swap" \/>/)
+  assert.match(header, /target\.pathname!=='\/docs'/)
+  assert.match(header, /target\.pathname\.startsWith\('\/docs\/'\)/)
+  assert.match(header, /link\.dataset\.astroReload=''/)
   assert.match(theme, /::view-transition-old\(root\)/)
   assert.match(theme, /::view-transition-new\(root\)/)
   assert.match(theme, /animation-duration: 0\.01ms/)
