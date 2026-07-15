@@ -310,9 +310,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "the sessions are saved to this fucking app support shit ... needs to go into the current directory where the app was started from by default, and later configurable in a dir",
         authorityBoundary:
-          "Electron main captures process.cwd() at module launch and supplies that exact directory as the top-level Claude and Codex coding cwd. The provider runtimes may not silently substitute an Application Support per-thread directory. The cwd crosses through an explicit host getter so a later persisted directory picker can replace the launch default without changing either provider runtime. Smoke/live-proof runs remain isolated under test userData; probes, account custody, and delegated child scratch work are unchanged. This default cwd does not grant the renderer path-selection authority.",
+          "Electron main captures the owner launcher directory at module launch (OPENAGENTS_DESKTOP_LAUNCH_CWD for a managed launcher, otherwise process.cwd()), validates it as a directory, admits it as the initial canonical WorkContext, and supplies that exact directory as the top-level Claude and Codex coding cwd. It supersedes stale persisted navigation on every ordinary launch; an explicit in-app directory choice may replace it afterward. The provider runtimes may not silently substitute an Application Support per-thread directory. Smoke/live-proof runs remain isolated under test userData; probes, account custody, and delegated child scratch work are unchanged. This launch admission does not grant the renderer absolute path-selection authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/desktop-launch-workspace.ts",
+          "apps/openagents-desktop/src/desktop-launch-workspace.test.ts",
           "apps/openagents-desktop/src/fable-local-runtime.ts",
           "apps/openagents-desktop/src/codex-local-runtime.ts",
         ],

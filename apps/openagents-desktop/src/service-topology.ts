@@ -188,6 +188,10 @@ export const desktopServiceTopology = [
       invalidatesOn: ["app-shutdown"],
     },
     perimeter: true,
+    // The process perimeter may capture the owner's launch directory exactly
+    // once. It validates the path and converts it into an explicit
+    // WorkContext grant before any narrower service receives it.
+    ambientAuthority: ["cwd"],
     ownedResources: [{ kind: "native_handle", disposesWith: "process" }],
     failureTaxonomy: "invariant_defect",
   },
@@ -839,7 +843,10 @@ export const validateDesktopServiceTopology = (
     if (entry.scope === "renderer_view" && entry.authority.some(authority => authority !== "view_projection")) {
       violations.push(violation("renderer_runtime_authority", entry.id, "Renderer/view state may only own view projections."))
     }
-    if ((entry.ambientAuthority?.length ?? 0) > 0) {
+    if ((entry.ambientAuthority?.length ?? 0) > 0 && (
+      entry.perimeter !== true || entry.scope !== "process" ||
+      entry.ambientAuthority?.some(authority => authority !== "cwd")
+    )) {
       violations.push(violation("ambient_authority", entry.id, `Ambient authority: ${entry.ambientAuthority?.join(", ")}.`))
     }
     if (entry.cacheKey === undefined) {
@@ -1026,7 +1033,7 @@ export const validateDesktopServiceSourceCoupling = (
     }
 
     for (const ambient of sourceAmbientPatterns) {
-      if (ambient.pattern.test(implementation)) {
+      if (ambient.pattern.test(implementation) && !entry.ambientAuthority?.includes(ambient.name as "cwd" | "async_local_storage")) {
         violations.push(violation(
           "source_ambient_authority",
           entry.id,

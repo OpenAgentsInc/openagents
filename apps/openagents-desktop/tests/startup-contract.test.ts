@@ -140,6 +140,15 @@ describe("startup contract: window before persistence/keychain/network (main.ts)
   test("the pre-boot BrowserWindow background stays the khala token background", () => {
     expect(mainSource).toContain(`backgroundColor: "${khalaTheme.color.background}"`)
   })
+
+  test("ordinary startup admits the validated launcher directory before restoring the WorkContext", () => {
+    const resolve = mainSource.indexOf("const desktopLaunchWorkingDirectory = desktopLaunchWorkspaceRoot({")
+    const select = mainSource.indexOf("selectWorkspace(desktopLaunchWorkingDirectory)")
+    const restore = mainSource.indexOf("const restoredRoot = syncHost.codingCatalog()?.selectedRoot()")
+    expect(resolve).toBeGreaterThan(-1)
+    expect(select).toBeGreaterThan(resolve)
+    expect(restore).toBeGreaterThan(select)
+  })
 })
 
 // ---------------------------------------------------------------------------

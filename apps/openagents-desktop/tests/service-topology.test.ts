@@ -187,6 +187,15 @@ describe("Desktop service topology oracle (#8678)", () => {
     ])).toContain("ambient_authority")
   })
 
+  test("allows only launch cwd at the named process composition perimeter", () => {
+    expect(codes([
+      service({ id: "composition", scope: "process", perimeter: true, ambientAuthority: ["cwd"] }),
+    ])).not.toContain("ambient_authority")
+    expect(codes([
+      service({ id: "composition", scope: "process", perimeter: true, ambientAuthority: ["async_local_storage"] }),
+    ])).toContain("ambient_authority")
+  })
+
   test("derives and rejects renderer filesystem, process, network, and secret authority from source", () => {
     const renderer = service({
       id: "renderer",

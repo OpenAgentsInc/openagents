@@ -796,8 +796,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   regressions live in `packages/khala-sync-client/src/session.test.ts`,
   `packages/khala-sync-client/src/sqlite-store.test.ts`, and
   `apps/openagents-desktop/tests/native-timeline-fault-convergence.e2e.test.ts`.
-- A Desktop workspace exists only after an explicit directory-picker grant and
-  remains one WorkContext-owned main-process capability. The new recursive
+- A Desktop workspace exists after the owner explicitly launches the app from
+  a directory or chooses one with the directory picker, and remains one
+  WorkContext-owned main-process capability. A managed launcher preserves its
+  original directory through `OPENAGENTS_DESKTOP_LAUNCH_CWD`; Electron main
+  validates and admits that root on every ordinary startup, superseding stale
+  persisted navigation. Direct executable launches use their captured
+  `process.cwd()`. Neither path gives the renderer absolute-path selection
+  authority. The new recursive
   tree/search projections carry the opaque grant ref, relative path refs,
   bounded page/result counts, and a declared cache key/epoch/freshness fact;
   they never carry the selected absolute root, a native handle, or an ambient

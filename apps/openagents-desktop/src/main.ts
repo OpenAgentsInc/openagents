@@ -101,6 +101,7 @@ import {
 } from "./desktop-renderer-location.ts"
 import { desktopWorkerUrl } from "./desktop-worker-location.ts"
 import { desktopRuntimeWorkspaceRoot } from "./desktop-runtime-workspace.ts"
+import { desktopLaunchWorkspaceRoot } from "./desktop-launch-workspace.ts"
 import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FableLocalAnswerQuestionChannel,
@@ -481,10 +482,19 @@ const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
 const hiddenAutomationMode = (
   smokeMode || startupTraceMode || liveProofDriverMode || mvpProofDriverMode
 ) && process.env.OPENAGENTS_DESKTOP_HEADED !== "1"
-// Capture before any host lifecycle can change process state. This is the
-// default top-level coding workspace today; the runtime-facing getter is the
-// seam a future persisted directory setting/picker will replace.
-const desktopLaunchWorkingDirectory = path.resolve(app.getPath("home"))
+// Capture before any host lifecycle can change process state. Launchers that
+// need to enter their own managed source tree first preserve the user's
+// original directory in OPENAGENTS_DESKTOP_LAUNCH_CWD. A direct executable
+// launch naturally falls back to process.cwd(). The host validates both and
+// never exposes the absolute root to the renderer.
+const desktopLaunchWorkingDirectory = desktopLaunchWorkspaceRoot({
+  explicitRoot: process.env.OPENAGENTS_DESKTOP_LAUNCH_CWD,
+  processWorkingDirectory: process.cwd(),
+  homeRoot: app.getPath("home"),
+  isDirectory: candidate => {
+    try { return statSync(candidate).isDirectory() } catch { return false }
+  },
+})
 const productionUserDataPath = path.join(app.getPath("appData"), "OpenAgents")
 const developmentUserDataPath = path.join(app.getPath("appData"), "OpenAgents Dev")
 const legacyDevelopmentUserDataPath = path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
@@ -1102,8 +1112,10 @@ const disableWorkspaceChangeSubscription = (windowId: number): void => {
   requestedWorkspaceChangeWindows.delete(windowId)
   closeWorkspaceChangeSubscription(windowId)
 }
-// Local file authority begins only after an explicit directory-picker choice.
-// A process working directory or environment default is not user selection.
+// Local file authority begins with the directory the owner explicitly launched
+// the app from, or with a later directory-picker choice. The launch root is
+// captured and validated in main; renderer input never selects an absolute
+// path.
 const workspaceSnapshot = () => {
   const workspace = hostLifecycle.workspace()
   if (workspace === null) return null
@@ -5143,6 +5155,13 @@ void app.whenReady().then(async () => {
         // Deterministic CUT-13 built-host fixture: real local SQLite/catalog and
         // private binding path, without provider or remote authority claims.
         syncHost.codingCatalog()?.selectWorkspace(path.join(smokeFixtureRoot, "codex-smoke"))
+      }
+      if (isolatedWorkspaceRoot === null && !smokeMode) {
+        // Every ordinary launch starts in the directory that launched it.
+        // This deliberately supersedes stale persisted navigation; opening a
+        // different catalog session or choosing another folder can replace it
+        // after startup.
+        syncHost.codingCatalog()?.selectWorkspace(desktopLaunchWorkingDirectory)
       }
       const restoredRoot = syncHost.codingCatalog()?.selectedRoot() ?? null
       if (restoredRoot !== null && !installAdmittedCodingWorkspace(restoredRoot)) {
