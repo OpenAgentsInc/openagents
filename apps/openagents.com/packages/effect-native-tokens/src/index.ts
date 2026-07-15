@@ -1,4 +1,7 @@
 import { Context, Layer, Schema } from "effect"
+import { KhalaUiThemeSchema } from "./khala-ui"
+
+export * from "./khala-ui"
 
 export const packageName = "@effect-native/tokens" as const
 
@@ -672,7 +675,8 @@ export const ThemeSchema = Schema.Struct({
   dimension: DimensionThemeSchema,
   motion: MotionThemeSchema,
   elevation: ElevationThemeSchema,
-  control: ControlThemeSchema
+  control: ControlThemeSchema,
+  khalaUi: KhalaUiThemeSchema
 })
 
 export type SpacingTheme = Schema.Schema.Type<typeof SpacingThemeSchema>
@@ -686,6 +690,7 @@ export type MotionTheme = Schema.Schema.Type<typeof MotionThemeSchema>
 export type ElevationTheme = Schema.Schema.Type<typeof ElevationThemeSchema>
 export type ControlSizeValue = Schema.Schema.Type<typeof ControlSizeValueSchema>
 export type ControlTheme = Schema.Schema.Type<typeof ControlThemeSchema>
+export type KhalaUiTheme = Schema.Schema.Type<typeof KhalaUiThemeSchema>
 export type Theme = Schema.Schema.Type<typeof ThemeSchema>
 
 /**
@@ -1027,6 +1032,24 @@ export const defaultTheme = ThemeSchema.make({
     md: { height: 28, gutter: 10, radius: 6, fontSize: 14, icon: 16 },
     lg: { height: 32, gutter: 12, radius: 6, fontSize: 14, icon: 18 },
     xl: { height: 40, gutter: 14, radius: 8, fontSize: 16, icon: 20 }
+  },
+  khalaUi: {
+    edgeWidth: { hairline: 1, structural: 1, emphasis: 2 },
+    cutSize: { none: 0, small: 4, medium: 8, large: 12 },
+    accentLength: { short: 24, medium: 48, long: 72 },
+    luminance: { quiet: "borderSubtle", structural: "borderStrong", signal: "accent", focus: "focus" },
+    density: {
+      compact: { gap: 4, cut: "small", accent: "short" },
+      comfortable: { gap: 8, cut: "medium", accent: "medium" },
+      spacious: { gap: 12, cut: "large", accent: "long" }
+    },
+    ambientQuality: {
+      off: { opacity: 0, detail: 0 },
+      restrained: { opacity: 0.08, detail: 1 },
+      enhanced: { opacity: 0.12, detail: 2 }
+    },
+    responsiveCollapse: { borderOnlyBelow: 160, simplifiedBelow: 280 },
+    focusClearance: 4
   }
 })
 
@@ -1123,6 +1146,24 @@ export const khalaTheme = ThemeSchema.make({
     md: { height: 28, gutter: 10, radius: 4, fontSize: 13, icon: 16 },
     lg: { height: 32, gutter: 12, radius: 4, fontSize: 14, icon: 18 },
     xl: { height: 40, gutter: 14, radius: 6, fontSize: 16, icon: 20 }
+  },
+  khalaUi: {
+    edgeWidth: { hairline: 1, structural: 1, emphasis: 2 },
+    cutSize: { none: 0, small: 4, medium: 8, large: 12 },
+    accentLength: { short: 24, medium: 48, long: 72 },
+    luminance: { quiet: "borderSubtle", structural: "borderStrong", signal: "accent", focus: "focus" },
+    density: {
+      compact: { gap: 4, cut: "small", accent: "short" },
+      comfortable: { gap: 8, cut: "medium", accent: "medium" },
+      spacious: { gap: 12, cut: "large", accent: "long" }
+    },
+    ambientQuality: {
+      off: { opacity: 0, detail: 0 },
+      restrained: { opacity: 0.08, detail: 1 },
+      enhanced: { opacity: 0.12, detail: 2 }
+    },
+    responsiveCollapse: { borderOnlyBelow: 160, simplifiedBelow: 280 },
+    focusClearance: 4
   }
 })
 

@@ -10,7 +10,16 @@ import {
   type ReactElement,
 } from "react"
 import { createRoot, type Root } from "react-dom/client"
-import { ComponentValueBinding, IntentRef, type IconName, type IntentError, type IntentReporter, type JsonPayload } from "@effect-native/core"
+import {
+  ComponentValueBinding,
+  Frame,
+  IntentRef,
+  type FrameView,
+  type IconName,
+  type IntentError,
+  type IntentReporter,
+  type JsonPayload,
+} from "@effect-native/core"
 import { Effect, Scope, Stream } from "@effect-native/core/effect"
 import { mountDomThemeStyleSheet } from "@effect-native/render-dom"
 import {
@@ -32,9 +41,10 @@ import {
 import {
   ReactSurfaceErrorBoundary,
   makeReactViewStore,
+  renderReactDomView,
   type ReactViewStore,
 } from "@effect-native/render-dom/react"
-import type { Theme } from "@effect-native/tokens"
+import { khalaTheme, type Theme } from "@effect-native/tokens"
 import { Button } from "#components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert"
 import {
@@ -356,6 +366,41 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
   </aside>
 }
 
+const staticKhalaReporter: IntentReporter = () => Effect.void
+const projectHomeFrameSize = [960, 640] as const
+const projectHomeStatusSize = [240, 32] as const
+const projectHomeFrame = Frame({
+  key: "project-home-khala-frame",
+  a11y: { hidden: true },
+  khala: {
+    id: "desktop-project-home-frame",
+    motif: "cut-corner-surface",
+    width: projectHomeFrameSize[0],
+    height: projectHomeFrameSize[1],
+    density: "comfortable",
+  },
+})
+const projectHomeStatusAccent = Frame({
+  key: "project-home-khala-status-accent",
+  a11y: { hidden: true },
+  khala: {
+    id: "desktop-project-home-status",
+    motif: "header-line",
+    width: projectHomeStatusSize[0],
+    height: projectHomeStatusSize[1],
+    density: "compact",
+  },
+})
+
+const StaticKhalaDecoration = ({ view, placement }: {
+  readonly view: FrameView
+  readonly placement: "frame" | "status"
+}): ReactElement => <div
+  className="oa-react-khala-decoration"
+  data-project-home-khala-decoration={placement}
+  aria-hidden="true"
+>{renderReactDomView(view, { report: staticKhalaReporter, theme: khalaTheme })}</div>
+
 export const WorkbenchShell = ({ state, report }: {
   readonly state: DesktopShellState
   readonly report: IntentReporter
@@ -400,8 +445,9 @@ export const WorkbenchShell = ({ state, report }: {
     setRailOpen(false)
   }
   const workspaceSurface = state.workspace === "home"
-    ? <main className="oa-react-workspace-surface" data-react-workspace="home">
-        <header><div><p>Project home</p><h1>Coding sessions</h1></div><span>{state.codingCatalog.authorityLabel}</span></header>
+    ? <main className="oa-react-workspace-surface oa-react-project-home-khala" data-react-workspace="home">
+        <StaticKhalaDecoration view={projectHomeFrame} placement="frame" />
+        <header><div><p>Project home</p><h1>Coding sessions</h1></div><div className="oa-react-project-home-status"><StaticKhalaDecoration view={projectHomeStatusAccent} placement="status" /><span>{state.codingCatalog.authorityLabel}</span></div></header>
         <p>Resume the exact project, repository, worktree, and task context from this Mac.</p>
         <Button type="button" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}>Open project folder</Button>
         <section aria-label="Coding sessions">

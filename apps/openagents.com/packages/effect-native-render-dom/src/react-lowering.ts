@@ -12,6 +12,8 @@ import {
   type View
 } from "@effect-native/core"
 import { createElement, type CSSProperties, type ReactElement } from "react"
+import { defaultTheme, type Theme } from "@effect-native/tokens"
+import { resolveKhalaStaticDecoration } from "./khala-static.js"
 
 export class UnsupportedReactViewError extends Error {
   readonly viewTag: View["_tag"]
@@ -24,6 +26,7 @@ export class UnsupportedReactViewError extends Error {
 
 export interface ReactLoweringContext {
   readonly report: IntentReporter
+  readonly theme?: Theme
 }
 
 const cssToken = (kind: string, token: string): string => `var(--en-${kind}-${token})`
@@ -174,6 +177,77 @@ const lower = (view: View, context: ReactLoweringContext): ReactElement => {
           ? { width: 1, alignSelf: "stretch", borderLeft: `1px solid ${cssToken("color", "border")}` }
           : { height: 1, borderTop: `1px solid ${cssToken("color", "border")}` }, style)
       })
+    }
+    case "Frame": {
+      const frameStyle = mergeStyle({
+        position: "relative",
+        overflow: "visible",
+        isolation: "isolate",
+        padding: cssToken("spacing", "3"),
+        border: view.khala === undefined ? `1px solid ${cssToken("color", "accent")}` : undefined,
+        borderRadius: view.variant === "rounded" || view.variant === "arcade" ? cssToken("radius", "lg") : undefined
+      }, style)
+      if (view.khala === undefined) {
+        return createElement(
+          "div",
+          { ...base, "data-en-frame": view.variant ?? "square", style: frameStyle },
+          ...view.children.map((child) => lower(child, context))
+        )
+      }
+
+      const decoration = resolveKhalaStaticDecoration(view.khala, context.theme ?? defaultTheme)
+      return createElement(
+        "div",
+        {
+          ...base,
+          "data-en-frame": view.variant ?? "square",
+          "data-en-khala": view.khala.motif,
+          "data-en-khala-id": decoration.id,
+          "data-en-khala-collapse": decoration.geometry.collapse,
+          style: frameStyle
+        },
+        createElement(
+          "svg",
+          {
+            key: decoration.id,
+            id: decoration.id,
+            "data-en-khala-decoration": "true",
+            "data-en-khala-decorative-nodes": String(decoration.paths.length + 1),
+            "aria-hidden": true,
+            focusable: false,
+            viewBox: `0 0 ${view.khala.width} ${view.khala.height}`,
+            preserveAspectRatio: "none",
+            style: {
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              overflow: "visible",
+              pointerEvents: "none",
+              zIndex: 0
+            }
+          },
+          ...decoration.paths.map((group) => createElement("path", {
+            key: group.id,
+            id: group.id,
+            "data-en-khala-role": group.role,
+            d: group.data,
+            fill: "none",
+            stroke: view.khala?.forcedColors === true ? "CanvasText" : cssToken("color", group.color),
+            strokeWidth: group.width,
+            vectorEffect: "non-scaling-stroke"
+          }))
+        ),
+        createElement(
+          "div",
+          {
+            key: `${decoration.id}-content`,
+            "data-en-khala-content": "true",
+            style: { position: "relative", zIndex: 1 }
+          },
+          ...view.children.map((child) => lower(child, context))
+        )
+      )
     }
     default:
       throw new UnsupportedReactViewError(view._tag)

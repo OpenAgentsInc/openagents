@@ -793,6 +793,17 @@ numbers as point-in-time baselines, not universal budgets.
 **Exit:** each pilot passes visual, accessibility, startup/bundle, keyboard, and
 headed smoke review; owner acceptance is recorded before wider rollout.
 
+**Pilot 1 implementation receipt (2026-07-15):** Desktop Project Home is
+implemented on [#8845](https://github.com/OpenAgentsInc/openagents/issues/8845)
+with Effect Native `effect-native/v42`. The bounded static frame, continuous
+cut-corner perimeter and header accent, exact startup/bundle A/B,
+security/accessibility boundaries, and before/after images are preserved in the
+[Project Home pilot receipt](./2026-07-15-khala-ui-desktop-project-home-pilot-receipt.md).
+Owner review corrected the shared header join in effect-native#95 and removed
+the competing top stroke in effect-native#96; neither fix is an app-local CSS
+shim. The ordered #8846 Settings pilot remains gated on recorded owner visual
+acceptance of the corrected artifact.
+
 ### KU-5 — Effect-owned choreography
 
 **Goal:** add intentional motion after static correctness.

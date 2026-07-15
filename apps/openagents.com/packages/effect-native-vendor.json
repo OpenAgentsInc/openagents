@@ -1,9 +1,9 @@
 {
   "$comment": "Single source of truth for the vendored @effect-native/* snapshot. The monorepo vendors unbuilt TypeScript from OpenAgentsInc/effect-native (not published to npm) as workspace members. This manifest pins the exact upstream commit and catalog version behind every vendored package. The guard test `effect-native-vendor.test.ts` asserts every vendored package.json records THIS commit (no partial bumps) and that the vendored core's CatalogVersion literal equals catalogVersion below. The freshness script `scripts/check-effect-native-vendor-freshness.ts` warns (never hard-fails) when the sibling upstream checkout has moved ahead of this commit. To re-vendor: bump the commit here, re-copy each package's upstream src/**, update each package.json effectNativeVendor.commit, and update catalogVersion.",
   "repo": "OpenAgentsInc/effect-native",
-  "commit": "ec04d1a066d6f3ed0c67735ba451cfc90a343aa8",
-  "catalogVersion": "effect-native/v39",
-  "vendoredAt": "2026-07-14",
+  "commit": "712c112fa2f0176cfe2d45dc50bc5bbeb9ea60b7",
+  "catalogVersion": "effect-native/v42",
+  "vendoredAt": "2026-07-15",
   "vendoredPackages": [
     "apps/openagents.com/packages/effect-native-core",
     "apps/openagents.com/packages/effect-native-tokens",

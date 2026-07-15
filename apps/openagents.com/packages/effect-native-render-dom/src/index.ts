@@ -160,6 +160,7 @@ import {
   type ToneToken,
   type TypeScaleToken
 } from "@effect-native/tokens"
+import { resolveKhalaStaticDecoration } from "./khala-static.js"
 
 export const packageName = "@effect-native/render-dom" as const
 
@@ -6304,10 +6305,59 @@ const renderMobileSurfaceShell = (
   }
   if (view._tag === "Frame") {
     el.setAttribute("data-en-frame", view.variant ?? "square")
-    el.style.border = "1px solid var(--en-color-accent)"
+    el.style.border = view.khala === undefined ? "1px solid var(--en-color-accent)" : "none"
     el.style.borderRadius =
       view.variant === "rounded" || view.variant === "arcade" ? "var(--en-radius-lg)" : "0"
     el.style.padding = "var(--en-spacing-3)"
+    if (view.khala !== undefined) {
+      const decoration = resolveKhalaStaticDecoration(view.khala, state.theme)
+      el.setAttribute("data-en-khala", view.khala.motif)
+      el.setAttribute("data-en-khala-id", decoration.id)
+      el.setAttribute("data-en-khala-collapse", decoration.geometry.collapse)
+      el.style.position = "relative"
+      el.style.overflow = "visible"
+      el.style.isolation = "isolate"
+
+      const svg = el.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "svg")
+      svg.setAttribute("id", decoration.id)
+      svg.setAttribute("data-en-khala-decoration", "true")
+      svg.setAttribute("data-en-khala-decorative-nodes", String(decoration.paths.length + 1))
+      svg.setAttribute("aria-hidden", "true")
+      svg.setAttribute("focusable", "false")
+      svg.setAttribute("viewBox", `0 0 ${view.khala.width} ${view.khala.height}`)
+      svg.setAttribute("preserveAspectRatio", "none")
+      svg.style.position = "absolute"
+      svg.style.inset = "0"
+      svg.style.width = "100%"
+      svg.style.height = "100%"
+      svg.style.overflow = "visible"
+      svg.style.pointerEvents = "none"
+      svg.style.zIndex = "0"
+      for (const group of decoration.paths) {
+        const path = el.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path")
+        path.setAttribute("id", group.id)
+        path.setAttribute("data-en-khala-role", group.role)
+        path.setAttribute("d", group.data)
+        path.setAttribute("fill", "none")
+        path.setAttribute(
+          "stroke",
+          view.khala.forcedColors === true ? "CanvasText" : `var(--en-color-${group.color})`
+        )
+        path.setAttribute("stroke-width", String(group.width))
+        path.setAttribute("vector-effect", "non-scaling-stroke")
+        svg.appendChild(path)
+      }
+
+      const content = el.ownerDocument.createElement("div")
+      content.setAttribute("data-en-khala-content", "true")
+      content.style.position = "relative"
+      content.style.zIndex = "1"
+      content.replaceChildren(...view.children.map((child) => renderView(child, state, report)))
+      el.replaceChildren(svg, content)
+      applyBaseStyle(el, view, state)
+      applyA11y(el, view)
+      return el
+    }
   }
   el.replaceChildren(...view.children.map((child) => renderView(child, state, report)))
   applyBaseStyle(el, view, state)

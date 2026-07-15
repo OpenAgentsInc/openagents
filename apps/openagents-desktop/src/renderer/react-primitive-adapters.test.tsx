@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vite-plus/test"
 import { Window } from "happy-dom"
-import { act, type ReactNode } from "react"
+import { act, StrictMode, type ReactNode } from "react"
 import type { Root } from "react-dom/client"
 import { createRoot } from "react-dom/client"
 import { resolveIntentRef, type IntentReporter } from "@effect-native/core"
@@ -502,6 +502,35 @@ describe("React workbench shell", () => {
     expect(expand).not.toBeNull()
     expect(expand?.querySelector('[data-icon-name="Menu"]')).not.toBeNull()
     expect(container.querySelector('input[type="search"]')).toBeNull()
+  })
+
+  test("keeps static Project Home motifs inert and singular through Strict Mode replay", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const state = { ...fixtureState(), workspace: "home" as const }
+    await render(root, <StrictMode>
+      <WorkbenchShell state={state} report={() => Effect.void} />
+    </StrictMode>)
+
+    const decorations = [...container.querySelectorAll<HTMLElement>("[data-project-home-khala-decoration]")]
+    expect(decorations.map(node => node.dataset.projectHomeKhalaDecoration)).toEqual(["frame", "status"])
+    expect(container.querySelectorAll('[data-en-khala="cut-corner-surface"]')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-en-khala="header-line"]')).toHaveLength(1)
+    expect(container.querySelectorAll("#en-khala-desktop-project-home-frame")).toHaveLength(1)
+    expect(container.querySelectorAll("#en-khala-desktop-project-home-status")).toHaveLength(1)
+    expect(container.querySelectorAll("[data-en-khala-decoration]")).toHaveLength(2)
+    for (const decoration of decorations) {
+      expect(decoration.getAttribute("aria-hidden")).toBe("true")
+      expect(decoration.querySelector("button, a, input, [tabindex]")).toBeNull()
+      expect(decoration.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true")
+      expect(decoration.querySelector("svg")?.getAttribute("focusable")).toBe("false")
+    }
+
+    await render(root, <StrictMode>
+      <WorkbenchShell state={state} report={() => Effect.void} />
+    </StrictMode>)
+    expect(container.querySelectorAll("[data-project-home-khala-decoration]")).toHaveLength(2)
+    expect(container.querySelector('[data-react-workspace="home"] h1')?.textContent).toBe("Coding sessions")
   })
 
   test("projects authoritative back/forward availability and dispatches one typed intent per click", async () => {

@@ -50,6 +50,41 @@ describe('effect-native vendor guard', () => {
     expect(source).toContain('data-en-react-surface')
   })
 
+  test('catalog v42 carries the continuous static Khala frame boundary atomically', () => {
+    const manifest = readManifest()
+    const core = readFileSync(
+      new URL('../packages/effect-native-core/src/index.ts', import.meta.url),
+      'utf8',
+    )
+    const tokens = readFileSync(
+      new URL('../packages/effect-native-tokens/src/khala-ui.ts', import.meta.url),
+      'utf8',
+    )
+    const dom = readFileSync(
+      new URL('../packages/effect-native-render-dom/src/khala-static.ts', import.meta.url),
+      'utf8',
+    )
+    const react = readFileSync(
+      new URL('../packages/effect-native-render-dom/src/react-lowering.ts', import.meta.url),
+      'utf8',
+    )
+    const native = readFileSync(
+      new URL('../packages/effect-native-render-rn/src/index.ts', import.meta.url),
+      'utf8',
+    )
+
+    expect(manifest.catalogVersion).toBe('effect-native/v42')
+    expect(core).toContain('KhalaFrameDecorationSchema')
+    expect(tokens).toContain('resolveKhalaMotif')
+    expect(tokens).toContain(
+      'line(accentLength, 0, decodedInput.width, 0, quietRole, strokeWidth)',
+    )
+    expect(tokens).toContain('polygon,\n        lines: []')
+    expect(dom).toContain('resolveKhalaStaticDecoration')
+    expect(react).toContain('data-en-khala-decoration')
+    expect(native).toContain('degraded-border')
+  })
+
   test('catalog-version extractor follows the alias hop and direct assignment', () => {
     const aliased = [
       'export const GraphCatalogVersion = "effect-native/v19" as const',

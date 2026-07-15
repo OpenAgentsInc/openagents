@@ -139,7 +139,8 @@ import {
   type SpacingToken,
   type Theme,
   type ToneToken,
-  type TypeScaleToken
+  type TypeScaleToken,
+  resolveKhalaMotif
 } from "@effect-native/tokens"
 
 export const packageName = "@effect-native/render-rn" as const
@@ -5646,6 +5647,92 @@ const renderMobileSurfaceShell = (
       )
     )
   }
+  const khala = view._tag === "Frame" ? view.khala : undefined
+  const khalaGeometry =
+    khala !== undefined
+      ? Effect.runSync(
+          resolveKhalaMotif(
+            {
+              motif: khala.motif,
+              width: khala.width,
+              height: khala.height,
+              zoom: khala.zoom ?? 1,
+              density: khala.density ?? "comfortable",
+              forcedColors: khala.forcedColors ?? false
+            },
+            theme.khalaUi
+          )
+        )
+      : undefined
+  const khalaDecoration =
+    khala !== undefined && khalaGeometry !== undefined
+      ? createElement(
+          dependencies,
+          dependencies.ReactNative.View,
+          {
+            key: `en-khala-${khala.id}`,
+            testID: `en-khala-${khala.id}`,
+            accessible: false,
+            accessibilityElementsHidden: true,
+            importantForAccessibility: "no-hide-descendants",
+            pointerEvents: "none",
+            style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 0 }
+          },
+          ...(khala.motif === "cut-corner-surface"
+            ? [
+                createElement(dependencies, dependencies.ReactNative.View, {
+                  key: `en-khala-${khala.id}-degraded-border`,
+                  testID: `en-khala-${khala.id}-degraded-border`,
+                  accessible: false,
+                  pointerEvents: "none",
+                  style: {
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    left: 0,
+                    borderWidth: theme.khalaUi.edgeWidth.structural,
+                    borderColor: colorValue(
+                      theme,
+                      theme.khalaUi.luminance[khala.forcedColors === true ? "focus" : "structural"]
+                    )
+                  }
+                })
+              ]
+            : khalaGeometry.lines.map((segment, index) =>
+                createElement(dependencies, dependencies.ReactNative.View, {
+                  key: `en-khala-${khala.id}-line-${index}`,
+                  testID: `en-khala-${khala.id}-line-${index}`,
+                  accessible: false,
+                  pointerEvents: "none",
+                  style: {
+                    position: "absolute",
+                    left: segment.from.x,
+                    top: segment.from.y,
+                    width: Math.max(0, segment.to.x - segment.from.x),
+                    height: segment.width,
+                    backgroundColor: colorValue(theme, theme.khalaUi.luminance[segment.role])
+                  }
+                })
+              ))
+        )
+      : undefined
+  const children =
+    khalaDecoration === undefined || khala === undefined
+      ? view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
+      : [
+          khalaDecoration,
+          createElement(
+            dependencies,
+            dependencies.ReactNative.View,
+            {
+              key: `${khala.id}-content`,
+              testID: `${khala.id}-content`,
+              style: { position: "relative", zIndex: 1 }
+            },
+            ...view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
+          )
+        ]
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
@@ -5655,7 +5742,12 @@ const renderMobileSurfaceShell = (
         {
           flexDirection: "column",
           ...(view._tag === "Frame"
-            ? { borderWidth: 1, borderColor: colorValue(theme, "accent"), padding: spacingValue(theme, "3") }
+            ? {
+                ...(view.khala === undefined
+                  ? { borderWidth: 1, borderColor: colorValue(theme, "accent") }
+                  : { position: "relative", overflow: "visible" }),
+                padding: spacingValue(theme, "3")
+              }
             : {}),
           ...(view._tag === "Spotlight"
             ? { shadowColor: colorValue(theme, "accent"), shadowOpacity: 0.45, shadowRadius: 16 }
@@ -5667,7 +5759,7 @@ const renderMobileSurfaceShell = (
         viewStyle(view as never, options)
       )
     ),
-    ...view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
+    ...children
   )
 }
 

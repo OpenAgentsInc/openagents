@@ -346,6 +346,55 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-workspace-surface article { padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); }
 .oa-react-workspace-surface article > div { align-items: flex-start; flex-direction: column; gap: 2px; }
 
+.oa-react-project-home-khala {
+  position: relative;
+  isolation: isolate;
+}
+
+.oa-react-project-home-khala > :not(.oa-react-khala-decoration),
+.oa-react-project-home-status > span {
+  position: relative;
+  z-index: 1;
+}
+
+.oa-react-khala-decoration {
+  position: absolute;
+  inset: var(--en-spacing-4);
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.oa-react-khala-decoration > [data-en-frame] {
+  width: 100%;
+  height: 100%;
+  padding: 0 !important;
+}
+
+.oa-react-project-home-status {
+  position: relative;
+  display: inline-flex;
+  min-width: min(14rem, 100%);
+  min-height: var(--en-control-sm-height);
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--en-spacing-2);
+}
+
+.oa-react-project-home-status .oa-react-khala-decoration {
+  inset: 0;
+}
+
+@media (forced-colors: active) {
+  .oa-react-khala-decoration svg {
+    forced-color-adjust: auto;
+  }
+
+  .oa-react-khala-decoration path {
+    stroke: CanvasText;
+  }
+}
+
 .oa-react-session-row span,
 .oa-react-session-row small,
 .oa-react-workspace-row span {
