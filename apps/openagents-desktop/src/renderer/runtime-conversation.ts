@@ -525,7 +525,7 @@ export const makeRuntimeConversationChatHost = (
       const runRef = `turn.desktop.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
       const observer = await openLiveObserver(input.id, input.onUpdate)
       if (options.subscribe !== undefined && observer === null) {
-        return { ok: false, error: "Live conversation subscription is unavailable." }
+        return { ok: false, error: "Live conversation subscription is unavailable.", failureKind: "offline" as const }
       }
       try {
         let result = await runDurableTurn({

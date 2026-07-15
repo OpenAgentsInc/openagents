@@ -271,12 +271,25 @@ export type ComposerFileContext = Readonly<{
   dirty: boolean
 }>
 
+/** Bounded runtime disposition retained for truthful React recovery copy. */
+export type DesktopRuntimeFailureKind =
+  | "signed_out"
+  | "incompatible"
+  | "offline"
+  | "quota_exhausted"
+  | "rate_limited"
+  | "policy_denied"
+  | "interrupted"
+  | "failed"
+
 export type DesktopShellState = Readonly<{
   /** Host identity decoded from the preload bridge ("electron/darwin" etc.). */
   host: string
   input: string
   /** True while a submission is in flight; the composer disables itself. */
   pending: boolean
+  /** Last typed turn/runtime failure; null after a new admitted turn or success. */
+  runtimeFailure: DesktopRuntimeFailureKind | null
   /**
    * Pending composer image attachments (capability I1): bounded base64 held in
    * the renderer, shown as thumbnails with remove, threaded into the next
@@ -405,6 +418,7 @@ export const initialDesktopShellState = (
   host,
   input: "",
   pending: false,
+  runtimeFailure: null,
   composerImages: [],
   composerImageNotice: null,
   composerReviewContext: null,
@@ -1019,6 +1033,7 @@ export const withNote = (
     ...state,
     input: "",
     pending: true,
+    runtimeFailure: null,
     composerImages: [],
     composerImageNotice: null,
     composerReviewContext: null,
@@ -1082,7 +1097,12 @@ export type ChatHost = Readonly<{
     /** Optional image attachments threaded into the turn payload (capability I1). */
     images?: ReadonlyArray<FableLocalImageAttachment>
     onUpdate?: (thread: DesktopThread) => void
-  }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
+  }>) => Promise<Readonly<{
+    ok: boolean
+    thread?: DesktopThread | null
+    error?: string
+    failureKind?: DesktopRuntimeFailureKind
+  }>>
   /**
    * Interrupt the currently-streaming turn (EP250 Stop button). Resolves true
    * when an active turn was signalled through the lane's interrupt IPC path,
@@ -1282,6 +1302,7 @@ export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnT
     return {
       ...selected,
       pending: false,
+      runtimeFailure: null,
       threads: [completedThread, ...state.threads.filter((thread) => thread.id !== completedThread.id)].slice(0, 5),
       // A successful Fable turn just established/renewed this exact thread's
       // runtime continuity entry. Record it as an H1 picker candidate without
@@ -1295,7 +1316,12 @@ export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnT
     }
   }
   const confirmedNotes = state.notes.filter((note) => !note.key.startsWith("pending-"))
-  return { ...state, pending: false, notes: [...confirmedNotes, { key: `error-${state.notes.length}`, role: "system", text: result.error ?? "The model request failed.", timestamp }] }
+  return {
+    ...state,
+    pending: false,
+    runtimeFailure: result.failureKind ?? "failed",
+    notes: [...confirmedNotes, { key: `error-${state.notes.length}`, role: "system", text: result.error ?? "The model request failed.", timestamp }],
+  }
 }
 
 /**

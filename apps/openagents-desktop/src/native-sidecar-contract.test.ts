@@ -31,8 +31,23 @@ const fixture = () => {
     mkdirSync(directory);
   }
   mkdirSync(path.join(fakeRepository, ".git"));
+  // Git hooks export repository-local variables such as GIT_DIR. A fixture
+  // `git init <tmp>` must not inherit them or it can reconfigure the checkout
+  // whose pre-push hook is running instead of the temporary repository.
+  const isolatedGitEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => ![
+      "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+      "GIT_COMMON_DIR",
+      "GIT_DIR",
+      "GIT_INDEX_FILE",
+      "GIT_OBJECT_DIRECTORY",
+      "GIT_WORK_TREE",
+    ].includes(key)),
+  );
   for (const repositoryRoot of [repository, secondRepository]) {
-    const initialized = spawnSync("git", ["init", "--quiet", repositoryRoot]);
+    const initialized = spawnSync("git", ["init", "--quiet", repositoryRoot], {
+      env: isolatedGitEnv,
+    });
     if (initialized.status !== 0) throw new Error("Git fixture initialization failed.");
   }
   return {

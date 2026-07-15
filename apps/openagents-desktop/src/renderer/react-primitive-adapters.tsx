@@ -26,6 +26,7 @@ import { Separator } from "#components/ui/separator"
 import type { DesktopShellState } from "./shell.ts"
 import { formatRelativeTimestamp } from "./shell.ts"
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
+import { ReviewSurface, StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline } from "./react-timeline.tsx"
 import "./react-workbench.css"
 
@@ -105,8 +106,11 @@ const selectedLifecycle = (state: DesktopShellState): string => {
   return "Ready"
 }
 
-export const ConversationHeader = ({ state }: {
+export const ConversationHeader = ({ state, report, reviewTriggerRef, onReviewOpen }: {
   readonly state: DesktopShellState
+  readonly report: IntentReporter
+  readonly reviewTriggerRef: RefObject<HTMLButtonElement | null>
+  readonly onReviewOpen: () => void
 }): ReactElement => {
   const selectedCoding = state.codingCatalog.sessions.find(
     session => session.sessionRef === state.codingCatalog.selectedSessionRef,
@@ -121,6 +125,10 @@ export const ConversationHeader = ({ state }: {
         {selectedCoding === undefined ? null : <span>{selectedCoding.repositoryLabel}</span>}
       </div>
     </div>
+    <Button ref={reviewTriggerRef} className="oa-react-review-trigger" type="button" variant="outline" size="sm" onClick={() => {
+      dispatch(report, "GitPanelRefreshRequested")
+      onReviewOpen()
+    }}>Review changes</Button>
   </header>
 }
 
@@ -220,8 +228,10 @@ export const WorkbenchShell = ({ state, report }: {
   readonly report: IntentReporter
 }): ReactElement => {
   const [railOpen, setRailOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const railRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
+  const reviewTriggerRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent): void => {
       if (event.key !== "Escape" || !railOpen) return
@@ -234,7 +244,7 @@ export const WorkbenchShell = ({ state, report }: {
   useEffect(() => {
     if (railOpen) railRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
   }, [railOpen])
-  return <div className="oa-react-workbench" data-en-react-surface="true">
+  return <div className="oa-react-workbench" data-en-react-surface="true" data-review-open={reviewOpen ? "true" : "false"}>
     <ReactCommandPalette state={state} report={report} />
     <DecisionSurface state={state} report={report} />
     <Button
@@ -249,10 +259,14 @@ export const WorkbenchShell = ({ state, report }: {
     <SessionRail state={state} report={report} open={railOpen} onClose={() => setRailOpen(false)} railRef={railRef} />
     {railOpen ? <button className="oa-react-rail-scrim" aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     <main className="oa-react-conversation">
-      <ConversationHeader state={state} />
-      <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} report={report} />
+      <ConversationHeader state={state} report={report} reviewTriggerRef={reviewTriggerRef} onReviewOpen={() => setReviewOpen(true)} />
+      <div className="oa-react-conversation-body">
+        <StatusNotices state={state} report={report} />
+        <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} report={report} />
+      </div>
       <ReactComposer state={state} report={report} />
     </main>
+    <ReviewSurface state={state} report={report} open={reviewOpen} onOpenChange={setReviewOpen} triggerRef={reviewTriggerRef} />
   </div>
 }
 

@@ -289,7 +289,7 @@ describe("makeLocalHarnessChatHost", () => {
   test("codex send in local mode is an explicit refusal — never the legacy gateway", async () => {
     const harness = makeHarness()
     const result = await harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "codex" })
-    expect(result).toEqual({ ok: false, error: codexLocalUnavailableMessage })
+    expect(result).toEqual({ ok: false, error: codexLocalUnavailableMessage, failureKind: "signed_out" })
     expect(harness.legacySends).toEqual([])
     expect(harness.startCalls).toEqual([])
   })
@@ -324,7 +324,7 @@ describe("makeLocalHarnessChatHost", () => {
     await settle()
     harness.resolveStart("garbage")
     const result = await pending
-    expect(result).toEqual({ ok: false, error: "The local Claude lane returned an invalid response." })
+    expect(result).toEqual({ ok: false, error: "The local Claude lane returned an invalid response.", failureKind: "failed" })
   })
 
   test("steerChild routes an interrupt to the active lane by exact ref (EP250 wave-2 G4)", async () => {

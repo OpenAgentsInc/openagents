@@ -999,7 +999,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   shared `@effect-native/render-dom/react` renderer. The bounded Desktop MVP
   transition may also define ordinary renderer-private React workbench
   components only in the explicitly scanned `renderer/react-primitive-adapters.tsx`,
-  `renderer/react-timeline.tsx`, and `renderer/react-composer.tsx` hosts; they consume the same Effect-owned
+  `renderer/react-timeline.tsx`, `renderer/react-composer.tsx`, and
+  `renderer/react-review.tsx` hosts; they consume the same Effect-owned
   `DesktopShellState` snapshot and existing intent keys and may retain only
   ephemeral focus/overlay/scroll-anchor/IME/palette-query mechanics. They do not define a
   second domain store, runtime client, command identity, persistence path,
@@ -1024,6 +1025,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   tokenless and Node-free. This boundary and `.tsx` scanner coverage are
   enforced by `apps/openagents-desktop/tests/electron-boundary.test.ts` and
   `apps/openagents-desktop/src/renderer/design-conformance.test.ts`.
+- Desktop React repository review consumes only grant-scoped, root-relative
+  paths plus opaque repository/status correlation already held by the Effect
+  Git state. It remains read-only: no edit, discard, stage, commit, branch,
+  push, PR, terminal, arbitrary Git argv, absolute root, or raw diff fallback.
+  Review refusals and runtime recovery banners project typed Effect
+  dispositions; React never classifies raw provider/runtime error strings.
 - The MVP sidebar never projects connected provider accounts or usage. Any
   retained account/Fleet state is non-visible post-MVP substrate only.
 - Desktop chat context rails are genuinely pointer-resizable from 280–480px.

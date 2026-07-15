@@ -367,6 +367,22 @@ describe("git panel intent loop", () => {
     }))
   })
 
+  test("review preserves a typed refusal until the drawer is closed", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const { bridge } = makeFakeBridge({
+        diff: () => gitGithubError("diff", "secret_diff", "withheld by bounded review policy"),
+      })
+      const { state, registry } = yield* harness(bridge, readyState())
+      yield* registry.dispatch(directIntent("GitPanelDiffRequested", {
+        path: "b.txt",
+        source: "unstaged",
+      }))
+      expect((yield* SubscriptionRef.get(state)).git.reviewFailure).toBe("secret_diff")
+      yield* registry.dispatch(directIntent("GitPanelDiffClosed"))
+      expect((yield* SubscriptionRef.get(state)).git.reviewFailure).toBeNull()
+    }))
+  })
+
   test("discard requires inline confirmation and sends the exact fenced request", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const { bridge, calls } = makeFakeBridge({

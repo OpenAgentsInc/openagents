@@ -86,6 +86,8 @@ export type GitPanelState = Readonly<{
   createBody: string
   diff: GitDiffResult | null
   diffLoading: boolean
+  /** Typed refusal for the last exact review request; never raw stderr. */
+  reviewFailure: GitGithubErrorCode | null
   discardConfirmPath: string | null
   /** Exact user-selected timeline item that caused this review, or explicit null. */
   causalItemRef: string | null
@@ -114,6 +116,7 @@ export const emptyGitPanelState = (): GitPanelState => ({
   createBody: "",
   diff: null,
   diffLoading: false,
+  reviewFailure: null,
   discardConfirmPath: null,
   causalItemRef: null,
 })
@@ -406,7 +409,7 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
         const current = yield* SubscriptionRef.get(state)
         const status = current.git.status
         if (status === null) return
-        yield* setGit(git => ({ ...git, diffLoading: true, actionError: null, discardConfirmPath: null }))
+        yield* setGit(git => ({ ...git, diffLoading: true, reviewFailure: null, actionError: null, discardConfirmPath: null }))
         const result = yield* Effect.promise(() => runOp(bridge, {
           op: "diff",
           repositoryRef: status.repositoryRef,
@@ -416,14 +419,14 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
           causalItemRef: current.git.causalItemRef,
         }))
         if (result.ok && result.op === "diff") {
-          yield* setGit(git => ({ ...git, diff: result, diffLoading: false, actionError: null }))
+          yield* setGit(git => ({ ...git, diff: result, diffLoading: false, reviewFailure: null, actionError: null }))
         } else if (!result.ok) {
-          yield* setGit(git => ({ ...git, diff: null, diffLoading: false, actionError: result.message }))
+          yield* setGit(git => ({ ...git, diff: null, diffLoading: false, reviewFailure: result.error, actionError: result.message }))
           if (result.error === "stale_status") yield* refreshGitPanel(state, bridge)
         }
       }),
 
-    GitPanelDiffClosed: () => setGit(git => ({ ...git, diff: null, discardConfirmPath: null })),
+    GitPanelDiffClosed: () => setGit(git => ({ ...git, diff: null, reviewFailure: null, discardConfirmPath: null })),
 
     GitPanelDiscardRequested: (path: string) => setGit(git => ({
       ...git,

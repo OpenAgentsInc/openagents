@@ -202,7 +202,7 @@ Verification:
 - ProductSpec validation passed under OpenAgents and upstream profiles, its
   repository suite passed 102 tests, and built Electron compatibility smoke
   passed with zero active lifecycle owners after teardown.
-+## MVP-02D — React composer, commands, and decisions (#8821)
+## MVP-02D — React composer, commands, and decisions (#8821)
 
 Status: implemented on the scoped `?renderer=react-shell` path. Effect remains
 the prompt, command, interaction, runtime, and reconciliation authority.
@@ -262,3 +262,49 @@ gate; its one moderate finding is the pre-existing Expo/mobile `uuid` path,
 not `cmdk` or this Desktop dependency path. The installed whole-surface React
 turn/decision journey remains the explicit MVP-02F cutover receipt rather than
 being inferred from the compatibility smoke.
+
+## MVP-02E — React review and truthful recovery states (#8822)
+
+Status: implemented on the scoped `?renderer=react-shell` path. Installed
+whole-surface review/recovery proof remains part of MVP-02F.
+
+Delivered:
+
+- a shadcn-triggered repository review surface over the existing Effect-owned
+  Git projection: adjacent drawer at 1120 CSS pixels and above, Base UI Sheet
+  below that threshold, independent transcript/review scroll, explicit close,
+  focus return, and reduced-motion behavior;
+- relative-path file rows and exact diff requests using the existing correlated
+  repository/status snapshot authority, without exposing repository refs,
+  absolute roots, host objects, or ambient paths;
+- semantic addition/deletion labels that do not rely on color, exact hunk and
+  causal-item presentation, and a visible read-only boundary with no edit,
+  apply, stage, discard, commit, branch, push, PR, terminal, or arbitrary Git
+  affordance;
+- stable typed refusal presentation for every `GitGithubErrorCode`, including
+  stale snapshot, unsafe/conflicting state, invalid path, binary, secret-shaped,
+  oversized, unavailable, authentication, and not-found results; the Effect
+  Git loop now retains the refusal code separately from bounded display copy;
+- a bounded `runtimeFailure` disposition on the Effect-owned shell state. Local
+  runtime adapters preserve signed-out, incompatible-workflow, offline,
+  interrupted, quota, rate-limit, and policy outcomes instead of asking React
+  to classify error strings; unknown failures remain explicitly `failed`;
+- React StatusNotice projection for those dispositions, canonical lane
+  availability, unavailable workspace grants, durable stream gaps, and
+  interrupted/errored history agents; only existing typed Settings/workspace
+  actions are offered; and
+- Alert, Badge, and Sheet source components generated from the locked shadcn
+  preset and styled through the dark-zinc Khala token extension.
+
+The recovery authority itself was not moved. Renderer reload, exact-prefix app
+restart, at-most-once continuation or explicit interruption, repair before live
+resubscription, bounded diagnostics, and Open in Codex custody remain the
+existing Effect/main/runtime contracts. React only lowers their public typed
+state. The compatibility backend remains the installed default until MVP-02F,
+and specialist settings, diagnostics, file/editor, fleet, ProductSpec, child,
+and terminal surfaces remain compatibility-owned.
+
+The Vercel AI SDK remains intentionally absent: it would duplicate the current
+Codex Runtime Gateway/app-server stream, tool, approval, and persistence
+authority. shadcn/Base UI is the presentation layer; Effect remains state and
+effects authority.

@@ -35,7 +35,7 @@ import {
   codexLocalModelNoteText,
   type CodexLocalAvailability,
 } from "../codex-local-contract.ts"
-import type { ChatHost } from "./shell.ts"
+import type { ChatHost, DesktopRuntimeFailureKind } from "./shell.ts"
 
 export type FableLocalRendererBridge = Readonly<{
   availability: () => Promise<unknown>
@@ -63,11 +63,18 @@ const noteTimestamp = (now: Date = new Date()): string =>
 const decodeTurnResult = (
   raw: unknown,
   laneLabel: string,
-): Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }> => {
+): Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string; failureKind?: DesktopRuntimeFailureKind }> => {
   if (typeof raw === "object" && raw !== null && typeof (raw as { ok?: unknown }).ok === "boolean") {
-    return raw as { ok: boolean; thread?: DesktopThread | null; error?: string }
+    const result = raw as { ok: boolean; thread?: DesktopThread | null; error?: string; reason?: unknown }
+    const failureKind: DesktopRuntimeFailureKind | undefined = result.ok
+      ? undefined
+      : result.reason === "incompatible_workflow" ? "incompatible"
+        : result.reason === "interrupted" ? "interrupted"
+          : result.reason === "no_codex_account" || result.reason === "account_reconnect_required" ? "signed_out"
+            : "failed"
+    return { ...result, ...(failureKind === undefined ? {} : { failureKind }) }
   }
-  return { ok: false, error: `The local ${laneLabel} lane returned an invalid response.` }
+  return { ok: false, error: `The local ${laneLabel} lane returned an invalid response.`, failureKind: "failed" }
 }
 
 export type MakeLocalHarnessChatHostInput = Readonly<{
@@ -109,7 +116,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       model?: import("../fable-local-contract.ts").LocalModel
       onUpdate?: (thread: DesktopThread) => void
     }>,
-  ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> => {
+  ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string; failureKind?: DesktopRuntimeFailureKind }>> => {
     const laneLabel = lane === "fable" ? "Claude" : "Codex"
     const turnRef = `turn.${lane}.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
     let baseThread: DesktopThread | null = null
@@ -533,7 +540,15 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         const availability = input.codexAvailability?.() ?? null
         const bridge = input.codex ?? null
         if (bridge === null || availability === null || availability.state !== "available") {
-          return { ok: false, error: codexLocalUnavailableMessage }
+          const reason = availability?.state === "unavailable" ? availability.reason : null
+          const failureKind: DesktopRuntimeFailureKind = reason === "policy_denied"
+            ? "policy_denied"
+            : reason === "quota_exhausted"
+              ? "quota_exhausted"
+              : reason === "rate_limited"
+                ? "rate_limited"
+                : "signed_out"
+          return { ok: false, error: codexLocalUnavailableMessage, failureKind }
         }
         return runLaneTurn("codex", bridge, send)
       }
@@ -542,6 +557,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         return {
           ok: false,
           error: fableLocalFailureMessage("no_claude_account", ""),
+          failureKind: availability?.state === "unavailable" && availability.reason === "no_claude_account"
+            ? "signed_out" as const
+            : "failed" as const,
         }
       }
       return runLaneTurn("fable", input.fable, send)
