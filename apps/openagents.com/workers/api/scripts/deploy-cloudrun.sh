@@ -80,13 +80,15 @@ RUNTIME_DEPLOY_DIR="$(mktemp -d)"
 START_RUNTIME_DEPLOY_DIR=""
 trap 'rm -rf "$RUNTIME_DEPLOY_DIR" "${START_RUNTIME_DEPLOY_DIR:-}"' EXIT
 (cd "$REPO_ROOT" && CI=true pnpm --config.node-linker=hoisted \
+  --config.allow-unused-patches=true \
   --filter @openagentsinc/api-worker deploy "$RUNTIME_DEPLOY_DIR" \
-  --prod --legacy >/dev/null)
+  --prod --legacy)
 mv "$RUNTIME_DEPLOY_DIR/node_modules" dist-cloudrun/node_modules
 START_RUNTIME_DEPLOY_DIR="$(mktemp -d)"
 (cd "$REPO_ROOT" && CI=true pnpm --config.node-linker=hoisted \
+  --config.allow-unused-patches=true \
   --filter @openagentsinc/openagents-com-start deploy "$START_RUNTIME_DEPLOY_DIR" \
-  --prod --legacy >/dev/null)
+  --prod --legacy)
 cp -R "$START_RUNTIME_DEPLOY_DIR/node_modules/." dist-cloudrun/node_modules/
 # Legacy deploy mutates the workspace install mode while materializing the
 # portable tree. Restore the development install before later build/smoke
