@@ -59,3 +59,17 @@ test('the drawer toggle disappears when Blume switches to its static desktop sid
     /\.oa-icon-button\[data-blume-nav-toggle\]\s*\{\s*display:\s*none;/,
   )
 })
+
+test('the docs header stays fixed while the document grid preserves its space', () => {
+  const theme = readRepoFile(
+    'apps',
+    'openagents.com',
+    'apps',
+    'docs',
+    'theme.css',
+  )
+
+  assert.match(theme, /\.oa-docs-header\s*\{[^}]*position:\s*fixed;/s)
+  assert.match(theme, /\[data-blume-doc-grid\]\s*\{[^}]*padding-top:\s*4rem;/s)
+  assert.match(theme, /overscroll-behavior-y:\s*none;/)
+})
