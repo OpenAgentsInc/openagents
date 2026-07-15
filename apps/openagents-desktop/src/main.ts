@@ -3907,6 +3907,10 @@ const smokeWaitForSecondInstanceSettings = `(async () => {
 // must land in a fresh empty transcript, never the historical conversation.
 const smokeNewChatFromHistory = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const historyDeadline = Date.now() + 10000
+  while (Date.now() < historyDeadline && document.querySelector('[data-en-key="history-workspace-split"]') === null) {
+    await wait(50)
+  }
   if (document.querySelector('[data-en-key="history-workspace-split"]') === null) {
     return { ok: false, reason: "history detail was not loaded before New chat" }
   }
@@ -4468,12 +4472,20 @@ const smokeMessageInspector = `(async () => {
   }
   details.click()
   const deadline = Date.now() + 10000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="chat-message-inspector"]') === null) {
+  let inspector = document.querySelector('[data-en-key="chat-message-inspector"]')
+  let text = inspector === null ? "" : (inspector.textContent || "")
+  while (Date.now() < deadline && (
+    inspector === null ||
+    !text.includes("gpt-5.6-sol") ||
+    !text.includes("codex-local") ||
+    !text.includes("Tokens (total)") ||
+    !text.includes("952")
+  )) {
     await wait(50)
+    inspector = document.querySelector('[data-en-key="chat-message-inspector"]')
+    text = inspector === null ? "" : (inspector.textContent || "")
   }
-  const inspector = document.querySelector('[data-en-key="chat-message-inspector"]')
   if (inspector === null) return { ok: false, reason: "message inspector never opened" }
-  const text = inspector.textContent || ""
   const hasModel = text.includes("gpt-5.6-sol")
   const hasLane = text.includes("codex-local")
   const hidesAccount = !text.includes("Account") && !text.includes("codex-3")

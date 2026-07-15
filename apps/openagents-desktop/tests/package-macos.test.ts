@@ -33,6 +33,7 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(nativePreparation).toContain('const nativePackages = ["macos-alias", "fs-xattr"]')
     expect(nativePreparation).toContain('Runtime.spawnSync([nodeGyp, "rebuild"]')
     expect(nativePreparation).toContain("process.versions.modules")
+    expect(nativePreparation).toContain('npm_config_loglevel: "error"')
     const workspace = readFileSync(path.join(root, "..", "..", "pnpm-workspace.yaml"), "utf8")
     expect(workspace).toContain("macos-alias: true")
     expect(workspace).toContain("fs-xattr: true")

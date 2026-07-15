@@ -18,6 +18,16 @@ for (const packageName of nativePackages) {
   })
   const result = Runtime.spawnSync([nodeGyp, "rebuild"], {
     cwd: path.dirname(packageJson),
+    env: {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      TMPDIR: process.env.TMPDIR,
+      DEVELOPER_DIR: process.env.DEVELOPER_DIR,
+      SDKROOT: process.env.SDKROOT,
+      CC: process.env.CC,
+      CXX: process.env.CXX,
+      npm_config_loglevel: "error",
+    },
     stdout: "inherit",
     stderr: "inherit",
   })
