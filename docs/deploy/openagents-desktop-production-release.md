@@ -14,6 +14,17 @@ The first frozen release identity is:
 
 Never reuse the retired Khala Code or Autopilot Desktop identities or feeds.
 
+Generated release filenames are canonical and version-first:
+
+- macOS DMG: `OpenAgents-<version>-<arch>.dmg` (for example,
+  `OpenAgents-0.1.2-arm64.dmg`)
+- neutral archive: `OpenAgents-<version>-<platform>-<arch>.zip` (for example,
+  `OpenAgents-0.1.2-darwin-arm64.zip`)
+
+Forge's `postMake` hook normalizes every generated artifact to this form.
+Release receipts, preflight arguments, uploads, and update manifests must use
+the normalized basename; do not retain Forge's default version-last ZIP name.
+
 ## Prerequisites
 
 - Apple Developer ID identity

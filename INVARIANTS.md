@@ -989,6 +989,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   a schema-decoded, display-only projection of Electron main's canonical
   WorkContext; React must not call `process.cwd()`, infer a path from session
   history, or acquire absolute-path selection authority.
+- Generated OpenAgents Desktop release artifacts use a stable, version-first
+  public filename. macOS disk images are
+  `OpenAgents-<version>-<arch>.dmg`; platform-neutral archives include the OS
+  as `OpenAgents-<version>-<platform>-<arch>.<extension>`. Forge defaults may
+  not leak into release receipts, update manifests, or uploaded filenames.
 - Desktop's mixed runtime/provider conversation sidebar has one canonical
   target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation;
   numbering never restarts at a source boundary. Selecting a runtime/app-local

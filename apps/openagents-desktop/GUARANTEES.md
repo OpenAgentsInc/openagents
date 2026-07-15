@@ -771,6 +771,11 @@ refuse, and both are cited as the standing evidence base:
 
 ### The outermost artifact is what ships: notarize + staple the DMG itself
 
+Generated artifacts are renamed after packaging to the stable public scheme:
+`OpenAgents-<version>-<arch>.dmg` for macOS disk images and
+`OpenAgents-<version>-<platform>-<arch>.zip` for neutral archives. This naming
+is part of the release contract, not incidental Electron Forge output.
+
 `make:mac` notarizes the DMG itself (Apple's ticket covers the nested app)
 and staples the ticket to BOTH the `.app` and the `.dmg`, then fails the make
 closed unless every Gatekeeper oracle is green

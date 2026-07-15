@@ -16,10 +16,31 @@ import {
   notarizeAndStapleDmg,
   unsignedDevArtifactName,
 } from "./scripts/macos-gatekeeper.ts"
+import { desktopReleaseArtifactName } from "./scripts/release-artifact-name.ts"
 
 
 export const OPENAGENTS_DESKTOP_BUNDLE_ID = "com.openagents.desktop"
 export const OPENAGENTS_DESKTOP_PROTOCOL = "openagents"
+const desktopManifest = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version: string }
+
+const canonicalArtifactPath = (
+  artifact: string,
+  platform: string,
+  arch: string,
+): string => path.join(path.dirname(artifact), desktopReleaseArtifactName({
+  product: "OpenAgents",
+  version: desktopManifest.version,
+  platform,
+  arch,
+  extension: path.extname(artifact),
+}))
+
+const renameArtifact = (artifact: string, destination: string): string => {
+  if (destination !== artifact) renameSync(artifact, destination)
+  return destination
+}
 
 const ignoredCheckoutPath = /^\/(src|scripts|tests|docs|receipts|node_modules)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/
 const resolveFromApp = createRequire(path.join(process.cwd(), "package.json"))
@@ -190,9 +211,9 @@ const config: ForgeConfig = {
         return makeResults.map((result) => ({
           ...result,
           artifacts: result.artifacts.map((artifact) => {
-            const renamed = path.join(path.dirname(artifact), unsignedDevArtifactName(path.basename(artifact)))
-            if (renamed !== artifact) renameSync(artifact, renamed)
-            return renamed
+            const canonical = canonicalArtifactPath(artifact, result.platform, result.arch)
+            const unsigned = path.join(path.dirname(canonical), unsignedDevArtifactName(path.basename(canonical)))
+            return renameArtifact(artifact, unsigned)
           }),
         }))
       }
@@ -208,7 +229,11 @@ const config: ForgeConfig = {
           assertGatekeeperGreen([...gatekeeperImageChecks(artifact), ...gatekeeperAppChecks(appPath)])
         }
       }
-      return makeResults
+      return makeResults.map(result => ({
+        ...result,
+        artifacts: result.artifacts.map(artifact =>
+          renameArtifact(artifact, canonicalArtifactPath(artifact, result.platform, result.arch))),
+      }))
     },
   },
   makers: [

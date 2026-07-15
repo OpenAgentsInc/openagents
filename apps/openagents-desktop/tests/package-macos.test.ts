@@ -3,11 +3,36 @@ import { readFileSync } from "node:fs"
 import path from "node:path"
 
 import config, { OPENAGENTS_DESKTOP_BUNDLE_ID, OPENAGENTS_DESKTOP_PROTOCOL } from "../forge.config.ts"
+import { desktopReleaseArtifactName } from "../scripts/release-artifact-name.ts"
 
 const root = path.resolve(import.meta.dirname, "..")
 const mainSource = readFileSync(path.join(root, "src", "main.ts"), "utf8")
 
 describe("CUT-26 macOS artifact contract", () => {
+  test("names generated release artifacts product-version-platform-architecture", () => {
+    expect(desktopReleaseArtifactName({
+      product: "OpenAgents",
+      version: "0.1.2",
+      platform: "darwin",
+      arch: "arm64",
+      extension: ".dmg",
+    })).toBe("OpenAgents-0.1.2-arm64.dmg")
+    expect(desktopReleaseArtifactName({
+      product: "OpenAgents",
+      version: "0.1.2-rc.3",
+      platform: "darwin",
+      arch: "arm64",
+      extension: "zip",
+    })).toBe("OpenAgents-0.1.2-rc.3-darwin-arm64.zip")
+    expect(() => desktopReleaseArtifactName({
+      product: "OpenAgents",
+      version: "../0.1.2",
+      platform: "darwin",
+      arch: "arm64",
+      extension: ".dmg",
+    })).toThrow("Invalid release artifact version")
+  })
+
   test("normal production launches use the canonical OpenAgents profile with a legacy atomic migration", () => {
     expect(mainSource).toContain('path.join(app.getPath("appData"), "OpenAgents")')
     expect(mainSource).toContain("renameSync(legacyDevelopmentUserDataPath, productionUserDataPath)")
