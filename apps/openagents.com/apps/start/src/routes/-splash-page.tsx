@@ -755,6 +755,7 @@ export function SplashPage() {
   const [railOpen, setRailOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [demoInteractive, setDemoInteractive] = useState(false)
   const timerIds = useRef<ReadonlyArray<number>>([])
   const playbackId = useRef(1)
   const followupIndex = useRef(0)
@@ -941,7 +942,21 @@ export function SplashPage() {
             Codex connected
           </span>
         </div>
-        <div className="splash-demo-frame" onWheelCapture={releaseDemoWheel}>
+        <div
+          className="splash-demo-frame"
+          data-interactive={demoInteractive ? 'true' : 'false'}
+          onWheelCapture={demoInteractive ? releaseDemoWheel : undefined}
+        >
+          {demoInteractive ? null : (
+            <button
+              aria-label="Activate the OpenAgents Desktop demo"
+              className="splash-demo-activation"
+              onClick={() => setDemoInteractive(true)}
+              type="button"
+            >
+              <span>Click to interact</span>
+            </button>
+          )}
           <DesktopWorkbench aria-label="OpenAgents Desktop live product preview">
             <DesktopSidebarExpand
               aria-expanded={railOpen}
@@ -972,7 +987,7 @@ export function SplashPage() {
                 selected: session.id === activeId,
               }))}
               settingsDestination={settingsDestination}
-              stageLabel="DEV"
+              stageLabel="ALPHA"
             />
             {railOpen ? (
               <DesktopRailScrim

@@ -255,9 +255,43 @@
 }
 
 .splash-demo-frame {
+  position: relative;
   height: clamp(38rem, 58vw, 46rem);
   min-height: 0;
   overflow: hidden;
+}
+
+.splash-demo-activation {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--en-color-textSecondary);
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.splash-demo-activation span {
+  position: absolute;
+  right: var(--en-spacing-3);
+  bottom: var(--en-spacing-3);
+  padding: var(--en-spacing-1) var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceRaised);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.splash-demo-activation:hover span {
+  border-color: var(--en-color-borderStrong);
+  color: var(--en-color-textPrimary);
+}
+
+.splash-demo-activation:focus-visible {
+  outline: 2px solid var(--en-color-focus);
+  outline-offset: -4px;
 }
 
 .splash-demo-frame > .oa-react-workbench {

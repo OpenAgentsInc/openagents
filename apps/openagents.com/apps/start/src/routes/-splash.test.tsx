@@ -28,6 +28,11 @@ describe('Desktop splash', () => {
     expect(html).toContain('splash-window-bar')
     expect(html).toContain('OpenAgents Desktop live product preview')
     expect(html).toContain('splash-demo-frame')
+    expect(html).toContain('data-interactive="false"')
+    expect(html).toContain('Activate the OpenAgents Desktop demo')
+    expect(html).toContain('Click to interact')
+    expect(html).toContain('>ALPHA<')
+    expect(html).not.toContain('>DEV<')
     expect(html).toContain('data-sidebar-destination-id="workspace-new-chat"')
     expect(html).toContain(
       'data-sidebar-destination-id="shell-settings-toggle"',
@@ -73,7 +78,7 @@ describe('Desktop splash', () => {
     expect(html).not.toContain('<img')
   })
 
-  test('loads the shared workbench CSS and releases scroll gestures at demo boundaries', () => {
+  test('loads the shared workbench CSS and gates internal scrolling behind activation', () => {
     const css = readFileSync(
       path.resolve(import.meta.dirname, '../splash.css'),
       'utf8',
@@ -87,6 +92,9 @@ describe('Desktop splash', () => {
     expect(css).toContain('.splash-demo-frame .oa-react-timeline-scroll')
     expect(css).toContain('overscroll-behavior-y: auto')
     expect(css).toContain('touch-action: pan-y')
+    expect(css).toContain('.splash-demo-activation')
+    expect(css).toContain('position: absolute')
+    expect(css).toContain('z-index: 5')
     expect(releaseLinkRule).toContain('font-family: var(--font-sans)')
     expect(releaseLinkRule).not.toContain('font-family: var(--font-mono)')
     expect(heroHeadingRule).toContain(
