@@ -50,7 +50,17 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
-import { chmod, cp, mkdir, readdir, readFile, readlink, lstat, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  readlink,
+  lstat,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -284,7 +294,13 @@ export const detectExecutableArchitecture = (header: Uint8Array): DetectedExecut
     if (header[0] === 0x7f && header[1] === 0x45 && header[2] === 0x4c && header[3] === 0x46) {
       const machine = readUInt16LE(header, 18);
       const arch =
-        machine === null ? "unknown" : machine === 0xb7 ? "arm64" : machine === 0x3e ? "x64" : "other";
+        machine === null
+          ? "unknown"
+          : machine === 0xb7
+            ? "arm64"
+            : machine === 0x3e
+              ? "x64"
+              : "other";
       return { platform: "linux", arch };
     }
     // PE — an MZ stub whose PE header cannot be verified inside the sample is
@@ -928,9 +944,7 @@ export const stageTarget = async (
       missingPackages: missing.map((entry) => `${entry.pkg.name}@${entry.pkg.version}`),
     };
   }
-  const mismatched = materialized.filter(
-    (entry) => entry.result.version !== entry.pkg.version,
-  );
+  const mismatched = materialized.filter((entry) => entry.result.version !== entry.pkg.version);
   if (mismatched.length > 0) {
     return {
       ok: false,
@@ -1015,6 +1029,7 @@ export const verifyStagedTreeAgainstLedger = async (
   stagedTree: string,
   descriptor: DesktopTargetBuildDescriptor,
   ledgerJson: unknown,
+  expectedLedgerRef: string,
 ): Promise<VerifiedStagedLedger> => {
   const ledger = decodeNativeComponentLedger(ledgerJson);
   const bindings: ReadonlyArray<[string, string, string]> = [
@@ -1053,7 +1068,18 @@ export const verifyStagedTreeAgainstLedger = async (
     }
   }
   const ledgerDigest = nativeComponentLedgerDigest(ledger);
-  return { ledger, ledgerDigest, ledgerRef: `sha256:${ledgerDigest}` };
+  const ledgerRef = `sha256:${ledgerDigest}`;
+  if (!/^sha256:[0-9a-f]{64}$/u.test(expectedLedgerRef)) {
+    throw new Error(
+      "staged ledger REFUSED: independently supplied expected ledgerRef must be sha256:<64 lowercase hex>",
+    );
+  }
+  if (ledgerRef !== expectedLedgerRef) {
+    throw new Error(
+      `staged ledger REFUSED: recomputed ledgerRef ${ledgerRef} does not match independently supplied expected ${expectedLedgerRef}`,
+    );
+  }
+  return { ledger, ledgerDigest, ledgerRef };
 };
 
 interface AsarHeaderDirectory {
@@ -1088,6 +1114,54 @@ export const realAsarEntries = (asarPath: string): ReadonlyArray<RealAsarEntry> 
   };
   walk(header, "");
   return entries.sort((a, b) => a.path.localeCompare(b.path));
+};
+
+/** Reads one packed entry from the archive itself, never from the staged tree. */
+const readPackedAsarEntry = (asarPath: string, entryPath: string): Uint8Array => {
+  const requireFromApp = createRequire(path.join(appRoot, "package.json"));
+  const asar = requireFromApp("@electron/asar") as {
+    extractFile: (archive: string, filename: string) => Buffer;
+  };
+  return asar.extractFile(asarPath, entryPath);
+};
+
+export interface PackagedClosureByteInput {
+  readonly ledger: NativeComponentLedger;
+  readonly asarPath: string;
+  readonly resourcesPath: string;
+}
+
+/** Hashes every shipped closure byte, including files packed inside ASAR. */
+export const verifyPackagedClosureBytes = async (
+  input: PackagedClosureByteInput,
+): Promise<number> => {
+  let verifiedComponents = 0;
+  for (const component of input.ledger.components) {
+    const bytes =
+      component.asarPlacement === "asar"
+        ? readPackedAsarEntry(input.asarPath, component.destination)
+        : await readFile(
+            component.asarPlacement === "unpacked"
+              ? path.join(`${input.asarPath}.unpacked`, ...component.destination.split("/"))
+              : path.join(
+                  input.resourcesPath,
+                  ...extraResourceDestination(component.destination).split("/"),
+                ),
+          );
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (digest !== component.sha256 || bytes.byteLength !== component.byteLength) {
+      throw new Error(
+        `packaged ASAR REFUSED: shipped component ${component.destination} does not match the staged ledger bytes`,
+      );
+    }
+    verifiedComponents += 1;
+  }
+  if (verifiedComponents !== input.ledger.components.length) {
+    throw new Error(
+      `packaged ASAR REFUSED: verified ${verifiedComponents} of ${input.ledger.components.length} closure components`,
+    );
+  }
+  return verifiedComponents;
 };
 
 /** Resources-relative destination of an extra-resource closure entry. */
@@ -1227,30 +1301,11 @@ export const assertPackagedAsarAdmissible = async (
           .join(", "),
     );
   }
-  // Byte fidelity of the PACKAGED closure: unpacked and extra-resource
-  // components run as real files — their shipped bytes must equal the
-  // ledgered staging bytes.
-  let verifiedComponents = 0;
-  for (const component of input.ledger.components) {
-    const packagedPath =
-      component.asarPlacement === "unpacked"
-        ? path.join(`${input.asarPath}.unpacked`, ...component.destination.split("/"))
-        : component.asarPlacement === "extra-resource"
-          ? path.join(
-              input.resourcesPath,
-              ...extraResourceDestination(component.destination).split("/"),
-            )
-          : null;
-    if (packagedPath === null) continue;
-    const bytes = await readFile(packagedPath);
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    if (digest !== component.sha256 || bytes.byteLength !== component.byteLength) {
-      throw new Error(
-        `packaged ASAR REFUSED: shipped component ${component.destination} does not match the staged ledger bytes`,
-      );
-    }
-    verifiedComponents += 1;
-  }
+  // Byte fidelity of the COMPLETE PACKAGED closure. Packed entries are read
+  // from the actual ASAR archive; unpacked and extra-resource entries are
+  // read from their shipped filesystem locations. Placement alone is not a
+  // content proof.
+  const verifiedComponents = await verifyPackagedClosureBytes(input);
   return {
     asarEntryCount: entries.length,
     unpackedEntryCount: entries.filter((entry) => entry.unpacked).length,
@@ -1602,7 +1657,8 @@ const parseCliDescriptor = (argv: ReadonlyArray<string>): DesktopTargetBuildDesc
   }
   const auto = argv.includes("--auto");
   const sourceRevision =
-    flag("source-revision") ?? (auto ? capture("git", ["rev-parse", "HEAD"], checkoutRoot) : undefined);
+    flag("source-revision") ??
+    (auto ? capture("git", ["rev-parse", "HEAD"], checkoutRoot) : undefined);
   let version = flag("version");
   let lockfileSha256 = flag("lockfile-sha256");
   if (auto && sourceRevision !== undefined) {

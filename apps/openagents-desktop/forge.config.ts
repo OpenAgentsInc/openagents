@@ -42,6 +42,8 @@ interface StagedBuildInputs {
   readonly stagedTree: string;
   /** Raw ledger.json — re-verified against the CURRENT staged bytes at every gate. */
   readonly ledgerJson: unknown;
+  /** Independently supplied by the staging/coordinator invocation. */
+  readonly expectedLedgerRef: string;
 }
 
 let cachedStagedBuildInputs: StagedBuildInputs | null = null;
@@ -53,6 +55,12 @@ const requireStagedBuildInputs = (): StagedBuildInputs => {
       "packaging REFUSED: OA_DESKTOP_STAGING_WORKSPACE must point at a stage:target staging " +
         "workspace (scripts/stage-target.ts). Packaging never consumes the developer checkout " +
         "or shared node_modules, and host architecture is never inferred (DIST-03 #8916).",
+    );
+  }
+  const expectedLedgerRef = process.env.OA_DESKTOP_EXPECTED_LEDGER_REF;
+  if (expectedLedgerRef === undefined || !/^sha256:[0-9a-f]{64}$/u.test(expectedLedgerRef)) {
+    throw new Error(
+      "packaging REFUSED: OA_DESKTOP_EXPECTED_LEDGER_REF must independently pin the exact ledger selected by staging/coordinator",
     );
   }
   // Decode the typed descriptor exactly once and thread it through.
@@ -71,7 +79,7 @@ const requireStagedBuildInputs = (): StagedBuildInputs => {
   const ledgerJson = JSON.parse(
     readFileSync(path.join(workspace, "ledger.json"), "utf8"),
   ) as unknown;
-  cachedStagedBuildInputs = { descriptor, workspace, stagedTree, ledgerJson };
+  cachedStagedBuildInputs = { descriptor, workspace, stagedTree, ledgerJson, expectedLedgerRef };
   return cachedStagedBuildInputs;
 };
 
@@ -88,7 +96,10 @@ const assertActualToolIdentity = (toolchain: {
   const installedVersion = (packagePath: string): string =>
     (
       JSON.parse(
-        readFileSync(path.join(process.cwd(), "node_modules", ...packagePath.split("/"), "package.json"), "utf8"),
+        readFileSync(
+          path.join(process.cwd(), "node_modules", ...packagePath.split("/"), "package.json"),
+          "utf8",
+        ),
       ) as { version: string }
     ).version;
   const actual = {
@@ -124,16 +135,17 @@ const assertDescriptorMatchesMakerTarget = (
 
 export const OPENAGENTS_DESKTOP_BUNDLE_ID = "com.openagents.desktop";
 export const OPENAGENTS_DESKTOP_PROTOCOL = "openagents";
-const desktopManifest = JSON.parse(
-  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
-) as { version: string };
-
-const canonicalArtifactPath = (artifact: string, platform: string, arch: string): string =>
+export const canonicalArtifactPath = (
+  artifact: string,
+  platform: string,
+  arch: string,
+  stagedVersion: string,
+): string =>
   path.join(
     path.dirname(artifact),
     desktopReleaseArtifactName({
       product: "OpenAgents",
-      version: desktopManifest.version,
+      version: stagedVersion,
       platform,
       arch,
       extension: path.extname(artifact),
@@ -260,7 +272,7 @@ const config: ForgeConfig = {
      * staged inputs exist and match the maker invocation before any copy.
      */
     generateAssets: async (_forgeConfig, platform, arch) => {
-      const { descriptor, stagedTree, ledgerJson } = requireStagedBuildInputs();
+      const { descriptor, stagedTree, ledgerJson, expectedLedgerRef } = requireStagedBuildInputs();
       assertDescriptorMatchesMakerTarget(descriptor, platform, arch);
       // Explicit-triple native builds happen in staging (stage-target.ts),
       // never here: the maker lane consumes the descriptor's closed target
@@ -270,7 +282,12 @@ const config: ForgeConfig = {
       // ledger, bind every descriptor identity field, recompute the ledger
       // ref, and re-hash the CURRENT staged bytes against the component
       // digests — a mutated or stale staging workspace never reaches a copy.
-      const verified = await verifyStagedTreeAgainstLedger(stagedTree, descriptor, ledgerJson);
+      const verified = await verifyStagedTreeAgainstLedger(
+        stagedTree,
+        descriptor,
+        ledgerJson,
+        expectedLedgerRef,
+      );
       // Bind the ACTUAL tools this invocation resolves to the locked
       // identities the ledger recorded (re-review blocker 1).
       assertActualToolIdentity(verified.ledger.toolchain);
@@ -318,11 +335,16 @@ const config: ForgeConfig = {
      * before any maker or signing work.
      */
     postPackage: async (_forgeConfig, packageResult) => {
-      const { descriptor, stagedTree, ledgerJson } = requireStagedBuildInputs();
+      const { descriptor, stagedTree, ledgerJson, expectedLedgerRef } = requireStagedBuildInputs();
       // POST-PACKAGE binding (re-review blocker 3): the staged tree must
       // STILL match the ledger after the package step — reuse of a mutated
       // workspace can never yield a receipt referencing stale proof.
-      const verified = await verifyStagedTreeAgainstLedger(stagedTree, descriptor, ledgerJson);
+      const verified = await verifyStagedTreeAgainstLedger(
+        stagedTree,
+        descriptor,
+        ledgerJson,
+        expectedLedgerRef,
+      );
       for (const outputPath of packageResult.outputPaths) {
         const resourcesPath =
           packageResult.platform === "darwin"
@@ -358,6 +380,10 @@ const config: ForgeConfig = {
      */
     postMake: async (_forgeConfig, makeResults) => {
       if (process.platform !== "darwin") return makeResults;
+      const { descriptor } = requireStagedBuildInputs();
+      for (const result of makeResults) {
+        assertDescriptorMatchesMakerTarget(descriptor, result.platform, result.arch);
+      }
       const signingReady =
         developerIdApplication !== undefined && notarizeCredentials !== undefined;
       if (!signingReady) {
@@ -374,7 +400,12 @@ const config: ForgeConfig = {
         return makeResults.map((result) => ({
           ...result,
           artifacts: result.artifacts.map((artifact) => {
-            const canonical = canonicalArtifactPath(artifact, result.platform, result.arch);
+            const canonical = canonicalArtifactPath(
+              artifact,
+              result.platform,
+              result.arch,
+              descriptor.version,
+            );
             const unsigned = path.join(
               path.dirname(canonical),
               unsignedDevArtifactName(path.basename(canonical)),
@@ -410,7 +441,10 @@ const config: ForgeConfig = {
       return makeResults.map((result) => ({
         ...result,
         artifacts: result.artifacts.map((artifact) =>
-          renameArtifact(artifact, canonicalArtifactPath(artifact, result.platform, result.arch)),
+          renameArtifact(
+            artifact,
+            canonicalArtifactPath(artifact, result.platform, result.arch, descriptor.version),
+          ),
         ),
       }));
     },

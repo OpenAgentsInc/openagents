@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createPackage } from "@electron/asar";
 
 import {
   DesktopBuildReceiptSchema,
@@ -50,6 +51,7 @@ import {
   stagedTreeViolations,
   stagingPlanForDescriptor,
   verifyStagedTreeAgainstLedger,
+  verifyPackagedClosureBytes,
   type StagedFile,
   type StageTargetIo,
 } from "../scripts/stage-target.ts";
@@ -233,16 +235,14 @@ describe("DIST-03 target build descriptor", () => {
       signingPolicy: "production",
     };
     // darwin cannot omit zip; linux cannot omit deb/rpm; win32 needs nsis.
+    expect(Exit.isFailure(decode({ ...base, targetKey: "darwin-arm64", formats: ["dmg"] }))).toBe(
+      true,
+    );
+    expect(Exit.isFailure(decode({ ...base, targetKey: "darwin-x64", formats: ["zip"] }))).toBe(
+      true,
+    );
     expect(
-      Exit.isFailure(decode({ ...base, targetKey: "darwin-arm64", formats: ["dmg"] })),
-    ).toBe(true);
-    expect(
-      Exit.isFailure(decode({ ...base, targetKey: "darwin-x64", formats: ["zip"] })),
-    ).toBe(true);
-    expect(
-      Exit.isFailure(
-        decode({ ...base, targetKey: "linux-x64", formats: ["appimage", "deb"] }),
-      ),
+      Exit.isFailure(decode({ ...base, targetKey: "linux-x64", formats: ["appimage", "deb"] })),
     ).toBe(true);
     expect(
       Exit.isSuccess(
@@ -729,12 +729,12 @@ describe("DIST-03 planned ASAR placement (mirror of the packaging boundary)", ()
     expect(plannedAsarPlacement("dist/builtin-skills/manifest.json")).toBe("extra-resource");
     expect(plannedAsarPlacement("dist/renderer/boot.js")).toBe("unpacked");
     expect(plannedAsarPlacement("dist/workers/codex-history-worker.js")).toBe("unpacked");
-    expect(
-      plannedAsarPlacement("node_modules/@openai/codex-darwin-arm64/vendor/t/bin/codex"),
-    ).toBe("unpacked");
-    expect(
-      plannedAsarPlacement("node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs"),
-    ).toBe("unpacked");
+    expect(plannedAsarPlacement("node_modules/@openai/codex-darwin-arm64/vendor/t/bin/codex")).toBe(
+      "unpacked",
+    );
+    expect(plannedAsarPlacement("node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs")).toBe(
+      "unpacked",
+    );
     expect(plannedAsarPlacement("dist/main.js")).toBe("asar");
     expect(plannedAsarPlacement("package.json")).toBe("asar");
   });
@@ -745,10 +745,7 @@ describe("DIST-03 native component ledger (§9)", () => {
     cleanStagedTree(targetKey);
   const versionsFor = (targetKey: DesktopTargetKey): ReadonlyMap<string, string> =>
     new Map(
-      requiredRuntimePackages(descriptorFor(targetKey), pins).map((pkg) => [
-        pkg.name,
-        pkg.version,
-      ]),
+      requiredRuntimePackages(descriptorFor(targetKey), pins).map((pkg) => [pkg.name, pkg.version]),
     );
 
   test("enumerates the per-FILE native dependency closure — never aggregate package trees", () => {
@@ -778,9 +775,7 @@ describe("DIST-03 native component ledger (§9)", () => {
       asarPlacement: "unpacked",
     });
     expect(
-      byDestination.get(
-        "node_modules/@openai/codex-darwin-arm64/vendor/fixture-triple/bin/codex",
-      ),
+      byDestination.get("node_modules/@openai/codex-darwin-arm64/vendor/fixture-triple/bin/codex"),
     ).toMatchObject({ name: "@openai/codex-darwin-arm64", fileKind: "executable" });
     // Aggregate package entries (destination = the package directory) do not exist.
     expect(byDestination.has("node_modules/@openai/codex-darwin-arm64")).toBe(false);
@@ -1211,9 +1206,7 @@ describe("DIST-03 packaged ASAR placement fidelity", () => {
       nativeClosureEntries(
         descriptor,
         cleanStagedTree("darwin-arm64"),
-        new Map(
-          requiredRuntimePackages(descriptor, pins).map((pkg) => [pkg.name, pkg.version]),
-        ),
+        new Map(requiredRuntimePackages(descriptor, pins).map((pkg) => [pkg.name, pkg.version])),
         "0.1.0",
       ),
       fixtureMetadata,
@@ -1296,7 +1289,7 @@ describe("DIST-03 packaged ASAR placement fidelity", () => {
 describe("DIST-03 Forge<->ledger binding (verifyStagedTreeAgainstLedger)", () => {
   const writeFixtureTree = (): {
     stagedTree: string;
-    ledger: Record<string, unknown>;
+    ledger: ReturnType<typeof buildNativeComponentLedger>;
     cleanup: () => void;
   } => {
     const stagedTree = mkdtempSync(path.join(tmpdir(), "oa-ledger-bind-"));
@@ -1326,7 +1319,7 @@ describe("DIST-03 Forge<->ledger binding (verifyStagedTreeAgainstLedger)", () =>
     );
     return {
       stagedTree,
-      ledger: JSON.parse(JSON.stringify(ledger)) as Record<string, unknown>,
+      ledger,
       cleanup: () => rmSync(stagedTree, { recursive: true, force: true }),
     };
   };
@@ -1338,6 +1331,7 @@ describe("DIST-03 Forge<->ledger binding (verifyStagedTreeAgainstLedger)", () =>
         stagedTree,
         descriptorFor("darwin-arm64"),
         ledger,
+        nativeComponentLedgerRef(ledger),
       );
       expect(verified.ledgerRef).toMatch(/^sha256:[0-9a-f]{64}$/);
       expect(verified.ledger.components).toHaveLength(1);
@@ -1347,6 +1341,7 @@ describe("DIST-03 Forge<->ledger binding (verifyStagedTreeAgainstLedger)", () =>
           stagedTree,
           descriptorFor("darwin-arm64", { version: "9.9.9" }),
           ledger,
+          nativeComponentLedgerRef(ledger),
         ),
       ).rejects.toThrow(/version/);
     } finally {
@@ -1361,14 +1356,99 @@ describe("DIST-03 Forge<->ledger binding (verifyStagedTreeAgainstLedger)", () =>
       const mutated = Buffer.concat([Buffer.from(machO("arm64")), Buffer.alloc(84, 1)]);
       writeFileSync(helperPath, mutated);
       await expect(
-        verifyStagedTreeAgainstLedger(stagedTree, descriptorFor("darwin-arm64"), ledger),
+        verifyStagedTreeAgainstLedger(
+          stagedTree,
+          descriptorFor("darwin-arm64"),
+          ledger,
+          nativeComponentLedgerRef(ledger),
+        ),
       ).rejects.toThrow(/bytes changed since staging/);
       rmSync(helperPath);
       await expect(
-        verifyStagedTreeAgainstLedger(stagedTree, descriptorFor("darwin-arm64"), ledger),
+        verifyStagedTreeAgainstLedger(
+          stagedTree,
+          descriptorFor("darwin-arm64"),
+          ledger,
+          nativeComponentLedgerRef(ledger),
+        ),
       ).rejects.toThrow(/missing from the staged tree/);
     } finally {
       cleanup();
+    }
+  });
+
+  test("a coherent staged-byte plus ledger mutation cannot replace the independently pinned trust root", async () => {
+    const { stagedTree, ledger, cleanup } = writeFixtureTree();
+    try {
+      const expectedLedgerRef = nativeComponentLedgerRef(ledger);
+      const helperPath = path.join(stagedTree, "native", "arm64", "oa-desktop-audio");
+      const mutated = Buffer.concat([Buffer.from(machO("arm64")), Buffer.alloc(84, 7)]);
+      writeFileSync(helperPath, mutated);
+      const coherentlyMutatedLedger = {
+        ...ledger,
+        components: ledger.components.map((component) => ({
+          ...component,
+          sha256: createHash("sha256").update(mutated).digest("hex"),
+          byteLength: mutated.byteLength,
+        })),
+      };
+      await expect(
+        verifyStagedTreeAgainstLedger(
+          stagedTree,
+          descriptorFor("darwin-arm64"),
+          coherentlyMutatedLedger,
+          expectedLedgerRef,
+        ),
+      ).rejects.toThrow(/does not match independently supplied expected/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("DIST-03 shipped packed-ASAR byte fidelity", () => {
+  test("reads packed WASM from the actual archive and refuses byte drift", async () => {
+    const fixtureRoot = mkdtempSync(path.join(tmpdir(), "oa-packed-byte-gate-"));
+    try {
+      const source = path.join(fixtureRoot, "source");
+      const asarPath = path.join(fixtureRoot, "app.asar");
+      const destination = "dist/runtime.wasm";
+      const expectedBytes = Buffer.from("expected-wasm-bytes");
+      mkdirSync(path.join(source, "dist"), { recursive: true });
+      writeFileSync(path.join(source, destination), expectedBytes);
+      await createPackage(source, asarPath);
+      const descriptor = descriptorFor("darwin-arm64");
+      const ledger = buildNativeComponentLedger(
+        descriptor,
+        [
+          {
+            name: "runtime-wasm",
+            version: "1.0.0",
+            targetKey: "darwin-arm64",
+            sha256: createHash("sha256").update(expectedBytes).digest("hex"),
+            byteLength: expectedBytes.byteLength,
+            provenance: "workspace-crate",
+            destination,
+            fileKind: "wasm-module",
+            architecture: "none",
+            signingState: "not-applicable",
+            asarPlacement: "asar",
+          },
+        ],
+        fixtureMetadata,
+      );
+      await expect(
+        verifyPackagedClosureBytes({ ledger, asarPath, resourcesPath: fixtureRoot }),
+      ).resolves.toBe(1);
+
+      rmSync(asarPath);
+      writeFileSync(path.join(source, destination), Buffer.from("drifted-wasm-bytes!"));
+      await createPackage(source, asarPath);
+      await expect(
+        verifyPackagedClosureBytes({ ledger, asarPath, resourcesPath: fixtureRoot }),
+      ).rejects.toThrow(/does not match the staged ledger bytes/);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });
 });

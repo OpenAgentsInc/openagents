@@ -6,6 +6,7 @@ import path from "node:path";
 import config, {
   OPENAGENTS_DESKTOP_BUNDLE_ID,
   OPENAGENTS_DESKTOP_PROTOCOL,
+  canonicalArtifactPath,
 } from "../forge.config.ts";
 import { desktopReleaseArtifactName } from "../scripts/release-artifact-name.ts";
 import {
@@ -45,6 +46,14 @@ describe("CUT-26 macOS artifact contract", () => {
         extension: ".dmg",
       }),
     ).toThrow("Invalid release artifact version");
+    expect(
+      canonicalArtifactPath(
+        "/tmp/forge-name-derived-from-live-checkout.dmg",
+        "darwin",
+        "arm64",
+        "9.8.7-rc.4",
+      ),
+    ).toBe("/tmp/OpenAgents-9.8.7-rc.4-arm64.dmg");
   });
 
   test("normal production launches use the canonical OpenAgents profile with a legacy atomic migration", () => {

@@ -61,6 +61,7 @@ if (mode !== "package" && mode !== "make") {
 
 const retain = argv.includes("--retain");
 let workspace = flag("staging-workspace");
+let expectedLedgerRef = flag("ledger-ref");
 // Track the auto-created workspace so cleanup covers success, typed
 // failures, and thrown errors alike; explicitly provided workspaces are the
 // caller's to manage.
@@ -118,10 +119,16 @@ try {
         `[stage-and-package] staged ${descriptor.targetKey} at ${result.workspace} (ledgerRef ${result.ledgerRef})\n`,
       );
       workspace = result.workspace;
+      expectedLedgerRef = result.ledgerRef;
     }
   }
 
   if (workspace !== undefined) {
+    if (expectedLedgerRef === undefined) {
+      throw new Error(
+        "reused staging workspaces require --ledger-ref sha256:<64 lowercase hex>; the mutable workspace may not establish its own trust root",
+      );
+    }
     const { platform, arch } = desktopTargets[targetKey as DesktopTargetKey];
     execFileSync(
       "pnpm",
@@ -129,13 +136,19 @@ try {
       {
         cwd: appRoot,
         stdio: "inherit",
-        env: { ...process.env, OA_DESKTOP_STAGING_WORKSPACE: workspace },
+        env: {
+          ...process.env,
+          OA_DESKTOP_STAGING_WORKSPACE: workspace,
+          OA_DESKTOP_EXPECTED_LEDGER_REF: expectedLedgerRef,
+        },
       },
     );
   }
 } finally {
   if (!retain) await cleanupStagingWorkspace(autoCreatedWorkspace);
   else if (autoCreatedWorkspace !== undefined) {
-    process.stderr.write(`[stage-and-package] retained staging workspace ${autoCreatedWorkspace}\n`);
+    process.stderr.write(
+      `[stage-and-package] retained staging workspace ${autoCreatedWorkspace}\n`,
+    );
   }
 }
