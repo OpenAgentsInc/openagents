@@ -1,8 +1,8 @@
 # T3 Code Agent Client Protocol implementation teardown — 2026-07-16
 
 Read-only implementation audit of T3 Code's **Agent Client Protocol**
-integration, with an OpenAgents plan for controlling Grok and other compatible
-coding agents. The T3 Code source was inspected at commit
+integration, with an OpenAgents plan for controlling Grok, Cursor, and other
+compatible coding agents. The T3 Code source was inspected at commit
 [`bde0a4c0dd2d420a5fd71f39448d5db1bab078da`](https://github.com/pingdotgg/t3code/tree/bde0a4c0dd2d420a5fd71f39448d5db1bab078da)
 on 2026-07-16. The local OpenAgents comparison was made at
 `61ebc9b9bc196ee0b3c9dada1f694ed5e170ec84` before this document was written.
@@ -100,6 +100,30 @@ The client adapter should use one generated, versioned protocol package and one
 bidirectional transport. ACP remains an adapter rather than the canonical
 OpenAgents domain. Thread, Turn, Item, Work Unit, Runtime Interaction,
 authority, evidence, and Receipt remain canonical.
+
+## Implementation tracking
+
+The execution plan is tracked by
+[#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887).
+Its child issues turn the phases below into dependency-ordered deliverables:
+
+| Issue                                                            | Deliverable                                                                            |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [#8888](https://github.com/OpenAgentsInc/openagents/issues/8888) | pin `schema-v1.19.0`; generate codecs, manifests, provenance, and drift checks         |
+| [#8889](https://github.com/OpenAgentsInc/openagents/issues/8889) | bounded bidirectional stdio JSON-RPC transport and exact process lifecycle             |
+| [#8890](https://github.com/OpenAgentsInc/openagents/issues/8890) | stable wire-v1 conformance, Grok/Cursor fixtures, faults, and compatibility artifacts  |
+| [#8891](https://github.com/OpenAgentsInc/openagents/issues/8891) | native/canonical event projection and reverse-request authority bridge                 |
+| [#8892](https://github.com/OpenAgentsInc/openagents/issues/8892) | session lifecycle, prompt/update drain, replay/live gating, cancellation, and recovery |
+| [#8893](https://github.com/OpenAgentsInc/openagents/issues/8893) | required Grok profile over `grok agent stdio`                                          |
+| [#8894](https://github.com/OpenAgentsInc/openagents/issues/8894) | required Cursor profile over `agent acp`                                               |
+| [#8895](https://github.com/OpenAgentsInc/openagents/issues/8895) | Grok/Cursor install, auth, configuration, interaction, failure, and recovery UX        |
+| [#8896](https://github.com/OpenAgentsInc/openagents/issues/8896) | trusted peer-profile schema and registry/admission path                                |
+| [#8897](https://github.com/OpenAgentsInc/openagents/issues/8897) | pinned Grok and Cursor live compatibility and release-claim gate                       |
+
+Grok and Cursor are independent required release peers. Passing the shared
+wire suite or one provider's live probe does not establish support for the
+other. The epic deliberately keeps their auth, extensions, version ranges,
+and recovery behavior in separate peer profiles.
 
 ## 1. Snapshot identity and protocol drift
 
@@ -793,7 +817,7 @@ unknown extension metadata may be retained privately within configured bounds.
    error data.
 8. Keep live Cursor/Grok/official-example probes opt-in and non-authoritative.
 
-### Phase ACP-3 — ACP client adapter and Grok proof
+### Phase ACP-3 — ACP client adapter and Grok/Cursor proof
 
 1. Replace `grok-harness`'s raw client with the shared package.
 2. Correct advertised capabilities before enabling any peer.
@@ -803,12 +827,19 @@ unknown extension metadata may be retained privately within configured bounds.
 5. Add brokered filesystem/terminal capabilities only after their grants and
    tests exist.
 6. Prove cancel, resume, restart repair, session lineage, and event drain.
-7. Keep provider-specific auth/model/extensions in thin peer adapters.
+7. Implement separate Grok and Cursor launch/auth/model/extension profiles.
+8. Prove Cursor login, modes/configuration, model discovery, and
+   `cursor/ask_question`, `cursor/create_plan`, `cursor/update_todos`, and
+   `cursor/list_available_models` independently from Grok.
+9. Prove Grok cached-token/API-key auth, update streaming, question extensions,
+   and any unstable model/completion compatibility fallback independently from
+   Cursor.
 
-This phase proves Grok control through the shared client. It adds protocol
-support without automatically reopening visible multi-provider product scope.
-Each additional registry agent still needs an explicit product decision,
-launch/install/auth profile, capability matrix, UX, and release evidence.
+This phase proves Grok and Cursor control through the shared client. It adds
+protocol support without making wire-version compatibility a blanket product
+claim. Each additional registry agent still needs an explicit product
+decision, launch/install/auth profile, capability matrix, UX, and release
+evidence.
 
 ### Phase ACP-4 — registry discovery and additional agents
 
@@ -854,7 +885,7 @@ ACP support is not complete until:
 - ordinary diagnostics contain no raw private payloads;
 - filesystem, terminal, MCP, and permission paths are brokered and receipted;
 - provider extensions remain edge adapters;
-- a current official compatibility fixture passes; and
+- pinned live Grok and Cursor compatibility matrices pass independently; and
 - README/product language distinguishes implemented, experimental, and planned
   support.
 
@@ -909,9 +940,9 @@ and receipt boundary.
 The correct OpenAgents target is therefore:
 
 > one current, generated, bidirectional Agent Client Protocol foundation; an
-> outbound client adapter that proves `grok agent stdio` first and admits other
-> registry agents through capability-gated peer profiles; and no second domain
-> model, authority path, or event writer.
+> outbound client adapter that proves `grok agent stdio` and Cursor `agent acp`
+> independently, then admits other registry agents through capability-gated
+> peer profiles; and no second domain model, authority path, or event writer.
 
 ## Primary source map
 

@@ -1997,20 +1997,21 @@ dies by its owning roadmap gate, issue, or contract when promoted.
 The
 [T3 Code Agent Client Protocol implementation teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
 adds the reference set's strongest TypeScript/Effect implementation of the
-protocol needed to control `grok agent stdio` and other compatible coding
-agents. It audits T3's generated `effect-acp` package, custom bidirectional
-Effect RPC transport, client and agent facades, structured errors, shared
-session runtime, Cursor/Grok launch and extension layers, event projection,
-restore gate, hardening history, and tests. It also verifies current Grok
-packages, current official schema and SDK versions, registry scope, and
-OpenAgents' existing Grok fixture.
+protocol needed to control Grok through `grok agent stdio`, Cursor through
+`agent acp`, and other compatible coding agents. It audits T3's generated
+`effect-acp` package, custom bidirectional Effect RPC transport, client and
+agent facades, structured errors, shared session runtime, Cursor/Grok launch
+and extension layers, event projection, restore gate, hardening history, and
+tests. It also verifies current Grok packages, current official schema and SDK
+versions, registry scope, and OpenAgents' existing Grok fixture.
 
 The evidence changes this document's decisions in the following ways.
 
 1. **The required product is an Agent Client Protocol client.** OpenAgents
-   hosts Grok's stdio agent and controls it through initialize,
-   authentication, session, prompt, update, cancellation, and negotiated
-   reverse methods. Exposing OpenAgents itself as an ACP agent is out of scope.
+   hosts the Grok and Cursor ACP subprocesses and controls them through
+   initialize, authentication, session, prompt, update, cancellation, and
+   negotiated reverse methods. Exposing OpenAgents itself as an ACP agent is
+   out of scope.
 2. **Grok is using the standard protocol family.** Current Grok source pins
    Rust `agent-client-protocol` 0.10.4 with unstable features, resolves
    `agent-client-protocol-schema` 0.11.4, wraps it in `xai-acp-lib`, implements
@@ -2057,14 +2058,17 @@ The evidence changes this document's decisions in the following ways.
    portable projection, with explicit loss accounting. Prompts, file bodies,
    terminal output, headers, auth material, and error data never enter public
    receipts or ordinary diagnostics.
-10. **The implementation order is Grok-first and concrete.** Pin/generate
-    current stable schemas and manifests; build the bounded bidirectional
-    connection and conformance fixtures; replace the Grok fixture with the
-    shared outbound client; prove auth, prompt/update, reverse requests,
-    cancellation, resume, restart, and extensions against a pinned Grok binary;
-    then admit additional registry agents through separate peer profiles.
+10. **The implementation order is Grok-and-Cursor-first and concrete.**
+    Pin/generate current stable schemas and manifests; build the bounded
+    bidirectional connection and conformance fixtures; replace the Grok fixture
+    with the shared outbound client; implement separate Grok and Cursor peer
+    profiles; prove auth, prompt/update, reverse requests, configuration,
+    cancellation, resume, restart, and extensions against pinned binaries for
+    each; then admit additional registry agents through separate peer profiles.
 
 This addendum accepts Agent Client Protocol client support as an architecture
 direction. Per the standing rule, the owning roadmap gate, typed contracts,
-issues, tests, receipts, and public promise state still determine when Grok or
-any additional peer is implemented or shipped.
+issues, tests, receipts, and public promise state still determine when Grok,
+Cursor, or any additional peer is implemented or shipped. The
+dependency-ordered work and independent provider release gates are tracked in
+[#8887](https://github.com/OpenAgentsInc/openagents/issues/8887).

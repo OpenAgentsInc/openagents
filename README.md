@@ -100,8 +100,9 @@ the user's control.
 
 Agent Client Protocol (ACP) client support is an explicit, bounded architecture
 direction, not a claim about the currently shipped Desktop surface. It lets
-OpenAgents control `grok agent stdio` and other compatible coding agents over
-bidirectional JSON-RPC/stdio at the typed runtime boundary.
+OpenAgents control Grok through `grok agent stdio`, Cursor through `agent acp`,
+and other compatible coding agents over bidirectional JSON-RPC/stdio at the
+typed runtime boundary.
 
 The adapter starts from current stable wire version 1 and the current schema
 artifact, then capability-gates optional methods and keeps provider-specific
@@ -113,6 +114,8 @@ external coding agents is the requirement.
 
 The source audit and ordered implementation gates are in the
 [T3 Code Agent Client Protocol implementation teardown](docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md);
+execution is tracked in
+[#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887);
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).
 
