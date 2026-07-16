@@ -2,7 +2,7 @@
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.full.auto.codex.composer.loop"
 assurance_revision: 1
-title: "Full Auto Codex Composer Loop Assurance Spec"
+title: "Full Auto Provider-Lane Composer Loop Assurance Spec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
 author: "OpenAgents"
@@ -47,13 +47,18 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-25",
       "FA-AC-26",
       "FA-AC-27",
-      "FA-AC-28"
+      "FA-AC-28",
+      "FA-AC-29",
+      "FA-AC-30",
+      "FA-AC-31",
+      "FA-AC-32",
+      "FA-AC-33"
     ],
-    "document_digest": "sha256:c3a3581a035a7107f3ccb12cf90b3bf00e4ce147a2929b4659b1f0de57c0bd79",
+    "document_digest": "sha256:60a5efeba64a4a83314c7e9fe8910b3505d795cdcf87915e8844762ffc4a9557",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 7
+    "spec_revision": 8
   }
 }
 ```
@@ -161,6 +166,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/codex-history-host.test.ts",
       "apps/openagents-desktop/src/codex-history-plan-projection.test.ts",
       "apps/openagents-desktop/src/codex-history-utility.test.ts",
+      "apps/openagents-desktop/src/codex-history.test.ts",
       "apps/openagents-desktop/src/codex-host-contract.test.ts",
       "apps/openagents-desktop/src/codex-host-services.test.ts",
       "apps/openagents-desktop/src/codex-local-runtime.test.ts",
@@ -171,6 +177,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/codex-thread-lifecycle.test.ts",
       "apps/openagents-desktop/src/codex-turn-state.test.ts",
       "apps/openagents-desktop/src/composer-admission.test.ts",
+      "apps/openagents-desktop/src/desktop-codex-usage-reporter.test.ts",
       "apps/openagents-desktop/src/desktop-host-lifecycle.test.ts",
       "apps/openagents-desktop/src/desktop-launch-workspace.test.ts",
       "apps/openagents-desktop/src/desktop-operation-context.test.ts",
@@ -199,6 +206,9 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/mvp-proof.test.ts",
       "apps/openagents-desktop/src/product-spec-app-server-tools.test.ts",
       "apps/openagents-desktop/src/product-spec-workroom.test.ts",
+      "apps/openagents-desktop/src/provider-lane-acp.test.ts",
+      "apps/openagents-desktop/src/provider-lane-capabilities.test.ts",
+      "apps/openagents-desktop/src/provider-lane.test.ts",
       "apps/openagents-desktop/src/provider-runtime-compatibility.test.ts",
       "apps/openagents-desktop/src/provider-runtime-host.test.ts",
       "apps/openagents-desktop/src/provider-runtime-target.test.ts",
@@ -239,6 +249,8 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/renderer/skill-invocation.test.ts",
       "apps/openagents-desktop/src/renderer/terminal-workspace.test.ts",
       "apps/openagents-desktop/src/renderer/tool-cards.test.ts",
+      "apps/openagents-desktop/src/renderer/visual-baseline-fixtures.test.ts",
+      "apps/openagents-desktop/src/renderer/visual-baseline-workbench.test.tsx",
       "apps/openagents-desktop/src/renderer/voice-actions.test.ts",
       "apps/openagents-desktop/src/renderer/voice-mode.test.ts",
       "apps/openagents-desktop/src/renderer/workspace-browser.test.ts",
@@ -249,6 +261,9 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/update-staging-host.test.ts",
       "apps/openagents-desktop/src/update-staging-integration.test.ts",
       "apps/openagents-desktop/src/usage-ledger.test.ts",
+      "apps/openagents-desktop/src/visual-baseline-baselines.test.ts",
+      "apps/openagents-desktop/src/visual-baseline-diff.test.ts",
+      "apps/openagents-desktop/src/visual-baseline-swarm-contract.test.ts",
       "apps/openagents-desktop/src/voice-host.test.ts",
       "apps/openagents-desktop/src/voice-native-helper.test.ts",
       "apps/openagents-desktop/src/voice-permission-policy.test.ts",
@@ -349,6 +364,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-chat-sync.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-clients-preview.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-code.test.tsx",
+      "apps/openagents.com/apps/start/src/routes/-components-workbench-page.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-components.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-forum-khala-motion.test.ts",
       "apps/openagents.com/apps/start/src/routes/-forum-markdown.test.ts",
@@ -371,6 +387,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-retired-app.test.ts",
       "apps/openagents.com/apps/start/src/routes/-run.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-sales-landing.test.tsx",
+      "apps/openagents.com/apps/start/src/routes/-share-fetch.test.ts",
       "apps/openagents.com/apps/start/src/routes/-share.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-splash-khala-canvas.test.ts",
       "apps/openagents.com/apps/start/src/routes/-splash.test.tsx",
@@ -470,19 +487,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/workers/api/src/artanis-activity-routes.test.ts",
       "apps/openagents.com/workers/api/src/artanis-administrator-corpus.test.ts",
       "apps/openagents.com/workers/api/src/artanis-administrator-labor-tick.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-approval-gates.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-autonomy-ladder.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-continual-learning-templates.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-diagnosis-grounding-gate.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-distillation-dataset-receipt.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-domain-repository.contract.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-domain-store.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-fleet-overseer-tick.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-delivery.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-listener.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-publication.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-responder-khala.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-reward-smoke.test.ts"
+      "apps/openagents.com/workers/api/src/artanis-approval-gates.test.ts"
     ],
     "declared_scripts": [
       {
@@ -764,6 +769,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "electron-forge package --platform=darwin --arch=arm64",
         "manifest_path": "apps/openagents-desktop/package.json",
         "name": "package:mac"
+      },
+      {
+        "command": "node --import tsx scripts/build.ts && node --import tsx scripts/visual-baseline-smoke.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "qa:visual"
       },
       {
         "command": "node --import tsx scripts/run-release-acceptance.ts",
@@ -1831,6 +1841,21 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "qa:nightly"
       },
       {
+        "command": "node --import tsx scripts/qa-observer.ts",
+        "manifest_path": "package.json",
+        "name": "qa:observer"
+      },
+      {
+        "command": "pnpm --dir apps/openagents-desktop run qa:visual",
+        "manifest_path": "package.json",
+        "name": "qa:swarm:desktop"
+      },
+      {
+        "command": "node --import tsx scripts/qa-verify.ts",
+        "manifest_path": "package.json",
+        "name": "qa:verify"
+      },
+      {
         "command": "node --import tsx scripts/effect-authority-boundary-scan.ts",
         "manifest_path": "package.json",
         "name": "scan:effect-authority-boundaries"
@@ -2446,7 +2471,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "generate"
       },
       {
-        "command": "vp test --run packages/agent-client-protocol/src/protocol.test.ts",
+        "command": "vp test --run packages/agent-client-protocol/src/protocol.test.ts packages/agent-client-protocol/src/profiles/profiles.test.ts",
         "manifest_path": "packages/agent-client-protocol/package.json",
         "name": "test"
       },
@@ -2459,6 +2484,16 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "node scripts/update-upstream.ts",
         "manifest_path": "packages/agent-client-protocol/package.json",
         "name": "update:upstream"
+      },
+      {
+        "command": "vp test --run packages/agent-client-runtime-bridge/src",
+        "manifest_path": "packages/agent-client-runtime-bridge/package.json",
+        "name": "test"
+      },
+      {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "manifest_path": "packages/agent-client-runtime-bridge/package.json",
+        "name": "typecheck"
       },
       {
         "command": "vp test --root ../.. --run --project node packages/agent-readiness/src/index.test.ts",
@@ -3146,12 +3181,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "aeb5a73bb52cf71c83610010acce01af7f54db8e",
-    "inventory_digest": "sha256:d656fbb90e1194aa2bf7f592d7db98d1fb82087bdb9e71e8f00178023d3dcbb2",
-    "repository_label": "oa-fa-integrate",
+    "head": "46ea6c28f04b0fc29df482227a2c8e87b16968c5",
+    "inventory_digest": "sha256:d19ef78318d107e718179e64fa76742b1fdccf769a5142d2438956407dfc001f",
+    "repository_label": "oa-l6-8901",
     "state": "dirty",
-    "tracked_file_count": 9043,
-    "tree": "dcdcb6b2b3e4269289aac2420322594bc70f21a4",
+    "tracked_file_count": 9149,
+    "tree": "6ed1d223f45c85922724c786081db1ba3d37ed14",
     "truncated": true
   }
 }
@@ -3470,6 +3505,61 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:bfadbd7c3bc0f39bdda56240e27fd763503abb7e944c2e60d6ade253ef6efa6a",
     "source_claim_snapshot": "The control surface can BOOTSTRAP Full Auto with no existing\nthread: `POST /v1/full-auto/start` (OpenAPI `startFullAuto`, MCP\n`full_auto_start`, CLI `start --workspace <path> [--title <t>]`) mints a\nbrand-new local thread in main's own thread store (main names the ref --\nthe caller never supplies one), binds the resolved workspace, enables the\nrecord through the same `registry.set` path as the composer toggle,\nappends the distinctly-attributed `(caller: control-api)` system note, and\nschedules the shared serialized reconcile pass so the first continuation\ndispatches without a separate continue-now call -- the reconcile\ndispatcher then opens a brand-new provider conversation because the\nminted thread has no session continuity. start obeys the exact enable\nauthority rule: the caller MUST name the workspace it expects, and on any\ndifference from the currently resolved workspace the call refuses with\n409 `workspace_mismatch` with NO thread minted, NO record written, and NO\nnote appended -- never a redirect, never a new grant.\nProof: `src/full-auto-control-server.test.ts` (\"start with the matching\nworkspaceRef mints a thread...\", \"start with a mismatched workspaceRef is\na 409 typed refusal: NO thread minted...\", \"start discipline: bodyless\nstart is 400...\", plus the doc <-> route parity test covering\n`startFullAuto`).",
     "title": "Assure FA-AC-28"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-29"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-29-01",
+    "source_claim_digest": "sha256:95a4f3578438a53c7032f9e110b29e4202cb40695533f6792bbb6b092a360945",
+    "source_claim_snapshot": "The durable execution profile carries an optional ProviderLane\nref. A rev-7 registry row with no lane still decodes and continues on\n`codex-local`; a selected `fable-local` row survives a Runtime A → Runtime B\nreopen and reaches the shared dispatch seam with the same lane/account/model.\nProof: `full-auto-restart.e2e.test.ts` \"a Claude lane selection survives\nRuntime A -> Runtime B...\" plus the retained legacy-file registry tests;\n`pnpm run smoke:full-auto-restart` launches real Electron OS processes for\n`seed-claude` → `resume-claude` and receipts `dispatchedLane:fable-local`.",
+    "title": "Assure FA-AC-29"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-30"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-30-01",
+    "source_claim_digest": "sha256:a9b55a40165284d3dce1b35a96082a6a59d8fd6ad9f9ce15c77b73050a65fdcd",
+    "source_claim_snapshot": "Reconciliation dispatches through the L1 ProviderLane SPI and\nfails closed for any lane that is unknown, L2-quarantined, does not advertise\nFull Auto, or lacks safe background-question settlement. Workspace binding,\nexactly-once lease, backoff, cap, and attribution behavior are unchanged.\nProof: `main.ts` lane selection + `projectProviderLaneCapabilities` gate;\nfocused Full Auto regression suites.",
+    "title": "Assure FA-AC-30"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-31"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-31-01",
+    "source_claim_digest": "sha256:4c079b7e3e08a8adad86a2918fff6937a69a26010d2306c4e3bcf404bf155219",
+    "source_claim_snapshot": "Codex and Claude Full Auto turns use the single lane-keyed\ninstruction policy. A background Claude `AskUserQuestion` never parks: it is\ndenied immediately with guidance to make a reasonable judgment and proceed,\nwhile an interactive ordinary Claude turn retains the existing real question\nUI flow.\nProof: `fable-local-runtime.test.ts` \"background Full Auto denies\nAskUserQuestion immediately...\" and the retained interactive question tests.",
+    "title": "Assure FA-AC-31"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-32"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-32-01",
+    "source_claim_digest": "sha256:4f022a210eada46d961d2fb53d39763565d354d6465328d5cda3bb511253e1cd",
+    "source_claim_snapshot": "`start` and `enable` accept an optional lane ref (default\n`codex-local`) through the shared control contract, served OpenAPI document,\nMCP tools, and CLI `--lane`; status/list expose the public-safe selected lane.\nAn ineligible lane returns typed 409 `lane_not_eligible` without mutating the\nregistry.\nProof: `full-auto-control-server.test.ts` \"enable accepts an admitted lane\nselector...\" plus document/route/schema parity.",
+    "title": "Assure FA-AC-32"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-33"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-33-01",
+    "source_claim_digest": "sha256:d13b2fc55b4284f1e5b47327c615a43b87c98d3c71736701129b26fdd82c9b96",
+    "source_claim_snapshot": "A real bounded Claude Code Full Auto run must be retained as a\nrelease receipt. ACP peer proof remains conditional on #8893/#8894 admission\nand must not be inferred from fixture coverage.\nProof: owner/dogfood receipt linked from #8901; until captured this criterion\nremains an explicit residual, not a release claim.",
+    "title": "Assure FA-AC-33"
   }
 ]
 ```

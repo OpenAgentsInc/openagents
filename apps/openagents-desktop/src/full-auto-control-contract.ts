@@ -31,6 +31,7 @@ export const FULL_AUTO_CONTROL_CALLER = "control-api" as const
 const ThreadRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))
 const TurnRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
 const WorkspaceRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024))
+const LaneRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))
 const Count = Schema.Number.check(
   Schema.isInt(),
   Schema.isGreaterThanOrEqualTo(0),
@@ -46,6 +47,7 @@ export const decodeFullAutoControlThreadRef = (value: unknown): string | null =>
  * it expects; the server refuses (409) when the current resolution differs. */
 export const FullAutoControlEnableRequestSchema = Schema.Struct({
   workspaceRef: WorkspaceRef,
+  lane: Schema.optional(LaneRef),
 })
 export type FullAutoControlEnableRequest = typeof FullAutoControlEnableRequestSchema.Type
 export const decodeFullAutoControlEnableRequest = (
@@ -62,6 +64,7 @@ export const decodeFullAutoControlEnableRequest = (
 export const FullAutoControlStartRequestSchema = Schema.Struct({
   workspaceRef: WorkspaceRef,
   title: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
+  lane: Schema.optional(LaneRef),
 })
 export type FullAutoControlStartRequest = typeof FullAutoControlStartRequestSchema.Type
 export const decodeFullAutoControlStartRequest = (
@@ -94,6 +97,7 @@ export const FullAutoControlRecordSchema = Schema.Struct({
   continuationCount: Count,
   updatedAt: Schema.String,
   workspaceRef: Schema.NullOr(WorkspaceRef),
+  lane: LaneRef,
   accountRef: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
   blockedReason: Schema.NullOr(Schema.String.check(
     Schema.isMinLength(1),
@@ -157,6 +161,7 @@ export const FullAutoControlErrorTagSchema = Schema.Literals([
   "method_not_allowed",
   "invalid_request",
   "workspace_mismatch",
+  "lane_not_eligible",
 ])
 export type FullAutoControlErrorTag = typeof FullAutoControlErrorTagSchema.Type
 

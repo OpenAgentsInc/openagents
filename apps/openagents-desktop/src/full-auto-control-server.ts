@@ -24,6 +24,7 @@ import {
 import { fullAutoControlOpenApiDocument } from "./full-auto-control-openapi.ts"
 import type { FullAutoRecord, FullAutoRegistry } from "./full-auto-registry.ts"
 import type { LocalTurnRecord } from "./local-turn-journal.ts"
+import { FULL_AUTO_DEFAULT_LANE } from "./full-auto-lane.ts"
 
 /**
  * FA-H13 (#8886): the Phase 1 local Full Auto control server. A plain
@@ -128,6 +129,8 @@ export type FullAutoControlCapabilities = Readonly<{
   /** start bootstrap: mint a brand-new local thread in main's own thread
    * store (main mints the ref -- callers never name one) and return its ref. */
   createThread: (title: string | null) => string
+  /** L6: capability-gated ProviderLane selection. */
+  isLaneEligible?: (laneRef: string) => boolean
 }>
 
 export type StartFullAutoControlServerInput = Readonly<{
@@ -158,6 +161,7 @@ const projectRecord = (
   continuationCount: record.continuationCount,
   updatedAt: record.updatedAt,
   workspaceRef: record.workspaceRef ?? null,
+  lane: record.profile?.lane ?? FULL_AUTO_DEFAULT_LANE,
   // Public-safe projection: never raw profile material beyond the accountRef.
   accountRef: record.profile?.accountRef ?? null,
   blockedReason: record.blockedReason ?? null,
@@ -322,12 +326,21 @@ export const startFullAutoControlServer = (
         })
         return
       }
+      const lane = body.lane ?? FULL_AUTO_DEFAULT_LANE
+      if (!(capabilities.isLaneEligible?.(lane) ?? lane === FULL_AUTO_DEFAULT_LANE)) {
+        sendError(response, 409, {
+          error: "lane_not_eligible",
+          message: `Provider lane ${lane} is not admitted for Full Auto background turns.`,
+        })
+        return
+      }
       // Bootstrap: main mints the thread, the same registry.set path as the
       // composer toggle binds workspace + enables, and the shared serialized
       // reconcile pass dispatches the first continuation.
       const startedThreadRef = capabilities.createThread(body.title ?? null)
       const record = capabilities.registry.set(startedThreadRef, true, {
         workspaceRef: resolvedWorkspaceRef,
+        profile: { lane },
       })
       capabilities.appendSystemNote(
         startedThreadRef,
@@ -419,10 +432,19 @@ export const startFullAutoControlServer = (
         })
         return
       }
+      const lane = body.lane ?? FULL_AUTO_DEFAULT_LANE
+      if (!(capabilities.isLaneEligible?.(lane) ?? lane === FULL_AUTO_DEFAULT_LANE)) {
+        sendError(response, 409, {
+          error: "lane_not_eligible",
+          message: `Provider lane ${lane} is not admitted for Full Auto background turns.`,
+        })
+        return
+      }
       // Same path as the CodexLocalFullAutoSetChannel handler: bind the
       // resolved workspace onto the durable record and enable.
       const record = capabilities.registry.set(threadRef, true, {
         workspaceRef: resolvedWorkspaceRef,
+        profile: { lane },
       })
       capabilities.appendSystemNote(
         threadRef,

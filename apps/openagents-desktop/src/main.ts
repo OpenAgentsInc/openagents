@@ -263,6 +263,7 @@ import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { reconcileLocalTurns } from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
+import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
 import {
@@ -521,7 +522,9 @@ const localTurnRestartProbe = process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_
 // posture as the local-turn restart probe: seed phases write durable state
 // and quit; resume phases relaunch against the SAME userData directory and
 // observe startup reconciliation dispatch (or fail closed) for real.
-const FULL_AUTO_RESTART_PROBE_PHASES = ["seed", "resume", "seed-mismatch", "resume-mismatch"] as const
+const FULL_AUTO_RESTART_PROBE_PHASES = [
+  "seed", "resume", "seed-mismatch", "resume-mismatch", "seed-claude", "resume-claude",
+] as const
 const fullAutoRestartProbe: (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number] | null =
   (FULL_AUTO_RESTART_PROBE_PHASES as ReadonlyArray<string>).includes(
       process.env.OPENAGENTS_DESKTOP_FULL_AUTO_RESTART_PROBE ?? "",
@@ -2675,7 +2678,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
       planOnly: true,
       reasoningEffort: false,
       images: true,
-      fullAuto: false,
+      fullAuto: true,
       interrupt: true,
       queueFollowup: true,
       steerTurn: false,
@@ -2694,7 +2697,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
       profileRef: "native:claude-agent:v1",
       evidence: "conformant",
       allowedModels: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"],
-      allowedFeatures: ["skills", "planOnly", "images", "interrupt", "queueFollowup", "steerChild", "answerQuestion"],
+      allowedFeatures: ["skills", "planOnly", "images", "fullAuto", "interrupt", "queueFollowup", "steerChild", "answerQuestion"],
       allowedExtensions: ["skills"],
     },
     recovery: "interrupt_on_restart",
@@ -2712,6 +2715,15 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
     }
     return { ok: true, model: requestedModel, context: { skillName: selectedSkill?.name ?? null } }
   },
+  prepare: (request, sender, model) => {
+    if (request.fullAuto === true && sender !== null) {
+      fullAutoRegistry.bindProfile(request.threadRef, {
+        lane: "fable-local",
+        ...(request.target?.accountRef === undefined ? {} : { accountRef: request.target.accountRef }),
+        model,
+      })
+    }
+  },
   streamMeta: ctx => {
     const model = ctx.effectiveModel()
     return {
@@ -2721,7 +2733,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
     }
   },
   modelNoteText: fableLocalModelNoteText,
-  runTurn: async ({ request, model, context, history, message, emit }) => {
+  runTurn: async ({ request, model, context, history, message, background, emit }) => {
     if (!isClaudeModel(model)) {
       return { ok: false, reason: "session_failed", detail: "non-Claude model admitted to the Claude lane" }
     }
@@ -2729,7 +2741,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
       turnRef: request.turnRef,
       threadRef: request.threadRef,
       history,
-      message,
+      message: request.fullAuto === true ? fullAutoPrompt("fable-local", message) : message,
       ...(request.queueRef === undefined ? {} : { queueRef: request.queueRef }),
       ...(request.clientUserMessageId === undefined ? {} : { clientUserMessageId: request.clientUserMessageId }),
       ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
@@ -2739,6 +2751,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
       ...(context.skillName === null ? {} : { skillName: context.skillName }),
       ...(request.permissionMode === "plan_only" ? { planMode: true } : {}),
       ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
+      ...(request.fullAuto === true && background ? { autoResolveQuestions: true } : {}),
       emit,
     })
   },
@@ -2827,6 +2840,9 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
     }
   },
   failureMessage: fableLocalFailureMessage,
+  completed: request => {
+    if (request.fullAuto === true) void runFullAutoReconciliation()
+  },
 }
 
 ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
@@ -3073,6 +3089,7 @@ const codexLocalLane: ProviderLane<null> = {
   prepare: (request, sender, model) => {
     if (request.fullAuto === true && sender !== null) {
       fullAutoRegistry.bindProfile(request.threadRef, {
+        lane: "codex-local",
         ...(request.target?.accountRef === undefined ? {} : { accountRef: request.target.accountRef }),
         model,
         ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
@@ -3199,6 +3216,12 @@ const dispatchCodexLocalTurn = async (
 ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> =>
   laneDispatcher.dispatchTurn(codexLocalLane, request, sender)
 
+const dispatchFableLocalTurn = async (
+  request: import("./fable-local-contract.ts").FableLocalStartRequest,
+  sender: WebContents | null,
+): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> =>
+  laneDispatcher.dispatchTurn(fableLocalLane, request, sender)
+
 /** Owner-visible Full Auto outcome notes reuse the same system-note +
  * recovery-broadcast shape the cap note already shipped with. */
 const appendFullAutoSystemNote = (threadRef: string, text: string): void => {
@@ -3246,22 +3269,54 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       // FA-H6 (#8879): replay the bound execution profile, revalidated
       // against the live contract enums (a field that no longer decodes
       // falls back to lane defaults instead of failing the loop).
-      const bound = decodeCodexLocalContinuationProfile(profile)
+      const laneRef = profile?.lane ?? FULL_AUTO_DEFAULT_LANE
+      const lane = laneRef === "codex-local"
+        ? codexLocalLane
+        : laneRef === "fable-local"
+        ? fableLocalLane
+        : null
+      const policy = fullAutoLanePolicy(laneRef)
+      const projection = lane === null ? null : projectProviderLaneCapabilities(lane.capabilities())
+      if (
+        lane === null || policy === null || !policy.autoResolveQuestions ||
+        projection?.admission !== "admitted" || projection.fullAuto !== true
+      ) {
+        return { ok: false, reason: `full_auto_lane_not_eligible:${laneRef}` }
+      }
       // FA-H4 (#8877): the background turn becomes a rendered fact the moment
       // it dispatches, carrying the lease turn ref so the composer's stop
       // control can target the ACTUAL running background turn.
       setFullAutoLiveState(threadRef, "turn_running", turnRef)
-      const result = await dispatchCodexLocalTurn({
-        turnRef,
-        threadRef,
-        message,
-        fullAuto: true,
-        ...(bound.model === null ? {} : { model: bound.model }),
-        ...(bound.reasoningEffort === null ? {} : { reasoningEffort: bound.reasoningEffort }),
-        ...(bound.model !== null && bound.accountRef !== null
-          ? { target: { provider: "codex" as const, accountRef: bound.accountRef, model: bound.model } }
-          : {}),
-      }, null)
+      const result = laneRef === "codex-local"
+        ? await (async () => {
+            const bound = decodeCodexLocalContinuationProfile(profile)
+            return dispatchCodexLocalTurn({
+              turnRef,
+              threadRef,
+              message,
+              fullAuto: true,
+              ...(bound.model === null ? {} : { model: bound.model }),
+              ...(bound.reasoningEffort === null ? {} : { reasoningEffort: bound.reasoningEffort }),
+              ...(bound.model !== null && bound.accountRef !== null
+                ? { target: { provider: "codex" as const, accountRef: bound.accountRef, model: bound.model } }
+                : {}),
+            }, null)
+          })()
+        : await (async () => {
+            const model = profile?.model !== undefined && isClaudeModel(profile.model)
+              ? profile.model
+              : FABLE_LOCAL_MODEL
+            return dispatchFableLocalTurn({
+              turnRef,
+              threadRef,
+              message,
+              model,
+              fullAuto: true,
+              ...(profile?.accountRef === undefined
+                ? {}
+                : { target: { provider: "claude_agent" as const, accountRef: profile.accountRef, model } }),
+            }, null)
+          })()
       // FA-H4: success transitions here; every failure path (thrown OR
       // ok:false, including the in-flight refusal above) transitions in
       // onDispatchFailed below, so the two never double-report.
@@ -3341,7 +3396,9 @@ ipcMain.handle(CodexLocalFullAutoSetChannel, async (_event, value: unknown) => {
   fullAutoRegistry.set(
     request.threadRef,
     request.enabled,
-    request.enabled ? { workspaceRef: resolveDesktopLocalWorkspaceRoot() } : undefined,
+    request.enabled
+      ? { workspaceRef: resolveDesktopLocalWorkspaceRoot(), profile: { lane: FULL_AUTO_DEFAULT_LANE } }
+      : undefined,
   )
   return { ok: true }
 })
@@ -3397,6 +3454,13 @@ if (isFullAutoControlEnabled(process.env)) {
       // never name a ref -- so the reconcile dispatcher finds a real thread
       // and the first continuation opens a brand-new provider conversation.
       createThread: title => threads().newThread(title ?? "Full Auto").id,
+      isLaneEligible: laneRef => {
+        const lane = laneRef === "codex-local" ? codexLocalLane : laneRef === "fable-local" ? fableLocalLane : null
+        const policy = fullAutoLanePolicy(laneRef)
+        if (lane === null || policy?.autoResolveQuestions !== true) return false
+        const projection = projectProviderLaneCapabilities(lane.capabilities())
+        return projection.admission === "admitted" && projection.fullAuto === true
+      },
     },
     controlFilePath: path.join(app.getPath("userData"), "full-auto", "control.json"),
     ...(Number.isInteger(pinnedControlPort) && pinnedControlPort > 0 && pinnedControlPort <= 65535
@@ -6068,23 +6132,33 @@ void app.whenReady().then(async () => {
     try {
       await localTurnRecovery
       const seedTurnRef = "turn.full-auto-restart-smoke.seed"
-      if (fullAutoRestartProbe === "seed" || fullAutoRestartProbe === "seed-mismatch") {
+      if (
+        fullAutoRestartProbe === "seed" || fullAutoRestartProbe === "seed-mismatch" ||
+        fullAutoRestartProbe === "seed-claude"
+      ) {
         const store = threads()
         const thread = store.newThread()
-        const key = { threadRef: thread.id, turnRef: seedTurnRef, lane: "codex-local" as const }
+        const claudeVariant = fullAutoRestartProbe === "seed-claude"
+        const key = {
+          threadRef: thread.id,
+          turnRef: seedTurnRef,
+          lane: claudeVariant ? "fable-local" as const : "codex-local" as const,
+        }
+        const accountRef = claudeVariant ? FABLE_LOCAL_FIXTURE_ACCOUNT.ref : FIXTURE_CODEX_LOCAL_ACCOUNT.ref
+        const model = claudeVariant ? FABLE_LOCAL_MODEL : "gpt-5.6-sol"
         localTurnJournal.accept({
           ...key,
           userMessageKey: `${seedTurnRef}-user`,
           assistantMessageKey: `${seedTurnRef}-assistant`,
-          accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
-          model: "gpt-5.6-sol",
+          accountRef,
+          model,
         })
         store.upsert(thread.id, {
           key: `${seedTurnRef}-user`, role: "user", text: "Seed a Full Auto loop that must survive a restart.", timestamp: "11:55 PM",
         })
-        localTurnJournal.recordDispatch(key, FIXTURE_CODEX_LOCAL_ACCOUNT.ref)
+        localTurnJournal.recordDispatch(key, accountRef)
         localTurnJournal.recordProviderSession(key, {
-          accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
+          accountRef,
           providerSessionRef: "thread-full-auto-restart-smoke",
         })
         localTurnJournal.appendAssistantText(key, "Seed turn complete. ")
@@ -6098,15 +6172,20 @@ void app.whenReady().then(async () => {
         // (fixture-mode resolution is a pure function of the shared userData
         // path). The mismatch variant binds a different absolute path so the
         // resume phase must fail CLOSED (FA-H2) instead of dispatching.
-        const grantedWorkspaceRef = fullAutoRestartProbe === "seed"
+        const grantedWorkspaceRef = fullAutoRestartProbe === "seed" || claudeVariant
           ? resolveDesktopLocalWorkspaceRoot()
           : path.join(app.getPath("userData"), "not-the-granted-workspace")
-        fullAutoRegistry.set(thread.id, true, { workspaceRef: grantedWorkspaceRef })
+        fullAutoRegistry.set(thread.id, true, {
+          workspaceRef: grantedWorkspaceRef,
+          ...(claudeVariant
+            ? { profile: { lane: "fable-local", accountRef, model } }
+            : {}),
+        })
         // Happy path: consume all but ONE cap slot so the resume phase
         // dispatches exactly one continuation and then deterministically
         // disables at the cap -- a bounded single-dispatch observation
         // instead of a 20-turn loop.
-        if (fullAutoRestartProbe === "seed") {
+        if (fullAutoRestartProbe === "seed" || claudeVariant) {
           for (let index = 0; index < FULL_AUTO_MAX_CONTINUATIONS - 1; index++) {
             fullAutoRegistry.incrementContinuation(thread.id)
           }
@@ -6124,6 +6203,7 @@ void app.whenReady().then(async () => {
       // post-completion pass drive the registry to a deterministic terminal
       // state; poll durable state (bounded) instead of racing the queue.
       const expectMismatch = fullAutoRestartProbe === "resume-mismatch"
+      const expectClaude = fullAutoRestartProbe === "resume-claude"
       const seedRecord = localTurnJournal.list().find(value => value.turnRef === seedTurnRef) ?? null
       const seeded = seedRecord !== null && seedRecord.phase === "completed"
       const threadRef = seedRecord?.threadRef ?? ""
@@ -6138,6 +6218,7 @@ void app.whenReady().then(async () => {
       const continuationRecords = localTurnJournal.list().filter(value =>
         value.threadRef === threadRef && value.turnRef.startsWith("turn.full-auto."))
       const dispatchedTurnRef = continuationRecords[0]?.turnRef ?? null
+      const dispatchedLane = continuationRecords[0]?.lane ?? null
       const notes = threads().open(threadRef)?.notes ?? []
       const continuationAssistantText = dispatchedTurnRef === null
         ? ""
@@ -6159,13 +6240,17 @@ void app.whenReady().then(async () => {
           typeof record.pendingTurnRef !== "string" &&
           continuationRecords.length === 1 && continuationRecords[0]!.phase === "completed" &&
           dispatchedTurnRef !== null &&
-          continuationAssistantText.includes("fixture") &&
+          dispatchedLane === (expectClaude ? "fable-local" : "codex-local") &&
+          (expectClaude
+            ? continuationAssistantText.includes("Fable local")
+            : continuationAssistantText.includes("fixture")) &&
           notes.some(note => note.key === `${dispatchedTurnRef}-user`)
       console.log(`[openagents-desktop full-auto-restart] phase-b ${JSON.stringify({
         variant: fullAutoRestartProbe,
         seeded,
         resumed: continuationRecords.length > 0,
         dispatchedTurnRefPresent: dispatchedTurnRef !== null,
+        dispatchedLane,
         continuationCount: expectMismatch ? record?.continuationCount ?? null : advancedContinuationCount,
         blockedReason: record?.blockedReason ?? null,
         ok,

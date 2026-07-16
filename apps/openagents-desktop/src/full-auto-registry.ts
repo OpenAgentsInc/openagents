@@ -46,6 +46,8 @@ const Cursor = Schema.Number.check(
  * corrupt-fail the whole registry file.
  */
 export const FullAutoProfileSchema = Schema.Struct({
+  /** L6 #8901: durable ProviderLane.laneRef. Optional keeps every rev-7 row decodable. */
+  lane: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
   accountRef: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
   model: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
   reasoningEffort: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40))),

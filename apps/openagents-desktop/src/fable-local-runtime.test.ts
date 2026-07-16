@@ -867,6 +867,33 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
       { kind: "question_resolved", questionRef: "q.turn-q-park.1", outcome: "answered" },
     ])
   })
+
+  test("background Full Auto denies AskUserQuestion immediately and never emits a pending question", async () => {
+    const sink = collect()
+    const decisions: Array<Record<string, unknown>> = []
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-q-full-auto", model: FABLE_LOCAL_MODEL }
+        const canUse = captured.options.canUseTool as CanUseToolFn
+        decisions.push(await canUse("AskUserQuestion", singleQuestionInput(), {
+          signal: new AbortController().signal,
+        }))
+        yield { type: "result", subtype: "success", is_error: false, result: "continued safely" }
+      },
+    })
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-q-full-auto",
+      threadRef: "thread-q-full-auto",
+      history: [],
+      message: "continue",
+      autoResolveQuestions: true,
+      emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(decisions).toEqual([expect.objectContaining({ behavior: "deny" })])
+    expect(String(decisions[0]?.message)).toContain("Full Auto")
+    expect(sink.events.some(event => event.kind === "question_pending")).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------

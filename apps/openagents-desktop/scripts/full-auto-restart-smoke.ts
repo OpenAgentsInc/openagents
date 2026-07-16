@@ -27,7 +27,7 @@ const command = process.platform === "darwin" && existsSync(packagedBinary)
   : [electronBinary, "."]
 const PHASE_TIMEOUT_MS = 180_000
 
-type ProbePhase = "seed" | "resume" | "seed-mismatch" | "resume-mismatch"
+type ProbePhase = "seed" | "resume" | "seed-mismatch" | "resume-mismatch" | "seed-claude" | "resume-claude"
 
 const runPhase = (userData: string, phase: ProbePhase): Promise<string> =>
   new Promise<string>((resolve, reject) => {
@@ -76,6 +76,7 @@ const main = async (): Promise<void> => {
   // Fail-closed path: same shape, but the granted workspace deliberately does
   // not match what the resume process resolves -- no continuation may dispatch.
   const mismatchUserData = mkdtempSync(path.join(tmpdir(), "openagents-desktop-full-auto-restart-mismatch-"))
+  const claudeUserData = mkdtempSync(path.join(tmpdir(), "openagents-desktop-full-auto-restart-claude-"))
   try {
     await runPhase(happyUserData, "seed")
     const happy = parseReceipt("resume", await runPhase(happyUserData, "resume"))
@@ -89,16 +90,24 @@ const main = async (): Promise<void> => {
       mismatch.dispatchedTurnRefPresent !== false || mismatch.blockedReason !== "workspace_mismatch") {
       throw new Error(`workspace-mismatch receipt failed assertions: ${JSON.stringify(mismatch)}`)
     }
+    await runPhase(claudeUserData, "seed-claude")
+    const claude = parseReceipt("resume-claude", await runPhase(claudeUserData, "resume-claude"))
+    if (claude.ok !== true || claude.seeded !== true || claude.resumed !== true ||
+      claude.dispatchedTurnRefPresent !== true || claude.dispatchedLane !== "fable-local") {
+      throw new Error(`Claude-lane receipt failed assertions: ${JSON.stringify(claude)}`)
+    }
     console.log(`[openagents-desktop full-auto-restart] two-process smoke OK ${JSON.stringify({
       seeded: happy.seeded,
       resumed: happy.resumed,
       dispatchedTurnRefPresent: happy.dispatchedTurnRefPresent,
       continuationCount: happy.continuationCount,
       mismatchFailedClosed: mismatch.ok,
+      nonCodexLane: claude.dispatchedLane,
     })}`)
   } finally {
     rmSync(happyUserData, { recursive: true, force: true })
     rmSync(mismatchUserData, { recursive: true, force: true })
+    rmSync(claudeUserData, { recursive: true, force: true })
   }
 }
 

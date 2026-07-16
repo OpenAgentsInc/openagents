@@ -111,6 +111,7 @@ import type { CodexControlPlaneRegistry } from "./codex-control-plane.ts"
 import type { CodexDurableQueue } from "./codex-durable-queue.ts"
 import type { CodexEcosystem, CodexEcosystemRegistry } from "./codex-ecosystem.ts"
 import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
+import { fullAutoPrompt } from "./full-auto-lane.ts"
 
 /**
  * Full Auto (#8852): prefixed onto the turn prompt whenever `fullAuto` is
@@ -120,11 +121,7 @@ import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
  * itself.
  */
 export const FULL_AUTO_INSTRUCTION =
-  "Full Auto is on for this turn. Look at this repository's own README, docs " +
-  "folder (if any), and open issues. Pick ONE concrete, real, useful next " +
-  "thing to do here, and do it now. Do not ask clarifying questions -- make " +
-  "a reasonable judgment call and proceed. Stop once this one thing is done; " +
-  "you will be asked to continue with the next one."
+  fullAutoPrompt("codex-local", "").trim()
 
 export type CodexLocalTurnInput = Readonly<{
   turnRef: string
@@ -1192,7 +1189,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           ? historyPrompt(input.history, input.message)
           : input.message
         const prompt = input.fullAuto === true
-          ? `${FULL_AUTO_INSTRUCTION}\n\n${basePrompt}`
+          ? fullAutoPrompt("codex-local", basePrompt)
           : basePrompt
         const attempt = await runAttempt({
           account,

@@ -54,7 +54,9 @@ export const fullAutoControlOpenApiDocument = {
       "Every request requires the per-process scoped bearer credential written to " +
       "full-auto/control.json under the Desktop userData directory. Enable never grants a new " +
       "workspace: the caller names the workspace it expects and the server refuses (409) on any " +
-      "mismatch with the currently resolved workspace. Every mutation appends a durable, " +
+      "mismatch with the currently resolved workspace. Start and enable accept an optional " +
+      "ProviderLane ref (default codex-local) and refuse lanes that cannot safely settle " +
+      "background questions. Every mutation appends a durable, " +
       "distinctly-attributed system note to the thread. Phase 2 (cross-machine relay) is " +
       "explicitly out of scope for this surface.",
   },
@@ -290,6 +292,7 @@ export const fullAutoControlOpenApiDocument = {
           "continuationCount",
           "updatedAt",
           "workspaceRef",
+          "lane",
           "accountRef",
           "blockedReason",
           "live",
@@ -301,6 +304,7 @@ export const fullAutoControlOpenApiDocument = {
           continuationCount: { type: "integer", minimum: 0 },
           updatedAt: { type: "string" },
           workspaceRef: { type: ["string", "null"], minLength: 1, maxLength: 1024 },
+          lane: { type: "string", minLength: 1, maxLength: 80 },
           accountRef: { type: ["string", "null"], minLength: 1, maxLength: 80 },
           blockedReason: { type: ["string", "null"], minLength: 1, maxLength: 300 },
           live: { $ref: "#/components/schemas/FullAutoControlLive" },
@@ -335,6 +339,13 @@ export const fullAutoControlOpenApiDocument = {
             maxLength: 1024,
             description: "The absolute workspace path the caller expects Full Auto to run against.",
           },
+          lane: {
+            type: "string",
+            minLength: 1,
+            maxLength: 80,
+            default: "codex-local",
+            description: "Optional admitted ProviderLane ref; defaults to codex-local.",
+          },
         },
       },
       FullAutoControlStartRequest: {
@@ -347,6 +358,13 @@ export const fullAutoControlOpenApiDocument = {
             minLength: 1,
             maxLength: 1024,
             description: "The absolute workspace path the caller expects Full Auto to run against.",
+          },
+          lane: {
+            type: "string",
+            minLength: 1,
+            maxLength: 80,
+            default: "codex-local",
+            description: "Optional admitted ProviderLane ref; defaults to codex-local.",
           },
           title: {
             type: "string",
@@ -437,6 +455,7 @@ export const fullAutoControlOpenApiDocument = {
               "method_not_allowed",
               "invalid_request",
               "workspace_mismatch",
+              "lane_not_eligible",
             ],
           },
           message: { type: "string", minLength: 1, maxLength: 600 },

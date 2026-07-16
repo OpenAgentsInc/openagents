@@ -25,8 +25,8 @@ const USAGE = `usage: full-auto-cli <command> [args] [--user-data <path>]
 commands:
   list
   status <threadRef>
-  start --workspace <path> [--title <title>]
-  enable <threadRef> --workspace <path>
+  start --workspace <path> [--title <title>] [--lane <provider-lane>]
+  enable <threadRef> --workspace <path> [--lane <provider-lane>]
   disable <threadRef>
   continue-now <threadRef>
   turns <threadRef>
@@ -44,6 +44,7 @@ const main = async (): Promise<void> => {
   const userData = takeOption("--user-data")
   const workspace = takeOption("--workspace")
   const title = takeOption("--title")
+  const lane = takeOption("--lane")
   const [command, threadRef] = argv
 
   const connection = readControlConnection(resolveUserDataDir(userData))
@@ -69,7 +70,7 @@ const main = async (): Promise<void> => {
           console.error(`start: --workspace <path> is required (start must NAME the workspace it expects)\n${USAGE}`)
           process.exit(2)
         }
-        return operations.start(workspace, title)
+        return operations.start(workspace, title, lane)
       })()
     : command === "enable"
     ? await (async () => {
@@ -78,7 +79,7 @@ const main = async (): Promise<void> => {
           console.error(`enable: --workspace <path> is required (enable must NAME the workspace it expects)\n${USAGE}`)
           process.exit(2)
         }
-        return operations.enable(ref, workspace)
+        return operations.enable(ref, workspace, lane)
       })()
     : command === "disable"
     ? await operations.disable(requireThreadRef())

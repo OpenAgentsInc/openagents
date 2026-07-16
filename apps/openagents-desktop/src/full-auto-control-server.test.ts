@@ -99,6 +99,7 @@ const startHarness = async (): Promise<Harness> => {
         createdThreads.push({ threadRef, title })
         return threadRef
       },
+      isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "fable-local",
     },
     controlFilePath: path.join(root, "full-auto", "control.json"),
   })
@@ -215,6 +216,27 @@ describe("Full Auto control surface (FA-H13 #8886)", () => {
       expect(harness.notes[0]!.threadRef).toBe("thread.a")
       expect(harness.notes[0]!.text).toContain("enabled programmatically")
       expect(harness.notes[0]!.text).toContain("control-api")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("enable accepts an admitted lane selector, persists it, and rejects an ineligible lane without mutation", async () => {
+    const harness = await startHarness()
+    try {
+      const enabled = await harness.request("POST", "/v1/full-auto/thread.claude/enable", {
+        body: { workspaceRef: GRANTED_WORKSPACE, lane: "fable-local" },
+      })
+      expect(enabled.status).toBe(200)
+      expect(enabled.body.record.lane).toBe("fable-local")
+      expect(harness.registry.record("thread.claude")?.profile?.lane).toBe("fable-local")
+
+      const refused = await harness.request("POST", "/v1/full-auto/thread.peer/enable", {
+        body: { workspaceRef: GRANTED_WORKSPACE, lane: "acp-unadmitted" },
+      })
+      expect(refused.status).toBe(409)
+      expect(refused.body.error).toBe("lane_not_eligible")
+      expect(harness.registry.record("thread.peer")).toBeNull()
     } finally {
       await harness.dispose()
     }

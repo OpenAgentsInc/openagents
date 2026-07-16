@@ -473,6 +473,33 @@ describe("Full Auto dispatch-failure policy (FA-H5 #8878)", () => {
 })
 
 describe("Full Auto execution-profile continuity (FA-H6 #8879)", () => {
+  test("a Claude lane selection survives Runtime A -> Runtime B and reaches the shared dispatch seam", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-claude-restart-"))
+    try {
+      const registryFile = path.join(root, "full-auto", "registry.json")
+      const registryA = openFullAutoRegistry(registryFile)
+      registryA.set("thread-claude", true, {
+        workspaceRef: GRANTED_WORKSPACE,
+        profile: { lane: "fable-local", accountRef: "claude", model: "claude-sonnet-5" },
+      })
+
+      const registryB = openFullAutoRegistry(registryFile)
+      const profiles: Array<unknown> = []
+      expect(await reconcile(registryB, {
+        dispatch: async input => { profiles.push(input.profile); return { ok: true } },
+      })).toEqual(["thread-claude"])
+      expect(profiles).toEqual([{
+        lane: "fable-local",
+        accountRef: "claude",
+        model: "claude-sonnet-5",
+      }])
+      expect(registryB.record("thread-claude")?.continuationCount).toBe(1)
+      expect(registryB.record("thread-claude")?.pendingTurnRef ?? null).toBeNull()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("a continuation dispatch carries the profile bound by the initiating flagged turn (account, model, effort) -- including across a restart", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-profile-"))
     try {

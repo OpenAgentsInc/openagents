@@ -57,6 +57,7 @@ const TOOLS = [
       properties: {
         workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
         title: { type: "string", minLength: 1, maxLength: 80, description: "Optional owner-visible thread title." },
+        lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
       },
     },
   },
@@ -73,6 +74,7 @@ const TOOLS = [
       properties: {
         ...threadRefProperty,
         workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
+        lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
       },
     },
   },
@@ -129,9 +131,13 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
     : name === "full_auto_status"
     ? await operations.status(threadRef)
     : name === "full_auto_start"
-    ? await operations.start(workspaceRef, typeof args.title === "string" ? args.title : undefined)
+    ? await operations.start(
+        workspaceRef,
+        typeof args.title === "string" ? args.title : undefined,
+        typeof args.lane === "string" ? args.lane : undefined,
+      )
     : name === "full_auto_enable"
-    ? await operations.enable(threadRef, workspaceRef)
+    ? await operations.enable(threadRef, workspaceRef, typeof args.lane === "string" ? args.lane : undefined)
     : name === "full_auto_disable"
     ? await operations.disable(threadRef)
     : name === "full_auto_continue_now"

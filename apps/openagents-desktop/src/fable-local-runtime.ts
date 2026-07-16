@@ -269,6 +269,8 @@ export type FableLocalTurnInput = Readonly<{
    * flow via `plan_updated` in BOTH modes (TodoWrite is never disallowed).
    */
   planMode?: boolean
+  /** L6 #8901: background Full Auto cannot park on a renderer question. */
+  autoResolveQuestions?: boolean
 }>
 
 export type FableLocalTurnResult =
@@ -1180,6 +1182,12 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         extra: { signal?: AbortSignal } | undefined,
       ): Promise<Record<string, unknown>> => {
         if (toolName === FABLE_LOCAL_QUESTION_TOOL) {
+          if (input.autoResolveQuestions === true) {
+            return {
+              behavior: "deny",
+              message: "Full Auto is running in the background. Make a reasonable judgment call and proceed without asking the user.",
+            }
+          }
           return awaitUserAnswer(toolInput, extra?.signal)
         }
         return { behavior: "allow", updatedInput: toolInput }

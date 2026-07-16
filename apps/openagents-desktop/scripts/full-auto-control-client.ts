@@ -78,13 +78,17 @@ export const controlOperations = (connection: ControlConnection) => ({
   list: () => call(connection, "GET", "/v1/full-auto"),
   status: (threadRef: string) =>
     call(connection, "GET", `/v1/full-auto/${encodeURIComponent(threadRef)}`),
-  start: (workspaceRef: string, title?: string) =>
+  start: (workspaceRef: string, title?: string, lane?: string) =>
     call(connection, "POST", "/v1/full-auto/start", {
       workspaceRef,
       ...(title === undefined ? {} : { title }),
+      ...(lane === undefined ? {} : { lane }),
     }),
-  enable: (threadRef: string, workspaceRef: string) =>
-    call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/enable`, { workspaceRef }),
+  enable: (threadRef: string, workspaceRef: string, lane?: string) =>
+    call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/enable`, {
+      workspaceRef,
+      ...(lane === undefined ? {} : { lane }),
+    }),
   disable: (threadRef: string) =>
     call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/disable`),
   continueNow: (threadRef: string) =>
