@@ -322,8 +322,25 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
   let assistantText = "";
   let promptCount = 0;
   let peer: Awaited<ReturnType<typeof createCursorAcpPeerRuntime>> | undefined;
+  let authCancelPeer: Awaited<ReturnType<typeof createCursorAcpPeerRuntime>> | undefined;
   try {
     const probe = await probeCursorAcpExecutable();
+    let authDecisionCount = 0;
+    authCancelPeer = await createCursorAcpPeerRuntime({
+      cwd: root,
+      probe,
+      environment: { HOME: process.env.HOME },
+      authorizeLogin: async () => {
+        authDecisionCount += 1;
+        return "cancel";
+      },
+      requestTimeoutMs: 30_000,
+    });
+    const authCancelled = await authCancelPeer.start();
+    const authCancelPassed =
+      authDecisionCount === 1 && !authCancelled.ok && authCancelled.reason === "auth_required";
+    await authCancelPeer.shutdown();
+    authCancelPeer = undefined;
     peer = await createCursorAcpPeerRuntime({
       cwd: root,
       probe,
@@ -354,6 +371,13 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
       ),
       scenario("initialize", "live-pass", "Wire version 1 initialize completed"),
       scenario("auth-primary", "live-pass", "Advertised Cursor login completed"),
+      scenario(
+        "auth-cancel",
+        authCancelPassed ? "live-pass" : "fail",
+        authCancelPassed
+          ? "Client cancelled advertised login before authenticate and received auth required"
+          : "Client-side login cancellation did not return the typed auth-required outcome",
+      ),
     ];
     const attached = await peer.newSession({ cwd: root, canonicalThreadSeed: "release-cursor" });
     if (!attached.ok) throw new Error(`session-new:${attached.reason}`);
@@ -450,6 +474,7 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
       counters: { updateCount, updateKinds: [...updates].toSorted(), promptCount },
     };
   } finally {
+    await authCancelPeer?.shutdown().catch(() => undefined);
     await peer?.shutdown().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }

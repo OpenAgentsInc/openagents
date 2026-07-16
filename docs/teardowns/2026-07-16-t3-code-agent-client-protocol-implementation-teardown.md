@@ -145,6 +145,8 @@ for the unobserved credential, permission, extension, and platform proof;
 packaged interruption/restart journeys for both pinned peers are now checked,
 and Grok now has live broker-only MCP custody evidence with a complete bounded
 post-shutdown scan of its exact session/configuration persistence surfaces.
+Cursor client-side login cancellation is also live-proven using the ordinary
+HOME and stopping before `authenticate`, without mutating login/keychain state.
 The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference

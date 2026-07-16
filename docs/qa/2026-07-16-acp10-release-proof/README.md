@@ -26,7 +26,7 @@ never changes Grok's gate.
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
 | Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    23 live passes |                                 10 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    23 live passes |                                  9 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    24 live passes |                                  8 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -118,10 +118,13 @@ reference per provider, and zero matches for retained prompt, private path,
 authorization material, or provider-secret canaries.
 
 The Cursor run authenticated through the advertised `cursor_login` method
-against an already signed-in local session. It does **not** prove pending login,
-cancellation, expiry, or clean re-authentication. The Grok run used its existing
-cached-token path. It does **not** prove intentional `xai.api_key`, auth expiry,
-logout, or re-authentication.
+against an already signed-in local session. A separate process using the same
+ordinary HOME cancelled exactly once in the client decision callback before
+`authenticate` and returned typed `auth_required`; it did not open a browser,
+log out, or change keychain state. This proves client-side cancellation, not
+pending-device login, expiry, logout, or clean re-authentication. The Grok run
+used its existing cached-token path. It does **not** prove intentional
+`xai.api_key`, auth expiry, logout, or re-authentication.
 
 ## Hermetic evidence
 
@@ -154,7 +157,7 @@ Provider-specific gaps:
   rich plan/config/usage streaming. The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.
-- Cursor: login cancellation/pending/expiry/re-auth, permission outcomes, and live
+- Cursor: pending-device login/expiry/re-auth, permission outcomes, and live
   `cursor/ask_question`/`cursor/update_todos`. Model listing, create-plan,
   list/load, mode/config round trips, stream/reverse cancellation, and
   restart/load are proven.

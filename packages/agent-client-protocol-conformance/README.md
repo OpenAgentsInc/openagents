@@ -81,7 +81,10 @@ Set `ACP_RELEASE_OUTPUT` to an absolute `.json` path beneath
 does not retain prompts, responses, session IDs, auth material, or absolute
 paths. Its artifact is deliberately marked `candidate-live` and has no power to
 change the release matrix or promote either peer; a human-reviewed matrix edit
-and the fail-closed `check:release` gate remain mandatory.
+and the fail-closed `check:release` gate remain mandatory. The Cursor lane also
+proves client-side `cursor_login` cancellation using the ordinary HOME and
+stopping before `authenticate`; it never creates an empty HOME or changes login
+or keychain state.
 
 After packaging Desktop, the separately armed peer journey proves real app
 workspace refusal, interruption, restart settlement, re-enable, completion,
