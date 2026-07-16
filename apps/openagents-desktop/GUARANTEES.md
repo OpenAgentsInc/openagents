@@ -591,7 +591,9 @@ reference and the existing Khala theme.
 - Effect Native remains the prompt and intent authority. Lexical owns only
   editing state, selection, history, and contenteditable behavior.
 - External prompt hydration updates the editor only when plain text actually
-  differs, so ordinary shell rerenders do not reset selection or undo history.
+  differs. A differing value preserves the live range by bounded plain-text
+  offsets and merges into the current Lexical history checkpoint; ordinary
+  shell rerenders therefore neither move the caret nor reset undo history.
 - Enter submits, Shift+Enter inserts a newline, and an IME composition never
   submits. Submission retains the existing exact Steer, Queue, and idle Send
   intents and duplicate-commit guard.

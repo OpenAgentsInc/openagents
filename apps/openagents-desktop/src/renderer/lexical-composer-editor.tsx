@@ -8,12 +8,21 @@ import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import {
   $createLineBreakNode,
   $createParagraphNode,
+  $createRangeSelection,
   $createTextNode,
   $getRoot,
+  $getSelection,
+  $isElementNode,
+  $isRangeSelection,
+  $isTextNode,
+  $setSelection,
   COMMAND_PRIORITY_HIGH,
+  HISTORY_MERGE_TAG,
   KEY_ENTER_COMMAND,
   type EditorState,
   type LexicalEditor,
+  type LexicalNode,
+  type PointType,
 } from "lexical";
 import {
   useCallback,
@@ -41,7 +50,69 @@ export interface LexicalComposerEditorHandle {
   readonly readValue: () => string;
 }
 
-const setPlainText = (value: string): void => {
+interface PlainTextSelectionSnapshot {
+  readonly anchor: number;
+  readonly focus: number;
+}
+
+const getPlainTextOffsetBefore = (node: LexicalNode): number => {
+  let offset = 0;
+  let current: LexicalNode | null = node;
+  while (current !== null) {
+    for (const sibling of current.getPreviousSiblings()) {
+      offset += sibling.getTextContentSize();
+    }
+    current = current.getParent();
+  }
+  return offset;
+};
+
+const getPlainTextPointOffset = (point: PointType): number => {
+  const node = point.getNode();
+  const before = getPlainTextOffsetBefore(node);
+  if (point.type === "text") return before + point.offset;
+  if (!$isElementNode(node)) return before;
+  return before + node.getChildren()
+    .slice(0, point.offset)
+    .reduce((offset, child) => offset + child.getTextContentSize(), 0);
+};
+
+const readPlainTextSelection = (): PlainTextSelectionSnapshot | null => {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection)) return null;
+  return {
+    anchor: getPlainTextPointOffset(selection.anchor),
+    focus: getPlainTextPointOffset(selection.focus),
+  };
+};
+
+const setPointAtPlainTextOffset = (
+  point: PointType,
+  paragraph: ReturnType<typeof $createParagraphNode>,
+  requestedOffset: number,
+): void => {
+  const children = paragraph.getChildren();
+  const target = Math.max(0, Math.min(requestedOffset, paragraph.getTextContentSize()));
+  let offset = 0;
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
+    if (child === undefined) continue;
+    const size = child.getTextContentSize();
+    if ($isTextNode(child) && target <= offset + size) {
+      point.set(child.getKey(), target - offset, "text");
+      return;
+    }
+    if (target <= offset + size) {
+      point.set(paragraph.getKey(), target === offset ? index : index + 1, "element");
+      return;
+    }
+    offset += size;
+  }
+  point.set(paragraph.getKey(), children.length, "element");
+};
+
+const setPlainText = (value: string, preserveSelection = false): void => {
+  const selection = preserveSelection ? readPlainTextSelection() : null;
   const root = $getRoot();
   root.clear();
   const paragraph = $createParagraphNode();
@@ -51,7 +122,14 @@ const setPlainText = (value: string): void => {
     if (index < lines.length - 1) paragraph.append($createLineBreakNode());
   });
   root.append(paragraph);
-  paragraph.selectEnd();
+  if (selection === null) {
+    paragraph.selectEnd();
+    return;
+  }
+  const nextSelection = $createRangeSelection();
+  setPointAtPlainTextOffset(nextSelection.anchor, paragraph, selection.anchor);
+  setPointAtPlainTextOffset(nextSelection.focus, paragraph, selection.focus);
+  $setSelection(nextSelection);
 };
 
 const readPlainText = (editorState: EditorState): string => {
@@ -67,7 +145,9 @@ const ControlledValuePlugin = ({ value }: { readonly value: string }): null => {
   useLayoutEffect(() => {
     const current = readPlainText(editor.getEditorState());
     if (current === value) return;
-    editor.update(() => setPlainText(value), { tag: EXTERNAL_VALUE_TAG });
+    editor.update(() => setPlainText(value, true), {
+      tag: [EXTERNAL_VALUE_TAG, HISTORY_MERGE_TAG],
+    });
   }, [editor, value]);
   return null;
 };

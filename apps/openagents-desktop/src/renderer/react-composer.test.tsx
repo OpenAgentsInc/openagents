@@ -262,8 +262,8 @@ describe("React Codex composer", () => {
     expect(received.some((value) => value.name.includes("Submitted"))).toBe(false);
   });
 
-  test("keeps Lexical controlled without replacing the editor or echoing external hydration", async () => {
-    const { container } = installDom();
+  test("keeps Lexical controlled with caret-safe hydration and keyboard history", async () => {
+    const { window, container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
     const root = createTestRoot(container);
@@ -278,10 +278,39 @@ describe("React Codex composer", () => {
     });
     expect(received).toContainEqual({ name: "DesktopInputChanged", payload: "Local edit" });
 
+    await interact(() => {
+      editor.dispatchEvent(new window.KeyboardEvent("keydown", {
+        key: "z",
+        ctrlKey: true,
+        bubbles: true,
+      }) as unknown as Event);
+    });
+    expect(editor.textContent).toBe("Initial");
+    await interact(() => {
+      editor.dispatchEvent(new window.KeyboardEvent("keydown", {
+        key: "z",
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }) as unknown as Event);
+    });
+    expect(editor.textContent).toBe("Local edit");
+
+    const text = editor.querySelector("p span")?.firstChild;
+    expect(text).not.toBeNull();
+    const selection = window.getSelection();
+    const range = window.document.createRange();
+    range.setStart(text as never, 3);
+    range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    editor.dispatchEvent(new window.Event("selectionchange", { bubbles: true }) as unknown as Event);
+
     const changeCount = received.filter((value) => value.name === "DesktopInputChanged").length;
     await render(root, <ReactComposer state={fixtureState({ input: "Server hydration" })} report={report} />);
     expect(container.querySelector('[data-lexical-composer="true"]')).toBe(editor);
     expect(editor.textContent).toBe("Server hydration");
+    expect(window.getSelection()?.anchorOffset).toBe(3);
     expect(received.filter((value) => value.name === "DesktopInputChanged")).toHaveLength(changeCount);
   });
 
