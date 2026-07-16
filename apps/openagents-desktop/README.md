@@ -324,6 +324,10 @@ advertised authentication, workspace binding, process/session lifecycle,
 cancellation escalation, recovery, receipts, and support export. Cursor login
 and Grok cached-token/API-key choices come only from peer-advertised methods;
 file or environment presence is never rendered as successful authentication.
+Both admitted peers are registered as main-owned provider lanes over the shared
+dispatcher; an isolated production build has completed a real Grok Full Auto
+turn. That execution receipt is still experimental evidence, not a general
+support claim or proof of the corresponding Cursor packaged journey.
 
 The support bundle's closed schema contains profile/schema/version/capability
 and refs-only receipt/evidence facts. It cannot contain executable paths,

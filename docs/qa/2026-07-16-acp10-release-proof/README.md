@@ -122,17 +122,17 @@ Provider-specific gaps:
 - Cursor: pending/cancel/expiry/re-auth login, permission outcomes, and live
   `cursor/ask_question`/`cursor/update_todos`. Model listing, create-plan,
   list/load, mode/config round trips, cancellation, and restart/load are proven.
-- Both: packaged Desktop clean-machine happy/failure/recovery journeys. The
-  shipped main-owned host, Settings projection, alternate-path admission, and
-  closed support schema now pass hermetic Desktop tests. The matrix records
-  those rows as `fixture-pass`, because that still cannot replace a packaged
-  clean-machine run or promote a provider.
+- Desktop: the isolated production build completed a real Grok Full Auto turn,
+  durable journal settlement, disposable-repository commit, disable, and clean
+  shutdown. Grok failure/recovery journeys, the corresponding packaged Cursor
+  journey, and live support export remain incomplete. The combined matrix row
+  therefore stays `fixture-pass`, not `live-pass`.
 
 The ACP-10 validator now publishes the proof, derives the claim independently
 for each peer, and fails closed. Its current verdict is a release denial for
 general support—not an implied promotion. The issue remains open because the
-Desktop prompt lane, reproducible full live runner, credential-dependent auth
-states, and claimed-platform executions are not complete. Future evidence can
+reproducible full live runner, remaining Desktop/provider failure journeys,
+credential-dependent auth states, and claimed-platform executions are not complete. Future evidence can
 change one peer at a time from `experimental` only by satisfying every
 code-owned evidence class on each claimed platform.
 

@@ -137,8 +137,10 @@ The #8897 claim validator is now implemented as a checked
 with a [human proof ledger](../qa/2026-07-16-acp10-release-proof/README.md).
 It independently derives an experimental verdict for both pinned peers because
 required live and cross-platform rows remain unresolved; it does not turn
-fixture coverage into supported language. #8897 remains open for the complete
-Desktop prompt lane and reproducible live/platform proof. The conformance package's exact
+fixture coverage into supported language. Grok and Cursor are now registered
+main-owned provider lanes, and an isolated production Desktop build completed a
+real Grok Full Auto turn. #8897 remains open for reproducible complete live and
+platform proof plus the remaining packaged failure/recovery journeys. The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference
 custody cases, and opt-in probes are checked artifacts. The Grok and Cursor
