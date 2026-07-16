@@ -255,6 +255,8 @@ import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { reconcileLocalTurns } from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
+import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
+import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
 import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
@@ -519,8 +521,14 @@ const fullAutoRestartProbe: (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number] | nu
     )
     ? process.env.OPENAGENTS_DESKTOP_FULL_AUTO_RESTART_PROBE as (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number]
     : null
+// FA-H13 (#8886): the Full Auto control live-proof probe. Windowless fixture
+// mode (like the restart probes) that seeds an enabled registry record, then
+// keeps the process alive so an external client can exercise the loopback
+// control API against the REAL running Electron main. Only meaningful in
+// combination with OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1.
+const fullAutoControlProbe = process.env.OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL_PROBE === "1"
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null ||
-  fullAutoRestartProbe !== null
+  fullAutoRestartProbe !== null || fullAutoControlProbe
 const reactSmokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE_REACT === "1"
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
@@ -3404,6 +3412,47 @@ ipcMain.handle(CodexLocalFullAutoInterruptChannel, async (_event, value: unknown
   return { ok: codexLocal.interrupt(live.turnRef) }
 })
 
+/**
+ * FA-H13 (#8886): the opt-in, loopback-only Phase 1 Full Auto control
+ * surface. Off by default -- constructed ONLY under
+ * OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1 -- and handed a narrow capability
+ * options object (never main's internals) so the server module stays
+ * testable with fakes. Every capability is the exact function the IPC
+ * handlers above already use: the same registry, the same workspace
+ * resolution, the same serialized reconciliation trigger, the same live-state
+ * map, the same journal, and the same durable system-note appender.
+ */
+if (isFullAutoControlEnabled(process.env)) {
+  const pinnedControlPort = Number.parseInt(process.env[FULL_AUTO_CONTROL_PORT_ENV] ?? "", 10)
+  void startFullAutoControlServer({
+    capabilities: {
+      registry: fullAutoRegistry,
+      resolveWorkspaceRef: resolveDesktopLocalWorkspaceRoot,
+      // continue-now is a new TRIGGER into the same promise-chain mutex --
+      // the exact function every other Full Auto trigger point calls.
+      triggerReconciliation: () => runFullAutoReconciliation(),
+      liveState: threadRef => fullAutoLiveState.get(threadRef) ?? null,
+      listTurns: threadRef => localTurnJournal.list().filter(record => record.threadRef === threadRef),
+      appendSystemNote: appendFullAutoSystemNote,
+    },
+    controlFilePath: path.join(app.getPath("userData"), "full-auto", "control.json"),
+    ...(Number.isInteger(pinnedControlPort) && pinnedControlPort > 0 && pinnedControlPort <= 65535
+      ? { port: pinnedControlPort }
+      : {}),
+  }).then(server => {
+    // Public-safe: the URL and file location only -- never the token.
+    console.log(
+      `[openagents-desktop full-auto-control] listening ${server.url} (connection info: ${server.controlFilePath})`,
+    )
+    app.on("will-quit", () => { void server.stop() })
+  }).catch(error => {
+    console.error(
+      "[openagents-desktop full-auto-control] failed to start",
+      error instanceof Error ? error.message : "unknown",
+    )
+  })
+}
+
 // Codex account connect + reconnect (#8640 unblock; EP250 owner mandate:
 // the UI owns reconnect). Channels stay renderer-argument-free except the
 // reconnect start, which carries ONE grammar-bounded account ref that the
@@ -6156,6 +6205,49 @@ void app.whenReady().then(async () => {
       return
     } catch (error) {
       console.error("[openagents-desktop full-auto-restart] failed", error instanceof Error ? error.message : "unknown")
+      app.exit(1)
+      return
+    }
+  }
+  // FA-H13 (#8886): the Full Auto control live-proof probe
+  // (scripts/full-auto-control-smoke.ts). Windowless fixture mode, same
+  // posture as the restart probes above: seed one thread with an enabled,
+  // workspace-bound Full Auto record, print a ready line, then keep the
+  // process alive (bounded) so an external client can exercise the loopback
+  // control API -- started by the OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL wiring
+  // above -- against the REAL running Electron main. The outer smoke script
+  // ends the probe by writing full-auto/control-probe-stop under userData.
+  if (fullAutoControlProbe) {
+    openLocalSyncPersistence()
+    await recoverSessionVaultLocal()
+    await settleSessionRecovery()
+    runtimeGateway.start()
+    try {
+      await localTurnRecovery
+      // Let the startup reconciliation pass (queued at module scope) settle
+      // FIRST, against the still-empty registry, so seeding the enabled
+      // record afterwards cannot start a fixture dispatch loop: the probe
+      // proves the control wire end to end, not another dispatch.
+      await runFullAutoReconciliation()
+      const store = threads()
+      const thread = store.newThread()
+      store.upsert(thread.id, {
+        key: "turn.full-auto-control-probe-user",
+        role: "user",
+        text: "Seed a Full Auto thread for the control-surface live proof.",
+        timestamp: "11:55 PM",
+      })
+      fullAutoRegistry.set(thread.id, true, { workspaceRef: resolveDesktopLocalWorkspaceRoot() })
+      console.log(`[openagents-desktop full-auto-control] probe ready ${JSON.stringify({ threadRef: thread.id })}`)
+      const stopFile = path.join(app.getPath("userData"), "full-auto", "control-probe-stop")
+      const probeDeadline = Date.now() + 120_000
+      while (!existsSync(stopFile) && Date.now() < probeDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 250))
+      }
+      app.exit(0)
+      return
+    } catch (error) {
+      console.error("[openagents-desktop full-auto-control] probe failed", error instanceof Error ? error.message : "unknown")
       app.exit(1)
       return
     }

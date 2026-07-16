@@ -40,13 +40,19 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-18",
       "FA-AC-19",
       "FA-AC-20",
-      "FA-AC-21"
+      "FA-AC-21",
+      "FA-AC-22",
+      "FA-AC-23",
+      "FA-AC-24",
+      "FA-AC-25",
+      "FA-AC-26",
+      "FA-AC-27"
     ],
-    "document_digest": "sha256:5cbe2c0fb817f9a227625cff92f02aee76c90ae3b8d4c51b5b721d2853c08b73",
+    "document_digest": "sha256:9f9d263e065efc1788c815fbdad9fa4df33e0b933478c424fdf9e8709ca88849",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 5
+    "spec_revision": 6
   }
 }
 ```
@@ -341,7 +347,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-clients-preview.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-code.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-components.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-download-effect-native.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-forum-khala-motion.test.ts",
       "apps/openagents.com/apps/start/src/routes/-forum-markdown.test.ts",
       "apps/openagents.com/apps/start/src/routes/-forum.test.tsx",
@@ -475,7 +480,8 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/workers/api/src/artanis-forum-publication.test.ts",
       "apps/openagents.com/workers/api/src/artanis-forum-responder-khala.test.ts",
       "apps/openagents.com/workers/api/src/artanis-forum-reward-smoke.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-reward-visibility.test.ts"
+      "apps/openagents.com/workers/api/src/artanis-forum-reward-visibility.test.ts",
+      "apps/openagents.com/workers/api/src/artanis-forum-verification.test.ts"
     ],
     "declared_scripts": [
       {
@@ -807,6 +813,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "node --import tsx scripts/codex-turn-control-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
         "name": "smoke:codex-turn-control"
+      },
+      {
+        "command": "node --import tsx scripts/full-auto-restart-smoke.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "smoke:full-auto-restart"
       },
       {
         "command": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_HEADED=1 electron .",
@@ -1674,6 +1685,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "check"
       },
       {
+        "command": "pnpm --dir packages/agent-client-protocol run check:generated",
+        "manifest_path": "package.json",
+        "name": "check:agent-client-protocol"
+      },
+      {
         "command": "pnpm --dir packages/codex-app-server-protocol run check:generated",
         "manifest_path": "package.json",
         "name": "check:codex-app-server-protocol"
@@ -1684,7 +1700,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "check:deploy"
       },
       {
-        "command": "vp lint --quiet && pnpm run check:codex-app-server-protocol && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/google-cloud-authority-guard.mjs",
+        "command": "vp lint --quiet && pnpm run check:agent-client-protocol && pnpm run check:codex-app-server-protocol && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/google-cloud-authority-guard.mjs",
         "manifest_path": "package.json",
         "name": "check:fast"
       },
@@ -1809,6 +1825,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "test"
       },
       {
+        "command": "pnpm --dir packages/agent-client-protocol run test",
+        "manifest_path": "package.json",
+        "name": "test:agent-client-protocol"
+      },
+      {
         "command": "pnpm --dir packages/agent-readiness run test",
         "manifest_path": "package.json",
         "name": "test:agent-readiness"
@@ -1817,6 +1838,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "pnpm --dir packages/agent-runtime-schema run test",
         "manifest_path": "package.json",
         "name": "test:agent-runtime-schema"
+      },
+      {
+        "command": "pnpm --dir packages/agent-stdio-transport run test",
+        "manifest_path": "package.json",
+        "name": "test:agent-stdio-transport"
       },
       {
         "command": "pnpm --dir packages/ai-sdk-sandbox-local run test",
@@ -2134,6 +2160,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "typecheck"
       },
       {
+        "command": "pnpm --dir packages/agent-client-protocol run typecheck",
+        "manifest_path": "package.json",
+        "name": "typecheck:agent-client-protocol"
+      },
+      {
         "command": "pnpm --dir packages/agent-readiness run typecheck",
         "manifest_path": "package.json",
         "name": "typecheck:agent-readiness"
@@ -2142,6 +2173,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "pnpm --dir packages/agent-runtime-schema run typecheck",
         "manifest_path": "package.json",
         "name": "typecheck:agent-runtime-schema"
+      },
+      {
+        "command": "pnpm --dir packages/agent-stdio-transport run typecheck",
+        "manifest_path": "package.json",
+        "name": "typecheck:agent-stdio-transport"
       },
       {
         "command": "pnpm --dir packages/ai-sdk-sandbox-local run typecheck",
@@ -2339,6 +2375,31 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "verify:tla"
       },
       {
+        "command": "node scripts/check-generated.ts",
+        "manifest_path": "packages/agent-client-protocol/package.json",
+        "name": "check:generated"
+      },
+      {
+        "command": "node scripts/generate.ts",
+        "manifest_path": "packages/agent-client-protocol/package.json",
+        "name": "generate"
+      },
+      {
+        "command": "vp test --run packages/agent-client-protocol/src/protocol.test.ts",
+        "manifest_path": "packages/agent-client-protocol/package.json",
+        "name": "test"
+      },
+      {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "manifest_path": "packages/agent-client-protocol/package.json",
+        "name": "typecheck"
+      },
+      {
+        "command": "node scripts/update-upstream.ts",
+        "manifest_path": "packages/agent-client-protocol/package.json",
+        "name": "update:upstream"
+      },
+      {
         "command": "vp test --root ../.. --run --project node packages/agent-readiness/src/index.test.ts",
         "manifest_path": "packages/agent-readiness/package.json",
         "name": "test"
@@ -2356,6 +2417,16 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       {
         "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/agent-runtime-schema/package.json",
+        "name": "typecheck"
+      },
+      {
+        "command": "vp test --run packages/agent-stdio-transport/src/transport.test.ts",
+        "manifest_path": "packages/agent-stdio-transport/package.json",
+        "name": "test"
+      },
+      {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "manifest_path": "packages/agent-stdio-transport/package.json",
         "name": "typecheck"
       },
       {
@@ -3014,12 +3085,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "43394b7300b847ac9576e2db79baa2bd8e8ece0f",
-    "inventory_digest": "sha256:e18d6afe695e9cb27672d2564366275e705773ecabc1411f1cb8dcfdd926546a",
-    "repository_label": "oa-fa-w3-ui",
+    "head": "9ceb28028757aa4a1d5f829354d2b690c5ecd33c",
+    "inventory_digest": "sha256:4ea54e610695c92511d0db1928073a960d3dccb5aa130c8a105df5b7f6009750",
+    "repository_label": "oa-fa-w4-control",
     "state": "dirty",
-    "tracked_file_count": 8956,
-    "tree": "ddde9dd27c8eba3623c49c54a7a55ac12e899caf",
+    "tracked_file_count": 8994,
+    "tree": "5addeb547bc48d9bf9d9eb063395aba08c265a92",
     "truncated": true
   }
 }
@@ -3261,6 +3332,72 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:96242f50d322c4619643e0da9d9d5496f93d97bcdc52f85239c3bef7b0b8e743",
     "source_claim_snapshot": "A manual send while a background Full Auto turn owns the\nthread is excluded, never run silently concurrently. When the active\nthread's live state is turn_running, `runNoteSubmission` refuses to start\na manual turn: it sets the transient notice \"Full Auto is running a turn\non this thread. Stop it first or wait for it to finish.\" and keeps the\ncomposer draft. Once the live state is terminal, the same submit goes\nthrough normally.\nProof: `shell.test.ts` \"FA-H4 (#8877): a manual send while a background\nFull Auto turn runs is FENCED -- sendMessage is never called, a notice\nsays why, and the draft is kept\".",
     "title": "Assure FA-AC-21"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-22"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-22-01",
+    "source_claim_digest": "sha256:0f0f2018b26d60b1402371861ad8755b89b17097b98bf7eff2e9d9387997b89a",
+    "source_claim_snapshot": "The programmatic control surface is opt-in and off by\ndefault, loopback-only, and bearer-gated. Desktop main constructs the\ncontrol server ONLY when `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1`; the\nlistener binds 127.0.0.1 exclusively (ephemeral or env-pinned port); every\nrequest -- the OpenAPI document included -- requires the per-process scoped\nbearer credential (scopes drawn from `@openagentsinc/environment-auth`'s\nnarrowing-only exchange, verified with a constant-time comparison) or is\nrefused 401. Connection info is written mode-0600 to\n`full-auto/control.json` under userData and removed on stop.\nProof: `full-auto-control-server.test.ts` \"off by default: main's guard\nrequires OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1 exactly\", \"credential mint\nuses the environment-auth narrowing-only exchange...\", \"auth: no bearer and\na wrong bearer are 401 on every route...\", and \"the connection file is\nwritten mode 0600...\"; `main.ts` wraps the entire server wiring in\n`isFullAutoControlEnabled(process.env)` (code-reviewed; main.ts has no\ndirect unit-test harness -- the guard function itself is the tested unit).",
+    "title": "Assure FA-AC-22"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-23"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-23-01",
+    "source_claim_digest": "sha256:8e0ec08187c8ca2db29385a7622cd9af60cc26aa5313af4173bcfd6568a1f62c",
+    "source_claim_snapshot": "Programmatic enable NAMES the workspace the caller expects\nand enforces it: the request body requires `workspaceRef`, the server\nresolves the current workspace itself via the same\n`resolveDesktopLocalWorkspaceRoot` codex-local turns execute against, and\nany difference is a 409 `workspace_mismatch` refusal with the registry left\nuntouched -- never a silent redirect. Programmatic enable can never grant a\nnew, previously-ungranted workspace; on success it binds exactly the\nresolved workspace, the same path as the IPC set handler.\nProof: `full-auto-control-server.test.ts` \"enable with a mismatched\nworkspaceRef is a 409 typed refusal and the registry is untouched\" and\n\"enable with the matching workspaceRef enables + binds the record...\".",
+    "title": "Assure FA-AC-23"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-24"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-24-01",
+    "source_claim_digest": "sha256:30a72566ec674ecb4397f6f1088a73fad8e68d8e024065fccc28cc46a485442b",
+    "source_claim_snapshot": "Every mutating control-API call (enable, disable,\ncontinue-now) appends a durable, distinctly-attributed system note to the\nthread through the existing `appendFullAutoSystemNote` (naming the\nprogrammatic path and caller `control-api`), plus a public-safe console\naudit line, so the owner can always tell a programmatic action from their\nown click.\nProof: `full-auto-control-server.test.ts` attribution assertions inside the\nenable, disable, and continue-now cases (note text contains \"programmatically\"\nand \"control-api\").",
+    "title": "Assure FA-AC-24"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-25"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-25-01",
+    "source_claim_digest": "sha256:7abfea21c68f5feefe7da620209c18ddc291b890cb51b133c2a8843d2f7340a8",
+    "source_claim_snapshot": "continue-now is a new TRIGGER into the shared serialized\nreconciliation path, never a new dispatch mechanism: the handler invokes\nthe exact injected reconciliation trigger (main passes\n`runFullAutoReconciliation`, the same FA-H3 promise-chain mutex + durable\nlease every other trigger point uses) exactly once and returns\n`{ scheduled: true }` immediately; dispatch remains subject to lease,\nworkspace binding, backoff, and cap policy. An unknown threadRef is 404 and\nnever touches the trigger.\nProof: `full-auto-control-server.test.ts` \"continue-now invokes the\ninjected reconcile trigger exactly once and returns { scheduled: true }\"\n(spy on the injected trigger) and \"continue-now on an unknown threadRef is\na 404 and never touches the trigger\"; `main.ts` passes\n`() => runFullAutoReconciliation()` as that capability (code-reviewed).",
+    "title": "Assure FA-AC-25"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-26"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-26-01",
+    "source_claim_digest": "sha256:d841490075cc6fc71f4f7368ad6244f539f0f77f395e28cd13cf4a013f46e0af",
+    "source_claim_snapshot": "The served surface and the published OpenAPI 3.1 document\ncannot drift: `GET /v1/openapi.json` serves the hand-authored document, and\na structural parity test asserts every route in the shared\n`FULL_AUTO_CONTROL_ROUTES` table appears in the document (path, method,\noperationId) AND every operation in the document is a served route.\nResponse bodies decode against the Effect Schemas in\n`full-auto-control-contract.ts`, whose bounds mirror the IPC contract.\nProjections stay public-safe: records expose only\nthreadRef/enabled/continuationCount/updatedAt/workspaceRef/blockedReason/\nlive state plus accountRef (never model/effort/raw profile material), and\nturns expose identity/phase/disposition/timestamps for at most the last 20\nFull Auto turns -- never transcript text.\nProof: `full-auto-control-server.test.ts` \"GET /v1/openapi.json serves the\ndocument, and the document <-> served routes agree in both directions\",\n\"list and status match the contract schemas... expose no profile material\nbeyond accountRef\", and \"turns returns a bounded, most-recent-first Full\nAuto projection with no transcript text\".",
+    "title": "Assure FA-AC-26"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-27"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-27-01",
+    "source_claim_digest": "sha256:a379ac228a58d621c4498bc9f579070a44fe338d59d598b45551ef863bac629c",
+    "source_claim_snapshot": "The MCP server and CLI are thin pass-through clients of the\none control surface: both discover the server from `full-auto/control.json`\n(with `--user-data` / `OPENAGENTS_DESKTOP_USER_DATA` overrides), attach the\nbearer, call the HTTP API, and return the server's JSON verbatim -- no\nclient-side policy and no second schema vocabulary. Both fail with a clear\n\"server not enabled\" message when the connection file is missing. The MCP\nserver exposes `full_auto_list` / `full_auto_status` / `full_auto_enable` /\n`full_auto_disable` / `full_auto_continue_now` / `full_auto_turns` over the\nrepo's public MCP protocol revision (2025-06-18).\nProof: `scripts/full-auto-cli.ts` and `scripts/full-auto-mcp.ts`\n(pass-through by construction over the shared\n`scripts/full-auto-control-client.ts`); live end-to-end receipt in the\nrev 6 entry under Receipts (`pnpm run smoke:full-auto-control` exercises\nthe real CLI as a second OS process against the real running Electron\nmain).",
+    "title": "Assure FA-AC-27"
   }
 ]
 ```

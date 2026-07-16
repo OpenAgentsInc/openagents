@@ -346,6 +346,9 @@ importers:
       '@openagentsinc/codex-app-server-protocol':
         specifier: workspace:*
         version: link:../../packages/codex-app-server-protocol
+      '@openagentsinc/environment-auth':
+        specifier: workspace:*
+        version: link:../../packages/environment-auth
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync

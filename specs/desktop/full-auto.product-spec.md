@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Full Auto Codex Composer Loop"
 artifact_type: "prd"
-spec_revision: 5
+spec_revision: 6
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
-updated_at: "2026-07-16T13:20:00.000Z"
+updated_at: "2026-07-16T14:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -18,10 +18,10 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8875 (FA-H2 workspace binding), 8876 (FA-H3 exactly-once dispatch), 8877 (FA-H4 background in-flight state, stop, send-fencing), 8878 (FA-H5 failure policy), 8879 (FA-H6 profile continuity), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness)"
+  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8875 (FA-H2 workspace binding), 8876 (FA-H3 exactly-once dispatch), 8877 (FA-H4 background in-flight state, stop, send-fencing), 8878 (FA-H5 failure policy), 8879 (FA-H6 profile continuity), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness), 8885 (FA-H12 two-process restart smoke), 8886 (FA-H13 local programmatic control surface)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
-  openagents_revision_note: "rev 5 (FA-H4 #8877) makes background continuations rendered facts instead of silence-until-completion. Main keeps a coarse, typed, in-memory per-thread live state (idle | turn_running | turn_completed | turn_failed | cap_reached | blocked; blocked carries the typed blockedReason as detail) and broadcasts every transition to all windows over a new CodexLocalFullAutoStateChannel; the CodexLocalFullAutoGetChannel response additively carries { state, turnRef } beside enabled so thread switches hydrate an in-flight background turn immediately. While the active thread's live state is turn_running the composer renders a status badge and the Stop control; Stop signals a new thread-scoped CodexLocalFullAutoInterruptChannel whose main handler resolves the live running turn ref itself and reuses the exact codexLocal.interrupt runtime path; a manual send during turn_running is fenced with a transient notice that keeps the draft (never a silent second concurrent turn). Token-by-token streaming of background turns remains deliberately out; live state is deliberately NOT durable -- startup reconciliation re-derives reality. An interrupted background turn terminates through the existing FA-H5 typed-failure path (owner-visible note, backoff) with the toggle remaining the durable loop-level stop. Rev 4 (#8875, #8876, #8878, #8879) hardens dispatch authority and delivery semantics on the durable record. FA-H2 (#8875): enabling binds the currently resolved workspace (resolved by main, never renderer-supplied) onto the record; a continuation whose resolved workspace no longer matches refuses to dispatch and disables the record with blockedReason workspace_mismatch and an owner-visible note; an enabled record with NO binding (pre-upgrade row) fails CLOSED (workspace_unbound) and rebinds only on its next enable. FA-H3 (#8876): reconciliation is serialized through a promise-chain mutex in main, and each continuation claims a durable per-thread lease carrying the exact dispatched turn ref before dispatch, so overlapping passes dispatch a thread at most once; only the startup pass clears a stale lease whose turn ref never reached the local-turn journal; main's dispatch adapter additionally refuses when the journal already holds a nonterminal turn on the thread. FA-H5 (#8878): thrown errors AND ok:false dispatch results are typed failures -- failure state (consecutiveFailures, lastFailureAt, blockedReason) persists on the record with an owner-visible note, retries respect bounded exponential backoff min(2^failures*30s, 30min), and the 5th consecutive failure disables the record; a successful dispatch clears failure state. Cap-counting decision: continuationCount increments ONLY on successful dispatch -- a failed dispatch consumes failure budget, never a cap slot (rev 3 incremented before dispatch). FA-H6 (#8879): the initiating renderer-sent flagged turn binds its execution profile (account target, model, reasoning effort) onto the record and continuations replay it (revalidated against live contract enums); images, attachments, and extension selection deliberately reset -- a continuation is a fresh instruction, not a replay. All new record fields are optional so v1 registry files still decode. Rev 3 (#8880, #8882, #8883) pinned cap-reset semantics, registry quarantine/eviction hardening, and measurable-metrics cleanup. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
+  openagents_revision_note: "rev 6 (FA-H13 #8886) adds the Phase 1 LOCAL programmatic control surface: an opt-in (OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1), loopback-only (127.0.0.1), scoped-bearer-gated node:http server in Desktop main (full-auto-control-server.ts) exposing list / status / enable / disable / continue-now / turns plus GET /v1/openapi.json serving the hand-authored OpenAPI 3.1 document (full-auto-control-openapi.ts) that IS the surface's source of truth -- a thin stdio MCP server (scripts/full-auto-mcp.ts) and a thin argv CLI (scripts/full-auto-cli.ts) are deliberately pass-through clients of that one document, following the repo's existing OpenAPI/SDK/MCP triad convention. Auth follows the Harness MCP pilot pattern exactly: one per-process bearer credential minted at startup with scopes drawn from @openagentsinc/environment-auth's narrowing-only exchange (operator_read + coding_session_control; no new auth framework), constant-time verification on every request, connection info written mode-0600 to full-auto/control.json under userData. Authority boundaries: enable NAMES the workspace the caller expects and refuses with 409 workspace_mismatch (registry untouched) on any difference from the currently resolved workspace -- a refusal, never a redirect, and never a grant of a new workspace; continue-now is a new TRIGGER into the exact same serialized reconciliation path (runFullAutoReconciliation / the FA-H3 promise-chain mutex + durable lease), never a parallel dispatch mechanism; every mutating call appends a durable, distinctly-attributed system note (caller: control-api) via the existing appendFullAutoSystemNote so the owner can always tell a programmatic action from their own click. Projections are public-safe: records expose threadRef/enabled/continuationCount/workspaceRef/blockedReason/live state and only accountRef from the bound profile; turns expose identity/phase/disposition/timestamps for the last 20 Full Auto turns, never transcript text. Phase 2 (cross-machine relay through the openagents.com triad and Khala Sync) stays explicitly out of scope. Rev 5 (FA-H4 #8877) makes background continuations rendered facts instead of silence-until-completion. Main keeps a coarse, typed, in-memory per-thread live state (idle | turn_running | turn_completed | turn_failed | cap_reached | blocked; blocked carries the typed blockedReason as detail) and broadcasts every transition to all windows over a new CodexLocalFullAutoStateChannel; the CodexLocalFullAutoGetChannel response additively carries { state, turnRef } beside enabled so thread switches hydrate an in-flight background turn immediately. While the active thread's live state is turn_running the composer renders a status badge and the Stop control; Stop signals a new thread-scoped CodexLocalFullAutoInterruptChannel whose main handler resolves the live running turn ref itself and reuses the exact codexLocal.interrupt runtime path; a manual send during turn_running is fenced with a transient notice that keeps the draft (never a silent second concurrent turn). Token-by-token streaming of background turns remains deliberately out; live state is deliberately NOT durable -- startup reconciliation re-derives reality. An interrupted background turn terminates through the existing FA-H5 typed-failure path (owner-visible note, backoff) with the toggle remaining the durable loop-level stop. Rev 4 (#8875, #8876, #8878, #8879) hardens dispatch authority and delivery semantics on the durable record. FA-H2 (#8875): enabling binds the currently resolved workspace (resolved by main, never renderer-supplied) onto the record; a continuation whose resolved workspace no longer matches refuses to dispatch and disables the record with blockedReason workspace_mismatch and an owner-visible note; an enabled record with NO binding (pre-upgrade row) fails CLOSED (workspace_unbound) and rebinds only on its next enable. FA-H3 (#8876): reconciliation is serialized through a promise-chain mutex in main, and each continuation claims a durable per-thread lease carrying the exact dispatched turn ref before dispatch, so overlapping passes dispatch a thread at most once; only the startup pass clears a stale lease whose turn ref never reached the local-turn journal; main's dispatch adapter additionally refuses when the journal already holds a nonterminal turn on the thread. FA-H5 (#8878): thrown errors AND ok:false dispatch results are typed failures -- failure state (consecutiveFailures, lastFailureAt, blockedReason) persists on the record with an owner-visible note, retries respect bounded exponential backoff min(2^failures*30s, 30min), and the 5th consecutive failure disables the record; a successful dispatch clears failure state. Cap-counting decision: continuationCount increments ONLY on successful dispatch -- a failed dispatch consumes failure budget, never a cap slot (rev 3 incremented before dispatch). FA-H6 (#8879): the initiating renderer-sent flagged turn binds its execution profile (account target, model, reasoning effort) onto the record and continuations replay it (revalidated against live contract enums); images, attachments, and extension selection deliberately reset -- a continuation is a fresh instruction, not a replay. All new record fields are optional so v1 registry files still decode. Rev 3 (#8880, #8882, #8883) pinned cap-reset semantics, registry quarantine/eviction hardening, and measurable-metrics cleanup. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
 ---
 
 ## Problem
@@ -72,7 +72,12 @@ in:
   - coarse typed background-turn live state (FA-H4): main tracks an in-memory per-thread state (idle | turn_running | turn_completed | turn_failed | cap_reached | blocked, with the running turn ref and a bounded detail for blocked) and broadcasts every transition over `CodexLocalFullAutoStateChannel`; the get channel additively returns `{ state, turnRef }` beside `enabled`
   - a working background-turn stop (FA-H4): while the active thread's live state is turn_running the composer shows a "Full Auto running…" badge plus the Stop control, and Stop signals the thread-scoped `CodexLocalFullAutoInterruptChannel` -- main resolves the live running turn ref itself and reuses the same runtime interrupt path as the existing turn interrupt channel
   - manual-send fencing (FA-H4): a manual composer send while the active thread's live state is turn_running is refused with a transient notice and the draft kept -- never a silent second concurrent turn on the same thread
+  - a Phase 1 LOCAL programmatic control surface (FA-H13): an opt-in (`OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1`), loopback-only (127.0.0.1), scoped-bearer-gated HTTP server in main (full-auto-control-server.ts) exposing list, status, enable, disable, continue-now, and bounded turn history, described by one hand-authored OpenAPI 3.1 document served at `GET /v1/openapi.json`; connection info written mode-0600 to `full-auto/control.json` under userData
+  - thin MCP (scripts/full-auto-mcp.ts) and CLI (scripts/full-auto-cli.ts) clients that are deliberate pass-throughs of that one OpenAPI surface -- no client-side policy, no second schema vocabulary
+  - programmatic-call attribution (FA-H13): every control-API mutation (enable / disable / continue-now) appends a durable, distinctly-attributed system note to the thread via the existing appendFullAutoSystemNote, so an owner can always tell a programmatic action from their own click
 out:
+  - Phase 2 cross-machine programmatic control (relaying Full Auto routes through the openagents.com OpenAPI/Omni-SDK/public-MCP triad and Khala Sync to a running Desktop); the control surface in this revision is same-machine loopback only
+  - the control API granting a new, previously-ungranted workspace; granting stays a human/UI action -- programmatic enable can only turn Full Auto on for a workspace that matches the current resolution
   - any dedicated ProductSpec/AssuranceSpec review UI, criterion board, or admission-gate screen for Full Auto
   - a separate permission/envelope/policy system; Full Auto inherits the same full-trust execution profile every other Codex turn in this app already uses
   - multi-repo, multi-thread, or fleet-wide Full Auto
@@ -305,6 +310,87 @@ cut:
   Proof: `shell.test.ts` "FA-H4 (#8877): a manual send while a background
   Full Auto turn runs is FENCED -- sendMessage is never called, a notice
   says why, and the draft is kept".
+- **FA-AC-22:** The programmatic control surface is opt-in and off by
+  default, loopback-only, and bearer-gated. Desktop main constructs the
+  control server ONLY when `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1`; the
+  listener binds 127.0.0.1 exclusively (ephemeral or env-pinned port); every
+  request -- the OpenAPI document included -- requires the per-process scoped
+  bearer credential (scopes drawn from `@openagentsinc/environment-auth`'s
+  narrowing-only exchange, verified with a constant-time comparison) or is
+  refused 401. Connection info is written mode-0600 to
+  `full-auto/control.json` under userData and removed on stop.
+  Proof: `full-auto-control-server.test.ts` "off by default: main's guard
+  requires OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1 exactly", "credential mint
+  uses the environment-auth narrowing-only exchange...", "auth: no bearer and
+  a wrong bearer are 401 on every route...", and "the connection file is
+  written mode 0600..."; `main.ts` wraps the entire server wiring in
+  `isFullAutoControlEnabled(process.env)` (code-reviewed; main.ts has no
+  direct unit-test harness -- the guard function itself is the tested unit).
+- **FA-AC-23:** Programmatic enable NAMES the workspace the caller expects
+  and enforces it: the request body requires `workspaceRef`, the server
+  resolves the current workspace itself via the same
+  `resolveDesktopLocalWorkspaceRoot` codex-local turns execute against, and
+  any difference is a 409 `workspace_mismatch` refusal with the registry left
+  untouched -- never a silent redirect. Programmatic enable can never grant a
+  new, previously-ungranted workspace; on success it binds exactly the
+  resolved workspace, the same path as the IPC set handler.
+  Proof: `full-auto-control-server.test.ts` "enable with a mismatched
+  workspaceRef is a 409 typed refusal and the registry is untouched" and
+  "enable with the matching workspaceRef enables + binds the record...".
+- **FA-AC-24:** Every mutating control-API call (enable, disable,
+  continue-now) appends a durable, distinctly-attributed system note to the
+  thread through the existing `appendFullAutoSystemNote` (naming the
+  programmatic path and caller `control-api`), plus a public-safe console
+  audit line, so the owner can always tell a programmatic action from their
+  own click.
+  Proof: `full-auto-control-server.test.ts` attribution assertions inside the
+  enable, disable, and continue-now cases (note text contains "programmatically"
+  and "control-api").
+- **FA-AC-25:** continue-now is a new TRIGGER into the shared serialized
+  reconciliation path, never a new dispatch mechanism: the handler invokes
+  the exact injected reconciliation trigger (main passes
+  `runFullAutoReconciliation`, the same FA-H3 promise-chain mutex + durable
+  lease every other trigger point uses) exactly once and returns
+  `{ scheduled: true }` immediately; dispatch remains subject to lease,
+  workspace binding, backoff, and cap policy. An unknown threadRef is 404 and
+  never touches the trigger.
+  Proof: `full-auto-control-server.test.ts` "continue-now invokes the
+  injected reconcile trigger exactly once and returns { scheduled: true }"
+  (spy on the injected trigger) and "continue-now on an unknown threadRef is
+  a 404 and never touches the trigger"; `main.ts` passes
+  `() => runFullAutoReconciliation()` as that capability (code-reviewed).
+- **FA-AC-26:** The served surface and the published OpenAPI 3.1 document
+  cannot drift: `GET /v1/openapi.json` serves the hand-authored document, and
+  a structural parity test asserts every route in the shared
+  `FULL_AUTO_CONTROL_ROUTES` table appears in the document (path, method,
+  operationId) AND every operation in the document is a served route.
+  Response bodies decode against the Effect Schemas in
+  `full-auto-control-contract.ts`, whose bounds mirror the IPC contract.
+  Projections stay public-safe: records expose only
+  threadRef/enabled/continuationCount/updatedAt/workspaceRef/blockedReason/
+  live state plus accountRef (never model/effort/raw profile material), and
+  turns expose identity/phase/disposition/timestamps for at most the last 20
+  Full Auto turns -- never transcript text.
+  Proof: `full-auto-control-server.test.ts` "GET /v1/openapi.json serves the
+  document, and the document <-> served routes agree in both directions",
+  "list and status match the contract schemas... expose no profile material
+  beyond accountRef", and "turns returns a bounded, most-recent-first Full
+  Auto projection with no transcript text".
+- **FA-AC-27:** The MCP server and CLI are thin pass-through clients of the
+  one control surface: both discover the server from `full-auto/control.json`
+  (with `--user-data` / `OPENAGENTS_DESKTOP_USER_DATA` overrides), attach the
+  bearer, call the HTTP API, and return the server's JSON verbatim -- no
+  client-side policy and no second schema vocabulary. Both fail with a clear
+  "server not enabled" message when the connection file is missing. The MCP
+  server exposes `full_auto_list` / `full_auto_status` / `full_auto_enable` /
+  `full_auto_disable` / `full_auto_continue_now` / `full_auto_turns` over the
+  repo's public MCP protocol revision (2025-06-18).
+  Proof: `scripts/full-auto-cli.ts` and `scripts/full-auto-mcp.ts`
+  (pass-through by construction over the shared
+  `scripts/full-auto-control-client.ts`); live end-to-end receipt in the
+  rev 6 entry under Receipts (`pnpm run smoke:full-auto-control` exercises
+  the real CLI as a second OS process against the real running Electron
+  main).
 
 ## Success Metrics
 
@@ -332,6 +418,36 @@ cut:
 
 ## Receipts
 
+- Rev 6 (FA-H13 #8886): the Phase 1 local control surface.
+  New modules: `full-auto-control-contract.ts` (Effect Schemas + the shared
+  `FULL_AUTO_CONTROL_ROUTES` table), `full-auto-control-openapi.ts`
+  (hand-authored OpenAPI 3.1 document), `full-auto-control-server.ts`
+  (node:http loopback server, environment-auth-scoped bearer mint,
+  constant-time verification, mode-0600 `full-auto/control.json`); main.ts
+  wiring behind `isFullAutoControlEnabled` with a narrow capability options
+  object (same registry / workspace resolver / serialized reconcile trigger /
+  live-state map / journal / note appender the IPC handlers use); thin
+  clients `scripts/full-auto-cli.ts` + `scripts/full-auto-mcp.ts` over
+  `scripts/full-auto-control-client.ts` (package script `full-auto`).
+  Focused verification: `vp test --run --max-concurrency 1 --root .
+  apps/openagents-desktop/src/full-auto-control-server.test.ts` -- 1 file
+  passed, 14 tests passed (auth gating, 0600 connection file,
+  workspace-mismatch 409 refusal with registry untouched, enable/disable
+  attribution notes, continue-now trigger spy called exactly once + 404
+  never-touches-trigger, public-safe list/status/turns projections decoded
+  against the contract schemas, OpenAPI <-> routes parity in both
+  directions); regression `full-auto-restart.e2e.test.ts` +
+  `full-auto-registry.test.ts` + `renderer/shell.test.ts` -- 3 files passed,
+  147 passed, 11 skipped; clean `tsc -p tsconfig.json --noEmit`.
+  Live end-to-end receipt (`pnpm run smoke:full-auto-control`; build first):
+  the REAL Electron app launched windowless with
+  `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1` +
+  `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL_PROBE=1` against isolated OS-temp
+  userData, and the actual CLI ran as a second OS process (discovery via
+  control.json -> bearer -> HTTP `list` then `status`). Passing receipt
+  line: `[openagents-desktop full-auto-control] live smoke OK
+  {"threadRef":"…","listedRecords":1,"enabled":true,"workspaceBound":true,
+  "liveState":"idle"}`.
 - FA-H12 (#8885): two-process Electron restart smoke
   `apps/openagents-desktop/scripts/full-auto-restart-smoke.ts`
   (`pnpm run smoke:full-auto-restart`; build first). Spawns the real app
