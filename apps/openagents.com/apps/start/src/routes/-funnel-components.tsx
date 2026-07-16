@@ -1,6 +1,8 @@
 import { ArrowRight, CheckCircle2, ExternalLink, Menu, Terminal } from 'lucide-react'
 import type * as React from 'react'
 
+import { InternalLink } from '@/components/internal-link'
+
 import {
   blogPosts,
   businessOfferings,
@@ -27,24 +29,26 @@ export function PageShell({ children, dataRoute }: PageShellProps) {
     >
       <header className="sticky top-0 z-20 border-b border-khala-border/70 bg-khala-void/88 backdrop-blur-md">
         <div className="mx-auto flex w-[min(100%,1120px)] items-center justify-between gap-4 px-4 py-3">
-          <a
+          <InternalLink
             className="khala-focus font-mono text-sm text-khala-energy-cyan"
             href="/"
+            preload="render"
           >
             OpenAgents
-          </a>
+          </InternalLink>
           <nav
             aria-label="Primary"
             className="hidden items-center gap-5 font-mono text-sm text-khala-text-muted lg:flex"
           >
             {publicNavLinks.slice(1).map(link => (
-              <a
+              <InternalLink
                 className="khala-focus transition-colors hover:text-white motion-reduce:transition-none"
                 href={link.href}
                 key={link.href}
+                preload="render"
               >
                 {link.label}
-              </a>
+              </InternalLink>
             ))}
           </nav>
           <details className="relative lg:hidden">
@@ -57,13 +61,14 @@ export function PageShell({ children, dataRoute }: PageShellProps) {
               className="absolute right-0 mt-2 grid w-64 gap-1 border border-khala-border bg-khala-surface p-2 font-mono text-base text-khala-text shadow-2xl"
             >
               {publicNavLinks.map(link => (
-                <a
+                <InternalLink
                   className="khala-focus px-3 py-2 text-khala-text-muted hover:bg-khala-surface-raised hover:text-white"
                   href={link.href}
                   key={link.href}
+                  preload="render"
                 >
                   {link.label}
-                </a>
+                </InternalLink>
               ))}
             </nav>
           </details>
@@ -402,10 +407,11 @@ export function DocsIndexPage() {
       />
       <main className="mx-auto grid w-[min(100%,920px)] gap-4 px-4 py-10">
         {listedPages.map(page => (
-          <a
+          <InternalLink
             className={`${panelClass} khala-focus grid gap-2 transition-colors hover:border-khala-border-strong motion-reduce:transition-none`}
             href={`/docs/${page.slug}`}
             key={page.slug}
+            preload="render"
           >
             <h2 className="m-0 text-xl font-semibold tracking-tight text-white">
               {page.title}
@@ -413,7 +419,7 @@ export function DocsIndexPage() {
             <p className="m-0 text-base/7 text-khala-text-muted">
               {page.summary}
             </p>
-          </a>
+          </InternalLink>
         ))}
       </main>
     </PageShell>
@@ -474,10 +480,11 @@ export function BlogIndexPage() {
       />
       <main className="mx-auto grid w-[min(100%,920px)] gap-4 px-4 py-10">
         {listedPosts.map(post => (
-          <a
+          <InternalLink
             className={`${panelClass} khala-focus grid gap-2 transition-colors hover:border-khala-border-strong motion-reduce:transition-none`}
             href={`/blog/${post.slug}`}
             key={post.slug}
+            preload="render"
           >
             <p className="m-0 font-mono text-sm text-khala-text-faint">
               {post.date} · {post.readTime}
@@ -488,7 +495,7 @@ export function BlogIndexPage() {
             <p className="m-0 text-base/7 text-khala-text-muted">
               {post.excerpt}
             </p>
-          </a>
+          </InternalLink>
         ))}
       </main>
     </PageShell>

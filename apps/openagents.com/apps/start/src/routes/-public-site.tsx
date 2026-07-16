@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { InternalLink } from '@/components/internal-link'
 import {
   DOCS_URL,
   GITHUB_REPOSITORY_URL,
@@ -57,14 +58,14 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
     <div className="oa-public-site">
       <header className="oa-site-header">
         <nav className="oa-container oa-nav" aria-label="Primary navigation">
-          <a className="oa-brand" href="/" aria-label="OpenAgents home">
+          <InternalLink className="oa-brand" href="/" aria-label="OpenAgents home" preload="render">
             <span className="oa-brand-mark" aria-hidden="true"><span /><span /><span /></span>
             <span>OpenAgents</span>
-          </a>
+          </InternalLink>
           <div className="oa-nav-status" aria-label="Product status"><span />Desktop MVP</div>
           <div className="oa-nav-links">
-            <a href="/install">Install</a>
-            <a href={DOCS_URL}>Docs</a>
+            <InternalLink href="/install" preload="render">Install</InternalLink>
+            <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
             <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Source <span aria-hidden="true">↗</span></a>
           </div>
         </nav>
@@ -73,7 +74,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
       <footer className="oa-site-footer">
         <div className="oa-container oa-footer-inner">
           <p>OpenAgents Desktop · local-first Codex workroom</p>
-          <div className="oa-footer-links"><a href={DOCS_URL}>Docs</a><a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub</a></div>
+          <div className="oa-footer-links"><InternalLink href={DOCS_URL} preload="render">Docs</InternalLink><a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub</a></div>
         </div>
       </footer>
     </div>
@@ -89,7 +90,7 @@ export function DesktopLandingPage() {
             <p className="oa-kicker">Codex, made durable.</p>
             <h1>A serious place<br />for serious agent work.</h1>
             <p className="oa-hero-summary">OpenAgents Desktop is a local-first workroom around your ordinary Codex session—built to find work, follow the turn, review changes, and resume without losing the thread.</p>
-            <div className="oa-actions"><a className="oa-button oa-button-primary" href="/install">Download for Mac</a><a className="oa-button oa-button-secondary" href={DOCS_URL}>Read the docs</a></div>
+            <div className="oa-actions"><InternalLink className="oa-button oa-button-primary" href="/install" preload="render">Download for Mac</InternalLink><InternalLink className="oa-button oa-button-secondary" href={DOCS_URL} preload="render">Read the docs</InternalLink></div>
             <p className="oa-release-note">{MAC_RELEASE.version} · {MAC_RELEASE.architecture} release candidate</p>
           </div>
           <div className="oa-hero-signal" aria-hidden="true"><span>session.open</span><span>turn.streaming</span><span>change.reviewable</span><span>restart.reconciled</span></div>
@@ -137,10 +138,10 @@ export function DesktopLandingPage() {
       <section className="oa-boundaries" aria-label="Product boundaries"><div className="oa-container oa-boundary-grid">{PRODUCT_BOUNDARIES.map(boundary => <p key={boundary}><span aria-hidden="true">✓</span>{boundary}</p>)}</div></section>
 
       <section className="oa-faq" aria-labelledby="oa-faq-title">
-        <div className="oa-container oa-faq-layout"><div className="oa-faq-intro"><p>Questions and answers</p><h2 id="oa-faq-title">The important boundaries, plainly.</h2><a href={DOCS_URL}>Read the full documentation <span aria-hidden="true">→</span></a></div><div className="oa-question-list">{questions.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<span aria-hidden="true">＋</span></summary><p>{answer}</p></details>)}</div></div>
+        <div className="oa-container oa-faq-layout"><div className="oa-faq-intro"><p>Questions and answers</p><h2 id="oa-faq-title">The important boundaries, plainly.</h2><InternalLink href={DOCS_URL} preload="render">Read the full documentation <span aria-hidden="true">→</span></InternalLink></div><div className="oa-question-list">{questions.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<span aria-hidden="true">＋</span></summary><p>{answer}</p></details>)}</div></div>
       </section>
 
-      <section className="oa-closing"><div className="oa-container oa-closing-layout"><div><p>Open source. Local first. Evidence backed.</p><h2>The work should survive the window.</h2></div><div className="oa-closing-actions"><a className="oa-button oa-button-primary" href="/install">Download for Mac</a><a className="oa-source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div></div></section>
+      <section className="oa-closing"><div className="oa-container oa-closing-layout"><div><p>Open source. Local first. Evidence backed.</p><h2>The work should survive the window.</h2></div><div className="oa-closing-actions"><InternalLink className="oa-button oa-button-primary" href="/install" preload="render">Download for Mac</InternalLink><a className="oa-source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div></div></section>
     </PublicSiteShell>
   )
 }
@@ -150,7 +151,7 @@ export function InstallPage() {
     <PublicSiteShell>
       <section className="oa-install-hero"><div className="oa-container oa-install-layout"><div><p className="oa-kicker">OpenAgents Desktop</p><h1>Bring your Codex work<br />into one durable place.</h1><p className="oa-install-summary">Download the latest OpenAgents Desktop candidate for Mac. It uses your ordinary Codex session and keeps your work local, legible, and ready to resume.</p><div className="oa-download-row"><a className="oa-download-button" href={MAC_RELEASE.downloadUrl} rel="noreferrer"><span>Download for Mac</span><small>{MAC_RELEASE.version} · {MAC_RELEASE.size}</small></a><p>{MAC_RELEASE.architecture}<br />macOS disk image</p></div><p className="oa-candidate-note">This is a release candidate for early use, not the stable release.</p></div><aside className="oa-release-panel" aria-label="Release details"><p className="oa-kicker">Current candidate</p><dl><div><dt>Version</dt><dd>{MAC_RELEASE.version}</dd></div><div><dt>Platform</dt><dd>{MAC_RELEASE.platform}</dd></div><div><dt>Chip</dt><dd>{MAC_RELEASE.architecture}</dd></div><div><dt>Package</dt><dd>.dmg</dd></div></dl><a href={MAC_RELEASE.releaseUrl} target="_blank" rel="noreferrer">View release notes <span aria-hidden="true">↗</span></a></aside></div></section>
       <section className="oa-install-steps"><div className="oa-container oa-install-steps-layout"><div><p className="oa-kicker">Install</p><h2>From download to workroom.</h2></div><ol>{[['Open the disk image', 'Double-click the downloaded DMG in Finder.'], ['Move OpenAgents to Applications', 'Drag the app into your Applications folder.'], ['Launch and start working', 'Open OpenAgents and continue with your existing Codex setup.']].map(([title, body], index) => <li key={title}><span>{String(index + 1).padStart(2, '0')}</span><div><h3>{title}</h3><p>{body}</p></div></li>)}</ol></div></section>
-      <section className="oa-install-help"><div className="oa-container"><p>Need the setup details or product boundaries?</p><a href={DOCS_URL}>Read the docs <span aria-hidden="true">→</span></a></div></section>
+      <section className="oa-install-help"><div className="oa-container"><p>Need the setup details or product boundaries?</p><InternalLink href={DOCS_URL} preload="render">Read the docs <span aria-hidden="true">→</span></InternalLink></div></section>
     </PublicSiteShell>
   )
 }
