@@ -506,26 +506,43 @@ More specific invariant ledgers apply inside imported apps and packages.
   (`apps/openagents-desktop/scripts/stage-target.ts`) runs in a clean
   per-target temporary workspace: the EXACT source revision is exported into
   it, the immutable lockfile identity is verified against the descriptor
-  before any install, the staging plan's locked target-only production
-  install EXECUTES there (pnpm, frozen lockfile, target
-  `supportedArchitectures`), the exact provider runtime packages materialize
-  from THAT install — unavailable runtimes are a typed
-  `missing_runtime_package` failure BEFORE any app build, native build, or
-  maker/signing work — and owned native components (`oa-desktop-audio`) build
-  only with the descriptor's explicit Rust target triple, with build output
-  inside the staging workspace (path-prefix remapped for cross-run
-  determinism). The developer checkout, shared node_modules, and the shared
-  cargo target directory are never the packaged source: Electron Forge
-  requires `OA_DESKTOP_STAGING_WORKSPACE`, decodes the staged descriptor
-  once, discards its checkout copy wholesale, and packages ONLY the staged
-  tree; after package/asar assembly a LIVE gate re-audits the REAL app.asar
-  entry list through `stagedTreeViolations` before any maker/signing work.
+  before any install, runtime and Electron/Forge pins derive from the
+  EXPORTED source manifest and its own frozen-lockfile install (never the
+  live checkout's manifest or node_modules), the staging plan's locked
+  target-only production install EXECUTES there (pnpm, frozen lockfile,
+  target `supportedArchitectures`), the exact provider runtime packages
+  materialize from THAT install — unavailable runtimes are a typed
+  `missing_runtime_package` failure and a staged runtime version differing
+  from the exact locked version is a typed `runtime_version_mismatch`
+  failure, both BEFORE any app build, native build, or maker/signing work —
+  and owned native components (`oa-desktop-audio`) build only with the
+  descriptor's explicit Rust target triple, with build output inside the
+  staging workspace (path-prefix remapped for cross-run determinism).
+  Auto-created staging workspaces are cleaned up on success AND error; only
+  an explicit `--retain` keeps one for debug/proof runs. The developer
+  checkout, shared node_modules, and the shared cargo target directory are
+  never the packaged source: Electron Forge requires
+  `OA_DESKTOP_STAGING_WORKSPACE`, decodes the staged descriptor once,
+  decodes/validates the staged ledger, binds every descriptor identity
+  field, recomputes the ledger ref, re-hashes the CURRENT staged bytes
+  against the component digests BEFORE copy and again post-package (a
+  mutated or reused workspace can never produce a receipt referencing stale
+  proof), refuses when its ACTUALLY installed Electron/Forge versions differ
+  from the ledger's locked toolchain, discards its checkout copy wholesale,
+  and packages ONLY the staged tree; after package/asar assembly a LIVE gate
+  re-audits the REAL app.asar entry list through `stagedTreeViolations`,
+  verifies per-closure-entry packed/unpacked/extraResource placement
+  fidelity against the ledger plan, and re-hashes shipped unpacked/
+  extra-resource closure bytes before any maker/signing work.
   The staged-tree oracle fails closed on one foreign-architecture or
   universal binary, unknown/truncated executable identity (including at
   allowlisted/runtime destinations), unallowlisted executable, escaping
   symlink (recorded via lstat), source-checkout or staging-workspace path,
   development file, or unexpected ASAR entry. Every target build emits a
-  public-safe §9 native-component ledger (`native_component_ledger.v1`)
+  public-safe §9 native-component ledger (`native_component_ledger.v1`,
+  explicitly typed `phase: pre-maker-staging` with PLANNED maker identities
+  only — final artifact evidence lives exclusively in the receipt, whose
+  per-artifact `makerRef` structurally refuses planned/pending refs)
   enumerating the per-FILE native dependency closure — bundled runtimes,
   CLIs, native modules, shared libraries, helpers, WASM modules, and
   executables, each with header-derived architecture, embedded signing

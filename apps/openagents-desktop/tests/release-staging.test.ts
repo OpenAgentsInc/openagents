@@ -10,7 +10,9 @@
  */
 import { describe, expect, test } from "vite-plus/test";
 import { Exit, Schema } from "effect";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -31,10 +33,12 @@ import {
   TARGET_BUILD_DESCRIPTOR_SCHEMA_ID,
 } from "../src/release-staging-contract.ts";
 import {
+  asarPlacementViolations,
   buildNativeComponentLedger,
   closureOwnerForDestination,
   detectExecutableArchitecture,
   detectSigningState,
+  extraResourceDestination,
   finalizeDesktopBuildReceipt,
   makerIdentityRefs,
   nativeClosureEntries,
@@ -45,6 +49,7 @@ import {
   stagedTreePath,
   stagedTreeViolations,
   stagingPlanForDescriptor,
+  verifyStagedTreeAgainstLedger,
   type StagedFile,
   type StageTargetIo,
 } from "../scripts/stage-target.ts";
@@ -796,6 +801,9 @@ describe("DIST-03 native component ledger (§9)", () => {
       fixtureMetadata,
     );
     expect(ledger.schema).toBe(NATIVE_COMPONENT_LEDGER_SCHEMA_ID);
+    // Pre-maker staging evidence is EXPLICITLY typed as such; the receipt is
+    // the only document carrying final artifact/maker identities.
+    expect(ledger.phase).toBe("pre-maker-staging");
     expect(ledger.lockfileSha256).toBe(lockfileSha256);
     expect(ledger.osImage).toBe("darwin-arm64-25.4.0");
     expect(ledger.toolchain).toMatchObject({
@@ -806,7 +814,7 @@ describe("DIST-03 native component ledger (§9)", () => {
       rust: expect.stringContaining("rustc"),
       compiler: expect.stringContaining("clang"),
     });
-    expect(ledger.makerIdentities).toEqual([
+    expect(ledger.plannedMakerIdentities).toEqual([
       { format: "dmg", ref: "maker:forge-dmg-7.11.2" },
       { format: "zip", ref: "maker:forge-zip-7.11.2" },
     ]);
@@ -927,6 +935,7 @@ describe("DIST-03 build receipt", () => {
       format,
       sha256: digest("5"),
       byteLength: 4096,
+      makerRef: `maker:forge-${format}-7.11.2`,
     }));
 
   test("binds descriptor, lockfile identity, toolchain, gates, ledger ref, artifacts, and worker", () => {
@@ -942,8 +951,28 @@ describe("DIST-03 build receipt", () => {
       expect(receipt.componentLedger.sha256).toBe(digest("4"));
       expect(receipt.gates).toEqual({ stagedTree: "pass", asarAllowlist: "pass" });
       expect(receipt.toolchain.forge).toBe("7.11.2");
+      // Final artifact evidence carries the ACTUAL maker identity per output.
+      for (const artifact of receipt.artifacts) {
+        expect(artifact.makerRef).toMatch(/^maker:forge-/);
+      }
       expect(desktopBuildReceiptRef(receipt)).toMatch(/^sha256:[0-9a-f]{64}$/);
     }
+  });
+
+  test("refuses planned/pending maker identities — pre-maker staging evidence can never masquerade as final artifact evidence", () => {
+    const descriptor = descriptorFor("darwin-arm64");
+    const pending = artifactsFor(descriptor).map((artifact, index) =>
+      index === 0 ? { ...artifact, makerRef: "maker:pending-dmg" } : artifact,
+    );
+    expect(() =>
+      finalizeDesktopBuildReceipt(draftFor(descriptor), pending, "2026-07-16T12:00:00Z", "pass"),
+    ).toThrow(/ACTUAL maker identity/);
+    const nonMaker = artifactsFor(descriptor).map((artifact, index) =>
+      index === 0 ? { ...artifact, makerRef: "forge-dmg-7.11.2" } : artifact,
+    );
+    expect(() =>
+      finalizeDesktopBuildReceipt(draftFor(descriptor), nonMaker, "2026-07-16T12:00:00Z", "pass"),
+    ).toThrow(/ACTUAL maker identity/);
   });
 
   test("is structurally inadmissible for unsigned-dev output", () => {
@@ -1002,6 +1031,7 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
   const fixtureIo = (input: {
     targetKey: DesktopTargetKey;
     unavailable?: ReadonlyArray<string>;
+    wrongVersion?: ReadonlyArray<string>;
     injectViolation?: StagedFile;
     lockfileSha256?: string;
   }): StageTargetIo & { readonly log: Array<string> } => {
@@ -1016,6 +1046,17 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
         log.push(`export:${sourceRevision}`);
         return `${workspace}/source`;
       },
+      // Runtime pins come from the EXPORTED source manifest, never the live
+      // checkout — the fixture serves the pins AS the archived manifest.
+      readDesktopSourceManifest: async () => {
+        log.push("readSourceManifest");
+        return JSON.stringify({
+          dependencies: {
+            "@anthropic-ai/claude-agent-sdk": pins.claudeAgentSdk,
+            "@openai/codex": pins.codex,
+          },
+        });
+      },
       lockfileSha256: async () => input.lockfileSha256 ?? lockfileSha256,
       runTargetProductionInstall: async (_sourceRoot, plan) => {
         log.push(
@@ -1025,6 +1066,9 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
       materializeRuntimePackage: async (_workspace, _sourceRoot, pkg) => {
         log.push(`materialize:${pkg.name}`);
         if (input.unavailable?.includes(pkg.name)) return { available: false };
+        if (input.wrongVersion?.includes(pkg.name)) {
+          return { available: true, version: "9.9.9-wrong" };
+        }
         return { available: true, version: pkg.version };
       },
       buildApplication: async () => {
@@ -1038,9 +1082,12 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
         const files = cleanStagedTree(input.targetKey);
         return input.injectViolation ? [...files, input.injectViolation] : files;
       },
+      toolchainIdentity: async () => {
+        log.push("toolchainIdentity");
+        return fixtureToolchain;
+      },
       repoRoot,
       osImage: fixtureMetadata.osImage,
-      toolchain: fixtureToolchain,
       worker: { workerRef: "runner:fixture-01", hostClass: "owned-fixture" },
     };
   };
@@ -1049,8 +1096,8 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
     for (const targetKey of desktopTargetKeys) {
       const descriptor = descriptorFor(targetKey);
       const io = fixtureIo({ targetKey });
-      const first = await stageTarget(descriptor, pins, io);
-      const second = await stageTarget(descriptor, pins, fixtureIo({ targetKey }));
+      const first = await stageTarget(descriptor, io);
+      const second = await stageTarget(descriptor, fixtureIo({ targetKey }));
       expect(first.ok).toBe(true);
       expect(second.ok).toBe(true);
       if (!first.ok || !second.ok) return;
@@ -1079,7 +1126,7 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
 
   test("a lockfile identity mismatch fails typed BEFORE any install or build", async () => {
     const io = fixtureIo({ targetKey: "darwin-arm64", lockfileSha256: "c".repeat(64) });
-    const result = await stageTarget(descriptorFor("darwin-arm64"), pins, io);
+    const result = await stageTarget(descriptorFor("darwin-arm64"), io);
     expect(result).toMatchObject({ ok: false, failure: "lockfile_mismatch" });
     expect(io.log.some((line) => line.startsWith("install:"))).toBe(false);
     expect(io.log).not.toContainEqual("buildApplication");
@@ -1087,7 +1134,7 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
 
   test("fails typed and BEFORE native build/maker work when a runtime package is unavailable", async () => {
     const io = fixtureIo({ targetKey: "win32-arm64", unavailable: ["@openai/codex-win32-arm64"] });
-    const result = await stageTarget(descriptorFor("win32-arm64"), pins, io);
+    const result = await stageTarget(descriptorFor("win32-arm64"), io);
     expect(result).toMatchObject({
       ok: false,
       failure: "missing_runtime_package",
@@ -1095,6 +1142,35 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
     });
     expect(io.log).not.toContainEqual("buildApplication");
     expect(io.log.some((line) => line.startsWith("cargo:"))).toBe(false);
+  });
+
+  test("fails typed when a staged runtime version differs from the exact locked version", async () => {
+    const io = fixtureIo({
+      targetKey: "darwin-arm64",
+      wrongVersion: ["@anthropic-ai/claude-agent-sdk-darwin-arm64"],
+    });
+    const result = await stageTarget(descriptorFor("darwin-arm64"), io);
+    expect(result).toMatchObject({
+      ok: false,
+      failure: "runtime_version_mismatch",
+      versionMismatches: [
+        `@anthropic-ai/claude-agent-sdk-darwin-arm64: staged 9.9.9-wrong, locked ${pins.claudeAgentSdk}`,
+      ],
+    });
+    expect(io.log).not.toContainEqual("buildApplication");
+    expect(io.log.some((line) => line.startsWith("cargo:"))).toBe(false);
+  });
+
+  test("derives runtime pins from the EXPORTED source manifest before planning the install", async () => {
+    const io = fixtureIo({ targetKey: "darwin-arm64" });
+    const result = await stageTarget(descriptorFor("darwin-arm64"), io);
+    expect(result.ok).toBe(true);
+    const manifestIndex = io.log.indexOf("readSourceManifest");
+    const exportIndex = io.log.findIndex((line) => line.startsWith("export:"));
+    const installIndex = io.log.findIndex((line) => line.startsWith("install:"));
+    expect(exportIndex).toBeGreaterThanOrEqual(0);
+    expect(manifestIndex).toBeGreaterThan(exportIndex);
+    expect(installIndex).toBeGreaterThan(manifestIndex);
   });
 
   test("fails closed on a staged-tree violation before any maker may run", async () => {
@@ -1108,7 +1184,7 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
         sha256: digest("1"),
       },
     });
-    const result = await stageTarget(descriptorFor("darwin-arm64"), pins, io);
+    const result = await stageTarget(descriptorFor("darwin-arm64"), io);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.failure).toBe("staged_tree_violations");
@@ -1119,10 +1195,180 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
 
   test("unsigned-dev staging is conspicuous and never yields a receipt draft", async () => {
     const descriptor = descriptorFor("darwin-arm64", { signingPolicy: "unsigned-dev" });
-    const result = await stageTarget(descriptor, pins, fixtureIo({ targetKey: "darwin-arm64" }));
+    const result = await stageTarget(descriptor, fixtureIo({ targetKey: "darwin-arm64" }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.unsignedDev).toBe(true);
     expect(result.receiptDraft).toBeUndefined();
+  });
+});
+
+describe("DIST-03 packaged ASAR placement fidelity", () => {
+  const descriptor = descriptorFor("darwin-arm64");
+  const ledgerFor = (): ReturnType<typeof buildNativeComponentLedger> =>
+    buildNativeComponentLedger(
+      descriptor,
+      nativeClosureEntries(
+        descriptor,
+        cleanStagedTree("darwin-arm64"),
+        new Map(
+          requiredRuntimePackages(descriptor, pins).map((pkg) => [pkg.name, pkg.version]),
+        ),
+        "0.1.0",
+      ),
+      fixtureMetadata,
+    );
+  const packagedEntriesFor = (
+    ledger: ReturnType<typeof buildNativeComponentLedger>,
+  ): Array<{ path: string; unpacked: boolean }> =>
+    ledger.components
+      .filter((component) => component.asarPlacement !== "extra-resource")
+      .map((component) => ({
+        path: component.destination,
+        unpacked: component.asarPlacement === "unpacked",
+      }));
+  const extraResourcesFor = (
+    ledger: ReturnType<typeof buildNativeComponentLedger>,
+  ): ReadonlySet<string> =>
+    new Set(
+      ledger.components
+        .filter((component) => component.asarPlacement === "extra-resource")
+        .map((component) => extraResourceDestination(component.destination)),
+    );
+
+  test("a faithful package (packed/unpacked/extraResource all as planned) passes", () => {
+    const ledger = ledgerFor();
+    expect(
+      asarPlacementViolations(ledger, packagedEntriesFor(ledger), extraResourcesFor(ledger)),
+    ).toEqual([]);
+  });
+
+  test("a required-unpacked runtime executable packed inside app.asar FAILS", () => {
+    const ledger = ledgerFor();
+    const entries = packagedEntriesFor(ledger).map((entry) =>
+      entry.path.endsWith("/claude") ? { ...entry, unpacked: false } : entry,
+    );
+    expect(asarPlacementViolations(ledger, entries, extraResourcesFor(ledger))).toContainEqual(
+      expect.objectContaining({
+        kind: "unexpected_asar_entry",
+        detail: "planned-unpacked component was packed inside app.asar",
+      }),
+    );
+  });
+
+  test("a missing planned component and a leaked extra-resource both fail", () => {
+    const ledger = ledgerFor();
+    // Missing planned-unpacked component.
+    const missing = packagedEntriesFor(ledger).filter((entry) => !entry.path.endsWith("/claude"));
+    expect(asarPlacementViolations(ledger, missing, extraResourcesFor(ledger))).toContainEqual(
+      expect.objectContaining({
+        detail: "planned unpacked component is absent from the packaged app",
+      }),
+    );
+    // Extra-resource helper leaked into app.asar AND absent from Resources.
+    const leaked = [
+      ...packagedEntriesFor(ledger),
+      { path: "native/arm64/oa-desktop-audio", unpacked: false },
+    ];
+    const violations = asarPlacementViolations(ledger, leaked, new Set());
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        detail: "planned extra-resource component leaked into app.asar",
+      }),
+    );
+    expect(violations).toContainEqual(
+      expect.objectContaining({
+        detail: "planned extra-resource component is absent from Resources",
+      }),
+    );
+  });
+
+  test("extra-resource destinations map builtin-skills beside the asar", () => {
+    expect(extraResourceDestination("native/arm64/oa-desktop-audio")).toBe(
+      "native/arm64/oa-desktop-audio",
+    );
+    expect(extraResourceDestination("dist/builtin-skills/manifest.json")).toBe(
+      "builtin-skills/manifest.json",
+    );
+  });
+});
+
+describe("DIST-03 Forge<->ledger binding (verifyStagedTreeAgainstLedger)", () => {
+  const writeFixtureTree = (): {
+    stagedTree: string;
+    ledger: Record<string, unknown>;
+    cleanup: () => void;
+  } => {
+    const stagedTree = mkdtempSync(path.join(tmpdir(), "oa-ledger-bind-"));
+    const helperBytes = Buffer.concat([Buffer.from(machO("arm64")), Buffer.alloc(84)]);
+    const helperPath = path.join(stagedTree, "native", "arm64", "oa-desktop-audio");
+    mkdirSync(path.dirname(helperPath), { recursive: true });
+    writeFileSync(helperPath, helperBytes);
+    const descriptor = descriptorFor("darwin-arm64");
+    const ledger = buildNativeComponentLedger(
+      descriptor,
+      [
+        {
+          name: "oa-desktop-audio",
+          version: "0.1.0",
+          targetKey: "darwin-arm64",
+          sha256: createHash("sha256").update(helperBytes).digest("hex"),
+          byteLength: helperBytes.byteLength,
+          provenance: "workspace-crate",
+          destination: "native/arm64/oa-desktop-audio",
+          fileKind: "executable",
+          architecture: "arm64",
+          signingState: "undetermined",
+          asarPlacement: "extra-resource",
+        },
+      ],
+      fixtureMetadata,
+    );
+    return {
+      stagedTree,
+      ledger: JSON.parse(JSON.stringify(ledger)) as Record<string, unknown>,
+      cleanup: () => rmSync(stagedTree, { recursive: true, force: true }),
+    };
+  };
+
+  test("binds descriptor fields, recomputes the ledger ref, and verifies CURRENT staged bytes", async () => {
+    const { stagedTree, ledger, cleanup } = writeFixtureTree();
+    try {
+      const verified = await verifyStagedTreeAgainstLedger(
+        stagedTree,
+        descriptorFor("darwin-arm64"),
+        ledger,
+      );
+      expect(verified.ledgerRef).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(verified.ledger.components).toHaveLength(1);
+      // Descriptor drift refuses.
+      await expect(
+        verifyStagedTreeAgainstLedger(
+          stagedTree,
+          descriptorFor("darwin-arm64", { version: "9.9.9" }),
+          ledger,
+        ),
+      ).rejects.toThrow(/version/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("a staging workspace mutated AFTER staging is refused — stale proof never reaches a maker", async () => {
+    const { stagedTree, ledger, cleanup } = writeFixtureTree();
+    try {
+      const helperPath = path.join(stagedTree, "native", "arm64", "oa-desktop-audio");
+      const mutated = Buffer.concat([Buffer.from(machO("arm64")), Buffer.alloc(84, 1)]);
+      writeFileSync(helperPath, mutated);
+      await expect(
+        verifyStagedTreeAgainstLedger(stagedTree, descriptorFor("darwin-arm64"), ledger),
+      ).rejects.toThrow(/bytes changed since staging/);
+      rmSync(helperPath);
+      await expect(
+        verifyStagedTreeAgainstLedger(stagedTree, descriptorFor("darwin-arm64"), ledger),
+      ).rejects.toThrow(/missing from the staged tree/);
+    } finally {
+      cleanup();
+    }
   });
 });

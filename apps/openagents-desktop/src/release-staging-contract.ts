@@ -384,6 +384,14 @@ export type DesktopBuildToolchain = typeof DesktopBuildToolchainSchema.Type;
 
 export const NativeComponentLedgerSchema = Schema.Struct({
   schema: Schema.Literal(NATIVE_COMPONENT_LEDGER_SCHEMA_ID),
+  /**
+   * This ledger is PRE-MAKER staging evidence: it proves the staged closure
+   * BEFORE any maker runs. Final artifact bytes and the ACTUAL maker
+   * identities are bound only by `build_receipt.v1`, whose artifact entries
+   * structurally refuse planned/pending maker refs — the two documents
+   * cannot be confused.
+   */
+  phase: Schema.Literal("pre-maker-staging"),
   targetKey: DesktopTargetKeySchema,
   channel: UpdateChannelSchema,
   version: ReleaseVersionSchema,
@@ -393,8 +401,13 @@ export const NativeComponentLedgerSchema = Schema.Struct({
   /** Public-safe OS image identity class of the staging worker. */
   osImage: PublicRefSchema,
   toolchain: DesktopBuildToolchainSchema,
-  /** Forge maker identity per required format (`maker:pending` until owned). */
-  makerIdentities: Schema.Array(
+  /**
+   * PLANNED Forge maker identity per required format (`maker:pending-<fmt>`
+   * until that maker lane is owned). Never an actual-maker claim — the
+   * receipt's per-artifact `makerRef` carries the actual identity and
+   * refuses pending refs.
+   */
+  plannedMakerIdentities: Schema.Array(
     Schema.Struct({ format: DesktopArtifactFormatSchema, ref: PublicRefSchema }),
   ).check(Schema.isMinLength(1), Schema.isMaxLength(6)),
   /**
@@ -456,13 +469,13 @@ export const NativeComponentLedgerSchema = Schema.Struct({
           return `planned artifact ${artifact.name} is not the canonical name ${canonical}`;
         }
       }
-      const makerFormats = new Set(ledger.makerIdentities.map((entry) => entry.format));
+      const makerFormats = new Set(ledger.plannedMakerIdentities.map((entry) => entry.format));
       if (
-        makerFormats.size !== ledger.makerIdentities.length ||
+        makerFormats.size !== ledger.plannedMakerIdentities.length ||
         makerFormats.size !== definition.requiredFormats.length ||
         !definition.requiredFormats.every((format) => makerFormats.has(format))
       ) {
-        return `maker identities must cover exactly ${definition.requiredFormats.join(", ")}`;
+        return `planned maker identities must cover exactly ${definition.requiredFormats.join(", ")}`;
       }
       return undefined;
     },
@@ -518,8 +531,16 @@ export const nativeComponentLedgerRef = (ledger: NativeComponentLedger): string 
 export const DesktopBuildArtifactInputSchema = Schema.Struct({
   name: ArtifactNameSchema,
   format: DesktopArtifactFormatSchema,
+  /** Final output artifact digest (post-maker bytes). */
   sha256: Sha256HexSchema,
   byteLength: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  /**
+   * The ACTUAL maker identity that produced these bytes (e.g.
+   * `maker:forge-dmg-7.11.2`). Planned/pending refs are structurally
+   * inadmissible — a pre-maker staging ledger can never masquerade as final
+   * artifact evidence.
+   */
+  makerRef: PublicRefSchema,
 });
 export type DesktopBuildArtifactInput = typeof DesktopBuildArtifactInputSchema.Type;
 
@@ -563,6 +584,9 @@ export const DesktopBuildReceiptSchema = Schema.Struct({
       for (const artifact of receipt.artifacts) {
         if (artifact.name.includes("UNSIGNED-DEV")) {
           return `artifact ${artifact.name} carries the UNSIGNED-DEV marker`;
+        }
+        if (!artifact.makerRef.startsWith("maker:") || artifact.makerRef.startsWith("maker:pending")) {
+          return `artifact ${artifact.name} requires an ACTUAL maker identity, got ${artifact.makerRef}`;
         }
         if (!expected.has(artifact.format)) {
           return `artifact format ${artifact.format} is not in the descriptor format set`;

@@ -15,7 +15,11 @@ import {
 } from "./scripts/macos-gatekeeper.ts";
 import { desktopReleaseArtifactName } from "./scripts/release-artifact-name.ts";
 import { verifyPackagedCodexRuntime } from "./scripts/codex-runtime-artifact-smoke.ts";
-import { assertPackagedAsarAdmissible, stagedTreePath } from "./scripts/stage-target.ts";
+import {
+  assertPackagedAsarAdmissible,
+  stagedTreePath,
+  verifyStagedTreeAgainstLedger,
+} from "./scripts/stage-target.ts";
 import {
   type DesktopTargetBuildDescriptor,
   decodeDesktopTargetBuildDescriptor,
@@ -36,6 +40,8 @@ interface StagedBuildInputs {
   readonly descriptor: DesktopTargetBuildDescriptor;
   readonly workspace: string;
   readonly stagedTree: string;
+  /** Raw ledger.json — re-verified against the CURRENT staged bytes at every gate. */
+  readonly ledgerJson: unknown;
 }
 
 let cachedStagedBuildInputs: StagedBuildInputs | null = null;
@@ -54,7 +60,7 @@ const requireStagedBuildInputs = (): StagedBuildInputs => {
     JSON.parse(readFileSync(path.join(workspace, "descriptor.json"), "utf8")),
   );
   const stagedTree = stagedTreePath(workspace);
-  for (const required of ["package.json", "dist", "node_modules", "../ledger.json"]) {
+  for (const required of ["package.json", "dist", "node_modules"]) {
     if (!existsSync(path.resolve(stagedTree, required))) {
       throw new Error(
         `packaging REFUSED: staging workspace is incomplete (missing ${required}); ` +
@@ -62,8 +68,40 @@ const requireStagedBuildInputs = (): StagedBuildInputs => {
       );
     }
   }
-  cachedStagedBuildInputs = { descriptor, workspace, stagedTree };
+  const ledgerJson = JSON.parse(
+    readFileSync(path.join(workspace, "ledger.json"), "utf8"),
+  ) as unknown;
+  cachedStagedBuildInputs = { descriptor, workspace, stagedTree, ledgerJson };
   return cachedStagedBuildInputs;
+};
+
+/**
+ * Binds the ACTUAL tool versions this packaging invocation resolves (the
+ * installed Electron and Electron Forge) to the staged ledger's locked
+ * toolchain identity — a packaging run can never consume a staged workspace
+ * built against different tool pins (DIST-03 re-review blocker 1).
+ */
+const assertActualToolIdentity = (toolchain: {
+  readonly electron: string;
+  readonly forge: string;
+}): void => {
+  const installedVersion = (packagePath: string): string =>
+    (
+      JSON.parse(
+        readFileSync(path.join(process.cwd(), "node_modules", ...packagePath.split("/"), "package.json"), "utf8"),
+      ) as { version: string }
+    ).version;
+  const actual = {
+    electron: installedVersion("electron"),
+    forge: installedVersion("@electron-forge/cli"),
+  };
+  for (const tool of ["electron", "forge"] as const) {
+    if (actual[tool] !== toolchain[tool]) {
+      throw new Error(
+        `packaging REFUSED: installed ${tool} ${actual[tool]} does not match the staged ledger's locked ${tool} ${toolchain[tool]} (DIST-03 #8916)`,
+      );
+    }
+  }
 };
 
 const stagingWorkspaceEnv = process.env.OA_DESKTOP_STAGING_WORKSPACE;
@@ -222,12 +260,23 @@ const config: ForgeConfig = {
      * staged inputs exist and match the maker invocation before any copy.
      */
     generateAssets: async (_forgeConfig, platform, arch) => {
-      const { descriptor } = requireStagedBuildInputs();
+      const { descriptor, stagedTree, ledgerJson } = requireStagedBuildInputs();
       assertDescriptorMatchesMakerTarget(descriptor, platform, arch);
       // Explicit-triple native builds happen in staging (stage-target.ts),
       // never here: the maker lane consumes the descriptor's closed target
       // definition and the already-built staged closure.
       void desktopTargets[descriptor.targetKey].rustTargetTriple;
+      // BEFORE-COPY binding (re-review blocker 3): decode/validate the
+      // ledger, bind every descriptor identity field, recompute the ledger
+      // ref, and re-hash the CURRENT staged bytes against the component
+      // digests — a mutated or stale staging workspace never reaches a copy.
+      const verified = await verifyStagedTreeAgainstLedger(stagedTree, descriptor, ledgerJson);
+      // Bind the ACTUAL tools this invocation resolves to the locked
+      // identities the ledger recorded (re-review blocker 1).
+      assertActualToolIdentity(verified.ledger.toolchain);
+      process.stderr.write(
+        `[forge] staged ledger verified before copy: ${verified.ledgerRef} (${verified.ledger.components.length} components) for ${descriptor.targetKey}\n`,
+      );
     },
     /**
      * The staged tree IS the packaged source. Electron Packager's initial
@@ -269,20 +318,28 @@ const config: ForgeConfig = {
      * before any maker or signing work.
      */
     postPackage: async (_forgeConfig, packageResult) => {
-      const { descriptor, stagedTree } = requireStagedBuildInputs();
+      const { descriptor, stagedTree, ledgerJson } = requireStagedBuildInputs();
+      // POST-PACKAGE binding (re-review blocker 3): the staged tree must
+      // STILL match the ledger after the package step — reuse of a mutated
+      // workspace can never yield a receipt referencing stale proof.
+      const verified = await verifyStagedTreeAgainstLedger(stagedTree, descriptor, ledgerJson);
       for (const outputPath of packageResult.outputPaths) {
-        const asarPath =
+        const resourcesPath =
           packageResult.platform === "darwin"
-            ? path.join(outputPath, "OpenAgents.app", "Contents", "Resources", "app.asar")
-            : path.join(outputPath, "resources", "app.asar");
+            ? path.join(outputPath, "OpenAgents.app", "Contents", "Resources")
+            : path.join(outputPath, "resources");
         const gate = await assertPackagedAsarAdmissible({
           descriptor,
+          ledger: verified.ledger,
           stagedTree,
-          asarPath,
+          asarPath: path.join(resourcesPath, "app.asar"),
+          resourcesPath,
           repoRoot: path.resolve(process.cwd(), "../.."),
         });
         process.stderr.write(
-          `[forge] postPackage asar gate: ${gate.result} (${gate.asarEntryCount} entries) for ${descriptor.targetKey}\n`,
+          `[forge] postPackage asar gate: ${gate.result} (${gate.asarEntryCount} entries, ` +
+            `${gate.unpackedEntryCount} unpacked, ${gate.verifiedComponents} closure components byte-verified) ` +
+            `against ledger ${verified.ledgerRef} for ${descriptor.targetKey}\n`,
         );
       }
     },

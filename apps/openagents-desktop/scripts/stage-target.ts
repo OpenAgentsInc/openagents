@@ -722,6 +722,7 @@ export const buildNativeComponentLedger = (
 ): NativeComponentLedger =>
   decodeNativeComponentLedger({
     schema: NATIVE_COMPONENT_LEDGER_SCHEMA_ID,
+    phase: "pre-maker-staging",
     targetKey: descriptor.targetKey,
     channel: descriptor.channel,
     version: descriptor.version,
@@ -729,7 +730,7 @@ export const buildNativeComponentLedger = (
     lockfileSha256: metadata.lockfileSha256,
     osImage: metadata.osImage,
     toolchain: metadata.toolchain,
-    makerIdentities: makerIdentityRefs(descriptor.targetKey, metadata.toolchain.forge),
+    plannedMakerIdentities: makerIdentityRefs(descriptor.targetKey, metadata.toolchain.forge),
     packageContentAllowlist: "pass",
     plannedArtifacts: descriptor.formats.map((format) => ({
       name: desktopReleaseSetArtifactName({
@@ -791,6 +792,13 @@ export interface StageTargetIo {
    * live checkout copy) and returns the exported source root.
    */
   readonly exportSource: (workspace: string, sourceRevision: string) => Promise<string>;
+  /**
+   * The EXPORTED desktop manifest source (`apps/openagents-desktop/
+   * package.json` at descriptor.sourceRevision). Runtime and toolchain pins
+   * derive from THIS text — never the live checkout's manifest — so a
+   * staging run can never mix revision A's source with revision B's pins.
+   */
+  readonly readDesktopSourceManifest: (sourceRoot: string) => Promise<string>;
   /** sha256 of the exported source's immutable pnpm lockfile. */
   readonly lockfileSha256: (sourceRoot: string) => Promise<string>;
   /**
@@ -833,9 +841,14 @@ export interface StageTargetIo {
   ) => Promise<{ readonly sha256: string; readonly byteLength: number; readonly version: string }>;
   /** Lists the staged tree for the oracle and the per-file ledger closure. */
   readonly collectStagedFiles: (workspace: string) => Promise<ReadonlyArray<StagedFile>>;
+  /**
+   * The §9 toolchain identity for this staging run: Electron/Forge pins from
+   * the EXPORTED source manifest (revision-exact) plus the ACTUAL invoked
+   * node/pnpm/rustc/compiler versions probed on this worker.
+   */
+  readonly toolchainIdentity: (sourceRoot: string) => Promise<DesktopBuildToolchain>;
   readonly repoRoot: string;
   readonly osImage: string;
-  readonly toolchain: DesktopBuildToolchain;
   readonly worker: { readonly workerRef: string; readonly hostClass: string };
 }
 
@@ -854,8 +867,15 @@ export type StageTargetResult =
     }
   | {
       readonly ok: false;
-      readonly failure: "missing_runtime_package" | "staged_tree_violations" | "lockfile_mismatch";
+      readonly failure:
+        | "missing_runtime_package"
+        | "runtime_version_mismatch"
+        | "staged_tree_violations"
+        | "lockfile_mismatch";
+      /** Present whenever a workspace was created, so callers can clean up. */
+      readonly workspace?: string;
       readonly missingPackages?: ReadonlyArray<string>;
+      readonly versionMismatches?: ReadonlyArray<string>;
       readonly violations?: ReadonlyArray<StagingViolation>;
       readonly detail?: string;
     };
@@ -865,11 +885,9 @@ export const stagedTreePath = (workspace: string): string => path.join(workspace
 
 export const stageTarget = async (
   descriptor: DesktopTargetBuildDescriptor,
-  pins: DesktopManifestPins,
   io: StageTargetIo,
 ): Promise<StageTargetResult> => {
-  const plan = stagingPlanForDescriptor(descriptor, pins);
-  const workspace = await io.createWorkspace(plan.workspacePrefix);
+  const workspace = await io.createWorkspace(`oa-desktop-stage-${descriptor.targetKey}-`);
   const sourceRoot = await io.exportSource(workspace, descriptor.sourceRevision);
 
   // The immutable lockfile is the only dependency-resolution authority.
@@ -878,13 +896,20 @@ export const stageTarget = async (
     return {
       ok: false,
       failure: "lockfile_mismatch",
+      workspace,
       detail: `exported source lockfile ${lockfileSha256} does not match descriptor ${descriptor.lockfileSha256}`,
     };
   }
 
+  // Runtime pins come from the EXPORTED source at descriptor.sourceRevision —
+  // never the live checkout — so plan and source share ONE revision identity.
+  const pins = readDesktopManifestPins(await io.readDesktopSourceManifest(sourceRoot));
+  const plan = stagingPlanForDescriptor(descriptor, pins);
+
   // EXECUTE the locked, target-only production install, then materialize the
-  // runtime closure from it. Runtime availability gates EVERYTHING: fail
-  // typed before the app build, native builds, and any maker/signing work.
+  // runtime closure from it. Runtime availability AND exact locked version
+  // identity gate EVERYTHING: fail typed before the app build, native
+  // builds, and any maker/signing work.
   await io.runTargetProductionInstall(sourceRoot, plan);
   const materialized: Array<{ pkg: RequiredRuntimePackage; result: MaterializedRuntimePackage }> =
     [];
@@ -899,7 +924,22 @@ export const stageTarget = async (
     return {
       ok: false,
       failure: "missing_runtime_package",
+      workspace,
       missingPackages: missing.map((entry) => `${entry.pkg.name}@${entry.pkg.version}`),
+    };
+  }
+  const mismatched = materialized.filter(
+    (entry) => entry.result.version !== entry.pkg.version,
+  );
+  if (mismatched.length > 0) {
+    return {
+      ok: false,
+      failure: "runtime_version_mismatch",
+      workspace,
+      versionMismatches: mismatched.map(
+        (entry) =>
+          `${entry.pkg.name}: staged ${entry.result.version ?? "unknown"}, locked ${entry.pkg.version}`,
+      ),
     };
   }
 
@@ -914,15 +954,18 @@ export const stageTarget = async (
     repoRoot: io.repoRoot,
     forbiddenPathPrefixes: [workspace],
   });
-  if (violations.length > 0) return { ok: false, failure: "staged_tree_violations", violations };
+  if (violations.length > 0) {
+    return { ok: false, failure: "staged_tree_violations", workspace, violations };
+  }
 
   const packageVersions = new Map<string, string>(
     materialized.map(({ pkg, result }) => [pkg.name, result.version ?? pkg.version]),
   );
+  const toolchain = await io.toolchainIdentity(sourceRoot);
   const ledger = buildNativeComponentLedger(
     descriptor,
     nativeClosureEntries(descriptor, files, packageVersions, helper.version),
-    { lockfileSha256, osImage: io.osImage, toolchain: io.toolchain },
+    { lockfileSha256, osImage: io.osImage, toolchain },
   );
   const ledgerDigest = nativeComponentLedgerDigest(ledger);
   const unsignedDev = descriptor.signingPolicy === "unsigned-dev";
@@ -941,7 +984,7 @@ export const stageTarget = async (
           receiptDraft: {
             descriptor,
             componentLedger: { sha256: ledgerDigest, componentCount: ledger.components.length },
-            toolchain: io.toolchain,
+            toolchain,
             gates: { stagedTree: "pass" as const },
             worker: io.worker,
           },
@@ -951,74 +994,269 @@ export const stageTarget = async (
 };
 
 // ---------------------------------------------------------------------------
-// Post-package live ASAR gate (consumed by forge.config.ts)
+// Ledger/staged-tree binding + post-package live ASAR gate (forge.config.ts)
 // ---------------------------------------------------------------------------
+
+export interface VerifiedStagedLedger {
+  readonly ledger: NativeComponentLedger;
+  readonly ledgerDigest: string;
+  readonly ledgerRef: string;
+}
+
+/**
+ * Binds a staging workspace's ledger to the descriptor and to the CURRENT
+ * staged bytes (review blocker 3): decodes/validates ledger.json, checks
+ * every descriptor identity field, recomputes the canonical ledger digest,
+ * and re-hashes every closure component on disk against its recorded
+ * sha256/byteLength. A staging workspace mutated after staging can therefore
+ * never reach a maker or produce a receipt referencing stale proof.
+ */
+export const verifyStagedTreeAgainstLedger = async (
+  stagedTree: string,
+  descriptor: DesktopTargetBuildDescriptor,
+  ledgerJson: unknown,
+): Promise<VerifiedStagedLedger> => {
+  const ledger = decodeNativeComponentLedger(ledgerJson);
+  const bindings: ReadonlyArray<[string, string, string]> = [
+    ["targetKey", ledger.targetKey, descriptor.targetKey],
+    ["channel", ledger.channel, descriptor.channel],
+    ["version", ledger.version, descriptor.version],
+    ["sourceRevision", ledger.sourceRevision, descriptor.sourceRevision],
+    ["lockfileSha256", ledger.lockfileSha256, descriptor.lockfileSha256],
+  ];
+  for (const [field, ledgerValue, descriptorValue] of bindings) {
+    if (ledgerValue !== descriptorValue) {
+      throw new Error(
+        `staged ledger REFUSED: ${field} ${ledgerValue} does not match descriptor ${descriptorValue}`,
+      );
+    }
+  }
+  for (const component of ledger.components) {
+    let bytes: Uint8Array;
+    try {
+      bytes = await readFile(path.join(stagedTree, ...component.destination.split("/")));
+    } catch {
+      throw new Error(
+        `staged ledger REFUSED: component ${component.destination} is missing from the staged tree`,
+      );
+    }
+    if (bytes.byteLength !== component.byteLength) {
+      throw new Error(
+        `staged ledger REFUSED: component ${component.destination} byte length changed since staging`,
+      );
+    }
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (digest !== component.sha256) {
+      throw new Error(
+        `staged ledger REFUSED: component ${component.destination} bytes changed since staging`,
+      );
+    }
+  }
+  const ledgerDigest = nativeComponentLedgerDigest(ledger);
+  return { ledger, ledgerDigest, ledgerRef: `sha256:${ledgerDigest}` };
+};
 
 interface AsarHeaderDirectory {
   readonly files: Record<string, AsarHeaderEntry>;
 }
-type AsarHeaderEntry = AsarHeaderDirectory | { readonly size?: number; readonly link?: string };
+type AsarHeaderEntry =
+  | AsarHeaderDirectory
+  | { readonly size?: number; readonly link?: string; readonly unpacked?: boolean };
+
+export interface RealAsarEntry {
+  readonly path: string;
+  readonly unpacked: boolean;
+}
 
 /**
- * Lists the REAL file entries inside a built app.asar (packed and unpacked
- * alike) as bundle-relative POSIX paths, via the asar raw header.
+ * Lists the REAL file entries inside a built app.asar via the asar raw
+ * header, PRESERVING per-entry packed/unpacked placement state.
  */
-export const realAsarEntryPaths = (asarPath: string): ReadonlyArray<string> => {
+export const realAsarEntries = (asarPath: string): ReadonlyArray<RealAsarEntry> => {
   const requireFromApp = createRequire(path.join(appRoot, "package.json"));
   const asar = requireFromApp("@electron/asar") as {
     getRawHeader: (archive: string) => { header: AsarHeaderDirectory };
   };
   const { header } = asar.getRawHeader(asarPath);
-  const entries: Array<string> = [];
+  const entries: Array<RealAsarEntry> = [];
   const walk = (directory: AsarHeaderDirectory, prefix: string): void => {
     for (const [name, entry] of Object.entries(directory.files)) {
       const entryPath = prefix === "" ? name : `${prefix}/${name}`;
       if ("files" in entry) walk(entry as AsarHeaderDirectory, entryPath);
-      else entries.push(entryPath);
+      else entries.push({ path: entryPath, unpacked: entry.unpacked === true });
     }
   };
   walk(header, "");
-  return entries.sort();
+  return entries.sort((a, b) => a.path.localeCompare(b.path));
+};
+
+/** Resources-relative destination of an extra-resource closure entry. */
+export const extraResourceDestination = (componentDestination: string): string =>
+  componentDestination.replace(/^dist\/builtin-skills\//, "builtin-skills/");
+
+/**
+ * PURE placement-fidelity comparison (review blocker 4): every ledger
+ * closure entry's ACTUAL packed/unpacked/extraResource state must match its
+ * planned placement. A required-unpacked runtime executable that ends up
+ * packed inside app.asar fails, as does an extra-resource file that leaks
+ * into the archive or a missing planned entry.
+ */
+export const asarPlacementViolations = (
+  ledger: NativeComponentLedger,
+  entries: ReadonlyArray<RealAsarEntry>,
+  extraResourcePaths: ReadonlySet<string>,
+): ReadonlyArray<StagingViolation> => {
+  const violations: Array<StagingViolation> = [];
+  const byPath = new Map(entries.map((entry) => [entry.path, entry]));
+  for (const component of ledger.components) {
+    const actual = byPath.get(component.destination);
+    if (component.asarPlacement === "extra-resource") {
+      if (actual !== undefined) {
+        violations.push({
+          kind: "unexpected_asar_entry",
+          path: component.destination,
+          detail: "planned extra-resource component leaked into app.asar",
+        });
+      }
+      if (!extraResourcePaths.has(extraResourceDestination(component.destination))) {
+        violations.push({
+          kind: "unexpected_asar_entry",
+          path: component.destination,
+          detail: "planned extra-resource component is absent from Resources",
+        });
+      }
+      continue;
+    }
+    if (actual === undefined) {
+      violations.push({
+        kind: "unexpected_asar_entry",
+        path: component.destination,
+        detail: `planned ${component.asarPlacement} component is absent from the packaged app`,
+      });
+      continue;
+    }
+    if (component.asarPlacement === "unpacked" && !actual.unpacked) {
+      violations.push({
+        kind: "unexpected_asar_entry",
+        path: component.destination,
+        detail: "planned-unpacked component was packed inside app.asar",
+      });
+    }
+    if (component.asarPlacement === "asar" && actual.unpacked) {
+      violations.push({
+        kind: "unexpected_asar_entry",
+        path: component.destination,
+        detail: "planned-packed component was unpacked beside app.asar",
+      });
+    }
+  }
+  return violations;
 };
 
 export interface PackagedAsarGateInput {
   readonly descriptor: DesktopTargetBuildDescriptor;
+  readonly ledger: NativeComponentLedger;
   readonly stagedTree: string;
   readonly asarPath: string;
+  /** The packaged Resources directory (extraResource destination root). */
+  readonly resourcesPath: string;
   readonly repoRoot: string;
 }
 
+/** Present extra-resource destinations for the ledger's closure entries. */
+const presentExtraResourcePaths = async (
+  resourcesPath: string,
+  ledger: NativeComponentLedger,
+): Promise<ReadonlySet<string>> => {
+  const present = new Set<string>();
+  for (const component of ledger.components) {
+    if (component.asarPlacement !== "extra-resource") continue;
+    const destination = extraResourceDestination(component.destination);
+    try {
+      await lstat(path.join(resourcesPath, ...destination.split("/")));
+      present.add(destination);
+    } catch {
+      // absent — asarPlacementViolations reports it
+    }
+  }
+  return present;
+};
+
 /**
- * The LIVE post-package gate (blocker 3): re-audits the staged tree together
- * with the REAL entry list of the just-built app.asar through
- * `stagedTreeViolations`, so an unexpected ASAR entry fails the build before
+ * The LIVE post-package gate (review blockers 3 and 4): re-audits the staged
+ * tree together with the REAL entry list of the just-built app.asar through
+ * `stagedTreeViolations`, verifies per-closure-entry placement fidelity
+ * (packed vs unpacked vs extraResource), and re-hashes the PACKAGED bytes of
+ * every unpacked/extra-resource closure component against the ledger. One
+ * unexpected entry, placement drift, or byte drift fails the build before
  * any maker or signing work. Returns the gate receipt on success.
  */
 export const assertPackagedAsarAdmissible = async (
   input: PackagedAsarGateInput,
-): Promise<{ readonly asarEntryCount: number; readonly result: "pass" }> => {
+): Promise<{
+  readonly asarEntryCount: number;
+  readonly unpackedEntryCount: number;
+  readonly verifiedComponents: number;
+  readonly result: "pass";
+}> => {
   const stagedManifest = await readFile(path.join(input.stagedTree, "package.json"), "utf8");
   const pins = readDesktopManifestPins(stagedManifest);
   const runtimePackages = requiredRuntimePackages(input.descriptor, pins);
   const files = await collectStagedTreeFiles(input.stagedTree);
-  const asarEntries = realAsarEntryPaths(input.asarPath);
-  const violations = stagedTreeViolations({
-    descriptor: input.descriptor,
-    files,
-    runtimePackages,
-    repoRoot: input.repoRoot,
-    asarEntries,
-  });
+  const entries = realAsarEntries(input.asarPath);
+  const violations = [
+    ...stagedTreeViolations({
+      descriptor: input.descriptor,
+      files,
+      runtimePackages,
+      repoRoot: input.repoRoot,
+      asarEntries: entries.map((entry) => entry.path),
+    }),
+    ...asarPlacementViolations(
+      input.ledger,
+      entries,
+      await presentExtraResourcePaths(input.resourcesPath, input.ledger),
+    ),
+  ];
   if (violations.length > 0) {
     throw new Error(
       `packaged ASAR REFUSED (${violations.length} violation${violations.length === 1 ? "" : "s"}): ` +
         violations
           .slice(0, 10)
-          .map((violation) => `${violation.kind}:${violation.path}`)
+          .map((violation) => `${violation.kind}:${violation.path} (${violation.detail})`)
           .join(", "),
     );
   }
-  return { asarEntryCount: asarEntries.length, result: "pass" };
+  // Byte fidelity of the PACKAGED closure: unpacked and extra-resource
+  // components run as real files — their shipped bytes must equal the
+  // ledgered staging bytes.
+  let verifiedComponents = 0;
+  for (const component of input.ledger.components) {
+    const packagedPath =
+      component.asarPlacement === "unpacked"
+        ? path.join(`${input.asarPath}.unpacked`, ...component.destination.split("/"))
+        : component.asarPlacement === "extra-resource"
+          ? path.join(
+              input.resourcesPath,
+              ...extraResourceDestination(component.destination).split("/"),
+            )
+          : null;
+    if (packagedPath === null) continue;
+    const bytes = await readFile(packagedPath);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (digest !== component.sha256 || bytes.byteLength !== component.byteLength) {
+      throw new Error(
+        `packaged ASAR REFUSED: shipped component ${component.destination} does not match the staged ledger bytes`,
+      );
+    }
+    verifiedComponents += 1;
+  }
+  return {
+    asarEntryCount: entries.length,
+    unpackedEntryCount: entries.filter((entry) => entry.unpacked).length,
+    verifiedComponents,
+    result: "pass",
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -1111,11 +1349,6 @@ const patchSupportedArchitectures = async (
 };
 
 export const hostStageTargetIo = (workerRef: string): StageTargetIo => {
-  const desktopManifest = JSON.parse(
-    readFileSync(path.join(appRoot, "package.json"), "utf8"),
-  ) as { devDependencies?: Record<string, string> };
-  const pinnedDevDependency = (name: string): string =>
-    desktopManifest.devDependencies?.[name]?.replace(/^[~^]/, "") ?? "unknown";
   const probe = (command: string, args: ReadonlyArray<string>): string => {
     try {
       return capture(command, args, checkoutRoot).split("\n")[0]!.trim();
@@ -1141,6 +1374,8 @@ export const hostStageTargetIo = (workerRef: string): StageTargetIo => {
       await rm(tarPath, { force: true });
       return sourceRoot;
     },
+    readDesktopSourceManifest: async (sourceRoot) =>
+      readFile(path.join(sourceRoot, "apps", "openagents-desktop", "package.json"), "utf8"),
     lockfileSha256: async (sourceRoot) =>
       sha256Hex(await readFile(path.join(sourceRoot, "pnpm-lock.yaml"))),
     runTargetProductionInstall: async (sourceRoot, plan) => {
@@ -1311,16 +1546,40 @@ export const hostStageTargetIo = (workerRef: string): StageTargetIo => {
       return { version, sha256: sha256Hex(bytes), byteLength: bytes.byteLength };
     },
     collectStagedFiles: async (workspace) => collectStagedTreeFiles(stagedTreePath(workspace)),
+    toolchainIdentity: async (sourceRoot) => {
+      // Electron/Forge identities are the versions the staging workspace's
+      // OWN frozen-lockfile install resolved at descriptor.sourceRevision —
+      // never the live checkout's manifest or node_modules. The remaining
+      // entries are the ACTUAL tool versions this staging run invoked
+      // (node/pnpm for installs+build, rustc/cc for the native helper),
+      // probed on this worker.
+      const stagedInstalledVersion = async (packageName: string): Promise<string> => {
+        const manifest = JSON.parse(
+          await readFile(
+            path.join(
+              sourceRoot,
+              "apps",
+              "openagents-desktop",
+              "node_modules",
+              ...packageName.split("/"),
+              "package.json",
+            ),
+            "utf8",
+          ),
+        ) as { version: string };
+        return manifest.version;
+      };
+      return {
+        electron: await stagedInstalledVersion("electron"),
+        node: process.version.replace(/^v/, ""),
+        pnpm: probe("pnpm", ["--version"]),
+        forge: await stagedInstalledVersion("@electron-forge/cli"),
+        rust: probe("rustc", ["--version"]),
+        compiler: probe("cc", ["--version"]),
+      };
+    },
     repoRoot: checkoutRoot,
     osImage: `${process.platform}-${os.arch()}-${os.release()}`,
-    toolchain: {
-      electron: pinnedDevDependency("electron"),
-      node: process.version.replace(/^v/, ""),
-      pnpm: probe("pnpm", ["--version"]),
-      forge: pinnedDevDependency("@electron-forge/cli"),
-      rust: probe("rustc", ["--version"]),
-      compiler: probe("cc", ["--version"]),
-    },
     worker: { workerRef, hostClass: `local-${process.platform}-${process.arch}` },
   };
 };
@@ -1377,48 +1636,91 @@ const parseCliDescriptor = (argv: ReadonlyArray<string>): DesktopTargetBuildDesc
   });
 };
 
+/** Persists descriptor.json + ledger.json into a successful workspace. */
+export const persistStagingDocuments = async (
+  descriptor: DesktopTargetBuildDescriptor,
+  result: Extract<StageTargetResult, { ok: true }>,
+): Promise<void> => {
+  await writeFile(
+    path.join(result.workspace, "descriptor.json"),
+    `${JSON.stringify(descriptor, null, 2)}\n`,
+    "utf8",
+  );
+  await writeFile(
+    path.join(result.workspace, "ledger.json"),
+    `${JSON.stringify(result.ledger, null, 2)}\n`,
+    "utf8",
+  );
+};
+
+/**
+ * Removes an auto-created staging workspace. Callers keep one ONLY behind an
+ * explicit `--retain` (debug/proof runs) — success and failure both clean up
+ * by default so temporary workspaces never leak (review blocker 6).
+ */
+export const cleanupStagingWorkspace = async (workspace: string | undefined): Promise<void> => {
+  if (workspace === undefined) return;
+  await rm(workspace, { recursive: true, force: true });
+};
+
 const direct =
   process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (direct) {
   const descriptor = parseCliDescriptor(process.argv.slice(2));
-  const pins = readDesktopManifestPins(readFileSync(path.join(appRoot, "package.json"), "utf8"));
   if (process.argv.includes("--plan")) {
+    // Even the plan projection derives runtime pins from the descriptor's
+    // EXACT source revision, never the live checkout manifest.
+    const pins = readDesktopManifestPins(
+      capture(
+        "git",
+        ["show", `${descriptor.sourceRevision}:apps/openagents-desktop/package.json`],
+        checkoutRoot,
+      ),
+    );
     process.stdout.write(
       `${JSON.stringify(stagingPlanForDescriptor(descriptor, pins), null, 2)}\n`,
     );
   } else {
-    const result = await stageTarget(descriptor, pins, hostStageTargetIo("local-stage-cli"));
-    if (result.ok) {
-      // Persist the machine-readable staging documents the packaging
-      // entrypoint (forge.config.ts) consumes.
-      await writeFile(
-        path.join(result.workspace, "descriptor.json"),
-        `${JSON.stringify(descriptor, null, 2)}\n`,
-        "utf8",
+    const retain = process.argv.includes("--retain");
+    // Track the auto-created workspace independently of the result so
+    // cleanup covers typed failures AND thrown errors alike.
+    let createdWorkspace: string | undefined;
+    const hostIo = hostStageTargetIo("local-stage-cli");
+    const io: StageTargetIo = {
+      ...hostIo,
+      createWorkspace: async (prefix) => {
+        createdWorkspace = await hostIo.createWorkspace(prefix);
+        return createdWorkspace;
+      },
+    };
+    let retained = false;
+    try {
+      const result = await stageTarget(descriptor, io);
+      if (result.ok) {
+        await persistStagingDocuments(descriptor, result);
+        retained = retain;
+      }
+      process.stdout.write(
+        `${JSON.stringify(
+          result.ok
+            ? {
+                ok: true,
+                workspace: result.workspace,
+                stagedTree: result.stagedTree,
+                retained,
+                ledgerRef: result.ledgerRef,
+                componentCount: result.ledger.components.length,
+                unsignedDev: result.unsignedDev,
+                receiptDraft: result.receiptDraft ?? null,
+              }
+            : result,
+          null,
+          2,
+        )}\n`,
       );
-      await writeFile(
-        path.join(result.workspace, "ledger.json"),
-        `${JSON.stringify(result.ledger, null, 2)}\n`,
-        "utf8",
-      );
+      if (!result.ok) process.exitCode = 1;
+    } finally {
+      if (!retained) await cleanupStagingWorkspace(createdWorkspace);
     }
-    process.stdout.write(
-      `${JSON.stringify(
-        result.ok
-          ? {
-              ok: true,
-              workspace: result.workspace,
-              stagedTree: result.stagedTree,
-              ledgerRef: result.ledgerRef,
-              componentCount: result.ledger.components.length,
-              unsignedDev: result.unsignedDev,
-              receiptDraft: result.receiptDraft ?? null,
-            }
-          : result,
-        null,
-        2,
-      )}\n`,
-    );
-    if (!result.ok) process.exitCode = 1;
   }
 }

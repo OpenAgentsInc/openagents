@@ -16,11 +16,11 @@
  *      package ASAR gate.
  *
  * `--staging-workspace <path>` reuses an existing staged workspace (e.g. a
- * separate `pnpm run stage:target` run) instead of staging again.
+ * separate `pnpm run stage:target -- ... --retain` run) instead of staging
+ * again. Auto-created workspaces are cleaned up on success AND error;
+ * `--retain` keeps one for debug/proof runs.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,7 +30,13 @@ import {
   type DesktopTargetKey,
   TARGET_BUILD_DESCRIPTOR_SCHEMA_ID,
 } from "../src/release-staging-contract.ts";
-import { hostStageTargetIo, readDesktopManifestPins, stageTarget } from "./stage-target.ts";
+import {
+  cleanupStagingWorkspace,
+  hostStageTargetIo,
+  persistStagingDocuments,
+  stageTarget,
+  type StageTargetIo,
+} from "./stage-target.ts";
 import { createHash } from "node:crypto";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,68 +59,83 @@ if (mode !== "package" && mode !== "make") {
   throw new Error(`unsupported mode ${mode}: use package or make`);
 }
 
+const retain = argv.includes("--retain");
 let workspace = flag("staging-workspace");
-if (workspace === undefined) {
-  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: checkoutRoot,
-    encoding: "utf8",
-  }).trim();
-  const version = (
-    JSON.parse(
-      execFileSync("git", ["show", `${sourceRevision}:apps/openagents-desktop/package.json`], {
-        cwd: checkoutRoot,
-        encoding: "utf8",
-      }),
-    ) as { version: string }
-  ).version;
-  const lockfileSha256 = createHash("sha256")
-    .update(
-      execFileSync("git", ["show", `${sourceRevision}:pnpm-lock.yaml`], {
-        cwd: checkoutRoot,
-        maxBuffer: 512 * 1024 * 1024,
-      }),
-    )
-    .digest("hex");
-  const descriptor = decodeDesktopTargetBuildDescriptor({
-    schema: TARGET_BUILD_DESCRIPTOR_SCHEMA_ID,
-    product: "OpenAgents",
-    targetKey,
-    channel: version.includes("-rc.") ? "rc" : "stable",
-    version,
-    sourceRevision,
-    lockfileSha256,
-    formats: [...desktopTargets[targetKey as DesktopTargetKey].requiredFormats],
-    signingPolicy: argv.includes("--unsigned-dev") ? "unsigned-dev" : "production",
-  });
-  const pins = readDesktopManifestPins(readFileSync(path.join(appRoot, "package.json"), "utf8"));
-  const result = await stageTarget(descriptor, pins, hostStageTargetIo("local-stage-and-package"));
-  if (!result.ok) {
-    process.stderr.write(`${JSON.stringify(result, null, 2)}\n`);
-    process.exit(1);
+// Track the auto-created workspace so cleanup covers success, typed
+// failures, and thrown errors alike; explicitly provided workspaces are the
+// caller's to manage.
+let autoCreatedWorkspace: string | undefined;
+try {
+  if (workspace === undefined) {
+    const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: checkoutRoot,
+      encoding: "utf8",
+    }).trim();
+    const version = (
+      JSON.parse(
+        execFileSync("git", ["show", `${sourceRevision}:apps/openagents-desktop/package.json`], {
+          cwd: checkoutRoot,
+          encoding: "utf8",
+        }),
+      ) as { version: string }
+    ).version;
+    const lockfileSha256 = createHash("sha256")
+      .update(
+        execFileSync("git", ["show", `${sourceRevision}:pnpm-lock.yaml`], {
+          cwd: checkoutRoot,
+          maxBuffer: 512 * 1024 * 1024,
+        }),
+      )
+      .digest("hex");
+    const descriptor = decodeDesktopTargetBuildDescriptor({
+      schema: TARGET_BUILD_DESCRIPTOR_SCHEMA_ID,
+      product: "OpenAgents",
+      targetKey,
+      channel: version.includes("-rc.") ? "rc" : "stable",
+      version,
+      sourceRevision,
+      lockfileSha256,
+      formats: [...desktopTargets[targetKey as DesktopTargetKey].requiredFormats],
+      signingPolicy: argv.includes("--unsigned-dev") ? "unsigned-dev" : "production",
+    });
+    const hostIo = hostStageTargetIo("local-stage-and-package");
+    const io: StageTargetIo = {
+      ...hostIo,
+      createWorkspace: async (prefix) => {
+        autoCreatedWorkspace = await hostIo.createWorkspace(prefix);
+        return autoCreatedWorkspace;
+      },
+    };
+    // Runtime/tool pins derive from the EXPORTED source at sourceRevision
+    // inside stageTarget — never this checkout's live package.json.
+    const result = await stageTarget(descriptor, io);
+    if (!result.ok) {
+      process.stderr.write(`${JSON.stringify(result, null, 2)}\n`);
+      process.exitCode = 1;
+    } else {
+      await persistStagingDocuments(descriptor, result);
+      process.stderr.write(
+        `[stage-and-package] staged ${descriptor.targetKey} at ${result.workspace} (ledgerRef ${result.ledgerRef})\n`,
+      );
+      workspace = result.workspace;
+    }
   }
-  await writeFile(
-    path.join(result.workspace, "descriptor.json"),
-    `${JSON.stringify(descriptor, null, 2)}\n`,
-    "utf8",
-  );
-  await writeFile(
-    path.join(result.workspace, "ledger.json"),
-    `${JSON.stringify(result.ledger, null, 2)}\n`,
-    "utf8",
-  );
-  process.stderr.write(
-    `[stage-and-package] staged ${descriptor.targetKey} at ${result.workspace} (ledgerRef ${result.ledgerRef})\n`,
-  );
-  workspace = result.workspace;
-}
 
-const { platform, arch } = desktopTargets[targetKey as DesktopTargetKey];
-execFileSync(
-  "pnpm",
-  ["exec", "electron-forge", mode, `--platform=${platform}`, `--arch=${arch}`],
-  {
-    cwd: appRoot,
-    stdio: "inherit",
-    env: { ...process.env, OA_DESKTOP_STAGING_WORKSPACE: workspace },
-  },
-);
+  if (workspace !== undefined) {
+    const { platform, arch } = desktopTargets[targetKey as DesktopTargetKey];
+    execFileSync(
+      "pnpm",
+      ["exec", "electron-forge", mode, `--platform=${platform}`, `--arch=${arch}`],
+      {
+        cwd: appRoot,
+        stdio: "inherit",
+        env: { ...process.env, OA_DESKTOP_STAGING_WORKSPACE: workspace },
+      },
+    );
+  }
+} finally {
+  if (!retain) await cleanupStagingWorkspace(autoCreatedWorkspace);
+  else if (autoCreatedWorkspace !== undefined) {
+    process.stderr.write(`[stage-and-package] retained staging workspace ${autoCreatedWorkspace}\n`);
+  }
+}
