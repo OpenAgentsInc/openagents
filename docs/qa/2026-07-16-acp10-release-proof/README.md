@@ -109,7 +109,12 @@ redacted checked receipt is
 [`release-run-grok-mcp-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-mcp-2026-07-16-darwin-arm64.json).
 Cursor model discovery returned 33 models (26 with configuration)
 and `cursor/create_plan` passed live; the other Cursor extension requests were
-not observed.
+not observed. A reproducible exact-binary qualification on the current runner
+confirmed the same boundary—33 models and one create-plan request, but zero
+question or todo calls—even after mode- and tool-qualified prompts. Its checked
+partial receipt is
+[`release-run-cursor-extensions-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json);
+the combined extension row remains blocked.
 
 The production main-owned Desktop host then ran both pinned drivers and
 serialized the closed `openagents.desktop.acp-support.v1` bundle. The bundle

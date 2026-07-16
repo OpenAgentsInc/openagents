@@ -89,7 +89,9 @@ change the release matrix or promote either peer; a human-reviewed matrix edit
 and the fail-closed `check:release` gate remain mandatory. The Cursor lane also
 proves client-side `cursor_login` cancellation using the ordinary HOME and
 stopping before `authenticate`; it never creates an empty HOME or changes login
-or keychain state.
+or keychain state. Its exact-binary extension qualification registers only the
+four allowlisted Cursor methods and retains aggregate observation counts; an
+unobserved extension remains blocked rather than inferred from a prompt.
 
 After packaging Desktop, the separately armed peer journey proves real app
 workspace refusal, interruption, restart settlement, re-enable, completion,

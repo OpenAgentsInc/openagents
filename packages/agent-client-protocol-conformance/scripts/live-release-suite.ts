@@ -9,7 +9,9 @@ import {
   createCursorAcpPeerRuntime,
   probeCursorAcpExecutable,
 } from "@openagentsinc/cursor-agent-runtime";
+import { CURSOR_ACP_PROFILE } from "@openagentsinc/agent-client-protocol/extensions/cursor";
 import { createGrokAcpPeerRuntime, probeGrokAcpExecutable } from "@openagentsinc/grok-harness";
+import { AgentStdioTransport } from "@openagentsinc/agent-stdio-transport";
 
 import {
   buildAcpLiveReleaseArtifact,
@@ -123,6 +125,109 @@ const workspace = async (peer: "grok" | "cursor"): Promise<string> => {
     mode: 0o600,
   });
   return root;
+};
+
+const object = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const qualifyCursorExtensions = async (
+  root: string,
+  probe: Awaited<ReturnType<typeof probeCursorAcpExecutable>>,
+): Promise<Readonly<{ questions: number; plans: number; todos: number; models: number }>> => {
+  let transport: AgentStdioTransport | undefined;
+  let questions = 0;
+  let plans = 0;
+  let todos = 0;
+  try {
+    transport = await AgentStdioTransport.start({
+      executable: probe.realPath,
+      args: ["acp"],
+      cwd: root,
+      env: { HOME: process.env.HOME, PATH: "/usr/bin:/bin" },
+      identityPin: { realPath: probe.realPath, sha256: probe.sha256 },
+      methodKinds: CURSOR_ACP_PROFILE.methods
+        .filter((entry) => entry.direction === "agent-to-client")
+        .map((entry) => ({ method: entry.method, kind: entry.kind })),
+      limits: { requestTimeoutMs: 120_000 },
+    });
+    transport.registerReverseHandler("cursor/ask_question", async (params) => {
+      questions += 1;
+      const answers: Record<string, ReadonlyArray<string>> = {};
+      const requested = object(params).questions;
+      if (Array.isArray(requested)) {
+        for (const rawQuestion of requested) {
+          const question = object(rawQuestion);
+          if (typeof question.id !== "string") continue;
+          const firstOption = Array.isArray(question.options) ? object(question.options[0]) : {};
+          answers[question.id] = [
+            typeof firstOption.label === "string" ? firstOption.label : "Continue",
+          ];
+        }
+      }
+      return { answers };
+    });
+    transport.registerReverseHandler("cursor/create_plan", async () => {
+      plans += 1;
+      return { accepted: true };
+    });
+    transport.onNotification("cursor/update_todos", () => {
+      todos += 1;
+    });
+    const initialized = object(
+      await transport.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+        },
+        clientInfo: { name: "openagents-release-qualification", version: "0.1.0" },
+      }),
+    );
+    const authMethods = Array.isArray(initialized.authMethods)
+      ? initialized.authMethods.map(object)
+      : [];
+    if (!authMethods.some((method) => method.id === "cursor_login"))
+      throw new Error("Cursor did not advertise cursor_login");
+    await transport.request("authenticate", {
+      methodId: "cursor_login",
+      _meta: { headless: true },
+    });
+    const attached = object(await transport.request("session/new", { cwd: root, mcpServers: [] }));
+    if (typeof attached.sessionId !== "string") throw new Error("Cursor returned no session id");
+    const listedModels = object(
+      await transport.request("cursor/list_available_models", {}).catch(() => ({})),
+    );
+    const models = Array.isArray(listedModels.models) ? listedModels.models.length : 0;
+    for (const [modeId, text] of [
+      [
+        "agent",
+        "Call AskQuestion before answering. Ask one multiple-choice clarification question, accept the answer, then reply briefly.",
+      ],
+      [
+        "plan",
+        "Create a short reviewed plan and maintain a todo list for adding one sentence to README.md. Do not edit any file.",
+      ],
+      [
+        "agent",
+        "Call TodoWrite to create and then complete one harmless planning todo. Do not edit any file.",
+      ],
+    ] as const) {
+      await transport
+        .request("session/set_mode", { sessionId: attached.sessionId, modeId })
+        .catch(() => undefined);
+      await transport
+        .request("session/prompt", {
+          sessionId: attached.sessionId,
+          prompt: [{ type: "text", text }],
+        })
+        .catch(() => undefined);
+    }
+    return { questions, plans, todos, models };
+  } finally {
+    await transport?.dispose();
+  }
 };
 
 const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
@@ -453,6 +558,21 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
         "cleanup-bounds",
         "not-observed",
         "Shutdown ran in finally; this runner does not retain process leak counters",
+      ),
+    );
+    await peer.shutdown();
+    peer = undefined;
+    const extensions = await qualifyCursorExtensions(root, probe);
+    const extensionsPassed =
+      extensions.questions > 0 &&
+      extensions.plans > 0 &&
+      extensions.todos > 0 &&
+      extensions.models > 0;
+    scenarios.push(
+      scenario(
+        "cursor-extensions-models",
+        extensionsPassed ? "live-pass" : "not-observed",
+        `Pinned extension counts: questions ${extensions.questions}, plans ${extensions.plans}, todos ${extensions.todos}, models ${extensions.models}`,
       ),
     );
     return {

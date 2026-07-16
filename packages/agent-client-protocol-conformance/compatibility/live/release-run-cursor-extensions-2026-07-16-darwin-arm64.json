@@ -1,0 +1,106 @@
+{
+  "format": "openagents-acp-live-release-run-v1",
+  "protocol": "Agent Client Protocol",
+  "protocolExclusions": ["Agent Communication Protocol", "A2A"],
+  "proofClass": "candidate-live",
+  "claimAuthority": "none-release-matrix-only",
+  "recordedAt": "2026-07-16T17:22:37.366Z",
+  "openAgentsRevision": "681f1ea325a2fa9f2b0829eb73802de00d206ec0",
+  "schemaRelease": "schema-v1.19.0",
+  "platform": "darwin-arm64-node-24.13.1",
+  "peers": [
+    {
+      "peer": "cursor",
+      "result": "partial",
+      "binary": {
+        "reportedVersion": "2026.06.24-00-45-58-9f61de7",
+        "executableSha256": "b7babf47d8b1eee28ac27a74affa02a559bb38103a6e71fbb1f120805d51fedf",
+        "installationClosureSha256": "69d078daa4db8cbb4163ce2f010207553efb06d652c1e1ea421d739795532faa"
+      },
+      "negotiation": {
+        "wireVersion": 1,
+        "authMethodIds": ["cursor_login"],
+        "capabilityKeys": ["list", "load"]
+      },
+      "scenarios": [
+        {
+          "id": "identity-version",
+          "result": "live-pass",
+          "safeDetail": "Exact Cursor version and installation closure probed"
+        },
+        {
+          "id": "initialize",
+          "result": "live-pass",
+          "safeDetail": "Wire version 1 initialize completed"
+        },
+        {
+          "id": "auth-primary",
+          "result": "live-pass",
+          "safeDetail": "Advertised Cursor login completed"
+        },
+        {
+          "id": "auth-cancel",
+          "result": "live-pass",
+          "safeDetail": "Client cancelled advertised login before authenticate and received auth required"
+        },
+        {
+          "id": "session-new",
+          "result": "live-pass",
+          "safeDetail": "Disposable repository session created"
+        },
+        {
+          "id": "real-repo-text",
+          "result": "live-pass",
+          "safeDetail": "Real disposable repository produced assistant text"
+        },
+        {
+          "id": "sequential-turns",
+          "result": "live-pass",
+          "safeDetail": "Two sequential prompts completed"
+        },
+        {
+          "id": "session-list",
+          "result": "live-pass",
+          "safeDetail": "Advertised session list completed"
+        },
+        {
+          "id": "model-mode-config",
+          "result": "live-pass",
+          "safeDetail": "Advertised mode change completed"
+        },
+        {
+          "id": "stream-cancel",
+          "result": "live-pass",
+          "safeDetail": "Streaming prompt cancelled after 0 updates"
+        },
+        {
+          "id": "cleanup-bounds",
+          "result": "not-observed",
+          "safeDetail": "Shutdown ran in finally; this runner does not retain process leak counters"
+        },
+        {
+          "id": "cursor-extensions-models",
+          "result": "not-observed",
+          "safeDetail": "Pinned extension counts: questions 0, plans 1, todos 0, models 33"
+        }
+      ],
+      "counters": {
+        "updateCount": 12,
+        "updateKinds": [
+          "agent_message_chunk",
+          "agent_thought_chunk",
+          "available_commands_update",
+          "current_mode_update"
+        ],
+        "promptCount": 3
+      }
+    }
+  ],
+  "redaction": {
+    "promptTextRetained": false,
+    "responseTextRetained": false,
+    "sessionIdentifiersRetained": false,
+    "authMaterialRetained": false,
+    "absolutePathsRetained": false
+  }
+}

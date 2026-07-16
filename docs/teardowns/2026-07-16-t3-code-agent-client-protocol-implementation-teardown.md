@@ -149,6 +149,9 @@ Cursor client-side login cancellation is also live-proven using the ordinary
 HOME and stopping before `authenticate`, without mutating login/keychain state.
 Neither exact peer advertises stable `auth.logout`; the gate now records that
 method as unavailable while retaining expiry/failure requirements separately.
+Cursor's current exact-binary qualification reproducibly observes model listing
+and create-plan but not ask-question or todo notifications, so the combined
+extension row remains unpromoted.
 The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference
