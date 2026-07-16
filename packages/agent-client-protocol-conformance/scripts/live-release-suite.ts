@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -142,17 +142,12 @@ const qualifyCursorExtensions = async (
     plans: number;
     todos: number;
     models: number;
-    permissionApprovals: number;
-    permissionRefusals: number;
   }>
 > => {
   let transport: AgentStdioTransport | undefined;
   let questions = 0;
   let plans = 0;
   let todos = 0;
-  let permissionApprovals = 0;
-  let permissionRefusals = 0;
-  let preferApproval = true;
   try {
     transport = await AgentStdioTransport.start({
       executable: probe.realPath,
@@ -187,22 +182,6 @@ const qualifyCursorExtensions = async (
     });
     transport.onNotification("cursor/update_todos", () => {
       todos += 1;
-    });
-    transport.registerReverseHandler("session/request_permission", async (params) => {
-      const rawOptions = object(params).options;
-      const options: ReadonlyArray<Record<string, unknown>> = Array.isArray(rawOptions)
-        ? rawOptions.map(object)
-        : [];
-      const preferred = options.find((option) =>
-        preferApproval
-          ? typeof option.kind === "string" && option.kind.startsWith("allow")
-          : typeof option.kind === "string" &&
-            (option.kind.startsWith("reject") || option.kind.startsWith("deny")),
-      );
-      if (typeof preferred?.optionId !== "string") return { outcome: { outcome: "cancelled" } };
-      if (preferApproval) permissionApprovals += 1;
-      else permissionRefusals += 1;
-      return { outcome: { outcome: "selected", optionId: preferred.optionId } };
     });
     const initialized = object(
       await transport.request("initialize", {
@@ -253,31 +232,86 @@ const qualifyCursorExtensions = async (
         })
         .catch(() => undefined);
     }
-    preferApproval = true;
+    return { questions, plans, todos, models };
+  } finally {
+    await transport?.dispose();
+  }
+};
+
+const qualifyCursorPermission = async (
+  root: string,
+  probe: Awaited<ReturnType<typeof probeCursorAcpExecutable>>,
+  decision: "approve" | "refuse",
+): Promise<number> => {
+  let transport: AgentStdioTransport | undefined;
+  let selections = 0;
+  try {
+    await mkdir(join(root, ".cursor"), { recursive: true });
+    await writeFile(
+      join(root, ".cursor", "cli.json"),
+      `${JSON.stringify({ permissions: { allow: [], deny: [] } }, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+    transport = await AgentStdioTransport.start({
+      executable: probe.realPath,
+      args: ["acp"],
+      cwd: root,
+      env: { HOME: process.env.HOME, PATH: "/usr/bin:/bin" },
+      identityPin: { realPath: probe.realPath, sha256: probe.sha256 },
+      methodKinds: [{ method: "session/request_permission", kind: "request" }],
+      limits: { requestTimeoutMs: 120_000 },
+    });
+    transport.registerReverseHandler("session/request_permission", async (params) => {
+      const rawOptions = object(params).options;
+      const options: ReadonlyArray<Record<string, unknown>> = Array.isArray(rawOptions)
+        ? rawOptions.map(object)
+        : [];
+      const preferred = options.find((option) =>
+        decision === "approve"
+          ? typeof option.kind === "string" && option.kind.startsWith("allow")
+          : typeof option.kind === "string" &&
+            (option.kind.startsWith("reject") || option.kind.startsWith("deny")),
+      );
+      if (typeof preferred?.optionId !== "string") return { outcome: { outcome: "cancelled" } };
+      selections += 1;
+      return { outcome: { outcome: "selected", optionId: preferred.optionId } };
+    });
+    const initialized = object(
+      await transport.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+        },
+        clientInfo: { name: "openagents-release-qualification", version: "0.1.0" },
+      }),
+    );
+    const authMethods = Array.isArray(initialized.authMethods)
+      ? initialized.authMethods.map(object)
+      : [];
+    if (!authMethods.some((method) => method.id === "cursor_login"))
+      throw new Error("Cursor did not advertise cursor_login");
+    await transport.request("authenticate", {
+      methodId: "cursor_login",
+      _meta: { headless: true },
+    });
+    const attached = object(await transport.request("session/new", { cwd: root, mcpServers: [] }));
+    if (typeof attached.sessionId !== "string") throw new Error("Cursor returned no session id");
     await transport
       .request("session/prompt", {
         sessionId: attached.sessionId,
         prompt: [
           {
             type: "text",
-            text: "You must call WebSearch exactly once for the query OpenAgents ACP permission approval proof, then summarize the result in one sentence.",
+            text:
+              decision === "approve"
+                ? "Run the shell command mkdir CURSOR_PERMISSION_ALLOW_PROOF now, then reply briefly."
+                : "Run the shell command mkdir CURSOR_PERMISSION_REFUSE_PROOF now, then acknowledge if permission is rejected.",
           },
         ],
       })
       .catch(() => undefined);
-    preferApproval = false;
-    await transport
-      .request("session/prompt", {
-        sessionId: attached.sessionId,
-        prompt: [
-          {
-            type: "text",
-            text: "You must call WebSearch exactly once for the query OpenAgents ACP permission refusal proof, then acknowledge if the search is rejected.",
-          },
-        ],
-      })
-      .catch(() => undefined);
-    return { questions, plans, todos, models, permissionApprovals, permissionRefusals };
+    return selections;
   } finally {
     await transport?.dispose();
   }
@@ -816,6 +850,8 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
     await peer.shutdown();
     peer = undefined;
     const extensions = await qualifyCursorExtensions(root, probe);
+    const permissionApprovals = await qualifyCursorPermission(root, probe, "approve");
+    const permissionRefusals = await qualifyCursorPermission(root, probe, "refuse");
     const extensionsPassed =
       extensions.questions > 0 &&
       extensions.plans > 0 &&
@@ -829,13 +865,13 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
       ),
       scenario(
         "permission-approval",
-        extensions.permissionApprovals > 0 ? "live-pass" : "not-observed",
-        `Pinned permission approval selections: ${extensions.permissionApprovals}`,
+        permissionApprovals > 0 ? "live-pass" : "not-observed",
+        `Pinned permission approval selections: ${permissionApprovals}`,
       ),
       scenario(
         "permission-refusal",
-        extensions.permissionRefusals > 0 ? "live-pass" : "not-observed",
-        `Pinned permission refusal selections: ${extensions.permissionRefusals}`,
+        permissionRefusals > 0 ? "live-pass" : "not-observed",
+        `Pinned permission refusal selections: ${permissionRefusals}`,
       ),
     );
     return {
