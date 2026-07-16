@@ -1,5 +1,13 @@
 # NEEDS-OWNER — nothing immediate. All decisions taken 2026-07-09.
 
+## Desktop local-usage telemetry consent copy (#8911)
+
+The exact-token reporter and authenticated ingest plumbing are present but
+hard-disabled. Before any Settings toggle or collection is enabled, approve the
+short disclosure that explains the aggregate public counter, the exact token
+fields sent, the absence of prompts/files/paths, and how to withdraw consent.
+Metrics remain absent while consent is off.
+
 Archive of older content:
 `docs/ops/2026-07-09-needs-owner-archive.md`. Full backlog
 context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.

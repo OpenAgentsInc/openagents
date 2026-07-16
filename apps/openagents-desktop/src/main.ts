@@ -249,6 +249,7 @@ import {
   UsageLedgerSnapshotChannel,
 } from "./usage-ledger-contract.ts"
 import { makeUsageLedger } from "./usage-ledger.ts"
+import { makeDesktopCodexUsageReporter } from "./desktop-codex-usage-reporter.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
@@ -1936,6 +1937,12 @@ if (smokeMode) {
 // for local Fable turns and Codex delegate children. Main-owned; the
 // renderer sees only the typed snapshot ("session ledger" evidence label).
 const usageLedger = makeUsageLedger()
+const desktopCodexUsageReporter = makeDesktopCodexUsageReporter({
+  consentEnabled: () => false,
+  sessionReady: () => desktopSessionState === "session_ready",
+  credential: () => desktopSessionVault?.load() ?? null,
+  baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
+})
 // CUT-11 (#8691): canonical desktop-local live agent graph. The host folds
 // the SAME typed envelopes the renderer stream receives (one applyEvent line
 // inside each lane's existing emit callback) into validated
@@ -3153,6 +3160,14 @@ const dispatchCodexLocalTurn = async (
                 totalTokens: turnEvent.totalTokens,
               }),
         })
+        if (turnEvent.usage !== null && turnEvent.usage !== undefined) {
+          Effect.runFork(desktopCodexUsageReporter.report({
+            turnRef: request.turnRef,
+            model: effectiveModel ?? requestedModel,
+            observedAt: new Date().toISOString(),
+            usage: turnEvent.usage,
+          }))
+        }
       }
       // Persist trace/model/reasoning/notice lines so the finalized
       // transcript keeps the same evidence the live stream showed.
