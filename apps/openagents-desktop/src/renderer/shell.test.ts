@@ -7,6 +7,7 @@ import { describe, expect, test } from "vite-plus/test"
 import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopVoiceState } from "../voice-host.ts"
+import type { DesktopThread } from "../chat-contract.ts"
 
 import {
   activeFullAutoEnabled,
@@ -2422,6 +2423,68 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
       expect(settled.pending).toBe(false)
       expect(settled.notes).toEqual(completed.notes)
     }))
+  })
+
+  test("an admitted stream cannot render in another chat after navigation", async () => {
+    const otherThread = {
+      ...testThread,
+      id: "thread-2",
+      title: "Second chat",
+      notes: [{ key: "thread-2-user", role: "user" as const, text: "Second prompt", timestamp: "18:04" }],
+    }
+    let publish: ((thread: DesktopThread) => void) | undefined
+    let finish!: (value: { ok: true; thread: DesktopThread }) => void
+    const turn = new Promise<{ ok: true; thread: DesktopThread }>(resolve => { finish = resolve })
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      threads: [testThread, otherThread],
+    }))
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, {
+        listThreads: async () => [testThread, otherThread],
+        newThread: async () => null,
+        openThread: async id => id === testThread.id ? testThread : id === otherThread.id ? otherThread : null,
+        sendMessage: async input => {
+          publish = input.onUpdate!
+          return turn
+        },
+      }),
+    ))
+
+    const submission = Effect.runPromise(registry.dispatch(resolveIntentRef(
+      IntentRef("DesktopNoteSubmitted", StaticPayload("First prompt")),
+    )))
+    while (publish === undefined) await Promise.resolve()
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(
+      IntentRef("DesktopChatSelected", StaticPayload(otherThread.id)),
+    )))
+
+    // Reproduce the dangerous interleaving: the originating turn emits after
+    // navigation and its mutable payload claims the newly selected chat id.
+    // The admitted thread id, not this payload, must remain routing authority.
+    publish!({
+      ...otherThread,
+      notes: [...otherThread.notes, {
+        key: "misplaced-assistant",
+        role: "assistant",
+        text: "This reply belongs only to the first chat",
+        timestamp: "18:05",
+      }],
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const selectedOther = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(selectedOther.activeThreadId).toBe(otherThread.id)
+    expect(selectedOther.notes).toEqual(otherThread.notes)
+    expect(selectedOther.notes.some(note => note.key === "misplaced-assistant")).toBe(false)
+
+    finish({ ok: true, thread: testThread })
+    await submission
+    const settled = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(settled.activeThreadId).toBe(otherThread.id)
+    expect(settled.notes).toEqual(otherThread.notes)
   })
 
   test.skip("retired out-of-scope provider/model selection controls", async () => {

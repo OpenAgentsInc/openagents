@@ -2117,9 +2117,14 @@ export const makeDesktopShellHandlers = (
     // records the complete ordered event stream.
     const liveProjection = makeLatestOnlyQueue<DesktopThread>(async thread => {
       const next = await Effect.runPromise(SubscriptionRef.get(state))
-      // Do not publish a no-op shell revision for an inactive chat. The final
-      // result still updates that thread's bounded sidebar/catalog row below.
-      if (next.activeThreadId !== thread.id) return
+      // The immutable admission identity owns this stream. A projected
+      // DesktopThread is display data, never routing authority: if a stale or
+      // malformed producer attaches another chat's id, trusting that payload
+      // would stream this turn into whichever conversation the owner selected
+      // next. Require both identities and publish only while the originating
+      // chat is visible. The final result still updates that thread's bounded
+      // sidebar/catalog row below.
+      if (thread.id !== submissionThreadId || next.activeThreadId !== submissionThreadId) return
       await Effect.runPromise(SubscriptionRef.set(
         state,
         { ...withChatSelected(next, thread), pending: true },
