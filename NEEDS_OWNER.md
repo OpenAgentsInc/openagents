@@ -19,14 +19,13 @@ The approved copy now shipped in Settings:
 > updates the aggregate public tokens-served counter. Turn it off any time;
 > queued reports are deleted.
 
-Consent-copy approval is COMPLETE. A live attempt reached the signed-in proof
-boundary, but the normal Desktop profile has no native OpenAgents session. The
-typed account-link control is now rendered. Owner action is required: open
-**Settings → OpenAgents account → Link OpenAgents account**, approve GitHub
-authorization in the browser, and return to Desktop after the local PKCE
-callback. Never copy credentials into a test harness. After that, rerun the opted-in proof in
-`docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md`; the API gate
-and user consent were restored off after the incomplete attempt.
+Consent-copy approval and the agent-driven live proof are COMPLETE. The proof
+used the supported typed `session.sign_in` runtime-gateway command to complete
+GitHub OAuth + PKCE without restoring the intentionally retired renderer
+account-link surface. Ordinary, restart/retry, opt-out, Full Auto, exact-row,
+idempotency, and public-counter checks passed. No owner action remains for
+#8911; detailed public-safe receipts are in
+`docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md`.
 
 ## Decisions taken this session (all in execution, agents working)
 

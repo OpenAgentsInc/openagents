@@ -4,18 +4,20 @@ Issue: [#8911](https://github.com/OpenAgentsInc/openagents/issues/8911)
 
 ## Status
 
-The engineering path is complete. The owner approved the counts-only copy at
-`8809f79b56`; the live proof remains intentionally double-gated:
+The engineering path and owner-approved live proof are complete. The owner
+approved the counts-only copy at `8809f79b56`; reporting remains intentionally
+double-gated:
 
 1. The signed-in user must explicitly turn on **Settings → Share local Codex usage**.
 2. The API must have `DESKTOP_CODEX_USAGE_INGEST_ENABLED=1`.
 
-User consent and the API gate are off by default. No production metric movement
-is claimed by this change. The approved Settings control now ships in ordinary
-Desktop builds, but starts off and performs no credential read or network
-request until the user opts in.
+User consent is off by default. The approved Settings control ships in ordinary
+Desktop builds, starts off, and performs no credential read or network request
+until the user opts in. The server rollout gate is now part of the sanctioned
+production and staging configuration; the temporary proof deployment was
+restored off after verification, before the integration deployment.
 
-## 2026-07-16 live-proof attempt
+## 2026-07-16 live proof
 
 - Production revision `openagents-monolith-00173-vqs` deployed successfully,
   passed its owned health/portal/tombstone smokes, and proved the enabled
@@ -23,19 +25,31 @@ request until the user opts in.
 - The approved control rendered in a current ordinary Desktop build. It began
   off, was explicitly enabled, and one real ordinary local Codex turn
   completed.
-- The public counter remained `8,463,301,501`. This was a truthful fail-closed
-  result: the normal profile had no recoverable native OpenAgents session, so
-  Desktop performed no admission, created no outbox entry, and sent no usage.
+- The first attempt left the public counter at `8,463,301,501`. This was a
+  truthful fail-closed result: the normal profile had no recoverable native
+  OpenAgents session, so Desktop performed no admission, created no outbox
+  entry, and sent no usage.
 - The supported session path is GitHub OAuth through
   `https://auth.openagents.com/authorize`, PKCE loopback, server verification,
-  then OS-encrypted vault persistence. The typed account-link control is now
-  rendered on both Desktop renderer paths. Finishing the live proof requires
-  the owner to open **Settings → OpenAgents account → Link OpenAgents account**,
-  approve GitHub authorization in the browser, and return to Desktop after the
-  local callback. Credentials must never be copied into a test harness.
-- Consent was returned to off and the empty outbox was confirmed. The API gate
-  was restored to off after the incomplete proof; no ordinary, retry, opt-out,
-  Full Auto, counter-delta, or live idempotency success is claimed.
+  then OS-encrypted vault persistence. The proof invoked the supported typed
+  `session.sign_in` runtime-gateway command and completed the browser/PKCE flow;
+  it did not expose credentials and did not require a new renderer account-link
+  surface.
+- Three exact ledger rows matched three public-counter deltas exactly once:
+  ordinary `14,096` (`8,463,301,501` → `8,463,315,597`), restart/retry `14,303`
+  (`8,463,315,597` → `8,463,329,900`), and Full Auto continuation `176,026`
+  (`8,463,329,900` → `8,463,505,926`).
+- The observable HTTP sequence was admission `201` then usage `200` for the
+  ordinary turn; admission `201`, induced usage `503`, and one successful `200`
+  retry after restart; and admission `201` then usage `200` for the Full Auto
+  continuation. Replaying an accepted report produced no second counter delta.
+- Turning sharing off purged the outbox immediately. The following local turn
+  produced no admission or usage request and no counter movement attributable
+  to that turn.
+- Teardown stopped the isolated Desktop app and proof proxies. The temporary
+  production gate was restored off, with unauthenticated admission and usage
+  both returning `404`; a fresh independent check reproduced both `404`s and
+  found no proof app, HTTP proxy, or SQL helper still running.
 
 ## Authority and privacy contract
 
@@ -78,7 +92,7 @@ gating, pre-admission, owner/turn/model binding, exact safe payload shape,
 idempotency, credential-free persistence, restart retry, preference migration,
 shipped default-off Settings UI, and consent dispatch.
 
-## Owner-reviewed live proof
+## Re-running the owner-reviewed live proof
 
 Perform only after approving the Settings copy and enabling the server rollout
 gate in the sanctioned Cloud Run deployment configuration.
@@ -86,9 +100,9 @@ gate in the sanctioned Cloud Run deployment configuration.
 1. Record the current value from `GET /api/public/khala-tokens-served`.
 2. Launch the current Desktop build with a normal profile. Do not use
    isolated-app proof mode; it deliberately has no session.
-3. Open **Settings → OpenAgents account → Link OpenAgents account**, approve
-   GitHub authorization in the browser, complete the local PKCE callback, and
-   return to Desktop. Confirm the screen says **OpenAgents account linked**.
+3. Invoke the supported typed `session.sign_in` runtime-gateway command. Finish
+   GitHub authorization in the browser and wait for the local PKCE callback to
+   report `session_ready`. Never copy credentials into a harness or receipt.
 4. Open **Settings → Share local Codex usage**, read the disclosure, and turn
    it on.
 5. Send one ordinary local Codex turn with a known non-zero exact SDK usage.
