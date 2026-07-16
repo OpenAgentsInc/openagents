@@ -162,12 +162,18 @@ describe("settingsView (state -> component tree)", () => {
     expect(audit.partial).toBe(true)
     expect(audit.entries).toEqual([])
   })
-  test.skip("retired out-of-scope OpenAgents account controls", () => {
+  test("renders every OpenAgents account-linking phase with safe actions and copy", () => {
     const signedOut = settingsView({
       ...initialSettingsState(),
       openAgentsSession: "signed_out",
     })
-    expect(nodeByKey(signedOut, "settings-openagents-session-status")?.label).toBe("Local device ready")
+    expect(nodeByKey(signedOut, "settings-openagents-session-status")?.label).toBe("Not linked")
+    expect(nodeByKey(signedOut, "settings-openagents-session-copy")?.content).toContain(
+      "GitHub password never enters Desktop",
+    )
+    expect(nodeByKey(signedOut, "settings-openagents-session-copy")?.content).toContain(
+      "does not turn on local usage sharing",
+    )
     const signIn = nodeByKey(signedOut, "settings-openagents-session-action")
     expect(signIn?.label).toBe("Link OpenAgents account")
     expect((signIn as { onPress?: { name?: string } }).onPress?.name).toBe(
@@ -186,18 +192,34 @@ describe("settingsView (state -> component tree)", () => {
     expect((signOut as { onPress?: { name?: string } }).onPress?.name).toBe(
       "DesktopOpenAgentsSignOutRequested",
     )
-
-    const working = settingsView({
-      ...initialSettingsState(),
-      openAgentsSession: "authenticating",
-    })
-    expect(nodeByKey(working, "settings-openagents-session-action")?.disabled).toBe(true)
-    expect(nodeByKey(working, "settings-openagents-session-status")?.label).toBe(
-      "Waiting for secure browser…",
+    expect(nodeByKey(ready, "settings-openagents-session-copy")?.content).toContain(
+      "never changes the local usage sharing setting",
     )
+
+    const phases = [
+      ["loading", "Checking account…", "Checking…", true],
+      ["authenticating", "Waiting for secure browser…", "Waiting for browser…", true],
+      ["unverified", "Verifying stored session…", "Verifying…", true],
+      ["disconnecting", "Disconnecting account…", "Disconnecting…", true],
+      ["cancelled", "Account linking not completed", "Try again", false],
+      ["denied", "Session access removed", "Link again", false],
+      ["unavailable", "Couldn’t link account", "Try again", false],
+    ] as const
+    for (const [phase, status, action, disabled] of phases) {
+      const view = settingsView({ ...initialSettingsState(), openAgentsSession: phase })
+      expect(nodeByKey(view, "settings-openagents-session-status")?.label).toBe(status)
+      expect(nodeByKey(view, "settings-openagents-session-action")).toMatchObject({
+        label: action,
+        disabled,
+      })
+    }
+    expect(nodeByKey(
+      settingsView({ ...initialSettingsState(), openAgentsSession: "cancelled" }),
+      "settings-openagents-session-copy",
+    )?.content).toContain("No account was linked")
   })
 
-  test("MVP shows the ordinary Codex session and no Pylon account-linking surface", () => {
+  test("MVP shows ordinary Codex and optional OpenAgents sessions without Pylon linking", () => {
     const view = settingsView(loadedAccounts)
     expect(nodeByKey(view, "settings-title")?.content).toBe("Settings")
     expect(nodeByKey(view, "settings-back")?._tag).toBe("Button")
@@ -207,7 +229,7 @@ describe("settingsView (state -> component tree)", () => {
     expect(nodeByKey(view, "settings-accounts-title")).toBeUndefined()
     expect(nodeByKey(view, "settings-account-codex-2-ref")).toBeUndefined()
     expect(nodeByKey(view, "settings-claude-accounts-title")).toBeUndefined()
-    expect(nodeByKey(view, "settings-openagents-session-action")).toBeUndefined()
+    expect(nodeByKey(view, "settings-openagents-session-action")?.label).toBe("Checking…")
     expect(nodeByKey(view, "settings-mcp-title")).toBeUndefined()
     expect(nodeByKey(view, "settings-plugins-title")).toBeUndefined()
     expect(nodeByKey(view, "settings-lifecycle-title")).toBeUndefined()
@@ -362,6 +384,12 @@ describe("bridge payload decoding (renderer side)", () => {
       status: "completed",
       phase: "signed_out",
     })).toBe("signed_out")
+    expect(decodeOpenAgentsSessionView({
+      kind: "session_outcome",
+      commandId: "sign-in-refused",
+      status: "cancelled",
+      phase: "signed_out",
+    })).toBe("cancelled")
     expect(decodeOpenAgentsSessionView({
       kind: "session_outcome",
       commandId: "bad",
@@ -656,7 +684,7 @@ describe("typed intent loop end-to-end (settings)", () => {
   })
 
   // Oracle for openagents_desktop.session.effect_native_controls.v1.
-  test.skip("retired out-of-scope OpenAgents sign-in and sign-out controls", async () => {
+  test("OpenAgents sign-in callback success and linked sign-out use the typed bridge", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const calls: Array<string> = []
@@ -709,17 +737,69 @@ describe("typed intent loop end-to-end (settings)", () => {
           "settings-openagents-session-action",
         ) as { onPress: Parameters<typeof resolveIntentRef>[0] }
         yield* registry.dispatch(resolveIntentRef(signIn.onPress, null))
-        expect((yield* SubscriptionRef.get(state)).settings.openAgentsSession).toBe("session_ready")
+        expect((yield* SubscriptionRef.get(state)).settings).toMatchObject({
+          openAgentsSession: "session_ready",
+          shareLocalCodexUsage: false,
+        })
 
         const signOut = nodeByKey(
           desktopShellView(yield* SubscriptionRef.get(state)),
           "settings-openagents-session-action",
         ) as { onPress: Parameters<typeof resolveIntentRef>[0] }
         yield* registry.dispatch(resolveIntentRef(signOut.onPress, null))
-        expect((yield* SubscriptionRef.get(state)).settings.openAgentsSession).toBe("signed_out")
+        expect((yield* SubscriptionRef.get(state)).settings).toMatchObject({
+          openAgentsSession: "signed_out",
+          shareLocalCodexUsage: false,
+        })
         expect(calls).toEqual(["sign-in", "sign-out"])
       }),
     )
+  })
+
+  test("OpenAgents sign-in preserves refusal and error outcomes without changing usage consent", async () => {
+    for (const outcome of [
+      { status: "cancelled", phase: "signed_out", expected: "cancelled" },
+      { status: "unavailable", phase: "unavailable", expected: "unavailable" },
+    ] as const) {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const sessionBridge: OpenAgentsSessionSettingsBridge = {
+            status: async () => null,
+            signIn: async () => ({
+              kind: "session_outcome",
+              commandId: `sign-in-${outcome.status}`,
+              status: outcome.status,
+              phase: outcome.phase,
+            }),
+            signOut: async () => null,
+          }
+          const state = yield* SubscriptionRef.make<DesktopShellState>({
+            ...baseState,
+            workspace: "settings",
+            settings: {
+              ...initialSettingsState(),
+              openAgentsSession: "signed_out",
+              shareLocalCodexUsage: false,
+            },
+          })
+          const handlers = makeDesktopShellHandlers(
+            state,
+            () => "18:05",
+            undefined,
+            undefined,
+            undefined,
+            makeBridge([], []),
+            async () => {},
+            sessionBridge,
+          )
+          const registry = yield* makeIntentRegistry(desktopShellIntents, handlers)
+          yield* registry.dispatch({ name: "DesktopOpenAgentsSignInRequested", payload: null })
+          const next = yield* SubscriptionRef.get(state)
+          expect(next.settings.openAgentsSession).toBe(outcome.expected)
+          expect(next.settings.shareLocalCodexUsage).toBe(false)
+        }),
+      )
+    }
   })
 })
 

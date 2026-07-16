@@ -254,6 +254,50 @@ describe("React workbench shell", () => {
     })
   })
 
+  test("renders and dispatches the complete OpenAgents account-linking state model", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) =>
+      Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    const renderPhase = async (phase: DesktopShellState["settings"]["openAgentsSession"]) => {
+      await render(root, <WorkbenchShell state={{
+        ...base,
+        workspace: "settings",
+        settings: { ...base.settings, openAgentsSession: phase, shareLocalCodexUsage: false },
+      }} report={report} />)
+    }
+
+    await renderPhase("signed_out")
+    expect(container.querySelector('[data-session-phase="signed_out"]')?.textContent).toContain(
+      "GitHub password never enters Desktop",
+    )
+    expect(container.textContent).toContain("linking does not turn on local usage sharing")
+    await interact(() => [...container.querySelectorAll("button")]
+      .find(node => node.textContent === "Link OpenAgents account")?.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopOpenAgentsSignInRequested", payload: null })
+
+    await renderPhase("authenticating")
+    expect(container.querySelector('[data-session-phase="authenticating"] button')?.hasAttribute("disabled")).toBe(true)
+    expect(container.textContent).toContain("Waiting for secure browser…")
+
+    await renderPhase("cancelled")
+    expect(container.querySelector('[data-session-phase="cancelled"] [role="alert"]')?.textContent)
+      .toBe("Account linking not completed")
+    expect(container.textContent).toContain("No account was linked")
+
+    await renderPhase("unavailable")
+    expect(container.querySelector('[data-session-phase="unavailable"] [role="alert"]')?.textContent)
+      .toBe("Couldn’t link account")
+
+    await renderPhase("session_ready")
+    expect(container.textContent).toContain("Linking never changes the local usage sharing setting")
+    await interact(() => [...container.querySelectorAll("button")]
+      .find(node => node.textContent === "Disconnect account")?.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopOpenAgentsSignOutRequested", payload: null })
+  })
+
   test("shows the Codex-only update advisory and dispatches the typed update intent", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []

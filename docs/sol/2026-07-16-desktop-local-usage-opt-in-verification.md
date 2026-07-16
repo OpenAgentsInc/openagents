@@ -28,11 +28,11 @@ request until the user opts in.
   Desktop performed no admission, created no outbox entry, and sent no usage.
 - The supported session path is GitHub OAuth through
   `https://auth.openagents.com/authorize`, PKCE loopback, server verification,
-  then OS-encrypted vault persistence. The current MVP intentionally does not
-  render its account-link control. Finishing the live proof therefore requires
-  an owner to complete that interactive authorization (or a product decision to
-  restore the typed Settings control); credentials must never be copied into a
-  test harness.
+  then OS-encrypted vault persistence. The typed account-link control is now
+  rendered on both Desktop renderer paths. Finishing the live proof requires
+  the owner to open **Settings → OpenAgents account → Link OpenAgents account**,
+  approve GitHub authorization in the browser, and return to Desktop after the
+  local callback. Credentials must never be copied into a test harness.
 - Consent was returned to off and the empty outbox was confirmed. The API gate
   was restored to off after the incomplete proof; no ordinary, retry, opt-out,
   Full Auto, counter-delta, or live idempotency success is claimed.

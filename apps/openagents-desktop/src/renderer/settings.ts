@@ -3,8 +3,9 @@
  * configure local Desktop behavior without exposing fleet account custody.
  *
  * The MVP uses the ordinary Codex session already logged in on this machine.
- * Named account linking and Pylon device-auth are fleet capabilities and do
- * not appear on this surface.
+ * Named provider-account linking and Pylon device-auth remain fleet
+ * capabilities. The optional OpenAgents session uses the separate native
+ * GitHub OAuth + PKCE boundary and appears here for authenticated services.
  */
 import {
   Badge,
@@ -217,6 +218,8 @@ export const initialMcpSettingsState = (): McpSettingsState => ({
 export type DesktopOpenAgentsSessionView =
   | "loading"
   | "authenticating"
+  | "disconnecting"
+  | "cancelled"
   | "signed_out"
   | "unverified"
   | "session_ready"
@@ -453,12 +456,14 @@ export const decodeConnectStatusView = (value: unknown): CodexConnectStatusView 
 
 export const decodeOpenAgentsSessionView = (
   value: unknown,
-): Exclude<DesktopOpenAgentsSessionView, "loading" | "authenticating"> => {
+): Exclude<DesktopOpenAgentsSessionView, "loading" | "authenticating" | "disconnecting"> => {
   const decoded = Schema.decodeUnknownExit(RendererOpenAgentsSessionSchema)(value)
   if (!Exit.isSuccess(decoded)) return "unavailable"
   return decoded.value.kind === "query_result"
     ? decoded.value.result.sessionPhase
-    : decoded.value.phase
+    : decoded.value.status === "cancelled"
+      ? "cancelled"
+      : decoded.value.phase
 }
 
 // Renderer mirror of the gateway maintenance responses (the same both-sides
@@ -1038,7 +1043,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         if (current.settings.openAgentsSession !== "session_ready") return
         yield* update(next => ({
           ...next,
-          settings: { ...next.settings, openAgentsSession: "authenticating" },
+          settings: { ...next.settings, openAgentsSession: "disconnecting" },
         }))
         const phase = decodeOpenAgentsSessionView(
           yield* Effect.promise(() => openAgentsBridge.signOut().catch(() => null)),
@@ -1213,40 +1218,71 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
 // View — pure `state -> View` over the shared catalog.
 // ---------------------------------------------------------------------------
 
+export type OpenAgentsSessionPresentation = Readonly<{
+  status: string
+  detail: string
+  action: string
+  actionIntent: "DesktopOpenAgentsSignInRequested" | "DesktopOpenAgentsSignOutRequested"
+  disabled: boolean
+  tone: "neutral" | "success" | "warn"
+  alert: boolean
+}>
+
+export const openAgentsSessionPresentation = (
+  phase: DesktopOpenAgentsSessionView,
+): OpenAgentsSessionPresentation => {
+  switch (phase) {
+    case "loading":
+      return { status: "Checking account…", detail: "Reading the OS-encrypted OpenAgents session on this Mac.", action: "Checking…", actionIntent: "DesktopOpenAgentsSignInRequested", disabled: true, tone: "neutral", alert: false }
+    case "authenticating":
+      return { status: "Waiting for secure browser…", detail: "Complete or refuse GitHub authorization in the browser. Desktop returns here only through the local PKCE callback.", action: "Waiting for browser…", actionIntent: "DesktopOpenAgentsSignInRequested", disabled: true, tone: "neutral", alert: false }
+    case "disconnecting":
+      return { status: "Disconnecting account…", detail: "Removing the OpenAgents session from encrypted local storage.", action: "Disconnecting…", actionIntent: "DesktopOpenAgentsSignOutRequested", disabled: true, tone: "neutral", alert: false }
+    case "unverified":
+      return { status: "Verifying stored session…", detail: "Checking the encrypted session with OpenAgents before authenticated services become available.", action: "Verifying…", actionIntent: "DesktopOpenAgentsSignInRequested", disabled: true, tone: "neutral", alert: false }
+    case "session_ready":
+      return { status: "OpenAgents account linked", detail: "Authenticated services are available. Linking never changes the local usage sharing setting below.", action: "Disconnect account", actionIntent: "DesktopOpenAgentsSignOutRequested", disabled: false, tone: "success", alert: false }
+    case "cancelled":
+      return { status: "Account linking not completed", detail: "GitHub authorization was cancelled or refused. No account was linked, and local usage sharing was not changed.", action: "Try again", actionIntent: "DesktopOpenAgentsSignInRequested", disabled: false, tone: "warn", alert: true }
+    case "denied":
+      return { status: "Session access removed", detail: "The stored OpenAgents session was refused or revoked. Link again to continue; local usage sharing was not changed.", action: "Link again", actionIntent: "DesktopOpenAgentsSignInRequested", disabled: false, tone: "warn", alert: true }
+    case "unavailable":
+      return { status: "Couldn’t link account", detail: "Account linking could not finish. No account was linked and local usage sharing remains separate.", action: "Try again", actionIntent: "DesktopOpenAgentsSignInRequested", disabled: false, tone: "warn", alert: true }
+    case "signed_out":
+      return { status: "Not linked", detail: "Linking opens GitHub authorization in your browser and returns an OpenAgents session through a local PKCE callback. Your GitHub password never enters Desktop, and linking does not turn on local usage sharing.", action: "Link OpenAgents account", actionIntent: "DesktopOpenAgentsSignInRequested", disabled: false, tone: "neutral", alert: false }
+  }
+}
+
 const openAgentsSessionSection = (
   phase: DesktopOpenAgentsSessionView,
 ): ReadonlyArray<View> => {
-  const label = phase === "session_ready"
-    ? "OpenAgents account linked"
-    : phase === "signed_out"
-      ? "Local device ready"
-      : phase === "denied"
-        ? "Session access removed"
-        : phase === "unverified"
-          ? "Verifying stored session…"
-          : phase === "authenticating"
-            ? "Waiting for secure browser…"
-            : phase === "loading"
-              ? "Checking session…"
-              : "Session unavailable"
-  const tone = phase === "session_ready" ? "success" as const
-    : phase === "denied" || phase === "unavailable" ? "warn" as const
-      : "neutral" as const
-  const blocked = phase === "loading" || phase === "authenticating" || phase === "unverified"
+  const presentation = openAgentsSessionPresentation(phase)
   return [
+    Text({
+      key: "settings-openagents-session-title",
+      content: "OpenAgents account",
+      variant: "label",
+      color: "textPrimary",
+    }),
+    Text({
+      key: "settings-openagents-session-copy",
+      content: presentation.detail,
+      variant: "body",
+      color: "textMuted",
+    }),
     Badge({
       key: "settings-openagents-session-status",
-      label,
-      tone,
-      a11y: { label },
+      label: presentation.status,
+      tone: presentation.tone,
+      a11y: { label: presentation.status },
     }),
     Button({
       key: "settings-openagents-session-action",
-      label: phase === "session_ready" ? "Disconnect account" : phase === "authenticating" ? "Working…" : "Link OpenAgents account",
+      label: presentation.action,
       variant: phase === "session_ready" ? "secondary" : "primary",
-      disabled: blocked,
-      onPress: IntentRef(phase === "session_ready" ? "DesktopOpenAgentsSignOutRequested" : "DesktopOpenAgentsSignInRequested"),
-      a11y: { label: phase === "session_ready" ? "Disconnect OpenAgents account and keep local work" : "Link an optional OpenAgents account for cross-device Sync" },
+      disabled: presentation.disabled,
+      onPress: IntentRef(presentation.actionIntent),
+      a11y: { label: presentation.actionIntent === "DesktopOpenAgentsSignOutRequested" ? "Disconnect OpenAgents account and keep local work" : "Link an optional OpenAgents account in a secure browser" },
     }),
   ]
 }
@@ -1709,6 +1745,8 @@ export const settingsView = (settings: SettingsState): View => {
           variant: "body",
           color: "textMuted",
         }),
+        Divider({ key: "settings-openagents-session-divider" }),
+        ...openAgentsSessionSection(settings.openAgentsSession),
         ...(settings.localCodexUsageControlAvailable
           ? [
               Divider({ key: "settings-local-usage-divider" }),

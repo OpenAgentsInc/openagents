@@ -58,6 +58,7 @@ import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
+import { openAgentsSessionPresentation } from "./settings.ts"
 
 export type ReactSessionRow = Readonly<{
   id: string
@@ -343,7 +344,9 @@ export const WorkbenchShell = ({ state, report }: {
     setRailOpen(false)
   }
   const workspaceSurface = state.workspace === "settings"
-      ? <main className="oa-react-workspace-surface oa-react-settings-khala" data-react-workspace="settings">
+      ? (() => {
+          const session = openAgentsSessionPresentation(state.settings.openAgentsSession)
+          return <main className="oa-react-workspace-surface oa-react-settings-khala" data-react-workspace="settings">
           <StaticKhalaDecoration view={settingsFrame} placement="settings-frame" />
           <header className="oa-react-settings-header">
             <StaticKhalaDecoration view={settingsHeaderAccent} placement="settings-header" />
@@ -361,6 +364,17 @@ export const WorkbenchShell = ({ state, report }: {
                   {harness.updateSupported ? <Button type="button" size="sm" disabled={state.settings.harnessMaintenance.updating !== null} onClick={() => dispatch(report, "DesktopHarnessUpdateRequested", harness.harness)}>Update</Button> : null}
                 </article>)}
             {state.settings.harnessMaintenance.lastOutcome === null ? null : <p role="status">{state.settings.harnessMaintenance.lastOutcome}</p>}
+          </section>
+          <section className="oa-react-settings-section" aria-labelledby="react-openagents-session-title" data-session-phase={state.settings.openAgentsSession}>
+            <h2 id="react-openagents-session-title">OpenAgents account</h2>
+            <p>{session.detail}</p>
+            <p role={session.alert ? "alert" : "status"} aria-live="polite">{session.status}</p>
+            <Button
+              type="button"
+              variant={state.settings.openAgentsSession === "session_ready" ? "outline" : "default"}
+              disabled={session.disabled}
+              onClick={() => dispatch(report, session.actionIntent)}
+            >{session.action}</Button>
           </section>
           {state.settings.localCodexUsageControlAvailable
             ? <section className="oa-react-settings-section" aria-labelledby="react-local-usage-title">
@@ -403,6 +417,7 @@ export const WorkbenchShell = ({ state, report }: {
                   </article>)}
           </section>
         </main>
+        })()
       : null
   const maintenance = state.settings.harnessMaintenance
   const codexReleaseNotes = maintenance.codexReleaseNotes ?? null
