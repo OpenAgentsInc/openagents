@@ -359,6 +359,8 @@ const QueryOverridesSchema = Schema.Struct({
   format: Schema.optionalKey(Schema.Literals(releaseFormats)),
 })
 type QueryOverrides = typeof QueryOverridesSchema.Type
+/** Explicit channel/target/format selection — shared with the /download page. */
+export type DesktopDownloadOverrides = QueryOverrides
 const decodeQueryExit = Schema.decodeUnknownExit(QueryOverridesSchema)
 
 const parseQueryOverrides = (url: URL): QueryOverrides | null => {
@@ -839,4 +841,24 @@ export const routeDesktopDownloadRequest = (
 ): Promise<Response | undefined> => {
   defaultResolver ??= createDesktopDownloadResolver()
   return defaultResolver.handle(request)
+}
+
+/**
+ * DIST-11 (#8924): direct server-side resolution for the SSR `/download`
+ * page loader. Shares the default resolver instance (and its verified
+ * snapshot cache) with the public API routes. Deliberately emits NO
+ * telemetry — rendering the page is not a download selection; the validated
+ * `artifact_redirect` event fires only when the user follows a rendered CTA
+ * through `DESKTOP_DOWNLOAD_ARTIFACT_PATH`.
+ */
+export const resolveDesktopDownloadForRequest = (
+  headers: Headers,
+  overrides: DesktopDownloadOverrides = {},
+): Promise<DesktopDownloadResolution> => {
+  defaultResolver ??= createDesktopDownloadResolver()
+  return defaultResolver.resolve(
+    overrides.channel ?? envConfig().defaultChannel,
+    headers,
+    overrides,
+  )
 }

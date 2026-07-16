@@ -471,7 +471,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   unavailable projections with no URL, per-channel TTL cache that never serves
   an expired snapshot, and schema-validated public-safe download telemetry —
   covered by `desktop-download-resolver.server.test.ts` including URL/hash/
-  target mutation proofs.
+  target mutation proofs. The public `/download` page consuming it (DIST-11,
+  #8924) renders exclusively from that resolver projection via an SSR route
+  loader (`routes/download.tsx` + `routes/-download-page.tsx`): a platform
+  renders as available exactly when the promoted release set carries its
+  target, unknown/unsupported clients get the explicit chooser or truthful
+  unavailable state, every CTA crosses the `/artifact` redirect (the sole
+  download-telemetry emission point — page render emits nothing), no
+  marketing surface carries a hard-coded version or artifact URL, and the
+  no-JavaScript/fetch-failure page is the same server-rendered honest state —
+  covered by `routes/-download.test.tsx`.
 - (DIST-01, #8914) Once DIST-13 lands, the only documented production Desktop
   release entrypoint is root `pnpm run release` mapped exactly to
   `node --import tsx scripts/release.ts`. It owns freeze, target-capable owned

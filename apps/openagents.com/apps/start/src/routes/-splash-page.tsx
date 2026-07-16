@@ -6,7 +6,6 @@ import {
   DOCS_URL,
   DOWNLOAD_URL,
   GITHUB_REPOSITORY_URL,
-  MAC_RELEASE,
 } from '@/lib/public-site'
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
 import { khalaTheme } from '@effect-native/tokens'
@@ -636,7 +635,7 @@ const splashQuestions = [
   ],
   [
     'What is available today?',
-    `The current ${MAC_RELEASE.version} release candidate is available for Apple silicon Macs. OpenAgents Desktop is still an MVP, so the download and documentation describe the supported boundary precisely.`,
+    'The current release candidate is available for Apple silicon Macs; the download page shows the exact version and platform availability from the signed release feed. OpenAgents Desktop is still an MVP, so the download and documentation describe the supported boundary precisely.',
   ],
 ] as const
 
@@ -912,7 +911,7 @@ export function SplashPage() {
         <InternalLink
           className="splash-primary-action"
           href={DOWNLOAD_URL}
-          preload="render"
+          preload="intent"
         >
           Download for Mac
           <ArrowRight aria-hidden="true" />

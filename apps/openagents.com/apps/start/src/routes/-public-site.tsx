@@ -7,7 +7,6 @@ import {
   DOCS_URL,
   DOWNLOAD_URL,
   GITHUB_REPOSITORY_URL,
-  MAC_RELEASE,
   PRODUCT_BOUNDARIES,
 } from '@/lib/public-site'
 
@@ -53,7 +52,7 @@ const questions = [
   ['Do I need an OpenAgents account?', 'Not for the Desktop MVP. It uses your ordinary logged-in Codex session and keeps the core workroom local-first.'],
   ['Can the review UI change my files?', 'No. Repository status and diff views are deliberately read-only. Changes still happen through the active agent turn, where the cause and result remain visible.'],
   ['What happens after a restart or interrupted turn?', 'OpenAgents restores stable session identity, then reconciles the latest known turn state. It does not silently replay tools or pretend interrupted work completed.'],
-  ['What is available today?', `The current ${MAC_RELEASE.version} release candidate is available for Apple silicon Macs. The product is still an MVP, so the download and docs describe the supported boundary precisely.`],
+  ['What is available today?', 'The current release candidate is available for Apple silicon Macs; the download page shows the exact version and platform availability from the signed release feed. The product is still an MVP, so the download and docs describe the supported boundary precisely.'],
 ] as const
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
@@ -75,8 +74,8 @@ export function DesktopLandingPage() {
             <p className="oa-kicker">Codex, made durable.</p>
             <h1>A serious place<br />for serious agent work.</h1>
             <p className="oa-hero-summary">OpenAgents Desktop is a local-first workroom around your ordinary Codex session—built to find work, follow the turn, review changes, and resume without losing the thread.</p>
-            <div className="oa-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="render">Download for Mac</InternalLink><InternalLink className="oa-button oa-button-secondary" href={DOCS_URL} preload="render">Read the docs</InternalLink></div>
-            <p className="oa-release-note">{MAC_RELEASE.version} · {MAC_RELEASE.architecture} release candidate</p>
+            <div className="oa-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="intent">Download for Mac</InternalLink><InternalLink className="oa-button oa-button-secondary" href={DOCS_URL} preload="render">Read the docs</InternalLink></div>
+            <p className="oa-release-note">Apple silicon release candidate · exact version on the download page</p>
           </div>
           <div className="oa-hero-signal" aria-hidden="true"><span>session.open</span><span>turn.streaming</span><span>change.reviewable</span><span>restart.reconciled</span></div>
         </div>
@@ -126,59 +125,13 @@ export function DesktopLandingPage() {
         <div className="oa-container oa-faq-layout"><div className="oa-faq-intro"><p>Questions and answers</p><h2 id="oa-faq-title">The important boundaries, plainly.</h2><InternalLink href={DOCS_URL} preload="render">Read the full documentation <span aria-hidden="true">→</span></InternalLink></div><div className="oa-question-list">{questions.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<span aria-hidden="true">＋</span></summary><p>{answer}</p></details>)}</div></div>
       </section>
 
-      <section className="oa-closing"><div className="oa-container oa-closing-layout"><div><p>Open source. Local first. Evidence backed.</p><h2>The work should survive the window.</h2></div><div className="oa-closing-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="render">Download for Mac</InternalLink><a className="oa-source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div></div></section>
+      <section className="oa-closing"><div className="oa-container oa-closing-layout"><div><p>Open source. Local first. Evidence backed.</p><h2>The work should survive the window.</h2></div><div className="oa-closing-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="intent">Download for Mac</InternalLink><a className="oa-source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div></div></section>
     </PublicSiteShell>
   )
 }
 
-export function DownloadPage() {
-  return (
-    <PublicSiteShell>
-      <section className="oa-download-page">
-        <div className="oa-container oa-download-shell">
-          <header className="oa-download-heading">
-            <h1>Download OpenAgents Desktop</h1>
-            <p>Available now for Apple silicon Macs.</p>
-          </header>
-
-          <div className="oa-platform-list" aria-label="Desktop downloads">
-            <div className="oa-platform-row">
-              <div className="oa-platform-name">
-                <span className="oa-platform-mark" aria-hidden="true">M</span>
-                <div><strong>macOS</strong><span>Apple silicon</span></div>
-              </div>
-              <span className="oa-platform-release">{MAC_RELEASE.version} · .dmg · {MAC_RELEASE.size}</span>
-              <a className="oa-platform-action" href={MAC_RELEASE.downloadUrl} rel="noreferrer">Download</a>
-            </div>
-
-            {[
-              ['M', 'macOS', 'Intel'],
-              ['W', 'Windows', 'x64'],
-              ['L', 'Linux', 'x64 · .deb / .rpm'],
-            ].map(([mark, platform, detail]) => (
-              <div className="oa-platform-row oa-platform-row-pending" key={`${platform}-${detail}`}>
-                <div className="oa-platform-name">
-                  <span className="oa-platform-mark" aria-hidden="true">{mark}</span>
-                  <div><strong>{platform}</strong><span>{detail}</span></div>
-                </div>
-                <span className="oa-platform-release">Not yet available</span>
-                <span className="oa-platform-action" aria-label={`${platform} ${detail} coming soon`}>Coming soon</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="oa-download-notes">
-            <p>Release candidate for early use. Open the DMG and move OpenAgents to Applications.</p>
-            <div>
-              <a href={MAC_RELEASE.releaseUrl} target="_blank" rel="noreferrer">Release notes <span aria-hidden="true">↗</span></a>
-              <InternalLink href={DOCS_URL} preload="render">Installation help <span aria-hidden="true">→</span></InternalLink>
-            </div>
-          </div>
-        </div>
-      </section>
-    </PublicSiteShell>
-  )
-}
+// DIST-11 (#8924): DownloadPage moved to `-download-page.tsx` — it now
+// renders exclusively from the signed-release resolver projection.
 
 export function HoldingPage() {
   return <main className="oa-holding"><div className="oa-holding-bg" /><div className="oa-holding-copy"><h1>OpenAgents</h1><p>be right back</p></div></main>

@@ -76,7 +76,7 @@ export function PublicHeader({
             <InternalLink
               className="oa-unified-download-link"
               href={DOWNLOAD_URL}
-              preload="render"
+              preload="intent"
             >
               Download
             </InternalLink>

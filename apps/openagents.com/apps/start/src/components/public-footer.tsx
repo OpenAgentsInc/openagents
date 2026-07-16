@@ -28,7 +28,7 @@ export function PublicFooter() {
           <InternalLink href="/blog" preload="render">
             Blog
           </InternalLink>
-          <InternalLink href={DOWNLOAD_URL} preload="render">
+          <InternalLink href={DOWNLOAD_URL} preload="intent">
             Download
           </InternalLink>
         </nav>

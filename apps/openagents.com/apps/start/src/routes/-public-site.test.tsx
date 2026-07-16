@@ -3,7 +3,7 @@ import path from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
-import { DesktopLandingPage, DownloadPage, HoldingPage } from './-public-site'
+import { DesktopLandingPage, HoldingPage } from './-public-site'
 
 describe('TanStack Start public site', () => {
   test('server-renders the complete Desktop MVP landing', () => {
@@ -15,7 +15,11 @@ describe('TanStack Start public site', () => {
     expect(html).toContain('Repository review never mutates the tree')
     expect(html).toContain('The important boundaries, plainly.')
     expect(html).toContain('The work should survive the window.')
-    expect(html).toContain('0.1.0-rc.13')
+    // DIST-11 (#8924): no hard-coded release version on marketing pages —
+    // /download renders the exact version from the signed release resolver.
+    expect(html).not.toMatch(/0\.1\.0-rc\.\d+/)
+    expect(html).toContain('exact version on the download page')
+    expect(html).toContain('href="/download"')
     expect(html).toContain('href="/docs"')
     expect(html).toContain('OpenAgents on GitHub')
     expect(html).toContain('OpenAgents on X')
@@ -44,30 +48,5 @@ describe('TanStack Start public site', () => {
     )
     expect(headerCss).toContain('position: fixed')
     expect(headerCss).toContain('.oa-unified-header-spacer')
-  })
-
-  test('download CTA resolves through the signed release resolver, never a pinned artifact URL', () => {
-    const html = renderToStaticMarkup(<DownloadPage />)
-
-    expect(html).toContain('Download OpenAgents Desktop')
-    expect(html).toContain('Available now for Apple silicon Macs.')
-    expect(html).toContain('>Download</a>')
-    expect(html).toContain('0.1.0-rc.13')
-    // DIST-10 (#8923): the primary CTA goes through the server-side resolver
-    // redirect bound to the promoted signed release feed — a committed
-    // absolute artifact URL can silently 404 (rc.17 did exactly that).
-    expect(html).toContain(
-      'href="/api/public/desktop-download/artifact?target=darwin-arm64&amp;format=dmg"',
-    )
-    expect(html).not.toContain('releases/download/')
-    expect(html).toContain('macOS')
-    expect(html).toContain('Intel')
-    expect(html).toContain('Windows')
-    expect(html).toContain('Linux')
-    expect(html.match(/Coming soon/g)).toHaveLength(3)
-    expect(html).not.toContain('Bring your Codex work')
-    expect(html).not.toContain('From download to workroom')
-    expect(html).toContain('href="/docs"')
-    expect(html).not.toContain('href="/install"')
   })
 })
