@@ -75,6 +75,9 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-16-desktop-local-usage-opt-in-verification.md`](./2026-07-16-desktop-local-usage-opt-in-verification.md)
+  — default-off privacy, admission, outbox, opt-out, and owner-gated live-proof
+  contract for Desktop local-turn usage ingestion under issue #8911.
 - [`2026-07-16-openagents-desktop-full-auto-deep-dive.md`](./2026-07-16-openagents-desktop-full-auto-deep-dive.md)
   — current source, runtime, test, release, and proof-rung audit of Desktop Full
   Auto; distinguishes restart-persistent intent from exactly-once,
