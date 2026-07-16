@@ -35,27 +35,41 @@ describe("Start components workbench routes", () => {
     expect(html).toContain('data-khala-canvas="puffs"');
   });
 
-  test("server-renders representative catalog anchors", () => {
+  test("server-renders the complete Effect Native storybook instead of metadata", () => {
     const core = renderToStaticMarkup(<ComponentsPage selectedFamily="core" />);
+    const components = core.match(/data-storybook-component=/g) ?? [];
+    const stories = core.match(/data-storybook-story=/g) ?? [];
+
+    expect(core).toContain('data-storybook-family="core"');
+    expect(components).toHaveLength(79);
+    expect(stories).toHaveLength(108);
+    expect(core).toContain('data-storybook-story="button-primary"');
+    expect(core).toContain('data-storybook-story="button-secondary"');
+    expect(core).toContain('data-storybook-story="button-ghost"');
+    expect(core).toContain("Mounting Composer preview");
+    expect(core).toContain("Mounting Transcript preview");
+    expect(core).toContain("Mounting DiffView preview");
+    expect(core).toContain("Mounting Modal preview");
+    expect(core).toContain("Inspect typed view");
+  });
+
+  test("server-renders visual token and renderer family workbenches", () => {
     const tokens = renderToStaticMarkup(<ComponentsPage selectedFamily="tokens" />);
     const dom = renderToStaticMarkup(<ComponentsPage selectedFamily="render-dom" />);
     const native = renderToStaticMarkup(<ComponentsPage selectedFamily="render-rn" />);
-
-    expect(core).toContain("Composer");
-    expect(core).toContain("Table");
-    expect(tokens).toContain("khalaTheme");
-    expect(dom).toContain("makeDomRenderer");
-    expect(native).toContain("makeReactNativeRenderer");
-  });
-
-  test("server-renders selected component families", () => {
-    const core = renderToStaticMarkup(<ComponentsPage selectedFamily="core" />);
-    const tokens = renderToStaticMarkup(<ComponentsPage selectedFamily="tokens" />);
     const training = renderToStaticMarkup(<ComponentsPage selectedFamily="training" />);
 
-    expect(core).toContain("Effect Native core");
-    expect(core).toContain("No renderer-specific markup");
-    expect(tokens).toContain("One semantic token authority");
-    expect(training).toContain("three-effect owns visuals");
+    expect(tokens).toContain('data-storybook-family="tokens"');
+    expect(tokens).toContain("Color roles");
+    expect(tokens).toContain("Type scale");
+    expect(tokens).toContain("Spacing");
+    expect(tokens).toContain("Radius");
+    expect(dom).toContain('data-storybook-family="render-dom"');
+    expect(dom.match(/data-storybook-story=/g)).toHaveLength(108);
+    expect(native).toContain('data-storybook-family="render-rn"');
+    expect(native.match(/data-storybook-story=/g)).toHaveLength(108);
+    expect(training).toContain('data-storybook-family="training"');
+    expect(training).toContain("Mounting GraphFigure preview");
+    expect(training).toContain("Mounting Timeline preview");
   });
 });

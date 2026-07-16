@@ -5686,7 +5686,7 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
             state.dispose()
           })
         )
-        if (window !== null) {
+        if (window !== null && options.viewport === undefined) {
           const updateViewport = () => {
             runEffect(viewport.set(readDomViewport(document)).pipe(Effect.ignoreCause))
           }

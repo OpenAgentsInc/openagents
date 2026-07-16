@@ -79,6 +79,10 @@ not current queues:
   — deterministic implementation proof for the complete 30-capability,
   non-audio Khala UI workbench at `/components/khala`, its seven-package Effect
   Native vendor boundary, and its React/Electron-compatible lifecycle contract.
+- [`2026-07-15-effect-native-storybook-workbench-receipt.md`](./2026-07-15-effect-native-storybook-workbench-receipt.md)
+  — implementation and release proof for the rendered 79-component,
+  108-story Effect Native workbench at `/components/core` and its renderer,
+  training, and visual-token family surfaces.
 
 - [`2026-07-15-tanstack-start-unified-docs-migration-receipt.md`](./2026-07-15-tanstack-start-unified-docs-migration-receipt.md)
   — live closure evidence for the unified TanStack Start documentation reader,
