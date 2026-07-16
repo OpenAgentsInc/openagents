@@ -132,6 +132,7 @@ import {
   isCodexModel,
 } from "./fable-local-contract.ts"
 import { makeProviderLaneDispatcher, type ProviderLane } from "./provider-lane.ts"
+import { makeAcpProviderLane } from "./provider-lane-acp.ts"
 import {
   projectSpecLaneTurn,
   specLaneRevalidationNote,
@@ -2716,7 +2717,11 @@ ipcMain.handle(FableLocalPickImagesChannel, async (event) => {
 })
 ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
   const request = decodeFableLocalInterruptRequest(value)
-  return request === null ? false : fableLocal.interrupt(request.turnRef)
+  return request === null
+    ? false
+    : fableLocal.interrupt(request.turnRef) ||
+      grokAcpDriver.interrupt(request.turnRef) ||
+      cursorAcpDriver.interrupt(request.turnRef)
 })
 // EP250 question flow: the renderer's answer to a pending AskUserQuestion
 // routes to the runtime's pending-question registry. Schema-checked; an
@@ -2985,10 +2990,11 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
 ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
   if (request === null) return { ok: false, error: "That message could not be sent." }
-  if (providerLaneRegistry.selection(request.threadRef) !== "fable-local") {
-    return { ok: false, error: "This thread is assigned to a different provider lane." }
-  }
-  return laneDispatcher.dispatchTurn(fableLocalLane, request, event.sender)
+  const laneRef = providerLaneRegistry.selection(request.threadRef)
+  if (laneRef === "fable-local") return laneDispatcher.dispatchTurn(fableLocalLane, request, event.sender)
+  if (laneRef === "acp:grok-cli") return laneDispatcher.dispatchTurn(grokAcpFableEventLane, request, event.sender)
+  if (laneRef === "acp:cursor-agent") return laneDispatcher.dispatchTurn(cursorAcpFableEventLane, request, event.sender)
+  return { ok: false, error: "This thread is assigned to a different provider lane." }
 })
 
 // Codex local lane (EP250 codex-first-class): a REAL `codex exec --json`
@@ -3022,7 +3028,11 @@ ipcMain.handle(CodexLocalAvailabilityChannel, async () => {
 })
 ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
   const request = decodeFableLocalInterruptRequest(value)
-  return request === null ? false : codexLocal.interrupt(request.turnRef)
+  return request === null
+    ? false
+    : codexLocal.interrupt(request.turnRef) ||
+      grokAcpDriver.interrupt(request.turnRef) ||
+      cursorAcpDriver.interrupt(request.turnRef)
 })
 ipcMain.handle(CodexLocalSteerTurnChannel, async (_event, value: unknown) => {
   const request = decodeFableLocalQueueFollowupRequest(value)
@@ -3343,6 +3353,84 @@ const codexLocalLane: ProviderLane<null> = {
   },
 }
 
+const acpLaneCapabilities = (
+  provider: "grok" | "cursor",
+): import("./provider-lane.ts").ProviderLaneCapabilityReport => {
+  const grok = provider === "grok"
+  const laneRef = grok ? "acp:grok-cli" : "acp:cursor-agent"
+  const model = grok ? "grok-default" : "cursor-auto"
+  return {
+    laneRef,
+    provider,
+    models: [model],
+    features: {
+      skills: false,
+      planOnly: false,
+      reasoningEffort: false,
+      images: false,
+      fullAuto: true,
+      interrupt: true,
+      queueFollowup: false,
+      steerTurn: false,
+      steerChild: false,
+      answerQuestion: false,
+    },
+    composer: {
+      displayName: grok ? "Grok CLI" : "Cursor Agent CLI",
+      reasoningEfforts: [],
+      permissionModes: ["owner_full"],
+      approvals: "none",
+      extensions: [],
+    },
+    policy: {
+      source: "trusted-acp-peer-profile",
+      profileRef: grok ? "grok-cli" : "cursor-agent",
+      evidence: "experimental",
+      allowedModels: [model],
+      allowedFeatures: ["fullAuto", "interrupt"],
+      allowedExtensions: [],
+    },
+    recovery: grok ? "provider_session_replay" : "interrupt_on_restart",
+  }
+}
+
+const grokAcpDriver = acpProviderHost.driver("grok")
+const cursorAcpDriver = acpProviderHost.driver("cursor")
+const grokAcpLane = makeAcpProviderLane({
+  laneRef: "acp:grok-cli",
+  graphLaneRef: "grok_acp",
+  eventChannel: CodexLocalEventChannel,
+  capabilities: acpLaneCapabilities("grok"),
+  driver: grokAcpDriver,
+})
+const cursorAcpLane = makeAcpProviderLane({
+  laneRef: "acp:cursor-agent",
+  graphLaneRef: "cursor_acp",
+  eventChannel: CodexLocalEventChannel,
+  capabilities: acpLaneCapabilities("cursor"),
+  driver: cursorAcpDriver,
+})
+// The renderer's local harness subscribes to the channel associated with the
+// currently selected built-in shell harness. These event-channel-only views
+// keep an ACP-selected thread stream visible regardless of which built-in
+// harness was selected before the registry switch; execution remains the one
+// shared main-owned driver and ProviderLane implementation.
+const grokAcpFableEventLane: ProviderLane<null> = {
+  ...grokAcpLane,
+  eventChannel: FableLocalEventChannel,
+}
+const cursorAcpFableEventLane: ProviderLane<null> = {
+  ...cursorAcpLane,
+  eventChannel: FableLocalEventChannel,
+}
+
+const providerLaneCapabilityByRef = (laneRef: string) =>
+  laneRef === "codex-local" ? codexLocalLane.capabilities()
+    : laneRef === "fable-local" ? fableLocalLane.capabilities()
+      : laneRef === "acp:grok-cli" ? grokAcpLane.capabilities()
+        : laneRef === "acp:cursor-agent" ? cursorAcpLane.capabilities()
+          : null
+
 const providerLaneEntries = async (): Promise<ReadonlyArray<ProviderLaneRegistryEntry>> => {
   const lanes = [fableLocalLane, codexLocalLane] as const
   const nativeEntries: ReadonlyArray<ProviderLaneRegistryEntry> = lanes.map(lane => {
@@ -3359,41 +3447,38 @@ const providerLaneEntries = async (): Promise<ReadonlyArray<ProviderLaneRegistry
       capabilities,
     }
   })
-  // ACP peer profiles are registry facts even before a runnable peer adapter
-  // is configured. Keeping them visible is what distinguishes "not set up"
-  // from absence; no capability or admission is inferred from profile
-  // existence alone. #8894 ships the Cursor profile/runtime package, but no
-  // Desktop session adapter is configured yet; a later adapter replaces the
-  // matching row without changing this registry contract.
-  const unavailableAcpPeer = (
-    laneRef: string,
-    provider: string,
-    profileRef: string,
-    displayName: string,
-  ): ProviderLaneRegistryEntry => ({
-    laneRef,
-    provider,
-    profileRef,
-    configuration: "unconfigured",
-    authentication: "unknown",
-    admission: "quarantined",
-    reason: `${displayName} has a trusted peer profile but no configured Desktop session lane.`,
-    capabilities: {
-      laneRef,
-      provider,
-      displayName,
-      admission: "quarantined",
-      reason: `${displayName} has a trusted peer profile but no configured Desktop session lane.`,
-      models: [], reasoningEfforts: [], permissionModes: [], approvals: "none",
-      questions: false, skills: false, images: false, fullAuto: false,
-      interrupt: false, queueFollowup: false, steerTurn: false,
-      extensions: [], evidence: "experimental",
-    },
-  })
+  await ensureAcpProviders()
+  const providerStatus = acpProviderHost.status()
+  const acpPeerEntry = (lane: ProviderLane<null>): ProviderLaneRegistryEntry => {
+    const report = lane.capabilities()
+    const capabilities = projectProviderLaneCapabilities(report)
+    const status = providerStatus.providers.find(provider => provider.profileRef === report.policy.profileRef)
+    const detected = status?.install === "detected"
+    const compatible = status?.profileState === "supported" || status?.profileState === "experimental"
+    const reason = capabilities.reason
+      ?? (!detected ? `${report.composer.displayName} is not installed or has not passed its executable probe.`
+        : !compatible ? `${report.composer.displayName} does not match an admitted pinned peer profile.`
+          : null)
+    const admission = reason === null ? capabilities.admission : "quarantined"
+    return {
+      laneRef: lane.laneRef,
+      provider: report.provider,
+      profileRef: report.policy.profileRef,
+      configuration: detected && compatible ? "configured" : "unconfigured",
+      authentication: status?.auth.state === "authenticated"
+        ? "ready"
+        : status?.auth.state === "required" || status?.auth.state === "failed"
+          ? "missing"
+          : "unknown",
+      admission,
+      reason,
+      capabilities: { ...capabilities, admission, reason },
+    }
+  }
   return [
     ...nativeEntries,
-    unavailableAcpPeer("acp:grok-cli", "grok", "grok-cli", "Grok CLI"),
-    unavailableAcpPeer("acp:cursor-agent", "cursor", "cursor-agent", "Cursor Agent"),
+    acpPeerEntry(grokAcpLane),
+    acpPeerEntry(cursorAcpLane),
   ]
 }
 
@@ -3516,15 +3601,11 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       // against the live contract enums (a field that no longer decodes
       // falls back to lane defaults instead of failing the loop).
       const laneRef = profile?.lane ?? FULL_AUTO_DEFAULT_LANE
-      const lane = laneRef === "codex-local"
-        ? codexLocalLane
-        : laneRef === "fable-local"
-        ? fableLocalLane
-        : null
+      const report = providerLaneCapabilityByRef(laneRef)
       const policy = fullAutoLanePolicy(laneRef)
-      const projection = lane === null ? null : projectProviderLaneCapabilities(lane.capabilities())
+      const projection = report === null ? null : projectProviderLaneCapabilities(report)
       if (
-        lane === null || policy === null || !policy.autoResolveQuestions ||
+        report === null || policy === null || !policy.autoResolveQuestions ||
         projection?.admission !== "admitted" || projection.fullAuto !== true
       ) {
         return { ok: false, reason: `full_auto_lane_not_eligible:${laneRef}` }
@@ -3548,7 +3629,8 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
                 : {}),
             }, null)
           })()
-        : await (async () => {
+        : laneRef === "fable-local"
+        ? await (async () => {
             const model = profile?.model !== undefined && isClaudeModel(profile.model)
               ? profile.model
               : FABLE_LOCAL_MODEL
@@ -3563,6 +3645,16 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
                 : { target: { provider: "claude_agent" as const, accountRef: profile.accountRef, model } }),
             }, null)
           })()
+        : await laneDispatcher.dispatchTurn(
+          laneRef === "acp:grok-cli" ? grokAcpLane : cursorAcpLane,
+          {
+            turnRef,
+            threadRef,
+            message,
+            fullAuto: true,
+          },
+          null,
+        )
       // FA-H4: success transitions here; every failure path (thrown OR
       // ok:false, including the in-flight refusal above) transitions in
       // onDispatchFailed below, so the two never double-report.
@@ -3623,10 +3715,11 @@ void localTurnRecovery.then(() => runFullAutoReconciliation({ startup: true })).
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
   if (request === null) return { ok: false, error: "That message could not be sent." }
-  if (providerLaneRegistry.selection(request.threadRef) !== "codex-local") {
-    return { ok: false, error: "This thread is assigned to a different provider lane." }
-  }
-  return dispatchCodexLocalTurn(request, event.sender)
+  const laneRef = providerLaneRegistry.selection(request.threadRef)
+  if (laneRef === "codex-local") return dispatchCodexLocalTurn(request, event.sender)
+  if (laneRef === "acp:grok-cli") return laneDispatcher.dispatchTurn(grokAcpLane, request, event.sender)
+  if (laneRef === "acp:cursor-agent") return laneDispatcher.dispatchTurn(cursorAcpLane, request, event.sender)
+  return { ok: false, error: "This thread is assigned to a different provider lane." }
 })
 
 // Full Auto (#8853): the composer toggle persists here immediately, whether

@@ -18,9 +18,17 @@ import type {
   AcpPeerAdmissionDecision,
 } from "@openagentsinc/agent-client-protocol/profiles";
 import type {
+  AcpProjectionEvent,
   AcpLifecycleOutcome,
   AcpRuntimeEvidence,
+  AcpSessionUpdateRecord,
   AcpSessionSnapshot,
+} from "@openagentsinc/agent-client-runtime-bridge";
+import {
+  AcpRuntimeProjector,
+  bindAcpSession,
+  createAcpRuntimeNativeEnvelope,
+  createBoundedAcpNativeEvidenceStore,
 } from "@openagentsinc/agent-client-runtime-bridge";
 
 import {
@@ -31,6 +39,7 @@ import {
   type AcpProviderProjection,
   type AcpSupportBundle,
 } from "./acp-provider-contract.ts";
+import type { AcpProviderLaneDriver } from "./provider-lane-acp.ts";
 
 type Admitted = Extract<AcpPeerAdmissionDecision, { _tag: "PeerAdmitted" }>;
 type PeerRuntime = GrokAcpPeerRuntime | CursorAcpPeerRuntime;
@@ -42,11 +51,16 @@ export type AcpProviderHostDependencies = Readonly<{
   probeCursor?: (candidatePath?: string) => Promise<AcpExecutableProbe>;
   admitGrok?: (probe: AcpExecutableProbe) => Promise<Admitted>;
   admitCursor?: (probe: AcpExecutableProbe) => Promise<Admitted>;
-  createGrok?: (cwd: string, admission: Admitted) => Promise<GrokAcpPeerRuntime>;
+  createGrok?: (
+    cwd: string,
+    admission: Admitted,
+    onUpdate: (record: AcpSessionUpdateRecord) => void | Promise<void>,
+  ) => Promise<GrokAcpPeerRuntime>;
   createCursor?: (
     cwd: string,
     admission: Admitted,
     onAuth: (state: "pending" | "cancelled") => void,
+    onUpdate: (record: AcpSessionUpdateRecord) => void | Promise<void>,
   ) => Promise<CursorAcpPeerRuntime>;
   chooseExecutable?: (provider: AcpProviderId) => Promise<string | null>;
   loadAlternatePaths?: () => Promise<Partial<Record<AcpProviderId, string>>>;
@@ -105,6 +119,51 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
     cursor: { projection: initialProjection("cursor"), receiptRefs: [], evidenceRefs: [] },
   };
   const alternatePaths: Partial<Record<AcpProviderId, string>> = {};
+  const nativeEvidence = createBoundedAcpNativeEvidenceStore({
+    maxEntries: 2_048,
+    maxBytes: 16 * 1_048_576,
+  });
+  const activeTurns = new Map<AcpProviderId, Readonly<{
+    turnRef: string;
+    sessionRef: string;
+    connectionRef: string;
+    processGeneration: number;
+    projector: AcpRuntimeProjector;
+    emit: (event: AcpProjectionEvent) => void;
+  }>>();
+  const interruptibleTurns = new Map<string, Readonly<{
+    provider: AcpProviderId;
+    sessionRef: string;
+  }>>();
+
+  const projectRuntimeUpdate = async (
+    provider: AcpProviderId,
+    record: AcpSessionUpdateRecord,
+  ): Promise<void> => {
+    const active = activeTurns.get(provider);
+    if (active === undefined || record.sessionId !== active.sessionRef) return;
+    const update = typeof record.update === "object" && record.update !== null
+      ? record.update as Record<string, unknown>
+      : {};
+    const envelope = createAcpRuntimeNativeEnvelope({
+      profile: provider,
+      protocolVersion: 1,
+      connectionRef: active.connectionRef,
+      processGeneration: active.processGeneration,
+      method: "session/update",
+      updateId: `${active.processGeneration}-${record.sequence}`,
+      sessionId: record.sessionId,
+      observedAt: now().toISOString(),
+      discriminant: typeof update.sessionUpdate === "string"
+        ? update.sessionUpdate
+        : "unknown_session_update",
+      validatedPayload: update,
+      validationStatus: record.disposition === "applied" ? "validated" : "decode-failure",
+    });
+    if ("kind" in envelope) return;
+    const projected = await active.projector.apply({ envelope, sequence: record.sequence });
+    for (const event of projected.events) active.emit(event);
+  };
 
   const projectRuntime = (provider: AcpProviderId): void => {
     const slot = slots[provider];
@@ -256,29 +315,36 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
       provider === "grok"
         ? await (
             dependencies.createGrok ??
-            ((root, admission) =>
+            ((root, admission, onUpdate) =>
               createGrokAcpPeerRuntime({
                 cwd: root,
                 admission,
+                onUpdate,
                 environment: { HOME: process.env.HOME, XAI_API_KEY: process.env.XAI_API_KEY },
                 apiKeyConfigured:
                   typeof process.env.XAI_API_KEY === "string" && process.env.XAI_API_KEY.length > 0,
               }))
-          )(cwd, slot.admission)
+          )(cwd, slot.admission, (record) => projectRuntimeUpdate(provider, record))
         : await (
             dependencies.createCursor ??
-            ((root, admission, onAuth) =>
+            ((root, admission, onAuth, onUpdate) =>
               createCursorAcpPeerRuntime({
                 cwd: root,
                 admission,
+                onUpdate,
                 authorizeLogin: async () => {
                   onAuth("pending");
                   return "continue";
                 },
               }))
-          )(cwd, slot.admission, (state) => {
-            slot.projection = { ...slot.projection, auth: { ...slot.projection.auth, state } };
-          });
+          )(
+            cwd,
+            slot.admission,
+            (state) => {
+              slot.projection = { ...slot.projection, auth: { ...slot.projection.auth, state } };
+            },
+            (record) => projectRuntimeUpdate(provider, record),
+          );
     const started = await slot.runtime.start();
     slot.receiptRefs = slot.runtime
       .receipts()
@@ -420,10 +486,117 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
         evidenceRefs: slots[provider].evidenceRefs,
       })),
     });
+  const driver = (provider: AcpProviderId): AcpProviderLaneDriver => ({
+    runTurn: async (input) => {
+      if (activeTurns.has(provider)) {
+        return { ok: false, reason: "session_failed", detail: "This ACP provider already has an active turn." };
+      }
+      const runtime = await ensureRuntime(provider);
+      if (runtime === undefined) {
+        return { ok: false, reason: "session_failed", detail: "Provider authentication or startup failed." };
+      }
+      let session = runtime.sessions().find((candidate) => candidate.threadId === input.threadRef);
+      if (session === undefined) {
+        const created = await runtime.newSession({
+          cwd: await dependencies.cwd(),
+          canonicalThreadSeed: input.threadRef,
+        });
+        if (!created.ok) {
+          return {
+            ok: false,
+            reason: created.reason === "timed_out" ? "timeout" : "session_failed",
+            detail: created.safeDetail,
+          };
+        }
+        session = created.value;
+        projectRuntime(provider);
+      }
+      const evidence = runtime.evidence();
+      if (evidence === undefined) {
+        return { ok: false, reason: "session_failed", detail: "Provider runtime evidence is unavailable." };
+      }
+      const binding = bindAcpSession({
+        profile: provider,
+        processGeneration: evidence.runtimeGeneration,
+        connectionRef: evidence.connectionRef,
+        peerSessionId: session.peerSessionId,
+        canonicalThreadSeed: input.threadRef,
+      });
+      const projector = new AcpRuntimeProjector({
+        binding,
+        turnSeed: input.turnRef,
+        store: nativeEvidence,
+      });
+      let text = "";
+      const emit = (event: AcpProjectionEvent): void => {
+        if (event.kind === "text.delta") text += event.text;
+        input.emit(event);
+      };
+      activeTurns.set(provider, {
+        turnRef: input.turnRef,
+        sessionRef: session.peerSessionId,
+        connectionRef: evidence.connectionRef,
+        processGeneration: evidence.runtimeGeneration,
+        projector,
+        emit,
+      });
+      interruptibleTurns.set(input.turnRef, { provider, sessionRef: session.peerSessionId });
+      emit(await projector.begin(now().toISOString()));
+      try {
+        const outcome = await runtime.prompt(session.peerSessionId, [{ type: "text", text: input.message }]);
+        const stopReason = outcome.ok ? outcome.value.stopReason : outcome.reason;
+        const settlement = createAcpRuntimeNativeEnvelope({
+          profile: provider,
+          protocolVersion: 1,
+          connectionRef: evidence.connectionRef,
+          processGeneration: evidence.runtimeGeneration,
+          method: "session/prompt",
+          requestId: input.turnRef,
+          updateId: `prompt-result-${input.turnRef}`,
+          sessionId: session.peerSessionId,
+          observedAt: now().toISOString(),
+          discriminant: `prompt_response/${stopReason}`,
+          validatedPayload: { stopReason },
+          validationStatus: "validated",
+        });
+        if (!("kind" in settlement)) {
+          for (const event of await projector.settle(settlement, stopReason)) emit(event);
+        }
+        projectRuntime(provider);
+        if (!outcome.ok) {
+          return {
+            ok: false,
+            reason: outcome.reason === "cancelled"
+              ? "interrupted"
+              : outcome.reason === "timed_out"
+                ? "timeout"
+                : "session_failed",
+            detail: outcome.safeDetail,
+          };
+        }
+        return {
+          ok: true,
+          text,
+          totalTokens: null,
+          providerSessionRef: session.peerSessionId,
+        };
+      } finally {
+        activeTurns.delete(provider);
+        interruptibleTurns.delete(input.turnRef);
+      }
+    },
+    interrupt: (turnRef) => {
+      const active = interruptibleTurns.get(turnRef);
+      const runtime = active === undefined ? undefined : slots[active.provider].runtime;
+      if (active === undefined || runtime === undefined) return false;
+      void runtime.cancel(active.sessionRef, "user");
+      return true;
+    },
+  });
   const shutdown = async () => {
     await Promise.all(
       Object.values(slots).map((slot) => slot.runtime?.shutdown().catch(() => undefined)),
     );
   };
-  return Object.freeze({ initialize, status, action, supportBundle, shutdown });
+  return Object.freeze({ initialize, status, action, supportBundle, driver, shutdown });
 };

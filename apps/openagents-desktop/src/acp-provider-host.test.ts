@@ -29,7 +29,7 @@ const admission = (provider: "grok" | "cursor") =>
     },
   }) as any;
 
-const fakeRuntime = (provider: "grok" | "cursor") => {
+const fakeRuntime = (provider: "grok" | "cursor", calls: string[] = []) => {
   const sessions: any[] = [];
   const receipts: any[] = [];
   const evidence = {
@@ -72,6 +72,14 @@ const fakeRuntime = (provider: "grok" | "cursor") => {
       sessions.push(session);
       receipts.push({ method: "session/new" });
       return { ok: true, value: session, receipt: { evidenceRefs: [] } };
+    },
+    prompt: async (_sessionRef: string, blocks: ReadonlyArray<{ text?: string }>) => {
+      calls.push(`prompt:${blocks[0]?.text ?? ""}`);
+      return {
+        ok: true,
+        value: { stopReason: "end_turn", terminal: "completed" },
+        receipt: { evidenceRefs: [] },
+      };
     },
     logout: async () => ({ ok: false, reason: "unsupported", receipt: { evidenceRefs: [] } }),
     cancel: async () => ({ ok: true, value: undefined, receipt: { evidenceRefs: [] } }),
@@ -138,5 +146,32 @@ describe("main-owned ACP provider host", () => {
     expect(serialized).not.toContain("cached_token");
     expect(serialized).not.toContain("XAI_API_KEY");
     expect(serialized).not.toContain("cursor_login");
+  });
+
+  test("drives a canonical ProviderLane turn through the admitted peer runtime", async () => {
+    const calls: string[] = [];
+    const host = createAcpProviderHost({
+      cwd: async () => "/workspace",
+      now: () => new Date("2026-07-16T12:00:00.000Z"),
+      probeGrok: async () => probe("grok"),
+      probeCursor: async () => probe("cursor"),
+      admitGrok: async () => admission("grok"),
+      admitCursor: async () => admission("cursor"),
+      createGrok: async () => fakeRuntime("grok", calls),
+      createCursor: async () => fakeRuntime("cursor"),
+    });
+    const events: string[] = [];
+    const result = await host.driver("grok").runTurn({
+      threadRef: "thread-1",
+      turnRef: "turn-1",
+      model: "grok-default",
+      history: [],
+      message: "continue",
+      background: true,
+      emit: (event) => events.push(event.kind),
+    });
+    expect(result).toMatchObject({ ok: true, providerSessionRef: "peer.grok.1" });
+    expect(events).toEqual(["turn.started", "raw.sidecar_ref", "turn.finished"]);
+    expect(calls).toEqual(["prompt:continue"]);
   });
 });

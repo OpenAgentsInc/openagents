@@ -34,6 +34,14 @@ export const FULL_AUTO_LANE_POLICIES: Readonly<Record<string, FullAutoLanePolicy
     instruction: `${SHARED_INSTRUCTION} Use available Claude Code skills only when they are already enabled for this workspace.`,
     autoResolveQuestions: true,
   },
+  "acp:grok-cli": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities admitted by the pinned Grok CLI peer profile.`,
+    autoResolveQuestions: true,
+  },
+  "acp:cursor-agent": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities admitted by the pinned Cursor Agent CLI peer profile.`,
+    autoResolveQuestions: true,
+  },
 }
 
 export const fullAutoLanePolicy = (laneRef: string): FullAutoLanePolicy | null =>
