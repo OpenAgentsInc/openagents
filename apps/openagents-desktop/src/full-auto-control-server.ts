@@ -14,6 +14,7 @@ import {
   FULL_AUTO_CONTROL_SCHEMA,
   FULL_AUTO_CONTROL_TURNS_LIMIT,
   decodeFullAutoControlEnableRequest,
+  decodeFullAutoControlStartRequest,
   decodeFullAutoControlThreadRef,
   type FullAutoControlError,
   type FullAutoControlLive,
@@ -124,6 +125,9 @@ export type FullAutoControlCapabilities = Readonly<{
   listTurns: (threadRef: string) => ReadonlyArray<LocalTurnRecord>
   /** Durable owner-visible receipt on the thread (appendFullAutoSystemNote). */
   appendSystemNote: (threadRef: string, text: string) => void
+  /** start bootstrap: mint a brand-new local thread in main's own thread
+   * store (main mints the ref -- callers never name one) and return its ref. */
+  createThread: (title: string | null) => string
 }>
 
 export type StartFullAutoControlServerInput = Readonly<{
@@ -284,6 +288,57 @@ export const startFullAutoControlServer = (
         schema: FULL_AUTO_CONTROL_SCHEMA,
         records: capabilities.registry.list().map(record =>
           projectRecord(record, capabilities.liveState(record.threadRef))),
+      })
+      return
+    }
+
+    if (url.pathname === "/v1/full-auto/start") {
+      if (method !== "post") {
+        sendError(response, 405, { error: "method_not_allowed", message: "Use POST." })
+        return
+      }
+      const body = decodeFullAutoControlStartRequest(await readJsonBody(request))
+      if (body === null) {
+        sendError(response, 400, {
+          error: "invalid_request",
+          message:
+            "start requires a JSON body naming the expected workspace: { workspaceRef, title? }.",
+        })
+        return
+      }
+      // Same fail-closed rule as enable: name the workspace or nothing
+      // happens. On mismatch NO thread is created and NO record is written.
+      const resolvedWorkspaceRef = capabilities.resolveWorkspaceRef()
+      if (body.workspaceRef !== resolvedWorkspaceRef) {
+        auditLog("start", "-", "refused workspace_mismatch")
+        sendError(response, 409, {
+          error: "workspace_mismatch",
+          message:
+            "The named workspace does not match the currently resolved workspace; no thread was " +
+            "created and Full Auto was NOT started. Start is a refusal on mismatch, never a " +
+            "redirect or a new grant.",
+          expectedWorkspaceRef: body.workspaceRef,
+          resolvedWorkspaceRef,
+        })
+        return
+      }
+      // Bootstrap: main mints the thread, the same registry.set path as the
+      // composer toggle binds workspace + enables, and the shared serialized
+      // reconcile pass dispatches the first continuation.
+      const startedThreadRef = capabilities.createThread(body.title ?? null)
+      const record = capabilities.registry.set(startedThreadRef, true, {
+        workspaceRef: resolvedWorkspaceRef,
+      })
+      capabilities.appendSystemNote(
+        startedThreadRef,
+        `Full Auto started programmatically via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+      )
+      void capabilities.triggerReconciliation().catch(() => {})
+      auditLog("start", startedThreadRef, "ok")
+      sendJson(response, 200, {
+        schema: FULL_AUTO_CONTROL_SCHEMA,
+        ok: true,
+        record: projectRecord(record, capabilities.liveState(startedThreadRef)),
       })
       return
     }

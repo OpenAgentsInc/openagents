@@ -46,13 +46,14 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-24",
       "FA-AC-25",
       "FA-AC-26",
-      "FA-AC-27"
+      "FA-AC-27",
+      "FA-AC-28"
     ],
-    "document_digest": "sha256:9f9d263e065efc1788c815fbdad9fa4df33e0b933478c424fdf9e8709ca88849",
+    "document_digest": "sha256:c3a3581a035a7107f3ccb12cf90b3bf00e4ce147a2929b4659b1f0de57c0bd79",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 6
+    "spec_revision": 7
   }
 }
 ```
@@ -158,6 +159,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/codex-handoff-integration.test.ts",
       "apps/openagents-desktop/src/codex-handoff.test.ts",
       "apps/openagents-desktop/src/codex-history-host.test.ts",
+      "apps/openagents-desktop/src/codex-history-plan-projection.test.ts",
       "apps/openagents-desktop/src/codex-history-utility.test.ts",
       "apps/openagents-desktop/src/codex-host-contract.test.ts",
       "apps/openagents-desktop/src/codex-host-services.test.ts",
@@ -178,6 +180,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/extension-lifecycle-contract.test.ts",
       "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
       "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts",
       "apps/openagents-desktop/src/git-github-contract.test.ts",
       "apps/openagents-desktop/src/git-github-host.test.ts",
       "apps/openagents-desktop/src/git-review-corpus.node.test.ts",
@@ -479,9 +482,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/workers/api/src/artanis-forum-listener.test.ts",
       "apps/openagents.com/workers/api/src/artanis-forum-publication.test.ts",
       "apps/openagents.com/workers/api/src/artanis-forum-responder-khala.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-reward-smoke.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-reward-visibility.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-verification.test.ts"
+      "apps/openagents.com/workers/api/src/artanis-forum-reward-smoke.test.ts"
     ],
     "declared_scripts": [
       {
@@ -735,6 +736,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "dev"
       },
       {
+        "command": "node --import tsx scripts/full-auto-cli.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "full-auto"
+      },
+      {
         "command": "node --import tsx scripts/generate-codex-conformance-report.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
         "name": "generate:codex-conformance"
@@ -813,6 +819,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "node --import tsx scripts/codex-turn-control-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
         "name": "smoke:codex-turn-control"
+      },
+      {
+        "command": "node --import tsx scripts/full-auto-control-smoke.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "smoke:full-auto-control"
       },
       {
         "command": "node --import tsx scripts/full-auto-restart-smoke.ts",
@@ -1690,6 +1701,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "check:agent-client-protocol"
       },
       {
+        "command": "pnpm --dir packages/agent-client-protocol-conformance run check:artifacts",
+        "manifest_path": "package.json",
+        "name": "check:agent-client-protocol-conformance"
+      },
+      {
         "command": "pnpm --dir packages/codex-app-server-protocol run check:generated",
         "manifest_path": "package.json",
         "name": "check:codex-app-server-protocol"
@@ -1700,7 +1716,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "check:deploy"
       },
       {
-        "command": "vp lint --quiet && pnpm run check:agent-client-protocol && pnpm run check:codex-app-server-protocol && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/google-cloud-authority-guard.mjs",
+        "command": "vp lint --quiet && pnpm run check:agent-client-protocol && pnpm run check:agent-client-protocol-conformance && pnpm run check:codex-app-server-protocol && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/google-cloud-authority-guard.mjs",
         "manifest_path": "package.json",
         "name": "check:fast"
       },
@@ -1828,6 +1844,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "pnpm --dir packages/agent-client-protocol run test",
         "manifest_path": "package.json",
         "name": "test:agent-client-protocol"
+      },
+      {
+        "command": "pnpm --dir packages/agent-client-protocol-conformance run test",
+        "manifest_path": "package.json",
+        "name": "test:agent-client-protocol-conformance"
       },
       {
         "command": "pnpm --dir packages/agent-readiness run test",
@@ -2165,6 +2186,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "typecheck:agent-client-protocol"
       },
       {
+        "command": "pnpm --dir packages/agent-client-protocol-conformance run typecheck",
+        "manifest_path": "package.json",
+        "name": "typecheck:agent-client-protocol-conformance"
+      },
+      {
         "command": "pnpm --dir packages/agent-readiness run typecheck",
         "manifest_path": "package.json",
         "name": "typecheck:agent-readiness"
@@ -2373,6 +2399,41 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "specs/run-tlc.sh",
         "manifest_path": "package.json",
         "name": "verify:tla"
+      },
+      {
+        "command": "node --import tsx scripts/generate-artifacts.ts --check",
+        "manifest_path": "packages/agent-client-protocol-conformance/package.json",
+        "name": "check:artifacts"
+      },
+      {
+        "command": "node --import tsx scripts/generate-artifacts.ts",
+        "manifest_path": "packages/agent-client-protocol-conformance/package.json",
+        "name": "generate"
+      },
+      {
+        "command": "node --import tsx scripts/live-probe.ts cursor",
+        "manifest_path": "packages/agent-client-protocol-conformance/package.json",
+        "name": "live:cursor"
+      },
+      {
+        "command": "node --import tsx scripts/live-probe.ts grok",
+        "manifest_path": "packages/agent-client-protocol-conformance/package.json",
+        "name": "live:grok"
+      },
+      {
+        "command": "node --import tsx scripts/run-conformance-report.ts",
+        "manifest_path": "packages/agent-client-protocol-conformance/package.json",
+        "name": "report"
+      },
+      {
+        "command": "vp test --run packages/agent-client-protocol-conformance/src/conformance.test.ts",
+        "manifest_path": "packages/agent-client-protocol-conformance/package.json",
+        "name": "test"
+      },
+      {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "manifest_path": "packages/agent-client-protocol-conformance/package.json",
+        "name": "typecheck"
       },
       {
         "command": "node scripts/check-generated.ts",
@@ -3085,12 +3146,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "9ceb28028757aa4a1d5f829354d2b690c5ecd33c",
-    "inventory_digest": "sha256:4ea54e610695c92511d0db1928073a960d3dccb5aa130c8a105df5b7f6009750",
-    "repository_label": "oa-fa-w4-control",
+    "head": "aeb5a73bb52cf71c83610010acce01af7f54db8e",
+    "inventory_digest": "sha256:d656fbb90e1194aa2bf7f592d7db98d1fb82087bdb9e71e8f00178023d3dcbb2",
+    "repository_label": "oa-fa-integrate",
     "state": "dirty",
-    "tracked_file_count": 8994,
-    "tree": "5addeb547bc48d9bf9d9eb063395aba08c265a92",
+    "tracked_file_count": 9043,
+    "tree": "dcdcb6b2b3e4269289aac2420322594bc70f21a4",
     "truncated": true
   }
 }
@@ -3398,6 +3459,17 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:a379ac228a58d621c4498bc9f579070a44fe338d59d598b45551ef863bac629c",
     "source_claim_snapshot": "The MCP server and CLI are thin pass-through clients of the\none control surface: both discover the server from `full-auto/control.json`\n(with `--user-data` / `OPENAGENTS_DESKTOP_USER_DATA` overrides), attach the\nbearer, call the HTTP API, and return the server's JSON verbatim -- no\nclient-side policy and no second schema vocabulary. Both fail with a clear\n\"server not enabled\" message when the connection file is missing. The MCP\nserver exposes `full_auto_list` / `full_auto_status` / `full_auto_enable` /\n`full_auto_disable` / `full_auto_continue_now` / `full_auto_turns` over the\nrepo's public MCP protocol revision (2025-06-18).\nProof: `scripts/full-auto-cli.ts` and `scripts/full-auto-mcp.ts`\n(pass-through by construction over the shared\n`scripts/full-auto-control-client.ts`); live end-to-end receipt in the\nrev 6 entry under Receipts (`pnpm run smoke:full-auto-control` exercises\nthe real CLI as a second OS process against the real running Electron\nmain).",
     "title": "Assure FA-AC-27"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-28"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-28-01",
+    "source_claim_digest": "sha256:bfadbd7c3bc0f39bdda56240e27fd763503abb7e944c2e60d6ade253ef6efa6a",
+    "source_claim_snapshot": "The control surface can BOOTSTRAP Full Auto with no existing\nthread: `POST /v1/full-auto/start` (OpenAPI `startFullAuto`, MCP\n`full_auto_start`, CLI `start --workspace <path> [--title <t>]`) mints a\nbrand-new local thread in main's own thread store (main names the ref --\nthe caller never supplies one), binds the resolved workspace, enables the\nrecord through the same `registry.set` path as the composer toggle,\nappends the distinctly-attributed `(caller: control-api)` system note, and\nschedules the shared serialized reconcile pass so the first continuation\ndispatches without a separate continue-now call -- the reconcile\ndispatcher then opens a brand-new provider conversation because the\nminted thread has no session continuity. start obeys the exact enable\nauthority rule: the caller MUST name the workspace it expects, and on any\ndifference from the currently resolved workspace the call refuses with\n409 `workspace_mismatch` with NO thread minted, NO record written, and NO\nnote appended -- never a redirect, never a new grant.\nProof: `src/full-auto-control-server.test.ts` (\"start with the matching\nworkspaceRef mints a thread...\", \"start with a mismatched workspaceRef is\na 409 typed refusal: NO thread minted...\", \"start discipline: bodyless\nstart is 400...\", plus the doc <-> route parity test covering\n`startFullAuto`).",
+    "title": "Assure FA-AC-28"
   }
 ]
 ```

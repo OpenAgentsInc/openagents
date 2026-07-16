@@ -63,6 +63,7 @@ type Harness = Readonly<{
   turns: Array<LocalTurnRecord>
   liveMap: Map<string, Readonly<{ state: "idle" | "turn_running" | "turn_completed" | "turn_failed" | "cap_reached" | "blocked"; turnRef: string | null; detail?: string }>>
   reconcileCalls: () => number
+  createdThreads: Array<Readonly<{ threadRef: string; title: string | null }>>
   server: FullAutoControlServer
   request: (
     method: "GET" | "POST",
@@ -77,6 +78,7 @@ const startHarness = async (): Promise<Harness> => {
   const registry = openFullAutoRegistry(path.join(root, "registry.json"))
   const notes: Array<Readonly<{ threadRef: string; text: string }>> = []
   const turns: Array<LocalTurnRecord> = []
+  const createdThreads: Array<Readonly<{ threadRef: string; title: string | null }>> = []
   const liveMap: Harness["liveMap"] = new Map()
   let reconcileCallCount = 0
   // The continue-now spy IS the injected trigger -- the server must invoke
@@ -92,6 +94,11 @@ const startHarness = async (): Promise<Harness> => {
       liveState: threadRef => liveMap.get(threadRef) ?? null,
       listTurns: threadRef => turns.filter(record => record.threadRef === threadRef),
       appendSystemNote: (threadRef, text) => notes.push({ threadRef, text }),
+      createThread: title => {
+        const threadRef = `thread.started.${createdThreads.length + 1}`
+        createdThreads.push({ threadRef, title })
+        return threadRef
+      },
     },
     controlFilePath: path.join(root, "full-auto", "control.json"),
   })
@@ -114,6 +121,7 @@ const startHarness = async (): Promise<Harness> => {
     turns,
     liveMap,
     reconcileCalls: () => reconcileCallCount,
+    createdThreads,
     server,
     request,
     dispose: async () => {
@@ -207,6 +215,67 @@ describe("Full Auto control surface (FA-H13 #8886)", () => {
       expect(harness.notes[0]!.threadRef).toBe("thread.a")
       expect(harness.notes[0]!.text).toContain("enabled programmatically")
       expect(harness.notes[0]!.text).toContain("control-api")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("start with the matching workspaceRef mints a thread, enables + binds it, notes it, and schedules reconcile", async () => {
+    const harness = await startHarness()
+    try {
+      const result = await harness.request("POST", "/v1/full-auto/start", {
+        body: { workspaceRef: GRANTED_WORKSPACE, title: "Dogfood lane" },
+      })
+      expect(result.status).toBe(200)
+      const decoded = Schema.decodeUnknownSync(FullAutoControlMutationResponseSchema)(result.body)
+      expect(decoded.record.enabled).toBe(true)
+      expect(decoded.record.workspaceRef).toBe(GRANTED_WORKSPACE)
+      // Main minted the ref -- the response carries it back to the caller.
+      expect(harness.createdThreads).toHaveLength(1)
+      expect(harness.createdThreads[0]!.title).toBe("Dogfood lane")
+      expect(decoded.record.threadRef).toBe(harness.createdThreads[0]!.threadRef)
+      const record = harness.registry.record(decoded.record.threadRef)
+      expect(record?.enabled).toBe(true)
+      expect(record?.workspaceRef).toBe(GRANTED_WORKSPACE)
+      expect(harness.notes.at(-1)!.threadRef).toBe(decoded.record.threadRef)
+      expect(harness.notes.at(-1)!.text).toContain("started programmatically")
+      expect(harness.notes.at(-1)!.text).toContain("control-api")
+      // Bootstrap schedules the shared serialized reconcile pass itself.
+      expect(harness.reconcileCalls()).toBe(1)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("start with a mismatched workspaceRef is a 409 typed refusal: NO thread minted, registry untouched", async () => {
+    const harness = await startHarness()
+    try {
+      const result = await harness.request("POST", "/v1/full-auto/start", {
+        body: { workspaceRef: "/somewhere/else" },
+      })
+      expect(result.status).toBe(409)
+      expect(result.body.error).toBe("workspace_mismatch")
+      expect(result.body.expectedWorkspaceRef).toBe("/somewhere/else")
+      expect(result.body.resolvedWorkspaceRef).toBe(GRANTED_WORKSPACE)
+      expect(harness.createdThreads).toHaveLength(0)
+      expect(harness.registry.list()).toHaveLength(0)
+      expect(harness.notes).toHaveLength(0)
+      expect(harness.reconcileCalls()).toBe(0)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("start discipline: bodyless start is 400 with nothing minted, and GET /v1/full-auto/start is 405", async () => {
+    const harness = await startHarness()
+    try {
+      const invalid = await harness.request("POST", "/v1/full-auto/start")
+      expect(invalid.status).toBe(400)
+      expect(invalid.body.error).toBe("invalid_request")
+      const wrongVerb = await harness.request("GET", "/v1/full-auto/start")
+      expect(wrongVerb.status).toBe(405)
+      expect(harness.createdThreads).toHaveLength(0)
+      expect(harness.registry.list()).toHaveLength(0)
     } finally {
       await harness.dispose()
     }

@@ -25,6 +25,7 @@ const USAGE = `usage: full-auto-cli <command> [args] [--user-data <path>]
 commands:
   list
   status <threadRef>
+  start --workspace <path> [--title <title>]
   enable <threadRef> --workspace <path>
   disable <threadRef>
   continue-now <threadRef>
@@ -42,6 +43,7 @@ const main = async (): Promise<void> => {
   }
   const userData = takeOption("--user-data")
   const workspace = takeOption("--workspace")
+  const title = takeOption("--title")
   const [command, threadRef] = argv
 
   const connection = readControlConnection(resolveUserDataDir(userData))
@@ -61,6 +63,14 @@ const main = async (): Promise<void> => {
     ? await operations.openapi()
     : command === "status"
     ? await operations.status(requireThreadRef())
+    : command === "start"
+    ? await (async () => {
+        if (workspace === undefined || workspace.length === 0) {
+          console.error(`start: --workspace <path> is required (start must NAME the workspace it expects)\n${USAGE}`)
+          process.exit(2)
+        }
+        return operations.start(workspace, title)
+      })()
     : command === "enable"
     ? await (async () => {
         const ref = requireThreadRef()

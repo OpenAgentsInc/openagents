@@ -78,6 +78,11 @@ export const controlOperations = (connection: ControlConnection) => ({
   list: () => call(connection, "GET", "/v1/full-auto"),
   status: (threadRef: string) =>
     call(connection, "GET", `/v1/full-auto/${encodeURIComponent(threadRef)}`),
+  start: (workspaceRef: string, title?: string) =>
+    call(connection, "POST", "/v1/full-auto/start", {
+      workspaceRef,
+      ...(title === undefined ? {} : { title }),
+    }),
   enable: (threadRef: string, workspaceRef: string) =>
     call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/enable`, { workspaceRef }),
   disable: (threadRef: string) =>

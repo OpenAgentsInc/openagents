@@ -44,6 +44,23 @@ const TOOLS = [
     inputSchema: { type: "object", additionalProperties: false, required: ["threadRef"], properties: threadRefProperty },
   },
   {
+    name: "full_auto_start",
+    description:
+      "Bootstrap Full Auto with no existing thread: mint a brand-new local thread, enable Full " +
+      "Auto on it, and schedule the first continuation in one call. You MUST name the workspace " +
+      "you expect (workspaceRef); on 409 workspace_mismatch NO thread is created. The new " +
+      "threadRef is returned inside the record.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceRef"],
+      properties: {
+        workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
+        title: { type: "string", minLength: 1, maxLength: 80, description: "Optional owner-visible thread title." },
+      },
+    },
+  },
+  {
     name: "full_auto_enable",
     description:
       "Enable Full Auto for a thread. You MUST name the workspace you expect (workspaceRef); the " +
@@ -111,6 +128,8 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
     ? await operations.list()
     : name === "full_auto_status"
     ? await operations.status(threadRef)
+    : name === "full_auto_start"
+    ? await operations.start(workspaceRef, typeof args.title === "string" ? args.title : undefined)
     : name === "full_auto_enable"
     ? await operations.enable(threadRef, workspaceRef)
     : name === "full_auto_disable"

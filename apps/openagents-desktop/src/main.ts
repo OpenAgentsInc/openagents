@@ -3434,6 +3434,10 @@ if (isFullAutoControlEnabled(process.env)) {
       liveState: threadRef => fullAutoLiveState.get(threadRef) ?? null,
       listTurns: threadRef => localTurnJournal.list().filter(record => record.threadRef === threadRef),
       appendSystemNote: appendFullAutoSystemNote,
+      // start bootstrap: main mints the thread in its own store -- callers
+      // never name a ref -- so the reconcile dispatcher finds a real thread
+      // and the first continuation opens a brand-new provider conversation.
+      createThread: title => threads().newThread(title ?? "Full Auto").id,
     },
     controlFilePath: path.join(app.getPath("userData"), "full-auto", "control.json"),
     ...(Number.isInteger(pinnedControlPort) && pinnedControlPort > 0 && pinnedControlPort <= 65535

@@ -28,8 +28,8 @@ export const makeThreadStore = (file: string) => {
   }
   return {
     list: (): DesktopThread[] => read(),
-    newThread: (): DesktopThread => {
-      const thread: DesktopThread = { id: randomUUID(), title: "New chat", updatedAt: new Date().toISOString(), notes: [] }
+    newThread: (title?: string): DesktopThread => {
+      const thread: DesktopThread = { id: randomUUID(), title: title ?? "New chat", updatedAt: new Date().toISOString(), notes: [] }
       write([thread, ...read()])
       return thread
     },

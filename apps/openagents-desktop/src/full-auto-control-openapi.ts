@@ -91,6 +91,46 @@ export const fullAutoControlOpenApiDocument = {
         },
       },
     },
+    "/v1/full-auto/start": {
+      post: {
+        operationId: "startFullAuto",
+        summary: "Bootstrap Full Auto: mint a new thread, enable it, and schedule the first turn.",
+        description:
+          "Programmatic bootstrap for agents that have no existing thread. The caller MUST name " +
+          "the workspace it expects (workspaceRef) exactly like enable; on 409 workspace_mismatch " +
+          "NO thread is created and NO record is written. On success main mints a brand-new local " +
+          "thread (the server names the ref, never the caller), binds the resolved workspace, " +
+          "enables Full Auto, appends a distinctly-attributed system note, and schedules the " +
+          "shared serialized reconcile pass so the first continuation dispatches without a " +
+          "separate continue-now call. The new threadRef is returned inside the record.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/FullAutoControlStartRequest" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Thread minted, enabled, workspace-bound, first continuation scheduled.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/FullAutoControlMutationResponse" },
+              },
+            },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "409": {
+            description:
+              "The named workspace does not match the currently resolved workspace; no thread " +
+              "was created and the registry is left untouched.",
+            content: { "application/json": { schema: errorResponseSchema } },
+          },
+        },
+      },
+    },
     "/v1/full-auto/{threadRef}": {
       get: {
         operationId: "getFullAutoStatus",
@@ -294,6 +334,25 @@ export const fullAutoControlOpenApiDocument = {
             minLength: 1,
             maxLength: 1024,
             description: "The absolute workspace path the caller expects Full Auto to run against.",
+          },
+        },
+      },
+      FullAutoControlStartRequest: {
+        type: "object",
+        required: ["workspaceRef"],
+        additionalProperties: false,
+        properties: {
+          workspaceRef: {
+            type: "string",
+            minLength: 1,
+            maxLength: 1024,
+            description: "The absolute workspace path the caller expects Full Auto to run against.",
+          },
+          title: {
+            type: "string",
+            minLength: 1,
+            maxLength: 80,
+            description: "Optional owner-visible title for the minted thread.",
           },
         },
       },

@@ -55,6 +55,22 @@ export const decodeFullAutoControlEnableRequest = (
   return Exit.isSuccess(decoded) ? decoded.value : null
 }
 
+/** POST /v1/full-auto/start -- programmatic bootstrap: mint a brand-new local
+ * thread, enable Full Auto on it, and schedule the first continuation in one
+ * fail-closed operation. The caller MUST name the workspace it expects exactly
+ * like enable; on mismatch nothing is created. */
+export const FullAutoControlStartRequestSchema = Schema.Struct({
+  workspaceRef: WorkspaceRef,
+  title: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
+})
+export type FullAutoControlStartRequest = typeof FullAutoControlStartRequestSchema.Type
+export const decodeFullAutoControlStartRequest = (
+  value: unknown,
+): FullAutoControlStartRequest | null => {
+  const decoded = Schema.decodeUnknownExit(FullAutoControlStartRequestSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
+
 /** Coarse live state riding alongside the durable record (FA-H4 vocabulary). */
 export const FullAutoControlLiveSchema = Schema.Struct({
   state: CodexLocalFullAutoLiveStateSchema,
@@ -163,6 +179,7 @@ export type FullAutoControlError = typeof FullAutoControlErrorSchema.Type
 export const FULL_AUTO_CONTROL_ROUTES = [
   { method: "get", path: "/v1/openapi.json", operationId: "getOpenApiDocument" },
   { method: "get", path: "/v1/full-auto", operationId: "listFullAuto" },
+  { method: "post", path: "/v1/full-auto/start", operationId: "startFullAuto" },
   { method: "get", path: "/v1/full-auto/{threadRef}", operationId: "getFullAutoStatus" },
   { method: "post", path: "/v1/full-auto/{threadRef}/enable", operationId: "enableFullAuto" },
   { method: "post", path: "/v1/full-auto/{threadRef}/disable", operationId: "disableFullAuto" },
