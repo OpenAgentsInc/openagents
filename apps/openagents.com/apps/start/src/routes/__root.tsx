@@ -19,7 +19,7 @@ export const Route = createRootRouteWithContext<{
       { property: 'og:site_name', content: 'OpenAgents' },
       { property: 'og:type', content: 'website' },
       { name: 'twitter:card', content: 'summary' },
-      { name: 'theme-color', content: '#05070d' },
+      { name: 'theme-color', content: '#16161e' },
     ],
     links: [
       { rel: 'icon', href: '/favicon.ico', sizes: '32x32' },

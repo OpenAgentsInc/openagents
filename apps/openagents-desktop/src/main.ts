@@ -3306,9 +3306,10 @@ const createWindow = (): BrowserWindow => {
     minWidth: 720,
     minHeight: 480,
     fullscreen: false,
-    // khalaTheme color.background — must match @effect-native/tokens so the
-    // pre-boot window never flashes an off-palette frame (EP250 #8712).
-    backgroundColor: "#05070d",
+    // autopilotTheme color.background — must match @effect-native/tokens so
+    // the pre-boot window never flashes an off-palette frame (EP250 #8712,
+    // Autopilot UI #8858).
+    backgroundColor: "#16161e",
     show: false,
     title: "OpenAgents",
     icon: desktopIconPath,

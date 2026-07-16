@@ -56,8 +56,11 @@
 }
 
 :root {
-  /* shadcn base-vega zinc/blue lifted into the one dark Khala theme. The
-     preset owns component structure and fonts; Effect Native owns semantics. */
+  /* shadcn base-vega zinc/blue lifted into the one dark OpenAgents product
+     theme (autopilotTheme via the runtime --en-* variables — every value
+     below is var indirection, so the shadcn layer retunes automatically when
+     the mounted theme changes). The preset owns component structure and
+     fonts; Effect Native owns semantics. */
   --background: var(--en-color-background);
   --foreground: var(--en-color-textPrimary);
   --card: var(--en-color-surface);

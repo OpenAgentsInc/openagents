@@ -13,14 +13,14 @@
       openagents_desktop.startup.window_first_no_blank_frame.v1): paints with
       the very first HTML parse, BEFORE the renderer bundle evaluates and
       before the Effect Native token pipeline installs the runtime `--en-*`
-      variables — so its colors are literal khalaTheme values, kept in
+      variables — so its colors are literal autopilotTheme values, kept in
       mechanical sync with @effect-native/tokens by
       src/startup-contract.test.ts (same practice as the BrowserWindow
       backgroundColor in src/main.ts). boot.ts removes the frame the moment
       the real shell mounts underneath it. No light variant, ever.
     -->
     <style>
-      /* khalaTheme.color.background */
+      /* autopilotTheme.color.background */
       #openagents-boot-frame {
         position: fixed;
         inset: 0;
@@ -30,11 +30,11 @@
         align-items: center;
         justify-content: center;
         gap: 14px;
-        background: #05070d;
+        background: #16161e;
       }
-      /* khalaTheme.color.textFaint */
+      /* autopilotTheme.color.textFaint */
       #openagents-boot-frame .oa-boot-mark {
-        color: #6b7ca1;
+        color: #58595b;
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
         font-size: 12px;
         font-weight: 600;
@@ -43,19 +43,19 @@
         text-transform: uppercase;
         user-select: none;
       }
-      /* khalaTheme.color.borderSubtle track, khalaTheme.color.accent sweep */
+      /* autopilotTheme.color.borderSubtle track, autopilotTheme.color.accent sweep */
       #openagents-boot-frame .oa-boot-psi {
         width: 168px;
         height: 2px;
         border-radius: 2px;
         overflow: hidden;
-        background: #16203a;
+        background: #1d1e20;
       }
       #openagents-boot-frame .oa-boot-psi-fill {
         width: 40%;
         height: 100%;
         border-radius: 2px;
-        background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+        background: linear-gradient(90deg, transparent, #5262fd, transparent);
         animation: oa-boot-psi-sweep 1.1s ease-in-out infinite;
       }
       @keyframes oa-boot-psi-sweep {

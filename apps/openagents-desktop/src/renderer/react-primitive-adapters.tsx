@@ -41,7 +41,8 @@ import {
   renderReactDomView,
   type ReactViewStore,
 } from "@effect-native/render-dom/react"
-import { khalaTheme, type Theme } from "@effect-native/tokens"
+import { type Theme } from "@effect-native/tokens"
+import { openagentsDesktopTheme } from "./theme.ts"
 import { Button } from "#components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert"
 import {
@@ -303,7 +304,7 @@ const StaticKhalaDecoration = ({ view, placement }: {
     ? { "data-project-home-khala-decoration": placement }
     : { "data-settings-khala-decoration": placement })}
   aria-hidden="true"
->{renderReactDomView(view, { report: staticKhalaReporter, theme: khalaTheme })}</div>
+>{renderReactDomView(view, { report: staticKhalaReporter, theme: openagentsDesktopTheme })}</div>
 
 export const WorkbenchShell = ({ state, report }: {
   readonly state: DesktopShellState

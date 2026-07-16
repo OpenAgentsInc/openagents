@@ -119,24 +119,24 @@
 
 :root,
 .dark {
-  --khala-void: #000000;
-  --khala-surface: #010102;
-  --khala-surface-muted: #030711;
-  --khala-surface-raised: #0b1322;
-  --khala-border: #17315f;
-  --khala-border-strong: #3a7bff;
-  --khala-energy: #3a7bff;
-  --khala-energy-cyan: #4fd0ff;
-  --khala-energy-soft: #8fb6ff;
-  --khala-text: #f1efe8;
-  --khala-text-muted: rgb(241 239 232 / 0.68);
-  --khala-text-faint: rgb(241 239 232 / 0.42);
-  --khala-success: #00c853;
-  --khala-warning: #ffb400;
-  --khala-danger: #d32f2f;
+  --khala-void: #16161e;
+  --khala-surface: #141416;
+  --khala-surface-muted: #18181d;
+  --khala-surface-raised: #1d1e20;
+  --khala-border: #242527;
+  --khala-border-strong: #5262fd;
+  --khala-energy: #5262fd;
+  --khala-energy-cyan: #6470e0;
+  --khala-energy-soft: #8b94e8;
+  --khala-text: #f8f8fa;
+  --khala-text-muted: #9b9ca0;
+  --khala-text-faint: #58595b;
+  --khala-success: #8dc3ab;
+  --khala-warning: #a98a52;
+  --khala-danger: #8e4445;
 
-  --brand: #3a7bff;
-  --brand-foreground: #4fd0ff;
+  --brand: #5262fd;
+  --brand-foreground: #6470e0;
   --background: oklch(0.141 0.005 285.823);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.141 0.005 285.823);
@@ -155,7 +155,7 @@
   --destructive-foreground: oklch(0.637 0.237 25.331);
   --border: oklch(0.885 0.006 286.033);
   --input: oklch(0.274 0.006 286.033);
-  --ring: #3a7bff;
+  --ring: #5262fd;
   --radius: 0.25rem;
   --light: var(--foreground);
   --light-foreground: var(--foreground);
@@ -273,21 +273,21 @@
 }
 
 @utility khala-glow {
-  box-shadow: 0 0 24px -6px rgb(58 123 255 / 0.45);
+  box-shadow: 0 0 24px -6px rgb(82 98 253 / 0.45);
 }
 
 @utility khala-glow-strong {
   box-shadow:
-    0 0 0 1px rgb(58 123 255 / 0.35),
-    0 0 36px -8px rgb(58 123 255 / 0.6);
+    0 0 0 1px rgb(82 98 253 / 0.35),
+    0 0 36px -8px rgb(82 98 253 / 0.6);
 }
 
 @utility khala-focus {
   &:focus-visible {
     outline: none;
     box-shadow:
-      0 0 0 2px rgb(58 123 255 / 0.75),
-      0 0 22px -4px rgb(58 123 255 / 0.7);
+      0 0 0 2px rgb(82 98 253 / 0.75),
+      0 0 22px -4px rgb(82 98 253 / 0.7);
   }
 }
 

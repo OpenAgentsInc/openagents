@@ -8,9 +8,11 @@
  *
  * Scope note (honest, per the issue's nine listed keys):
  * - `theme` is intentionally NOT a preference: the app is the single fixed
- *   Protoss-blue `khalaTheme` with no light variant and no runtime theme switch
- *   (see workspace policy "uniform StarCraft blue everywhere"). It is recorded
- *   here as a fixed, read-only fact rather than a mutable field.
+ *   dark product theme (`autopilotTheme` since 2026-07-15, superseding the
+ *   Protoss-blue `khalaTheme` — see
+ *   openagents_desktop.design.autopilot_palette.v1) with no light variant and
+ *   no runtime theme switch. It is recorded here as a fixed, read-only fact
+ *   rather than a mutable field.
  * - `keybindings` already have a typed durable store (`desktop-command-bindings`
  *   → `<userData>/commands/bindings.json`); this document does not duplicate
  *   them, it references that store as the authority.

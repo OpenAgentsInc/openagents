@@ -4,8 +4,9 @@ In-repo provenance for presentation-language ports into the OpenAgents
 Desktop Effect Native views. Ports translate a reference app's visual
 anatomy into typed style objects on the shared `@effect-native/tokens`
 vocabulary — never Tailwind/CSS class strings (owner decision 2026-07-08),
-never vendored reference code, always our catalog icon set and the uniform
-Protoss-blue theme.
+never vendored reference code, always our catalog icon set and the one
+uniform dark product theme (Autopilot UI since 2026-07-15, #8858, superseding
+the historical Protoss-blue theme named in the dated entries below).
 
 ## 2026-07-11 — opencode prompt-input → chat composer shape
 

@@ -1,5 +1,5 @@
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
-import { khalaTheme } from '@effect-native/tokens'
+import { autopilotTheme } from '@effect-native/tokens'
 import { InternalLink } from '@/components/internal-link'
 import GithubMark from '@/components/launch-ui/logos/github'
 import { DOCS_URL, GITHUB_REPOSITORY_URL } from '@/lib/public-site'
@@ -600,7 +600,7 @@ export function SplashPage() {
   const visibleSessions = sessions.filter(session => session.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const active = phase === 'preparing' || phase === 'streaming'
 
-  return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(khalaTheme)}>
+  return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(autopilotTheme)}>
     <header className="splash-site-header">
       <nav aria-label="Primary navigation" className="splash-nav">
         <InternalLink aria-label="OpenAgents home" className="splash-brand" href="/" preload="render">

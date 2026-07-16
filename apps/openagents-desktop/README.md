@@ -158,8 +158,9 @@ notarization and Gatekeeper verification.
     pure `state -> View` over the shared catalog.
   - `sidebar-destinations.ts` — the closed three-control primary projection shared
     by compatibility and React, reusing canonical commands and typed intents.
-  - `theme.ts` — the one Protoss-blue theme via `@effect-native/tokens`,
-    token-identical to the shared OpenAgents theme values.
+  - `theme.ts` — the one product theme (`autopilotTheme` since 2026-07-15,
+    #8858) via `@effect-native/tokens`, token-identical to the shared
+    OpenAgents theme values.
   - `boot.ts` — `SubscriptionRef` + `makeViewProgramFromState` +
     `makeIntentRegistry` + the React-owned Effect Native DOM surface.
   - `react-timeline.tsx` composes the registry-installed shadcn
