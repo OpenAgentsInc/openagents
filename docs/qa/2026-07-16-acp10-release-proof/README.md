@@ -25,8 +25,8 @@ never changes Grok's gate.
 
 | Peer | Exact live identity | Basic live result | Code-owned requirements unresolved | Claim |
 |---|---|---:|---:|---|
-| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 20 live passes | 13 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 22 live passes | 10 | experimental |
+| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 21 live passes | 12 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 23 live passes | 9 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -43,12 +43,15 @@ workspace path.
 The checked
 [`release-run-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-2026-07-16-darwin-arm64.json)
 is now reproducible with the opt-in production runner. On revision
-`3d38f12b5b5b9c2cf568389284e5c28f58b06f05`, it launched both pinned peers in
+`6a3dd4632811bc272ad4b82b9f4dbf54aae72324`, it launched both pinned peers in
 separate disposable repositories and completed initialize, advertised local
 authentication, session creation, two sequential real model turns, and stream
 cancellation. Cursor additionally completed advertised session listing and a
 mode change. Grok did not advertise session listing, and the runner does not
 claim shutdown leak proof because it does not retain process leak counters.
+An additional Cursor process used an isolated empty home, cancelled the
+advertised external-browser login interaction, and returned `auth_required`;
+the existing signed-in profile was neither read nor changed.
 The artifact is a candidate input only; it cannot mutate or promote the release
 matrix.
 
@@ -135,11 +138,14 @@ platform evidence.
 Provider-specific gaps:
 
 - Grok: intentional valid `xai.api_key`, auth cancel/expiry/logout, the
-  non-underscore ask-question spelling, session list, full permission/reverse
-  authority, rich plan/config/usage streaming, and bounded MCP persistence scan.
-- Cursor: pending/cancel/expiry/re-auth login, permission outcomes, and live
+  non-underscore ask-question spelling, full permission/reverse authority, rich
+  plan/config/usage streaming, and bounded MCP persistence scan. The pinned
+  build's absence of advertised session listing is now retained as its exact
+  live capability-false outcome.
+- Cursor: pending/expiry/re-auth login, permission outcomes, and live
   `cursor/ask_question`/`cursor/update_todos`. Model listing, create-plan,
-  list/load, mode/config round trips, cancellation, and restart/load are proven.
+  list/load, mode/config round trips, login cancellation, stream/reverse
+  cancellation, and restart/load are proven.
 - Desktop: the isolated production build completed a real Grok Full Auto turn,
   durable journal settlement, disposable-repository commit, disable, and clean
   shutdown. Grok failure/recovery journeys, the corresponding packaged Cursor
