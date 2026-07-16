@@ -236,7 +236,7 @@ describe('OpenAgents admin access policy', () => {
     ).toBe(true)
   })
 
-  test('stores only the exact authenticated app return target', async () => {
+  test('does not store return targets for the retired app route', async () => {
     const appResponse = await worker.fetch(
       new Request(
         'https://openagents.com/login/github?returnTo=%2Fapp',
@@ -268,21 +268,13 @@ describe('OpenAgents admin access policy', () => {
       executionContext,
     )
 
-    expect(
-      appResponse.headers
-        .getSetCookie()
-        .some(cookie => cookie.includes('oa_login_return_to=%2Fapp')),
-    ).toBe(true)
-    expect(
-      nestedResponse.headers
-        .getSetCookie()
-        .some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
-    ).toBe(false)
-    expect(
-      queryResponse.headers
-        .getSetCookie()
-        .some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
-    ).toBe(false)
+    for (const response of [appResponse, nestedResponse, queryResponse]) {
+      expect(
+        response.headers
+          .getSetCookie()
+          .some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
+      ).toBe(false)
+    }
   })
 
   test('stores invite accept return targets when starting email login', async () => {
