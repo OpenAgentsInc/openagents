@@ -647,6 +647,29 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   release. Publish/deploy only from a clean `origin/main`; RCs are pre-releases and
   never take the stable `latest` badge.
 
+## Effect Development Guidance
+
+Before writing or reviewing Effect TypeScript, use both repository guides; they
+are complementary, not alternatives:
+
+1. Read `.agents/skills/effect/SKILL.md` completely, then read every reference
+   selected by its Branch Chooser for the task. Codex discovers this project
+   skill directly, and `.claude/skills/effect` exposes the same files to Claude.
+   Agents without project-skill discovery must read the files manually.
+2. Run `effect-solutions list`, then
+   `effect-solutions show <relevant-topic>...` for the overlapping baseline
+   guidance on Effect structure, services, data, errors, config, and tests.
+3. Check the nearest `AGENTS.md`, the repository-pinned `effect` package version
+   and source, and established local conventions before choosing an API or
+   pattern. Those project authorities take precedence. If the guides disagree
+   or an API is uncertain, verify it against the installed dependency or current
+   upstream source instead of guessing.
+
+The repository skill is the required additional guide for schema boundaries,
+scoped layers and background work, schedules, caches, streams, HTTP clients,
+and deterministic Effect tests. Do not skip it merely because
+`effect-solutions` was consulted.
+
 ## Working Rules
 
 - **Primary `main` reconciliation is a completion gate (owner mandate,

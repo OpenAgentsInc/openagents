@@ -1,7 +1,8 @@
 .oa-unified-header {
-  position: sticky;
+  position: fixed;
   z-index: 60;
   top: 0;
+  left: 0;
   width: 100%;
   border-bottom: 1px solid rgb(116 164 255 / 0.1);
   background: rgb(7 11 27 / 0.96);
@@ -9,6 +10,12 @@
   font-family: var(--oa-font-sans);
   font-optical-sizing: auto;
   font-variation-settings: "wdth" 100;
+}
+
+.oa-unified-header-spacer {
+  width: 100%;
+  height: 4.25rem;
+  flex: 0 0 4.25rem;
 }
 
 .oa-unified-header,
@@ -58,14 +65,12 @@
 }
 
 .oa-unified-docs-link,
-.oa-unified-app-link,
 .oa-unified-github-link,
 .oa-unified-download-link {
   transition: color 160ms ease-out, background-color 160ms ease-out;
 }
 
 .oa-unified-docs-link:hover,
-.oa-unified-app-link:hover,
 .oa-unified-github-link:hover {
   color: #f4f6fb;
 }
@@ -107,8 +112,12 @@
   }
 
   .oa-unified-docs-link,
-  .oa-unified-app-link {
+  .oa-unified-github-link {
     display: none;
+  }
+
+  .oa-unified-docs-link[aria-current="page"] {
+    display: inline-flex;
   }
 
   .oa-unified-nav-left,
@@ -118,6 +127,21 @@
 
   .oa-unified-download-link {
     min-height: 2.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .oa-unified-nav {
+    width: calc(100% - 1.25rem);
+  }
+
+  .oa-unified-brand {
+    font-size: 0.84rem;
+  }
+
+  .oa-unified-nav-left,
+  .oa-unified-nav-actions {
+    gap: 0.625rem;
   }
 }
 

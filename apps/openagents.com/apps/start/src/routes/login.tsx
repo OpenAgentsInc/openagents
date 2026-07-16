@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { LoginPage } from './-login-page'
 
 export const Route = createFileRoute('/login')({
-  component: LoginRoutePage,
+  component: LoginPage,
   head: () => ({
     meta: [
       { title: 'Log in - OpenAgents' },
@@ -14,12 +14,4 @@ export const Route = createFileRoute('/login')({
       },
     ],
   }),
-  validateSearch: (search: Record<string, unknown>) => ({
-    returnTo: search.returnTo === '/app' ? ('/app' as const) : undefined,
-  }),
 })
-
-function LoginRoutePage() {
-  const { returnTo } = Route.useSearch()
-  return <LoginPage {...(returnTo === undefined ? {} : { returnTo })} />
-}

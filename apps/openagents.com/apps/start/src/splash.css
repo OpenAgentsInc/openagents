@@ -12,7 +12,6 @@
   isolation: isolate;
   width: 100%;
   min-height: 100dvh;
-  padding-bottom: clamp(4rem, 8vw, 8rem);
   overflow-x: clip;
   background:
     radial-gradient(ellipse 68% 30% at 50% 4%, rgb(58 123 255 / 0.16), transparent 72%),
@@ -289,6 +288,164 @@
   margin: 0;
 }
 
+.splash-faq {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.72fr) minmax(0, 1.28fr);
+  gap: clamp(3rem, 8vw, 8rem);
+  width: min(100% - 3rem, 72rem);
+  margin-inline: auto;
+  padding-block: clamp(6rem, 11vw, 10rem);
+}
+
+.splash-faq-intro > p {
+  margin: 0 0 0.8rem;
+  color: var(--splash-faint);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.splash-faq-intro h2 {
+  max-width: 11ch;
+  margin: 0;
+  color: var(--splash-text);
+  font-size: clamp(2rem, 4vw, 3.35rem);
+  font-weight: 540;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.splash-faq-intro a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  margin-top: 1.4rem;
+  color: var(--splash-muted);
+  font-size: 0.82rem;
+}
+
+.splash-faq-intro a:hover {
+  color: var(--splash-text);
+}
+
+.splash-faq-intro svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.splash-question-list {
+  border-bottom: 1px solid var(--splash-border);
+}
+
+.splash-question-list details {
+  border-top: 1px solid var(--splash-border);
+}
+
+.splash-question-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 4.25rem;
+  color: var(--splash-text);
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 610;
+  list-style: none;
+}
+
+.splash-question-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.splash-question-list summary span {
+  color: var(--splash-faint);
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), color 160ms ease-out;
+}
+
+.splash-question-list details[open] summary span {
+  color: var(--splash-accent);
+  transform: rotate(45deg);
+}
+
+.splash-question-list details > p {
+  max-width: 64ch;
+  margin: -0.25rem 3rem 1.5rem 0;
+  color: var(--splash-muted);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.splash-footer {
+  border-top: 1px solid var(--splash-border);
+  background: rgb(2 5 14 / 0.76);
+}
+
+.splash-footer-main {
+  display: grid;
+  grid-template-columns: minmax(16rem, 2fr) repeat(3, minmax(7rem, 1fr));
+  gap: clamp(2rem, 6vw, 5rem);
+  width: min(100% - 3rem, 72rem);
+  margin-inline: auto;
+  padding-block: clamp(3.5rem, 7vw, 5.5rem);
+}
+
+.splash-footer-brand > a {
+  color: var(--splash-text);
+  font-size: 1rem;
+  font-weight: 680;
+}
+
+.splash-footer-brand p {
+  max-width: 28ch;
+  margin: 0.8rem 0 0;
+  color: var(--splash-faint);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.splash-footer nav {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.splash-footer nav strong {
+  margin-bottom: 0.2rem;
+  color: var(--splash-faint);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+}
+
+.splash-footer nav a {
+  color: var(--splash-muted);
+  font-size: 0.78rem;
+}
+
+.splash-footer nav a:hover {
+  color: var(--splash-text);
+}
+
+.splash-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: min(100% - 3rem, 72rem);
+  min-height: 4rem;
+  margin-inline: auto;
+  border-top: 1px solid var(--splash-border);
+  color: var(--splash-faint);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+}
+
 @media (max-width: 979px) {
   .splash-demo-frame .oa-react-session-rail { z-index: 4; }
   .splash-demo-frame .oa-react-rail-scrim { z-index: 3; }
@@ -312,6 +469,23 @@
 
   .splash-demo-frame {
     height: 40rem;
+  }
+
+  .splash-faq {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+
+  .splash-faq-intro h2 {
+    max-width: 15ch;
+  }
+
+  .splash-footer-main {
+    grid-template-columns: 1.5fr 1fr 1fr;
+  }
+
+  .splash-footer-brand {
+    grid-column: 1 / -1;
   }
 }
 
@@ -339,6 +513,23 @@
 
   .splash-window-bar > span:nth-child(2) {
     display: none;
+  }
+
+  .splash-faq,
+  .splash-footer-main,
+  .splash-footer-bottom {
+    width: calc(100% - 2.5rem);
+  }
+
+  .splash-footer-main {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .splash-footer-bottom {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 5.5rem;
   }
 }
 
