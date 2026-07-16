@@ -131,7 +131,6 @@ export function DocsLayout() {
     if (drawer === null || drawer.open) {
       return
     }
-    document.documentElement.style.overflow = 'hidden'
     drawer.showModal()
   }
 
@@ -209,7 +208,6 @@ export function DocsLayout() {
           }
         }}
         onClose={() => {
-          document.documentElement.style.overflow = ''
           drawerTriggerRef.current?.focus()
         }}
         ref={drawerRef}

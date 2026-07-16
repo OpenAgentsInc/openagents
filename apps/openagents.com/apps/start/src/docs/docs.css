@@ -18,6 +18,13 @@
   font-variation-settings: "wdth" 100;
 }
 
+/* Dialog state owns the viewport lock, so closing or unmounting can never
+   leave a stale inline overflow declaration behind. */
+html:has(.docs-drawer[open]),
+html:has(.docs-search-dialog[open]) {
+  overflow: hidden;
+}
+
 .docs-skip-link {
   position: fixed;
   z-index: 100;

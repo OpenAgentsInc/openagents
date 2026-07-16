@@ -175,16 +175,14 @@
     min-width: 320px;
     margin: 0;
     overflow-x: hidden;
-    overscroll-behavior: none;
+    /* The root owns bounce suppression. Body must allow wheel and trackpad
+       gestures from page content to reach the viewport scroller. */
+    overscroll-behavior: auto;
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
     font-optical-sizing: auto;
     font-variation-settings: 'wdth' 100;
-  }
-
-  body > main {
-    overscroll-behavior: none;
   }
 
   * {
