@@ -37,13 +37,16 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-15",
       "FA-AC-16",
       "FA-AC-17",
-      "FA-AC-18"
+      "FA-AC-18",
+      "FA-AC-19",
+      "FA-AC-20",
+      "FA-AC-21"
     ],
-    "document_digest": "sha256:ea7914fe29c36cb1a1c3691e2eb5efe7b67ae2b274fd3c3fb4a6f13ff047af88",
+    "document_digest": "sha256:5cbe2c0fb817f9a227625cff92f02aee76c90ae3b8d4c51b5b721d2853c08b73",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 4
+    "spec_revision": 5
   }
 }
 ```
@@ -325,11 +328,10 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-mobile/tests/native-session-vault.test.ts",
       "apps/openagents-mobile/tests/ota-polling.test.ts",
       "apps/openagents.com/apps/start/src/docs/docs-content.test.ts",
+      "apps/openagents.com/apps/start/src/docs/docs-layout-contract.test.ts",
       "apps/openagents.com/apps/start/src/forum-entry.test.ts",
       "apps/openagents.com/apps/start/src/khala-sync-proxy.test.ts",
       "apps/openagents.com/apps/start/src/routes/-activity.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-app-account.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-app.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-artanis-accounts.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-artanis-console.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-artanis-traces.test.tsx",
@@ -358,6 +360,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-public-site.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-pylon-codex-assignment-status.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-pylons.test.tsx",
+      "apps/openagents.com/apps/start/src/routes/-retired-app.test.ts",
       "apps/openagents.com/apps/start/src/routes/-run.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-sales-landing.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-share.test.tsx",
@@ -3011,12 +3014,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "3cc4e50ff92f688b283756b24f42acc2ed708385",
-    "inventory_digest": "sha256:e77bffe0ae7ad61f8b69e700f84ae3f2ec19dbe8fa2b26cb9b31cb7215786c32",
-    "repository_label": "oa-fa-w2-core",
+    "head": "43394b7300b847ac9576e2db79baa2bd8e8ece0f",
+    "inventory_digest": "sha256:e18d6afe695e9cb27672d2564366275e705773ecabc1411f1cb8dcfdd926546a",
+    "repository_label": "oa-fa-w3-ui",
     "state": "dirty",
-    "tracked_file_count": 8944,
-    "tree": "333d13a856c1b12ff4c493ba10e4ed12e8d8e349",
+    "tracked_file_count": 8956,
+    "tree": "ddde9dd27c8eba3623c49c54a7a55ac12e899caf",
     "truncated": true
   }
 }
@@ -3225,6 +3228,39 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:1a81b9e9b1821120f34aa3c4ddcbf11bbc2992e916e3718b2f4e9898a9d05ed8",
     "source_claim_snapshot": "The wave-2 registry schema upgrade is strictly additive: every\nnew record field (workspace binding, profile, lease, failure state) is\noptional, and an existing v1 registry file decodes without quarantine so no\nuser's enabled state is lost by upgrading.\nProof: `full-auto-registry.test.ts` \"an existing v1 registry file (no\nwave-2 fields) still decodes -- the schema upgrade never quarantines a\nuser's state\".",
     "title": "Assure FA-AC-18"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-19"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-19-01",
+    "source_claim_digest": "sha256:9fe946aaddb3c1c7217a2d42784eaefaaaba48f6230ff55ebf32135fc4fd7d37",
+    "source_claim_snapshot": "A background (main-initiated) continuation is rendered as a\ncoarse, typed, per-thread in-flight state, not silence until completion.\nMain owns an in-memory live-state map (idle | turn_running |\nturn_completed | turn_failed | cap_reached | blocked; blocked carries the\ntyped blockedReason as bounded detail) and broadcasts every transition to\nall windows over `CodexLocalFullAutoStateChannel`: turn_running with the\nlease turn ref at dispatch start, turn_completed on success, turn_failed\nwith the typed reason on an ordinary failure, cap_reached at the cap, and\nblocked on a workspace or failure-limit disable. Terminal states persist\nuntil the next transition. The extended get channel additively returns\n`{ state, turnRef }` beside `enabled`, and while the active thread's state\nis turn_running the composer renders a \"Full Auto running…\" status badge.\nToken-by-token streaming remains deliberately out of scope.\nProof: `shell.test.ts` \"FA-H4 (#8877): withFullAutoLiveState projects a\nlive-state event per thread and activeFullAutoTurnRunning reads only the\nACTIVE thread\"; `react-composer.test.tsx` \"FA-H4 (#8877): a running\nbackground Full Auto turn renders the status badge and the Stop\naffordance; idle renders neither\"; `main.ts` wires the transitions around\nthe existing `runFullAutoReconciliation` dispatch adapter and callbacks\n(code-reviewed; main.ts has no direct unit-test harness).",
+    "title": "Assure FA-AC-19"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-20"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-20-01",
+    "source_claim_digest": "sha256:e5bb0ecede90a05283555057a9d8d8b5197ce004bdbb0836e6294e1d87bf2887",
+    "source_claim_snapshot": "A working stop targets the ACTUAL background turn. While the\nactive thread's live state is turn_running (renderer non-pending), the\ncomposer's Stop control dispatches the same interrupt intent, whose\nhandler calls the thread-scoped `CodexLocalFullAutoInterruptChannel` with\nonly `{ threadRef }`; main resolves the live running turn ref itself and\nsignals the exact same `codexLocal.interrupt` runtime path the existing\nturn-interrupt channel uses, answering `{ ok: boolean }`. While the\nrenderer's OWN turn is pending, Stop keeps signalling the active streaming\nturn unchanged. The interrupted background turn terminates through the\nexisting FA-H5 typed-failure path; the toggle remains the durable\nloop-level stop.\nProof: `shell.test.ts` \"FA-H4 (#8877): DesktopTurnInterrupted with a\nrunning BACKGROUND turn (not pending) calls fullAutoHost.interrupt with\nthe active threadRef\" and \"FA-H4 (#8877): while renderer-pending, Stop\nkeeps signalling the ACTIVE streaming turn (chat.interruptActive), not the\nbackground channel\"; `react-composer.test.tsx` (Stop affordance case\nabove); `main.ts` interrupt handler (code-reviewed).",
+    "title": "Assure FA-AC-20"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-21"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-21-01",
+    "source_claim_digest": "sha256:96242f50d322c4619643e0da9d9d5496f93d97bcdc52f85239c3bef7b0b8e743",
+    "source_claim_snapshot": "A manual send while a background Full Auto turn owns the\nthread is excluded, never run silently concurrently. When the active\nthread's live state is turn_running, `runNoteSubmission` refuses to start\na manual turn: it sets the transient notice \"Full Auto is running a turn\non this thread. Stop it first or wait for it to finish.\" and keeps the\ncomposer draft. Once the live state is terminal, the same submit goes\nthrough normally.\nProof: `shell.test.ts` \"FA-H4 (#8877): a manual send while a background\nFull Auto turn runs is FENCED -- sendMessage is never called, a notice\nsays why, and the draft is kept\".",
+    "title": "Assure FA-AC-21"
   }
 ]
 ```

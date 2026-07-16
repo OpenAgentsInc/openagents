@@ -80,7 +80,7 @@ import {
 } from "./composer-images.ts";
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
-import { activeFullAutoEnabled, formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import { activeFullAutoEnabled, activeFullAutoTurnRunning, formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 import {
   LexicalComposerEditor,
   type LexicalComposerEditorHandle,
@@ -306,6 +306,11 @@ export const ReactComposer = ({
   const lastSubmitRef = useRef<Readonly<{ value: string; at: number }> | null>(null);
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
   const lane = state.harnessLanes[state.selectedHarness];
+  // FA-H4 (#8877): main reports a BACKGROUND Full Auto turn running on the
+  // active thread (renderer non-pending — no live events reach it). Renders
+  // the running badge and the Stop control; the send handler fences manual
+  // submits while this holds.
+  const fullAutoRunning = activeFullAutoTurnRunning(state);
   const pendingAction = composerActionPresentation(state.composerAdmission, state.pendingSubmitMode);
   const hasText = state.input.trim() !== "";
   const canSubmit = state.pending
@@ -515,7 +520,19 @@ export const ReactComposer = ({
             {lane.reason === CODEX_CHIP_REASON_VERIFYING ? "Checking Codex…" : lane.reason ?? "Codex unavailable"}
           </Badge>
         ) : null}
-        {state.pending ? (
+        {!state.pending && fullAutoRunning ? (
+          <Badge
+            className="oa-react-composer-status"
+            variant="outline"
+            role="status"
+            aria-live="polite"
+            data-full-auto-status="running"
+          >
+            <span className="oa-react-composer-status-dot" aria-hidden="true" />
+            Full Auto running…
+          </Badge>
+        ) : null}
+        {state.pending || fullAutoRunning ? (
           <DesktopComposerButton
             kind="stop"
             onClick={() => dispatch(report, "DesktopTurnInterrupted")}

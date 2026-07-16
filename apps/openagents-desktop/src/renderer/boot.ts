@@ -66,6 +66,7 @@ import {
   desktopConversationShortcutTargets,
   initialDesktopShellState,
   makeDesktopShellHandlers,
+  withFullAutoLiveState,
   withInput,
   withLiveAgentGraph,
   withThreadCatalog,
@@ -220,10 +221,19 @@ type DesktopBridge = Readonly<{
     queueList?: (threadRef: unknown) => Promise<unknown>
     queueEdit?: (value: unknown) => Promise<unknown>
     queueCancel?: (value: unknown) => Promise<unknown>
-    /** Full Auto (#8853): main-owned durable per-thread toggle. */
+    /** Full Auto (#8853): main-owned durable per-thread toggle; FA-H4
+     * (#8877) adds the background-turn stop and the coarse live-state push
+     * (preload schema-decodes each event before this listener sees it). */
     fullAuto?: Readonly<{
       set?: (input: unknown) => Promise<unknown>
       get?: (input: unknown) => Promise<unknown>
+      interrupt?: (input: unknown) => Promise<unknown>
+      onState?: (listener: (state: Readonly<{
+        threadRef: string
+        state: string
+        turnRef: string | null
+        detail?: string
+      }>) => void) => () => void
     }>
   }>
   codexEcosystem?: Readonly<{
@@ -637,6 +647,17 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       })
       window.addEventListener("pagehide", () => unsubscribeRecovery(), { once: true })
     }
+    // FA-H4 (#8877): coarse Full Auto live-state push — same direct
+    // SubscriptionRef-update style as the recovery subscription above. Each
+    // event (already schema-decoded by the preload) projects one thread's
+    // background-turn state so the composer's badge/Stop/fencing reflect it.
+    if (typeof bridge?.codexLocal?.fullAuto?.onState === "function") {
+      const unsubscribeFullAutoState = bridge.codexLocal.fullAuto.onState(event => {
+        void Effect.runPromise(SubscriptionRef.update(state, current =>
+          withFullAutoLiveState(current, event.threadRef, { state: event.state, turnRef: event.turnRef })))
+      })
+      window.addEventListener("pagehide", () => unsubscribeFullAutoState(), { once: true })
+    }
     const recoveryStorageKey = (workspaceSessionRef: string): string =>
       `openagents.desktop.workspace-editor.v2.${workspaceSessionRef}`
     const loadWorkspaceRecovery = (workspaceSessionRef: string) => {
@@ -957,9 +978,25 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         (await readBridge()?.codexLocal?.fullAuto?.set?.(input)) ?? { ok: false },
       get: async (input: Readonly<{ threadRef: string }>) => {
         const raw = await readBridge()?.codexLocal?.fullAuto?.get?.(input)
-        return typeof raw === "object" && raw !== null && typeof (raw as { enabled?: unknown }).enabled === "boolean"
-          ? { enabled: (raw as { enabled: boolean }).enabled }
-          : { enabled: false }
+        if (typeof raw !== "object" || raw === null || typeof (raw as { enabled?: unknown }).enabled !== "boolean") {
+          return { enabled: false }
+        }
+        const value = raw as { enabled: boolean; state?: unknown; turnRef?: unknown }
+        // FA-H4 (#8877): the live-state fields are additive/optional — an
+        // older main that returns only { enabled } keeps hydration working.
+        return {
+          enabled: value.enabled,
+          ...(typeof value.state === "string" ? { state: value.state } : {}),
+          ...(typeof value.turnRef === "string" || value.turnRef === null ? { turnRef: value.turnRef } : {}),
+        }
+      },
+      // FA-H4 (#8877): thread-scoped stop for the background continuation
+      // turn. Absent preload degrades to { ok: false } (Stop no-ops).
+      interrupt: async (input: Readonly<{ threadRef: string }>) => {
+        const raw = await readBridge()?.codexLocal?.fullAuto?.interrupt?.(input)
+        return typeof raw === "object" && raw !== null && (raw as { ok?: unknown }).ok === true
+          ? { ok: true }
+          : { ok: false }
       },
     }
     const registry = yield* makeIntentRegistry(

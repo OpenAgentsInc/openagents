@@ -200,10 +200,15 @@ import {
   CODEX_LOCAL_MODEL,
   CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF,
   CodexLocalFullAutoGetChannel,
+  CodexLocalFullAutoInterruptChannel,
   CodexLocalFullAutoSetChannel,
+  CodexLocalFullAutoStateChannel,
+  CODEX_LOCAL_FULL_AUTO_DETAIL_LIMIT,
   decodeCodexLocalContinuationProfile,
   decodeCodexLocalFullAutoGetRequest,
+  decodeCodexLocalFullAutoInterruptRequest,
   decodeCodexLocalFullAutoSetRequest,
+  type CodexLocalFullAutoLiveState,
 } from "./codex-local-contract.ts"
 import {
   FIXTURE_CODEX_LOCAL_ACCOUNT,
@@ -1002,6 +1007,39 @@ const broadcastFullAutoThreadUpdate = (threadRef: string): void => {
   if (thread === null) return
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send(DesktopLocalTurnRecoveryUpdateChannel, thread)
+  }
+}
+/**
+ * FA-H4 (#8877): main-owned in-memory coarse live state per Full Auto
+ * thread. A background continuation dispatches with `sender: null`, so no
+ * live turn events reach any renderer; this map plus its broadcast are the
+ * ONLY renderer-visible signal that a background turn is running right now
+ * (with its interruptible turn ref) or how the last one ended. Terminal
+ * states persist in the map until the next transition — the renderer keeps
+ * showing the last outcome instead of snapping to a fabricated idle.
+ * Deliberately NOT durable: after a restart the startup reconciliation
+ * re-derives reality (either a fresh dispatch re-enters turn_running, or the
+ * blocked/cap notes already persisted on the thread itself).
+ */
+const fullAutoLiveState = new Map<string, Readonly<{
+  state: CodexLocalFullAutoLiveState
+  turnRef: string | null
+  detail?: string
+}>>()
+const setFullAutoLiveState = (
+  threadRef: string,
+  state: CodexLocalFullAutoLiveState,
+  turnRef: string | null,
+  detail?: string,
+): void => {
+  const bounded = detail === undefined || detail.trim() === ""
+    ? undefined
+    : detail.slice(0, CODEX_LOCAL_FULL_AUTO_DETAIL_LIMIT)
+  const entry = { state, turnRef, ...(bounded === undefined ? {} : { detail: bounded }) } as const
+  fullAutoLiveState.set(threadRef, entry)
+  // Same all-windows loop shape as broadcastFullAutoThreadUpdate above.
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(CodexLocalFullAutoStateChannel, { threadRef, ...entry })
   }
 }
 const codexDurableQueue = openCodexDurableQueue(
@@ -3230,6 +3268,10 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       // against the live contract enums (a field that no longer decodes
       // falls back to lane defaults instead of failing the loop).
       const bound = decodeCodexLocalContinuationProfile(profile)
+      // FA-H4 (#8877): the background turn becomes a rendered fact the moment
+      // it dispatches, carrying the lease turn ref so the composer's stop
+      // control can target the ACTUAL running background turn.
+      setFullAutoLiveState(threadRef, "turn_running", turnRef)
       const result = await dispatchCodexLocalTurn({
         turnRef,
         threadRef,
@@ -3241,21 +3283,33 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
           ? { target: { provider: "codex" as const, accountRef: bound.accountRef, model: bound.model } }
           : {}),
       }, null)
+      // FA-H4: success transitions here; every failure path (thrown OR
+      // ok:false, including the in-flight refusal above) transitions in
+      // onDispatchFailed below, so the two never double-report.
+      if (result.ok) setFullAutoLiveState(threadRef, "turn_completed", turnRef)
       return result.ok ? { ok: true } : { ok: false, reason: result.error ?? "dispatch_failed" }
     },
-    onCapReached: capThreadRef => appendFullAutoSystemNote(
-      capThreadRef,
-      `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
-    ),
+    onCapReached: capThreadRef => {
+      // FA-H4 (#8877): the cap stop is a typed live state, not just a note.
+      setFullAutoLiveState(capThreadRef, "cap_reached", null)
+      appendFullAutoSystemNote(
+        capThreadRef,
+        `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
+      )
+    },
     // FA-H2 (#8875): a continuation whose granted workspace no longer matches
     // (or was never bound) does not dispatch -- the record is disabled with a
     // typed blockedReason and the owner sees why, on the thread itself.
-    onWorkspaceBlocked: (blockedThreadRef, block) => appendFullAutoSystemNote(
-      blockedThreadRef,
-      block.reason === "workspace_unbound"
-        ? "Full Auto was turned off for this thread: it has no recorded granted workspace, so a continuation cannot be dispatched safely. Turn Full Auto back on from the workspace you want it to work in."
-        : "Full Auto was turned off for this thread: the selected workspace no longer matches the workspace that was granted when Full Auto was enabled. Turn Full Auto back on from the workspace you want it to work in.",
-    ),
+    onWorkspaceBlocked: (blockedThreadRef, block) => {
+      // FA-H4 (#8877): the typed disable is also a live state transition.
+      setFullAutoLiveState(blockedThreadRef, "blocked", null, block.reason)
+      appendFullAutoSystemNote(
+        blockedThreadRef,
+        block.reason === "workspace_unbound"
+          ? "Full Auto was turned off for this thread: it has no recorded granted workspace, so a continuation cannot be dispatched safely. Turn Full Auto back on from the workspace you want it to work in."
+          : "Full Auto was turned off for this thread: the selected workspace no longer matches the workspace that was granted when Full Auto was enabled. Turn Full Auto back on from the workspace you want it to work in.",
+      )
+    },
     // FA-H5 (#8878): a failed dispatch (thrown OR ok:false) is a typed,
     // owner-visible outcome -- never a silently dormant enabled record.
     onDispatchFailed: (failedThreadRef, failure) => {
@@ -3264,6 +3318,10 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
         failedThreadRef,
         failure.reason,
       )
+      // FA-H4 (#8877): a failure-limit disable renders as blocked; an
+      // ordinary failure renders as turn_failed with the typed reason.
+      if (failure.disabled) setFullAutoLiveState(failedThreadRef, "blocked", null, failure.reason)
+      else setFullAutoLiveState(failedThreadRef, "turn_failed", null, failure.reason)
       appendFullAutoSystemNote(
         failedThreadRef,
         failure.disabled
@@ -3310,8 +3368,28 @@ ipcMain.handle(CodexLocalFullAutoSetChannel, async (_event, value: unknown) => {
 })
 ipcMain.handle(CodexLocalFullAutoGetChannel, async (_event, value: unknown) => {
   const request = decodeCodexLocalFullAutoGetRequest(value)
-  if (request === null) return { enabled: false }
-  return { enabled: fullAutoRegistry.get(request.threadRef) }
+  if (request === null) return { enabled: false, state: "idle", turnRef: null }
+  // FA-H4 (#8877): additive live-state fields ride alongside `enabled` so
+  // the renderer's existing wave-1 hydration keeps working unchanged while
+  // a thread switch also picks up an in-flight background turn immediately.
+  const live = fullAutoLiveState.get(request.threadRef)
+  return {
+    enabled: fullAutoRegistry.get(request.threadRef),
+    state: live?.state ?? "idle",
+    turnRef: live?.turnRef ?? null,
+    ...(live?.detail === undefined ? {} : { detail: live.detail }),
+  }
+})
+// FA-H4 (#8877): thread-scoped stop for the background continuation turn.
+// The renderer names only the thread; main resolves the live running turn
+// ref itself and signals the exact same runtime interrupt path the existing
+// CodexLocalInterruptChannel handler uses (codexLocal.interrupt).
+ipcMain.handle(CodexLocalFullAutoInterruptChannel, async (_event, value: unknown) => {
+  const request = decodeCodexLocalFullAutoInterruptRequest(value)
+  if (request === null) return { ok: false }
+  const live = fullAutoLiveState.get(request.threadRef)
+  if (live === undefined || live.state !== "turn_running" || live.turnRef === null) return { ok: false }
+  return { ok: codexLocal.interrupt(live.turnRef) }
 })
 
 // Codex account connect + reconnect (#8640 unblock; EP250 owner mandate:

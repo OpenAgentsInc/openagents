@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Full Auto Codex Composer Loop"
 artifact_type: "prd"
-spec_revision: 4
+spec_revision: 5
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
-updated_at: "2026-07-16T12:00:00.000Z"
+updated_at: "2026-07-16T13:20:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -18,10 +18,10 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8875 (FA-H2 workspace binding), 8876 (FA-H3 exactly-once dispatch), 8878 (FA-H5 failure policy), 8879 (FA-H6 profile continuity), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness)"
+  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8875 (FA-H2 workspace binding), 8876 (FA-H3 exactly-once dispatch), 8877 (FA-H4 background in-flight state, stop, send-fencing), 8878 (FA-H5 failure policy), 8879 (FA-H6 profile continuity), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
-  openagents_revision_note: "rev 4 (#8875, #8876, #8878, #8879) hardens dispatch authority and delivery semantics on the durable record. FA-H2 (#8875): enabling binds the currently resolved workspace (resolved by main, never renderer-supplied) onto the record; a continuation whose resolved workspace no longer matches refuses to dispatch and disables the record with blockedReason workspace_mismatch and an owner-visible note; an enabled record with NO binding (pre-upgrade row) fails CLOSED (workspace_unbound) and rebinds only on its next enable. FA-H3 (#8876): reconciliation is serialized through a promise-chain mutex in main, and each continuation claims a durable per-thread lease carrying the exact dispatched turn ref before dispatch, so overlapping passes dispatch a thread at most once; only the startup pass clears a stale lease whose turn ref never reached the local-turn journal; main's dispatch adapter additionally refuses when the journal already holds a nonterminal turn on the thread. FA-H5 (#8878): thrown errors AND ok:false dispatch results are typed failures -- failure state (consecutiveFailures, lastFailureAt, blockedReason) persists on the record with an owner-visible note, retries respect bounded exponential backoff min(2^failures*30s, 30min), and the 5th consecutive failure disables the record; a successful dispatch clears failure state. Cap-counting decision: continuationCount increments ONLY on successful dispatch -- a failed dispatch consumes failure budget, never a cap slot (rev 3 incremented before dispatch). FA-H6 (#8879): the initiating renderer-sent flagged turn binds its execution profile (account target, model, reasoning effort) onto the record and continuations replay it (revalidated against live contract enums); images, attachments, and extension selection deliberately reset -- a continuation is a fresh instruction, not a replay. All new record fields are optional so v1 registry files still decode. Rev 3 (#8880, #8882, #8883) pinned cap-reset semantics, registry quarantine/eviction hardening, and measurable-metrics cleanup. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
+  openagents_revision_note: "rev 5 (FA-H4 #8877) makes background continuations rendered facts instead of silence-until-completion. Main keeps a coarse, typed, in-memory per-thread live state (idle | turn_running | turn_completed | turn_failed | cap_reached | blocked; blocked carries the typed blockedReason as detail) and broadcasts every transition to all windows over a new CodexLocalFullAutoStateChannel; the CodexLocalFullAutoGetChannel response additively carries { state, turnRef } beside enabled so thread switches hydrate an in-flight background turn immediately. While the active thread's live state is turn_running the composer renders a status badge and the Stop control; Stop signals a new thread-scoped CodexLocalFullAutoInterruptChannel whose main handler resolves the live running turn ref itself and reuses the exact codexLocal.interrupt runtime path; a manual send during turn_running is fenced with a transient notice that keeps the draft (never a silent second concurrent turn). Token-by-token streaming of background turns remains deliberately out; live state is deliberately NOT durable -- startup reconciliation re-derives reality. An interrupted background turn terminates through the existing FA-H5 typed-failure path (owner-visible note, backoff) with the toggle remaining the durable loop-level stop. Rev 4 (#8875, #8876, #8878, #8879) hardens dispatch authority and delivery semantics on the durable record. FA-H2 (#8875): enabling binds the currently resolved workspace (resolved by main, never renderer-supplied) onto the record; a continuation whose resolved workspace no longer matches refuses to dispatch and disables the record with blockedReason workspace_mismatch and an owner-visible note; an enabled record with NO binding (pre-upgrade row) fails CLOSED (workspace_unbound) and rebinds only on its next enable. FA-H3 (#8876): reconciliation is serialized through a promise-chain mutex in main, and each continuation claims a durable per-thread lease carrying the exact dispatched turn ref before dispatch, so overlapping passes dispatch a thread at most once; only the startup pass clears a stale lease whose turn ref never reached the local-turn journal; main's dispatch adapter additionally refuses when the journal already holds a nonterminal turn on the thread. FA-H5 (#8878): thrown errors AND ok:false dispatch results are typed failures -- failure state (consecutiveFailures, lastFailureAt, blockedReason) persists on the record with an owner-visible note, retries respect bounded exponential backoff min(2^failures*30s, 30min), and the 5th consecutive failure disables the record; a successful dispatch clears failure state. Cap-counting decision: continuationCount increments ONLY on successful dispatch -- a failed dispatch consumes failure budget, never a cap slot (rev 3 incremented before dispatch). FA-H6 (#8879): the initiating renderer-sent flagged turn binds its execution profile (account target, model, reasoning effort) onto the record and continuations replay it (revalidated against live contract enums); images, attachments, and extension selection deliberately reset -- a continuation is a fresh instruction, not a replay. All new record fields are optional so v1 registry files still decode. Rev 3 (#8880, #8882, #8883) pinned cap-reset semantics, registry quarantine/eviction hardening, and measurable-metrics cleanup. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
 ---
 
 ## Problem
@@ -69,11 +69,15 @@ in:
   - reuse of the existing `DesktopLocalTurnRecoveryUpdateChannel` broadcast (already wired end to end for turn-recovery) to reflect a background continuation's result in any open window, rather than inventing a new channel
   - a bounded safety cap (20 consecutive continuations) that turns Full Auto off and leaves an explanatory note if hit, now enforced durably by main rather than an in-memory renderer counter
   - a plain toggle-off stop control, now backed by the durable registry so it stops the loop even across a restart, not just within a live session
+  - coarse typed background-turn live state (FA-H4): main tracks an in-memory per-thread state (idle | turn_running | turn_completed | turn_failed | cap_reached | blocked, with the running turn ref and a bounded detail for blocked) and broadcasts every transition over `CodexLocalFullAutoStateChannel`; the get channel additively returns `{ state, turnRef }` beside `enabled`
+  - a working background-turn stop (FA-H4): while the active thread's live state is turn_running the composer shows a "Full Auto running…" badge plus the Stop control, and Stop signals the thread-scoped `CodexLocalFullAutoInterruptChannel` -- main resolves the live running turn ref itself and reuses the same runtime interrupt path as the existing turn interrupt channel
+  - manual-send fencing (FA-H4): a manual composer send while the active thread's live state is turn_running is refused with a transient notice and the draft kept -- never a silent second concurrent turn on the same thread
 out:
   - any dedicated ProductSpec/AssuranceSpec review UI, criterion board, or admission-gate screen for Full Auto
   - a separate permission/envelope/policy system; Full Auto inherits the same full-trust execution profile every other Codex turn in this app already uses
   - multi-repo, multi-thread, or fleet-wide Full Auto
-  - live, token-by-token streaming of a background (main-initiated) continuation into an open window; a background continuation surfaces as a completed-thread refresh once it finishes, not live text deltas -- a coarser but simpler and fully durable signal
+  - live, token-by-token streaming of a background (main-initiated) continuation into an open window; since rev 5 (FA-H4) a background turn IS rendered as a coarse typed in-flight state with a working stop and manual-send fencing while it runs, and its result still surfaces as a completed-thread refresh -- only live text deltas stay cut
+  - durability for the coarse live state itself; it is main-owned in-memory truth, and after a restart the startup reconciliation re-derives reality (a fresh dispatch re-enters turn_running, and the durable cap/blocked notes already persist on the thread)
   - the composer toggle re-syncing to a different thread's persisted enabled state on every in-session thread switch; the toggle reflects the truth for the thread you send from, but switching to another previously Full-Auto-enabled thread does not auto-flip the visible toggle in this revision
   - any change to release or public-claim authority
 cut:
@@ -254,6 +258,53 @@ cut:
   Proof: `full-auto-registry.test.ts` "an existing v1 registry file (no
   wave-2 fields) still decodes -- the schema upgrade never quarantines a
   user's state".
+- **FA-AC-19:** A background (main-initiated) continuation is rendered as a
+  coarse, typed, per-thread in-flight state, not silence until completion.
+  Main owns an in-memory live-state map (idle | turn_running |
+  turn_completed | turn_failed | cap_reached | blocked; blocked carries the
+  typed blockedReason as bounded detail) and broadcasts every transition to
+  all windows over `CodexLocalFullAutoStateChannel`: turn_running with the
+  lease turn ref at dispatch start, turn_completed on success, turn_failed
+  with the typed reason on an ordinary failure, cap_reached at the cap, and
+  blocked on a workspace or failure-limit disable. Terminal states persist
+  until the next transition. The extended get channel additively returns
+  `{ state, turnRef }` beside `enabled`, and while the active thread's state
+  is turn_running the composer renders a "Full Auto running…" status badge.
+  Token-by-token streaming remains deliberately out of scope.
+  Proof: `shell.test.ts` "FA-H4 (#8877): withFullAutoLiveState projects a
+  live-state event per thread and activeFullAutoTurnRunning reads only the
+  ACTIVE thread"; `react-composer.test.tsx` "FA-H4 (#8877): a running
+  background Full Auto turn renders the status badge and the Stop
+  affordance; idle renders neither"; `main.ts` wires the transitions around
+  the existing `runFullAutoReconciliation` dispatch adapter and callbacks
+  (code-reviewed; main.ts has no direct unit-test harness).
+- **FA-AC-20:** A working stop targets the ACTUAL background turn. While the
+  active thread's live state is turn_running (renderer non-pending), the
+  composer's Stop control dispatches the same interrupt intent, whose
+  handler calls the thread-scoped `CodexLocalFullAutoInterruptChannel` with
+  only `{ threadRef }`; main resolves the live running turn ref itself and
+  signals the exact same `codexLocal.interrupt` runtime path the existing
+  turn-interrupt channel uses, answering `{ ok: boolean }`. While the
+  renderer's OWN turn is pending, Stop keeps signalling the active streaming
+  turn unchanged. The interrupted background turn terminates through the
+  existing FA-H5 typed-failure path; the toggle remains the durable
+  loop-level stop.
+  Proof: `shell.test.ts` "FA-H4 (#8877): DesktopTurnInterrupted with a
+  running BACKGROUND turn (not pending) calls fullAutoHost.interrupt with
+  the active threadRef" and "FA-H4 (#8877): while renderer-pending, Stop
+  keeps signalling the ACTIVE streaming turn (chat.interruptActive), not the
+  background channel"; `react-composer.test.tsx` (Stop affordance case
+  above); `main.ts` interrupt handler (code-reviewed).
+- **FA-AC-21:** A manual send while a background Full Auto turn owns the
+  thread is excluded, never run silently concurrently. When the active
+  thread's live state is turn_running, `runNoteSubmission` refuses to start
+  a manual turn: it sets the transient notice "Full Auto is running a turn
+  on this thread. Stop it first or wait for it to finish." and keeps the
+  composer draft. Once the live state is terminal, the same submit goes
+  through normally.
+  Proof: `shell.test.ts` "FA-H4 (#8877): a manual send while a background
+  Full Auto turn runs is FENCED -- sendMessage is never called, a notice
+  says why, and the draft is kept".
 
 ## Success Metrics
 
@@ -272,14 +323,34 @@ cut:
   quit the app, relaunch, watch it resume) before any further Full Auto
   scope -- additional auto-admit categories, multi-repo, per-thread toggle
   resync on switch -- is proposed.
-- Owner sign-off on the deliberate scoping choice that a background
-  continuation surfaces as a coarse completed-thread refresh rather than
-  live streaming, and that the toggle does not resync on every in-session
-  thread switch (see Open Questions) -- both are cheap to revisit later, not
-  free to build now.
+- Owner sign-off on the deliberate scoping choices that remain after rev 5:
+  a background continuation now renders a coarse typed in-flight state with
+  a working stop and manual-send fencing (FA-H4), but live token streaming
+  stays cut, and the toggle does not resync on every in-session thread
+  switch (see Open Questions) -- both are cheap to revisit later, not free
+  to build now.
 
 ## Receipts
 
+- Rev 5 (FA-H4 #8877): contract additions in `codex-local-contract.ts`
+  (`CodexLocalFullAutoStateChannel`, `CodexLocalFullAutoStateSchema` with its
+  decode helper, `CodexLocalFullAutoInterruptChannel` + request schema);
+  main-owned live-state map, broadcast, extended get response, and the
+  thread-scoped interrupt handler in `main.ts` (state emission wired around
+  the existing reconcile dispatch adapter/callbacks -- reconcile logic itself
+  untouched); preload `fullAuto.onState`/`fullAuto.interrupt` following the
+  localTurnRecovery.onUpdate decode-then-listen pattern; renderer projection
+  (`fullAutoLiveByThread`, `withFullAutoLiveState`,
+  `activeFullAutoTurnRunning`), boot subscription, send-fencing, extended
+  Stop handling, and the composer badge. Focused verification:
+  `vp test --run --max-concurrency 1 --root .
+  apps/openagents-desktop/src/renderer/shell.test.ts
+  apps/openagents-desktop/src/renderer/react-composer.test.tsx` -- 2 files
+  passed, 136 tests passed, 11 skipped; plus
+  `apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts`,
+  `full-auto-registry.test.ts`, `design-conformance.test.ts`, and
+  `mvp-visible-surfaces.test.ts` -- 4 files passed, 69 tests passed; plus a
+  clean `tsc -p tsconfig.json --noEmit`.
 - Rev 4 (FA-H2 #8875, FA-H3 #8876, FA-H5 #8878, FA-H6 #8879):
   `full-auto-restart.e2e.test.ts` extended with the workspace-binding
   refuse/disable and fail-closed cases, the audit's two adversarial probes
