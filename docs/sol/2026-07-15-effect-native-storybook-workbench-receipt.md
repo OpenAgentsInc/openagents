@@ -2,7 +2,7 @@
 
 - Class: receipt
 - Date: 2026-07-15
-- Status: implementation proven; deployment pending
+- Status: deployed and live-proven; issue closed
 - Dispatch: no; use [#8856](https://github.com/OpenAgentsInc/openagents/issues/8856)
 - Owner: OpenAgents UI architecture
 
@@ -38,6 +38,13 @@ their specimen boundary.
 - Local production preview: route and concrete asset returned HTTP 200, with
   exact `data-storybook-component` and `data-storybook-story` counts of 79 and
   108.
+- Production Cloud Run revision: `openagents-monolith-00143-jwc`, serving 100%
+  of traffic.
+- Live route: `https://openagents.com/components/core` returned HTTP 200 and
+  735,577 bytes of SSR HTML.
+- Live inventory markers: exactly 79 `data-storybook-component` sections and
+  108 `data-storybook-story` previews, including the primary Button variant.
+- Concrete live asset: `/assets/index-BoHjCJZS.js` returned HTTP 200.
 - Interactive browser automation is unavailable because the installed browser
   client cannot initialize its process shim in the current Codex runtime. The
   type, test, build, SSR, production asset, and live HTTP checks are the release
@@ -45,5 +52,5 @@ their specimen boundary.
 
 ## Final disposition
 
-This receipt is evidence, not dispatch authority. It will be updated with the
-production revision and live route proof after the sanctioned Cloud Run deploy.
+This receipt is evidence, not dispatch authority. The sanctioned Cloud Run
+deployment, live route/asset proof, and closure are also recorded on #8856.

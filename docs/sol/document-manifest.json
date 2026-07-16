@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "9ce419223043798db6760c18540f2a8390846cb483a9c75358f2eadedf964af0",
+  "sourceTreeSha256": "1d63835c0089f6e2c5241b262cf79469254c67a6d62ddeb1d77383c71a81e82b",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1549,8 +1549,8 @@
       "owner": "OpenAgents UI architecture / issue #8856",
       "disposition": "retain-evidence",
       "dispatch": false,
-      "sha256": "58da29bd8cfe9cfccca3f02d8634a1b5c326fac4e7eb3afd4c34012f5396ea25",
-      "status": "implementation proven; deployment pending",
+      "sha256": "af75fccaccd991d1c2db833306225515e3d265856f3b50905ec804f2a6b2e2fb",
+      "status": "deployed and live-proven; issue closed",
       "snapshot": "2026-07-15",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
