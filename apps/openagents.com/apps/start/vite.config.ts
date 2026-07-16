@@ -100,6 +100,7 @@ export default defineConfig({
       },
       router: {
         codeSplittingOptions: {
+          splitBehavior: ({ routeId }) => routeId.startsWith('/docs') ? [] : undefined,
           defaultBehavior: [
             [
               'component',

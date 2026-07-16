@@ -63,7 +63,8 @@ readability, and sitemap artifacts. `/docs` and `/docs/*` are Start-owned routes
 served by the same `openagents-monolith` Cloud Run service as the website.
 
 Keep page-to-page reading client-routed and prefetched, with no decorative
-document transition delay. Reader pages must not use per-page dynamic imports:
+document transition delay. Docs route modules and reader pages must remain in
+the eagerly loaded docs shell rather than per-route or per-page dynamic imports:
 an open client must remain able to navigate after a deployment replaces hashed
 assets. Search may load Orama lazily on first use; it must not inflate the
 initial reader route.

@@ -8,6 +8,7 @@ describe('documentation shell contract', () => {
     const docsCss = readFileSync(path.resolve(import.meta.dirname, 'docs.css'), 'utf8')
     const headerCss = readFileSync(path.resolve(import.meta.dirname, '../public-header.css'), 'utf8')
     const globalCss = readFileSync(path.resolve(import.meta.dirname, '../styles.css'), 'utf8')
+    const viteConfig = readFileSync(path.resolve(import.meta.dirname, '../../vite.config.ts'), 'utf8')
     const bodyRule = globalCss.match(/\n  body \{([\s\S]*?)\n  \}/)?.[1]
 
     expect(layout).toContain('<PublicHeader')
@@ -28,6 +29,7 @@ describe('documentation shell contract', () => {
     expect(docsCss).toContain('position: sticky')
     expect(docsCss).toContain('.docs-prose > h2:first-child')
     expect(docsCss).toMatch(/\.docs-prose > h2:first-child \{[\s\S]*?border-top: 0/)
+    expect(viteConfig).toContain("routeId.startsWith('/docs') ? [] : undefined")
     expect(bodyRule).toContain('overflow-x: clip')
     expect(bodyRule).not.toContain('overflow-x: hidden')
     expect(globalCss).toContain('overscroll-behavior: none')
