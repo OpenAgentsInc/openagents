@@ -48,6 +48,7 @@ type UserBearerSessionBoundary<User, Bindings> = (
 ) => Promise<Readonly<{ user: User }> | undefined>;
 
 export type DesktopCodexUsageRouteDependencies<User, Bindings> = Readonly<{
+  ingestEnabled: (env: Bindings) => boolean;
   ledger: (env: Bindings) => TokenUsageLedgerShape;
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>;
   userIdFromSession: (session: Readonly<{ user: User }>) => string;
@@ -106,6 +107,13 @@ export const handleDesktopCodexUsageRequest = async <User, Bindings>(
   env: Bindings,
   ctx: ExecutionContext,
 ): Promise<Response> => {
+  // This route stays unreachable until rollout has both owner-approved consent
+  // copy and an authoritative Desktop-turn admission boundary. A client-side
+  // toggle alone must never expose caller-authored counts to the public ledger.
+  if (!dependencies.ingestEnabled(env)) {
+    return noStoreJson({ error: "not_found" }, 404);
+  }
+
   if (request.method !== "POST") {
     return noStoreJson({ error: "method_not_allowed" }, 405);
   }

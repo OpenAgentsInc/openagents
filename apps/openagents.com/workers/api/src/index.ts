@@ -7042,6 +7042,9 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
 })
 
 const handleDesktopCodexUsage = makeDesktopCodexUsageRouteHandler({
+  // #8911 rollout gate: keep server ingest closed until authenticated Desktop
+  // turn admission and owner-approved consent copy are both implemented.
+  ingestEnabled: () => false,
   ledger: (env: Env) =>
     makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
       onIngestedEvent: makeTokensServedProjectionObserver(env),

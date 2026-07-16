@@ -63,6 +63,7 @@ const setup = () => {
   );
 
   const dependencies = (ownerUserId = "github:owner-1") => ({
+    ingestEnabled: () => true,
     ledger: () => ledger,
     requireUserBearerSession: async (incoming: Request) =>
       incoming.headers.get("authorization") === "Bearer desktop-session"
@@ -82,6 +83,33 @@ const setup = () => {
 };
 
 describe("Desktop Codex exact usage ingest", () => {
+  test("is server-disabled before authentication or ledger access", async () => {
+    const state = setup();
+    let authenticationCalls = 0;
+    let ledgerCalls = 0;
+    const dependencies = {
+      ...state.dependencies(),
+      ingestEnabled: () => false,
+      ledger: () => {
+        ledgerCalls += 1;
+        throw new Error("disabled ingest must not construct the ledger");
+      },
+      requireUserBearerSession: async () => {
+        authenticationCalls += 1;
+        throw new Error("disabled ingest must not authenticate");
+      },
+    };
+
+    const response = await handleDesktopCodexUsageRequest(dependencies, request(), {}, context);
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
+    expect(authenticationCalls).toBe(0);
+    expect(ledgerCalls).toBe(0);
+    expect(await state.rows()).toEqual([]);
+    state.sqlite.close();
+  });
+
   test("requires a verified user bearer before reading usage", async () => {
     const state = setup();
     const response = await handleDesktopCodexUsageRequest(

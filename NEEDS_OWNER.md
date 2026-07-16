@@ -3,9 +3,12 @@
 ## Desktop local-usage telemetry consent copy (#8911)
 
 The exact-token reporter and authenticated ingest plumbing are present but
-hard-disabled. Before any Settings toggle or collection is enabled, approve the
-short disclosure that explains the aggregate public counter, the exact token
-fields sent, the absence of prompts/files/paths, and how to withdraw consent.
+hard-disabled at both the Desktop caller and server route. Before any Settings
+toggle or collection is enabled, approve the short disclosure that explains the
+aggregate public counter, the exact token fields sent, the absence of
+prompts/files/paths, and how to withdraw consent. Server enablement also requires
+an authoritative Desktop-turn admission boundary plus durable retry/outbox
+semantics; a user bearer and caller-authored turn reference are not sufficient.
 Metrics remain absent while consent is off.
 
 Archive of older content:
