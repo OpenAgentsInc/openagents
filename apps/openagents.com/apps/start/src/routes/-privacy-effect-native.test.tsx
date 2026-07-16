@@ -40,9 +40,7 @@ describe('EN-4 /privacy Effect Native route', () => {
     expect(serialized).toContain('"catalogVersion":"effect-native/v43"')
     expect(serialized).toContain('Privacy Policy')
     expect(serialized).toContain(PRIVACY_LAST_UPDATED)
-    expect(serialized).toContain(
-      'This document is published so the policy is available now. The wording is being reviewed and may be updated.',
-    )
+    expect(serialized).not.toContain('wording is being reviewed')
     expect(serialized).toContain('1. Information We Collect')
     expect(serialized).toContain('2. How We Use Information')
     expect(serialized).toContain('3. How We Share Information')
@@ -78,6 +76,15 @@ describe('EN-4 /privacy Effect Native route', () => {
     expect(source).not.toContain('@/components/ui/')
     expect(source).not.toContain('launch-ui')
     expect(source).not.toContain('-legal-components')
+  })
+
+  test('uses the same readable legal-document proportions as Terms', () => {
+    const css = readFileSync(join(process.cwd(), 'src/styles.css'), 'utf8')
+
+    expect(css).toContain('.privacy-effect-native-host')
+    expect(css).toContain("[data-en-key='privacy-article']")
+    expect(css).toContain('max-width: 48rem')
+    expect(css).toContain("[data-en-key^='privacy-section-']")
   })
 
   test('route shell mounts the Effect Native page only', () => {

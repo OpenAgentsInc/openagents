@@ -1,6 +1,5 @@
 import { PublicPageShell } from '@/components/public-page-shell'
 import {
-  Card,
   type IntentReporter,
   Link,
   type LinkView,
@@ -170,27 +169,6 @@ export const privacyLandingView = (
       section('privacy-article', [
         text('privacy-title', 'Privacy Policy', 'heading'),
         text('privacy-updated', PRIVACY_LAST_UPDATED, 'caption', 'textMuted'),
-        Card(
-          {
-            key: 'privacy-review-notice',
-            padding: '4',
-            radius: 'md',
-            style: {
-              backgroundColor: 'surface',
-              borderColor: 'warning',
-              borderWidth: 1,
-              width: 'full',
-            },
-          },
-          [
-            text(
-              'privacy-review-notice-body',
-              'This document is published so the policy is available now. The wording is being reviewed and may be updated.',
-              'body',
-              'textMuted',
-            ),
-          ],
-        ),
 
         // Intro: link split into separate runs (flat Text / Link).
         Stack(

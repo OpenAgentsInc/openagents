@@ -16,9 +16,6 @@ export const legalTitleClass =
 
 export const legalUpdatedClass = 'mt-3 text-sm text-khala-text-faint'
 
-export const legalReviewNoticeClass =
-  'mt-6 rounded border border-khala-warning/25 bg-khala-warning/[0.06] px-4 py-3 text-sm text-khala-text-muted'
-
 const legalSectionClass = 'mt-10'
 
 const legalHeadingClass = 'text-xl font-semibold text-khala-text sm:text-2xl'

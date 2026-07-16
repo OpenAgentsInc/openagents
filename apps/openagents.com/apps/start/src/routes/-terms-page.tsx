@@ -7,7 +7,6 @@ import {
   LegalP,
   LegalSection,
   legalArticleClass,
-  legalReviewNoticeClass,
   legalShellClass,
   legalTitleClass,
   legalUpdatedClass,
@@ -31,10 +30,6 @@ export function TermsPage() {
         <article className={legalArticleClass}>
           <h1 className={legalTitleClass}>Terms of Service</h1>
           <p className={legalUpdatedClass}>{TERMS_LAST_UPDATED}</p>
-          <p className={legalReviewNoticeClass}>
-            This document is published so the terms are available now. The
-            wording is being reviewed and may be updated.
-          </p>
 
           <LegalP>
             OpenAgents, Inc. (&ldquo;OpenAgents,&rdquo; &ldquo;we,&rdquo;
