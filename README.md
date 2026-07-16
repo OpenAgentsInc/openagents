@@ -127,8 +127,12 @@ and digest-bound feature gates. Cursor's composer launches only a resolved
 `cursor-agent` installation through `agent acp`, pins and rechecks its complete
 flat installation closure, negotiates `cursor_login`, and
 keeps model discovery behind its versioned extension decoder. Diagnostic live
-probes and source-derived fixtures remain explicitly non-release evidence until
-the pinned live-binary matrix lands. Execution is tracked in
+probes and source-derived fixtures remain explicitly non-release evidence. The
+checked
+[pinned live-binary matrix](packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
+and [human proof ledger](docs/qa/2026-07-16-acp10-release-proof/README.md) now
+independently gate the two peers; their current verdict is experimental because
+required live scenarios remain unresolved. Execution is tracked in
 [#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887);
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).
@@ -141,9 +145,10 @@ intentionally supplied `XAI_API_KEY` auth remain peer-advertised and
 evidence-gated; Cursor exposes only its advertised `cursor_login` flow. The
 support artifact is constructed in main from a closed refs-only schema and
 omits executable paths, environment, auth payloads, prompts, files, terminal
-content, and native events. “Supported” still comes only from #8897's pinned
-release matrix; Cursor's observed build and Grok without qualifying live
-evidence remain visibly experimental.
+content, and native events. Desktop derives its label from trusted-profile
+admission evidence; the pinned matrix remains the release authority and is not
+loaded by the renderer. The checked Grok and Cursor builds remain visibly
+experimental, and evidence for one can never promote the other.
 
 ## The front door to an open agent network
 

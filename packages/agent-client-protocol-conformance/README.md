@@ -14,7 +14,7 @@ It provides:
   retention of unknown future variants;
 - deterministic, redacted native transcripts and checked coverage,
   compatibility declarations, plus an actually executed compatibility/fault
-  report keyed by the current Git revision and platform;
+  report keyed by the pinned Git revision and platform;
 - broker-reference MCP fixtures proving invalid/expired refusal and immediate
   secret redaction; and
 - Grok replay-load and Cursor resume/mode/config fixtures that pin the
@@ -25,9 +25,9 @@ It provides:
 The Grok and Cursor fixtures are independently versioned beneath
 `fixtures/peers`. Their provenance labels say exactly what they prove. The
 current checked fixtures are source-derived synthetic evidence, not captured
-binary transcripts and not release compatibility claims. Issue #8897 owns
-pinned real-binary admission. Stable, unstable, and vendor extension fixtures
-remain in separate namespaces.
+binary transcripts and not release compatibility claims. The checked ACP-10
+release matrix owns pinned real-binary release admission. Stable, unstable, and
+vendor extension fixtures remain in separate namespaces.
 
 The product lifecycle consuming these fixtures is specified by the
 [Agent Client Protocol session runtime ADR](../../docs/adr/2026-07-16-agent-client-session-runtime.md).
@@ -46,8 +46,14 @@ pnpm --dir packages/agent-client-protocol-conformance run check:release
 It uses a closed claim vocabulary (`supported`, `experimental`, `incompatible`,
 `not-installed`, `auth-required`, `degraded`) and distinguishes `live-pass`
 from fixture-only, blocked, untested, unsupported, and failed scenarios. The
-validator recomputes release eligibility: a required fixture pass is useful but
-cannot promote either provider, and one provider can never mask the other.
+validator enforces the exact release/schema/platform/profile/binary identities,
+the complete 47-scenario catalog, freshness, and repository-local evidence
+references before recomputing release eligibility. Requiredness and evidence
+class are code-owned: live peer and packaged Desktop rows require live proof,
+while only explicitly hermetic production-transport rows may be satisfied by
+executed fixture proof. Matrix flags cannot self-exempt a provider, and one
+provider can never mask the other. The current checked verdict is
+`experimental` for both peers.
 
 Live probes are inert unless explicitly armed and never run in ordinary CI:
 
@@ -56,11 +62,11 @@ GROK_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live:g
 CURSOR_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live:cursor
 ```
 
-The checked Cursor initialize result in
-`compatibility/live/cursor-2026.06.24-darwin-arm64.json` is diagnostic only. It
-pins the installed command, full reported build, launcher and installation-closure digests, wire
-version, advertised auth method, and capability keys; every unexercised
-scenario is explicitly `not-proven` and remains blocked on #8897.
+The checked live records beneath `compatibility/live/` pin the installed
+commands, full reported builds, executable/installation-closure digests, wire
+version, advertised auth methods, and capability keys. The release matrix adds
+the deeper redacted peer runs described in the human ledger; every unexercised
+required scenario remains an explicit blocker to a `supported` claim.
 
 Each probe emits one machine-readable diagnostic result with command, binary
 version, schema identity, and initialize outcome. It does not authenticate,

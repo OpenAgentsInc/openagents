@@ -6,7 +6,7 @@
   "scripts": {
     "check:vp2-node-runtime": "node scripts/vp2-node-runtime-guard.mjs",
     "check:agent-client-protocol": "pnpm --dir packages/agent-client-protocol run check:generated",
-    "check:agent-client-protocol-conformance": "pnpm --dir packages/agent-client-protocol-conformance run check:artifacts",
+    "check:agent-client-protocol-conformance": "pnpm --dir packages/agent-client-protocol-conformance run check:artifacts && pnpm --dir packages/agent-client-protocol-conformance run check:release",
     "check:codex-app-server-protocol": "pnpm --dir packages/codex-app-server-protocol run check:generated",
     "test:vp2-node": "node --test packages/runtime-platform/src/runtime-platform.node-suite.ts packages/sqlite-runtime/src/node-database.node-suite.ts scripts/public-cli-artifacts.node.test.mjs scripts/vp2-node-runtime-guard.test.mjs scripts/vp2-retained-service.node.test.mjs",
     "dev:openagents.com": "pnpm --dir apps/openagents.com run dev",

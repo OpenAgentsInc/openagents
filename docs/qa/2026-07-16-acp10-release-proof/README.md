@@ -1,8 +1,9 @@
 # ACP-10 pinned peer release proof
 
-Date: 2026-07-16  
-Issue: [#8897](https://github.com/OpenAgentsInc/openagents/issues/8897)  
-Revision under test: `63cc0d073417d04bfa3146f7b92da1f385f9f420`  
+Date: 2026-07-16
+Issue: [#8897](https://github.com/OpenAgentsInc/openagents/issues/8897)
+Live peer evidence revision: `63cc0d073417d04bfa3146f7b92da1f385f9f420`
+Release-candidate integration revision: `df03cf2ef76dda8f203083e7c22a02cd519b1a05`
 Protocol: **Agent Client Protocol**, not Agent Communication Protocol and not A2A
 
 ## Verdict
@@ -12,16 +13,20 @@ remain independently `experimental`.
 
 The checked machine ledger is
 [`release-matrix.json`](../../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json).
-Its validator derives `releaseEligible`; it does not trust a hand-written
-promotion bit. Every required scenario must be `live-pass`. A hermetic or
-fixture pass is retained as useful implementation evidence but still blocks a
-provider release claim. Grok passing never changes Cursor's gate, and Cursor
-passing never changes Grok's gate.
+Its validator enforces the release/schema/platform/profile/binary/initialize
+identities, the exact 47-scenario catalog, evidence freshness, repository-local
+evidence references, and independently derived `releaseEligible`; it does not
+trust a hand-written promotion bit or matrix-controlled requiredness flag.
+Code assigns each scenario to `live-peer`, `packaged-desktop-live`,
+`hermetic-production`, or `not-applicable`. The first two require `live-pass`;
+an executed production-transport fixture may satisfy only the explicitly
+hermetic class. Grok passing never changes Cursor's gate, and Cursor passing
+never changes Grok's gate.
 
-| Peer | Exact live identity | Basic live result | Required scenarios not yet live-passed | Claim |
+| Peer | Exact live identity | Basic live result | Code-owned requirements unresolved | Claim |
 |---|---|---:|---:|---|
-| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 14 live passes | 27 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 15 live passes | 25 | experimental |
+| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 14 live passes | 19 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 15 live passes | 17 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -105,11 +110,19 @@ Provider-specific gaps:
 - Cursor: pending/cancel/expiry/re-auth login, model listing, and all Cursor
   reverse extensions. List, mode/config round trips, and orderly restart/load
   and SIGKILL restart/load are live-proven.
-- Both: packaged Desktop clean-machine happy/failure/recovery journeys. This is
-  blocked on ACP-8 integration and cannot be replaced by direct runtime probes.
+- Both: packaged Desktop clean-machine happy/failure/recovery journeys. The
+  shipped main-owned host, Settings projection, alternate-path admission, and
+  closed support schema now pass hermetic Desktop tests. The matrix records
+  those rows as `fixture-pass`, because that still cannot replace a packaged
+  clean-machine run or promote a provider.
 
-The release matrix is therefore useful now as the repeatable closure checklist,
-but is deliberately not a release promotion artifact.
+The ACP-10 validator now publishes the proof, derives the claim independently
+for each peer, and fails closed. Its current verdict is a release denial for
+general support—not an implied promotion. The issue remains open because the
+Desktop prompt lane, reproducible full live runner, credential-dependent auth
+states, and claimed-platform executions are not complete. Future evidence can
+change one peer at a time from `experimental` only by satisfying every
+code-owned evidence class on each claimed platform.
 
 ## Verification commands
 
@@ -121,7 +134,8 @@ pnpm --dir packages/agent-client-protocol-conformance run report
 pnpm --dir packages/agent-client-protocol-conformance run check:release
 ```
 
-`check:release` rejects stale evidence, host-private paths, secret-shaped
-material, mismatched Grok/Cursor scenario catalogs, unsupported status values,
-and any `supported`/`releaseEligible` assertion lacking complete required live
-evidence.
+`check:release` rejects stale/future evidence, incomplete or invented scenario
+catalogs, matrix-controlled requiredness changes, missing repository-local
+evidence, identity/platform drift, host-private paths, secret-shaped material,
+unsupported status values, and any `supported`/`releaseEligible` assertion
+lacking its code-owned evidence class.

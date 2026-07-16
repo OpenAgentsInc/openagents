@@ -2071,4 +2071,10 @@ direction. Per the standing rule, the owning roadmap gate, typed contracts,
 issues, tests, receipts, and public promise state still determine when Grok,
 Cursor, or any additional peer is implemented or shipped. The
 dependency-ordered work and independent provider release gates are tracked in
-[#8887](https://github.com/OpenAgentsInc/openagents/issues/8887).
+[#8887](https://github.com/OpenAgentsInc/openagents/issues/8887). The completed
+[machine-readable release matrix](../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
+and [human proof ledger](../qa/2026-07-16-acp10-release-proof/README.md) now
+derive the two provider claims independently. Both checked peers remain
+experimental: real Darwin-arm64 prompt/restart evidence proves consumption,
+while missing required live and cross-platform rows prevent general support
+language.

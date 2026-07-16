@@ -328,10 +328,12 @@ file or environment presence is never rendered as successful authentication.
 The support bundle's closed schema contains profile/schema/version/capability
 and refs-only receipt/evidence facts. It cannot contain executable paths,
 credentials or auth responses, environment values, prompts, file/terminal
-content, or native events. Provider labels are derived from the pinned release
-matrix: an experimental peer stays visibly experimental, and evidence for one
-peer never implies support for every ACP registry agent. ACP here always means
-Agent Client Protocol.
+content, or native events. Provider labels are derived from trusted-profile
+admission evidence, not by loading a renderer-owned matrix file. The pinned
+[release matrix](../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
+is the release authority: without qualifying fresh evidence admission stays
+experimental, and evidence for one peer never implies support for every ACP
+registry agent. ACP here always means Agent Client Protocol.
 
 ## What this exit is NOT yet
 

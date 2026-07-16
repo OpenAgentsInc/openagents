@@ -132,8 +132,14 @@ uses documented cached-token/API-key negotiation, and records an exact 0.2.101
 candidate probe in the
 [Grok peer ADR](../adr/2026-07-16-grok-agent-client-protocol-peer.md). Its
 production compatibility facade no longer uses the raw JSON-RPC fixture client.
-Final supported-language and cross-platform proof remains #8897. The
-conformance package's exact 23-method coverage report, compatibility matrix, bounded
+The #8897 claim validator is now implemented as a checked
+[machine-readable matrix](../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
+with a [human proof ledger](../qa/2026-07-16-acp10-release-proof/README.md).
+It independently derives an experimental verdict for both pinned peers because
+required live and cross-platform rows remain unresolved; it does not turn
+fixture coverage into supported language. #8897 remains open for the complete
+Desktop prompt lane and reproducible live/platform proof. The conformance package's exact
+23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference
 custody cases, and opt-in probes are checked artifacts. The Grok and Cursor
 fixtures are deliberately labeled source-derived synthetic evidence; they do
@@ -154,7 +160,8 @@ stable versus peer-extension configuration provenance, broker-backed authority
 truth, and non-color accessible status labels. Zero-option Grok/Cursor questions
 now accept bounded free-form text through the same canonical durable interaction
 decision envelope as option answers. No token-file or environment presence is
-presented as authentication proof, and release labels remain gated by #8897.
+presented as authentication proof, and release labels remain gated by the
+#8897 matrix.
 
 ## 1. Snapshot identity and protocol drift
 
@@ -852,7 +859,8 @@ fences replay from live work, separates cancellation sources, observes process
 exit, and performs bounded generation-safe recovery. Grok real-binary
 admission is implemented by #8893. Cursor's separate `agent acp` composer,
 `cursor_login` negotiation, modes/configuration surface, and four directional
-extension gates are implemented by #8894. Final release claims remain #8897.
+extension gates are implemented by #8894. The #8897 matrix now owns final
+release claims and currently denies a general supported claim for both peers.
 #8895 adds the main-owned provider control host, shared main/preload/renderer
 contract, Desktop Settings state/actions, validated alternate executable path,
 canonical free-form question path, and refs-only support artifact. The host
@@ -876,8 +884,8 @@ does not promote a peer or generalize proof to another registry agent.
 
 ### Phase ACP-3 — ACP client adapter and Grok/Cursor proof
 
-**Implemented structurally by #8893 and #8894; release evidence remains
-#8897.** The Cursor implementation deliberately resolves only a PATH candidate
+**Implemented structurally by #8893 and #8894; release evidence is gated by
+#8897's checked matrix.** The Cursor implementation deliberately resolves only a PATH candidate
 whose real basename is `cursor-agent`, pins the launcher plus every regular file
 in its installation closure and the normalized date version, rechecks that
 closure before spawn, supplies only `HOME` plus a fixed `/usr/bin:/bin` launcher PATH,
@@ -887,7 +895,8 @@ session modes and config options come from the peer; model discovery is a
 versioned, bounded `cursor/list_available_models` response with explicit
 provenance. The parameterized model-picker `_meta` flag, reverse authority, and
 all Cursor extensions require fresh evidence bound to the admitted version and
-digest. The observed version remains experimental until #8897 promotes it.
+digest. The observed version remains experimental because the #8897 matrix
+does not promote it.
 Initialize-only and incomplete prompt probes remain diagnostic and cannot mint
 their own feature evidence.
 

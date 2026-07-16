@@ -768,6 +768,88 @@ describe("MCP custody, durable evidence, and deterministic faults", () => {
     expect(
       validateAcpReleaseMatrix(hostLeaking, { now: new Date("2026-07-16T16:00:00.000Z") }),
     ).toMatchObject({ valid: false });
+
+    const identityMissing = structuredClone(matrix) as {
+      openAgents: { schemaSha256?: string };
+    };
+    delete identityMissing.openAgents.schemaSha256;
+    expect(
+      validateAcpReleaseMatrix(identityMissing, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
+
+    const scenarioMissing = structuredClone(matrix) as {
+      peers: Array<{ scenarios: unknown[] }>;
+    };
+    scenarioMissing.peers[0]!.scenarios.pop();
+    expect(
+      validateAcpReleaseMatrix(scenarioMissing, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
+
+    const selfExempted = structuredClone(matrix) as {
+      peers: Array<{
+        claimState: string;
+        releaseEligible: boolean;
+        scenarios: Array<{ requiredForSupported: boolean }>;
+      }>;
+    };
+    for (const peer of selfExempted.peers) {
+      peer.claimState = "supported";
+      peer.releaseEligible = true;
+      for (const scenario of peer.scenarios) scenario.requiredForSupported = false;
+    }
+    expect(
+      validateAcpReleaseMatrix(selfExempted, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
+
+    const inventedScenario = structuredClone(matrix) as {
+      peers: Array<{ scenarios: Array<{ id: string }> }>;
+    };
+    inventedScenario.peers[0]!.scenarios[0]!.id = "self-authorized-promotion";
+    expect(
+      validateAcpReleaseMatrix(inventedScenario, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
+
+    const emptyLiveEvidence = structuredClone(matrix) as {
+      peers: Array<{ scenarios: Array<{ result: string; evidenceRefs: string[] }> }>;
+    };
+    const liveScenario = emptyLiveEvidence.peers[0]!.scenarios.find(
+      (scenario) => scenario.result === "live-pass",
+    )!;
+    liveScenario.evidenceRefs = [];
+    expect(
+      validateAcpReleaseMatrix(emptyLiveEvidence, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
+
+    const remoteEvidence = structuredClone(matrix) as {
+      peers: Array<{ scenarios: Array<{ evidenceRefs: string[] }> }>;
+    };
+    remoteEvidence.peers[0]!.scenarios[0]!.evidenceRefs = ["https://example.invalid/proof.json"];
+    expect(
+      validateAcpReleaseMatrix(remoteEvidence, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
+
+    const futureEvidence = structuredClone(matrix) as { recordedAt: string };
+    futureEvidence.recordedAt = "2026-07-17T16:00:00.000Z";
+    expect(
+      validateAcpReleaseMatrix(futureEvidence, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
+
+    const unsupportedPromotion = structuredClone(matrix) as {
+      peers: Array<{
+        claimState: string;
+        releaseEligible: boolean;
+        scenarios: Array<{ requiredForSupported: boolean; result: string }>;
+      }>;
+    };
+    unsupportedPromotion.peers[0]!.claimState = "supported";
+    unsupportedPromotion.peers[0]!.releaseEligible = true;
+    for (const scenario of unsupportedPromotion.peers[0]!.scenarios)
+      if (scenario.requiredForSupported) scenario.result = "unsupported";
+    expect(
+      validateAcpReleaseMatrix(unsupportedPromotion, {
+        now: new Date("2026-07-16T16:00:00.000Z"),
+      }),
+    ).toMatchObject({ valid: false });
   });
 
   it.each(FAULT_CASES)("executes bounded %s/%s fault evidence", async (layer, fault) => {
