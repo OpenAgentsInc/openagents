@@ -137,7 +137,10 @@ export const projectSpecLaneTurn = (workspaceRoot: string): SpecLaneTurnProjecti
   const productSpecs: SpecLaneSnapshot["productSpecs"][number][] = []
   let criteriaTruncated = false
   const assuranceSources: Array<Readonly<{ path: string; relativePath: string; source: string }>> = []
-  const evidenceByDigest = new Map<string, AssuranceEvidenceIndex>()
+  const evidenceByDigest = new Map<string, Readonly<{
+    evidence: AssuranceEvidenceIndex
+    relativePath: string
+  }>>()
 
   for (const path of discovered.paths) {
     const relativePath = normalizedRelative(root, path)
@@ -168,7 +171,7 @@ export const projectSpecLaneTurn = (workspaceRoot: string): SpecLaneTurnProjecti
     } else {
       try {
         const evidence = decodeAssuranceEvidenceIndex(JSON.parse(source))
-        evidenceByDigest.set(evidence.subject.assurance_spec_digest, evidence)
+        evidenceByDigest.set(evidence.subject.assurance_spec_digest, { evidence, relativePath })
       } catch {
         diagnostics.push(`${relativePath}: evidence index is not schema-valid`)
       }
@@ -187,7 +190,14 @@ export const projectSpecLaneTurn = (workspaceRoot: string): SpecLaneTurnProjecti
     const document = validation.document
     const assessment = assessAssuranceSpec(document)
     const digest = sha256Digest(candidate.source)
-    const evidence = evidenceByDigest.get(digest)
+    const evidenceCandidate = evidenceByDigest.get(digest)
+    const evidence = evidenceCandidate?.evidence.subject.product_spec_digest ===
+      document.subject.product_spec.document_digest
+      ? evidenceCandidate.evidence
+      : undefined
+    if (evidenceCandidate !== undefined && evidence === undefined) {
+      diagnostics.push(`${evidenceCandidate.relativePath}: evidence index does not bind the exact ProductSpec digest`)
+    }
     assuranceSpecs.push({
       path: candidate.relativePath,
       assuranceSpecId: boundedText(document.frontmatter.assurance_spec_id, 160),
