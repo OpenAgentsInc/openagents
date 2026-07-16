@@ -1,7 +1,8 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Code, Menu, MonitorDown, X } from 'lucide-react'
+import { ChevronDown, Menu, MonitorDown, X } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 
+import GithubMark from '../components/launch-ui/logos/github'
 import { docsNavigationDefinition } from './docs-navigation'
 import { docsManifest } from './generated/docs-manifest.generated'
 import { DocsSearch } from './DocsSearch'
@@ -48,6 +49,7 @@ function DocsNavigationGroup({
           <li key={entry.slug || 'index'}>
             {entry.slug === '' ? (
               <Link
+                activeOptions={{ exact: true }}
                 aria-current={active ? 'page' : undefined}
                 className="docs-nav-link"
                 onClick={onNavigate}
@@ -58,6 +60,7 @@ function DocsNavigationGroup({
               </Link>
             ) : (
               <Link
+                activeOptions={{ exact: true }}
                 aria-current={active ? 'page' : undefined}
                 className="docs-nav-link"
                 onClick={onNavigate}
@@ -183,19 +186,18 @@ export function DocsLayout() {
             <Menu aria-hidden="true" size={20} />
           </button>
           <Link className="docs-brand" preload="render" to="/">
-            <span aria-hidden="true" className="docs-brand-mark" />
             <span className="docs-brand-text">OpenAgents</span>
           </Link>
           <Link aria-current="page" className="docs-section-link" preload="render" to="/docs">Docs</Link>
           <div className="docs-header-spacer" />
           <DocsSearch />
           <nav aria-label="Product" className="docs-header-links">
-            <Link className="docs-header-link" preload="render" to="/astro">
+            <Link className="docs-header-link" preload="render" to="/install">
               <MonitorDown aria-hidden="true" size={16} />
               <span>Desktop</span>
             </Link>
             <a className="docs-header-link" href="https://github.com/OpenAgentsInc/openagents" rel="noreferrer" target="_blank">
-              <Code aria-hidden="true" size={16} />
+              <GithubMark aria-hidden="true" height={16} width={16} />
               <span>Source</span>
             </a>
           </nav>

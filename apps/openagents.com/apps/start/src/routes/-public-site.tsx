@@ -59,7 +59,6 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
       <header className="oa-site-header">
         <nav className="oa-container oa-nav" aria-label="Primary navigation">
           <InternalLink className="oa-brand" href="/" aria-label="OpenAgents home" preload="render">
-            <span className="oa-brand-mark" aria-hidden="true"><span /><span /><span /></span>
             <span>OpenAgents</span>
           </InternalLink>
           <div className="oa-nav-status" aria-label="Product status"><span />Desktop MVP</div>

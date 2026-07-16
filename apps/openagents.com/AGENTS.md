@@ -69,14 +69,13 @@ not inflate the initial reader route.
 The docs compiler may read only its owned `apps/start/content/docs` tree; never
 point it at the repository-wide `docs/` directory. Ask AI, hosted MCP, remote
 content, analytics, and documentation-specific application secrets are not
-permitted. Public content must stay within current Desktop MVP, retained Forum,
-agent-readable, security/privacy, troubleshooting, and machine-facing
-product-promise facts, and the bounded `Future / Advanced` history section.
-That section may summarize retired or dormant product ideas only when every
-page labels its current status, distinguishes historical exploration from a
-roadmap commitment, and gives no operational or availability claim. Do not
-migrate retired money, credit, market, settlement, Sites, Autopilot, or
-availability claims as current product documentation.
+permitted. Public content must stay within the current Desktop MVP, retained
+Forum, agent-readable, security/privacy, troubleshooting, and machine-facing
+product-promise facts. Historical and dormant product notes belong in
+`docs/archive/` and must not be routed, indexed, mirrored, or linked from
+public documentation. Do not migrate retired money, credit, market,
+settlement, Sites, Autopilot, or availability claims as current product
+documentation.
 
 The generated Markdown reader is a narrow third-party-content presentation
 exception to the Effect Native UI rule. It grants no application,

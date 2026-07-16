@@ -14,17 +14,6 @@ export const docsNavigationDefinition: ReadonlyArray<DocsNavigationGroupDefiniti
       'agent-readable',
     ],
   },
-  {
-    collapsed: true,
-    label: 'Future / Advanced',
-    slugs: [
-      'future',
-      'future/marketplaces',
-      'future/nostr',
-      'future/bitcoin-and-lightning',
-      'future/remote-workrooms',
-    ],
-  },
 ]
 
 export const docsCompatibilityRedirects: Readonly<Record<string, string>> = {

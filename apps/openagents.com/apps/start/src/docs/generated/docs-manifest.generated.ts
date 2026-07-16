@@ -272,10 +272,6 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
       }
     ],
     "lastModified": "2026-07-15",
-    "next": {
-      "path": "/docs/future",
-      "title": "Future and advanced topics"
-    },
     "path": "/docs/agent-readable",
     "previous": {
       "path": "/docs/troubleshooting",
@@ -285,177 +281,6 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     "sidebarLabel": "Agent-readable docs",
     "slug": "agent-readable",
     "title": "Agent-readable docs"
-  },
-  {
-    "description": "Historical OpenAgents ideas and dormant design horizons, separated from the current Desktop MVP.",
-    "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/future/index.md",
-    "group": "Future / Advanced",
-    "headings": [
-      {
-        "depth": 2,
-        "id": "how-to-read-this-section",
-        "text": "How to read this section"
-      },
-      {
-        "depth": 2,
-        "id": "topics",
-        "text": "Topics"
-      },
-      {
-        "depth": 2,
-        "id": "source-boundary",
-        "text": "Source boundary"
-      }
-    ],
-    "lastModified": "2026-07-15",
-    "next": {
-      "path": "/docs/future/marketplaces",
-      "title": "Marketplaces"
-    },
-    "path": "/docs/future",
-    "previous": {
-      "path": "/docs/agent-readable",
-      "title": "Agent-readable docs"
-    },
-    "rawMarkdownUrl": "/docs/future.md",
-    "sidebarLabel": "Overview",
-    "slug": "future",
-    "title": "Future and advanced topics"
-  },
-  {
-    "description": "The historical OpenAgents thesis for agent, plugin, data, compute, and outcome markets.",
-    "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/future/marketplaces.md",
-    "group": "Future / Advanced",
-    "headings": [
-      {
-        "depth": 2,
-        "id": "what-carried-across-the-experiments",
-        "text": "What carried across the experiments"
-      },
-      {
-        "depth": 2,
-        "id": "what-was-removed",
-        "text": "What was removed"
-      },
-      {
-        "depth": 2,
-        "id": "historical-source-trail",
-        "text": "Historical source trail"
-      }
-    ],
-    "lastModified": "2026-07-15",
-    "next": {
-      "path": "/docs/future/nostr",
-      "title": "Nostr"
-    },
-    "path": "/docs/future/marketplaces",
-    "previous": {
-      "path": "/docs/future",
-      "title": "Future and advanced topics"
-    },
-    "rawMarkdownUrl": "/docs/future/marketplaces.md",
-    "sidebarLabel": "Marketplaces",
-    "slug": "future/marketplaces",
-    "title": "Marketplaces"
-  },
-  {
-    "description": "Historical Nostr identity, registry, storage, and open-protocol experiments.",
-    "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/future/nostr.md",
-    "group": "Future / Advanced",
-    "headings": [
-      {
-        "depth": 2,
-        "id": "ideas-worth-retaining",
-        "text": "Ideas worth retaining"
-      },
-      {
-        "depth": 2,
-        "id": "historical-source-trail",
-        "text": "Historical source trail"
-      }
-    ],
-    "lastModified": "2026-07-15",
-    "next": {
-      "path": "/docs/future/bitcoin-and-lightning",
-      "title": "Bitcoin and Lightning"
-    },
-    "path": "/docs/future/nostr",
-    "previous": {
-      "path": "/docs/future/marketplaces",
-      "title": "Marketplaces"
-    },
-    "rawMarkdownUrl": "/docs/future/nostr.md",
-    "sidebarLabel": "Nostr",
-    "slug": "future/nostr",
-    "title": "Nostr"
-  },
-  {
-    "description": "Historical Bitcoin, Lightning, L402, wallet, tipping, payout, and settlement experiments.",
-    "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/future/bitcoin-and-lightning.md",
-    "group": "Future / Advanced",
-    "headings": [
-      {
-        "depth": 2,
-        "id": "what-the-experiments-taught",
-        "text": "What the experiments taught"
-      },
-      {
-        "depth": 2,
-        "id": "what-was-removed",
-        "text": "What was removed"
-      },
-      {
-        "depth": 2,
-        "id": "historical-source-trail",
-        "text": "Historical source trail"
-      }
-    ],
-    "lastModified": "2026-07-15",
-    "next": {
-      "path": "/docs/future/remote-workrooms",
-      "title": "Remote workrooms"
-    },
-    "path": "/docs/future/bitcoin-and-lightning",
-    "previous": {
-      "path": "/docs/future/nostr",
-      "title": "Nostr"
-    },
-    "rawMarkdownUrl": "/docs/future/bitcoin-and-lightning.md",
-    "sidebarLabel": "Bitcoin and Lightning",
-    "slug": "future/bitcoin-and-lightning",
-    "title": "Bitcoin and Lightning"
-  },
-  {
-    "description": "The dormant design horizon for Fleet, mobile supervision, remote targets, and portable sessions.",
-    "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/future/remote-workrooms.md",
-    "group": "Future / Advanced",
-    "headings": [
-      {
-        "depth": 2,
-        "id": "four-different-promises",
-        "text": "Four different promises"
-      },
-      {
-        "depth": 2,
-        "id": "retained-safety-boundary",
-        "text": "Retained safety boundary"
-      },
-      {
-        "depth": 2,
-        "id": "historical-source-trail",
-        "text": "Historical source trail"
-      }
-    ],
-    "lastModified": "2026-07-15",
-    "path": "/docs/future/remote-workrooms",
-    "previous": {
-      "path": "/docs/future/bitcoin-and-lightning",
-      "title": "Bitcoin and Lightning"
-    },
-    "rawMarkdownUrl": "/docs/future/remote-workrooms.md",
-    "sidebarLabel": "Remote workrooms",
-    "slug": "future/remote-workrooms",
-    "title": "Remote workrooms"
   }
 ]
 
@@ -467,11 +292,6 @@ const docsPageLoaders: Readonly<Record<string, () => Promise<{ default: DocsPage
   "security-and-privacy": () => import('./pages/security-and-privacy.generated'),
   "troubleshooting": () => import('./pages/troubleshooting.generated'),
   "agent-readable": () => import('./pages/agent-readable.generated'),
-  "future": () => import('./pages/future.generated'),
-  "future/marketplaces": () => import('./pages/future__marketplaces.generated'),
-  "future/nostr": () => import('./pages/future__nostr.generated'),
-  "future/bitcoin-and-lightning": () => import('./pages/future__bitcoin-and-lightning.generated'),
-  "future/remote-workrooms": () => import('./pages/future__remote-workrooms.generated'),
 }
 
 export const loadDocsPage = async (slug: string): Promise<DocsPage | undefined> => {

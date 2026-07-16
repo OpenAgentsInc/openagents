@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, test } from 'vitest'
@@ -19,7 +19,7 @@ describe('unified TanStack Start docs content', () => {
   test('publishes the complete curated navigation graph', async () => {
     const navigationSlugs = docsNavigationDefinition.flatMap(group => group.slugs)
 
-    expect(docsManifest).toHaveLength(12)
+    expect(docsManifest).toHaveLength(7)
     expect(docsManifest.map(page => page.slug)).toEqual(navigationSlugs)
     await expect(Promise.all(navigationSlugs.map(loadDocsPage))).resolves.not.toContain(undefined)
   })
@@ -43,6 +43,11 @@ describe('unified TanStack Start docs content', () => {
   ])('generates the agent-readable artifact %s', (relativePath, marker) => {
     const artifact = readFileSync(path.join(publicDocsDirectory, relativePath), 'utf8')
     expect(artifact).toContain(marker)
+  })
+
+  test('keeps archived documentation out of public artifacts', () => {
+    expect(existsSync(path.join(publicDocsDirectory, 'future.md'))).toBe(false)
+    expect(existsSync(path.join(publicDocsDirectory, 'future'))).toBe(false)
   })
 
   test('generates canonical and structured metadata for every page', async () => {
