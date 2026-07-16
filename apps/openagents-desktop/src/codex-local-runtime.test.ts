@@ -210,6 +210,138 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     await expect(running).resolves.toMatchObject({ ok: true, text: "Done." })
   })
 
+  test("FA-H11 (#8884): a background Full Auto turn auto-resolves native questions and stray approvals instead of hanging on an unanswerable pending question", async () => {
+    const fake = appServerFixture()
+    const root = scratch()
+    const sink = collect()
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: () => root,
+      workspaceRoot: () => root,
+      discoverImpl: async () => [{ ref: "ambient", home: "/owner/.codex", source: "current_session" }],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["ambient"]),
+      appServer: {
+        binary: () => "/packaged/codex",
+        installProductSpecSkill: account => ({
+          skillRoot: `${account.home}/skills`,
+          skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
+        }),
+        spawnImpl: fake.spawn,
+      },
+    })
+    const running = runtime.runTurn({
+      turnRef: "turn-auto-resolve",
+      threadRef: "thread-auto-resolve",
+      history: [],
+      message: "Continue Full Auto in the background.",
+      fullAuto: true,
+      autoResolveQuestions: true,
+      emit: sink.emit,
+    })
+    await waitFor(fake.messages, 1); fake.respond(1, {})
+    await waitFor(fake.messages, 3); fake.respond(2, { thread: { id: "auto-resolve-thread" } })
+    await waitFor(fake.messages, 4); fake.respond(3, { turn: { id: "auto-resolve-turn" } })
+    // Mid-turn native question: no renderer exists to call answerQuestion —
+    // the runtime must resolve the JSON-RPC request itself with the deny shape.
+    fake.request(90, "item/tool/requestUserInput", {
+      threadId: "auto-resolve-thread",
+      turnId: "auto-resolve-turn",
+      itemId: "question-item",
+      questions: [{
+        id: "choice",
+        header: "Approach",
+        question: "Which implementation?",
+        options: [{ label: "Native", description: "Use app-server" }],
+      }],
+    })
+    await waitFor(fake.messages, 5)
+    expect(fake.messages[4]).toEqual({ id: 90, result: { answers: {} } })
+    // Defense in depth: approvalPolicy "never" should prevent approvals, but
+    // if one arrives anyway it is declined immediately instead of hanging.
+    fake.request(91, "item/commandExecution/requestApproval", {
+      threadId: "auto-resolve-thread",
+      turnId: "auto-resolve-turn",
+      itemId: "command-item",
+      command: "rm -rf build",
+      reason: "Clean the build output",
+    })
+    await waitFor(fake.messages, 6)
+    expect(fake.messages[5]).toEqual({ id: 91, result: { decision: "decline" } })
+    fake.notify("item/agentMessage/delta", { threadId: "auto-resolve-thread", turnId: "auto-resolve-turn", delta: "Done." })
+    fake.notify("turn/completed", { threadId: "auto-resolve-thread", turn: { id: "auto-resolve-turn", status: "completed", error: null } })
+    // The turn completes normally — never a permanently nonterminal hang.
+    await expect(running).resolves.toMatchObject({ ok: true, text: "Done." })
+    // No question was ever registered: no pending/resolved question events.
+    expect(sink.events.some(event => event.kind === "question_pending")).toBe(false)
+    expect(sink.events.some(event => event.kind === "question_resolved")).toBe(false)
+    // The auto-decline is visible in the transcript as typed lane notices.
+    const notices = sink.events.filter(event => event.kind === "lane_notice") as
+      Array<Extract<FableLocalEvent, { kind: "lane_notice" }>>
+    expect(notices.some(notice =>
+      notice.text.includes("asked a question") && notice.text.includes("auto-declined"))).toBe(true)
+    expect(notices.some(notice =>
+      notice.text.includes("requested approval") && notice.text.includes("auto-declined"))).toBe(true)
+  })
+
+  test("FA-H11 (#8884): a Full Auto turn WITHOUT autoResolveQuestions still registers a renderer-answerable pending question", async () => {
+    const fake = appServerFixture()
+    const root = scratch()
+    const sink = collect()
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: () => root,
+      workspaceRoot: () => root,
+      discoverImpl: async () => [{ ref: "ambient", home: "/owner/.codex", source: "current_session" }],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["ambient"]),
+      appServer: {
+        binary: () => "/packaged/codex",
+        installProductSpecSkill: account => ({
+          skillRoot: `${account.home}/skills`,
+          skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
+        }),
+        spawnImpl: fake.spawn,
+      },
+    })
+    const running = runtime.runTurn({
+      turnRef: "turn-fa-renderer",
+      threadRef: "thread-fa-renderer",
+      history: [],
+      message: "Continue Full Auto from the composer.",
+      fullAuto: true,
+      emit: sink.emit,
+    })
+    await waitFor(fake.messages, 1); fake.respond(1, {})
+    await waitFor(fake.messages, 3); fake.respond(2, { thread: { id: "fa-renderer-thread" } })
+    await waitFor(fake.messages, 4); fake.respond(3, { turn: { id: "fa-renderer-turn" } })
+    fake.request(90, "item/tool/requestUserInput", {
+      threadId: "fa-renderer-thread",
+      turnId: "fa-renderer-turn",
+      itemId: "question-item",
+      questions: [{
+        id: "choice",
+        header: "Approach",
+        question: "Which implementation?",
+        options: [{ label: "Native", description: "Use app-server" }],
+      }],
+    })
+    for (let attempt = 0; attempt < 100 && !sink.events.some(event =>
+      event.kind === "question_pending"); attempt += 1) await sleep(1)
+    const pending = sink.events.find(event => event.kind === "question_pending")
+    expect(pending).toMatchObject({ kind: "question_pending", questions: [{ question: "Which implementation?" }] })
+    if (pending?.kind !== "question_pending") throw new Error("question was not projected")
+    expect(runtime.answerQuestion({
+      turnRef: "turn-fa-renderer",
+      questionRef: pending.questionRef,
+      answers: [{ question: "Which implementation?", labels: ["Native"] }],
+    })).toBe(true)
+    await waitFor(fake.messages, 5)
+    expect(fake.messages[4]).toEqual({ id: 90, result: { answers: { choice: { answers: ["Native"] } } } })
+    fake.notify("item/agentMessage/delta", { threadId: "fa-renderer-thread", turnId: "fa-renderer-turn", delta: "Done." })
+    fake.notify("turn/completed", { threadId: "fa-renderer-thread", turn: { id: "fa-renderer-turn", status: "completed", error: null } })
+    await expect(running).resolves.toMatchObject({ ok: true, text: "Done." })
+    expect(sink.events).toContainEqual({ kind: "question_resolved", questionRef: pending.questionRef, outcome: "answered" })
+  })
+
   test("an ordinary (non-Full-Auto) app-server turn keeps approvalPolicy on-request and an unprefixed prompt", async () => {
     const fake = appServerFixture()
     const root = scratch()

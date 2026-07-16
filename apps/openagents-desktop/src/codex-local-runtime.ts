@@ -144,6 +144,16 @@ export type CodexLocalTurnInput = Readonly<{
    */
   fullAuto?: boolean
   /**
+   * Full Auto #8884: background turns have no renderer capable of answering
+   * `item/tool/requestUserInput`; resolve such requests immediately instead
+   * of leaving an unanswerable pending question. Without this flag the
+   * request would register a pending question that only a renderer-driven
+   * `answerQuestion` or an `interrupt` can resolve — and a main-initiated
+   * continuation (sender === null) has neither, so the JSON-RPC round trip
+   * would block forever and the thread would read permanently nonterminal.
+   */
+  autoResolveQuestions?: boolean
+  /**
    * Optional image attachments (capability I1). `codex exec` accepts images
    * via `-i, --image <FILE>...` (local file paths), so the runtime writes each
    * attachment into a bounded per-turn subdir of the thread workspace and
@@ -431,6 +441,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     extensionSelection?: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>
     onProviderTurn?: (turnId: string) => void
     fullAuto?: boolean
+    /** Full Auto #8884: see CodexLocalTurnInput.autoResolveQuestions. */
+    autoResolveQuestions?: boolean
     emit: (event: FableLocalEvent) => void
     control: {
       interrupted: boolean
@@ -497,6 +509,21 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             : (typeof params.reason === "string" && params.reason.trim() !== ""
                 ? params.reason
                 : "Apply the requested file changes")
+          // Full Auto #8884 defense in depth: with approvalPolicy "never"
+          // these requests should not arrive on an autoResolveQuestions turn,
+          // but if one does there is no renderer to answer it — decline
+          // immediately instead of registering an unanswerable pending
+          // question that would hang the JSON-RPC round trip forever.
+          if (input.autoResolveQuestions === true) {
+            input.emit({
+              kind: "lane_notice",
+              text: bounded(
+                `Codex requested approval (${redactChildText(requestSummary, input.workspace)}) during an unattended Full Auto turn — auto-declined because no one is present to answer`,
+                FABLE_LOCAL_SUMMARY_LIMIT,
+              ),
+            })
+            return { decision: "decline" }
+          }
           const questionRef = bounded(`approval.${input.turnRef}.${++questionSequence}`, 120)
           return new Promise(resolve => {
             let finished = false
@@ -549,6 +576,24 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         if (request.method !== "item/tool/requestUserInput") {
           if (options.appServer?.onServerRequest !== undefined) return options.appServer.onServerRequest(request)
           throw new Error(`unsupported Codex server request: ${request.method}`)
+        }
+        // Full Auto #8884: `approvalPolicy: "never"` does NOT suppress native
+        // question requests, and a background (sender === null) Full Auto turn
+        // has no renderer that could ever answer one — a registered pending
+        // question would block this JSON-RPC round trip forever, leaving the
+        // thread permanently nonterminal and silently freezing the Full Auto
+        // loop. Resolve immediately with the existing deny shape and emit only
+        // a lane notice (no question_pending/question_resolved pair, since no
+        // question is ever registered).
+        if (input.autoResolveQuestions === true) {
+          input.emit({
+            kind: "lane_notice",
+            text: bounded(
+              "Codex asked a question during an unattended Full Auto turn — auto-declined because no one is present to answer; the turn continues",
+              FABLE_LOCAL_SUMMARY_LIMIT,
+            ),
+          })
+          return { answers: {} }
         }
         const params = request.params !== null && typeof request.params === "object"
           ? request.params as Record<string, unknown>
@@ -1169,6 +1214,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             input.emit({ kind: "composer_admission", state: "active_steerable", activeTurnId: id, reason: null })
           },
           fullAuto: input.fullAuto,
+          ...(input.autoResolveQuestions === undefined ? {} : { autoResolveQuestions: input.autoResolveQuestions }),
         })
         if (attempt.outcome === "success") {
           confirmedQuiescence = true

@@ -3043,6 +3043,10 @@ const dispatchCodexLocalTurn = async (
     ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     ...(request.fullAuto === true ? { fullAuto: true } : {}),
+    // Full Auto #8884: a main-initiated background continuation (sender ===
+    // null) has no renderer capable of answering item/tool/requestUserInput —
+    // a pending question would hang the turn forever. Auto-resolve instead.
+    ...(request.fullAuto === true && sender === null ? { autoResolveQuestions: true } : {}),
     emit: turnEvent => {
       // CUT-11 (#8691): same one-callback graph fold as the fable lane.
       liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
