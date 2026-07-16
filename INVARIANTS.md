@@ -1449,7 +1449,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   client-user-message identity retained across refusal or lost ACK. Draft input
   clears only after typed acceptance. Main-owned queue rows expose lifecycle,
   order, and revision-safe edit/cancel only before promotion transfers dispatch
-  ownership; Stop is always a distinct intent.
+  ownership; Stop is always a distinct intent. Composer queue and admission
+  projections are fenced by exact thread identity: switching chats clears the
+  prior projection before hydrating the destination queue, and late callbacks
+  from another thread cannot overwrite the visible composer.
   Codex extension state is owned by one main-process ecosystem service per
   exact app-server pool. Every generated skills/hooks/marketplace/plugin/app/MCP
   identity has an explicit product disposition; catalog notifications reconcile

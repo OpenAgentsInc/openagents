@@ -1419,6 +1419,113 @@ describe("composer image input (capability I1)", () => {
       }),
     )
   })
+
+  test("switching chats replaces the queue panel with only the destination thread queue", async () => {
+    const otherThread = { ...testThread, id: "thread.queue.other", title: "Other queue", notes: [] }
+    const entry = (threadRef: string, suffix: string) => ({
+      queueRef: `queue.${suffix}`,
+      intentRef: `intent.${suffix}`,
+      clientUserMessageId: `user.${suffix}`,
+      threadRef,
+      message: `Message for ${suffix}`,
+      position: 1,
+      status: "queued" as const,
+      revision: 0,
+      quiescenceRef: null,
+      providerTurnId: null,
+      failure: null,
+      createdAt: "2026-07-16T20:00:00.000Z",
+      updatedAt: "2026-07-16T20:00:00.000Z",
+    })
+    const firstQueue = entry(testThread.id, "first")
+    const otherQueue = entry(otherThread.id, "other")
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      threads: [testThread, otherThread],
+      composerQueue: [firstQueue],
+    }))
+    const chatHost = {
+      listThreads: async () => [testThread, otherThread],
+      newThread: async () => null,
+      openThread: async (id: string) => id === otherThread.id ? otherThread : id === testThread.id ? testThread : null,
+      sendMessage: async () => ({ ok: false as const, error: "unused" }),
+      queueList: async (threadRef: string) => threadRef === otherThread.id ? [otherQueue] : [firstQueue],
+    }
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+    ))
+
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(otherThread.id)))))
+    const switched = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(switched.activeThreadId).toBe(otherThread.id)
+    expect(switched.composerQueue).toEqual([otherQueue])
+    expect(switched.composerQueue.every(value => value.threadRef === otherThread.id)).toBe(true)
+  })
+
+  test("a late queue refresh cannot overwrite the newly selected chat", async () => {
+    const otherThread = { ...testThread, id: "thread.queue.race", title: "Race destination", notes: [] }
+    const entry = (threadRef: string, suffix: string) => ({
+      queueRef: `queue.${suffix}`,
+      intentRef: `intent.${suffix}`,
+      clientUserMessageId: `user.${suffix}`,
+      threadRef,
+      message: `Message for ${suffix}`,
+      position: 1,
+      status: "queued" as const,
+      revision: 0,
+      quiescenceRef: null,
+      providerTurnId: null,
+      failure: null,
+      createdAt: "2026-07-16T20:00:00.000Z",
+      updatedAt: "2026-07-16T20:00:00.000Z",
+    })
+    const firstQueue = entry(testThread.id, "late-first")
+    const otherQueue = entry(otherThread.id, "race-other")
+    let releaseFirstQueue!: () => void
+    const firstQueueGate = new Promise<void>(resolve => { releaseFirstQueue = resolve })
+    let markFirstQueueStarted!: () => void
+    const firstQueueStarted = new Promise<void>(resolve => { markFirstQueueStarted = resolve })
+    const initial = withInput({
+      ...baseState,
+      pending: true,
+      pendingByThread: { [testThread.id]: true },
+      threads: [testThread, otherThread],
+      composerDraftsByThread: { [otherThread.id]: "destination draft" },
+    }, "queue on first")
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(initial))
+    const chatHost = {
+      listThreads: async () => [testThread, otherThread],
+      newThread: async () => null,
+      openThread: async (id: string) => id === otherThread.id ? otherThread : id === testThread.id ? testThread : null,
+      sendMessage: async () => ({ ok: false as const, error: "unused" }),
+      queueFollowup: async () => ({ ok: true, queued: true }),
+      queueList: async (threadRef: string) => {
+        if (threadRef === testThread.id) {
+          markFirstQueueStarted()
+          await firstQueueGate
+          return [firstQueue]
+        }
+        return [otherQueue]
+      },
+    }
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+    ))
+
+    const queued = Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopQueueNextRequested", StaticPayload(null)))))
+    await firstQueueStarted
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(otherThread.id)))))
+    releaseFirstQueue()
+    await queued
+
+    const settled = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(settled.activeThreadId).toBe(otherThread.id)
+    expect(settled.input).toBe("destination draft")
+    expect(settled.composerQueue).toEqual([otherQueue])
+    expect(settled.composerDraftsByThread[testThread.id]).toBe("")
+  })
 })
 
 describe("pure transitions", () => {
@@ -1605,6 +1712,36 @@ describe("pure transitions", () => {
     const draftedOther = withInput(selectedOther, "draft for the other chat")
     expect(withChatSelected(draftedOther, testThread).input).toBe("draft for the first chat")
     expect(withChatSelected(draftedOther, other).input).toBe("draft for the other chat")
+  })
+
+  test("queued-message projection is cleared on an exact thread switch", () => {
+    const queued = {
+      queueRef: "queue.thread-1",
+      intentRef: "intent.thread-1",
+      clientUserMessageId: "user.thread-1",
+      threadRef: testThread.id,
+      message: "Only thread one owns this",
+      position: 1,
+      status: "queued" as const,
+      revision: 0,
+      quiescenceRef: null,
+      providerTurnId: null,
+      failure: null,
+      createdAt: "2026-07-16T20:00:00.000Z",
+      updatedAt: "2026-07-16T20:00:00.000Z",
+    }
+    const other = { ...testThread, id: "thread-2", title: "Other chat", notes: [] }
+    const switched = withChatSelected({
+      ...baseState,
+      composerQueue: [queued],
+      composerQueueEditingRef: queued.queueRef,
+      composerIntentIdentity: { intentRef: queued.intentRef, clientUserMessageId: queued.clientUserMessageId },
+    }, other)
+
+    expect(switched.activeThreadId).toBe(other.id)
+    expect(switched.composerQueue).toEqual([])
+    expect(switched.composerQueueEditingRef).toBeNull()
+    expect(switched.composerIntentIdentity).toBeNull()
   })
 
   test("new chat starts blank without erasing the previous chat draft", () => {

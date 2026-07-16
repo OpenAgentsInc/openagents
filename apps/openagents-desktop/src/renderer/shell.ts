@@ -351,6 +351,8 @@ export type DesktopShellState = Readonly<{
   pendingSubmitMode: "steer" | "queue"
   /** Main/app-server-derived composer authority; renderer component state is never authority. */
   composerAdmission: ComposerAdmission
+  /** Main-originated admission truth retained by exact local thread identity. */
+  composerAdmissionByThread: Readonly<Record<string, ComposerAdmission>>
   /** Stable across a refused/lost ACK; reset only when the user changes the draft or admission succeeds. */
   composerIntentIdentity: Readonly<{ intentRef: string; clientUserMessageId: string }> | null
   composerQueue: ReadonlyArray<CodexQueuedIntent>
@@ -514,6 +516,7 @@ export const initialDesktopShellState = (
   selectedHarness: "codex",
   pendingSubmitMode: "queue",
   composerAdmission: idleComposerAdmission(),
+  composerAdmissionByThread: {},
   composerIntentIdentity: null,
   composerQueue: [],
   composerQueueEditingRef: null,
@@ -937,6 +940,10 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   notes: thread.notes,
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
+  composerAdmission: state.composerAdmissionByThread[thread.id] ?? idleComposerAdmission(),
+  composerIntentIdentity: null,
+  composerQueue: [],
+  composerQueueEditingRef: null,
   selectedMessageKey: null,
   expandedToolCards: [],
   questionCards: {},
@@ -987,6 +994,12 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
     runtimeFailure: changedThread ? state.runtimeFailureByThread[thread.id] ?? null : state.runtimeFailure,
     notes: thread.notes,
     activeThreadId: thread.id,
+    composerAdmission: changedThread
+      ? state.composerAdmissionByThread[thread.id] ?? idleComposerAdmission()
+      : state.composerAdmission,
+    composerIntentIdentity: changedThread ? null : state.composerIntentIdentity,
+    composerQueue: changedThread ? [] : state.composerQueue,
+    composerQueueEditingRef: changedThread ? null : state.composerQueueEditingRef,
     questionCards: state.activeThreadId === thread.id
       ? pruneQuestionCards(state.questionCards, thread.notes)
       : {},
@@ -1904,6 +1917,7 @@ export const makeDesktopShellHandlers = (
     mode: "steer" | "queue",
   ) => Effect.gen(function* () {
     if (!current.pending || current.activeThreadId === null || message.trim() === "") return
+    const submissionThreadRef = current.activeThreadId
     const identity = current.composerIntentIdentity ?? {
       intentRef: `intent.desktop.${globalThis.crypto.randomUUID()}`,
       clientUserMessageId: `user.desktop.${globalThis.crypto.randomUUID()}`,
@@ -1911,7 +1925,7 @@ export const makeDesktopShellHandlers = (
     const intent = makeComposerSubmitIntent({
       admission: current.composerAdmission,
       mode,
-      threadRef: current.activeThreadId,
+      threadRef: submissionThreadRef,
       message,
       ...identity,
     })
@@ -1926,9 +1940,16 @@ export const makeDesktopShellHandlers = (
         chat.steerCurrent!(intent as Extract<typeof intent, { kind: "steer_current" }>)
           .catch(() => ({ ok: false, outcome: "lost_ack" })))
       if (!steered.ok) {
-        yield* SubscriptionRef.update(state, next => ({ ...next, composerIntentIdentity: identity }))
+        yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
+          ? { ...next, composerIntentIdentity: identity }
+          : next)
       } else {
-        yield* SubscriptionRef.update(state, next => ({ ...withInput(next, ""), composerIntentIdentity: null }))
+        yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
+          ? { ...withInput(next, ""), composerIntentIdentity: null }
+          : {
+              ...next,
+              composerDraftsByThread: { ...next.composerDraftsByThread, [submissionThreadRef]: "" },
+            })
       }
       return
     }
@@ -1942,23 +1963,54 @@ export const makeDesktopShellHandlers = (
     if (editing !== null && chat.queueEdit !== undefined) {
       const edited = yield* Effect.promise(() => chat.queueEdit!({ queueRef: editing.queueRef, expectedRevision: editing.revision, message: intent.message }).catch(() => ({ ok: false })))
       if (!edited.ok) return
-      const composerQueue = chat.queueList === undefined ? current.composerQueue : yield* Effect.promise(() => chat.queueList!(current.activeThreadId!))
-      yield* SubscriptionRef.update(state, next => ({ ...withInput(next, ""), composerQueue, composerQueueEditingRef: null, composerIntentIdentity: null }))
+      const composerQueue = chat.queueList === undefined
+        ? current.composerQueue
+        : (yield* Effect.promise(() => chat.queueList!(submissionThreadRef).catch(() => [])))
+            .filter(entry => entry.threadRef === submissionThreadRef)
+      yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
+        ? { ...withInput(next, ""), composerQueue, composerQueueEditingRef: null, composerIntentIdentity: null }
+        : {
+            ...next,
+            composerDraftsByThread: { ...next.composerDraftsByThread, [submissionThreadRef]: "" },
+          })
       return
     }
     const queued = yield* Effect.promise(() =>
       chat.queueFollowup!(intent as Extract<typeof intent, { kind: "queue_next" }>)
         .catch(() => ({ ok: false, queued: false })))
     if (!queued.queued) {
-      yield* SubscriptionRef.update(state, next => ({ ...next, composerIntentIdentity: identity }))
+      yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
+        ? { ...next, composerIntentIdentity: identity }
+        : next)
     } else {
-      const composerQueue = chat.queueList === undefined ? current.composerQueue : yield* Effect.promise(() => chat.queueList!(current.activeThreadId!))
-      yield* SubscriptionRef.update(state, next => ({
-        ...withInput(next, ""),
-        composerIntentIdentity: null,
-        composerQueue,
-        composerAdmission: { ...next.composerAdmission, state: "queued" as const, queuedCount: next.composerAdmission.queuedCount + 1 },
-      }))
+      const composerQueue = chat.queueList === undefined
+        ? current.composerQueue
+        : (yield* Effect.promise(() => chat.queueList!(submissionThreadRef).catch(() => [])))
+            .filter(entry => entry.threadRef === submissionThreadRef)
+      yield* SubscriptionRef.update(state, next => {
+        const priorAdmission = next.composerAdmissionByThread[submissionThreadRef] ?? current.composerAdmission
+        const queuedAdmission = {
+          ...priorAdmission,
+          state: "queued" as const,
+          queuedCount: priorAdmission.queuedCount + 1,
+        }
+        const composerAdmissionByThread = {
+          ...next.composerAdmissionByThread,
+          [submissionThreadRef]: queuedAdmission,
+        }
+        return next.activeThreadId === submissionThreadRef
+          ? {
+            ...withInput(next, ""),
+            composerIntentIdentity: null,
+            composerQueue,
+            composerAdmission: queuedAdmission,
+            composerAdmissionByThread,
+          } : {
+            ...next,
+            composerDraftsByThread: { ...next.composerDraftsByThread, [submissionThreadRef]: "" },
+            composerAdmissionByThread,
+          }
+      })
     }
   })
   /**
@@ -2214,6 +2266,13 @@ export const makeDesktopShellHandlers = (
         expandedThreadRefs: [],
       },
     }, thread))
+    const composerQueue = chat.queueList === undefined
+      ? []
+      : (yield* Effect.promise(() => chat.queueList!(threadRef).catch(() => [])))
+          .filter(entry => entry.threadRef === threadRef)
+    yield* SubscriptionRef.update(state, current => current.activeThreadId === threadRef
+      ? { ...current, composerQueue, composerQueueEditingRef: null }
+      : current)
     // Full Auto (FA-H1 #8874): the selection is already committed above, so
     // re-hydrating this thread's toggle from durable registry truth never
     // blocks the switch — it only corrects a stale/missing map entry.
@@ -2265,6 +2324,10 @@ export const makeDesktopShellHandlers = (
         ...current,
         workspace: "chat" as const,
         activeThreadId: null,
+        composerAdmission: idleComposerAdmission(),
+        composerIntentIdentity: null,
+        composerQueue: [],
+        composerQueueEditingRef: null,
         input: current.composerDraftsByThread[page.selectedThreadRef] ?? "",
         pending: false,
         runtimeFailure: current.runtimeFailureByThread[page.selectedThreadRef] ?? null,
@@ -2286,6 +2349,10 @@ export const makeDesktopShellHandlers = (
       yield* SubscriptionRef.update(state, current => ({
         ...withWorkspace(current, "chat"),
         activeThreadId: null,
+        composerAdmission: idleComposerAdmission(),
+        composerIntentIdentity: null,
+        composerQueue: [],
+        composerQueueEditingRef: null,
         notes: [],
         history: {
           ...current.history,
@@ -2690,8 +2757,13 @@ export const makeDesktopShellHandlers = (
     const cancelled = yield* Effect.promise(() => chat.queueCancel!({ queueRef, expectedRevision: entry.revision }).catch(() => ({ ok: false })))
     if (!cancelled.ok) return
     const threadRef = current.activeThreadId
-    const composerQueue = chat.queueList === undefined || threadRef === null ? current.composerQueue : yield* Effect.promise(() => chat.queueList!(threadRef))
-    yield* SubscriptionRef.update(state, next => ({ ...next, composerQueue, composerQueueEditingRef: next.composerQueueEditingRef === queueRef ? null : next.composerQueueEditingRef }))
+    const composerQueue = chat.queueList === undefined || threadRef === null
+      ? current.composerQueue
+      : (yield* Effect.promise(() => chat.queueList!(threadRef).catch(() => [])))
+          .filter(value => value.threadRef === threadRef)
+    yield* SubscriptionRef.update(state, next => next.activeThreadId === threadRef
+      ? { ...next, composerQueue, composerQueueEditingRef: next.composerQueueEditingRef === queueRef ? null : next.composerQueueEditingRef }
+      : next)
   }),
   DesktopVoiceModeToggled: () => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)

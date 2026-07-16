@@ -605,6 +605,17 @@ reference and the existing Khala theme.
 
 Contract: `openagents_desktop.chat.lexical_composer.v1`.
 
+### Composer queue belongs only to its exact chat
+
+- The queued-message panel and composer admission state are projections of the
+  selected local thread, never window-global state.
+- Switching chats clears the previous queue immediately, then hydrates only
+  the destination thread's durable queue.
+- Late queue, edit, cancel, or admission callbacks from a background thread
+  cannot replace the selected chat's draft, queue panel, or submit state.
+
+Contract: `openagents_desktop.chat.composer_thread_ownership.v1`.
+
 ### Sidebar session search actually filters
 
 Typing in the sidebar session search filters over the FULL loss-accounted

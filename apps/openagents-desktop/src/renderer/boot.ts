@@ -798,11 +798,18 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       fableAvailability: () => fableAvailability,
       codex: codexLocalBridge,
       codexAvailability: () => codexAvailability,
-      onComposerAdmission: admission => {
-        Effect.runFork(SubscriptionRef.update(state, current => ({ ...current, composerAdmission: admission })))
+      onComposerAdmission: (threadRef, admission) => {
+        Effect.runFork(SubscriptionRef.update(state, current => ({
+          ...current,
+          composerAdmissionByThread: { ...current.composerAdmissionByThread, [threadRef]: admission },
+          ...(current.activeThreadId === threadRef ? { composerAdmission: admission } : {}),
+        })))
       },
-      onComposerQueue: composerQueue => {
-        Effect.runFork(SubscriptionRef.update(state, current => ({ ...current, composerQueue })))
+      onComposerQueue: (threadRef, composerQueue) => {
+        Effect.runFork(SubscriptionRef.update(state, current =>
+          current.activeThreadId === threadRef
+            ? { ...current, composerQueue: composerQueue.filter(entry => entry.threadRef === threadRef) }
+            : current))
       },
     })
     const selection = yield* Effect.promise(() => selectDesktopChatHostSelection({

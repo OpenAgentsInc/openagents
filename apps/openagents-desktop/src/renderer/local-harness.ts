@@ -125,8 +125,8 @@ export type MakeLocalHarnessChatHostInput = Readonly<{
   now?: () => Date
   /** Injectable renderer cadence; one projection per frame by default. */
   scheduleProjection?: (flush: () => void) => () => void
-  onComposerAdmission?: (value: import("../composer-admission.ts").ComposerAdmission) => void
-  onComposerQueue?: (value: ReadonlyArray<import("../codex-durable-queue.ts").CodexQueuedIntent>) => void
+  onComposerAdmission?: (threadRef: string, value: import("../composer-admission.ts").ComposerAdmission) => void
+  onComposerQueue?: (threadRef: string, value: ReadonlyArray<import("../codex-durable-queue.ts").CodexQueuedIntent>) => void
 }>
 
 export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): ChatHost => {
@@ -277,7 +277,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         return
       }
       if (event.kind === "composer_admission") {
-        input.onComposerAdmission?.({
+        input.onComposerAdmission?.(send.id, {
           state: event.state,
           activeTurnId: event.activeTurnId,
           reason: event.reason,
@@ -285,7 +285,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         })
         if (lane === "codex" && input.codex?.queueList !== undefined) {
           void input.codex.queueList(send.id).then(value => {
-            if (Array.isArray(value)) input.onComposerQueue?.(value as import("../codex-durable-queue.ts").CodexQueuedIntent[])
+            if (Array.isArray(value)) input.onComposerQueue?.(send.id, value as import("../codex-durable-queue.ts").CodexQueuedIntent[])
           })
         }
         return
@@ -575,7 +575,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       return result
     } finally {
       activeTurn = null
-      input.onComposerAdmission?.({ state: "idle", activeTurnId: null, reason: null, queuedCount: 0 })
+      input.onComposerAdmission?.(send.id, { state: "idle", activeTurnId: null, reason: null, queuedCount: 0 })
       cancelScheduledProjection()
       unsubscribe()
     }
