@@ -470,10 +470,15 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   else if (itemType.includes("error")) { kind = "error"; label = "Error"; summary = safeText(item.message ?? item.error); status = "error" }
   else if (envelopeType === "event_msg") { kind = itemType.includes("error") ? "error" : "lifecycle"; label = itemType; summary = safeText(item.message ?? item.text ?? item.status); push("event", itemType) }
   const redactedSummary = redactCodexHistoryText(summary || label); const redacted = redactedSummary.redacted || fields.some(item => item.redacted) || summary.startsWith("[REDACTED:")
-  // Typed sidecar (#8859): tool-class rows carry the structured WorkbenchItem
-  // (command cwd/exit/duration/output tail, per-file diffs, args/results) so
-  // renderers rebuild the same typed card the live turn showed. The reader is
-  // tolerant — rows whose source shape has no typed projection stay string-only.
+  // Typed sidecar (#8859, extended #8863 for reasoning): tool-class rows carry
+  // the structured WorkbenchItem (command cwd/exit/duration/output tail,
+  // per-file diffs, args/results) so renderers rebuild the same typed card
+  // the live turn showed. Reasoning rows get the same treatment so history
+  // renders the identical `DesktopReasoningDisclosure` component the live
+  // turn used — but only when not redacted; a redacted row never gets a
+  // typed item (honest absence, not a false completed summary). The reader
+  // is tolerant — rows whose source shape has no typed projection stay
+  // string-only.
   const typedSource = [string(item.name), string(item.tool), itemType].some(value => value === "apply_patch" || value === "applyPatch")
     ? { ...item, type: "apply_patch", patch: item.input ?? item.arguments ?? item.content }
     : item
@@ -481,7 +486,8 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   // entries or prose fallback) so history plans render through the identical
   // DesktopPlanCard the live turn and turn/plan/updated notification use,
   // instead of a bespoke single-entry reconstruction in the timeline renderer.
-  const typedItem = kind === "tool_call" || kind === "tool_result"
+  const typedItem = kind === "tool_call" || kind === "tool_result" ||
+      (kind === "reasoning" && !redacted)
     ? workbenchItemFromThreadItem(typedSource, "codex", value => redactCodexHistoryText(value).text)
     : kind === "plan"
       ? planWorkbenchItemFromRow(item, value => redactCodexHistoryText(value).text)

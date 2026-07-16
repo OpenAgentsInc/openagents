@@ -34,6 +34,7 @@ import { DesktopCommandCard } from "./command-card.tsx"
 import { ContextMeter } from "./context-meter.tsx"
 import { DesktopFileChangeCard } from "./file-change-card.tsx"
 import { DesktopPlanCard, type DesktopPlanEntry } from "./plan-card.tsx"
+import { DesktopReasoningDisclosure } from "./reasoning-disclosure.tsx"
 import { DesktopTimelineMessage } from "./message.tsx"
 import { DesktopTimelineNotice } from "./notice.tsx"
 import { DesktopToolCallCard, type DesktopToolKind } from "./tool-call-card.tsx"
@@ -58,6 +59,8 @@ export type WorkbenchReasoningDispatchItem = Readonly<{
   kind: "reasoning"
   source: WorkbenchDispatchSource
   summary: string
+  /** Absent defaults to "completed" (history/pre-#8863 emitters). */
+  status?: WorkbenchDispatchStatus
 }>
 
 export type WorkbenchCommandDispatchItem = Readonly<{
@@ -354,17 +357,14 @@ export const dispatchWorkbenchItem = (
         kind="notice"
       />
 
-    // TODO(T6 #8863): replace with a streaming `ReasoningDisclosure` card
-    // (ghost-text delta -> collapsed summary) instead of this generic shell.
-    case "reasoning":
-      return <DesktopWorkEntry
-        body={item.summary}
+    case "reasoning": {
+      const reasoningItem: WorkbenchReasoningDispatchItem = item
+      return <DesktopReasoningDisclosure
         itemKey={context.itemKey}
-        kind="reasoning"
-        label="Reasoning"
-        preview={item.summary}
-        status="completed"
+        status={reasoningItem.status === "in_progress" ? "in_progress" : "completed"}
+        summary={reasoningItem.summary}
       />
+    }
 
     case "command": {
       const commandItem: WorkbenchCommandDispatchItem = item

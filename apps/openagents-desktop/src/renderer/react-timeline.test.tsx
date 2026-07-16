@@ -845,3 +845,121 @@ describe("delegated-agent collab states on the primary React timeline (#8867)", 
     root.unmount()
   })
 })
+
+describe("streaming reasoning disclosure surfacing on timeline records (#8863 T6)", () => {
+  const streamingItem = {
+    kind: "reasoning",
+    source: "codex",
+    summary: "Checking the cache",
+    status: "in_progress",
+  } as const
+  const completedItem = {
+    kind: "reasoning",
+    source: "codex",
+    summary: "Checked the cache and it was stale.",
+    status: "completed",
+  } as const
+
+  test("local records merge the started/progress/completed reasoning trace into one typed item", () => {
+    const records = projectLocalTimelineRecords([
+      {
+        key: "reasoning-start",
+        role: "system" as const,
+        text: "Reasoning · started",
+        timestamp: "05:41",
+        meta: { trace: { toolName: "Reasoning", phase: "started" as const, summary: "", itemRef: "item-r1", item: streamingItem } },
+      },
+      {
+        key: "reasoning-progress",
+        role: "system" as const,
+        text: "Reasoning · running",
+        timestamp: "05:41",
+        meta: {
+          trace: {
+            toolName: "Reasoning", phase: "progress" as const, summary: "", itemRef: "item-r1",
+            item: { ...streamingItem, summary: "Checking the cache and the token expiry" },
+          },
+        },
+      },
+      {
+        key: "reasoning-result",
+        role: "system" as const,
+        text: "Reasoning · ok",
+        timestamp: "05:42",
+        meta: { trace: { toolName: "Reasoning", phase: "ok" as const, summary: "", itemRef: "item-r1", item: completedItem } },
+      },
+    ])
+    // One card, not three — the FIFO/itemRef pairing already built for every
+    // other typed tool card merges started/progress/completed by itemRef.
+    expect(records).toHaveLength(1)
+    expect(records[0]!.item).toEqual(completedItem)
+  })
+
+  test("renders an in-progress card open with streaming ghost text", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    // A lone work-kind record renders directly (no work-group fold); the
+    // record's own `status` mirrors what the real note pipeline sets while a
+    // tool_use/tool_progress trace is still open ("running"), which is also
+    // what the timeline's own work-group heuristic keys off to avoid folding
+    // an actively-streaming item away.
+    root.render(<ReactTimeline
+      sessionKey="thread-reasoning-streaming"
+      records={[{ ...record("reasoning-streaming", 0), kind: "reasoning", status: "running", item: streamingItem }]}
+      loadedItemCount={1}
+      offset={0}
+      totalItems={1}
+      loadingEdge={null}
+      report={report}
+    />)
+    await settle()
+    const card = container.querySelector<HTMLDetailsElement>(".oa-react-reasoning-disclosure")
+    expect(card?.dataset.status).toBe("running")
+    expect(card?.open).toBe(true)
+    expect(card?.textContent).toContain("Checking the cache")
+    root.unmount()
+  })
+
+  test("renders a completed card collapsed to the bounded summary line", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline
+      sessionKey="thread-reasoning-completed"
+      records={[{ ...record("reasoning-completed", 0), kind: "reasoning", status: "completed", item: completedItem }]}
+      loadedItemCount={1}
+      offset={0}
+      totalItems={1}
+      loadingEdge={null}
+      report={report}
+    />)
+    await settle()
+    const card = container.querySelector<HTMLDetailsElement>(".oa-react-reasoning-disclosure")
+    expect(card?.dataset.status).toBe("completed")
+    expect(card?.open).toBe(false)
+    expect(card?.textContent).toContain("Checked the cache and it was stale.")
+    root.unmount()
+  })
+
+  test("a completed card re-expands on click to reveal the full summary text", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline
+      sessionKey="thread-reasoning-toggle"
+      records={[{ ...record("reasoning-toggle", 0), kind: "reasoning", item: completedItem }]}
+      loadedItemCount={1}
+      offset={0}
+      totalItems={1}
+      loadingEdge={null}
+      report={report}
+    />)
+    await settle()
+    const card = container.querySelector<HTMLDetailsElement>(".oa-react-reasoning-disclosure")
+    expect(card?.open).toBe(false)
+    const doc = container.ownerDocument
+    const view = doc.defaultView as unknown as typeof window
+    card?.querySelector("summary")?.dispatchEvent(new view.MouseEvent("click", { bubbles: true }))
+    await settle()
+    expect(card?.open).toBe(true)
+    root.unmount()
+  })
+})

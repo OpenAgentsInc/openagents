@@ -8,6 +8,7 @@ import type { FableLocalEvent } from "./fable-local-contract.ts"
 import type {
   WorkbenchCommandItem,
   WorkbenchFileChangeItem,
+  WorkbenchReasoningItem,
   WorkbenchToolCallItem,
 } from "./workbench-item-contract.ts"
 
@@ -514,5 +515,184 @@ describe("codex-app-server-turn context/usage meter (T11 #8868)", () => {
       })(),
     })
     expect(events.filter(event => event.kind === "meter_updated")).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Streaming reasoning disclosure (#8863, epic #8857 T6). Reasoning rides the
+// SAME started/progress/completed tool-card pairing infrastructure every
+// other typed item uses (toolName "Reasoning", keyed by itemRef/itemId) so
+// `tool-cards.ts` and `dispatch.tsx` need no reasoning-specific plumbing.
+// ---------------------------------------------------------------------------
+const THREAD_ID_2 = "thread-reasoning-stream"
+const TURN_ID_2 = "turn-reasoning-stream"
+
+const makeReasoningStreamSpawn = (): CodexAppServerSpawn => () => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough
+    stdout: PassThrough
+    stderr: PassThrough
+    kill: () => boolean
+  }
+  child.stdin = stdin
+  child.stdout = stdout
+  child.stderr = new PassThrough()
+  child.kill = () => {
+    child.emit("close", 0)
+    return true
+  }
+  const write = (message: unknown): void => { stdout.write(`${JSON.stringify(message)}\n`) }
+  const notify = (method: string, params: unknown): void => write({ method, params })
+  let buffered = ""
+  stdin.on("data", chunk => {
+    buffered += chunk.toString("utf8")
+    while (buffered.includes("\n")) {
+      const newline = buffered.indexOf("\n")
+      const line = buffered.slice(0, newline)
+      buffered = buffered.slice(newline + 1)
+      if (line === "") continue
+      const message = JSON.parse(line) as Record<string, unknown>
+      if (message.method === "initialize" && typeof message.id === "number") {
+        write({ id: message.id, result: {} })
+      } else if (message.method === "thread/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { thread: { id: THREAD_ID_2 } } })
+      } else if (message.method === "turn/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { turn: { id: TURN_ID_2 } } })
+        // Streaming item: raw content deltas, a summary delta, a new summary
+        // part boundary, then one more summary delta before it completes.
+        notify("item/reasoning/textDelta", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2, itemId: "item-reasoning", contentIndex: 0, delta: "Checking the cache",
+        })
+        notify("item/reasoning/summaryTextDelta", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2, itemId: "item-reasoning", summaryIndex: 0, delta: " first.",
+        })
+        notify("item/reasoning/summaryPartAdded", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2, itemId: "item-reasoning", summaryIndex: 1,
+        })
+        notify("item/reasoning/summaryTextDelta", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2, itemId: "item-reasoning", summaryIndex: 1, delta: "Then verified the token.",
+        })
+        notify("item/completed", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2,
+          item: {
+            id: "item-reasoning", type: "reasoning",
+            summary: ["Checked the cache first.", "Then verified the token was valid."],
+          },
+        })
+        // A second reasoning item completes with NO prior streaming at all
+        // (a fast turn where deltas never arrived) — the started+completed
+        // pair should still emit together so the FIFO card pairing balances.
+        notify("item/completed", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2,
+          item: { id: "item-reasoning-instant", type: "reasoning", summary: ["Instant reasoning, no deltas."] },
+        })
+        // A third reasoning item is fully redacted — no deltas, no summary
+        // on completion. Honest absence: no card at all, live or historical.
+        notify("item/completed", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2,
+          item: { id: "item-reasoning-redacted", type: "reasoning" },
+        })
+        // A fourth reasoning item streams ghost text but the completed
+        // payload comes back with an empty summary array — fall back to the
+        // already-streamed text rather than dropping it silently.
+        notify("item/reasoning/textDelta", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2, itemId: "item-reasoning-fallback", contentIndex: 0, delta: "Streamed but never finalized.",
+        })
+        notify("item/completed", {
+          threadId: THREAD_ID_2, turnId: TURN_ID_2,
+          item: { id: "item-reasoning-fallback", type: "reasoning", summary: [] },
+        })
+        notify("item/agentMessage/delta", { threadId: THREAD_ID_2, turnId: TURN_ID_2, delta: "done" })
+        notify("turn/completed", { threadId: THREAD_ID_2, turn: { id: TURN_ID_2, status: "completed", error: null } })
+      }
+    }
+  })
+  return child as never
+}
+
+describe("codex-app-server-turn streaming reasoning disclosure (#8863)", () => {
+  test("reasoning text/summary deltas stream an in-progress card that collapses to the completed summary", async () => {
+    const events: Array<FableLocalEvent> = []
+    const outcome = await runCodexAppServerTurn({
+      binary: "/packaged/codex",
+      env: {},
+      workspace: "/safe/repo",
+      threadRef: "thread-ref",
+      turnRef: "turn-ref",
+      accountRef: "codex",
+      prompt: "think it through",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.5",
+      reasoningEffort: "medium",
+      productSpecSkill: { skillRoot: "/skills", skillPath: "/skills/productspec-work" },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: event => events.push(event),
+      spawnImpl: makeReasoningStreamSpawn(),
+    })
+    expect(outcome.outcome).toBe("success")
+
+    type ReasoningTraceEvent = Extract<FableLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>
+    const isReasoningTraceEvent = (event: FableLocalEvent): event is ReasoningTraceEvent =>
+      (event.kind === "tool_use" || event.kind === "tool_progress" || event.kind === "tool_result") &&
+      event.toolName === "Reasoning"
+    const reasoningEvents = events.filter(isReasoningTraceEvent)
+    const byRef = (itemRef: string): Array<ReasoningTraceEvent> =>
+      reasoningEvents.filter(event => event.itemRef === itemRef)
+
+    // item-reasoning: opens on the first textDelta, updates in place through
+    // the summary delta / part boundary / second summary delta, then
+    // collapses to the authoritative completed summary.
+    const streamed = byRef("item-reasoning")
+    expect(streamed.map(event => event.kind)).toEqual([
+      "tool_use", "tool_progress", "tool_progress", "tool_progress", "tool_result",
+    ])
+    expect(streamed.every(event => event.item !== undefined)).toBe(true)
+    const streamedInProgress = streamed.slice(0, 4).map(event => event.item as WorkbenchReasoningItem)
+    expect(streamedInProgress.every(item => item.status === "in_progress")).toBe(true)
+    // Ghost text grows monotonically as deltas arrive.
+    expect(streamedInProgress[0]!.summary).toBe("Checking the cache")
+    expect(streamedInProgress[1]!.summary).toBe("Checking the cache first.")
+    // summaryPartAdded inserts a paragraph break before the next delta.
+    expect(streamedInProgress[2]!.summary).toBe("Checking the cache first.\n\n")
+    expect(streamedInProgress[3]!.summary).toBe("Checking the cache first.\n\nThen verified the token.")
+    const streamedDone = streamed.at(-1)!.item as WorkbenchReasoningItem
+    expect(streamedDone).toEqual({
+      kind: "reasoning",
+      source: "codex",
+      status: "completed",
+      // The completed payload is authoritative over the streamed ghost text.
+      summary: "Checked the cache first.\nThen verified the token was valid.",
+    })
+
+    // item-reasoning-instant: no deltas ever arrived (nothing was ever
+    // mid-thought from this process's observation), so the started+
+    // completed pair emits TOGETHER (FIFO card pairing balance) carrying the
+    // SAME already-completed item — there is no honest "in_progress" moment
+    // to represent, and the FIFO pairing in tool-cards.ts merges both notes
+    // into one card keyed by itemRef regardless.
+    const instant = byRef("item-reasoning-instant")
+    expect(instant.map(event => event.kind)).toEqual(["tool_use", "tool_result"])
+    for (const event of instant) {
+      expect(event.item as WorkbenchReasoningItem).toMatchObject({
+        status: "completed", summary: "Instant reasoning, no deltas.",
+      })
+    }
+
+    // item-reasoning-redacted: no deltas, empty completed summary — honest
+    // absence, not a single event.
+    expect(byRef("item-reasoning-redacted")).toHaveLength(0)
+
+    // item-reasoning-fallback: deltas streamed ghost text, but the completed
+    // payload came back empty — falls back to the streamed text rather than
+    // vanishing.
+    const fallback = byRef("item-reasoning-fallback")
+    expect(fallback.map(event => event.kind)).toEqual(["tool_use", "tool_result"])
+    expect((fallback[1]!.item as WorkbenchReasoningItem)).toMatchObject({
+      status: "completed", summary: "Streamed but never finalized.",
+    })
   })
 })

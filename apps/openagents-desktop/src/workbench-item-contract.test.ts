@@ -9,6 +9,7 @@ import {
   WORKBENCH_PLAN_ENTRY_LIMIT,
   WORKBENCH_PLAN_PROSE_LIMIT,
   WORKBENCH_PLAN_STEP_LIMIT,
+  WORKBENCH_REASONING_SUMMARY_LIMIT,
   decodeWorkbenchItem,
   workbenchArgEntries,
   workbenchFileChangeItemFromDiff,
@@ -20,6 +21,7 @@ import {
   type WorkbenchCommandItem,
   type WorkbenchFileChangeItem,
   type WorkbenchPlanItem,
+  type WorkbenchReasoningItem,
   type WorkbenchToolCallItem,
 } from "./workbench-item-contract.ts"
 
@@ -600,5 +602,82 @@ describe("workbenchItemSignature (cheap memo equality)", () => {
     }, "codex")!
     expect(workbenchItemSignature(running)).not.toBe(workbenchItemSignature(settled))
     expect(workbenchItemSignature(running)).toBe(workbenchItemSignature({ ...running }))
+  })
+})
+
+// -----------------------------------------------------------------------
+// reasoning projection (#8863, epic #8857 T6: streaming reasoning
+// disclosure). The wire `reasoning` ThreadItem shape (current-source
+// schema.gen.ts) is `{ id, type: "reasoning", content?: string[],
+// summary?: string[] }` — no `status` field, since the wire only ever
+// reports a finished item this way; the live turn client builds its own
+// "in_progress" typed item directly while streaming deltas.
+// -----------------------------------------------------------------------
+describe("WorkbenchItem projection for reasoning (#8863 T6)", () => {
+  const wireReasoning = {
+    id: "item-reasoning",
+    type: "reasoning",
+    summary: ["Checked the cache first.", "Then verified the token was still valid."],
+  }
+
+  test("the fixture is valid against the generated current-source item/completed wire schema", () => {
+    const result = decodeCurrentServerNotification("item/completed", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      completedAtMs: 1_752_000_000_000,
+      item: wireReasoning,
+    })
+    expect(result._tag).toBe("Decoded")
+  })
+
+  test("reasoning joins summary parts, bounds the result, and defaults status to completed", () => {
+    const item = workbenchItemFromThreadItem(wireReasoning, "codex") as WorkbenchReasoningItem
+    expect(item).toEqual({
+      kind: "reasoning",
+      source: "codex",
+      summary: "Checked the cache first.\nThen verified the token was still valid.",
+      status: "completed",
+    })
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("an empty or absent summary projects as null — honest absence, never a false card", () => {
+    expect(workbenchItemFromThreadItem({ id: "x", type: "reasoning" }, "codex")).toBeNull()
+    expect(workbenchItemFromThreadItem({ id: "x", type: "reasoning", summary: [] }, "codex")).toBeNull()
+    expect(workbenchItemFromThreadItem({ id: "x", type: "reasoning", summary: ["   "] }, "codex")).toBeNull()
+  })
+
+  test("an explicit non-completed status normalizes through the same status vocabulary", () => {
+    const item = workbenchItemFromThreadItem(
+      { ...wireReasoning, status: "failed" },
+      "codex",
+    ) as WorkbenchReasoningItem
+    expect(item.status).toBe("failed")
+  })
+
+  test("oversize summaries are bounded at emission", () => {
+    const item = workbenchItemFromThreadItem({
+      id: "x",
+      type: "reasoning",
+      summary: ["x".repeat(WORKBENCH_REASONING_SUMMARY_LIMIT + 500)],
+    }, "codex") as WorkbenchReasoningItem
+    expect(item.summary).toHaveLength(WORKBENCH_REASONING_SUMMARY_LIMIT)
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("the lane redactor is applied to the joined summary", () => {
+    const redact = (value: string): string => value.replaceAll("secret", "[REDACTED]")
+    const item = workbenchItemFromThreadItem(
+      { id: "x", type: "reasoning", summary: ["the secret token was already expired"] },
+      "codex",
+      redact,
+    ) as WorkbenchReasoningItem
+    expect(item.summary).toBe("the [REDACTED] token was already expired")
+  })
+
+  test("workbenchItemSignature includes the streaming status", () => {
+    const streaming: WorkbenchReasoningItem = { kind: "reasoning", source: "codex", summary: "thinking", status: "in_progress" }
+    const completed: WorkbenchReasoningItem = { kind: "reasoning", source: "codex", summary: "thinking", status: "completed" }
+    expect(workbenchItemSignature(streaming)).not.toBe(workbenchItemSignature(completed))
   })
 })

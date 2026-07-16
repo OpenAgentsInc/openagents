@@ -15,10 +15,12 @@ import type { FableLocalEvent, FableLocalRateLimitWindow } from "./fable-local-c
 import { makeCodexTurnState } from "./codex-turn-state.ts"
 import {
   WORKBENCH_OUTPUT_TAIL_LIMIT,
+  WORKBENCH_REASONING_SUMMARY_LIMIT,
   workbenchFileChangeItemFromDiff,
   workbenchItemFromThreadItem,
   type WorkbenchCommandItem,
   type WorkbenchFileChangeItem,
+  type WorkbenchReasoningItem,
 } from "./workbench-item-contract.ts"
 
 export type CodexAppServerTurnOutcome = Readonly<{
@@ -286,6 +288,11 @@ export const runCodexAppServerTurn = async (
   }>()
   let turnDiff: WorkbenchFileChangeItem | null = null
   let turnDiffRef: string | null = null
+  // Streaming reasoning (#8863, T6): accumulates `item/reasoning/textDelta` +
+  // `item/reasoning/summaryTextDelta` chunks per itemId into a growing ghost
+  // text, keyed by the wire item id (not toolName-FIFO — reasoning always
+  // carries a stable id). Cleared on `item/completed`.
+  const reasoningStreams = new Map<string, { summary: string }>()
   let settle: ((outcome: CodexAppServerTurnOutcome) => void) | null = null
   let settled = false
   let turnTimer: ReturnType<typeof setTimeout> | null = null
@@ -509,6 +516,48 @@ export const runCodexAppServerTurn = async (
       return
     }
 
+    // Streaming reasoning (#8863, T6): the raw reasoning content stream and
+    // the user-facing reasoning-summary stream both contribute ghost text to
+    // the SAME growing card — the disclosure only cares about "here is what
+    // the model is thinking right now", not which of the two wire streams a
+    // chunk came from. First chunk for an itemId opens the card (`tool_use`);
+    // later chunks update it in place (`tool_progress`), reusing the exact
+    // started/progress note-pairing infrastructure `tool-cards.ts` already
+    // gives every FIFO/itemRef-keyed card (toolName "Reasoning").
+    if (message.method === "item/reasoning/textDelta" || message.method === "item/reasoning/summaryTextDelta") {
+      const itemRef = string(params.itemId)
+      const delta = string(params.delta)
+      if (itemRef === null || delta === null || delta === "") return
+      const wasStreaming = reasoningStreams.has(itemRef)
+      const previous = reasoningStreams.get(itemRef) ?? { summary: "" }
+      const summary = `${previous.summary}${delta}`.slice(-WORKBENCH_REASONING_SUMMARY_LIMIT)
+      reasoningStreams.set(itemRef, { summary })
+      const reasoningItem: WorkbenchReasoningItem = { kind: "reasoning", source: "codex", summary, status: "in_progress" }
+      input.emit(wasStreaming
+        ? { kind: "tool_progress", toolName: "Reasoning", itemRef: itemRef.slice(0, 120), summary: "", item: reasoningItem }
+        : { kind: "tool_use", toolName: "Reasoning", itemRef: itemRef.slice(0, 120), summary: "", item: reasoningItem })
+      return
+    }
+    // A new reasoning-summary paragraph is starting (`summaryPartAdded`
+    // carries no text itself) — insert a paragraph break so the streamed
+    // ghost text reads as separate summary parts rather than one run-on line.
+    if (message.method === "item/reasoning/summaryPartAdded") {
+      const itemRef = string(params.itemId)
+      if (itemRef === null) return
+      const previous = reasoningStreams.get(itemRef)
+      if (previous === undefined || previous.summary === "" || previous.summary.endsWith("\n\n")) return
+      const summary = `${previous.summary}\n\n`.slice(-WORKBENCH_REASONING_SUMMARY_LIMIT)
+      reasoningStreams.set(itemRef, { summary })
+      input.emit({
+        kind: "tool_progress",
+        toolName: "Reasoning",
+        itemRef: itemRef.slice(0, 120),
+        summary: "",
+        item: { kind: "reasoning", source: "codex", summary, status: "in_progress" },
+      })
+      return
+    }
+
     if (message.method === "item/agentMessage/delta") {
       const delta = string(params.delta)
       if (delta !== null && delta !== "") {
@@ -575,9 +624,30 @@ export const runCodexAppServerTurn = async (
         return
       }
       if (item.type === "reasoning" && message.method === "item/completed") {
+        const streamed = reasoningStreams.get(id)
+        reasoningStreams.delete(id)
         const parts = Array.isArray(item.summary) ? item.summary.filter(value => typeof value === "string") : []
-        const summary = parts.join("\n").slice(0, 400)
-        if (summary !== "") input.emit({ kind: "reasoning", text: summary })
+        const joined = parts.join("\n").trim()
+        // Prefer the authoritative completed summary; fall back to whatever
+        // ghost text already streamed if the completed payload came back
+        // empty (still honest — that text was already shown live).
+        const finalSummary = joined !== "" ? joined : (streamed?.summary.trim() ?? "")
+        // Honest absence: redacted/never-summarized reasoning emits nothing,
+        // live or historical, matching `workbenchItemFromThreadItem`.
+        if (finalSummary === "") return
+        const completedItem: WorkbenchReasoningItem = {
+          kind: "reasoning",
+          source: "codex",
+          summary: finalSummary.slice(0, WORKBENCH_REASONING_SUMMARY_LIMIT),
+          status: "completed",
+        }
+        // A completed item with no visible streaming (fast/no-delta turns):
+        // emit the started+completed pair together so the FIFO card pairing
+        // in tool-cards.ts stays balanced, matching every other tool item.
+        if (streamed === undefined) {
+          input.emit({ kind: "tool_use", toolName: "Reasoning", itemRef: id.slice(0, 120), summary: "", item: completedItem })
+        }
+        input.emit({ kind: "tool_result", toolName: "Reasoning", itemRef: id.slice(0, 120), ok: true, summary: "", item: completedItem })
         return
       }
       // T8 (#8865): the `plan` ThreadItem (`{id, text, type: "plan"}`,

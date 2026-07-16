@@ -45,6 +45,7 @@ export const WORKBENCH_ARG_KEY_LIMIT = 80
 export const WORKBENCH_ARG_VALUE_LIMIT = 400
 export const WORKBENCH_RESULT_SNIPPET_LIMIT = 2_000
 export const WORKBENCH_TEXT_LIMIT = 32_000
+export const WORKBENCH_REASONING_SUMMARY_LIMIT = 4_000
 
 const BoundedString = (limit: number) => Schema.String.check(Schema.isMaxLength(limit))
 const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
@@ -135,8 +136,17 @@ export const WorkbenchMessageItemSchema = Schema.Struct({
 export const WorkbenchReasoningItemSchema = Schema.Struct({
   kind: Schema.Literal("reasoning"),
   source: WorkbenchItemSourceSchema,
-  summary: BoundedString(4_000),
+  summary: BoundedString(WORKBENCH_REASONING_SUMMARY_LIMIT),
+  /**
+   * Streaming lifecycle (#8863, T6): "in_progress" while reasoning
+   * text/summary deltas are still arriving (the ghost-text disclosure stays
+   * open), "completed" once the item finalizes (the disclosure collapses to
+   * the bounded summary line). Absent defaults to "completed" so pre-#8863
+   * emitters (history, the Claude/Fable lane) keep decoding unchanged.
+   */
+  status: Schema.optional(WorkbenchItemStatusSchema),
 })
+export type WorkbenchReasoningItem = typeof WorkbenchReasoningItemSchema.Type
 
 /**
  * `collabAgentToolCall.agentsStates{}` wire vocabulary
@@ -630,6 +640,22 @@ export const workbenchItemFromThreadItem = (
       status: normalizeWorkbenchStatus(item.status, "completed"),
     }
   }
+  if (type === "reasoning") {
+    const rawParts = Array.isArray(item.summary) ? item.summary : []
+    const parts = rawParts.filter((value): value is string => typeof value === "string")
+    const summary = parts.join("\n").trim()
+    // Honest absence (design spec + component audit §5): redacted or
+    // not-yet-summarized reasoning has no bounded summary to show. Returning
+    // null here — same as an unrecognized item type — means no card is
+    // built, never a false "reasoning unavailable" placeholder.
+    if (summary === "") return null
+    return {
+      kind: "reasoning",
+      source,
+      summary: head(redact(summary), WORKBENCH_REASONING_SUMMARY_LIMIT),
+      status: normalizeWorkbenchStatus(item.status, "completed"),
+    }
+  }
   if (type === "imageGeneration" || type === "image_generation" ||
     type === "imageView" || type === "image_view") {
     const path = asString(item.savedPath ?? item.saved_path ?? item.path)
@@ -773,7 +799,7 @@ export const workbenchItemSignature = (item: WorkbenchItem | undefined): string 
     case "message":
       return ["message", item.source, item.role, item.text.length, item.phase ?? ""].join("|")
     case "reasoning":
-      return ["reasoning", item.source, item.summary.length].join("|")
+      return ["reasoning", item.source, item.summary.length, item.status ?? ""].join("|")
     case "agent":
       return [
         "agent", item.source, item.status, item.tool ?? "", item.prompt?.length ?? 0,

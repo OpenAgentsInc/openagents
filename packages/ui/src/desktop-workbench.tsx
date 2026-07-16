@@ -37,6 +37,11 @@ export { DesktopTimeline } from "./workbench/timeline.tsx"
 export { DesktopTimelineMessage } from "./workbench/message.tsx"
 export { DesktopTimelineNotice } from "./workbench/notice.tsx"
 export { DesktopWorkEntry, DesktopWorkGroup } from "./workbench/work-entry.tsx"
+export {
+  DesktopReasoningDisclosure,
+  desktopReasoningDisclosureFixtures,
+  type DesktopReasoningStatus,
+} from "./workbench/reasoning-disclosure.tsx"
 export { type DesktopActivityStatus } from "./workbench/activity-status.tsx"
 export { DesktopPlanCard, type DesktopPlanEntry } from "./workbench/plan-card.tsx"
 export { DesktopCommandCard } from "./workbench/command-card.tsx"
