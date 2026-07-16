@@ -362,12 +362,6 @@ button[data-en-key^="desktop-command-binding-"][data-en-key*="."] {
   resize: none;
 }
 
-[data-en-key="shell-input"] textarea:focus,
-[data-en-key="shell-input"] textarea:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
 [data-en-key="assurance-spec-document"],
 [data-en-key="assurance-spec-workbench"] {
   min-width: 0;
