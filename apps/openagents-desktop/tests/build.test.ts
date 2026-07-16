@@ -11,6 +11,15 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { Worker } from "node:worker_threads"
 
+import {
+  REQUIRED_ARTIFACTS,
+  checkArtifactSet,
+  checkNoLegacyUiEntrypoints,
+  checkNoSourceCheckoutPaths,
+  checkNoUpdaterRemnants,
+  gatherArtifactFiles,
+} from "../scripts/release-preflight.ts"
+
 const appRoot = path.resolve(import.meta.dirname, "..")
 
 describe("openagents-desktop build", () => {
@@ -46,6 +55,26 @@ describe("openagents-desktop build", () => {
       ] : []),
     ]) {
       expect(existsSync(path.join(dist, artifact))).toBe(true)
+    }
+
+    // Keep the real-artifact release oracles in the one test that owns the
+    // destructive dist/ build. A second test file spawning the same build can
+    // race this process between rm(dist) and asset staging.
+    const present = REQUIRED_ARTIFACTS.filter(artifact => existsSync(path.join(dist, artifact)))
+    expect(checkArtifactSet(present).ok).toBe(true)
+    const files = gatherArtifactFiles(dist)
+    expect(files.length).toBeGreaterThanOrEqual(7)
+    const repoRoot = path.resolve(appRoot, "../..")
+    for (const check of [
+      checkNoUpdaterRemnants(files),
+      checkNoLegacyUiEntrypoints(files),
+      checkNoSourceCheckoutPaths(files, repoRoot),
+    ]) {
+      expect({ id: check.id, ok: check.ok, detail: check.ok ? "" : check.detail }).toEqual({
+        id: check.id,
+        ok: true,
+        detail: "",
+      })
     }
 
     if (process.platform === "darwin") {

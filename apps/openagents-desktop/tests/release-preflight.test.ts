@@ -1,17 +1,16 @@
-import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Release-preflight oracles (CUT-26, #8706).
  *
  * Two layers:
  *  1. Pure-check unit oracles over synthetic inputs — every check must both
  *     pass on good input and FAIL on the specific regression it guards.
- *  2. A real-artifact sweep over the actual built `dist/` (building it if
- *     absent) plus the real UPSTREAM.md/package.json, so a legacy-UI asset,
- *     template-updater remnant, or source-checkout path entering the artifact
- *     turns the normal test sweep red — not just a release-day script.
+ *  2. Repository identity checks over the real UPSTREAM.md/package.json.
+ *
+ * The real-artifact sweep lives in build.test.ts, the sole owner of the
+ * destructive dist/ build, so parallel test files cannot race asset staging.
  */
 import { describe, expect, test } from "vite-plus/test"
-import { existsSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import path from "node:path"
 import {
   FORBIDDEN_LEGACY_UI_MARKERS,
@@ -26,7 +25,6 @@ import {
   checkNoSourceCheckoutPaths,
   checkNoUpdaterRemnants,
   checkVersionMonotonic,
-  gatherArtifactFiles,
 } from "../scripts/release-preflight.ts"
 
 const appRoot = path.resolve(import.meta.dirname, "..")
@@ -155,38 +153,7 @@ describe("pure preflight checks", () => {
   })
 })
 
-describe("real artifact sweep", () => {
-  test("the actual built dist/ carries no updater remnants, legacy UI, or checkout paths", () => {
-    const dist = path.join(appRoot, "dist")
-    if (!existsSync(path.join(dist, "main.js"))) {
-      const result = Runtime.spawnSync([process.execPath, "--import", "tsx", "scripts/build.ts"], {
-        cwd: appRoot,
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-      expect(result.exitCode).toBe(0)
-    }
-
-    const present = REQUIRED_ARTIFACTS.filter((artifact) => existsSync(path.join(dist, artifact)))
-    expect(checkArtifactSet(present).ok).toBe(true)
-
-    const files = gatherArtifactFiles(dist)
-    expect(files.length).toBeGreaterThanOrEqual(7)
-
-    const repoRoot = path.resolve(appRoot, "../..")
-    for (const check of [
-      checkNoUpdaterRemnants(files),
-      checkNoLegacyUiEntrypoints(files),
-      checkNoSourceCheckoutPaths(files, repoRoot),
-    ]) {
-      expect({ id: check.id, ok: check.ok, detail: check.ok ? "" : check.detail }).toEqual({
-        id: check.id,
-        ok: true,
-        detail: "",
-      })
-    }
-  }, 30_000)
-
+describe("repository release identity", () => {
   test("the real UPSTREAM.md attribution and package identity are intact", () => {
     const upstreamMd = readFileSync(path.join(appRoot, "UPSTREAM.md"), "utf8")
     expect(checkAttributionIntact(upstreamMd).ok).toBe(true)
