@@ -16,6 +16,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { PassThrough } from "node:stream"
 import type { CodexAppServerSpawn } from "./codex-app-server-client.ts"
+import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 
 import {
   fixtureCodexShortAuthStdout,
@@ -119,6 +120,8 @@ describe("makeCodexLocalRuntime.runTurn", () => {
   test("ordinary app-server chat does not advertise ProductSpec skills or dynamic tools", async () => {
     const fake = appServerFixture()
     const root = scratch()
+    const supervisor = createCodexAppServerSupervisor()
+    let ecosystemCalls = 0
     const runtime = makeCodexLocalRuntime({
       scratchRoot: () => root,
       workspaceRoot: () => root,
@@ -127,6 +130,14 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       preflight: verifiedPreflight(["ambient"]),
       appServer: {
         binary: () => "/packaged/codex",
+        supervisor,
+        ecosystems: {
+          forTarget: async () => {
+            ecosystemCalls += 1
+            throw new Error("failed to list apps: Request failed with status 403 Forbidden")
+          },
+          close: () => {},
+        },
         installProductSpecSkill: account => ({
           skillRoot: `${account.home}/skills`,
           skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
@@ -140,6 +151,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       threadRef: "thread-ordinary",
       history: [],
       message: "Create the requested file",
+      extensionSelection: {},
       emit: () => {},
     })
     await waitFor(fake.messages, 1); fake.respond(1, {})
@@ -160,6 +172,8 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     fake.notify("item/agentMessage/delta", { threadId: "ordinary-thread", turnId: "ordinary-turn", delta: "Done." })
     fake.notify("turn/completed", { threadId: "ordinary-thread", turn: { id: "ordinary-turn", status: "completed", error: null } })
     await expect(running).resolves.toMatchObject({ ok: true, text: "Done." })
+    expect(ecosystemCalls).toBe(0)
+    supervisor.close()
   })
 
   test("Full Auto (#8852) forces approvalPolicy never and prefixes the turn prompt with the Full Auto instruction", async () => {

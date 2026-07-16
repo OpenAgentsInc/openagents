@@ -378,16 +378,7 @@ export const makeProviderLaneDispatcher = (
     // before the model can write files. Awaited so the snapshot cannot race
     // the turn's first edit.
     await deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")
-    const result = await lane.runTurn({
-      request,
-      model: requestedModel,
-      context: admission.context,
-      history,
-      message: specProjection === undefined
-        ? turnPromptText(request.message, request.images)
-        : appendSpecLaneContext(turnPromptText(request.message, request.images), specProjection),
-      background: sender === null,
-      emit: turnEvent => {
+    const emitTurnEvent = (turnEvent: FableLocalEvent): void => {
         // CUT-11 (#8691): fold the SAME typed envelope the renderer receives
         // into the canonical live agent graph.
         deps.liveAgentGraph.applyEvent(request.threadRef, {
@@ -456,8 +447,25 @@ export const makeProviderLaneDispatcher = (
         // start event so the renderer can stream onto real thread state.
         const forwarded = turnEvent.kind === "turn_started" ? { ...turnEvent, thread: saved } : turnEvent
         sender.send(lane.eventChannel, { turnRef: request.turnRef, event: forwarded })
-      },
-    })
+    }
+    let result: ProviderLaneTurnResult
+    try {
+      result = await lane.runTurn({
+        request,
+        model: requestedModel,
+        context: admission.context,
+        history,
+        message: specProjection === undefined
+          ? turnPromptText(request.message, request.images)
+          : appendSpecLaneContext(turnPromptText(request.message, request.images), specProjection),
+        background: sender === null,
+        emit: emitTurnEvent,
+      })
+    } catch {
+      const detail = "The provider lane stopped unexpectedly."
+      emitTurnEvent({ kind: "turn_failed", reason: "session_failed", detail })
+      result = { ok: false, reason: "session_failed", detail }
+    }
     if (specProjection !== undefined) {
       try {
         deps.specWorkflow?.afterTurn(lane.laneRef, request, specProjection)

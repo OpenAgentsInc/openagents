@@ -686,8 +686,13 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           }
         }
       }
+      const extensionSelection = input.extensionSelection !== undefined &&
+          [input.extensionSelection.skillIds, input.extensionSelection.appIds, input.extensionSelection.pluginIds]
+            .some(ids => (ids?.length ?? 0) > 0)
+        ? input.extensionSelection
+        : undefined
       let ecosystem: CodexEcosystem | null = null
-      if (options.appServer.ecosystems !== undefined && options.appServer.supervisor !== undefined) {
+      if (extensionSelection !== undefined && options.appServer.ecosystems !== undefined && options.appServer.supervisor !== undefined) {
         ecosystem = await options.appServer.ecosystems.forTarget({
           binary,
           env: appServerEnv,
@@ -709,9 +714,9 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         turnRef: input.turnRef,
         accountRef: input.account.ref,
         prompt: input.prompt,
-        ...(input.extensionSelection === undefined ? {} : {
-          extensionSelection: input.extensionSelection,
-          admitExtensions: (selection: NonNullable<typeof input.extensionSelection>) => {
+        ...(extensionSelection === undefined ? {} : {
+          extensionSelection,
+          admitExtensions: (selection: NonNullable<typeof extensionSelection>) => {
             if (ecosystem === null) throw new Error("Codex ecosystem authority is unavailable")
             ecosystem.admitTurnExtensions(selection)
           },

@@ -359,6 +359,54 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
     }
   })
 
+  test("an unexpected provider throw emits a typed failure and cannot strand the accepted turn", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-throw-"))
+    try {
+      const harness = makeFixtureHarness(root)
+      const thread = harness.store.newThread()
+      const lane: ProviderLane<null> = {
+        ...harness.lane,
+        runTurn: async ({ emit }) => {
+          emit({ kind: "turn_started" })
+          emit({ kind: "text_delta", text: "Partial reply." })
+          throw new Error("failed to list apps: 403 response body must stay private")
+        },
+      }
+      const dispatcher = makeProviderLaneDispatcher(harness.deps)
+      const result = await dispatcher.dispatchTurn(lane, startRequest(thread.id), fakeSender(harness.forwarded))
+
+      expect(result).toEqual({
+        ok: false,
+        reason: "session_failed",
+        error: "The fixture lane turn failed (session_failed · The provider lane stopped unexpectedly.).",
+      })
+      const key = { threadRef: thread.id, turnRef: "turn-fixture-1", lane: FIXTURE_LANE_REF }
+      expect(harness.journal.get(key)).toMatchObject({
+        phase: "failed",
+        disposition: "failed",
+        assistantText: "Partial reply.",
+      })
+      expect(harness.deps.localTurnFlushers.size).toBe(0)
+      expect(harness.store.open(thread.id)?.notes.some(note =>
+        note.role === "assistant" && note.text === "Partial reply."
+      )).toBe(true)
+
+      const finalEnvelope = decodeFableLocalEventEnvelope(harness.forwarded.at(-1)?.payload)
+      expect(finalEnvelope?.event).toEqual({
+        kind: "turn_failed",
+        reason: "session_failed",
+        detail: "The provider lane stopped unexpectedly.",
+      })
+      expect(harness.graphEvents.at(-1)).toMatchObject({
+        threadRef: thread.id,
+        envelope: { turnRef: "turn-fixture-1", event: finalEnvelope?.event },
+      })
+      expect(JSON.stringify(harness.forwarded)).not.toContain("403 response body")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("shared user-note/prompt helpers keep images-only turns honest", () => {
     expect(userNoteText("  ", [{}])).toBe("(1 image attached)")
     expect(userNoteText("hello", [])).toBe("hello")
