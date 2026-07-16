@@ -491,6 +491,9 @@ not currently test:
 - background pending/interrupt/manual-send exclusion;
 - configuration continuity across automatic turns;
 - corrupt registry recovery;
+- a native question arriving on a background (`sender: null`) turn;
+- eviction of a still-enabled record once the registry's bounded record limit
+  is reached;
 - a two-process Electron Full Auto restart; or
 - a packaged real-Codex restart on a real repository.
 
@@ -547,3 +550,79 @@ restart observation is retained.
 
 Final status: **landed and module-proven; hardening and real restart proof
 required before release/live/owner-accepted claims.**
+
+## Addendum — fable, 2026-07-16
+
+Two additional gaps, traced directly in
+[`codex-local-runtime.ts`](../../apps/openagents-desktop/src/codex-local-runtime.ts)
+and [`full-auto-registry.ts`](../../apps/openagents-desktop/src/full-auto-registry.ts),
+plus one concrete interim mitigation for Finding 2 that does not require the
+full hardening order to land first.
+
+### 11. High — a native question during a background turn can hang that thread's loop forever, invisibly
+
+`item/tool/requestUserInput` (`codex-local-runtime.ts:548`) is a distinct
+app-server request from `item/commandExecution/requestApproval` and
+`item/fileChange/requestApproval`. `approvalPolicy: "never"` only reaches the
+latter two; it does not touch native question requests at all. A question is
+resolved only by an explicit `answerQuestion` call (driven by renderer UI) or
+by `interrupt(turnRef)`, which auto-denies every pending question for that
+turn (`codex-local-runtime.ts:1290-1299`).
+
+A main-initiated Full Auto continuation dispatches with `sender: null`
+(`main.ts`'s `runFullAutoReconciliation` wiring) and its turn ref never
+reaches any renderer. Nothing holds a reference capable of calling
+`interrupt` on it. If the model emits `item/tool/requestUserInput` during
+that turn — the Full Auto instruction asks it not to, but does not and
+cannot enforce this at the protocol layer — the turn's JSON-RPC round trip
+blocks indefinitely: `pendingQuestions` holds the resolver, nobody ever
+calls `accept`/`deny`, and the turn never reaches a terminal local-turn
+journal state.
+
+The consequence compounds silently: that thread reads as permanently
+nonterminal, so every later `reconcileFullAutoThreads` call skips it as "in
+flight" — no cap increment, no disabled note, no visible error, just a
+quietly frozen Full Auto loop for that thread. Only a full app restart
+unsticks it, because `local-turn-recovery.ts`'s existing restart reconciliation
+treats any nonterminal turn as interrupted regardless of why it never
+finished.
+
+Minimal mitigation, scoped smaller than the full next-turn/lease redesign in
+Recommendation 1: when a turn has `fullAuto: true` and `sender === null`,
+answer `item/tool/requestUserInput` automatically with an empty/synthetic
+response (or deny) at the point it is received, the same way `interrupt`
+already auto-denies — do not leave it pending for a listener that structurally
+cannot exist.
+
+### 12. Medium — the registry's bounded record limit can silently evict a still-enabled thread during ordinary operation
+
+`openFullAutoRegistry`'s `persist()` (`full-auto-registry.ts`) sorts all
+records by `updatedAt` and slices to `FULL_AUTO_RECORD_LIMIT` (128) on every
+write, with no distinction between enabled and disabled records. A thread
+enabled once and left alone — no further sends, no toggle — ages toward the
+tail of that sort. Once 128 other records (enabled or not) have been touched
+more recently, the next write silently drops it. It will not resume on
+restart, and nothing records that it was dropped.
+
+This is distinct from Finding 10 (a corrupt file blocking initialization
+entirely): this is quiet data loss during normal, healthy operation, and it
+scales with how many distinct threads/repos an owner has ever toggled Full
+Auto on, not with anything going wrong. Minimal mitigation: exclude
+`enabled: true` records from the eviction slice (bound only the disabled
+tail), or raise the limit and emit an owner-visible warning before it binds.
+
+### A concrete interim mitigation for Finding 2
+
+The full fix — a durable next-turn record binding thread, admitted
+WorkContext/repository identity, expected predecessor, and execution profile
+— is real work and correctly sequenced first in the hardening order. Until
+it lands, a small additive change closes the most dangerous instance of the
+gap (resuming against the wrong repository) without redesigning dispatch:
+record the granted workspace `cwd` (or a digest of it) in each
+`FullAutoRecord` at the moment `CodexLocalFullAutoSetChannel` sets
+`enabled: true`, and have the dispatch wiring refuse to start a continuation
+— disabling the record rather than silently redirecting it — if the
+currently resolved Desktop workspace does not match what was granted. This
+does not make dispatch exactly-once or serialized; it only stops a stale
+enabled thread from ever executing against a repository the owner did not
+grant it against.
