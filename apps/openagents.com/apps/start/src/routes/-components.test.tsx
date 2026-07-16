@@ -51,7 +51,7 @@ describe("Start components workbench routes", () => {
     expect(core).toContain('data-storybook-story="diff-view-basic"');
     expect(core).toContain('data-storybook-story="modal-open"');
     expect(core).toContain("Inspect typed view");
-    expect(core).toContain("background-color:#16161e");
+    expect(core).toContain("background-color:#05070d");
     expect(core).toContain("<select");
     expect(core).toContain("aria-pressed=");
   });

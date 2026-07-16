@@ -273,18 +273,6 @@
   margin: 0;
 }
 
-.splash-workspace-footer {
-  flex: 0 0 auto;
-}
-
-.splash-workspace-footer h2 {
-  margin-bottom: 0.25rem;
-}
-
-.splash-workspace-footer .oa-react-workspace-row {
-  padding-inline: 0;
-}
-
 .splash-empty {
   width: min(720px, 100%);
   margin: 18vh auto 0;

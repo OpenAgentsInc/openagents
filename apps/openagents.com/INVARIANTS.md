@@ -73,6 +73,11 @@ This is the invariant ledger for `openagents`.
   transition, audit, and receipt projections.
 - The docs and Start landing foundations use the canonical Khala theme
   background (`khalaTheme.color.background`, `#05070d`) rather than pure black.
+- Autopilot UI is a donor inside Khala, not a second web theme. Its
+  condensed/mono instrumentation, tactical density, and compatible
+  indigo/neutral relationships may be adapted through shared Khala semantic
+  tokens, but it may not replace the blue Khala background/surface hierarchy,
+  mount `autopilotTheme`, or introduce route-local raw palette overrides.
 - Generated Markdown prose is a docs-only presentation exception. Owned
   product application UI remains Effect Native, and docs prose grants no auth,
   tool, API, payment, deployment, acceptance, release, or public-claim

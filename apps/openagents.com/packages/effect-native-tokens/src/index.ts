@@ -1111,10 +1111,11 @@ export const khalaTheme = ThemeSchema.make({
 /**
  * Effect service tag for the single active theme. There is deliberately no
  * "current mode" concept: a consumer provides exactly one production layer
- * (`autopilotThemeLayer` for current product surfaces, `khalaThemeLayer` for
- * explicitly-historical Khala surfaces) or a bespoke
+ * (`khalaThemeLayer` for current product surfaces, `autopilotThemeLayer` for
+ * explicitly opt-in reference surfaces) or a bespoke
  * `Layer.succeed(ThemeService, someTheme)` in tests/tooling. No light layer
- * is exported.
+ * is exported. Autopilot's compatible design ideas may be folded into Khala
+ * roles, but product hosts never mount both theme objects.
  */
 export const ThemeService = Context.Service<Theme>("@effect-native/tokens/ThemeService")
 

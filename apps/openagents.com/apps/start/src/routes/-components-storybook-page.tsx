@@ -9,7 +9,7 @@ import {
 } from "@effect-native/gallery";
 import { makeDomRenderer } from "@effect-native/render-dom";
 import { useEffectNativeScopedEffect } from "@effect-native/render-dom/react";
-import { autopilotTheme } from "@effect-native/tokens";
+import { khalaTheme } from "@effect-native/tokens";
 import { Effect, Stream } from "effect";
 import { type CSSProperties, type ReactElement, useId, useRef, useState } from "react";
 
@@ -142,7 +142,7 @@ function StoryPreview({ story }: Readonly<{ story: Story }>): ReactElement {
     const canvas = canvasRef.current;
     if (canvas === null) return Effect.void;
     return makeDomRenderer({
-      theme: autopilotTheme,
+      theme: khalaTheme,
       viewport: activeStory.viewport,
       overlayMode: "contained",
     }).mount(canvas, Stream.make(activeStory.view), noopReport);
@@ -163,9 +163,9 @@ function StoryPreview({ story }: Readonly<{ story: Story }>): ReactElement {
           overlayStory ? "min-h-72" : "min-h-44"
         }`}
         data-effect-native-surface="dom"
-        data-story-theme="autopilot"
+        data-story-theme="khala"
         ref={canvasRef}
-        style={themeCssVariables(autopilotTheme)}
+        style={themeCssVariables(khalaTheme)}
       />
       <div className="grid gap-3 border-t border-khala-border/70 bg-black p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -360,10 +360,10 @@ export function EffectNativeStorybook({
 }
 
 export function TokenStorybook(): ReactElement {
-  const colors = Object.entries(autopilotTheme.color);
-  const spacing = Object.entries(autopilotTheme.spacing);
-  const radii = Object.entries(autopilotTheme.radius);
-  const type = Object.entries(autopilotTheme.typeScale);
+  const colors = Object.entries(khalaTheme.color);
+  const spacing = Object.entries(khalaTheme.spacing);
+  const radii = Object.entries(khalaTheme.radius);
+  const type = Object.entries(khalaTheme.typeScale);
 
   return (
     <div className="grid gap-10" data-storybook-family="tokens">

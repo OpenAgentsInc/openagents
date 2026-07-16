@@ -2,7 +2,7 @@
 
 Status: active design authority
 
-Updated: 2026-07-15
+Updated: 2026-07-16
 
 ## Scope
 
@@ -10,6 +10,36 @@ This document records the visual-system choices shared by OpenAgents product
 surfaces descended from the Autopilot UI. It does not create a separate
 Autopilot application, renderer, or token authority. Web, docs, splash, and
 Desktop should consume the same owned UI primitives and typography tokens.
+
+## Relationship to Khala
+
+Autopilot is a design donor inside Khala, not a competing product theme.
+`khalaTheme` remains the only mounted palette authority across Desktop, web,
+docs, splash, boot frames, and preference-scaled rendering. When the two
+languages conflict, Khala wins.
+
+The parts to fold in are Autopilot's tactical density, condensed information
+hierarchy, restrained mono instrumentation, and compatible color
+relationships. They are adapted through Khala semantic roles rather than
+copied as raw literals or mounted as `autopilotTheme`:
+
+- Disket Mono carries machine state, commands, paths, shortcuts, and compact
+  metadata. Zalando Sans may use a modestly condensed width only for bounded
+  labels and dense controls; prose and primary headings remain readable at the
+  normal width.
+- Autopilot indigo, cool-neutral, muted-danger, and rare-success ideas may
+  inform the corresponding Khala ramps, but the result must stay visibly in
+  the Khala blue family and resolve through `--en-color-*` / `--khala-*`
+  semantic tokens.
+- Main workroom backgrounds and raised surfaces remain the Khala hierarchy:
+  `#05070d`, `#0b1220`, and `#141f36`, with Protoss blue `#3b82f6` as the
+  primary accent. The gray Autopilot page/panel values must not replace those
+  product-surface roles.
+- No host may mix both theme objects, add a route-local palette, or use raw
+  Autopilot hex values to bypass the shared token authority.
+
+This is a fold-in rule: preserve the useful Autopilot grammar while keeping
+Khala's identity and blue depth unmistakable.
 
 ## Typography
 

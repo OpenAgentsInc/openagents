@@ -5,11 +5,11 @@
  * inert stored value:
  *
  * - `fontScale` and `density` produce a SCALED copy of the fixed product
- *   theme (`autopilotTheme` — type-scale tokens for font; spacing + control
+ *   theme (`khalaTheme` — type-scale tokens for font; spacing + control
  *   tokens for density). The renderer emits every scaled token as a `--en-*`
  *   CSS variable, so passing the scaled theme to the Effect Native DOM
  *   renderer / `setTheme` genuinely resizes the whole app through the
- *   existing token pipeline. The one dark Autopilot COLOR identity is
+ *   existing token pipeline. The one Protoss-blue COLOR identity is
  *   untouched (single-theme policy) — only sizing scales.
  * - `reducedMotion` produces a root data attribute the app CSS honors
  *   (`:root[data-en-reduce-motion="true"]`) so an explicit user override works
@@ -19,7 +19,7 @@
  * Pure and dependency-light so it is unit-testable headlessly (no Electron,
  * no DOM) — the boot layer is the only place that actually mounts the result.
  */
-import { autopilotTheme, type Theme } from "@effect-native/tokens"
+import { khalaTheme, type Theme } from "@effect-native/tokens"
 
 import type {
   DesktopDensity,
@@ -100,9 +100,9 @@ export const applyPreferencesToTheme = (
   return { ...base, typeScale, spacing, control }
 }
 
-/** The scaled theme for a full preferences document, from the fixed autopilotTheme. */
+/** The scaled theme for a full preferences document, from the fixed khalaTheme. */
 export const themeForPreferences = (preferences: DesktopPreferences): Theme =>
-  applyPreferencesToTheme(autopilotTheme, {
+  applyPreferencesToTheme(khalaTheme, {
     fontScale: preferences.appearance.fontScale,
     density: preferences.appearance.density,
   })

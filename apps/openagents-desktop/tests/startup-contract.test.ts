@@ -26,7 +26,7 @@
  *     (`hydrateAfterMount`), catalog metadata paints before selected-thread
  *     detail starts, and the static boot frame is removed after mount.
  *  3. index.html: a branded boot frame paints with the first HTML parse and
- *     every color literal in it is an exact autopilotTheme token value
+ *     every color literal in it is an exact khalaTheme token value
  *     (mechanically synced to @effect-native/tokens — the same rule the
  *     BrowserWindow backgroundColor follows).
  *  4. Sidebar honesty: until hydration settles the sidebar says
@@ -37,7 +37,7 @@ import { describe, expect, test } from "vite-plus/test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-import { autopilotTheme } from "@effect-native/tokens"
+import { khalaTheme } from "@effect-native/tokens"
 
 import {
   desktopShellView,
@@ -139,7 +139,7 @@ describe("startup contract: window before persistence/keychain/network (main.ts)
   })
 
   test("the pre-boot BrowserWindow background stays the product-theme token background", () => {
-    expect(mainSource).toContain(`backgroundColor: "${autopilotTheme.color.background}"`)
+    expect(mainSource).toContain(`backgroundColor: "${khalaTheme.color.background}"`)
   })
 
   test("ordinary windows fill the active display work area without entering fullscreen", () => {
@@ -278,12 +278,12 @@ describe("startup contract: branded boot frame (index.html)", () => {
 
   test("the boot frame exists and paints the product-theme background", () => {
     expect(indexHtml).toContain('id="openagents-boot-frame"')
-    expect(styleBlock).toContain(`background: ${autopilotTheme.color.background}`)
+    expect(styleBlock).toContain(`background: ${khalaTheme.color.background}`)
   })
 
-  test("every boot-frame color literal is an exact autopilotTheme token value", () => {
+  test("every boot-frame color literal is an exact khalaTheme token value", () => {
     const palette = new Set(
-      Object.values(autopilotTheme.color).map((value) => value.toLowerCase()),
+      Object.values(khalaTheme.color).map((value) => value.toLowerCase()),
     )
     const hexes = [...styleBlock.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((match) => match[0].toLowerCase())
     expect(hexes.length).toBeGreaterThan(0)
@@ -293,7 +293,7 @@ describe("startup contract: branded boot frame (index.html)", () => {
 
   test("falsifier: an off-palette color would be rejected", () => {
     const palette = new Set(
-      Object.values(autopilotTheme.color).map((value) => value.toLowerCase()),
+      Object.values(khalaTheme.color).map((value) => value.toLowerCase()),
     )
     expect(palette.has("#8b4513")).toBe(false) // an actual brown never enters the boot frame
   })

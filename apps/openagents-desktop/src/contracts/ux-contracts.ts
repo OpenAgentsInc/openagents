@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-15.7",
+    version: "2026-07-16.1",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -2450,7 +2450,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "do a separate design pass of projects/repos/apps-sdk-ui and thats what i want to use for the rest of the app chrome, menus, etc, everything other than messages, but still harmonized to messages. we want that design language, ported to starcraft kinda, represented in EVERY other surface of the app",
         authorityBoundary:
-          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as new @effect-native/tokens roles/groups (upstream, public-safe), the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; one uniform dark product theme only (autopilotTheme since the 2026-07-15 palette supersession — see openagents_desktop.design.autopilot_palette.v1); no light theme, no caution/discovery intents, no pink family, no 24px composer radius, no backdrop-blur popover variant, no 9-step lattice, none of their icons (deviations recorded in docs/design-ports.md). Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
+          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as new @effect-native/tokens roles/groups (upstream, public-safe), the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; one uniform dark product theme only (khalaTheme, with Autopilot folded in as a donor language — see openagents_desktop.design.khala_autopilot_foldin.v1); no light theme, no caution/discovery intents, no pink family, no 24px composer radius, no backdrop-blur popover variant, no 9-step lattice, none of their icons (deviations recorded in docs/design-ports.md). Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
         evidenceRefs: [
           "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
           "apps/openagents.com/packages/effect-native-render-dom/src/index.ts",
@@ -2475,7 +2475,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "The desktop theme IS the canonical tokens-package product theme (autopilotTheme since the 2026-07-15 palette supersession: square-corner radius scale, state-overlay + dim-ladder + overlay-surface roles, motion/control groups) — app-local palette drift deleted.",
+              "The desktop theme IS the canonical tokens-package product theme (khalaTheme: Protoss-blue surfaces, state-overlay + dim-ladder + overlay-surface roles, motion/control groups) — app-local palette drift deleted.",
           },
           {
             id: "chrome_design.smoke_pixels",
@@ -3517,7 +3517,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Theme, density, font, reduced motion, keybindings, provider defaults, privacy, notifications, and update preferences have typed durable schemas/migrations.",
         authorityBoundary:
-          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT a mutable field (the app is the fixed dark product theme — autopilotTheme since 2026-07-15; recorded, not switchable) and keybindings keep their existing typed store (desktop-command-bindings). Density and font genuinely resize the app through a scaled theme applied at mount; reduced-motion resolves to a root attribute the CSS honors (explicit override wins over the OS). Provider-defaults/privacy/notifications/update-prefs are durable and IPC-round-tripped; each is consumed where a real effect already exists. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
+          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT a mutable field (the app is the fixed dark Protoss-blue khalaTheme; Autopilot design ideas are folded into its semantic roles rather than offered as another theme) and keybindings keep their existing typed store (desktop-command-bindings). Density and font genuinely resize the app through a scaled theme applied at mount; reduced-motion resolves to a root attribute the CSS honors (explicit override wins over the OS). Provider-defaults/privacy/notifications/update-prefs are durable and IPC-round-tripped; each is consumed where a real effect already exists. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
         evidenceRefs: [
           "https://github.com/OpenAgentsInc/openagents/issues/8704",
           "apps/openagents-desktop/src/desktop-preferences-contract.ts",
@@ -3757,42 +3757,44 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; adding any stray font family anywhere under apps/openagents-desktop/src fails it.",
       },
       {
-        contractId: "openagents_desktop.design.autopilot_palette.v1",
+        contractId: "openagents_desktop.design.khala_autopilot_foldin.v1",
         state: "enforced",
         surface: "openagents-desktop",
         productArea: "product theme / palette",
         enforcementTier: "test-sweep",
         blockerRefs: [],
-        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-15" },
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-16" },
         statement:
-          "Product surfaces adopt the Autopilot UI palette (accent #5262FD on near-black #16161E, square corners, muted danger) superseding Protoss blue.",
+          "Some recent Autopilot UI change changed my blue background to gray, undo that. The Autopilot palette needs to be kinda folded INTO Khala: use its mono/condensed ideas and generally its colors, but do not override or conflict with Khala.",
         authorityBoundary:
-          "Presentation only, and a palette supersession — not a new theming architecture. The one-theme-many-hosts invariant is unchanged: the canonical product theme is the tokens-package autopilotTheme (upstream OpenAgentsInc/effect-native, vendored via effect-native-vendor.json), whose semantic roles derive from the measured Autopilot UI design-spec palette (workspace docs/fable/autopilot-ui-design-spec.md): page #16161e / panel #141416 / module #0d0e10 with depth going darker, hairline #242527 borders, one vivid indigo accent #5262fd (hover #6470e0, focus #5966d6, selected fill = accent at 20% alpha), muted brick danger #8e4445 (bright #ab322a reserved for tick-scale marks), rare mint success #8dc3ab, info reusing the accent family (no new hues), and every radius step 0 (square corners; full stays 9999). khalaTheme remains exported upstream for explicitly-historical surfaces only and is no longer mounted by the desktop renderer, the boot frame, the preferences scaler, or the retained web product pages this repo re-themed (/splash, /components storybook). Exact hexes are pinned upstream in the vendored tokens test discipline; hosts must consume theme roles/--en-* variables, never re-pin raw hexes outside the theme module.",
+          "Presentation only, and a palette correction — not a new theming architecture. The one-theme-many-hosts invariant is unchanged: the canonical mounted product theme is the tokens-package khalaTheme (upstream OpenAgentsInc/effect-native, vendored via effect-native-vendor.json). Its semantic roles keep main workroom surfaces in the deep blue Khala family: background #05070d, surface #0b1220, raised surface #141f36, blue accent #3b82f6, blue selected overlays, and the restrained 2/4/6/8 radius scale. Autopilot UI folds into Khala as a donor language: its condensed information hierarchy, Disket Mono instrumentation, tactical density, and compatible indigo/cool-neutral/muted-status relationships may inform Khala roles, but raw Autopilot hexes and autopilotTheme may not replace, mount beside, override, or conflict with the Khala hierarchy. Desktop, its boot frame and preferences scaler, /splash, and /components storybook all consume khalaTheme through theme roles/--en-* variables; boot-only literals remain mechanically pinned by startup tests.",
         evidenceRefs: [
           "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
           "apps/openagents-desktop/src/renderer/theme.ts",
           "apps/openagents-desktop/index.html",
           "apps/openagents.com/apps/start/src/routes/-splash-page.tsx",
           "apps/openagents.com/apps/start/src/routes/-components-storybook-page.tsx",
+          "docs/fable/autopilot-ui-design-spec.md",
+          "INVARIANTS.md",
           "github:OpenAgentsInc/openagents#8858",
           "github:OpenAgentsInc/effect-native#102",
         ],
         oracles: [
           {
-            id: "autopilot_palette.theme_supersession",
+            id: "khala_autopilot_foldin.theme_restoration",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
             description:
-              "Proves openagentsDesktopTheme IS the tokens-package autopilotTheme with the pinned Autopilot roles (accent #5262fd, background #16161e, muted danger #8e4445, every radius step 0), that the accent/background are NOT the superseded Protoss values, and that no desktop renderer/runtime module imports khalaTheme anymore. The falsifier demonstrates the checks reject the old Protoss pins.",
+              "Proves openagentsDesktopTheme IS the tokens-package khalaTheme with pinned blue roles (accent #3b82f6, background #05070d, raised surface #141f36), that raw gray Autopilot surface pins are absent, and that no desktop renderer/runtime module mounts autopilotTheme. Autopilot influence must enter only through Khala roles; the falsifier demonstrates the checks reject a competing gray palette.",
           },
           {
-            id: "autopilot_palette.theme_is_canonical",
+            id: "khala_autopilot_foldin.theme_is_canonical",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "The theme-parity suite pins the desktop theme identity to autopilotTheme with the square-corner radius scale and the Autopilot state-overlay roles.",
+              "The theme-parity suite pins the desktop theme identity to khalaTheme with the restrained radius scale and blue state-overlay roles.",
           },
         ],
         verification:
@@ -3843,7 +3845,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
             description:
-              "Proves the branded boot frame exists in index.html and every color literal in it is an exact autopilotTheme token value — no off-palette (brown) frame can ever paint — and the BrowserWindow backgroundColor stays the token background.",
+              "Proves the branded boot frame exists in index.html and every color literal in it is an exact khalaTheme token value — no off-palette (brown) frame can ever paint — and the BrowserWindow backgroundColor stays the token background.",
           },
           {
             id: "startup.sidebar_scanning_honesty",

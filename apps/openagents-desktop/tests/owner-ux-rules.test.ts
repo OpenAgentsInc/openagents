@@ -34,7 +34,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 
 import { iconNames } from "@effect-native/core"
-import { autopilotTheme } from "@effect-native/tokens"
+import { khalaTheme } from "@effect-native/tokens"
 
 import {
   desktopShellView,
@@ -396,45 +396,41 @@ describe("openagents_desktop.microinteraction.owner_review_register.v1", () => {
 })
 
 // ---------------------------------------------------------------------------
-// openagents_desktop.design.autopilot_palette.v1
+// openagents_desktop.design.khala_autopilot_foldin.v1
 //
-// Owner statement (2026-07-15, recorded verbatim in the registry): "Product
-// surfaces adopt the Autopilot UI palette (accent #5262FD on near-black
-// #16161E, square corners, muted danger) superseding Protoss blue."
+// Owner statement (2026-07-16, recorded in the registry): restore the blue
+// background and fold Autopilot's mono/condensed and compatible color ideas
+// into Khala without overriding or conflicting with Khala.
 //
 // Enforcement shape: (a) the mounted desktop theme IS the tokens-package
-// autopilotTheme with the pinned Autopilot roles; (b) the superseded Protoss
-// pins are proven absent (falsifier sensitivity); (c) no non-test desktop
-// source module imports khalaTheme anymore — the historical theme may only be
-// referenced by name in comments/registry prose, never mounted.
+// khalaTheme with the pinned Protoss-blue roles; (b) the temporary gray
+// Autopilot pins are proven absent (falsifier sensitivity); (c) no non-test
+// desktop source module mounts autopilotTheme.
 // ---------------------------------------------------------------------------
 
-describe("openagents_desktop.design.autopilot_palette.v1", () => {
-  test("the desktop theme IS autopilotTheme with the pinned Autopilot roles", () => {
-    expect(openagentsDesktopTheme).toBe(autopilotTheme)
-    expect(openagentsDesktopTheme.color.accent).toBe("#5262fd")
-    expect(openagentsDesktopTheme.color.background).toBe("#16161e")
-    // Muted danger is a rule of the language: brick red, never alarm red.
-    expect(openagentsDesktopTheme.color.danger).toBe("#8e4445")
-    // Square corners: every radius step is 0 except the schema-completeness full.
-    expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 0, md: 0, lg: 0, xl: 0, full: 9999 })
+describe("openagents_desktop.design.khala_autopilot_foldin.v1", () => {
+  test("the desktop theme IS khalaTheme with the pinned Protoss-blue roles", () => {
+    expect(openagentsDesktopTheme).toBe(khalaTheme)
+    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
+    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
+    expect(openagentsDesktopTheme.color.surfaceRaised).toBe("#141f36")
+    expect(openagentsDesktopTheme.color.danger).toBe("#f87171")
+    expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 2, md: 4, lg: 6, xl: 8, full: 9999 })
   })
 
-  test("falsifier: the superseded Protoss-blue pins are rejected", () => {
-    expect(openagentsDesktopTheme.color.accent).not.toBe("#3b82f6")
-    expect(openagentsDesktopTheme.color.background).not.toBe("#05070d")
-    expect(openagentsDesktopTheme.color.danger).not.toBe("#f87171")
-    expect(openagentsDesktopTheme.radius.md).not.toBe(4)
+  test("falsifier: the temporary gray Autopilot pins are rejected", () => {
+    expect(openagentsDesktopTheme.color.accent).not.toBe("#5262fd")
+    expect(openagentsDesktopTheme.color.background).not.toBe("#16161e")
+    expect(openagentsDesktopTheme.color.surfaceRaised).not.toBe("#1d1e20")
+    expect(openagentsDesktopTheme.radius.md).not.toBe(0)
   })
 
-  test("no desktop source module imports the historical khalaTheme", () => {
+  test("no desktop source module imports the temporary autopilotTheme", () => {
     const offenders: Array<string> = []
     for (const file of sourceFiles(srcDir)) {
       const source = readFileSync(file, "utf8")
-      // Match value imports of khalaTheme/khalaThemeLayer from the tokens
-      // package (comment/prose mentions of the historical theme are fine).
       for (const match of source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']@effect-native\/tokens["']/g)) {
-        if (/(?:^|[,\s])khalaTheme(?:Layer)?(?:[,\s]|$)/.test(match[1]!)) {
+        if (/(?:^|[,\s])autopilotTheme(?:Layer)?(?:[,\s]|$)/.test(match[1]!)) {
           offenders.push(path.relative(appDir, file))
         }
       }
@@ -444,13 +440,13 @@ describe("openagents_desktop.design.autopilot_palette.v1", () => {
 
   test("the contract is registered, enforced, and points at this suite", () => {
     const contract = openAgentsDesktopUxContractRegistry.contracts.find(
-      (candidate) => candidate.contractId === "openagents_desktop.design.autopilot_palette.v1",
+      (candidate) => candidate.contractId === "openagents_desktop.design.khala_autopilot_foldin.v1",
     )
     expect(contract).toBeDefined()
     expect(contract?.state).toBe("enforced")
-    expect(contract?.source.statedOn).toBe("2026-07-15")
+    expect(contract?.source.statedOn).toBe("2026-07-16")
     expect(contract?.statement).toBe(
-      "Product surfaces adopt the Autopilot UI palette (accent #5262FD on near-black #16161E, square corners, muted danger) superseding Protoss blue.",
+      "Some recent Autopilot UI change changed my blue background to gray, undo that. The Autopilot palette needs to be kinda folded INTO Khala: use its mono/condensed ideas and generally its colors, but do not override or conflict with Khala.",
     )
     expect(
       contract?.oracles.some((oracle) => oracle.ref === "apps/openagents-desktop/tests/owner-ux-rules.test.ts"),

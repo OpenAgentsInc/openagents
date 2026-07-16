@@ -8,9 +8,8 @@
  *
  * Scope note (honest, per the issue's nine listed keys):
  * - `theme` is intentionally NOT a preference: the app is the single fixed
- *   dark product theme (`autopilotTheme` since 2026-07-15, superseding the
- *   Protoss-blue `khalaTheme` — see
- *   openagents_desktop.design.autopilot_palette.v1) with no light variant and
+ *   dark Protoss-blue product theme (`khalaTheme` — see
+ *   openagents_desktop.design.khala_autopilot_foldin.v1) with no light variant and
  *   no runtime theme switch. It is recorded here as a fixed, read-only fact
  *   rather than a mutable field.
  * - `keybindings` already have a typed durable store (`desktop-command-bindings`

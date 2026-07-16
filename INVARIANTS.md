@@ -1075,7 +1075,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   `DesktopShellState` snapshot and existing intent keys and may retain only
   ephemeral focus/overlay/scroll-anchor/IME/palette-query mechanics. They do not define a
   second domain store, runtime client, command identity, persistence path,
-  token system, or Vercel AI SDK/model-stream authority. One authoritative
+  token system, or Vercel AI SDK/model-stream authority. The mounted product
+  theme across Desktop, the shared workbench, and the web splash is the
+  Protoss-blue tokens-package `khalaTheme`. Autopilot UI is a donor language:
+  its condensed/mono instrumentation, tactical density, and compatible color
+  relationships may be folded into Khala semantic roles, but `autopilotTheme`
+  may not mount beside, override, or conflict with Khala's blue background and
+  surface hierarchy. One authoritative
   surface selects exactly one whole-surface backend for its lifetime: declared
   React lowerings or the proven direct catalog compatibility backend, never
   both. Desktop selects React for an ordinary launch; the catalog backend is

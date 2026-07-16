@@ -11,7 +11,7 @@ export const Route = createFileRoute('/splash')({
     meta: [
       { title: 'OpenAgents Desktop — Build with agents' },
       { name: 'description', content: description },
-      { name: 'theme-color', content: '#16161e' },
+      { name: 'theme-color', content: '#05070d' },
       { property: 'og:title', content: 'OpenAgents Desktop — Build with agents' },
       { property: 'og:description', content: description },
       { property: 'og:url', content: 'https://openagents.com/splash' },

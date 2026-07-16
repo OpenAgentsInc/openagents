@@ -2830,8 +2830,8 @@ export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
  * `basic-tool-tool-subtitle`, projects/repos/opencode
  * packages/session-ui/src/components/basic-tool.css) — with collapsed-by-
  * default details, translated to typed Effect Native token styles on the
- * product theme (Autopilot UI since 2026-07-15, #8858; our label scale is
- * 14px/500, Icon sm is 16px, gap "2"
+ * Protoss-blue product theme (our label scale is 14px/500, Icon sm is 16px,
+ * gap "2"
  * is their 8px). Agent-class tools (Agent, mcp__codex__*) additionally get
  * their boxed `task-tool-card` treatment (8px/12px padding, 6px radius, thin
  * border on a raised translucent surface) via the catalog Card. See

@@ -52,7 +52,7 @@ import { withWorkspaceBrowserRoot, type WorkspaceBrowserBridge } from "./workspa
 import type { WorkspaceDocumentBridge } from "./workspace-editor.ts"
 import type { ComposerImageAttachment } from "./composer-images.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
-import { autopilotTheme } from "@effect-native/tokens"
+import { khalaTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
 import { desktopCanonicalCommandRegistry } from "../desktop-command-contract.ts"
@@ -3188,25 +3188,18 @@ describe("EP250 window + sidebar owner contracts", () => {
 })
 
 describe("theme parity (one OpenAgents product theme, many hosts)", () => {
-  test("desktop theme IS the canonical autopilotTheme — no app-local drift", () => {
-    // EP250 chrome pass (#8712) deleted the app-local palette/radius/type
-    // drift; Autopilot UI (#8858, owner 2026-07-15) made the tokens-package
-    // autopilotTheme the single source of truth, superseding khalaTheme.
-    expect(openagentsDesktopTheme).toBe(autopilotTheme)
-    expect(openagentsDesktopTheme.color.background).toBe("#16161e")
-    expect(openagentsDesktopTheme.color.accent).toBe("#5262fd")
-    // Square corners are a rule of the Autopilot language: every radius step
-    // is 0 (full stays 9999 for schema completeness).
-    expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 0, md: 0, lg: 0, xl: 0, full: 9999 })
+  test("desktop theme IS the canonical khalaTheme — no app-local drift", () => {
+    expect(openagentsDesktopTheme).toBe(khalaTheme)
+    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
+    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
+    expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 2, md: 4, lg: 6, xl: 8, full: 9999 })
     // Chrome-language roles are present for the state-overlay engine.
-    expect(openagentsDesktopTheme.color.stateHover).toBe("#aeb4f214")
-    expect(openagentsDesktopTheme.color.stateSelected).toBe("#5262fd33")
-    expect(openagentsDesktopTheme.color.textFaint).toBe("#58595b")
-    expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#18181d")
+    expect(openagentsDesktopTheme.color.stateHover).toBe("#8fb3ff14")
+    expect(openagentsDesktopTheme.color.stateSelected).toBe("#3b82f629")
+    expect(openagentsDesktopTheme.color.textFaint).toBe("#6b7ca1")
+    expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#182640")
     expect(openagentsDesktopTheme.motion.durationFastMs).toBe(150)
-    // Control-lattice sub-tokens (harmonization #76): height/gutter/icon are
-    // unchanged; radii are 0 per the square-corner rule.
-    expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, radius: 0, fontSize: 13, icon: 16 })
+    expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, radius: 4, fontSize: 13, icon: 16 })
   })
 })
 

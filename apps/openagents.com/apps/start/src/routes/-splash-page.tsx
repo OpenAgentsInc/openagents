@@ -1,5 +1,5 @@
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
-import { autopilotTheme } from '@effect-native/tokens'
+import { khalaTheme } from '@effect-native/tokens'
 import { InternalLink } from '@/components/internal-link'
 import { PublicHeader } from '@/components/public-header'
 import GithubMark from '@/components/launch-ui/logos/github'
@@ -36,7 +36,7 @@ import {
   type DesktopRailDestination,
   type DesktopToolKind,
 } from '@openagentsinc/ui/desktop-workbench'
-import { ArrowRight, ArrowUp, ArrowUpRight, Command, Folder, ImagePlus, Square, Zap } from 'lucide-react'
+import { ArrowRight, ArrowUp, ArrowUpRight, Command, ImagePlus, Square, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { SplashHeroCanvas } from './-splash-khala-canvas'
@@ -449,11 +449,15 @@ const sessions: ReadonlyArray<DemoSession> = [
 ]
 
 const destinations: ReadonlyArray<DesktopRailDestination> = [
-  { id: 'new', icon: 'new-session', label: 'New session' },
-  { id: 'chat', icon: 'chat', label: 'Chat' },
-  { id: 'home', icon: 'home', label: 'Project home' },
-  { id: 'settings', icon: 'settings', label: 'Settings' },
+  { id: 'workspace-new-chat', icon: 'new-session', label: 'New session' },
 ]
+
+const settingsDestination: DesktopRailDestination = {
+  accessibilityLabel: 'Open Settings',
+  id: 'shell-settings-toggle',
+  icon: 'settings',
+  label: 'Settings',
+}
 
 const followupReplies = [
   'Steering landed in the active turn without replacing the parent context. The fixture can now add a queued follow-up, update a child transcript, or interrupt a running delegate while the main response continues.',
@@ -602,7 +606,7 @@ export function SplashPage() {
   const visibleSessions = sessions.filter(session => session.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const active = phase === 'preparing' || phase === 'streaming'
 
-  return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(autopilotTheme)}>
+  return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(khalaTheme)}>
     <PublicHeader />
 
     <section aria-labelledby="splash-heading" className="splash-hero">
@@ -637,13 +641,9 @@ export function SplashPage() {
             canGoBack
             canGoForward={false}
             destinations={destinations}
-            footer={<section aria-label="Coding workspaces" className="oa-react-workspaces splash-workspace-footer">
-              <h2><Folder aria-hidden="true" /><span>Workspaces</span></h2>
-              <div className="oa-react-workspace-row"><button type="button"><span>openagents-desktop</span><small>Active</small></button></div>
-            </section>}
             onBack={() => undefined}
             onCollapse={() => setRailOpen(false)}
-            onDestinationSelect={destination => destination.id === 'new' ? newSession() : undefined}
+            onDestinationSelect={destination => destination.id === 'workspace-new-chat' ? newSession() : undefined}
             onForward={() => undefined}
             onSearchOpenChange={setSearchOpen}
             onSearchQueryChange={setQuery}
@@ -652,6 +652,7 @@ export function SplashPage() {
             searchOpen={searchOpen}
             searchQuery={query}
             sessions={visibleSessions.map(session => ({ ...session, selected: session.id === activeId }))}
+            settingsDestination={settingsDestination}
             stageLabel="DEV"
           />
           {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
