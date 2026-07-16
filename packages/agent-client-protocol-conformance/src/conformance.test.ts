@@ -23,6 +23,10 @@ import { STABLE_CONFORMANCE_CASES, assertStableManifestCoverage } from "./cases.
 import { executeFaultCase } from "./faults.ts";
 import { definePeerScenario, runPeerScenario, startPeerScenarioTransport } from "./harness.ts";
 import { summarizeSafeInitialize } from "./live.ts";
+import {
+  buildAcpLiveReleaseArtifact,
+  validateAcpLiveReleaseArtifact,
+} from "./live-release.ts";
 import { materializeMcpServers, McpReferenceError } from "./mcp.ts";
 import {
   ConformanceProjectionState,
@@ -42,6 +46,49 @@ import {
 } from "./variants.ts";
 
 describe("stable Agent Client Protocol conformance", () => {
+  it("builds a closed, redacted candidate live-release receipt", () => {
+    const artifact = buildAcpLiveReleaseArtifact({
+      recordedAt: "2026-07-16T16:00:00.000Z",
+      openAgentsRevision: "a".repeat(40),
+      platform: "darwin-arm64-node-24.0.0",
+      peers: [
+        {
+          peer: "grok",
+          result: "partial",
+          binary: { reportedVersion: "0.2.101", executableSha256: "b".repeat(64) },
+          negotiation: {
+            wireVersion: 1,
+            authMethodIds: ["cached_token"],
+            capabilityKeys: ["list"],
+          },
+          scenarios: [
+            { id: "initialize", result: "live-pass", safeDetail: "Initialize completed" },
+          ],
+          counters: {
+            updateCount: 2,
+            updateKinds: ["agent_message_chunk"],
+            promptCount: 1,
+          },
+        },
+      ],
+    });
+
+    expect(validateAcpLiveReleaseArtifact(artifact)).toEqual({ valid: true, errors: [] });
+    expect(JSON.stringify(artifact)).not.toMatch(/prompt text|response text|session-[0-9]/i);
+
+    const leaking = structuredClone(artifact) as unknown as {
+      peers: Array<{ scenarios: Array<{ safeDetail: string }> }>;
+    };
+    leaking.peers[0]!.scenarios[0]!.safeDetail = "/Users/example/private";
+    expect(validateAcpLiveReleaseArtifact(leaking as never)).toMatchObject({ valid: false });
+
+    const invented = structuredClone(artifact) as unknown as {
+      peers: Array<{ scenarios: Array<{ id: string }> }>;
+    };
+    invented.peers[0]!.scenarios[0]!.id = "invented-release-proof";
+    expect(validateAcpLiveReleaseArtifact(invented as never)).toMatchObject({ valid: false });
+  });
+
   it("reduces live initialize evidence to capability/auth IDs without provider or host metadata", () => {
     const summary = summarizeSafeInitialize({
       protocolVersion: 1,

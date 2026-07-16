@@ -62,6 +62,23 @@ GROK_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live:g
 CURSOR_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live:cursor
 ```
 
+The deeper candidate runner launches the production Grok and Cursor runtimes in
+separate disposable Git repositories, authenticates through the peers' normal
+local login, performs sequential prompts, and attempts session listing, mode
+changes, streaming cancellation, and bounded shutdown where advertised:
+
+```bash
+ACP_RELEASE_LIVE=1 ACP_RELEASE_PEER=both \
+  pnpm --dir packages/agent-client-protocol-conformance run live:release
+```
+
+Set `ACP_RELEASE_OUTPUT` to an absolute `.json` path beneath
+`compatibility/live/` to retain its closed-schema, redacted receipt. The runner
+does not retain prompts, responses, session IDs, auth material, or absolute
+paths. Its artifact is deliberately marked `candidate-live` and has no power to
+change the release matrix or promote either peer; a human-reviewed matrix edit
+and the fail-closed `check:release` gate remain mandatory.
+
 The checked live records beneath `compatibility/live/` pin the installed
 commands, full reported builds, executable/installation-closure digests, wire
 version, advertised auth methods, and capability keys. The release matrix adds

@@ -1,0 +1,180 @@
+{
+  "format": "openagents-acp-live-release-run-v1",
+  "protocol": "Agent Client Protocol",
+  "protocolExclusions": [
+    "Agent Communication Protocol",
+    "A2A"
+  ],
+  "proofClass": "candidate-live",
+  "claimAuthority": "none-release-matrix-only",
+  "recordedAt": "2026-07-16T16:15:38.462Z",
+  "openAgentsRevision": "3d38f12b5b5b9c2cf568389284e5c28f58b06f05",
+  "schemaRelease": "schema-v1.19.0",
+  "platform": "darwin-arm64-node-24.13.1",
+  "peers": [
+    {
+      "peer": "grok",
+      "result": "partial",
+      "binary": {
+        "reportedVersion": "grok 0.2.101 (5bc4b5dfadcf) [stable]",
+        "executableSha256": "8431538dbd99379240f558b48b779c651d668b06d793c87311ad532c4395a4e2"
+      },
+      "negotiation": {
+        "wireVersion": 1,
+        "authMethodIds": [
+          "cached_token",
+          "grok.com"
+        ],
+        "capabilityKeys": [
+          "load"
+        ]
+      },
+      "scenarios": [
+        {
+          "id": "identity-version",
+          "result": "live-pass",
+          "safeDetail": "Exact Grok version and executable digest probed"
+        },
+        {
+          "id": "initialize",
+          "result": "live-pass",
+          "safeDetail": "Wire version 1 initialize completed"
+        },
+        {
+          "id": "auth-primary",
+          "result": "live-pass",
+          "safeDetail": "Advertised cached authentication completed"
+        },
+        {
+          "id": "session-new",
+          "result": "live-pass",
+          "safeDetail": "Disposable repository session created"
+        },
+        {
+          "id": "real-repo-text",
+          "result": "live-pass",
+          "safeDetail": "Real disposable repository produced assistant text"
+        },
+        {
+          "id": "sequential-turns",
+          "result": "live-pass",
+          "safeDetail": "Two sequential prompts completed"
+        },
+        {
+          "id": "session-list",
+          "result": "not-observed",
+          "safeDetail": "Peer did not advertise session list"
+        },
+        {
+          "id": "stream-cancel",
+          "result": "live-pass",
+          "safeDetail": "Streaming prompt cancelled after 1 updates"
+        },
+        {
+          "id": "cleanup-bounds",
+          "result": "not-observed",
+          "safeDetail": "Shutdown ran in finally; this runner does not retain process leak counters"
+        }
+      ],
+      "counters": {
+        "updateCount": 61,
+        "updateKinds": [
+          "agent_message_chunk",
+          "agent_thought_chunk",
+          "available_commands_update",
+          "user_message_chunk"
+        ],
+        "promptCount": 3
+      }
+    },
+    {
+      "peer": "cursor",
+      "result": "partial",
+      "binary": {
+        "reportedVersion": "2026.06.24-00-45-58-9f61de7",
+        "executableSha256": "b7babf47d8b1eee28ac27a74affa02a559bb38103a6e71fbb1f120805d51fedf",
+        "installationClosureSha256": "69d078daa4db8cbb4163ce2f010207553efb06d652c1e1ea421d739795532faa"
+      },
+      "negotiation": {
+        "wireVersion": 1,
+        "authMethodIds": [
+          "cursor_login"
+        ],
+        "capabilityKeys": [
+          "list",
+          "load"
+        ]
+      },
+      "scenarios": [
+        {
+          "id": "identity-version",
+          "result": "live-pass",
+          "safeDetail": "Exact Cursor version and installation closure probed"
+        },
+        {
+          "id": "initialize",
+          "result": "live-pass",
+          "safeDetail": "Wire version 1 initialize completed"
+        },
+        {
+          "id": "auth-primary",
+          "result": "live-pass",
+          "safeDetail": "Advertised Cursor login completed"
+        },
+        {
+          "id": "session-new",
+          "result": "live-pass",
+          "safeDetail": "Disposable repository session created"
+        },
+        {
+          "id": "real-repo-text",
+          "result": "live-pass",
+          "safeDetail": "Real disposable repository produced assistant text"
+        },
+        {
+          "id": "sequential-turns",
+          "result": "live-pass",
+          "safeDetail": "Two sequential prompts completed"
+        },
+        {
+          "id": "session-list",
+          "result": "live-pass",
+          "safeDetail": "Advertised session list completed"
+        },
+        {
+          "id": "model-mode-config",
+          "result": "live-pass",
+          "safeDetail": "Advertised mode change completed"
+        },
+        {
+          "id": "stream-cancel",
+          "result": "live-pass",
+          "safeDetail": "Streaming prompt cancelled after 0 updates"
+        },
+        {
+          "id": "cleanup-bounds",
+          "result": "not-observed",
+          "safeDetail": "Shutdown ran in finally; this runner does not retain process leak counters"
+        }
+      ],
+      "counters": {
+        "updateCount": 12,
+        "updateKinds": [
+          "agent_message_chunk",
+          "agent_thought_chunk",
+          "available_commands_update",
+          "current_mode_update",
+          "session_info_update"
+        ],
+        "promptCount": 3
+      }
+    }
+  ],
+  "redaction": {
+    "promptTextRetained": false,
+    "responseTextRetained": false,
+    "sessionIdentifiersRetained": false,
+    "authMaterialRetained": false,
+    "absolutePathsRetained": false
+  }
+}

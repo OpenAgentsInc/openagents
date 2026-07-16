@@ -1183,6 +1183,12 @@ importers:
       '@openagentsinc/agent-stdio-transport':
         specifier: workspace:*
         version: link:../agent-stdio-transport
+      '@openagentsinc/cursor-agent-runtime':
+        specifier: workspace:*
+        version: link:../cursor-agent-runtime
+      '@openagentsinc/grok-harness':
+        specifier: workspace:*
+        version: link:../grok-harness
     devDependencies:
       '@types/node':
         specifier: 24.13.1

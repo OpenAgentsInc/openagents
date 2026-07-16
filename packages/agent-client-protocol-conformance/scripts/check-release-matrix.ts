@@ -1,11 +1,26 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { validateAcpReleaseMatrix } from "../src/release.ts";
+import {
+  validateAcpLiveReleaseArtifact,
+  type AcpLiveReleaseArtifact,
+} from "../src/live-release.ts";
 
 const path = resolve(import.meta.dirname, "../compatibility/release-matrix.json");
 const matrix = JSON.parse(readFileSync(path, "utf8")) as unknown;
 const validation = validateAcpReleaseMatrix(matrix);
+const liveDirectory = resolve(import.meta.dirname, "../compatibility/live");
+const liveArtifactErrors = readdirSync(liveDirectory)
+  .filter((name) => name.startsWith("release-run-") && name.endsWith(".json"))
+  .flatMap((name) => {
+    try {
+      const artifact = JSON.parse(readFileSync(resolve(liveDirectory, name), "utf8")) as AcpLiveReleaseArtifact;
+      return validateAcpLiveReleaseArtifact(artifact).errors.map((error) => `${name}: ${error}`);
+    } catch {
+      return [`${name}: artifact is not valid JSON or does not match the closed schema`];
+    }
+  });
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
 const missingEvidence =
   typeof matrix === "object" && matrix !== null && "peers" in matrix && Array.isArray(matrix.peers)
@@ -26,10 +41,11 @@ const missingEvidence =
       )
     : [];
 const result = {
-  valid: validation.valid && missingEvidence.length === 0,
+  valid: validation.valid && missingEvidence.length === 0 && liveArtifactErrors.length === 0,
   errors: [
     ...validation.errors,
     ...missingEvidence.map((ref) => `missing evidence ref: ${ref}`),
+    ...liveArtifactErrors,
   ],
 };
 process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
