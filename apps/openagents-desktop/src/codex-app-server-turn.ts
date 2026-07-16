@@ -15,8 +15,10 @@ import type { FableLocalEvent } from "./fable-local-contract.ts"
 import { makeCodexTurnState } from "./codex-turn-state.ts"
 import {
   WORKBENCH_OUTPUT_TAIL_LIMIT,
+  workbenchFileChangeItemFromDiff,
   workbenchItemFromThreadItem,
   type WorkbenchCommandItem,
+  type WorkbenchFileChangeItem,
 } from "./workbench-item-contract.ts"
 
 export type CodexAppServerTurnOutcome = Readonly<{
@@ -218,6 +220,8 @@ export const runCodexAppServerTurn = async (
     outputCapReached: boolean
     receivedCharacters: number
   }>()
+  let turnDiff: WorkbenchFileChangeItem | null = null
+  let turnDiffRef: string | null = null
   let settle: ((outcome: CodexAppServerTurnOutcome) => void) | null = null
   let settled = false
   let turnTimer: ReturnType<typeof setTimeout> | null = null
@@ -407,6 +411,40 @@ export const runCodexAppServerTurn = async (
       return
     }
 
+    if (message.method === "item/fileChange/patchUpdated") {
+      const itemRef = string(params.itemId)
+      if (itemRef === null) return
+      const item = workbenchItemFromThreadItem({
+        type: "fileChange",
+        status: "inProgress",
+        changes: params.changes,
+      }, "codex")
+      if (item?.kind !== "fileChange") return
+      input.emit({
+        kind: "tool_progress",
+        toolName: "FileChange",
+        itemRef: itemRef.slice(0, 120),
+        summary: `${item.changes.length} file change(s)`,
+        item,
+      })
+      return
+    }
+
+    if (message.method === "turn/diff/updated") {
+      const diff = string(params.diff)
+      if (diff === null) return
+      turnDiff = workbenchFileChangeItemFromDiff(diff, "codex", "in_progress", "turn")
+      turnDiffRef = `turn-diff:${notifiedTurn ?? turnId ?? input.turnRef}`.slice(0, 120)
+      input.emit({
+        kind: "tool_progress",
+        toolName: "FileChange",
+        itemRef: turnDiffRef,
+        summary: `${turnDiff.changes.length} file change(s) in turn`,
+        item: turnDiff,
+      })
+      return
+    }
+
     if (message.method === "item/agentMessage/delta") {
       const delta = string(params.delta)
       if (delta !== null && delta !== "") {
@@ -534,6 +572,20 @@ export const runCodexAppServerTurn = async (
       const turn = record(params.turn)
       if (turn === null) return
       const status = string(turn.status)
+      if (turnDiff !== null && turnDiffRef !== null) {
+        const completedDiff: WorkbenchFileChangeItem = {
+          ...turnDiff,
+          status: status === "completed" ? "completed" : "failed",
+        }
+        input.emit({
+          kind: "tool_result",
+          toolName: "FileChange",
+          itemRef: turnDiffRef,
+          ok: status === "completed",
+          summary: `${completedDiff.changes.length} file change(s) in turn`,
+          item: completedDiff,
+        })
+      }
       if (status === "completed" && text.trim() !== "") {
         finish({ outcome: "success", text, usage, threadId, detail: "", preContent: false, policyDenied: false, quotaExhausted: false, rateLimited: false })
       } else if (status === "interrupted" || input.control.interrupted) {

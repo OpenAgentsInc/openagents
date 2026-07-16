@@ -166,4 +166,34 @@ describe("typed WorkbenchItem history sidecar (#8859)", () => {
     const assistant = page.items.find(item => item.kind === "assistant_message")
     expect(assistant?.item).toBeUndefined()
   })
+
+  test("retained apply_patch rows rebuild the same typed per-file diff card", () => {
+    const sessions = root()
+    write(sessions, "patch.jsonl", [
+      meta("patch", "2026-07-10T17:00:00.000Z"),
+      {
+        timestamp: "2026-07-10T17:01:00.000Z",
+        type: "response_item",
+        payload: {
+          id: "patch-1",
+          type: "custom_tool_call",
+          name: "apply_patch",
+          status: "completed",
+          input: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** Add File: src/new.ts\n+fresh\n*** End Patch",
+        },
+      },
+    ])
+    const page = readCodexHistoryPage({ sessionsRoot: sessions, threadRef: "patch", offset: 0, limit: 20 })!
+    const patch = page.items.find(item => item.item?.kind === "fileChange")
+    expect(patch).toMatchObject({ kind: "tool_call", label: "apply_patch" })
+    expect(patch?.item).toMatchObject({
+      kind: "fileChange",
+      scope: "item",
+      status: "completed",
+      changes: [
+        { path: "src/a.ts", kind: "update", adds: 1, dels: 1 },
+        { path: "src/new.ts", kind: "add", adds: 1, dels: 0 },
+      ],
+    })
+  })
 })

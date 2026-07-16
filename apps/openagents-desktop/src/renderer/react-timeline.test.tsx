@@ -527,4 +527,47 @@ describe("typed WorkbenchItem surfacing on timeline records (#8859)", () => {
     expect(card?.textContent).toContain("Earlier output omitted")
     root.unmount()
   })
+
+  test("renders typed file changes with patch status, tallies, and expandable diff lines", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline
+      sessionKey="thread-files"
+      records={[{
+        ...record("file-row", 0),
+        kind: "tool_call",
+        label: "FileChange",
+        status: "running",
+        item: {
+          kind: "fileChange",
+          source: "codex",
+          status: "in_progress",
+          scope: "turn",
+          changes: [{
+            path: "src/a.ts",
+            kind: "update",
+            adds: 1,
+            dels: 1,
+            diff: "@@ -1 +1 @@\n-old\n+new",
+            diffCapReached: true,
+          }],
+        },
+      }]}
+      loadedItemCount={1}
+      offset={0}
+      totalItems={1}
+      loadingEdge={null}
+      report={report}
+    />)
+    await settle()
+    const card = container.querySelector<HTMLElement>('[data-kind="fileChange"]')
+    expect(card?.dataset.status).toBe("running")
+    expect(card?.textContent).toContain("Turn diff")
+    expect(card?.textContent).toContain("PATCH: RUNNING")
+    expect(card?.textContent).toContain("[MOD]")
+    expect(card?.textContent).toContain("+1−1")
+    expect(card?.querySelector('[data-diff-line="remove"]')?.textContent).toBe("-old")
+    expect(card?.querySelector('[data-diff-line="add"]')?.textContent).toBe("+new")
+    expect(card?.textContent).toContain("Diff truncated")
+  })
 })

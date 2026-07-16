@@ -1069,6 +1069,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   coverage lives in `codex-app-server-turn.test.ts`, `tool-cards.test.ts`,
   `local-harness.test.ts`, `react-timeline.test.tsx`, and
   `tests/codex-history.test.ts`.
+- File-change items retain bounded `changes[]` path, kind, line tallies, and
+  unified diff payloads instead of flattening them to a count. Live
+  `item/fileChange/patchUpdated` updates reconcile by provider `itemId`; the
+  latest `turn/diff/updated` aggregate occupies one deterministic turn-diff
+  row and closes with the turn. Retained `apply_patch` records project through
+  the same typed card. Per-file truncation is explicit, and add/remove/meta
+  color is expressed only through Khala semantic roles. Regression coverage
+  lives in `workbench-item-contract.test.ts`, `codex-app-server-turn.test.ts`,
+  `react-timeline.test.tsx`, and `tests/codex-history.test.ts`.
 - Desktop's application, component, state, projection, and typed-intent model
   remain Effect Native. React 19 owns the renderer root, lifecycle, synchronous
   snapshot consumption, and declared ordinary-element lowerings through the

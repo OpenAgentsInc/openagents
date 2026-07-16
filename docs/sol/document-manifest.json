@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "ff7ff7c6ae22cd773d1a4ffad2647a5488b908c27ad779caa27766ec05332f4a",
+  "sourceTreeSha256": "54a598d20697e74abb4b628415f2c1825a3bbaeb980cebc268a838bcf08b68a7",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1754,6 +1754,25 @@
       ]
     },
     {
+      "path": "docs/sol/2026-07-16-khala-ui-file-change-turn-diff-card-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8862",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "c0f0ef3586a041f7bfdfb7a3aa301671b22e798a5f58cf326a3d070772b4c57e",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8862
+      ]
+    },
+    {
       "path": "docs/sol/2026-07-16-khala-ui-splash-canvas-pilot-receipt.md",
       "class": "receipt",
       "owner": "Sol proof / issue #8850",
@@ -3173,7 +3192,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "bea729ea0bb6e31cc2ca9cf3d00041cdb8ece04c22cf6d224ce19acbcb94a9b0",
+      "sha256": "d93bff83cb90a3696e3fa937d3f425dc001d9c3a7305da6bb424889ae0f07e9f",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3225,7 +3244,8 @@
         8849,
         8850,
         8860,
-        8861
+        8861,
+        8862
       ]
     },
     {

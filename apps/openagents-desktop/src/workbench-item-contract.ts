@@ -83,6 +83,8 @@ export const WorkbenchFileChangeEntrySchema = Schema.Struct({
   adds: Schema.optional(Count),
   dels: Schema.optional(Count),
   diff: Schema.optional(BoundedString(WORKBENCH_DIFF_LIMIT)),
+  /** True when this file's unified diff was truncated at the schema bound. */
+  diffCapReached: Schema.optional(Schema.Boolean),
 })
 export type WorkbenchFileChangeEntry = typeof WorkbenchFileChangeEntrySchema.Type
 
@@ -91,6 +93,8 @@ export const WorkbenchFileChangeItemSchema = Schema.Struct({
   kind: Schema.Literal("fileChange"),
   source: WorkbenchItemSourceSchema,
   status: WorkbenchItemStatusSchema,
+  /** Item patch versus the aggregate diff for the active turn. */
+  scope: Schema.optional(Schema.Literals(["item", "turn"])),
   changes: Schema.Array(WorkbenchFileChangeEntrySchema).check(
     Schema.isMaxLength(WORKBENCH_CHANGE_LIMIT),
   ),
@@ -313,6 +317,70 @@ const changeKind = (value: unknown): "add" | "delete" | "update" | null => {
   return raw === "add" || raw === "delete" || raw === "update" ? raw : null
 }
 
+const boundedFileChange = (
+  path: string,
+  kind: "add" | "delete" | "update",
+  diff: string,
+  redact: WorkbenchRedactor,
+): WorkbenchFileChangeEntry => {
+  const redactedDiff = redact(diff)
+  const boundedDiff = head(redactedDiff, WORKBENCH_DIFF_LIMIT)
+  const counts = diffLineCounts(boundedDiff)
+  return {
+    path: head(redact(path), WORKBENCH_PATH_LIMIT),
+    kind,
+    adds: counts.adds,
+    dels: counts.dels,
+    diff: boundedDiff,
+    ...(redactedDiff.length > WORKBENCH_DIFF_LIMIT ? { diffCapReached: true } : {}),
+  }
+}
+
+/**
+ * Parse a bounded unified/apply_patch document into the same file-change
+ * contract used by current app-server items and retained rollout history.
+ */
+export const workbenchFileChangeItemFromDiff = (
+  diff: string,
+  source: WorkbenchItemSource,
+  status: WorkbenchItemStatus = "in_progress",
+  scope: "item" | "turn" = "turn",
+  redact: WorkbenchRedactor = identity,
+): WorkbenchFileChangeItem => {
+  const changes: Array<WorkbenchFileChangeEntry> = []
+  const gitStarts = [...diff.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gmu)]
+  for (let index = 0; index < Math.min(gitStarts.length, WORKBENCH_CHANGE_LIMIT); index++) {
+    const match = gitStarts[index]!
+    const next = gitStarts[index + 1]
+    const section = diff.slice(match.index, next?.index ?? diff.length)
+    const oldPath = match[1] ?? ""
+    const newPath = match[2] ?? oldPath
+    const kind = /^new file mode\b/mu.test(section) || /^--- \/dev\/null$/mu.test(section)
+      ? "add"
+      : /^deleted file mode\b/mu.test(section) || /^\+\+\+ \/dev\/null$/mu.test(section)
+        ? "delete"
+        : "update"
+    changes.push(boundedFileChange(kind === "delete" ? oldPath : newPath, kind, section, redact))
+  }
+
+  if (changes.length === 0) {
+    const patchPattern = /^\*\*\* (Add|Delete|Update) File: (.+)$/gmu
+    const patchStarts = [...diff.matchAll(patchPattern)]
+    for (let index = 0; index < Math.min(patchStarts.length, WORKBENCH_CHANGE_LIMIT); index++) {
+      const match = patchStarts[index]!
+      const next = patchStarts[index + 1]
+      const section = diff.slice(match.index, next?.index ?? diff.length).replace(/\n\*\*\* End Patch\s*$/u, "")
+      const kind = match[1] === "Add" ? "add" : match[1] === "Delete" ? "delete" : "update"
+      changes.push(boundedFileChange(match[2] ?? "Unknown file", kind, section, redact))
+    }
+  }
+
+  if (changes.length === 0 && diff !== "") {
+    changes.push(boundedFileChange("Turn diff", "update", diff, redact))
+  }
+  return { kind: "fileChange", source, status, scope, changes }
+}
+
 /** Bounded text extraction from an MCP result payload ({content:[{text}...]}). */
 const mcpResultSnippet = (value: unknown, redact: WorkbenchRedactor): string | null => {
   if (value === null || value === undefined) return null
@@ -382,20 +450,30 @@ export const workbenchItemFromThreadItem = (
       if (path === null) continue
       const kind = changeKind(change.kind) ?? "update"
       const diff = asString(change.diff)
-      const counts = diff === null ? null : diffLineCounts(diff)
-      changes.push({
-        path: head(redact(path), WORKBENCH_PATH_LIMIT),
-        kind,
-        ...(counts === null ? {} : { adds: counts.adds, dels: counts.dels }),
-        ...(diff === null ? {} : { diff: head(redact(diff), WORKBENCH_DIFF_LIMIT) }),
-      })
+      if (diff === null) changes.push({ path: head(redact(path), WORKBENCH_PATH_LIMIT), kind })
+      else changes.push(boundedFileChange(path, kind, diff, redact))
     }
     return {
       kind: "fileChange",
       source,
       status: normalizeWorkbenchStatus(item.status, "in_progress"),
+      scope: "item",
       changes,
     }
+  }
+  if (type === "apply_patch" || type === "applyPatch") {
+    const rawPatch = item.patch ?? item.input ?? item.arguments ?? item.content
+    const patchRecord = asRecord(rawPatch) ?? (typeof rawPatch === "string"
+      ? (() => { try { return asRecord(JSON.parse(rawPatch)) } catch { return null } })()
+      : null)
+    const patch = asString(patchRecord?.patch ?? patchRecord?.input ?? rawPatch) ?? ""
+    return workbenchFileChangeItemFromDiff(
+      patch,
+      source,
+      normalizeWorkbenchStatus(item.status, "completed"),
+      "item",
+      redact,
+    )
   }
   if (type === "mcpToolCall" || type === "mcp_tool_call") {
     const server = asString(item.server ?? item.server_name)
@@ -525,9 +603,9 @@ export const workbenchItemSignature = (item: WorkbenchItem | undefined): string 
       ].join("|")
     case "fileChange":
       return [
-        "fileChange", item.source, item.status, item.changes.length,
+        "fileChange", item.source, item.status, item.scope ?? "item", item.changes.length,
         ...item.changes.map(change =>
-          `${change.path}:${change.kind}:${change.adds ?? "x"}:${change.dels ?? "x"}:${change.diff?.length ?? 0}`),
+          `${change.path}:${change.kind}:${change.adds ?? "x"}:${change.dels ?? "x"}:${workbenchTextSignature(change.diff)}:${change.diffCapReached === true ? "capped" : "complete"}`),
       ].join("|")
     case "toolCall":
       return [
@@ -559,4 +637,14 @@ export const workbenchItemSignature = (item: WorkbenchItem | undefined): string 
     case "hook":
       return ["hook", item.source, item.text.length].join("|")
   }
+}
+
+const workbenchTextSignature = (value: string | undefined): string => {
+  if (value === undefined) return "0:0"
+  let hash = 2_166_136_261
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16_777_619)
+  }
+  return `${value.length}:${hash >>> 0}`
 }

@@ -8,6 +8,7 @@ import {
   WORKBENCH_OUTPUT_TAIL_LIMIT,
   decodeWorkbenchItem,
   workbenchArgEntries,
+  workbenchFileChangeItemFromDiff,
   workbenchItemFromThreadItem,
   workbenchItemSignature,
   workbenchToolCallFromSdkUse,
@@ -120,11 +121,36 @@ describe("WorkbenchItem projection from app-server (camelCase) wire items", () =
     const item = workbenchItemFromThreadItem(wireFileChange, "codex") as WorkbenchFileChangeItem
     expect(item.kind).toBe("fileChange")
     expect(item.status).toBe("completed")
+    expect(item.scope).toBe("item")
     expect(item.changes).toHaveLength(2)
     expect(item.changes[0]).toMatchObject({ path: "src/a.ts", kind: "update", adds: 2, dels: 1 })
     expect(item.changes[0]!.diff).toContain("+added line")
     expect(item.changes[1]).toMatchObject({ path: "src/new.ts", kind: "add", adds: 1, dels: 0 })
     expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("turn diffs and retained apply_patch text share bounded per-file projection", () => {
+    const git = workbenchFileChangeItemFromDiff(
+      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n" +
+      "diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/new.ts\n+fresh\n",
+      "codex",
+    )
+    expect(git).toMatchObject({ kind: "fileChange", scope: "turn", status: "in_progress" })
+    expect(git.changes).toMatchObject([
+      { path: "src/a.ts", kind: "update", adds: 1, dels: 1 },
+      { path: "src/new.ts", kind: "add", adds: 1, dels: 0 },
+    ])
+
+    const retained = workbenchItemFromThreadItem({
+      type: "apply_patch",
+      status: "completed",
+      input: JSON.stringify({ patch: "*** Begin Patch\n*** Delete File: src/old.ts\n-old\n*** Update File: src/a.ts\n@@\n-before\n+after\n*** End Patch" }),
+    }, "codex") as WorkbenchFileChangeItem
+    expect(retained.scope).toBe("item")
+    expect(retained.changes.map(change => [change.path, change.kind])).toEqual([
+      ["src/old.ts", "delete"],
+      ["src/a.ts", "update"],
+    ])
   })
 
   test("mcpToolCall keeps server, tool, k/v args, result snippet, and duration", () => {
@@ -263,6 +289,7 @@ describe("bounds and redaction discipline", () => {
       changes: [{ path: "big.ts", kind: { type: "update" }, diff: "+".repeat(WORKBENCH_DIFF_LIMIT + 9) }],
     }, "codex") as WorkbenchFileChangeItem
     expect(fileChange.changes[0]!.diff).toHaveLength(WORKBENCH_DIFF_LIMIT)
+    expect(fileChange.changes[0]!.diffCapReached).toBe(true)
   })
 
   test("arg projection caps entry count and value length", () => {

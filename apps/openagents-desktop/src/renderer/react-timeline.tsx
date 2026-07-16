@@ -12,6 +12,7 @@ import { Effect } from "@effect-native/core/effect"
 import {
   DesktopAgentGroup,
   DesktopCommandCard,
+  DesktopFileChangeCard,
   DesktopPlanCard,
   DesktopTimelineMessage,
   DesktopTimelineNotice,
@@ -284,6 +285,24 @@ export const TimelineItem = ({ record, report }: {
       itemKey={record.key}
       output={command.outputTail}
       outputCapReached={command.outputCapReached}
+      status={status}
+    />
+  }
+  if (record.item?.kind === "fileChange") {
+    const fileChange = record.item
+    const status = fileChange.status === "in_progress" ? "running"
+      : fileChange.status === "completed" ? "completed" : "failed"
+    return <DesktopFileChangeCard
+      changes={fileChange.changes.map(change => ({
+        ...(change.adds === undefined ? {} : { additions: change.adds }),
+        ...(change.dels === undefined ? {} : { deletions: change.dels }),
+        ...(change.diff === undefined ? {} : { diff: change.diff }),
+        ...(change.diffCapReached === undefined ? {} : { diffCapReached: change.diffCapReached }),
+        kind: change.kind,
+        path: change.path,
+      }))}
+      itemKey={record.key}
+      {...(fileChange.scope === undefined ? {} : { scope: fileChange.scope })}
       status={status}
     />
   }

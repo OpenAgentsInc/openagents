@@ -83,7 +83,7 @@ const makeTypedPayloadSpawn = (): CodexAppServerSpawn => () => {
           threadId: THREAD_ID, turnId: TURN_ID, itemId: "item-command", delta: "42 tests passed",
         })
         notify("item/completed", { threadId: THREAD_ID, turnId: TURN_ID, item: command })
-        itemPair({
+        const fileChange = {
           id: "item-files",
           type: "fileChange",
           status: "completed",
@@ -92,7 +92,15 @@ const makeTypedPayloadSpawn = (): CodexAppServerSpawn => () => {
             kind: { type: "update" },
             diff: "--- a/src/a.ts\n+++ b/src/a.ts\n+added\n-removed\n",
           }],
-        }, { status: "inProgress" })
+        }
+        notify("item/started", { threadId: THREAD_ID, turnId: TURN_ID, item: { ...fileChange, status: "inProgress", changes: [] } })
+        notify("item/fileChange/patchUpdated", { threadId: THREAD_ID, turnId: TURN_ID, itemId: "item-files", changes: fileChange.changes })
+        notify("item/completed", { threadId: THREAD_ID, turnId: TURN_ID, item: fileChange })
+        notify("turn/diff/updated", {
+          threadId: THREAD_ID,
+          turnId: TURN_ID,
+          diff: "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-removed\n+added\n",
+        })
         itemPair({
           id: "item-mcp",
           type: "mcpToolCall",
@@ -149,8 +157,8 @@ describe("codex-app-server-turn typed item payloads (#8859)", () => {
     const toolProgress = events.filter(event => event.kind === "tool_progress") as
       Array<Extract<FableLocalEvent, { kind: "tool_progress" }>>
     expect(toolUses).toHaveLength(4)
-    expect(toolResults).toHaveLength(4)
-    expect(toolProgress).toHaveLength(2)
+    expect(toolResults).toHaveLength(5)
+    expect(toolProgress).toHaveLength(4)
 
     // Backward compatibility: the string contract is unchanged.
     expect(toolUses[0]!.toolName).toBe("Bash")
@@ -158,7 +166,8 @@ describe("codex-app-server-turn typed item payloads (#8859)", () => {
     expect(toolUses[0]!.itemRef).toBe("item-command")
     expect(toolResults[0]!.summary).toBe("42 tests passed")
     expect(toolResults[0]!.itemRef).toBe("item-command")
-    expect(toolProgress.map(event => (event.item as WorkbenchCommandItem).outputTail)).toEqual([
+    const commandProgress = toolProgress.filter(event => event.item.kind === "command")
+    expect(commandProgress.map(event => (event.item as WorkbenchCommandItem).outputTail)).toEqual([
       "running tests\n",
       "running tests\n42 tests passed",
     ])
@@ -191,6 +200,11 @@ describe("codex-app-server-turn typed item payloads (#8859)", () => {
     expect(files.changes).toHaveLength(1)
     expect(files.changes[0]).toMatchObject({ path: "src/a.ts", kind: "update", adds: 1, dels: 1 })
     expect(files.changes[0]!.diff).toContain("+added")
+    const fileProgress = toolProgress.find(event => event.itemRef === "item-files")!.item as WorkbenchFileChangeItem
+    expect(fileProgress.changes[0]).toMatchObject({ path: "src/a.ts", adds: 1, dels: 1 })
+    const turnDiff = toolResults.find(event => event.itemRef === `turn-diff:${TURN_ID}`)!.item as WorkbenchFileChangeItem
+    expect(turnDiff).toMatchObject({ kind: "fileChange", scope: "turn", status: "completed" })
+    expect(turnDiff.changes[0]).toMatchObject({ path: "src/a.ts", adds: 1, dels: 1 })
 
     // MCP call: args/result/duration survive.
     const mcp = toolResults[2]!.item as WorkbenchToolCallItem

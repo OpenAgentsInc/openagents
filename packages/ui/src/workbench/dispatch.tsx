@@ -31,6 +31,7 @@ import { DesktopAgentGroup, type DesktopAgentActivity, type DesktopAgentStatus }
 import type { DesktopApprovalDecision } from "./approval-card.tsx"
 import type { DesktopActivityStatus } from "./activity-status.tsx"
 import { DesktopCommandCard } from "./command-card.tsx"
+import { DesktopFileChangeCard } from "./file-change-card.tsx"
 import { DesktopPlanCard, type DesktopPlanEntry } from "./plan-card.tsx"
 import { DesktopTimelineMessage } from "./message.tsx"
 import { DesktopTimelineNotice } from "./notice.tsx"
@@ -77,12 +78,14 @@ export type WorkbenchFileChangeEntryDispatch = Readonly<{
   adds?: number
   dels?: number
   diff?: string
+  diffCapReached?: boolean
 }>
 
 export type WorkbenchFileChangeDispatchItem = Readonly<{
   kind: "fileChange"
   source: WorkbenchDispatchSource
   status: WorkbenchDispatchStatus
+  scope?: "item" | "turn"
   changes: ReadonlyArray<WorkbenchFileChangeEntryDispatch>
 }>
 
@@ -289,16 +292,19 @@ export const dispatchWorkbenchItem = (
       />
     }
 
-    // TODO(T5 #8862): replace with `DesktopFileChangeCard` wired to per-file
-    // diffs (`changes[].diff`) and the running `turn/diff/updated` summary.
     case "fileChange": {
       const fileChangeItem: WorkbenchFileChangeDispatchItem = item
-      return <DesktopWorkEntry
-        body={fileChangeItem.changes.map(change => change.path).join(", ")}
+      return <DesktopFileChangeCard
+        changes={fileChangeItem.changes.map(change => ({
+          ...(change.adds === undefined ? {} : { additions: change.adds }),
+          ...(change.dels === undefined ? {} : { deletions: change.dels }),
+          ...(change.diff === undefined ? {} : { diff: change.diff }),
+          ...(change.diffCapReached === undefined ? {} : { diffCapReached: change.diffCapReached }),
+          kind: change.kind,
+          path: change.path,
+        }))}
         itemKey={context.itemKey}
-        kind="fileChange"
-        label="File changes"
-        preview={`${fileChangeItem.changes.length} ${fileChangeItem.changes.length === 1 ? "file" : "files"}`}
+        {...(fileChangeItem.scope === undefined ? {} : { scope: fileChangeItem.scope })}
         status={toActivityStatus(fileChangeItem.status)}
       />
     }

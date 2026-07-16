@@ -929,14 +929,44 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-command-output[data-output-capped="true"] { border-left-color: var(--en-color-warning); }
 .oa-react-command-cap { color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
 .oa-react-file-list { display: grid; gap: var(--en-spacing-1); margin: 0; padding: 0; list-style: none; }
-.oa-react-file-list li { display: grid; grid-template-columns: 18px minmax(0, 1fr) max-content; align-items: center; gap: var(--en-spacing-2); min-height: 22px; }
-.oa-react-file-list li > span { color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; font-weight: 700; }
-.oa-react-file-list li[data-change-kind="added"] > span { color: var(--en-color-success); }
-.oa-react-file-list li[data-change-kind="deleted"] > span { color: var(--en-color-danger); }
-.oa-react-file-list code { overflow: hidden; color: var(--en-color-textPrimary); font-family: var(--oa-font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-file-list small { display: inline-flex; gap: var(--en-spacing-2); font-family: var(--oa-font-mono); }
-.oa-react-file-list i { color: var(--en-color-success); font-style: normal; }
-.oa-react-file-list b { color: var(--en-color-danger); font-weight: 400; }
+.oa-react-file-list li { min-width: 0; border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-file-list li:last-child { border-bottom: 0; }
+.oa-react-file-change > summary {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  min-height: 30px;
+  cursor: pointer;
+  list-style: none;
+}
+.oa-react-file-change > summary::-webkit-details-marker { display: none; }
+.oa-react-file-change > summary:hover { background: var(--en-color-stateHover); }
+.oa-react-file-change > summary > span { color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; font-weight: 700; }
+.oa-react-file-list li[data-change-kind="add"] .oa-react-file-change > summary > span { color: var(--en-color-success); }
+.oa-react-file-list li[data-change-kind="delete"] .oa-react-file-change > summary > span { color: var(--en-color-danger); }
+.oa-react-file-change > summary > code { overflow: hidden; color: var(--en-color-textPrimary); font-family: var(--oa-font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-file-change > summary > small { display: inline-flex; gap: var(--en-spacing-2); font-family: var(--oa-font-mono); }
+.oa-react-file-change i { color: var(--en-color-success); font-style: normal; }
+.oa-react-file-change b { color: var(--en-color-danger); font-weight: 400; }
+.oa-react-file-change > pre {
+  max-height: 320px;
+  margin: var(--en-spacing-1) 0 var(--en-spacing-2);
+  overflow: auto;
+  border: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-background);
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre;
+}
+.oa-react-file-change > pre code > span { display: block; min-width: max-content; padding: 0 var(--en-spacing-2); }
+.oa-react-file-change > pre code > span[data-diff-line="add"] { color: var(--en-color-success); background: color-mix(in srgb, var(--en-color-success) 9%, transparent); }
+.oa-react-file-change > pre code > span[data-diff-line="remove"] { color: var(--en-color-danger); background: color-mix(in srgb, var(--en-color-danger) 9%, transparent); }
+.oa-react-file-change > pre code > span[data-diff-line="meta"] { color: var(--en-color-accent); }
+.oa-react-file-change > p { margin: var(--en-spacing-1) 0 var(--en-spacing-2); color: var(--en-color-textFaint); }
+.oa-react-diff-cap { display: block; margin-bottom: var(--en-spacing-2); color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; text-transform: uppercase; }
 
 .oa-react-agent-group { overflow: hidden; }
 .oa-react-agent-group > header { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: var(--en-spacing-2); padding: var(--en-spacing-2) var(--en-spacing-3); border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textFaint); font-size: 11px; }

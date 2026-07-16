@@ -86,5 +86,12 @@ describe("Start components workbench routes", () => {
     expect(html).toContain('data-storybook-story="command-capped"');
     expect(html.match(/data-kind="commandExecution"/g)).toHaveLength(4);
     expect(html).toContain("Earlier output omitted");
+    expect(html).toContain('data-storybook-story="file-turn-running"');
+    expect(html).toContain('data-storybook-story="file-completed"');
+    expect(html).toContain('data-storybook-story="file-failed"');
+    expect(html).toContain('data-storybook-story="file-capped"');
+    expect(html.match(/data-kind="fileChange"/g)).toHaveLength(4);
+    expect(html).toContain("PATCH: RUNNING");
+    expect(html).toContain("Diff truncated");
   });
 });

@@ -54,6 +54,21 @@ Live `item/commandExecution/outputDelta` updates and persisted rollout history
 must render the same shared component. Provider `itemId` is the reconciliation
 key so concurrent commands with the same label cannot cross streams.
 
+### File-change and turn-diff cards
+
+File-change cards borrow Autopilot's compact tally grammar, not its palette.
+Each file is a square `[ADD]`, `[DEL]`, or `[MOD]` row with the path left and
+`+adds`/`−removes` right aligned in mono type. Add, remove, and diff-metadata
+lines resolve through Khala success, danger, and accent roles on Khala's blue
+surface hierarchy. No raw Autopilot literal or parallel theme may be mounted.
+
+Each row expands independently to a bounded unified diff and must state when
+the bound omitted content. The patch lifecycle remains visible in the card
+header. Live file patch updates reconcile by provider item identity; the
+latest aggregate turn diff has one stable turn-scoped identity. Persisted
+`apply_patch` records use the identical typed component rather than a generic
+tool or metadata row.
+
 ## Typography
 
 ### Primary sans: Zalando Sans
