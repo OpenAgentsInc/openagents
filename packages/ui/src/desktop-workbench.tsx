@@ -1,18 +1,34 @@
 import type { Theme } from "@effect-native/core"
 import {
+  Bot,
+  Check,
   ChevronLeft,
   ChevronRight,
+  Circle,
+  CircleDot,
+  FileText,
+  GitBranch,
+  Globe,
   House,
+  Image,
   MessageCircle,
+  Network,
   PanelLeft,
+  Pause,
   Search,
   Settings,
+  Shield,
   SquarePen,
+  Terminal,
+  Wrench,
+  XCircle,
   X,
   type LucideIcon,
 } from "lucide-react"
 import {
   forwardRef,
+  useEffect,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type CSSProperties,
@@ -307,15 +323,36 @@ export const DesktopConversation = ({
     {composer}
   </main>
 
-export const DesktopTimeline = ({ children, working = false }: Readonly<{ children: ReactNode; working?: boolean }>): ReactElement =>
-  <section aria-label="Conversation timeline" className="oa-react-timeline-region">
-    <div className="oa-react-timeline-scroll">
+export const DesktopTimeline = ({ children, followKey, working = false }: Readonly<{
+  children: ReactNode
+  followKey?: string | number
+  working?: boolean
+}>): ReactElement => {
+  const viewport = useRef<HTMLDivElement>(null)
+  const readerAtLatest = useRef(true)
+
+  useEffect(() => {
+    const element = viewport.current
+    if (element === null || !readerAtLatest.current) return
+    element.scrollTop = element.scrollHeight
+  }, [followKey])
+
+  return <section aria-label="Conversation timeline" className="oa-react-timeline-region">
+    <div
+      className="oa-react-timeline-scroll"
+      onScroll={event => {
+        const element = event.currentTarget
+        readerAtLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80
+      }}
+      ref={viewport}
+    >
       <div aria-busy={working} className="oa-react-timeline-content" role="list">
         {children}
         {working ? <div className="oa-react-working" role="status" aria-label="Codex is working"><span>Working</span><i /><i /><i /></div> : null}
       </div>
     </div>
   </section>
+}
 
 export const DesktopTimelineMessage = ({
   children,
@@ -347,7 +384,7 @@ export const DesktopTimelineNotice = ({
   itemKey,
   kind,
   label = "Update",
-}: Readonly<{ body: ReactNode; danger?: boolean; itemKey: string; kind?: string; label?: string }>): ReactElement =>
+}: Readonly<{ body: ReactNode; danger?: boolean | undefined; itemKey: string; kind?: string | undefined; label?: string | undefined }>): ReactElement =>
   <article className="oa-react-notice" data-danger={danger ? "true" : "false"} data-kind={kind ?? (danger ? "error" : "notice")} data-timeline-key={itemKey} role="listitem">
     <strong>{label}</strong><span>{body}</span>
   </article>
@@ -382,6 +419,233 @@ export const DesktopWorkGroup = ({ children, count, running = false }: Readonly<
   </div>
 }
 
+export type DesktopActivityStatus = "completed" | "failed" | "pending" | "running" | "waiting"
+
+const activityStatusLabel = (status: DesktopActivityStatus): string => status === "completed"
+  ? "Done"
+  : status === "failed"
+    ? "Failed"
+    : status === "running"
+      ? "Running"
+      : status === "waiting"
+        ? "Waiting"
+        : "Pending"
+
+const activityStatusIcon = (status: DesktopActivityStatus): ReactElement => {
+  if (status === "completed") return <Check aria-hidden="true" />
+  if (status === "failed") return <XCircle aria-hidden="true" />
+  if (status === "running") return <CircleDot aria-hidden="true" />
+  if (status === "waiting") return <Pause aria-hidden="true" />
+  return <Circle aria-hidden="true" />
+}
+
+export type DesktopPlanEntry = Readonly<{
+  step: string
+  status: "completed" | "in_progress" | "pending"
+}>
+
+export const DesktopPlanCard = ({ entries, itemKey, title = "Plan" }: Readonly<{
+  entries: ReadonlyArray<DesktopPlanEntry>
+  itemKey: string
+  title?: string | undefined
+}>): ReactElement => {
+  const completed = entries.filter(entry => entry.status === "completed").length
+  return <article className="oa-react-plan oa-react-plan-card" data-kind="plan" data-timeline-key={itemKey} role="listitem">
+    <header>
+      <span className="oa-react-event-title"><GitBranch aria-hidden="true" /><strong>{title}</strong></span>
+      <span>{completed} of {entries.length} done</span>
+    </header>
+    <ol className="oa-react-plan-list">
+      {entries.map((entry, index) => <li data-status={entry.status} key={`${itemKey}:${index}`}>
+        <span className="oa-react-plan-glyph">{entry.status === "completed" ? <Check aria-hidden="true" /> : entry.status === "in_progress" ? <CircleDot aria-hidden="true" /> : <Circle aria-hidden="true" />}</span>
+        <span>{entry.step}</span>
+        <small>{entry.status === "completed" ? "Done" : entry.status === "in_progress" ? "In progress" : "Pending"}</small>
+      </li>)}
+    </ol>
+  </article>
+}
+
+type DesktopProtocolCardProps = Readonly<{
+  body: ReactNode
+  defaultOpen?: boolean | undefined
+  icon: LucideIcon
+  itemKey: string
+  meta?: string | undefined
+  status: DesktopActivityStatus
+  summary: ReactNode
+  title: string
+  variant: string
+}>
+
+const DesktopProtocolCard = ({ body, defaultOpen = false, icon: Icon, itemKey, meta, status, summary, title, variant }: DesktopProtocolCardProps): ReactElement => {
+  const [open, setOpen] = useState(defaultOpen)
+  return <details className="oa-react-protocol-card" data-kind={variant} data-status={status} data-timeline-key={itemKey} onToggle={event => setOpen(event.currentTarget.open)} open={open} role="listitem">
+    <summary>
+      <span className="oa-react-event-icon"><Icon aria-hidden="true" /></span>
+      <span className="oa-react-event-heading"><strong>{title}</strong><span>{summary}</span></span>
+      {meta === undefined ? null : <small>{meta}</small>}
+      <span className="oa-react-event-status" data-status={status}>{activityStatusIcon(status)}{activityStatusLabel(status)}</span>
+    </summary>
+    <div className="oa-react-protocol-detail">{body}</div>
+  </details>
+}
+
+export const DesktopCommandCard = ({ command, cwd, defaultOpen, itemKey, output, status }: Readonly<{
+  command: string
+  cwd: string
+  defaultOpen?: boolean | undefined
+  itemKey: string
+  output: ReactNode
+  status: DesktopActivityStatus
+}>): ReactElement => <DesktopProtocolCard
+  body={<><div className="oa-react-command-meta"><span>cwd</span><code>{cwd}</code></div><pre><code>{output}</code></pre></>}
+  defaultOpen={defaultOpen}
+  icon={Terminal}
+  itemKey={itemKey}
+  status={status}
+  summary={<code>{command}</code>}
+  title="Command"
+  variant="commandExecution"
+/>
+
+export type DesktopFileChange = Readonly<{
+  additions?: number
+  deletions?: number
+  kind: "added" | "deleted" | "modified"
+  path: string
+}>
+
+export const DesktopFileChangeCard = ({ changes, defaultOpen, itemKey, status }: Readonly<{
+  changes: ReadonlyArray<DesktopFileChange>
+  defaultOpen?: boolean | undefined
+  itemKey: string
+  status: DesktopActivityStatus
+}>): ReactElement => <DesktopProtocolCard
+  body={<ul className="oa-react-file-list">{changes.map(change => <li data-change-kind={change.kind} key={change.path}>
+    <span>{change.kind === "added" ? "A" : change.kind === "deleted" ? "D" : "M"}</span>
+    <code>{change.path}</code>
+    <small><i>+{change.additions ?? 0}</i><b>-{change.deletions ?? 0}</b></small>
+  </li>)}</ul>}
+  defaultOpen={defaultOpen}
+  icon={FileText}
+  itemKey={itemKey}
+  meta={`${changes.length} ${changes.length === 1 ? "file" : "files"}`}
+  status={status}
+  summary="Patch updated"
+  title="File changes"
+  variant="fileChange"
+/>
+
+export type DesktopToolKind = "dynamic" | "image" | "mcp" | "web"
+
+const toolIcons: Readonly<Record<DesktopToolKind, LucideIcon>> = {
+  dynamic: Wrench,
+  image: Image,
+  mcp: Network,
+  web: Globe,
+}
+
+export const DesktopToolCallCard = ({ body, defaultOpen, itemKey, label, meta, status, summary, toolKind }: Readonly<{
+  body: ReactNode
+  defaultOpen?: boolean | undefined
+  itemKey: string
+  label: string
+  meta?: string | undefined
+  status: DesktopActivityStatus
+  summary: string
+  toolKind: DesktopToolKind
+}>): ReactElement => <DesktopProtocolCard
+  body={body}
+  defaultOpen={defaultOpen}
+  icon={toolIcons[toolKind]}
+  itemKey={itemKey}
+  meta={meta}
+  status={status}
+  summary={summary}
+  title={label}
+  variant={toolKind === "mcp" ? "mcpToolCall" : toolKind === "web" ? "webSearch" : toolKind === "image" ? "imageView" : "dynamicToolCall"}
+/>
+
+export type DesktopAgentStatus = "completed" | "failed" | "running" | "waiting"
+
+export type DesktopAgentActivity = Readonly<{
+  agentKey: string
+  depth?: number
+  detail: string
+  name: string
+  parent?: string
+  role: string
+  status: DesktopAgentStatus
+  transcript?: ReadonlyArray<Readonly<{ label: string; text: string }>>
+}>
+
+const DesktopAgentRow = ({ agent }: Readonly<{ agent: DesktopAgentActivity }>): ReactElement => {
+  const [open, setOpen] = useState((agent.transcript?.length ?? 0) > 0)
+  return <details
+    className="oa-react-agent-card"
+    data-depth={agent.depth ?? 0}
+    data-status={agent.status}
+    onToggle={event => setOpen(event.currentTarget.open)}
+    open={open}
+    role="listitem"
+  >
+    <summary>
+      <span className="oa-react-agent-avatar"><Bot aria-hidden="true" /></span>
+      <span className="oa-react-agent-heading"><strong>{agent.name}</strong><small>{agent.role}</small></span>
+      <span className="oa-react-agent-task">{agent.detail}</span>
+      <span className="oa-react-event-status" data-status={agent.status}>{activityStatusIcon(agent.status)}{activityStatusLabel(agent.status)}</span>
+    </summary>
+    {agent.transcript === undefined || agent.transcript.length === 0 ? null : <div className="oa-react-agent-transcript">
+      {agent.parent === undefined ? null : <p className="oa-react-agent-parent"><GitBranch aria-hidden="true" />spawned by {agent.parent}</p>}
+      {agent.transcript.map((line, index) => <p key={`${agent.agentKey}:line:${index}`}><strong>{line.label}</strong><span>{line.text}</span></p>)}
+    </div>}
+  </details>
+}
+
+export const DesktopAgentGroup = ({ agents, itemKey, title = "Delegated agents" }: Readonly<{
+  agents: ReadonlyArray<DesktopAgentActivity>
+  itemKey: string
+  title?: string | undefined
+}>): ReactElement => {
+  const completed = agents.filter(agent => agent.status === "completed").length
+  const running = agents.filter(agent => agent.status === "running").length
+  return <section className="oa-react-agent-group" data-kind="collabAgentToolCall" data-timeline-key={itemKey} role="listitem">
+    <header>
+      <span className="oa-react-event-title"><Network aria-hidden="true" /><strong>{title}</strong></span>
+      <span>{completed} done{running > 0 ? ` · ${running} running` : ""}</span>
+    </header>
+    <div className="oa-react-agent-list" role="list">
+      {agents.map(agent => <DesktopAgentRow agent={agent} key={agent.agentKey} />)}
+    </div>
+  </section>
+}
+
+export type DesktopApprovalDecision = "approved" | "denied" | "pending"
+
+export const DesktopApprovalCard = ({ decision, description, itemKey, onDecision, resource, title }: Readonly<{
+  decision: DesktopApprovalDecision
+  description: string
+  itemKey: string
+  onDecision?: (decision: Exclude<DesktopApprovalDecision, "pending">) => void
+  resource: string
+  title: string
+}>): ReactElement => <article className="oa-react-approval-card" data-decision={decision} data-kind="approval" data-timeline-key={itemKey} role="listitem">
+  <span className="oa-react-event-icon"><Shield aria-hidden="true" /></span>
+  <div><strong>{title}</strong><p>{description}</p><code>{resource}</code></div>
+  {decision === "pending" && onDecision !== undefined ? <div className="oa-react-approval-actions">
+    <button onClick={() => onDecision("denied")} type="button">Deny</button>
+    <button data-primary="true" onClick={() => onDecision("approved")} type="button">Approve</button>
+  </div> : <span className="oa-react-approval-decision" data-decision={decision}>{decision === "approved" ? <Check aria-hidden="true" /> : <XCircle aria-hidden="true" />}{decision === "approved" ? "Approved" : "Denied"}</span>}
+</article>
+
+export const DesktopQueuedFollowup = ({ itemKey, position, text }: Readonly<{
+  itemKey: string
+  position: number
+  text: string
+}>): ReactElement => <article className="oa-react-queue-card" data-kind="queue" data-timeline-key={itemKey} role="listitem">
+  <Pause aria-hidden="true" /><strong>Queued follow-up (#{position})</strong><span>{text}</span><small>Runs when this turn completes</small>
+</article>
+
 export const DesktopComposerFrame = forwardRef<HTMLElement, ComponentPropsWithoutRef<"section">>(({
   children,
   className,
@@ -400,3 +664,25 @@ export const DesktopComposerInput = ({ children }: Readonly<{ children: ReactNod
 
 export const DesktopComposerBar = ({ children }: Readonly<{ children: ReactNode }>): ReactElement =>
   <div className="oa-react-composer-bar" data-chat-composer-footer="true">{children}</div>
+
+export type DesktopComposerButtonKind = "action" | "stop" | "submit" | "toggle"
+
+export const DesktopComposerButton = forwardRef<
+  HTMLButtonElement,
+  ComponentPropsWithoutRef<"button"> & Readonly<{ kind: DesktopComposerButtonKind }>
+>(({ children, className, kind, type = "button", ...props }, ref): ReactElement =>
+  <button
+    {...props}
+    className={cx(
+      "oa-react-composer-button",
+      kind === "stop" && "oa-react-stop",
+      kind === "submit" && "oa-react-submit",
+      className,
+    )}
+    data-composer-button-kind={kind}
+    ref={ref}
+    type={type}
+  >
+    {children}
+  </button>)
+DesktopComposerButton.displayName = "DesktopComposerButton"

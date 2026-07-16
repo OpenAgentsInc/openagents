@@ -10,6 +10,8 @@ import {
 import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload, type MarkdownBlock, type MarkdownInline } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import {
+  DesktopAgentGroup,
+  DesktopPlanCard,
   DesktopTimelineMessage,
   DesktopTimelineNotice,
   DesktopWorkEntry,
@@ -239,6 +241,25 @@ export const TimelineItem = ({ record, report }: {
   if (record.kind === "lifecycle" && !["failed", "errored", "interrupted"].includes(record.status ?? "")) {
     return <span data-timeline-key={record.key} data-kind="lifecycle" hidden />
   }
+  if (record.kind === "collaboration") {
+    const status = ["failed", "errored", "interrupted"].includes(record.status ?? "")
+      ? "failed"
+      : record.status === "running" || record.status === "in_progress"
+        ? "running"
+        : "completed"
+    const agentRef = record.fields.find(entry => entry.label.toLocaleLowerCase() === "agent")?.value ?? record.itemRef
+    return <DesktopAgentGroup
+      agents={[{
+        agentKey: agentRef,
+        detail: record.body,
+        name: record.label,
+        role: "Delegated agent",
+        status,
+        transcript: [{ label: "Activity", text: record.body }],
+      }]}
+      itemKey={record.key}
+    />
+  }
   if (isWorkRecord(record)) return <DesktopWorkEntry
     body={<>
       {record.redacted ? <p>Details unavailable.</p> : <pre><code>{record.body}</code></pre>}
@@ -254,11 +275,13 @@ export const TimelineItem = ({ record, report }: {
     statusLabel={["failed", "errored", "interrupted"].includes(record.status ?? "") ? "Failed" : record.status === "running" ? "Running" : "Done"}
   />
 
-  if (record.kind === "plan") return <article className="oa-react-plan" data-timeline-key={record.key} data-kind="plan" role="listitem">
-    <header><strong>Plan</strong><span>{record.status}</span></header>
-    <SafeReactMarkdown value={record.body} />
-    {record.fields.length > 0 ? <ol>{record.fields.map((entry, index) => <li key={`${entry.label}:${index}`}><span>{entry.value}</span><small>{entry.label}</small></li>)}</ol> : null}
-  </article>
+  if (record.kind === "plan") return <DesktopPlanCard
+    entries={[{
+      step: record.body,
+      status: record.status === "completed" ? "completed" : record.status === "running" || record.status === "in_progress" ? "in_progress" : "pending",
+    }]}
+    itemKey={record.key}
+  />
 
   const danger = record.kind === "error" || record.kind === "gap" || ["failed", "errored", "interrupted"].includes(record.status ?? "")
   if (!isMessageRecord(record) || danger || record.redacted) return <DesktopTimelineNotice

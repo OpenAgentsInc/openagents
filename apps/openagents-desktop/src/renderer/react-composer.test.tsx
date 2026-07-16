@@ -184,6 +184,9 @@ describe("React Codex composer", () => {
     expect(container.querySelector('[data-en-key="shell-input"] textarea')).toBe(textarea);
     expect(container.querySelector('[data-icon-name="Command"]')).not.toBeNull();
     expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(2);
+    expect(container.querySelector('[data-composer-button-kind="toggle"]')).not.toBeNull();
+    expect(container.querySelector('[data-composer-button-kind="submit"]')).not.toBeNull();
     Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 240 });
     await render(
       root,

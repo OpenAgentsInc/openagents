@@ -1086,11 +1086,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   subscription, command effect, or terminal outcome. Unmount closes the
   selected backend, subscription, root, and token stylesheet. Tailwind and any
   Base UI adoption are renderer-private implementation tools. The owner-picked
-  shadcn preset `b3Zg9L0M8A` (`base-vega`, zinc/blue, Oxanium/Geist, small
-  radius, Lucide) is the preferred source-component layer when it supplies an
+  shadcn preset `b3Zg9L0M8A` (`base-vega`, zinc/blue, small radius, Lucide) is
+  the preferred source-component layer when it supplies an
   appropriate control. Generated components stay under Desktop `src/components/ui`,
   while `shadcn-khala.css` maps every semantic palette role onto canonical
   `--en-*` variables; the preset may not install a parallel light/dark palette.
+  The preset's original font choices are replaced by the shared
+  `@openagentsinc/ui` typography authority: Zalando Sans is the primary sans,
+  Inter and the host stack are fallbacks, and Disket Mono is the primary mono
+  across Desktop, web, docs, and shared workbench components.
   Tailwind defaults remain disabled rather than becoming a second theme.
   Portable renderer modules remain
   `.ts`, React-free, and free of `className`/`ReactNode`; no Zustand, Effect

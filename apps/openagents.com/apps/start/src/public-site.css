@@ -12,12 +12,14 @@
   --oa-muted: rgb(241 239 232 / 0.72);
   --oa-faint: rgb(241 239 232 / 0.48);
   --oa-success: #00c853;
-  --oa-mono: 'SFMono-Regular', 'Cascadia Code', Menlo, monospace;
+  --oa-mono: var(--oa-font-mono);
   min-height: 100dvh;
   overflow: hidden;
   background: var(--oa-void);
   color: var(--oa-text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: var(--oa-font-sans);
+  font-optical-sizing: auto;
+  font-variation-settings: 'wdth' 100;
   line-height: 1.55;
 }
 
