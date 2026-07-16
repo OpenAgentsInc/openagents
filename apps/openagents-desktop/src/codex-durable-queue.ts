@@ -25,6 +25,14 @@ export class CodexDurableQueueError extends Error {
   constructor(readonly reason: "stale" | "not_found" | "not_queued" | "closed", message: string) { super(message) }
 }
 
+export const CodexInterruptedPromotionFailure =
+  "Promotion was interrupted by an app restart and was not replayed to prevent a duplicate send"
+
+export const activeCodexQueuedIntents = (
+  entries: ReadonlyArray<CodexQueuedIntent>,
+): ReadonlyArray<CodexQueuedIntent> =>
+  entries.filter(entry => entry.status === "queued" || entry.status === "promoting")
+
 export type CodexDurableQueue = Readonly<{
   enqueue: (threadRef: string, message: string, identity?: Readonly<{ intentRef: string; clientUserMessageId: string }>) => CodexQueuedIntent
   list: (threadRef?: string) => ReadonlyArray<CodexQueuedIntent>
@@ -54,6 +62,24 @@ export const openCodexDurableQueue = (path: string, now: () => Date = () => new 
     const temporary = `${path}.tmp`
     writeFileSync(temporary, `${JSON.stringify({ schema: "openagents.desktop.codex_durable_queue.v1", entries: entries.slice(-10_000) }, null, 2)}\n`, { mode: 0o600 })
     renameSync(temporary, path)
+  }
+  // A persisted `promoting` entry has crossed a process boundary without a
+  // provider receipt. Its outcome is unknowable: replaying it can duplicate a
+  // user message that the provider already accepted. Quarantine it once at
+  // startup and leave explicit resubmission to the user.
+  if (entries.some(entry => entry.status === "promoting")) {
+    const timestamp = now().toISOString()
+    entries = entries.map(entry => entry.status === "promoting"
+      ? {
+          ...entry,
+          status: "failed",
+          position: 0,
+          failure: CodexInterruptedPromotionFailure,
+          revision: entry.revision + 1,
+          updatedAt: timestamp,
+        }
+      : entry)
+    persist()
   }
   const update = (queueRef: string, expectedRevision: number | null, change: (entry: CodexQueuedIntent) => Partial<CodexQueuedIntent>): CodexQueuedIntent => {
     assertOpen()
@@ -102,8 +128,9 @@ export const openCodexDurableQueue = (path: string, now: () => Date = () => new 
       assertOpen()
       const sameBoundary = entries.find(entry => entry.threadRef === threadRef && entry.quiescenceRef === quiescenceRef)
       if (sameBoundary !== undefined) return sameBoundary.status === "promoting" ? { ...sameBoundary } : null
-      const recovering = entries.find(entry => entry.threadRef === threadRef && entry.status === "promoting")
-      if (recovering !== undefined) return { ...recovering }
+      // A different terminal boundary must not re-emit an outstanding claim
+      // or let a later queued message leapfrog it within the same process.
+      if (entries.some(entry => entry.threadRef === threadRef && entry.status === "promoting")) return null
       const next = entries.find(entry => entry.threadRef === threadRef && entry.status === "queued")
       if (next === undefined) return null
       const claimed = update(next.queueRef, next.revision, () => ({ status: "promoting", position: 0, quiescenceRef }))

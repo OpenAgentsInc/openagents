@@ -2,10 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "vite-plus/test"
-import { openCodexDurableQueue } from "./codex-durable-queue.ts"
+import { activeCodexQueuedIntents, CodexInterruptedPromotionFailure, openCodexDurableQueue } from "./codex-durable-queue.ts"
 
 describe("Codex durable next-turn queue", () => {
-  test("survives restart with stable intent/user-message identity and exact-once claim", () => {
+  test("survives restart with stable intent/user-message identity and a fail-closed interrupted claim", () => {
     const root = mkdtempSync(join(tmpdir(), "oa-codex-queue-")); const path = join(root, "queue.json")
     try {
       const first = openCodexDurableQueue(path)
@@ -19,14 +19,24 @@ describe("Codex durable next-turn queue", () => {
       const claimed = second.claimNext("thread-1", "turn-0:completed")!
       expect(claimed.queueRef).toBe(one.queueRef)
       expect(second.claimNext("thread-1", "turn-0:completed")?.queueRef).toBe(one.queueRef)
-      expect(second.claimNext("thread-1", "turn-1:completed")?.queueRef).toBe(one.queueRef)
+      expect(second.claimNext("thread-1", "turn-1:completed")).toBeNull()
       expect(() => second.admitPromotion(one.queueRef, "thread-1", "wrong")).toThrow("not admitted")
       expect(second.admitPromotion(one.queueRef, "thread-1", one.clientUserMessageId).intentRef).toBe(one.intentRef)
-      second.complete(one.queueRef, "provider-turn-1")
-      expect(second.claimNext("thread-1", "turn-0:completed")).toBeNull()
-      expect(second.claimNext("thread-1", "turn-1:completed")?.queueRef).toBe(two.queueRef)
-      expect(second.list().find(entry => entry.queueRef === one.queueRef)).toMatchObject({ status: "promoted", providerTurnId: "provider-turn-1" })
+      second.close()
+
+      const recovered = openCodexDurableQueue(path)
+      expect(recovered.list().find(entry => entry.queueRef === one.queueRef)).toMatchObject({
+        status: "failed",
+        failure: CodexInterruptedPromotionFailure,
+        position: 0,
+      })
+      expect(() => recovered.admitPromotion(one.queueRef, "thread-1", one.clientUserMessageId)).toThrow("not admitted")
+      expect(recovered.claimNext("thread-1", "turn-1:completed")?.queueRef).toBe(two.queueRef)
+      recovered.complete(two.queueRef, "provider-turn-2")
+      expect(recovered.list().find(entry => entry.queueRef === two.queueRef)).toMatchObject({ status: "promoted", providerTurnId: "provider-turn-2" })
+      expect(activeCodexQueuedIntents(recovered.list("thread-1"))).toEqual([])
       expect(statSync(path).mode & 0o777).toBe(0o600)
+      recovered.close()
     } finally { rmSync(root, { recursive: true, force: true }) }
   })
 

@@ -265,7 +265,7 @@ import {
   decodeCodexEcosystemMutationRequest,
 } from "./codex-ecosystem-contract.ts"
 import { makeCodexThreadLifecycleRegistry, type CodexThreadLifecycle } from "./codex-thread-lifecycle.ts"
-import { openCodexDurableQueue } from "./codex-durable-queue.ts"
+import { activeCodexQueuedIntents, openCodexDurableQueue } from "./codex-durable-queue.ts"
 import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
   LiveAgentGraphSnapshotChannel,
@@ -3117,7 +3117,9 @@ ipcMain.handle(CodexLocalQueueFollowupChannel, (_event, value: unknown) => {
     : codexLocal.queueFollowup(request)
 })
 ipcMain.handle(CodexLocalQueueListChannel, (_event, threadRef: unknown) =>
-  typeof threadRef === "string" ? codexDurableQueue.list(threadRef) : [])
+  typeof threadRef === "string"
+    ? activeCodexQueuedIntents(codexDurableQueue.list(threadRef))
+    : [])
 ipcMain.handle(CodexLocalQueueEditChannel, (_event, value: unknown) => {
   const request = decodeCodexQueueMutation(value)
   if (request === null || request.message === undefined) return { ok: false, reason: "invalid" }
