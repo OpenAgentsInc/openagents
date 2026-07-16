@@ -243,7 +243,9 @@ describe("React workbench shell", () => {
 
     const button = [...container.querySelectorAll("button")]
       .find(node => node.textContent === "Sharing off")
-    expect(container.textContent).toContain("Prompts, responses, files, paths, account names, and credentials are never sent")
+    expect(container.textContent).toContain(
+      "never your prompts, responses, files, paths, account names, or credentials",
+    )
     expect(button?.getAttribute("aria-pressed")).toBe("false")
     await interact(() => button?.click())
     expect(received.at(-1)).toEqual({

@@ -4,15 +4,38 @@ Issue: [#8911](https://github.com/OpenAgentsInc/openagents/issues/8911)
 
 ## Status
 
-The engineering path is complete but intentionally double-gated:
+The engineering path is complete. The owner approved the counts-only copy at
+`8809f79b56`; the live proof remains intentionally double-gated:
 
-1. Desktop must be launched with `OPENAGENTS_DESKTOP_USAGE_CONSENT_CONTROL=1`.
-2. The signed-in user must explicitly turn on **Settings → Share local Codex usage**.
-3. The API must have `DESKTOP_CODEX_USAGE_INGEST_ENABLED=1`.
+1. The signed-in user must explicitly turn on **Settings → Share local Codex usage**.
+2. The API must have `DESKTOP_CODEX_USAGE_INGEST_ENABLED=1`.
 
-All three are off by default. No production metric movement is claimed by this
-change. The Settings copy still requires owner approval before the review-only
-Desktop gate or server gate is enabled in an ordinary release.
+User consent and the API gate are off by default. No production metric movement
+is claimed by this change. The approved Settings control now ships in ordinary
+Desktop builds, but starts off and performs no credential read or network
+request until the user opts in.
+
+## 2026-07-16 live-proof attempt
+
+- Production revision `openagents-monolith-00173-vqs` deployed successfully,
+  passed its owned health/portal/tombstone smokes, and proved the enabled
+  admission route was present and authenticated (`401` without a session).
+- The approved control rendered in a current ordinary Desktop build. It began
+  off, was explicitly enabled, and one real ordinary local Codex turn
+  completed.
+- The public counter remained `8,463,301,501`. This was a truthful fail-closed
+  result: the normal profile had no recoverable native OpenAgents session, so
+  Desktop performed no admission, created no outbox entry, and sent no usage.
+- The supported session path is GitHub OAuth through
+  `https://auth.openagents.com/authorize`, PKCE loopback, server verification,
+  then OS-encrypted vault persistence. The current MVP intentionally does not
+  render its account-link control. Finishing the live proof therefore requires
+  an owner to complete that interactive authorization (or a product decision to
+  restore the typed Settings control); credentials must never be copied into a
+  test harness.
+- Consent was returned to off and the empty outbox was confirmed. The API gate
+  was restored to off after the incomplete proof; no ordinary, retry, opt-out,
+  Full Auto, counter-delta, or live idempotency success is claimed.
 
 ## Authority and privacy contract
 

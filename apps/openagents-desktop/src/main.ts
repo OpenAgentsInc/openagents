@@ -2001,11 +2001,10 @@ if (smokeMode) {
 // for local Fable turns and Codex delegate children. Main-owned; the
 // renderer sees only the typed snapshot ("session ledger" evidence label).
 const usageLedger = makeUsageLedger()
-// The owner-review gate keeps the control and all network activity absent in
-// ordinary builds until the consent copy is approved. The durable preference
-// remains independently default-off and revocable once that gate is enabled.
-const desktopUsageConsentControlAvailable =
-  process.env.OPENAGENTS_DESKTOP_USAGE_CONSENT_CONTROL === "1"
+// Owner-approved at 8809f79b56 (#8911). The control now ships in ordinary
+// builds, while the durable user preference remains independently default-off
+// and revocable. No credential read or network request occurs until opt-in.
+const desktopUsageConsentControlAvailable = true
 const preferencesStore = openDesktopPreferencesStore(
   path.join(app.getPath("userData"), "preferences.json"),
 )

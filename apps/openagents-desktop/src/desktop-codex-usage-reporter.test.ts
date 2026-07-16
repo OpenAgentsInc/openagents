@@ -44,13 +44,13 @@ afterEach(() => {
 })
 
 describe("makeDesktopCodexUsageReporter", () => {
-  test("main keeps both rollout and consent default-off at the ordinary and Full Auto seam", () => {
+  test("main ships the approved control while consent stays default-off at the ordinary and Full Auto seam", () => {
     const source = readFileSync(path.join(import.meta.dirname, "main.ts"), "utf8")
     const codexLaneStart = source.indexOf("const codexLocalLane")
     const completionStart = source.indexOf('if (turnEvent.kind === "turn_completed"', codexLaneStart)
     const completionSource = source.slice(completionStart, source.indexOf("// Persist reasoning/notice lines", completionStart))
 
-    expect(source).toContain('OPENAGENTS_DESKTOP_USAGE_CONSENT_CONTROL === "1"')
+    expect(source).toContain("const desktopUsageConsentControlAvailable = true")
     expect(source).toContain("preferencesStore.snapshot().privacy.shareLocalCodexUsage")
     expect(source).toContain("desktopCodexUsageReporter.admit")
     expect(completionSource).toContain("desktopCodexUsageReporter.report")

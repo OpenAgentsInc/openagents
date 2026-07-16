@@ -19,9 +19,14 @@ The approved copy now shipped in Settings:
 > updates the aggregate public tokens-served counter. Turn it off any time;
 > queued reports are deleted.
 
-Consent-copy approval is COMPLETE. Remaining #8911 work is agent-side: enable
-the rollout gates, run the opted-in live counter proof per
-`docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md`, then close.
+Consent-copy approval is COMPLETE. A live attempt reached the signed-in proof
+boundary, but the normal Desktop profile has no native OpenAgents session and
+the current MVP intentionally does not render the already-typed account-link
+control. Owner action is required: complete the supported GitHub OAuth + PKCE
+authorization when prompted, or decide to restore the typed Settings control.
+After that, rerun the opted-in proof in
+`docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md`; the API gate
+and user consent were restored off after the incomplete attempt.
 
 ## Decisions taken this session (all in execution, agents working)
 
