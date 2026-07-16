@@ -559,4 +559,159 @@ describe("React command and decision surfaces", () => {
     await interact(() => approve?.click());
     expect(received).toContainEqual({ name: "DesktopApprovalApproved", payload: "decision-1" });
   });
+
+  // T9 #8866: the live interactive tool_approval/plan_review flow now
+  // renders through the same shared `DesktopApprovalCard` the read-only
+  // history dispatch branch uses (packages/ui/src/workbench/dispatch.tsx
+  // `case "approval"`), instead of a bespoke fieldset. These regression
+  // tests prove that refactor kept the exact real intent dispatch working.
+  describe("DecisionSurface renders the shared DesktopApprovalCard (T9 #8866)", () => {
+    const toolApprovalState = (
+      extra: Partial<DesktopShellState> = {},
+      cardOverrides: Record<string, unknown> = {},
+    ) => {
+      const question = {
+        turnRef: "turn-1",
+        questionRef: "decision-1",
+        status: "pending" as const,
+        kind: "tool_approval" as const,
+        questions: [
+          {
+            question: "rm -rf /tmp/scratch",
+            header: "Command approval",
+            multiSelect: false,
+            options: [
+              { label: "Approve", description: "Run this command." },
+              { label: "Deny", description: "Refuse this request." },
+            ],
+          },
+        ],
+        ...cardOverrides,
+      };
+      return fixtureState({
+        questionAnswerHostAvailable: true,
+        notes: [{ key: "note-1", role: "system", text: "", timestamp: "now", question }],
+        ...extra,
+      });
+    };
+
+    // `DecisionSurface` renders a shadcn `<Dialog>`, which portals its
+    // content onto `window.document.body` rather than into the local
+    // `container` (the existing "keeps approval explicit…" test above
+    // already relies on this) — every query below reads `window.document`.
+
+    test("tool_approval: Deny dispatches DesktopApprovalDenied through the card's default binary pair", async () => {
+      const { window, container } = installDom();
+      const { DecisionSurface } = await import("./react-composer.tsx");
+      const { received, report } = recorder();
+      const root = createTestRoot(container);
+      await render(root, <DecisionSurface state={toolApprovalState()} report={report} />);
+      const card = window.document.querySelector('[data-kind="approval"]');
+      expect(card?.getAttribute("data-decision")).toBe("pending");
+      expect(card?.textContent).toContain("rm -rf /tmp/scratch");
+      const deny = [...window.document.querySelectorAll("button")].find((button) => button.textContent === "Deny");
+      await interact(() => deny?.click());
+      expect(received).toContainEqual({ name: "DesktopApprovalDenied", payload: "decision-1" });
+    });
+
+    test("tool_approval: once the runtime confirms (answered), the card shows a resolved badge, not buttons", async () => {
+      const { window, container } = installDom();
+      const { DecisionSurface } = await import("./react-composer.tsx");
+      const { report } = recorder();
+      const root = createTestRoot(container);
+      const state = toolApprovalState({
+        questionCards: {
+          "decision-1": { selections: [["Approve"]], answered: true, submitting: false, answers: [{ question: "rm -rf /tmp/scratch", labels: ["Approve"] }] },
+        },
+      });
+      await render(root, <DecisionSurface state={state} report={report} />);
+      const card = window.document.querySelector('[data-kind="approval"]');
+      expect(card?.getAttribute("data-decision")).toBe("approved");
+      // Scoped to the card itself: the Dialog chrome around it always
+      // renders its own "Close" (X) button regardless of card state.
+      expect(card?.querySelector("button")).toBeNull();
+      expect(card?.querySelector(".oa-react-approval-decision")?.textContent).toContain("Approved");
+    });
+
+    test("an unavailable answer bridge renders the neutral Pending indicator, never a clickable-looking control", async () => {
+      const { window, container } = installDom();
+      const { DecisionSurface } = await import("./react-composer.tsx");
+      const { report } = recorder();
+      const root = createTestRoot(container);
+      const state = toolApprovalState({ questionAnswerHostAvailable: false });
+      await render(root, <DecisionSurface state={state} report={report} />);
+      const card = window.document.querySelector('[data-kind="approval"]');
+      // Scoped to the card itself: the Dialog chrome around it always
+      // renders its own "Close" (X) button regardless of card state.
+      expect(card?.querySelector("button")).toBeNull();
+      expect(card?.querySelector(".oa-react-approval-decision")?.textContent).toBe("Pending");
+    });
+
+    test("plan_review: the three named actions (Accept/Request changes/Replan) each wire to the real plan intent", async () => {
+      const { window, container } = installDom();
+      const { DecisionSurface } = await import("./react-composer.tsx");
+      const { received, report } = recorder();
+      const question = {
+        turnRef: "turn-1",
+        questionRef: "decision-2",
+        status: "pending" as const,
+        kind: "plan_review" as const,
+        questions: [
+          {
+            question: "1. Add the migration\n2. Backfill rows",
+            header: "Plan review",
+            multiSelect: false,
+            options: [
+              { label: "Accept" },
+              { label: "Request changes" },
+              { label: "Replan" },
+            ],
+          },
+        ],
+      };
+      const state = fixtureState({
+        questionAnswerHostAvailable: true,
+        notes: [{ key: "note-2", role: "system", text: "", timestamp: "now", question }],
+      });
+      const root = createTestRoot(container);
+      await render(root, <DecisionSurface state={state} report={report} />);
+      const card = window.document.querySelector('[data-kind="approval"]');
+      // Scoped to the card itself so the Dialog's own "Close" (X) button
+      // (always present, unrelated to the plan-review actions) is excluded.
+      const buttons = [...(card?.querySelectorAll("button") ?? [])];
+      expect(buttons.map((button) => button.textContent)).toEqual(["Accept", "Request changes", "Replan"]);
+      const replan = buttons.find((button) => button.textContent === "Replan");
+      await interact(() => replan?.click());
+      expect(received).toContainEqual({ name: "DesktopPlanReplanRequested", payload: "decision-2" });
+    });
+
+    test("plan_review: once answered, the resolved badge reports the exact chosen outcome, not a forced Approved/Denied", async () => {
+      const { window, container } = installDom();
+      const { DecisionSurface } = await import("./react-composer.tsx");
+      const { report } = recorder();
+      const question = {
+        turnRef: "turn-1",
+        questionRef: "decision-2",
+        status: "pending" as const,
+        kind: "plan_review" as const,
+        questions: [
+          { question: "Plan text", header: "Plan review", multiSelect: false, options: [{ label: "Accept" }, { label: "Request changes" }, { label: "Replan" }] },
+        ],
+      };
+      const state = fixtureState({
+        questionAnswerHostAvailable: true,
+        notes: [{ key: "note-2", role: "system", text: "", timestamp: "now", question }],
+        questionCards: {
+          "decision-2": { selections: [["Request changes"]], answered: true, submitting: false, answers: [{ question: "Plan text", labels: ["Request changes"] }] },
+        },
+      });
+      const root = createTestRoot(container);
+      await render(root, <DecisionSurface state={state} report={report} />);
+      const card = window.document.querySelector('[data-kind="approval"]');
+      // Scoped to the card itself: the Dialog chrome around it always
+      // renders its own "Close" (X) button regardless of card state.
+      expect(card?.querySelector("button")).toBeNull();
+      expect(card?.querySelector(".oa-react-approval-decision")?.textContent).toContain("Request changes");
+    });
+  });
 });

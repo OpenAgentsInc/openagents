@@ -3763,8 +3763,11 @@ const smokeReactImageAttachment = `(async () => {
   send.click()
   while (Date.now() < deadline && document.querySelector('.oa-react-decision') === null) await wait(50)
   const decision = document.querySelector('.oa-react-decision')
+  // T9 #8866: the decision surface now renders the shared DesktopApprovalCard
+  // (a plain-text button, no nested <span> label) instead of the bespoke
+  // fieldset/Button markup this used to target.
   const approve = decision === null ? undefined : [...decision.querySelectorAll('button')]
-    .find((button) => button.querySelector('span')?.textContent?.trim() === 'Approve')
+    .find((button) => button.textContent?.trim() === 'Approve')
   approve?.click()
   while (Date.now() < deadline && document.querySelector('.oa-react-decision') !== null) await wait(50)
   while (Date.now() < deadline && document.querySelector('[data-en-key^="composer-image-preview-"]') !== null) await wait(50)
@@ -3803,8 +3806,11 @@ const smokeReactTurn = `(async () => {
   const decision = document.querySelector('.oa-react-decision')
   const decisionOpened = decision !== null && decision.textContent?.includes("Command approval") &&
     decision.textContent?.includes("echo fixture")
+  // T9 #8866: the decision surface now renders the shared DesktopApprovalCard
+  // (a plain-text button, no nested <span> label) instead of the bespoke
+  // fieldset/Button markup this used to target.
   const approve = decision === null ? undefined : [...decision.querySelectorAll('button')]
-    .find((button) => button.querySelector('span')?.textContent?.trim() === "Approve")
+    .find((button) => button.textContent?.trim() === "Approve")
   approve?.click()
   while (Date.now() < deadline && document.querySelector('.oa-react-decision') !== null) await wait(50)
   const decisionReconciled = decisionOpened && approve !== undefined &&

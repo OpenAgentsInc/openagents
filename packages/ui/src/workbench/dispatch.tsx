@@ -18,17 +18,24 @@
  * §5):
  *   - message / plan / agent / notice: real shared components (already
  *     wired upstream of this table).
- *   - command (T4 #8861) / toolCall (T7 #8864): wired to their typed cards.
- *   - fileChange (T5 #8862) / reasoning (T6 #8863) / approval (T9 #8866) /
- *     meter (T11 #8868) / compaction, sleep, review, hook (T12 #8869):
- *     render through the existing generic `DesktopWorkEntry` shell for now.
- *     Each Wave-2 lane replaces its own branch with the polished, typed
- *     card — never another lane's branch.
+ *   - command (T4 #8861) / fileChange (T5 #8862) / toolCall (T7 #8864):
+ *     wired to their typed cards.
+ *   - approval (T9 #8866): `DesktopApprovalCard`, read-only (no
+ *     `onDecision`) — this branch only ever sees already-decided history
+ *     records; the LIVE interactive tool_approval/plan_review flow renders
+ *     the same shared component from `apps/openagents-desktop/src/renderer/
+ *     react-composer.tsx`'s `DecisionSurface`, not this dispatch table (see
+ *     that file for why: `WorkbenchDispatchItem` has no notion of a pending,
+ *     still-answerable decision).
+ *   - reasoning (T6 #8863) / meter (T11 #8868) / compaction, sleep, review,
+ *     hook (T12 #8869): render through the existing generic
+ *     `DesktopWorkEntry` shell for now. Each Wave-2 lane replaces its own
+ *     branch with the polished, typed card — never another lane's branch.
  */
 import type { ReactElement } from "react"
 
 import { DesktopAgentGroup, type DesktopAgentActivity, type DesktopAgentStatus } from "./agent-group.tsx"
-import type { DesktopApprovalDecision } from "./approval-card.tsx"
+import { DesktopApprovalCard, type DesktopApprovalDecision } from "./approval-card.tsx"
 import type { DesktopActivityStatus } from "./activity-status.tsx"
 import { DesktopCommandCard } from "./command-card.tsx"
 import { ContextMeter } from "./context-meter.tsx"
@@ -295,9 +302,9 @@ const messageLabel = (role: WorkbenchMessageDispatchItem["role"]): string =>
  * Renders one `WorkbenchDispatchItem` through its shared component. Every
  * branch is handled — nothing silently drops (design-spec §8 rule 7 /
  * component-audit gap list) — but only message/plan/agent/notice/command/
- * toolCall render through their intended real card today; the rest render
- * the generic `DesktopWorkEntry` shell until their Wave-2 lane lands (see
- * the module-level status list above).
+ * fileChange/toolCall/approval render through their intended real card
+ * today; the rest render the generic `DesktopWorkEntry` shell until their
+ * Wave-2 lane lands (see the module-level status list above).
  */
 export const dispatchWorkbenchItem = (
   item: WorkbenchDispatchItem,
@@ -425,18 +432,22 @@ export const dispatchWorkbenchItem = (
       />
     }
 
-    // TODO(T9 #8866): replace with `DesktopApprovalCard` wired to the real
-    // interactive decision flow (`onDecision`) and a resource description.
+    // T9 #8866: this branch only ever renders an ALREADY-DECIDED history
+    // record (fed from the rollout `approval` kind projection, never a live
+    // pending question) — so it never passes `onDecision`. The live
+    // interactive tool_approval/plan_review flow renders the same
+    // `DesktopApprovalCard` from `DecisionSurface`
+    // (apps/openagents-desktop/src/renderer/react-composer.tsx), wired to
+    // the real `DesktopApprovalApproved`/`DesktopApprovalDenied` intents.
     case "approval": {
       const approvalItem: WorkbenchApprovalDispatchItem = item
-      return <DesktopWorkEntry
-        body={approvalItem.detail ?? ""}
+      const decision = toApprovalDecision(approvalItem)
+      return <DesktopApprovalCard
+        decision={decision}
+        description={decision === "pending" ? "Awaiting a decision." : "Recorded decision."}
         itemKey={context.itemKey}
-        kind="approval"
-        label="Approval"
-        preview={approvalItem.detail ?? ""}
-        status={toActivityStatus(approvalItem.status)}
-        statusLabel={toApprovalDecision(approvalItem) === "approved" ? "Approved" : toApprovalDecision(approvalItem) === "denied" ? "Denied" : "Pending"}
+        resource={approvalItem.detail ?? ""}
+        title="Approval"
       />
     }
 

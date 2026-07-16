@@ -443,7 +443,9 @@ const agentMessageEnvelope = (value: string): Readonly<{ type: string | null; ta
   return { type:read("Message Type"),task:read("Task name"),sender:read("Sender"),payload:payloadIndex<0?null:value.slice(payloadIndex+payloadMarker.length).trim()||null }
 }
 
-const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHistoryItem => {
+/** Exported for direct unit coverage of the rollout row -> CodexHistoryItem
+ * classification (T9 #8866); every reader above calls this internally. */
+export const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHistoryItem => {
   const envelope = object(row); const payload = envelope && object(envelope.payload); const envelopeType = envelope && string(envelope.type) || "invalid"; const timestamp = envelope && iso(envelope.timestamp) || new Date(0).toISOString()
   if (envelope === null || payload === null) return { itemRef: `${threadRef}:${sequence}`, threadRef, sequence, timestamp, kind: "gap", label: "Unreadable source record", summary: "This record could not be decoded.", status: "unsupported", fields: [], redacted: false, sourceType: envelopeType }
   const nestedPayload = object(payload.payload); let item = nestedPayload ?? payload; let itemType = string(item.type) ?? envelopeType
@@ -470,15 +472,16 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   else if (itemType.includes("error")) { kind = "error"; label = "Error"; summary = safeText(item.message ?? item.error); status = "error" }
   else if (envelopeType === "event_msg") { kind = itemType.includes("error") ? "error" : "lifecycle"; label = itemType; summary = safeText(item.message ?? item.text ?? item.status); push("event", itemType) }
   const redactedSummary = redactCodexHistoryText(summary || label); const redacted = redactedSummary.redacted || fields.some(item => item.redacted) || summary.startsWith("[REDACTED:")
-  // Typed sidecar (#8859, extended #8863 for reasoning): tool-class rows carry
-  // the structured WorkbenchItem (command cwd/exit/duration/output tail,
-  // per-file diffs, args/results) so renderers rebuild the same typed card
-  // the live turn showed. Reasoning rows get the same treatment so history
-  // renders the identical `DesktopReasoningDisclosure` component the live
-  // turn used — but only when not redacted; a redacted row never gets a
-  // typed item (honest absence, not a false completed summary). The reader
-  // is tolerant — rows whose source shape has no typed projection stay
-  // string-only.
+  // Typed sidecar (#8859, extended #8863 for reasoning, T9 #8866 for
+  // approval): tool-class, reasoning, and approval rows carry the structured
+  // WorkbenchItem (command cwd/exit/duration/output tail, per-file diffs,
+  // args/results, recorded approval decision) so renderers rebuild the same
+  // typed card the live turn showed. Reasoning rows get the same treatment
+  // so history renders the identical `DesktopReasoningDisclosure` component
+  // the live turn used — but only when not redacted; a redacted row never
+  // gets a typed item (honest absence, not a false completed summary). The
+  // reader is tolerant — rows whose source shape has no typed projection
+  // stay string-only.
   const typedSource = [string(item.name), string(item.tool), itemType].some(value => value === "apply_patch" || value === "applyPatch")
     ? { ...item, type: "apply_patch", patch: item.input ?? item.arguments ?? item.content }
     : item
@@ -486,7 +489,7 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   // entries or prose fallback) so history plans render through the identical
   // DesktopPlanCard the live turn and turn/plan/updated notification use,
   // instead of a bespoke single-entry reconstruction in the timeline renderer.
-  const typedItem = kind === "tool_call" || kind === "tool_result" ||
+  const typedItem = kind === "tool_call" || kind === "tool_result" || kind === "approval" ||
       (kind === "reasoning" && !redacted)
     ? workbenchItemFromThreadItem(typedSource, "codex", value => redactCodexHistoryText(value).text)
     : kind === "plan"

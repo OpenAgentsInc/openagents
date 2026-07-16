@@ -1951,6 +1951,9 @@ importers:
       '@types/react-dom':
         specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.17)
+      happy-dom:
+        specifier: ^20.10.6
+        version: 20.10.6
       lucide-react:
         specifier: ^1.24.0
         version: 1.24.0(react@19.2.7)

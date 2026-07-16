@@ -22,6 +22,7 @@
   "devDependencies": {
     "@types/react": "^19.2.14",
     "@types/react-dom": "19.2.3",
+    "happy-dom": "^20.10.6",
     "lucide-react": "^1.24.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",

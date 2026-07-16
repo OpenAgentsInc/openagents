@@ -62,7 +62,11 @@ export {
   type DesktopAgentActivity,
   type DesktopAgentActivityKind,
 } from "./workbench/agent-group.tsx"
-export { DesktopApprovalCard, type DesktopApprovalDecision } from "./workbench/approval-card.tsx"
+export {
+  DesktopApprovalCard,
+  type DesktopApprovalAction,
+  type DesktopApprovalDecision,
+} from "./workbench/approval-card.tsx"
 export { DesktopQueuedFollowup } from "./workbench/queued-followup.tsx"
 export {
   DesktopComposerFrame,

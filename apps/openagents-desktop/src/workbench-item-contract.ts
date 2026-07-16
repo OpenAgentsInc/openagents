@@ -224,6 +224,7 @@ export const WorkbenchApprovalItemSchema = Schema.Struct({
   decision: Schema.optional(BoundedString(40)),
   detail: Schema.optional(BoundedString(400)),
 })
+export type WorkbenchApprovalItem = typeof WorkbenchApprovalItemSchema.Type
 
 export const WorkbenchMeterItemSchema = Schema.Struct({
   kind: Schema.Literal("meter"),
@@ -723,6 +724,32 @@ export const workbenchItemFromThreadItem = (
           agentThreadId: head(agentThreadId, 120),
           children: [{ threadRef: head(redact(agentThreadId), 120), status: childStatus }],
         }),
+    }
+  }
+  // T9 #8866: history-only. Rollout `approval` rows (`codex-history.ts`
+  // classifies anything whose type contains "approval") carry an already-
+  // RECORDED decision, never a live pending question — the interactive
+  // tool_approval/plan_review flow rides `DesktopQuestionCard`
+  // (chat-contract.ts), not this ThreadItem contract. Tolerant by
+  // construction like every other branch here: an unrecognized decision
+  // string degrades to an absent `decision` (the read-only card then shows
+  // its own neutral "Pending" state) rather than guessing.
+  if (type.includes("approval")) {
+    const rawDecision = asString(item.decision)?.toLowerCase() ?? null
+    const decision = rawDecision === null
+      ? undefined
+      : ["accept", "acceptforsession", "approve", "approved", "accepted", "allow", "allowed"].includes(rawDecision)
+        ? "approved" as const
+        : ["decline", "declined", "deny", "denied", "reject", "rejected"].includes(rawDecision)
+          ? "denied" as const
+          : undefined
+    const detail = asString(item.reason) ?? asString(item.message) ?? null
+    return {
+      kind: "approval",
+      source,
+      status: decision === "approved" ? "completed" : decision === "denied" ? "declined" : "completed",
+      ...(decision === undefined ? {} : { decision }),
+      ...(detail === null ? {} : { detail: head(redact(detail), 400) }),
     }
   }
   return null

@@ -18,6 +18,7 @@ import {
   workbenchPlanItemFromEntries,
   workbenchToolCallFromSdkUse,
   type WorkbenchAgentChild,
+  type WorkbenchApprovalItem,
   type WorkbenchCommandItem,
   type WorkbenchFileChangeItem,
   type WorkbenchPlanItem,
@@ -322,7 +323,7 @@ describe("WorkbenchItem projection from app-server (camelCase) wire items", () =
     expect(item.children).toEqual([{ threadRef: "thread-child-3", status: "interrupted" }])
   })
 
-  test("non-tool items project as null (this wave emits tool-class and agent-class payloads only)", () => {
+  test("non-tool, non-agent, non-approval items project as null (untyped kinds stay string-only)", () => {
     expect(workbenchItemFromThreadItem({ id: "x", type: "agentMessage", text: "hi" }, "codex")).toBeNull()
     expect(workbenchItemFromThreadItem({ id: "x", type: "reasoning" }, "codex")).toBeNull()
     expect(workbenchItemFromThreadItem({ id: "x", type: "contextCompaction" }, "codex")).toBeNull()
@@ -343,6 +344,28 @@ describe("WorkbenchItem projection from app-server (camelCase) wire items", () =
     expect(workbenchItemFromThreadItem({ id: "x", type: "plan", text: "" }, "codex")).toBeNull()
     expect(workbenchItemFromThreadItem({ id: "x", type: "plan" }, "codex")).toBeNull()
     expect(workbenchItemFromThreadItem({ id: "x", type: "plan", text: "   " }, "codex")).toBeNull()
+  })
+
+  test("T9 #8866: a rollout approval row with a recorded decision projects as an approval WorkbenchItem", () => {
+    const approved = workbenchItemFromThreadItem(
+      { id: "a", type: "approval_decision", decision: "accept", reason: "run tests" },
+      "codex",
+    ) as WorkbenchApprovalItem
+    expect(approved).toMatchObject({ kind: "approval", status: "completed", decision: "approved", detail: "run tests" })
+    const denied = workbenchItemFromThreadItem(
+      { id: "b", type: "command_approval", decision: "decline", message: "risky command" },
+      "codex",
+    ) as WorkbenchApprovalItem
+    expect(denied).toMatchObject({ kind: "approval", status: "declined", decision: "denied", detail: "risky command" })
+  })
+
+  test("T9 #8866: an unrecognized decision string degrades to an absent decision instead of guessing", () => {
+    const item = workbenchItemFromThreadItem(
+      { id: "c", type: "plan_approval", decision: "unknown_outcome" },
+      "codex",
+    ) as WorkbenchApprovalItem
+    expect(item.kind).toBe("approval")
+    expect(item.decision).toBeUndefined()
   })
 })
 

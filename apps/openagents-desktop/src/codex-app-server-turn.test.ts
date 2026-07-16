@@ -385,6 +385,74 @@ const makeMeterSpawn = (): CodexAppServerSpawn => () => {
   return child as never
 }
 
+/**
+ * T9 #8866: `item/autoApprovalReview/started|completed` (the Guardian
+ * background auto-reviewer) were previously fully unconsumed — a real event
+ * the app-server can send that the renderer never saw at all. This proves
+ * both notifications now surface as bounded, read-only `lane_notice` events
+ * (never a fabricated interactive "approval" the user cannot act on).
+ */
+const makeGuardianReviewSpawn = (): CodexAppServerSpawn => () => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough
+    stdout: PassThrough
+    stderr: PassThrough
+    kill: () => boolean
+  }
+  child.stdin = stdin
+  child.stdout = stdout
+  child.stderr = new PassThrough()
+  child.kill = () => {
+    child.emit("close", 0)
+    return true
+  }
+  const write = (message: unknown): void => {
+    stdout.write(`${JSON.stringify(message)}\n`)
+  }
+  const notify = (method: string, params: unknown): void => write({ method, params })
+  let buffered = ""
+  stdin.on("data", chunk => {
+    buffered += chunk.toString("utf8")
+    while (buffered.includes("\n")) {
+      const newline = buffered.indexOf("\n")
+      const line = buffered.slice(0, newline)
+      buffered = buffered.slice(newline + 1)
+      if (line === "") continue
+      const message = JSON.parse(line) as Record<string, unknown>
+      if (message.method === "initialize" && typeof message.id === "number") {
+        write({ id: message.id, result: {} })
+      } else if (message.method === "thread/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { thread: { id: THREAD_ID } } })
+      } else if (message.method === "turn/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { turn: { id: TURN_ID } } })
+        notify("item/autoApprovalReview/started", {
+          threadId: THREAD_ID,
+          turnId: TURN_ID,
+          reviewId: "review-1",
+          startedAtMs: 1,
+          action: { type: "command", command: "rm -rf /tmp/scratch", cwd: "/safe/repo", source: "shell" },
+          review: { status: "inProgress" },
+        })
+        notify("item/autoApprovalReview/completed", {
+          threadId: THREAD_ID,
+          turnId: TURN_ID,
+          reviewId: "review-1",
+          startedAtMs: 1,
+          completedAtMs: 2,
+          decisionSource: "agent",
+          action: { type: "command", command: "rm -rf /tmp/scratch", cwd: "/safe/repo", source: "shell" },
+          review: { status: "denied", rationale: "destructive path outside the workspace" },
+        })
+        notify("item/agentMessage/delta", { threadId: THREAD_ID, turnId: TURN_ID, delta: "done" })
+        notify("turn/completed", { threadId: THREAD_ID, turn: { id: TURN_ID, status: "completed", error: null } })
+      }
+    }
+  })
+  return child as never
+}
+
 describe("codex-app-server-turn context/usage meter (T11 #8868)", () => {
   test("emits meter_updated events with exact wire values (no fabricated zeros) alongside existing accounting", async () => {
     const events: Array<FableLocalEvent> = []
@@ -694,5 +762,47 @@ describe("codex-app-server-turn streaming reasoning disclosure (#8863)", () => {
     expect((fallback[1]!.item as WorkbenchReasoningItem)).toMatchObject({
       status: "completed", summary: "Streamed but never finalized.",
     })
+  })
+})
+
+describe("codex-app-server-turn guardian approval-review notices (T9 #8866)", () => {
+  test("item/autoApprovalReview/started|completed project as bounded lane_notice events, not a fabricated approval decision", async () => {
+    const events: Array<FableLocalEvent> = []
+    const outcome = await runCodexAppServerTurn({
+      binary: "/packaged/codex",
+      env: {},
+      workspace: "/safe/repo",
+      threadRef: "thread-ref",
+      turnRef: "turn-ref",
+      accountRef: "codex",
+      prompt: "run a risky command",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.5",
+      reasoningEffort: "medium",
+      productSpecSkill: { skillRoot: "/skills", skillPath: "/skills/productspec-work" },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: event => events.push(event),
+      spawnImpl: makeGuardianReviewSpawn(),
+    })
+    expect(outcome.outcome).toBe("success")
+
+    // Filtered to the guardian-review text specifically: this minimal
+    // fixture spawn's bare-bones request responses (unlike the fully
+    // protocol-shaped fixture above) also trip the pre-existing app-server
+    // compatibility-receipt path for unrelated methods (`initialize`,
+    // `thread/start`, …) as `lane_notice` events; that noise is not part of
+    // what this test covers.
+    const guardianNotices = (events.filter(event => event.kind === "lane_notice") as
+      Array<Extract<FableLocalEvent, { kind: "lane_notice" }>>)
+      .filter(event => event.text.startsWith("Guardian review"))
+    expect(guardianNotices).toHaveLength(2)
+    expect(guardianNotices[0]!.text).toBe("Guardian review started: command: rm -rf /tmp/scratch")
+    expect(guardianNotices[1]!.text).toBe(
+      "Guardian review denied: command: rm -rf /tmp/scratch — destructive path outside the workspace",
+    )
+    // No event pretends this is a user-actionable approval decision.
+    expect(events.some(event => event.kind === "question_pending")).toBe(false)
   })
 })

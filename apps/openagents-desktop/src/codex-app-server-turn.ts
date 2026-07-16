@@ -11,7 +11,7 @@ import {
   type CodexAppServerLease,
   type CodexAppServerSupervisor,
 } from "./codex-app-server-supervisor.ts"
-import type { FableLocalEvent, FableLocalRateLimitWindow } from "./fable-local-contract.ts"
+import { FABLE_LOCAL_SUMMARY_LIMIT, type FableLocalEvent, type FableLocalRateLimitWindow } from "./fable-local-contract.ts"
 import { makeCodexTurnState } from "./codex-turn-state.ts"
 import {
   WORKBENCH_OUTPUT_TAIL_LIMIT,
@@ -96,6 +96,42 @@ const record = (value: unknown): Record<string, unknown> | null =>
 const string = (value: unknown): string | null => typeof value === "string" ? value : null
 
 const number = (value: unknown): number | undefined => typeof value === "number" ? value : undefined
+
+/**
+ * T9 #8866: `item/autoApprovalReview/started|completed` (the Guardian
+ * background auto-reviewer) were previously fully unconsumed. Honest
+ * classification, NOT a "notice" masquerading as an approval: this is an
+ * automated risk assessment of an action (`decisionSource: "agent"`, never a
+ * human choice), not the interactive tool_approval/plan_review decision the
+ * user makes on `DesktopQuestionCard`. Reusing the `approval` WorkbenchItem
+ * kind here would conflate the two — an automated reviewer's verdict is not
+ * the same thing as a user's approve/deny, and `DesktopApprovalCard`'s
+ * onDecision/approved/denied model implies an actionable user decision that
+ * does not exist for this event. It renders instead as a bounded, read-only
+ * `lane_notice` system line (the same treatment already given to compat/
+ * rotation notices in this file), never a card offering a decision no one
+ * can make.
+ */
+const guardianReviewActionLabel = (action: Record<string, unknown> | null): string => {
+  const type = string(action?.type)
+  if (type === "command") return `command: ${string(action?.command)?.slice(0, 200) ?? "unknown"}`
+  if (type === "execve") return `exec: ${string(action?.program)?.slice(0, 200) ?? "unknown"}`
+  if (type === "applyPatch") return "file changes"
+  if (type === "networkAccess") return `network: ${string(action?.target)?.slice(0, 200) ?? "unknown"}`
+  if (type === "mcpToolCall") return `tool: ${string(action?.toolName)?.slice(0, 200) ?? "unknown"}`
+  if (type === "requestPermissions") return "permission request"
+  return "review"
+}
+
+const guardianReviewStatusLabel = (status: string | null): string => {
+  switch (status) {
+    case "approved": return "approved"
+    case "denied": return "denied"
+    case "timedOut": return "timed out"
+    case "aborted": return "aborted"
+    default: return "in progress"
+  }
+}
 
 const usageFromNotification = (params: Record<string, unknown>): CodexChildUsage | null => {
   const tokenUsage = record(params.tokenUsage)
@@ -580,6 +616,18 @@ export const runCodexAppServerTurn = async (
     if (message.method === "account/rateLimits/updated") {
       const meter = meterFromRateLimitsNotification(params)
       if (meter !== null) input.emit(meter)
+      return
+    }
+    if (message.method === "item/autoApprovalReview/started" || message.method === "item/autoApprovalReview/completed") {
+      const review = record(params.review)
+      const status = string(review?.status)
+      const action = record(params.action)
+      const actionLabel = guardianReviewActionLabel(action)
+      const rationale = string(review?.rationale)
+      const text = message.method === "item/autoApprovalReview/started"
+        ? `Guardian review started: ${actionLabel}`
+        : `Guardian review ${guardianReviewStatusLabel(status)}: ${actionLabel}${rationale === null ? "" : ` — ${rationale}`}`
+      input.emit({ kind: "lane_notice", text: text.slice(0, FABLE_LOCAL_SUMMARY_LIMIT) })
       return
     }
     if (message.method === "turn/plan/updated") {

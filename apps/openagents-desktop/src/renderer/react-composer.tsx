@@ -30,10 +30,13 @@ import {
 } from "@effect-native/core";
 import { Effect } from "@effect-native/core/effect";
 import {
+  DesktopApprovalCard,
   DesktopComposerBar,
   DesktopComposerButton,
   DesktopComposerFrame,
   DesktopComposerInput,
+  type DesktopApprovalAction,
+  type DesktopApprovalDecision,
 } from "@openagentsinc/ui/desktop-workbench";
 import {
   ArrowDown,
@@ -589,6 +592,31 @@ const decisionIntent = (kind: ReturnType<typeof questionKind>, label: string): s
   return null;
 };
 
+/**
+ * Plan review's three canonical outcomes, in the exact label vocabulary both
+ * decision backends require verbatim (`selectRuntimeDecision` in shell.ts,
+ * and the Runtime Gateway `RuntimeInteraction` decision envelope in
+ * renderer/runtime-interactions.ts, which rejects anything else).
+ */
+const planReviewActionLabels = ["Accept", "Request changes", "Replan"] as const;
+
+/**
+ * T9 #8866: `tool_approval` and `plan_review` are both structurally a single
+ * question with a small fixed set of named outcomes (Approve/Deny, or
+ * Accept/Request changes/Replan) — the same shape `DesktopApprovalCard`
+ * already renders for read-only history rows
+ * (`packages/ui/src/workbench/dispatch.tsx` `case "approval"`). Routing the
+ * LIVE interactive card through the same shared component means both the
+ * past-tense and present-tense presentations of an approval decision use
+ * identical Autopilot styling. `provider_question` stays on the generic
+ * fieldset renderer below unchanged: it can carry multiple questions with
+ * per-option multi-select and a "Submit choices" footer, a shape
+ * `DesktopApprovalCard` does not (and should not) try to fit.
+ */
+const isApprovalCardKind = (
+  kind: ReturnType<typeof questionKind>,
+): kind is "tool_approval" | "plan_review" => kind === "tool_approval" || kind === "plan_review";
+
 export const DecisionSurface = ({
   state,
   report,
@@ -635,48 +663,110 @@ export const DecisionSurface = ({
                   : "Choose an option. Closing this dialog does not approve or deny anything."}
           </DialogDescription>
         </DialogHeader>
-        <div className="oa-react-decision-questions">
-          {card.questions.map((question, questionIndex) => (
-            <fieldset
-              key={question.questionRef ?? `${card.questionRef}:${questionIndex}`}
-              disabled={unavailable || answered || submitting}
-            >
-              <legend>
-                <span>{question.header}</span>
-                {question.question}
-              </legend>
-              <div className="oa-react-decision-options">
-                {question.options.map((option) => {
-                  const selected =
-                    interaction?.selections[questionIndex]?.includes(option.label) === true;
-                  return (
-                    <Button
-                      key={option.optionRef ?? option.label}
-                      type="button"
-                      variant={selected ? "secondary" : "outline"}
-                      aria-pressed={selected}
-                      onClick={() => {
-                        const intent = decisionIntent(kind, option.label);
-                        if (intent === null)
-                          dispatch(report, "DesktopQuestionOptionSelected", {
-                            questionRef: card.questionRef,
-                            questionIndex,
-                            label: option.label,
-                          });
-                        else dispatch(report, intent, card.questionRef);
-                      }}
-                    >
-                      <span>{option.label}</span>
-                      {option.description === undefined ? null : (
-                        <small>{option.description}</small>
-                      )}
-                    </Button>
-                  );
-                })}
-              </div>
-            </fieldset>
-          ))}
-        </div>
+        {isApprovalCardKind(kind) ? (() => {
+          // Both approval kinds emit exactly one question in practice (the
+          // command/patch/plan under review); the fixed action vocabulary
+          // above is per-kind, not per-option, so only the first question's
+          // text/header feed the card.
+          const question = card.questions[0];
+          // The single label the user picked, recorded the instant a button
+          // is clicked (`withQuestionSelection`, before the reducer even
+          // starts the submit round trip) and left in place across an
+          // "answer_refused" rejection so retry can read it back — see
+          // shell.ts `withQuestionAnswerRejected`. Only treat it as a
+          // RESOLVED outcome once the runtime actually confirmed
+          // (`answered`); while merely `submitting` the card still shows the
+          // interactive controls (a same-instant double-click races the
+          // reducer's own no-op guard in `withQuestionSelection`, never a
+          // duplicate submission).
+          const chosenLabel = interaction?.selections[0]?.[0];
+          const decision: DesktopApprovalDecision = !answered
+            ? "pending"
+            : kind === "tool_approval"
+              ? (chosenLabel === "Deny" ? "denied" : "approved")
+              : (chosenLabel === "Accept" ? "approved" : "denied");
+          const decisionLabel = answered && kind === "plan_review" ? chosenLabel : undefined;
+          const canDecide = !unavailable && !answered;
+          const onDecision = canDecide && kind === "tool_approval"
+            ? (next: Exclude<DesktopApprovalDecision, "pending">) =>
+                dispatch(
+                  report,
+                  next === "approved" ? "DesktopApprovalApproved" : "DesktopApprovalDenied",
+                  card.questionRef,
+                )
+            : undefined;
+          const actions: ReadonlyArray<DesktopApprovalAction> | undefined = canDecide && kind === "plan_review"
+            ? planReviewActionLabels.map((label): DesktopApprovalAction => ({
+                key: label,
+                label,
+                primary: label === "Accept",
+                onSelect: () => dispatch(
+                  report,
+                  label === "Accept"
+                    ? "DesktopPlanAccepted"
+                    : label === "Request changes"
+                      ? "DesktopPlanChangesRequested"
+                      : "DesktopPlanReplanRequested",
+                  card.questionRef,
+                ),
+              }))
+            : undefined;
+          return (
+            <DesktopApprovalCard
+              actions={actions}
+              decision={decision}
+              decisionLabel={decisionLabel}
+              description={question?.header ?? decisionTitle(kind)}
+              itemKey={`decision-${card.questionRef}`}
+              onDecision={onDecision}
+              resource={question?.question ?? ""}
+              title={decisionTitle(kind)}
+            />
+          );
+        })() : (
+          <div className="oa-react-decision-questions">
+            {card.questions.map((question, questionIndex) => (
+              <fieldset
+                key={question.questionRef ?? `${card.questionRef}:${questionIndex}`}
+                disabled={unavailable || answered || submitting}
+              >
+                <legend>
+                  <span>{question.header}</span>
+                  {question.question}
+                </legend>
+                <div className="oa-react-decision-options">
+                  {question.options.map((option) => {
+                    const selected =
+                      interaction?.selections[questionIndex]?.includes(option.label) === true;
+                    return (
+                      <Button
+                        key={option.optionRef ?? option.label}
+                        type="button"
+                        variant={selected ? "secondary" : "outline"}
+                        aria-pressed={selected}
+                        onClick={() => {
+                          const intent = decisionIntent(kind, option.label);
+                          if (intent === null)
+                            dispatch(report, "DesktopQuestionOptionSelected", {
+                              questionRef: card.questionRef,
+                              questionIndex,
+                              label: option.label,
+                            });
+                          else dispatch(report, intent, card.questionRef);
+                        }}
+                      >
+                        <span>{option.label}</span>
+                        {option.description === undefined ? null : (
+                          <small>{option.description}</small>
+                        )}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ))}
+          </div>
+        )}
         {interaction?.failure === "answer_refused" ? (
           <p className="oa-react-decision-failure" role="alert">
             The runtime did not accept that decision. Review it and try again.
