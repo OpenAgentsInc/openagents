@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "6bc5f7a09f15a33d5ed7aa1dd09ea11466a39a6ac7e50eca44f4c43dcb7f1851",
+  "sourceTreeSha256": "96d7e67138ee21b31a3897b8e8511f815adc6645bc5c4112546ca77c189dc8a5",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1529,7 +1529,7 @@
       "owner": "OpenAgents UI architecture",
       "disposition": "retain-historical",
       "dispatch": false,
-      "sha256": "4615a6056ad487371a753f12a942469740f897965178734d3395d139f120c2cc",
+      "sha256": "fc5ba989e74d8fa5bf7ce1f56a62c0edeca02d2ac0699f7896f6402b4571e6de",
       "status": "retain until Khala UI is implemented, rejected, or superseded",
       "snapshot": "OpenAgents `ac287fc22d2aaa76e3783e592d695ad54a84ec47`; Effect Native `ec04d1a066d6f3ed0c67735ba451cfc90a343aa8`; Arwes `bdbaa0324900ee978d42036d1304a053c1fe54b5`",
       "reviewedAt": "2026-07-12",
@@ -1540,7 +1540,8 @@
       "inboundSourceCount": 1,
       "issueLinks": [
         8845,
-        8846
+        8846,
+        8848
       ]
     },
     {
@@ -1560,6 +1561,29 @@
       "inboundSourceCount": 1,
       "issueLinks": [
         8856
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-15-khala-ui-astro-pilot-superseded-disposition.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8848",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "28c1c18409307594e7a8decd657c13631dbbd69132228cdd9e9c6ce55bfcbefd",
+      "status": "superseded without implementation",
+      "snapshot": "`c8844a7bab39c57d360509fbfd67fb9165e76aa2`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-15-arwes-first-principles-khala-ui-architecture-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8844,
+        8848,
+        8849,
+        8850
       ]
     },
     {
@@ -3043,7 +3067,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "0c99da3398c18b7d47266ab4fc50257029e2de8ebb69dff23189e5ab7ace2602",
+      "sha256": "f421e1ef73a57f9d044523a7b0155244c1d89e915c6e8f59fe50a44da938f3ee",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3090,7 +3114,8 @@
         8796,
         8845,
         8846,
-        8847
+        8847,
+        8848
       ]
     },
     {

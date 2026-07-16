@@ -69,33 +69,34 @@ The implementation sequence is:
 7. leave decipher text, pointer illumination, and audio out until separate
    opt-in product decisions justify them.
 
-## The route correction: this is not a TanStack landing-page project
+## Route authority correction after public-site unification
 
-The phrase “our TanStack website” no longer identifies the destination for new
-landing work. Current repository law says:
+This section originally captured the short-lived split in which `apps/astro`
+owned the landing candidate and `/tanstack` was its frozen Start comparison.
+That topology changed after this audit and after #8848 was filed. Commit
+`abf4eaa311` deleted `apps/openagents.com/apps/astro`, moved the public routes
+into `apps/start`, made `/astro` the Desktop MVP landing, and reduced
+`/tanstack` to a compatibility redirect to `/astro`.
 
-- [`apps/openagents.com/AGENTS.md`](../../apps/openagents.com/AGENTS.md) makes
-  `apps/astro` the owner-selected public landing destination and explicitly
-  says new landing work does not belong in `apps/start`.
-- [`apps/openagents.com/INVARIANTS.md`](../../apps/openagents.com/INVARIANTS.md)
-  defines `/tanstack` as a temporary, same-origin performance comparison of the
-  exact Astro snapshot. It owns no product authority and must not expand.
-- New or converted retained application UI remains Effect Native. React and
-  TanStack Start are host, routing, SSR, and renderer machinery—not the product
-  component architecture.
+Current repository law is [`apps/openagents.com/INVARIANTS.md`](../../apps/openagents.com/INVARIANTS.md):
+
+- `apps/start` owns `/`, `/astro`, `/install`, and `/app`;
+- `/tanstack` has no independent product or comparison authority; and
+- the apex root keeps its holding-page contract until a separate owner decision.
 
 Therefore:
 
-| Surface                  | Decision                                                                                                                                          |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/tanstack`              | Do not modify for Khala UI. Keep the comparison frozen.                                                                                           |
-| public landing candidate | Apply static Khala UI output in `apps/astro` only after the Effect Native language is specified and the root cutover is separately authorized.    |
-| retained web product UI  | First candidate is a bounded `/forum` board/status treatment through Effect Native.                                                               |
-| Desktop                  | First candidate is the non-critical Project Home coding-session surface; Settings status articles are second.                                     |
-| docs                     | Preserve the current compact Khala treatment. Do not add decorative page-transition delay or turn the Blume exception into application authority. |
+| Surface                  | Current decision                                                                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/tanstack`              | Preserve the compatibility redirect. Do not create a second Khala landing or revive the removed comparison.                                   |
+| `/astro`                 | The Start-owned Desktop MVP landing is authoritative. Any future visual change must be a newly scoped Start issue with current SSR/runtime budgets. |
+| retired `apps/astro`     | Do not recreate it. #8848 is superseded because its implementation home and static-runtime premise no longer exist.                            |
+| retained web product UI  | The bounded `/forum` board/status treatment remains the accepted Effect Native web pilot.                                                       |
+| Desktop                  | Project Home and Settings remain the accepted first static product pilots.                                                                      |
 
-This correction avoids spending the first Khala UI implementation on a route
-whose invariant requires it to be removed.
+The [#8848 disposition](./2026-07-15-khala-ui-astro-pilot-superseded-disposition.md)
+records the repository evidence. It does not authorize a root cutover, deploy,
+or Start landing redesign.
 
 ## What was audited
 
@@ -128,8 +129,8 @@ Important sources are pinned to the audited commit:
 
 The destination audit covered:
 
-- current web route ownership, the frozen `/tanstack` comparison, Astro
-  destination, Forum mount, and route budget;
+- current web route ownership, the `/tanstack` compatibility redirect,
+  Start-owned `/astro` destination, Forum mount, and route budget;
 - the Effect Native catalog, theme, motion preference, direct DOM and React DOM
   renderer seam, Canvas host, gallery, testkit, and vendoring boundary;
 - Desktop's Electron security policy, React 19 Strict Mode workbench, CSS/token
@@ -425,20 +426,23 @@ The three highest-priority conclusions are:
   do not combine that mechanical authority change with new visual behavior.
 - **Suggested command:** `$impeccable harden the Khala UI workspace on Node, pnpm, and Vite Plus`
 
-### P2-11 — Current route authority forbids the obvious web pilot
+### P2-11 — Route authority changes can invalidate a queued visual pilot
 
-- **Location:** web AGENTS/invariants, Astro candidate, Start `/tanstack`
-  comparison, and Forum mount.
+- **Location:** web invariants, removed `apps/astro`, Start `/astro` and
+  `/tanstack`, and Forum mount.
 - **Category:** information architecture, repository ownership.
-- **Impact:** styling `/tanstack` would invalidate the exact Astro comparison
-  and grow a route scheduled for retirement. A visual success there would be
-  throwaway work and corrupt performance evidence.
-- **Standard:** new landing work goes to Astro; retained application UI goes
-  through Effect Native; comparison fixtures remain exact.
-- **Recommendation:** use the Effect Native gallery first, Desktop Project Home
-  second, and `/forum` third. Apply the final static language to Astro only in a
-  separately authorized public-site issue.
-- **Suggested command:** `$impeccable adapt the Khala UI pilot to retained Desktop and Forum surfaces`
+- **Impact:** #8848's app path and static-runtime premise disappeared during
+  public-site unification. Recreating the deleted app would violate current
+  route authority; treating `/tanstack` as a comparison would revive retired
+  behavior; silently moving the work into Start would violate the issue's own
+  non-goals and measurements.
+- **Standard:** validate the owning app and route invariant immediately before
+  each pilot. Supersede stale work instead of porting it across an authority
+  boundary by implication.
+- **Recommendation:** retain the accepted Desktop and Forum pilots. Any future
+  `/astro` visual change needs a fresh Start-owned issue and current SSR,
+  runtime, route-output, and public-copy proof.
+- **Suggested command:** `$impeccable audit the current /astro landing before proposing a new Khala UI pilot`
 
 ### P2-12 — Neither upstream nor destination has the complete visual proof gate yet
 
@@ -693,8 +697,8 @@ Khala UI should feel like OpenAgents, not an Arwes clone:
     and an explicit opt-in product contract.
 13. Product controls keep their existing semantic primitive; Khala UI wraps or
     lowers them but does not replace them with decorative lookalikes.
-14. The frozen `/tanstack` comparison remains byte/behavior equivalent to its
-    Astro source for as long as that measurement route exists.
+14. `/tanstack` remains only the current compatibility redirect to `/astro`; it
+    does not regain independent product, comparison, or Khala UI authority.
 
 If implementation changes one of these statements, update the owning
 `INVARIANTS.md` and add the corresponding test, model note, or explicit
@@ -782,8 +786,10 @@ Pilot in this order:
    and state colors without additional motion.
 3. **Retained web `/forum`.** Apply the same Effect Native definitions to a
    bounded board card/breadcrumb/status band and at most one static backdrop.
-4. **Astro landing.** After separate public-site authorization, consume a
-   static CSS/SVG projection of the accepted language; do not grow `/tanstack`.
+4. **Retired Astro landing pilot.** #8848 is superseded: `apps/astro` was
+   deleted and `/astro` moved into Start before activation. Do not recreate the
+   app or silently transfer the static-runtime scope. Open a new Start-owned
+   issue if the authoritative landing later needs Khala UI work.
 
 Measure Desktop renderer bytes and startup against the current checked baseline
 (approximately 401 ms first paint and 444 ms shell mounted on the recorded
@@ -865,7 +871,7 @@ fallback for unsupported hosts.
 | RN                | explicit visual/semantic equivalent or named degradation; screen-reader and dynamic-type fixtures                    |
 | Canvas            | logical/DPR correctness, resize, deterministic seed, offscreen/hidden pause, resource teardown, frame/memory budgets |
 | Electron          | unchanged CSP/sandbox/protocol boundary, no IPC expansion, build + `smoke:react`, headed keyboard/a11y review        |
-| web               | route budget wired to the deploy gate, SSR/browser visual snapshots, `/tanstack` comparison unchanged                |
+| web               | route budget wired to the deploy gate, SSR/browser visual snapshots, `/tanstack` redirect contract unchanged          |
 | vendoring         | complete Effect Native upstream commit, catalog bump, all package commit fields, guard/freshness checks              |
 | brand             | golden-gallery review at all densities; restrained use; no glow/stripe/frame proliferation                           |
 
