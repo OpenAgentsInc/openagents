@@ -1809,6 +1809,18 @@ const boot = (): void => {
   ;((globalThis as { __oaStartupMarks?: Record<string, number> }).__oaStartupMarks ??= {}).bootStart = Date.now()
   const root = document.getElementById("openagents-desktop-root")
   if (root === null) return
+  // QA-3 (#8908): visual-baseline probe mode — mount one frozen fixture shell
+  // state instead of the live shell. Lazy import keeps the module (and its
+  // Date-freezing shim) entirely off the production startup path.
+  const visualBaseline = new URLSearchParams(window.location.search).get("visualBaseline")
+  if (visualBaseline !== null) {
+    void import("./visual-baseline.ts").then(module =>
+      module.mountVisualBaseline(root, visualBaseline)
+    ).catch(error => {
+      document.documentElement.dataset.visualBaselineError = error instanceof Error ? error.message : "mount failed"
+    })
+    return
+  }
   const host = decodeBridgeHost(
     (globalThis as { openagentsDesktop?: unknown }).openagentsDesktop,
   )

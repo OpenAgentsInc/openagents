@@ -101,6 +101,12 @@ import {
   isTrustedDesktopRendererUrl,
 } from "./desktop-renderer-location.ts"
 import { desktopWorkerUrl } from "./desktop-worker-location.ts"
+import {
+  VISUAL_BASELINE_DEVICE_SCALE_FACTOR,
+  VISUAL_BASELINE_STATES,
+  VISUAL_BASELINE_WINDOW,
+  type VisualBaselineCaptureReceipt,
+} from "./visual-baseline-contract.ts"
 import { desktopRuntimeWorkspaceRoot } from "./desktop-runtime-workspace.ts"
 import { desktopLaunchWorkspaceRoot } from "./desktop-launch-workspace.ts"
 import {
@@ -528,8 +534,23 @@ const fullAutoRestartProbe: (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number] | nu
 // control API against the REAL running Electron main. Only meaningful in
 // combination with OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1.
 const fullAutoControlProbe = process.env.OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL_PROBE === "1"
+// QA-3 (#8908): the visual-baseline capture probe (scripts/
+// visual-baseline-smoke.ts). Windowless fixture-mode posture like the probes
+// above: an OFFSCREEN window renders each frozen fixture shell state
+// (renderer `?visualBaseline=<name>`) and `webContents.capturePage` writes
+// PNG receipts into OPENAGENTS_DESKTOP_VISUAL_BASELINE_SHOTS, then exits.
+const visualBaselineProbe = process.env.OPENAGENTS_DESKTOP_VISUAL_BASELINE_PROBE === "1"
+if (visualBaselineProbe) {
+  // Deterministic rasterization: software rendering plus a forced device
+  // scale of 1 keeps captured pixels stable across GPUs and Retina scales.
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch(
+    "force-device-scale-factor",
+    String(VISUAL_BASELINE_DEVICE_SCALE_FACTOR),
+  )
+}
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null ||
-  fullAutoRestartProbe !== null || fullAutoControlProbe
+  fullAutoRestartProbe !== null || fullAutoControlProbe || visualBaselineProbe
 const reactSmokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE_REACT === "1"
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
@@ -6196,6 +6217,100 @@ void app.whenReady().then(async () => {
       return
     } catch (error) {
       console.error("[openagents-desktop full-auto-control] probe failed", error instanceof Error ? error.message : "unknown")
+      app.exit(1)
+      return
+    }
+  }
+  // QA-3 (#8908): the visual-baseline capture probe
+  // (scripts/visual-baseline-smoke.ts). Windowless like the probes above, but
+  // it needs NO runtime wiring at all: the renderer's `?visualBaseline=<name>`
+  // mode mounts a frozen fixture shell state with no preload bridge, so the
+  // probe only drives navigation, readiness polling, and capturePage.
+  if (visualBaselineProbe) {
+    const shotsDir = process.env.OPENAGENTS_DESKTOP_VISUAL_BASELINE_SHOTS
+    if (shotsDir === undefined || shotsDir === "") {
+      console.error("[openagents-desktop visual-baseline] OPENAGENTS_DESKTOP_VISUAL_BASELINE_SHOTS is required")
+      app.exit(1)
+      return
+    }
+    try {
+      mkdirSync(shotsDir, { recursive: true })
+      const window = new BrowserWindow({
+        width: VISUAL_BASELINE_WINDOW.width,
+        height: VISUAL_BASELINE_WINDOW.height,
+        useContentSize: true,
+        show: false,
+        frame: false,
+        // khalaTheme color.background, same as createWindow.
+        backgroundColor: "#05070d",
+        webPreferences: {
+          offscreen: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          nodeIntegrationInSubFrames: false,
+          sandbox: true,
+          webviewTag: false,
+          webSecurity: true,
+          spellcheck: false,
+          backgroundThrottling: false,
+        },
+      })
+      const captured: Array<VisualBaselineCaptureReceipt> = []
+      for (const stateName of VISUAL_BASELINE_STATES) {
+        await window.loadURL(`${desktopRendererEntryUrl}?visualBaseline=${stateName}`)
+        const deadline = Date.now() + 30_000
+        let ready = false
+        while (Date.now() < deadline) {
+          const status = await window.webContents.executeJavaScript(
+            "({ ready: document.documentElement.dataset.visualBaselineReady ?? null, error: document.documentElement.dataset.visualBaselineError ?? null })",
+          ) as { ready: string | null; error: string | null }
+          if (status.error !== null) throw new Error(`renderer fixture failed for ${stateName}: ${status.error}`)
+          if (status.ready === "1") {
+            ready = true
+            break
+          }
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+        if (!ready) throw new Error(`renderer never signaled visual-baseline ready for ${stateName}`)
+        const rawImage = await window.webContents.capturePage()
+        const rawSize = rawImage.getSize()
+        // macOS offscreen rendering ignores force-device-scale-factor and
+        // rasters at the primary display's backing scale. Normalize to the
+        // fixed 1x geometry so baselines are Retina-independent: resize is a
+        // pure function of the captured bitmap (same input -> same bytes) and
+        // a no-op when the capture is already 1x.
+        const image = rawSize.width === VISUAL_BASELINE_WINDOW.width && rawSize.height === VISUAL_BASELINE_WINDOW.height
+          ? rawImage
+          : rawImage.resize({
+              width: VISUAL_BASELINE_WINDOW.width,
+              height: VISUAL_BASELINE_WINDOW.height,
+              quality: "best",
+            })
+        const png = image.toPNG()
+        const size = image.getSize()
+        if (size.width !== VISUAL_BASELINE_WINDOW.width || size.height !== VISUAL_BASELINE_WINDOW.height) {
+          throw new Error(`capture for ${stateName} is ${size.width}x${size.height}, expected ${VISUAL_BASELINE_WINDOW.width}x${VISUAL_BASELINE_WINDOW.height}`)
+        }
+        const file = `${stateName}.png`
+        writeFileSync(path.join(shotsDir, file), png)
+        captured.push({
+          state: stateName,
+          file,
+          sha256: createHash("sha256").update(png).digest("hex"),
+          width: size.width,
+          height: size.height,
+        })
+      }
+      console.log(`[openagents-desktop visual-baseline] captured ${JSON.stringify({
+        ok: true,
+        window: VISUAL_BASELINE_WINDOW,
+        deviceScaleFactor: VISUAL_BASELINE_DEVICE_SCALE_FACTOR,
+        states: captured,
+      })}`)
+      app.exit(0)
+      return
+    } catch (error) {
+      console.error("[openagents-desktop visual-baseline] probe failed", error instanceof Error ? error.message : "unknown")
       app.exit(1)
       return
     }

@@ -1,0 +1,51 @@
+{
+  "schema": "openagents-desktop.visual-baselines.v1",
+  "platform": "darwin-arm64",
+  "timezone": "UTC",
+  "window": {
+    "width": 1280,
+    "height": 800,
+    "deviceScaleFactor": 1
+  },
+  "thresholds": {
+    "perChannelTolerance": 3,
+    "maxDifferentPixelRatio": 0.001
+  },
+  "states": [
+    {
+      "name": "composer-idle",
+      "file": "composer-idle.png",
+      "sha256": "6e7c6f59ff40d9a32e8b9f31fdffb6b665c3a6c7116392ebf4a29b3f12661295",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "thread-plan-card",
+      "file": "thread-plan-card.png",
+      "sha256": "db65b88a5aeeee44fb01bda7c76420d13b4e19cceafb2dc011fb5d9700f547ce",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "approval-card",
+      "file": "approval-card.png",
+      "sha256": "6803cc2fc1cbc225613c6d91b64708359180dc428f04f49ef360916aa1454331",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "reasoning-disclosure",
+      "file": "reasoning-disclosure.png",
+      "sha256": "91f8524430d26da384c2b5d7ffb017a825d5451bf6184026a2c9b6062e200a17",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "full-auto-running",
+      "file": "full-auto-running.png",
+      "sha256": "b4d017240ea3c077c50789d2fd68448fbab429da442a360b2a5914775cb5a974",
+      "width": 1280,
+      "height": 800
+    }
+  ]
+}
