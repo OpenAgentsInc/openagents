@@ -1009,6 +1009,28 @@ This implemented contract does not itself admit any cross-platform target as
 supported. The native install/update/interruption/rollback receipts required
 by the normative ProductSpec remain the support authority.
 
+### Isolated worktree preview and conservative HMR (#8931)
+
+`scripts/oa-dev-preview --worktree <absolute-openagents-worktree>` launches
+exactly one selected OpenAgents worktree beside the stable `OpenAgents Dev`
+application. The preview uses a dynamic loopback-only Vite port, a distinct
+application/single-instance identity, and an OS-temporary `userData` profile
+with isolated-app proof enabled. Shutdown reaps the preview process tree and
+removes only that launcher-owned temporary profile; it never reads or mutates
+the stable Dev profile.
+
+CSS and React component modules remain the only automatic HMR/Fast Refresh
+classes. Other renderer changes require an explicit reload and warn before
+discarding an unsent composer draft, attachment, review/file context, or
+pending owner interaction. Main, preload, worker, native, build/config, shared
+package, and dependency changes are not hot-applied: the preview reports a
+restart or dependency-sync requirement. The packaged renderer path is
+unchanged. `scripts/oa-dev-launch` also reports whether an already-running
+stable app is behind the freshly fetched `origin/main`.
+
+Contract and oracle: `src/dev-preview-contract.ts`, `vite.config.ts`,
+`src/renderer/dev-preview.ts`, and `tests/dev-server.test.ts`.
+
 ## Not guaranteed yet
 
 This document does not promise automatic update delivery (the live feed

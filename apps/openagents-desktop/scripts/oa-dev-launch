@@ -36,6 +36,18 @@ fi
 existing_pid="$(pgrep -x 'OpenAgents Dev' | head -1)"
 if [[ -n "$existing_pid" ]]; then
   echo "oa-dev: OpenAgents Dev is already running as process $existing_pid"
+  if [[ -e "$launch_repo/.git" ]]; then
+    launch_head="$(git -C "$launch_repo" rev-parse HEAD 2>/dev/null)"
+    origin_head="$(git -C "$source_repo" rev-parse origin/main)"
+    if [[ -n "$launch_head" && "$launch_head" != "$origin_head" ]]; then
+      behind_count="$(git -C "$source_repo" rev-list --count "$launch_head..$origin_head" 2>/dev/null)"
+      echo "oa-dev: running stable preview is ${behind_count:-unknown} commit(s) behind origin/main; restart OpenAgents Dev to update"
+    else
+      echo "oa-dev: running stable preview matches origin/main at ${origin_head[1,10]}"
+    fi
+  else
+    echo "oa-dev: running stable preview revision is unavailable; restart OpenAgents Dev to synchronize"
+  fi
   if ! /usr/bin/osascript -e "tell application \"System Events\" to set frontmost of first application process whose unix id is $existing_pid to true" >/dev/null 2>&1; then
     echo "oa-dev: could not activate the existing OpenAgents Dev window" >&2
     exit 1

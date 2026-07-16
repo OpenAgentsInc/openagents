@@ -1,20 +1,27 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
+import type { AddressInfo } from "node:net"
 import path from "node:path"
 import { createServer } from "vite"
 import { buildDesktop } from "./build.ts"
 import { desktopDevServerHost, desktopDevServerPort } from "../vite.config.ts"
 
 const appRoot = path.resolve(import.meta.dirname, "..")
+const preview = process.env.OPENAGENTS_DESKTOP_PREVIEW === "1"
 
 await buildDesktop()
 
 const server = await createServer({
   configFile: path.join(appRoot, "vite.config.ts"),
   root: appRoot,
+  mode: preview ? "openagents-preview" : "development",
 })
 await server.listen()
 
-const devServerUrl = `http://${desktopDevServerHost}:${desktopDevServerPort}`
+const listeningAddress = server.httpServer?.address()
+const listeningPort = typeof listeningAddress === "object" && listeningAddress !== null
+  ? (listeningAddress as AddressInfo).port
+  : desktopDevServerPort
+const devServerUrl = `http://${desktopDevServerHost}:${listeningPort}`
 console.log(`[openagents-desktop] renderer dev server ready at ${devServerUrl}`)
 
 const electron = Runtime.spawn(["electron", "."], {

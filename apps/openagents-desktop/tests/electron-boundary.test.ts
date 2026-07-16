@@ -42,12 +42,13 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
   test("keeps production identity stable while isolating development safeStorage", () => {
     const manifest = JSON.parse(read("package.json")) as { productName?: string };
     const html = read("index.html");
-    expect(main).toContain(
-      'const desktopApplicationName = app.isPackaged ? "OpenAgents" : "OpenAgents Dev"',
-    );
+    expect(main).toContain('const desktopPreviewMode = !app.isPackaged');
+    expect(main).toContain('? "OpenAgents"');
+    expect(main).toContain("OpenAgents Preview");
+    expect(main).toContain(': "OpenAgents Dev"');
     expect(main).toContain("app.setName(desktopApplicationName)");
     expect(main).toContain("process.title = desktopApplicationName");
-    expect(main).toContain('title: "OpenAgents"');
+    expect(main).toContain("title: desktopApplicationName");
     expect(manifest.productName).toBe("OpenAgents");
     expect(html).toContain("<title>OpenAgents</title>");
     expect(html).not.toContain("OpenAgents Desktop");

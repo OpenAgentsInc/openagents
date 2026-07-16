@@ -17,6 +17,7 @@
     "make:mac": "node --import tsx scripts/prepare-macos-maker.ts && node --import tsx scripts/stage-and-package.ts --target darwin-arm64 --mode make",
     "stage:target": "node --import tsx scripts/stage-target.ts",
     "dev": "node --import tsx scripts/dev.ts",
+    "dev:preview": "node --import tsx scripts/dev.ts",
     "full-auto": "node --import tsx scripts/full-auto-cli.ts",
     "live-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-live-proof.ts",
     "mvp-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-mvp-proof.ts",

@@ -38,7 +38,15 @@ import {
 // macOS derives Electron safeStorage's Keychain service from the application
 // name. Keep production stable while isolating unsigned development and smoke
 // launches so they can never contest the signed app's Keychain ACL.
-const desktopApplicationName = app.isPackaged ? "OpenAgents" : "OpenAgents Dev"
+const desktopPreviewMode = !app.isPackaged && process.env.OPENAGENTS_DESKTOP_PREVIEW === "1"
+const desktopPreviewLabel = /^[a-f0-9]{7,12}$/.test(process.env.OPENAGENTS_DESKTOP_PREVIEW_LABEL ?? "")
+  ? process.env.OPENAGENTS_DESKTOP_PREVIEW_LABEL
+  : null
+const desktopApplicationName = app.isPackaged
+  ? "OpenAgents"
+  : desktopPreviewMode
+    ? `OpenAgents Preview${desktopPreviewLabel === null ? "" : ` ${desktopPreviewLabel}`}`
+    : "OpenAgents Dev"
 app.setName(desktopApplicationName)
 process.title = desktopApplicationName
 
@@ -632,6 +640,9 @@ const isolatedAppProofMode = isIsolatedAppProof({
   userDataPath: desktopUserDataPath,
   temporaryDirectory: app.getPath("temp"),
 })
+if (desktopPreviewMode && !isolatedAppProofMode) {
+  throw new Error("OpenAgents Desktop preview requires an isolated OS-temporary userData profile")
+}
 // The installed application uses React by default. Existing broad smoke keeps
 // the explicit compatibility oracle until its specialist surfaces are ported;
 // `smoke:react` exercises the installed default backend itself.
@@ -4044,7 +4055,7 @@ const createWindow = (): BrowserWindow => {
     // pre-boot window never flashes an off-palette frame (EP250 #8712).
     backgroundColor: "#05070d",
     show: false,
-    title: "OpenAgents",
+    title: desktopApplicationName,
     icon: desktopIconPath,
     // Integrate macOS window controls into the product chrome. The renderer
     // reserves a token-sized drag/safe area in the blue sidebar, so there is

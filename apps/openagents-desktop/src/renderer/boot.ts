@@ -134,6 +134,8 @@ import {
   type DesktopDeferredCommand,
 } from "../desktop-command-contract.ts"
 import { resolveDesktopDeferredCommandIntent } from "./command-registry.ts"
+import { decodeDesktopPreviewChangeEvent } from "../dev-preview-contract.ts"
+import { desktopPreviewReloadRisk } from "./dev-preview.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -996,6 +998,36 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // clear fiber can never fire after the renderer unmounts.
     const noticeController = makeCommandNoticeController(state)
     yield* Effect.addFinalizer(() => noticeController.shutdown)
+    if (import.meta.hot !== undefined) {
+      const onPreviewChange = (raw: unknown): void => {
+        const change = decodeDesktopPreviewChangeEvent(raw)
+        if (change === null) return
+        if (change.kind === "host_restart_required" || change.kind === "dependency_sync_required") {
+          const action = change.kind === "dependency_sync_required" ? "dependency sync and preview restart" : "preview restart"
+          void Effect.runPromise(noticeController.setTransientNotice(`${change.pathRef} requires ${action}; it was not hot-applied.`))
+          return
+        }
+        if (change.kind !== "renderer_reload_required") return
+        void Effect.runPromise(SubscriptionRef.get(state)).then(current => {
+          if (desktopPreviewReloadRisk(current) && !window.confirm("Reload the worktree preview? An unsent draft, attachment, or pending owner interaction may be discarded.")) {
+            return Effect.runPromise(noticeController.setTransientNotice("Preview reload deferred to preserve unsent renderer state."))
+          }
+          window.location.reload()
+        }).catch(() => {})
+      }
+      import.meta.hot.on("openagents:preview-change", onPreviewChange)
+      const onViteFullReload = (): void => {
+        const current = Effect.runSync(SubscriptionRef.get(state))
+        if (desktopPreviewReloadRisk(current)) {
+          window.confirm("Vite must reload this worktree preview. An unsent draft, attachment, or pending owner interaction may be discarded.")
+        }
+      }
+      import.meta.hot.on("vite:beforeFullReload", onViteFullReload)
+      yield* Effect.addFinalizer(() => Effect.sync(() => {
+        import.meta.hot?.off("openagents:preview-change", onPreviewChange)
+        import.meta.hot?.off("vite:beforeFullReload", onViteFullReload)
+      }))
+    }
     let voiceCommandSequence = 0
     const voiceFinalLedger = makeVoiceFinalLedger()
     let voiceMessageBusy = false

@@ -1,0 +1,98 @@
+#!/bin/zsh
+
+emulate -L zsh
+setopt pipefail
+
+source_repo="$HOME/work/openagents"
+node24_bin="$HOME/.nvm/versions/node/v24.13.1/bin"
+selected_worktree=""
+child_pid=""
+preview_user_data=""
+
+while (( $# > 0 )); do
+  case "$1" in
+    --worktree)
+      shift
+      selected_worktree="${1:-}"
+      ;;
+    *)
+      echo "oa-dev-preview: usage: oa-dev-preview --worktree /absolute/path/to/openagents-worktree" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ -x "$node24_bin/node" ]]; then
+  export PATH="$node24_bin:$PATH"
+fi
+if [[ "$(node --version 2>/dev/null)" != "v24.13.1" ]]; then
+  echo "oa-dev-preview: Node 24.13.1 is required" >&2
+  exit 1
+fi
+if [[ -z "$selected_worktree" || "$selected_worktree" != /* ]]; then
+  echo "oa-dev-preview: --worktree must be an absolute path" >&2
+  exit 2
+fi
+if ! git -C "$selected_worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "oa-dev-preview: selected path is not a Git worktree" >&2
+  exit 1
+fi
+
+selected_worktree="$(cd "$selected_worktree" && pwd -P)"
+selected_root="$(git -C "$selected_worktree" rev-parse --show-toplevel)"
+source_common="$(git -C "$source_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+selected_common="$(git -C "$selected_worktree" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+if [[ "$selected_root" != "$selected_worktree" || -z "$source_common" || "$selected_common" != "$source_common" ]]; then
+  echo "oa-dev-preview: selected path must be an OpenAgents repository worktree root" >&2
+  exit 1
+fi
+
+cleanup() {
+  if [[ -n "$child_pid" ]] && kill -0 "$child_pid" >/dev/null 2>&1; then
+    kill -TERM "$child_pid" >/dev/null 2>&1
+    wait "$child_pid" >/dev/null 2>&1
+  fi
+  if [[ -n "$preview_user_data" && "$preview_user_data" == ${TMPDIR:-/tmp}/openagents-desktop-preview.* ]]; then
+    rm -rf "$preview_user_data"
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+cd "$selected_worktree" || exit 1
+lock_ref="$(git rev-parse HEAD:pnpm-lock.yaml 2>/dev/null)"
+deps_key="${lock_ref}:$(node --version):$(pnpm --version)"
+deps_marker="$selected_worktree/node_modules/.oa-deps-key"
+if [[ ! -d node_modules || ! -f "$deps_marker" || "$(<"$deps_marker")" != "$deps_key" ]]; then
+  echo "oa-dev-preview: syncing selected worktree dependencies"
+  pnpm install --frozen-lockfile --ignore-scripts || exit 1
+  printf '%s\n' "$deps_key" >| "$deps_marker"
+fi
+
+electron_package="$selected_worktree/apps/openagents-desktop/node_modules/electron"
+electron_app="$electron_package/dist/Electron.app"
+if [[ ! -x "$electron_app/Contents/MacOS/Electron" ||
+      ! -e "$electron_app/Contents/Frameworks/Electron Framework.framework/Electron Framework" ]]; then
+  echo "oa-dev-preview: repairing Electron runtime"
+  rm -rf "$electron_package/dist"
+  node "$electron_package/install.js" || exit 1
+fi
+
+preview_user_data="$(mktemp -d "${TMPDIR:-/tmp}/openagents-desktop-preview.XXXXXX")" || exit 1
+preview_revision="$(git rev-parse --short=10 HEAD)"
+echo "oa-dev-preview: launching isolated preview at $preview_revision"
+echo "oa-dev-preview: source changes are watched only in the selected worktree"
+
+OPENAGENTS_DESKTOP_PREVIEW=1 \
+OPENAGENTS_DESKTOP_PREVIEW_LABEL="$preview_revision" \
+OPENAGENTS_DESKTOP_USER_DATA="$preview_user_data" \
+OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1 \
+OPENAGENTS_DESKTOP_LAUNCH_CWD="$selected_worktree" \
+pnpm --dir apps/openagents-desktop dev:preview &
+child_pid=$!
+wait "$child_pid"
+exit_code=$?
+child_pid=""
+exit "$exit_code"
