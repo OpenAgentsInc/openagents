@@ -27,12 +27,11 @@ const routeCatalog = [
   { kind: "interrupt" as const, descriptor: "stop interrupt cancel the current active response turn immediately" },
   { kind: "focus" as const, commandId: "chat.open" as const, descriptor: "open focus show the chat conversation" },
   { kind: "focus" as const, commandId: "workspace.files" as const, descriptor: "open focus show project files workspace" },
-  { kind: "focus" as const, commandId: "workspace.home" as const, descriptor: "open focus show project home overview" },
   { kind: "focus" as const, commandId: "workspace.review" as const, descriptor: "open focus show review changes diff" },
 ] satisfies ReadonlyArray<Readonly<{ kind: "interrupt"; descriptor: string } | { kind: "focus"; commandId: DesktopCommandId; descriptor: string }>>
 
 const embeddedCatalog = routeCatalog.map(route => ({ ...route, vector: embed(route.descriptor) }))
-const automaticCommandIds = new Set<DesktopCommandId>(["chat.open", "workspace.files", "workspace.home", "workspace.review"])
+const automaticCommandIds = new Set<DesktopCommandId>(["chat.open", "workspace.files", "workspace.review"])
 
 /**
  * Central typed semantic selector for voice actions. It uses normalized

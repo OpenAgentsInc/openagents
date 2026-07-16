@@ -44,7 +44,7 @@ const families: ReadonlyArray<ComponentFamily> = [
     title: "Tokens",
     module: "@effect-native/tokens",
     purpose: "Canonical semantic theme and bounded spacing, type, radius, and control lattices.",
-    exports: ["khalaTheme", "colorTokens", "spacingTokens", "radiusTokens", "typeScaleTokens"],
+    exports: ["autopilotTheme", "khalaTheme", "colorTokens", "spacingTokens", "radiusTokens", "typeScaleTokens"],
     contract: ["One semantic token authority", "Renderer projections preserve roles"],
   },
   {

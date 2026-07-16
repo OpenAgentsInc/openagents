@@ -25,8 +25,8 @@ describe("MVP assurance/visible-surface congruence (UX-5 #8791)", () => {
   })
 
   test("FALSIFIER: an uncovered expected-working surface fails", () => {
-    const reduced = mvpAssuranceCoverageMatrix.filter(item => item.surfaceId !== "workspace-home")
-    expect(mvpAssuranceCongruenceViolations(reduced)).toContain('allowlisted surface "workspace-home" has no assurance item')
+    const reduced = mvpAssuranceCoverageMatrix.filter(item => item.surfaceId !== "shell-settings-toggle")
+    expect(mvpAssuranceCongruenceViolations(reduced)).toContain('allowlisted surface "shell-settings-toggle" has no assurance item')
   })
 
   test("FALSIFIER: assurance coverage for a non-MVP surface fails", () => {

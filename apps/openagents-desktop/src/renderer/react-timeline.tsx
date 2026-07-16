@@ -21,6 +21,7 @@ import { Component, createElement, memo, useEffect, useMemo, useRef, useState } 
 import { ChevronRight, Folder } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
+import { workbenchItemSignature, type WorkbenchItem } from "../workbench-item-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
 import { parseChatMarkdown } from "./markdown.ts"
 import { humanizeToolInvocation, projectToolCardEntries } from "./tool-cards.ts"
@@ -54,6 +55,12 @@ export type ReactTimelineRecord = Readonly<{
   resultRef: string | null
   resultBody: string | null
   resultStatus: string | null
+  /**
+   * Typed item payload (#8859) when the source note/history row carried one.
+   * Wave-2 card lanes render this; the string label/body stay authoritative
+   * until then.
+   */
+  item?: WorkbenchItem
 }>
 
 const recordFromItem = (
@@ -62,6 +69,7 @@ const recordFromItem = (
 ): ReactTimelineRecord => {
   const args = item.kind === "tool_call" ? item.summary || field(item, "input") || "" : ""
   const humanized = item.kind === "tool_call" ? humanizeToolInvocation(item.label, args) : null
+  const typedItem = result?.item ?? item.item
   return {
     key: item.itemRef,
     itemRef: item.itemRef,
@@ -76,6 +84,7 @@ const recordFromItem = (
     resultRef: result?.itemRef ?? null,
     resultBody: result?.summary ?? null,
     resultStatus: result?.status ?? null,
+    ...(typedItem === undefined ? {} : { item: typedItem }),
   }
 }
 
@@ -137,6 +146,7 @@ export const projectLocalTimelineRecords = (
       resultRef: entry.card.resultSummary === null ? null : `${entry.card.key}:result`,
       resultBody: entry.card.resultSummary,
       resultStatus: entry.card.status === "failed" ? "failed" : entry.card.status === "ok" ? "completed" : null,
+      ...(entry.card.item === undefined ? {} : { item: entry.card.item }),
     }]
   }
   const note = entry.note
@@ -322,6 +332,9 @@ const sameTimelineRecord = (left: ReactTimelineRecord, right: ReactTimelineRecor
   left.kind === right.kind && left.label === right.label && left.body === right.body &&
   left.timestamp === right.timestamp && left.status === right.status && left.redacted === right.redacted &&
   left.resultRef === right.resultRef && left.resultBody === right.resultBody && left.resultStatus === right.resultStatus &&
+  // Scalar signature comparison — content changes flip it without
+  // stringifying multi-kilobyte diffs on every memo check (#8859).
+  workbenchItemSignature(left.item) === workbenchItemSignature(right.item) &&
   left.fields.length === right.fields.length && left.fields.every((field, index) => {
     const candidate = right.fields[index]
     return candidate !== undefined && field.label === candidate.label && field.value === candidate.value

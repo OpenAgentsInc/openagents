@@ -14,7 +14,7 @@
   --oa-success: #00c853;
   --oa-mono: var(--oa-font-mono);
   min-height: 100dvh;
-  overflow: hidden;
+  overflow-x: clip;
   background: var(--oa-void);
   color: var(--oa-text);
   font-family: var(--oa-font-sans);
@@ -31,20 +31,8 @@
 .oa-public-site :focus-visible { outline: 2px solid var(--oa-cyan); outline-offset: 4px; }
 .oa-container { width: min(100% - 2rem, 76rem); margin-inline: auto; }
 
-.oa-site-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  border-bottom: 1px solid var(--oa-border-subtle);
-  background: rgb(5 7 13 / 0.96);
-}
-
-.oa-nav { min-height: 4rem; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1.5rem; }
-.oa-brand { width: fit-content; display: inline-flex; align-items: center; font-size: .94rem; font-weight: 650; letter-spacing: -.015em; }
-.oa-nav-status { display: inline-flex; align-items: center; gap: .55rem; color: var(--oa-muted); font-family: var(--oa-mono); font-size: .72rem; }
-.oa-nav-status span { width: .42rem; height: .42rem; border-radius: 50%; background: var(--oa-success); }
-.oa-nav-links, .oa-footer-links { display: flex; align-items: center; justify-content: flex-end; gap: 1.25rem; color: var(--oa-muted); font-size: .82rem; }
-.oa-nav-links a:hover, .oa-footer-links a:hover { color: var(--oa-cyan); }
+.oa-footer-links { display: flex; align-items: center; justify-content: flex-end; gap: 1.25rem; color: var(--oa-muted); font-size: .82rem; }
+.oa-footer-links a:hover { color: var(--oa-cyan); }
 
 .oa-hero { position: relative; border-bottom: 1px solid var(--oa-border-subtle); }
 .oa-hero::before { content: ''; position: absolute; inset: 0 auto 0 50%; width: 1px; background: var(--oa-border-subtle); }
@@ -194,9 +182,6 @@
 }
 
 @media (max-width: 700px) {
-  .oa-nav { grid-template-columns: 1fr auto; }
-  .oa-nav-status { display: none; }
-  .oa-nav-links a:last-child { display: none; }
   .oa-hero h1, .oa-install-hero h1 { font-size: clamp(3rem, 15vw, 4.35rem); }
   .oa-section-heading, .oa-closing-layout { align-items: flex-start; flex-direction: column; }
   .oa-workbench-body { min-height: 34rem; grid-template-columns: 1fr; }

@@ -2,14 +2,16 @@
   "name": "@effect-native/gallery",
   "version": "0.0.0-openagents.8855",
   "private": true,
-  "type": "module",
   "license": "MIT",
+  "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./khala": "./src/khala-ui-effects-gallery.ts",
     "./khala-parity": "./src/khala-ui-parity.ts"
   },
-  "scripts": { "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "dependencies": {
     "@effect-native/core": "workspace:*",
     "@effect-native/khala-ui": "workspace:*",
@@ -19,6 +21,6 @@
   },
   "effectNativeVendor": {
     "repo": "OpenAgentsInc/effect-native",
-    "commit": "f7f7fe6ed8e4245126d7149b3f3060d3d8d8c0e9"
+    "commit": "467bde0760d052ee2f4a8fa678bb2f1f6bf200d8"
   }
 }

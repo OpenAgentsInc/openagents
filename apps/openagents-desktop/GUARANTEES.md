@@ -582,6 +582,27 @@ first keystroke types into it with zero clicks.
 Contract:
 `openagents_desktop.composer.focused_on_open.v1`.
 
+### Lexical composer preserves typed application authority
+
+The active React composer uses Lexical as its renderer-private editing engine,
+with the same editor-over-toolbar structure as the audited coding-workbench
+reference and the existing Khala theme.
+
+- Effect Native remains the prompt and intent authority. Lexical owns only
+  editing state, selection, history, and contenteditable behavior.
+- External prompt hydration updates the editor only when plain text actually
+  differs, so ordinary shell rerenders do not reset selection or undo history.
+- Enter submits, Shift+Enter inserts a newline, and an IME composition never
+  submits. Submission retains the existing exact Steer, Queue, and idle Send
+  intents and duplicate-commit guard.
+- The editor is an accessible multiline textbox, remains focused across an
+  explicit new-session transition, grows within a bounded scroll region, and
+  keeps attachment/status changes out of the reading surface's layout.
+- The registered-node seam is explicit for future file, skill, and terminal
+  context chips; unsupported capabilities are not rendered as inert controls.
+
+Contract: `openagents_desktop.chat.lexical_composer.v1`.
+
 ### Sidebar session search actually filters
 
 Typing in the sidebar session search filters over the FULL loss-accounted
@@ -681,8 +702,9 @@ for in the MVP. You need to clean all this up and make a pass to remove
 everything from the sidebar and all UI that's not specifically called for in
 our MVP spec."
 
-- The sidebar dock renders EXACTLY the cited allowlist, in order: New session,
-  Chat, Project home, Settings. Each entry carries
+- The sidebar renders EXACTLY the cited controls: New session above Recent
+  sessions, with Settings pinned alone at the bottom. Project home, the dead
+  Chat destination, and the coding Workspaces box never render. Each retained entry carries
   its ProductSpec/owner-directive citation in
   `src/renderer/mvp-visible-surfaces.ts`.
 - ProductSpec and AssuranceSpec are internal tooling with no MVP route. Files,

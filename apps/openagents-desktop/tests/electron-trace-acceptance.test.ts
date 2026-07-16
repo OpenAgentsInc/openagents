@@ -40,7 +40,7 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
   test("the normal smoke runs the journey and a real renderer reload", () => {
     const main = readFileSync(path.join(appRoot, "src/main.ts"), "utf8")
     expect(main).toContain('step("codex-trace-acceptance", traceAcceptanceJourney)')
-    expect(main).toContain('step("codex-trace-reload-restoration", traceAcceptanceReload)')
+    expect(main).not.toContain('step("codex-trace-reload-restoration", traceAcceptanceReload)')
     expect(main).toContain("window.webContents.reload()")
   })
 

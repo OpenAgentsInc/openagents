@@ -438,3 +438,59 @@ describe("React timeline performance corpus", () => {
     expect(container.querySelectorAll("[data-timeline-key]")).toHaveLength(0)
   })
 })
+
+describe("typed WorkbenchItem surfacing on timeline records (#8859)", () => {
+  const commandItem = {
+    kind: "command",
+    source: "codex",
+    command: "pnpm test",
+    status: "completed",
+    exitCode: 0,
+    durationMs: 950,
+    outputTail: "42 passed",
+  } as const
+
+  test("local records carry the typed item from the trace note", () => {
+    const records = projectLocalTimelineRecords([
+      {
+        key: "bash-start",
+        role: "system" as const,
+        text: "Bash · started",
+        timestamp: "05:41",
+        meta: { trace: { toolName: "Bash", phase: "started" as const, summary: '{"command":"pnpm test"}' } },
+      },
+      {
+        key: "bash-result",
+        role: "system" as const,
+        text: "Bash · ok · 42 passed",
+        timestamp: "05:42",
+        meta: { trace: { toolName: "Bash", phase: "ok" as const, summary: "42 passed", item: commandItem } },
+      },
+    ])
+    expect(records).toHaveLength(1)
+    expect(records[0]!.item).toEqual(commandItem)
+    // Existing string presentation is unchanged.
+    expect(records[0]).toMatchObject({ kind: "tool_call", label: "Bash", status: "completed" })
+  })
+
+  test("history records surface the typed sidecar; the result row's item wins", () => {
+    const startedItem = { ...commandItem, status: "in_progress" as const }
+    const records = projectReactTimelineRecords([
+      historyItem(1, "tool_call", "pnpm test", {
+        itemRef: "call-item",
+        label: "exec_command",
+        status: "running",
+        fields: [{ label: "call", value: "call-9" }],
+        item: startedItem,
+      }),
+      historyItem(2, "tool_result", "All tests passed", {
+        itemRef: "result-item",
+        status: "completed",
+        fields: [{ label: "call", value: "call-9" }],
+        item: commandItem,
+      }),
+    ])
+    expect(records).toHaveLength(1)
+    expect(records[0]!.item).toEqual(commandItem)
+  })
+})

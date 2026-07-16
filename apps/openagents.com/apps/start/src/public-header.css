@@ -1,0 +1,128 @@
+.oa-unified-header {
+  position: sticky;
+  z-index: 60;
+  top: 0;
+  width: 100%;
+  border-bottom: 1px solid rgb(116 164 255 / 0.1);
+  background: rgb(7 11 27 / 0.96);
+  color: #aab5c8;
+  font-family: var(--oa-font-sans);
+  font-optical-sizing: auto;
+  font-variation-settings: "wdth" 100;
+}
+
+.oa-unified-header,
+.oa-unified-header * {
+  box-sizing: border-box;
+}
+
+.oa-unified-header a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.oa-unified-header :focus-visible {
+  outline: 2px solid #4fd0ff;
+  outline-offset: 3px;
+}
+
+.oa-unified-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100% - 3rem, 76rem);
+  min-height: 4.25rem;
+  margin-inline: auto;
+  font-size: 0.82rem;
+}
+
+.oa-unified-nav-left,
+.oa-unified-nav-actions {
+  display: flex;
+  align-items: center;
+}
+
+.oa-unified-nav-left {
+  gap: 2.5rem;
+}
+
+.oa-unified-nav-actions {
+  gap: 1.35rem;
+}
+
+.oa-unified-brand {
+  color: #f4f6fb !important;
+  font-size: 0.92rem;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+}
+
+.oa-unified-docs-link,
+.oa-unified-app-link,
+.oa-unified-github-link,
+.oa-unified-download-link {
+  transition: color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.oa-unified-docs-link:hover,
+.oa-unified-app-link:hover,
+.oa-unified-github-link:hover {
+  color: #f4f6fb;
+}
+
+.oa-unified-github-link {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.oa-unified-github-link:hover {
+  background: rgb(116 164 255 / 0.09);
+}
+
+.oa-unified-github-link svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.oa-unified-download-link {
+  min-height: 2rem;
+  padding: 0.4rem 0.78rem;
+  border: 1px solid rgb(116 164 255 / 0.38);
+  border-radius: 999px;
+  color: #f4f6fb !important;
+  background: rgb(58 123 255 / 0.13);
+}
+
+.oa-unified-download-link:hover {
+  background: rgb(58 123 255 / 0.24);
+}
+
+@media (max-width: 760px) {
+  .oa-unified-nav {
+    width: min(100% - 2rem, 76rem);
+  }
+
+  .oa-unified-docs-link,
+  .oa-unified-app-link {
+    display: none;
+  }
+
+  .oa-unified-nav-left,
+  .oa-unified-nav-actions {
+    gap: 1rem;
+  }
+
+  .oa-unified-download-link {
+    min-height: 2.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-unified-header a {
+    transition: none;
+  }
+}

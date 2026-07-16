@@ -62,7 +62,7 @@ grok --no-auto-update -p "List top-level packages" \
 | Interactive TUI | `grok` | Human-driven coding sessions |
 | Headless single-turn | `grok -p "..."` | Scripts, bots, CI one-shots |
 | Headless multi-step | `-p` + `--session-id` / `-r` / `-c` | Pipelines that resume context |
-| ACP | `grok agent stdio` | IDE / custom tool host over JSON-RPC |
+| Agent Client Protocol | `grok agent stdio` | IDE / custom tool host over JSON-RPC |
 | Dashboard | `grok dashboard` | Supervise many parallel agents |
 
 ## Paths worth knowing
@@ -79,6 +79,9 @@ grok --no-auto-update -p "List top-level packages" \
 
 ## Related in this monorepo
 
+- [T3 Code Agent Client Protocol implementation teardown](../teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
+  — exact T3 transport, current Grok Rust packages, schema-v1.19.0
+  compatibility verdict, and OpenAgents client plan
 - `docs/grok/` — Grok's product/strategy analysis sandbox (different folder)
 - Fleet/coding-agent work still prefers monorepo `EXECUTION.md` norms when
   shipping OpenAgents code; Grok CLI is an alternate runtime you may script.

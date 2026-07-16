@@ -32,6 +32,14 @@ No T3 Code source or user state was modified. No credentials, accounts, or
 hosted relay behavior were exercised. Source proves intended implementation at
 this commit; it does not prove every path is enabled in every release channel.
 
+The Agent Client Protocol implementation was subsequently re-audited against
+current T3 Code, current Grok source, and the current official schema stream in
+the
+[T3 Code Agent Client Protocol implementation teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md).
+That deep dive supersedes this document for exact methods, transport semantics,
+Grok package versions, schema-v1.19.0 compatibility, registry scope, and the
+OpenAgents client-adapter plan.
+
 ## TL;DR
 
 T3 Code is a **provider-neutral control plane over other vendors' coding
@@ -1771,7 +1779,7 @@ All paths relative to the pinned clone at `projects/repos/t3code`.
 | Architecture overview | `docs/architecture/overview.md`; `docs/architecture/providers.md` |
 | Provider drivers/adapters | `apps/server/src/provider/Drivers/`; `apps/server/src/provider/Layers/` |
 | Codex protocol client | `packages/effect-codex-app-server/scripts/generate.ts`; `packages/effect-codex-app-server/src/{client,protocol}.ts` + `_generated/`; `apps/server/src/provider/Layers/{CodexProvider,CodexSessionRuntime}.ts`; `apps/server/src/provider/CodexAdapter.ts` |
-| ACP implementation | `packages/effect-acp/src/{agent,client,protocol,terminal}.ts` |
+| Agent Client Protocol implementation | `packages/effect-acp/src/{agent,client,protocol,terminal}.ts`; [current deep dive](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md) |
 | Orchestration contracts | `packages/contracts/src/orchestration.ts`, `providerRuntime.ts`, `provider.ts`, `rpc.ts`, `git.ts` |
 | Engine pipeline | `apps/server/src/orchestration/` (`decider.ts`, `projector.ts`, `commandInvariants.ts`) |
 | Persistence | `apps/server/src/persistence/Layers/Sqlite.ts`; `Migrations/001…032`; `Services/Projection*.ts` |

@@ -14,7 +14,6 @@ import {
   Frame,
   IntentRef,
   type FrameView,
-  type IconName,
   type IntentError,
   type IntentReporter,
   type JsonPayload,
@@ -22,12 +21,10 @@ import {
 import { Effect, Scope, Stream } from "@effect-native/core/effect"
 import { mountDomThemeStyleSheet } from "@effect-native/render-dom"
 import {
-  Folder,
   CircleAlert,
   Download,
   LoaderCircle,
   X,
-  type LucideIcon,
 } from "lucide-react"
 import {
   DesktopConversation,
@@ -44,13 +41,13 @@ import {
   renderReactDomView,
   type ReactViewStore,
 } from "@effect-native/render-dom/react"
-import { khalaTheme, type Theme } from "@effect-native/tokens"
+import { type Theme } from "@effect-native/tokens"
+import { openagentsDesktopTheme } from "./theme.ts"
 import { Button } from "#components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "#components/ui/dialog"
-import { Separator } from "#components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
 import type { DesktopShellState } from "./shell.ts"
 import { desktopConversationShortcutLabel, formatRelativeTimestamp } from "./shell.ts"
@@ -60,18 +57,6 @@ import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
-
-type ReactSidebarIconName = Extract<IconName, "Folder">
-
-const sidebarIconAssets: Readonly<Record<ReactSidebarIconName, LucideIcon>> = {
-  Folder,
-}
-
-/** Closed-catalog React lowering; Lucide remains a renderer-private asset implementation. */
-const ReactCatalogIcon = ({ name }: { readonly name: ReactSidebarIconName }): ReactElement => {
-  const Asset = sidebarIconAssets[name]
-  return <Asset aria-hidden="true" data-icon-name={name} focusable="false" />
-}
 
 export type ReactSessionRow = Readonly<{
   id: string
@@ -137,7 +122,13 @@ export const projectReactSessionRows = (
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
     payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload,
-  ) as Effect.Effect<void, IntentError>).catch(() => {})
+  ) as Effect.Effect<void, IntentError>).catch((error: unknown) => {
+    console.error(
+      "[openagents-desktop] React intent failed",
+      name,
+      error instanceof Error ? error.message : "unknown intent error",
+    )
+  })
 }
 
 const selectedTitle = (state: DesktopShellState): string => {
@@ -170,10 +161,9 @@ export const ConversationHeader = ({ state }: {
   />
 }
 
-const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Home" | "Settings"): DesktopRailIcon => {
+const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Settings"): DesktopRailIcon => {
   if (icon === "ChatCompose") return "new-session"
   if (icon === "Chats") return "chat"
-  if (icon === "Home") return "home"
   return "settings"
 }
 
@@ -187,9 +177,11 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
 }): ReactElement => {
   const rows = projectReactSessionRows(state)
   const destinations = projectDesktopSidebarDestinations(
-    state.workspace === "home" || state.workspace === "settings" ? state.workspace : "chat",
+    state.workspace === "settings" ? "settings" : "chat",
     rows.some(row => row.selected),
   )
+  const primaryDestinations = destinations.filter(destination => destination.id !== "shell-settings-toggle")
+  const settingsDestination = destinations.find(destination => destination.id === "shell-settings-toggle")
   const shown = state.history.visibleRootCount
   const searchOpen = state.presentation.sessionSearchOpen
   const closeSearch = (): void => {
@@ -201,7 +193,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     canGoBack={state.navigation.canGoBack}
     canGoForward={state.navigation.canGoForward}
     canLoadMore={state.history.searchQuery.trim() === "" && shown < state.history.catalog.roots.length}
-    destinations={destinations.map(destination => ({
+    destinations={primaryDestinations.map(destination => ({
       accessibilityLabel: destination.accessibilityLabel,
       current: destination.accessibilityCurrent,
       icon: sharedRailIcon(destination.icon),
@@ -210,28 +202,6 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       label: destination.label,
       selected: destination.selected,
     }))}
-    footer={state.codingCatalog.sessions.length === 0 ? null : <section className="oa-react-workspaces" aria-label="Coding workspaces">
-      <Separator />
-      <h2><ReactCatalogIcon name="Folder" /> <span>Workspaces</span></h2>
-      {state.codingCatalog.sessions.map(session => <div className="oa-react-workspace-row" key={session.sessionRef}>
-        <Button variant="ghost" type="button" onClick={() => dispatch(report, "DesktopCodingSessionOpened", session.sessionRef)}>
-          <span>{session.repositoryLabel}</span><small>{session.state}</small>
-        </Button>
-        <div className="oa-react-workspace-actions">
-          {session.state === "recovery_required"
-            ? <Button variant="outline" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionRecovered", session.sessionRef)}>Recover</Button>
-            : <Button variant="outline" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionArchived", session.sessionRef)}>Archive</Button>}
-          {state.codingSessionDeleteConfirmRef === session.sessionRef
-            ? <>
-                <Button variant="destructive" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionDeleteConfirmed", session.sessionRef)}>Confirm delete</Button>
-                <Button variant="ghost" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionDeleteCancelled")}>Cancel</Button>
-              </>
-            : <Button variant="ghost" size="xs" type="button" onClick={() => dispatch(report, "DesktopCodingSessionDeleteRequested", session.sessionRef)}>Delete</Button>}
-        </div>
-      </div>)}
-      {state.codingCatalog.nextOffset === null ? null
-        : <Button type="button" variant="outline" size="sm" className="oa-react-load-more" onClick={() => dispatch(report, "DesktopCodingCatalogMoreRequested")}>Load more workspaces</Button>}
-    </section>}
     forwardLabel={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
     hydrated={state.history.hydrated}
     onBack={() => dispatch(report, "DesktopNavigationBackRequested")}
@@ -260,35 +230,20 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     searchPending={state.history.searchPending}
     searchQuery={state.history.searchQuery}
     sessions={rows.map(row => ({ id: row.id, meta: row.meta, selected: row.selected, title: row.title }))}
+    settingsDestination={settingsDestination === undefined ? undefined : {
+      accessibilityLabel: settingsDestination.accessibilityLabel,
+      current: settingsDestination.accessibilityCurrent,
+      icon: sharedRailIcon(settingsDestination.icon),
+      id: settingsDestination.id,
+      indicator: settingsDestination.indicator?.kind ?? null,
+      label: settingsDestination.label,
+      selected: settingsDestination.selected,
+    }}
     stageLabel={DESKTOP_STAGE_LABEL}
   />
 }
 
 const staticKhalaReporter: IntentReporter = () => Effect.void
-const projectHomeFrameSize = [960, 640] as const
-const projectHomeStatusSize = [240, 32] as const
-const projectHomeFrame = Frame({
-  key: "project-home-khala-frame",
-  a11y: { hidden: true },
-  khala: {
-    id: "desktop-project-home-frame",
-    motif: "cut-corner-surface",
-    width: projectHomeFrameSize[0],
-    height: projectHomeFrameSize[1],
-    density: "comfortable",
-  },
-})
-const projectHomeStatusAccent = Frame({
-  key: "project-home-khala-status-accent",
-  a11y: { hidden: true },
-  khala: {
-    id: "desktop-project-home-status",
-    motif: "header-line",
-    width: projectHomeStatusSize[0],
-    height: projectHomeStatusSize[1],
-    density: "compact",
-  },
-})
 const settingsFrameSize = [960, 720] as const
 const settingsHeaderSize = [360, 48] as const
 const settingsFrame = Frame({
@@ -316,15 +271,13 @@ const settingsHeaderAccent = Frame({
 
 const StaticKhalaDecoration = ({ view, placement }: {
   readonly view: FrameView
-  readonly placement: "frame" | "status" | "settings-frame" | "settings-header"
+  readonly placement: "settings-frame" | "settings-header"
 }): ReactElement => <div
   className="oa-react-khala-decoration"
   data-khala-decoration={placement}
-  {...(placement === "frame" || placement === "status"
-    ? { "data-project-home-khala-decoration": placement }
-    : { "data-settings-khala-decoration": placement })}
+  data-settings-khala-decoration={placement}
   aria-hidden="true"
->{renderReactDomView(view, { report: staticKhalaReporter, theme: khalaTheme })}</div>
+>{renderReactDomView(view, { report: staticKhalaReporter, theme: openagentsDesktopTheme })}</div>
 
 export const WorkbenchShell = ({ state, report }: {
   readonly state: DesktopShellState
@@ -369,25 +322,7 @@ export const WorkbenchShell = ({ state, report }: {
     dispatch(report, "DesktopSidebarCollapsedChanged", true)
     setRailOpen(false)
   }
-  const workspaceSurface = state.workspace === "home"
-    ? <main className="oa-react-workspace-surface oa-react-project-home-khala" data-react-workspace="home">
-        <StaticKhalaDecoration view={projectHomeFrame} placement="frame" />
-        <header><div><p>Project home</p><h1>Coding sessions</h1></div><div className="oa-react-project-home-status"><StaticKhalaDecoration view={projectHomeStatusAccent} placement="status" /><span>{state.codingCatalog.authorityLabel}</span></div></header>
-        <p>Resume the exact project, repository, worktree, and task context from this Mac.</p>
-        <Button type="button" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}>Open project folder</Button>
-        <section aria-label="Coding sessions">
-          {state.codingCatalog.sessions.length === 0
-            ? <p>No coding sessions yet.</p>
-            : state.codingCatalog.sessions.map(session => <Button
-                key={session.sessionRef}
-                type="button"
-                variant="outline"
-                data-coding-session-ref={session.sessionRef}
-                onClick={() => dispatch(report, "DesktopCodingSessionOpened", session.sessionRef)}
-              ><span>{session.projectLabel}</span><small>{session.repositoryLabel} · {session.worktreeLabel} · {session.state}</small></Button>)}
-        </section>
-      </main>
-    : state.workspace === "settings"
+  const workspaceSurface = state.workspace === "settings"
       ? <main className="oa-react-workspace-surface oa-react-settings-khala" data-react-workspace="settings">
           <StaticKhalaDecoration view={settingsFrame} placement="settings-frame" />
           <header className="oa-react-settings-header">

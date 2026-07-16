@@ -65,8 +65,6 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
     }
     expect(mvpAllowedDockItemIds).toEqual([
       "workspace-new-chat",
-      "workspace-chat",
-      "workspace-home",
       "shell-settings-toggle",
     ])
     // The swept dock affordances stay off the allowlist AND on the forbidden list.
@@ -80,7 +78,7 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
     expect(collectRenderedDockItemIds(desktopShellView(baseState))).toEqual([...mvpAllowedDockItemIds])
   })
 
-  const reachableWorkspaces = ["chat", "home", "files", "review", "settings"] as const
+  const reachableWorkspaces = ["chat", "files", "review", "settings"] as const
 
   for (const workspace of reachableWorkspaces) {
     test(`workspace "${workspace}" renders zero visible-surface violations`, () => {
@@ -99,11 +97,11 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
 
   for (const legacy of ["fleet", "terminal", "inbox"] as const) {
     test(`a state forced to legacy workspace "${legacy}" renders no non-MVP screen`, () => {
-      // The shell falls back to Project home; no Fleet/Terminal/Inbox surface
-      // may render even when internal state names one.
+      // The shell falls back to chat; no Fleet/Terminal/Inbox surface may
+      // render even when internal state names one.
       const view = desktopShellView(withWorkspace(baseState, legacy))
       expect(desktopMvpSurfaceViolations(view)).toEqual([])
-      expect(findNode(view, "workspace-home-panel")).not.toBeNull()
+      expect(findNode(view, "shell-transcript")).not.toBeNull()
     })
   }
 
@@ -150,8 +148,8 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
     const planted = clone(desktopShellView(baseState))
     const nav = findNode(planted, "sidebar-navigation")
     const sections = nav!.sections as Array<{ id: string; items: Array<{ id: string }> }>
-    sections[0]!.items = sections[0]!.items.filter(item => item.id !== "workspace-home")
+    sections[0]!.items = sections[0]!.items.filter(item => item.id !== "workspace-new-chat")
     const violations = desktopMvpSurfaceViolations(planted)
-    expect(violations.some(violation => violation.includes("workspace-home"))).toBe(true)
+    expect(violations.some(violation => violation.includes("workspace-new-chat"))).toBe(true)
   })
 })

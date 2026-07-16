@@ -37,12 +37,22 @@ evidence, but exposing Claude, Cursor, Grok, or OpenCode in the OpenAgents MVP
 would widen the product before its one promised provider has complete lifecycle,
 event, recovery, and worktree semantics.
 
+**2026-07-16 owner direction:** Agent Client Protocol client support is now an
+explicit architecture direction so OpenAgents can control `grok agent stdio`
+and other compatible coding agents. This does not by itself reopen visible
+multi-provider parity. The
+[T3 Code Agent Client Protocol implementation teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
+defines the generated bidirectional client foundation, Grok-first proof, and
+capability-gated peer profiles. The scope is client-only.
+
 ## Scope, snapshots, and method
 
 This document compares implementation, not marketing claims. It reconciles:
 
 - the commit-pinned [T3 Code teardown](./2026-07-13-t3-code-teardown.md),
   including its frontend deep dive;
+- the current
+  [T3 Code Agent Client Protocol implementation teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md);
 - the [OpenAgents adaptation analysis](./2026-07-10-openagents-product-adaptation-analysis.md);
 - the current [Codex app-server support analysis](./2026-07-15-codex-app-server-client-support-analysis.md);
 - the current [OpenAgents Desktop README](../../apps/openagents-desktop/README.md)
@@ -106,7 +116,7 @@ T3 implements four transport families behind five visible harnesses:
 
 - Codex through app-server;
 - Claude Code through its SDK;
-- Cursor and Grok through ACP-style adapters; and
+- Cursor and Grok through Agent Client Protocol adapters; and
 - OpenCode through its HTTP server.
 
 It also models provider instances independently, allowing isolated homes,
@@ -606,9 +616,12 @@ OpenAgents already has several stronger contracts:
 
 1. Prove signed install/update/rollback on macOS x64, Windows, and Linux.
 2. Add automatic delivery channels without weakening fail-closed release gates.
-3. Decide whether additional providers serve the product; implement them one at
-   a time against the same native-plus-portable event architecture.
-4. Add more forges only after the first mutation path is reliable.
+3. Land the generated, bounded, bidirectional Agent Client Protocol client and
+   prove `grok agent stdio` without claiming visible provider parity.
+4. Decide whether individual ACP or non-ACP providers serve the product;
+   implement them one at a time against the same native-plus-portable event
+   architecture.
+5. Add more forges only after the first mutation path is reliable.
 
 ## 16. Definition of closure
 
@@ -638,6 +651,7 @@ execution, durable recovery, and release-grade evidence.
 ### T3 Code
 
 - [T3 Code teardown](./2026-07-13-t3-code-teardown.md)
+- [T3 Code Agent Client Protocol implementation teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
 - `projects/repos/t3code/apps/server/src`
 - `projects/repos/t3code/apps/web/src`
 - `projects/repos/t3code/apps/desktop/src`

@@ -14,6 +14,10 @@ session persistence, tools, subagents, worktrees, permissions, sandbox,
 extensions, telemetry, updater, and verification system. It does not inspect a
 signed installed binary, private SpaceXAI services, credentials, or user data.
 
+Here and throughout this document, ACP means **Agent Client Protocol**, the
+bidirectional JSON-RPC protocol exposed by `grok agent stdio` for editor and
+tool control.
+
 Evidence labels:
 
 - **[source]** — observed in the pinned source tree
@@ -141,6 +145,28 @@ scale.
 | Primary UI | Ratatui/Crossterm terminal application | [source] |
 | Public build version | Crate manifests name 0.1.220-alpha.4; shared version crate defaults to 0.2.0-dev unless injected | [source] [limitation] |
 | Source-build hosts | macOS and Linux supported; Windows best-effort and not tested from this tree | [public] |
+
+### 1.1 2026-07-16 Agent Client Protocol package verification
+
+The public export advanced after the original snapshot. A targeted follow-up at
+[`c68e39f60462f28d9be5e683d9cbe2c57b1a5027`](https://github.com/xai-org/grok-build/tree/c68e39f60462f28d9be5e683d9cbe2c57b1a5027)
+confirmed that the protocol architecture and versions remain:
+
+- workspace dependency `agent-client-protocol = 0.10.4` with the `unstable`
+  feature;
+- lockfile dependency `agent-client-protocol-schema = 0.11.4`;
+- xAI wrapper crate `crates/codegen/xai-acp-lib` for bidirectional channels,
+  gateways, messages, line reading, and normalization; and
+- Grok's `MvpAgent` implementing the Rust `acp::Agent` trait.
+
+The public JavaScript example's `initialize` → `authenticate` → `session/new`
+→ `session/prompt`, with assistant text delivered in `session/update`, is
+therefore the standard Agent Client Protocol path rather than a separate xAI
+protocol. Grok adds private `x.ai/*` extensions and older unstable features
+above that core. The
+[T3 Code Agent Client Protocol teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
+contains the exact schema-v1.19.0 compatibility verdict and the OpenAgents
+client implementation plan. [source] [schema]
 
 The checkout was clean and exactly matched origin/main before and after the
 audit. No build, runtime, credentials, user sessions, or installed application
@@ -1071,6 +1097,14 @@ mobile, terminal, and SDK.
 
 Do not make ACP extension structs a second domain model. Generate first-party
 clients from the richer OpenAgents protocol and map ACP at the edge.
+
+The subsequent
+[T3 Code Agent Client Protocol implementation teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
+turns this product direction into an exact TypeScript/Effect transport,
+method-coverage, Grok-package, schema-drift, capability, authority, and phased
+client implementation plan. It makes controlling Grok and other compatible
+coding agents the required direction; exposing OpenAgents as an agent is out
+of scope.
 
 ### 21.2 Make Pylon lifecycle as explicit as the Grok leader
 

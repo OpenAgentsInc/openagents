@@ -1,7 +1,9 @@
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
-import { khalaTheme } from '@effect-native/tokens'
+import { autopilotTheme } from '@effect-native/tokens'
 import { InternalLink } from '@/components/internal-link'
-import { DOCS_URL, GITHUB_REPOSITORY_URL } from '@/lib/public-site'
+import { PublicHeader } from '@/components/public-header'
+import GithubMark from '@/components/launch-ui/logos/github'
+import { GITHUB_REPOSITORY_URL } from '@/lib/public-site'
 import {
   DesktopAgentGroup,
   DesktopApprovalCard,
@@ -34,7 +36,7 @@ import {
   type DesktopRailDestination,
   type DesktopToolKind,
 } from '@openagentsinc/ui/desktop-workbench'
-import { ArrowRight, ArrowUp, Command, Folder, ImagePlus, Square, Zap } from 'lucide-react'
+import { ArrowRight, ArrowUp, ArrowUpRight, Command, Folder, ImagePlus, Square, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { SplashHeroCanvas } from './-splash-khala-canvas'
@@ -600,37 +602,26 @@ export function SplashPage() {
   const visibleSessions = sessions.filter(session => session.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const active = phase === 'preparing' || phase === 'streaming'
 
-  return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(khalaTheme)}>
-    <header className="splash-site-header">
-      <nav aria-label="Primary navigation" className="splash-nav">
-        <InternalLink aria-label="OpenAgents home" className="splash-brand" href="/" preload="render">
-          <span aria-hidden="true" className="splash-brand-mark" />
-          <span>OpenAgents</span>
-        </InternalLink>
-        <div className="splash-nav-links">
-          <a href="#product">Product</a>
-          <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
-          <a href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">GitHub</a>
-        </div>
-        <div className="splash-nav-actions">
-          <InternalLink className="splash-app-link" href="/app" preload="intent">Open app</InternalLink>
-          <InternalLink className="splash-nav-download" href="/install" preload="render">Download</InternalLink>
-        </div>
-      </nav>
-    </header>
+  return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(autopilotTheme)}>
+    <PublicHeader />
 
     <section aria-labelledby="splash-heading" className="splash-hero">
       <SplashHeroCanvas />
-      <InternalLink className="splash-release-link" href="/install" preload="render">
-        OpenAgents Desktop · v0.1.0 RC
+      <InternalLink className="splash-release-link" href="/blog/introducing-openagents-desktop" preload="render">
+        Introducing OpenAgents Desktop
         <ArrowRight aria-hidden="true" />
       </InternalLink>
-      <h1 id="splash-heading">A better way to build <span>with agents.</span></h1>
+      <h1 id="splash-heading">Your last agent IDE.</h1>
       <p>Plan, delegate, review, and steer coding work from one local-first desktop workroom.</p>
       <InternalLink className="splash-primary-action" href="/install" preload="render">
         Download for Mac
         <ArrowRight aria-hidden="true" />
       </InternalLink>
+      <a className="splash-source-link" href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">
+        <GithubMark aria-hidden="true" />
+        Or build from source
+        <ArrowUpRight aria-hidden="true" />
+      </a>
     </section>
 
     <figure className="splash-product" id="product">

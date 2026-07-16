@@ -131,7 +131,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Lay out the OpenAgents sidebar like Codex: left-aligned menus, OpenAgents identity, icon-only search, sidebar expander, back/forward positions, and appropriate icons from the existing Apps SDK catalog.",
         authorityBoundary:
-          "Presentation over already-admitted authority only. One Effect-owned typed projection supplies the compatibility shell and React workbench with exactly four ordered primary entries: New session, Chat, Project home, and Settings. Each entry reuses its canonical command identity and typed intent, carries a closed @effect-native/core IconName, and projects selected/current state without inventing an unread count or status when no such authority exists. React lowers that projection into native-chrome-aligned controls beneath the OpenAgents identity row and icon-only search disclosure, with left-aligned primary rows, a truthful Recent section, and single-line conversation rows whose truncated title stays left while only the compact relative timestamp is right-justified on that same line. Lifecycle/status words (including Completed, Running, or Waiting), provider labels, and search match-kind strings are forbidden in conversation rows. Chat, Project home, and Settings reach real admitted workspace roots; New session remains the primary action rather than a selected destination. Sidebar collapse is Effect-owned presentation state and only its boolean preference persists through the versioned main-process preferences boundary. Session-search disclosure is deliberately launch-ephemeral and starts closed after reload or restart; its query remains exclusively in the existing history authority and closing search clears it through HistorySearchChanged. Restoring a collapsed rail reuses the preferences read already required before shell mount, adds no new startup read, leaves a reachable expander, and never steals focus from the composer. Search, destination selection, collapse, and Back/Forward dispatch only typed intents. No enabled placeholder, React-owned navigation store, parallel query store, or fabricated destination is authorized.",
+          "Presentation over already-admitted authority only. One Effect-owned typed projection supplies the compatibility shell and React workbench with exactly two controls around the Recent list: New session and Settings. Project home, the dead Chat destination, and the coding Workspaces section are absent. React lowers New session beneath the OpenAgents identity row and icon-only search disclosure, while Settings is pinned alone at the bottom of the rail in the former workspace-box region. Each retained control reuses its canonical command identity and typed intent, carries a closed @effect-native/core IconName, and projects selected/current state without inventing an unread count or status when no such authority exists. The Recent section uses single-line conversation rows whose truncated title stays left while only the compact relative timestamp is right-justified on that same line. Lifecycle/status words (including Completed, Running, or Waiting), provider labels, and search match-kind strings are forbidden in conversation rows. New session remains the primary action rather than a selected destination. Sidebar collapse is Effect-owned presentation state and only its boolean preference persists through the versioned main-process preferences boundary. Session-search disclosure is deliberately launch-ephemeral and starts closed after reload or restart; its query remains exclusively in the existing history authority and closing search clears it through HistorySearchChanged. Restoring a collapsed rail reuses the preferences read already required before shell mount, adds no new startup read, leaves a reachable expander, and never steals focus from the composer. Search, destination selection, collapse, and Back/Forward dispatch only typed intents. No enabled placeholder, React-owned navigation store, parallel query store, fabricated destination, or Project home route is authorized.",
         evidenceRefs: [
           "apps/openagents-desktop/src/desktop-preferences-contract.ts",
           "apps/openagents-desktop/src/renderer/sidebar-destinations.ts",
@@ -149,7 +149,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/sidebar-destinations.test.ts",
             description:
-              "Pins the exact four-entry order, labels, closed-catalog icons, canonical command identities, typed intents, selected/current projection, and truthful absence of unread/status indicators without backing state.",
+              "Pins the exact three-control order, labels, closed-catalog icons, canonical command identities, typed intents, selected/current projection, and truthful absence of unread/status indicators without backing state.",
           },
           {
             id: "react_sidebar.anatomy_icons_search_and_alignment",
@@ -157,7 +157,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
             description:
-              "The real React workbench proves the shared four-entry order and icons, real Chat/Project home/Settings roots, selected state, left alignment, and a dedicated right-justified same-line relative timestamp with no lifecycle, provider, or search-match strings; it also covers icon-only search disclosure/close and collapse recovery through the always-reachable expander.",
+              "The real React workbench proves New session above Recent, Settings alone in the bottom footer, absence of Project home, Chat, and Workspaces, selected state, left alignment, and a dedicated right-justified same-line relative timestamp with no lifecycle, provider, or search-match strings; it also covers icon-only search disclosure/close and collapse recovery through the always-reachable expander.",
           },
           {
             id: "react_sidebar.collapse_preference_migration_and_roundtrip",
@@ -302,7 +302,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "remove from the interface everything not in the MVP spec.",
         authorityBoundary:
-          "The accepted ProductSpec Scope and User Experience, plus owner-issued MAINT-1 and #8828 bounded composer-image authority, are the visible-surface allowlist. UX-4 (#8790) and #8826 reconcile both renderers to one typed primary projection: exactly New session, Chat, Project home, and Settings, in that order, with per-item authority in apps/openagents-desktop/src/renderer/sidebar-destinations.ts and composition enforcement in mvp-visible-surfaces.ts. ProductSpec and AssuranceSpec remain internal authoring/verification tooling with no user-facing route, screen, dock item, command, or native-menu destination. Bounded Files and read-only Git review stay reachable through their closed CW-AC-12 command identities, not through dock icons. The review surface renders no Git mutation affordance, and Files renders no file create/rename/delete/reveal affordance. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, and voice controls remain absent. The sole admitted attachment affordance is the existing typed image picker/paste/drop path; it adds no arbitrary filesystem or provider authority.",
+          "The accepted ProductSpec Scope and User Experience, plus owner-issued MAINT-1 and #8828 bounded composer-image authority, are the visible-surface allowlist. UX-4 (#8790), #8826, the 2026-07-15 owner simplification, and the 2026-07-16 removal of Project home reconcile both renderers to one typed projection: exactly New session and Settings around the Recent list. React renders Settings alone at the bottom and renders neither Project home, the dead Chat destination, nor the coding Workspaces box. Per-item authority lives in apps/openagents-desktop/src/renderer/sidebar-destinations.ts with composition enforcement in mvp-visible-surfaces.ts. ProductSpec and AssuranceSpec remain internal authoring/verification tooling with no user-facing route, screen, dock item, command, or native-menu destination. Bounded Files and read-only Git review stay reachable through their closed CW-AC-12 command identities, not through dock icons. The review surface renders no Git mutation affordance, and Files renders no file create/rename/delete/reveal affordance. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, and voice controls remain absent. The sole admitted attachment affordance is the existing typed image picker/paste/drop path; it adds no arbitrary filesystem or provider authority.",
         evidenceRefs: [
           "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
           "apps/openagents-desktop/src/desktop-command-contract.ts",
@@ -322,7 +322,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Proves the compatibility dock consumes the exact shared four-entry projection while rejecting ProductSpec, AssuranceSpec, Fleet, accounts, provider/model/reasoning selection, and voice; #8828 separately admits only bounded composer images.",
+              "Proves the compatibility dock consumes the exact shared three-control projection while rejecting Chat, ProductSpec, AssuranceSpec, Fleet, accounts, provider/model/reasoning selection, and voice; #8828 separately admits only bounded composer images.",
           },
           {
             id: "mvp_surface.rendered_composition",
@@ -2399,7 +2399,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-11",
         },
         statement:
-          "OpenAgents Desktop persists stable project, repository, worktree, coding-session, tab, route, and typed focus refs across restart. Adding a workspace creates or resumes one canonical session; recent-first active, recovery, and archived filters use typed actions; duplicate opens collapse; missing worktrees and archived sessions recover explicitly; pointer and keyboard activation share the intent registry; and the project home never treats a local path or renderer tab as authority.",
+          "OpenAgents Desktop persists stable project, repository, worktree, coding-session, tab, route, and typed focus refs across restart. Adding a workspace creates or resumes one canonical session; duplicate opens collapse; missing worktrees recover explicitly; pointer and keyboard activation share the intent registry; and background coding-catalog state never treats a local path or renderer tab as authority. No Project home screen or route is exposed.",
         authorityBoundary:
           "Signed-out catalog rows live only under scope.device_local in the host-owned Sync SQLite local_entities table. Raw filesystem bindings live in a separate mode-0600 main-process file and never cross preload or enter canonical post-images. Hosted server projection and confirmed reads accept only user/team scopes. The renderer receives a bounded public-safe projection and can invoke only fixed schema-decoded choose/open/archive/recover actions.",
         evidenceRefs: [
@@ -2450,7 +2450,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "do a separate design pass of projects/repos/apps-sdk-ui and thats what i want to use for the rest of the app chrome, menus, etc, everything other than messages, but still harmonized to messages. we want that design language, ported to starcraft kinda, represented in EVERY other surface of the app",
         authorityBoundary:
-          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as new @effect-native/tokens roles/groups (upstream, public-safe), the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; uniform Protoss-blue dark theme only; no light theme, no caution/discovery intents, no pink family, no 24px composer radius, no backdrop-blur popover variant, no 9-step lattice, none of their icons (deviations recorded in docs/design-ports.md). Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
+          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as new @effect-native/tokens roles/groups (upstream, public-safe), the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; one uniform dark product theme only (autopilotTheme since the 2026-07-15 palette supersession — see openagents_desktop.design.autopilot_palette.v1); no light theme, no caution/discovery intents, no pink family, no 24px composer radius, no backdrop-blur popover variant, no 9-step lattice, none of their icons (deviations recorded in docs/design-ports.md). Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
         evidenceRefs: [
           "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
           "apps/openagents.com/packages/effect-native-render-dom/src/index.ts",
@@ -2475,7 +2475,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "The desktop theme IS the tokens-package khalaTheme (radius 2/4/6/8 quantized scale, state-overlay + dim-ladder + overlay-surface roles, motion/control groups) — app-local palette drift deleted.",
+              "The desktop theme IS the canonical tokens-package product theme (autopilotTheme since the 2026-07-15 palette supersession: square-corner radius scale, state-overlay + dim-ladder + overlay-surface roles, motion/control groups) — app-local palette drift deleted.",
           },
           {
             id: "chrome_design.smoke_pixels",
@@ -3517,7 +3517,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Theme, density, font, reduced motion, keybindings, provider defaults, privacy, notifications, and update preferences have typed durable schemas/migrations.",
         authorityBoundary:
-          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT a mutable field (the app is the fixed Protoss-blue khalaTheme; recorded, not switchable) and keybindings keep their existing typed store (desktop-command-bindings). Density and font genuinely resize the app through a scaled theme applied at mount; reduced-motion resolves to a root attribute the CSS honors (explicit override wins over the OS). Provider-defaults/privacy/notifications/update-prefs are durable and IPC-round-tripped; each is consumed where a real effect already exists. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
+          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT a mutable field (the app is the fixed dark product theme — autopilotTheme since 2026-07-15; recorded, not switchable) and keybindings keep their existing typed store (desktop-command-bindings). Density and font genuinely resize the app through a scaled theme applied at mount; reduced-motion resolves to a root attribute the CSS honors (explicit override wins over the OS). Provider-defaults/privacy/notifications/update-prefs are durable and IPC-round-tripped; each is consumed where a real effect already exists. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
         evidenceRefs: [
           "https://github.com/OpenAgentsInc/openagents/issues/8704",
           "apps/openagents-desktop/src/desktop-preferences-contract.ts",
@@ -3757,6 +3757,48 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; adding any stray font family anywhere under apps/openagents-desktop/src fails it.",
       },
       {
+        contractId: "openagents_desktop.design.autopilot_palette.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "product theme / palette",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-15" },
+        statement:
+          "Product surfaces adopt the Autopilot UI palette (accent #5262FD on near-black #16161E, square corners, muted danger) superseding Protoss blue.",
+        authorityBoundary:
+          "Presentation only, and a palette supersession — not a new theming architecture. The one-theme-many-hosts invariant is unchanged: the canonical product theme is the tokens-package autopilotTheme (upstream OpenAgentsInc/effect-native, vendored via effect-native-vendor.json), whose semantic roles derive from the measured Autopilot UI design-spec palette (workspace docs/fable/autopilot-ui-design-spec.md): page #16161e / panel #141416 / module #0d0e10 with depth going darker, hairline #242527 borders, one vivid indigo accent #5262fd (hover #6470e0, focus #5966d6, selected fill = accent at 20% alpha), muted brick danger #8e4445 (bright #ab322a reserved for tick-scale marks), rare mint success #8dc3ab, info reusing the accent family (no new hues), and every radius step 0 (square corners; full stays 9999). khalaTheme remains exported upstream for explicitly-historical surfaces only and is no longer mounted by the desktop renderer, the boot frame, the preferences scaler, or the retained web product pages this repo re-themed (/splash, /components storybook). Exact hexes are pinned upstream in the vendored tokens test discipline; hosts must consume theme roles/--en-* variables, never re-pin raw hexes outside the theme module.",
+        evidenceRefs: [
+          "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
+          "apps/openagents-desktop/src/renderer/theme.ts",
+          "apps/openagents-desktop/index.html",
+          "apps/openagents.com/apps/start/src/routes/-splash-page.tsx",
+          "apps/openagents.com/apps/start/src/routes/-components-storybook-page.tsx",
+          "github:OpenAgentsInc/openagents#8858",
+          "github:OpenAgentsInc/effect-native#102",
+        ],
+        oracles: [
+          {
+            id: "autopilot_palette.theme_supersession",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
+            description:
+              "Proves openagentsDesktopTheme IS the tokens-package autopilotTheme with the pinned Autopilot roles (accent #5262fd, background #16161e, muted danger #8e4445, every radius step 0), that the accent/background are NOT the superseded Protoss values, and that no desktop renderer/runtime module imports khalaTheme anymore. The falsifier demonstrates the checks reject the old Protoss pins.",
+          },
+          {
+            id: "autopilot_palette.theme_is_canonical",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "The theme-parity suite pins the desktop theme identity to autopilotTheme with the square-corner radius scale and the Autopilot state-overlay roles.",
+          },
+        ],
+        verification:
+          "pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts plus the shell theme-parity, design-conformance, and startup boot-frame suites in the normal desktop sweep.",
+      },
+      {
         contractId: "openagents_desktop.startup.window_first_no_blank_frame.v1",
         state: "enforced",
         surface: "openagents-desktop",
@@ -3767,7 +3809,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Opening the openagents app, via our new oa command or in dev, shows a blank/brown screen for ~5 seconds before opening the UI. This is unacceptable. I thought we had a UX contract somewhere about the need to show initial codex chats in <50 ms. That should be timed from startup. Go look up our ways of testing load times. Startup and everything else. Write full analysis of current situation in openagents/docs/fable/ new doc. This is an incident. Very bad. Need good bootup process. No brown screen. If any loading, show beautiful starcraft version of it, or something. Time to seeing stuff and then interactable elements on bootup is extremely important. Analyze, fix, update analysis, push.",
         authorityBoundary:
-          "The BrowserWindow is created before any local database open, OS-keychain custody, or session network verification on the production whenReady path, and the post-window network settle is fire-and-forget. The renderer paints a static branded boot frame (khalaTheme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, and publishes the Codex-only top-level metadata catalog without requesting any selected-thread detail. Closed overlays perform zero catalog projection work and recent-only projections inspect a fixed-size prefix, never the full loss-accounted catalog. Hydration streams behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
+          "The BrowserWindow is created before any local database open, OS-keychain custody, or session network verification on the production whenReady path, and the post-window network settle is fire-and-forget. The renderer paints a static branded boot frame (product-theme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, and publishes the Codex-only top-level metadata catalog without requesting any selected-thread detail. Closed overlays perform zero catalog projection work and recent-only projections inspect a fixed-size prefix, never the full loss-accounted catalog. Hydration streams behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
         evidenceRefs: [
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
@@ -3801,7 +3843,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
             description:
-              "Proves the branded boot frame exists in index.html and every color literal in it is an exact khalaTheme token value — no off-palette (brown) frame can ever paint — and the BrowserWindow backgroundColor stays the token background.",
+              "Proves the branded boot frame exists in index.html and every color literal in it is an exact autopilotTheme token value — no off-palette (brown) frame can ever paint — and the BrowserWindow backgroundColor stays the token background.",
           },
           {
             id: "startup.sidebar_scanning_honesty",

@@ -163,12 +163,12 @@ export const filterDesktopCodingCatalog = (
 
 export const desktopWorkspaceForCodingFocus = (
   focus: typeof CodingNavigationFocus.Type,
-): "chat" | "files" | "home" =>
+): "chat" | "files" =>
   focus.kind === "conversation"
     ? "chat"
     : focus.kind === "editor"
       ? "files"
-      : "home"
+      : "chat"
 
 export const projectDesktopCodingCatalog = (
   snapshot: DesktopCodingCatalogSnapshot,

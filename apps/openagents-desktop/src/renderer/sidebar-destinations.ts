@@ -10,22 +10,19 @@ import {
  * Compatibility and React renderers can lower this same projection into their
  * respective controls.
  */
-export type DesktopSidebarWorkspace = "chat" | "home" | "settings"
-export type DesktopSidebarIconName = Extract<IconName, "ChatCompose" | "Chats" | "Home" | "Settings">
+export type DesktopSidebarWorkspace = "chat" | "settings"
+export type DesktopSidebarIconName = Extract<IconName, "ChatCompose" | "Settings">
 
 export type DesktopSidebarIntent =
   | Readonly<{ name: "DesktopNewChat"; payload: null }>
-  | Readonly<{ name: "DesktopWorkspaceSelected"; payload: "chat" | "home" }>
   | Readonly<{ name: "DesktopSettingsToggled"; payload: null }>
 
 export type DesktopSidebarDestinationDefinition = Readonly<{
   id:
     | "workspace-new-chat"
-    | "workspace-chat"
-    | "workspace-home"
     | "shell-settings-toggle"
   commandId: DesktopCommandId
-  label: "New session" | "Chat" | "Project home" | "Settings"
+  label: "New session" | "Settings"
   icon: DesktopSidebarIconName
   workspace: DesktopSidebarWorkspace | null
   intent: DesktopSidebarIntent
@@ -48,20 +45,6 @@ const desktopSidebarDestinationCatalog = [
     workspace: null,
   },
   {
-    id: "workspace-chat",
-    commandId: "chat.open",
-    label: "Chat",
-    icon: "Chats",
-    workspace: "chat",
-  },
-  {
-    id: "workspace-home",
-    commandId: "workspace.home",
-    label: "Project home",
-    icon: "Home",
-    workspace: "home",
-  },
-  {
     id: "shell-settings-toggle",
     commandId: "settings.open",
     label: "Settings",
@@ -78,10 +61,6 @@ const sidebarIntentFromCanonicalCommand = (commandId: DesktopCommandId): Desktop
   }
   if (command.intentName === "DesktopSettingsToggled" && command.defaultArguments.kind === "none") {
     return { name: "DesktopSettingsToggled", payload: null }
-  }
-  if (command.intentName === "DesktopWorkspaceSelected" && command.defaultArguments.kind === "workspace" &&
-    (command.defaultArguments.workspace === "chat" || command.defaultArguments.workspace === "home")) {
-    return { name: "DesktopWorkspaceSelected", payload: command.defaultArguments.workspace }
   }
   throw new Error(`Canonical Desktop command ${commandId} is not an admitted sidebar intent`)
 }

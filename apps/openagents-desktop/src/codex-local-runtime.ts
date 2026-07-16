@@ -94,6 +94,7 @@ import {
   type FableLocalHistoryMessage,
 } from "./fable-local-runtime.ts"
 import type { CodexPreflight } from "./codex-preflight.ts"
+import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
 import type {
   CodexModel,
   CodexReasoningEffort,
@@ -905,23 +906,28 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           }
           const facts = toolFacts(record)
           if (facts === null) return
+          // Typed payload (#8859): the same structured fields the app-server
+          // lane emits, projected from this lane's snake_case stream and
+          // redacted with the lane's own redactor. Additive to the summary.
+          const typedItem = workbenchItemFromThreadItem(record, "codex", redact)
+          const typed = typedItem === null ? {} : { item: typedItem }
           if (type === "item.started" && !pendingToolNames.has(itemId)) {
             pendingToolNames.set(itemId, facts.toolName)
-            input.emit({ kind: "tool_use", toolName: facts.toolName, summary: facts.summary })
+            input.emit({ kind: "tool_use", toolName: facts.toolName, summary: facts.summary, ...typed })
             return
           }
           if (type === "item.completed") {
             if (!pendingToolNames.has(itemId)) {
               // No started event arrived (e.g. file_change): emit the pair
               // so the renderer's FIFO card pairing stays balanced.
-              input.emit({ kind: "tool_use", toolName: facts.toolName, summary: facts.summary })
+              input.emit({ kind: "tool_use", toolName: facts.toolName, summary: facts.summary, ...typed })
             }
             pendingToolNames.delete(itemId)
             const resultSummary = itemType === "command_execution" &&
               typeof record.aggregated_output === "string"
               ? bounded(redact(record.aggregated_output), FABLE_LOCAL_SUMMARY_LIMIT)
               : facts.summary
-            input.emit({ kind: "tool_result", toolName: facts.toolName, ok: facts.ok, summary: resultSummary })
+            input.emit({ kind: "tool_result", toolName: facts.toolName, ok: facts.ok, summary: resultSummary, ...typed })
           }
           return
         }

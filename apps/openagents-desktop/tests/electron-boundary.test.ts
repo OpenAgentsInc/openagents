@@ -254,6 +254,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
   const rendererDir = path.join(appRoot, "src/renderer")
   const reactHostFiles = new Set([
     "boot.ts",
+    "lexical-composer-editor.tsx",
     "react-composer.tsx",
     "react-primitive-adapters.tsx",
     "react-review.tsx",
@@ -281,7 +282,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
   test("renderer imports only EN, scoped React host libraries, and sibling modules", () => {
     const sharedOrSibling =
       /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/
-    const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/
+    const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|@lexical\/react\/[A-Za-z]+|lexical|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/
     const sharedReactWorkbenchImport = "@openagentsinc/ui/desktop-workbench"
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!)

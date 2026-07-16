@@ -20,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "#components/ui/dialog";
-import { Textarea } from "#components/ui/textarea";
 import {
   ComponentValueBinding,
   IntentRef,
@@ -44,7 +43,6 @@ import {
   FileDiff,
   Files,
   FolderOpen,
-  House,
   ImagePlus,
   ListPlus,
   Maximize,
@@ -66,7 +64,6 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
-  type KeyboardEvent,
   type ReactElement,
 } from "react";
 
@@ -84,6 +81,10 @@ import {
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
 import { formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import {
+  LexicalComposerEditor,
+  type LexicalComposerEditorHandle,
+} from "./lexical-composer-editor.tsx";
 
 const composerIconNames = {
   commands: "Command",
@@ -97,7 +98,13 @@ const composerIconNames = {
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(
     report(payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload) as Effect.Effect<void, IntentError>,
-  ).catch(() => {});
+  ).catch((error: unknown) => {
+    console.error(
+      "[openagents-desktop] React composer intent failed",
+      name,
+      error instanceof Error ? error.message : "unknown intent error",
+    );
+  });
 };
 
 const activeQuestionNote = (state: DesktopShellState): DesktopNoteEntry | null =>
@@ -139,7 +146,6 @@ const commandIcon = (command: DesktopCommand): LucideIcon => {
   if (command.id === "window.fullscreen_toggle") return Maximize;
   if (command.id === "chat.open") return MessageCircle;
   if (command.id === "workspace.files") return Files;
-  if (command.id === "workspace.home") return House;
   if (command.id === "workspace.review") return FileDiff;
   if (command.id === "workspace.choose") return FolderOpen;
   if (command.id === "settings.open") return Settings;
@@ -295,8 +301,7 @@ export const ReactComposer = ({
   readonly state: DesktopShellState;
   readonly report: IntentReporter;
 }): ReactElement => {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const composingRef = useRef(false);
+  const editorRef = useRef<LexicalComposerEditorHandle>(null);
   const [dragActive, setDragActive] = useState(false);
   const lastSubmitRef = useRef<Readonly<{ value: string; at: number }> | null>(null);
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
@@ -326,35 +331,27 @@ export const ReactComposer = ({
       ? "Steer"
       : "Queue"
     : "Send";
-  const submit = (): void => {
-    if (!canSubmit) return;
+  const submit = (editorValue = state.input): void => {
+    const nextHasText = editorValue.trim() !== "";
+    const submissionKey = nextHasText ? editorValue : `images:${state.composerImages.length}`;
     const now = Date.now();
-    if (lastSubmitRef.current?.value === state.input && now - lastSubmitRef.current.at < 350)
+    if (lastSubmitRef.current?.value === submissionKey && now - lastSubmitRef.current.at < 350)
       return;
-    lastSubmitRef.current = { value: state.input, at: now };
-    dispatch(report, submitIntent, state.input);
+    lastSubmitRef.current = { value: submissionKey, at: now };
+    // Image-only turns use the intent's explicit null branch so the Effect
+    // handler falls back to its attachment-bearing state. An empty component
+    // value is not a meaningful message payload. The Effect handler remains
+    // the authoritative admission check for text, attachments, lane state,
+    // and pending-turn behavior; the button's disabled state is presentation.
+    dispatch(report, submitIntent, nextHasText ? editorValue : null);
   };
   useLayoutEffect(() => {
     // A session transition is an explicit keyboard-flow reset. Focus may
     // still be owned by the New session button when this commit lands, so the
     // guarded "unowned focus" rule used for background hydration is wrong
     // here: the composer must synchronously take focus for immediate typing.
-    textareaRef.current?.focus();
+    editorRef.current?.focusAtEnd();
   }, [sessionKey]);
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea === null) return;
-    textarea.style.height = "auto";
-    const next = Math.min(180, Math.max(52, textarea.scrollHeight));
-    textarea.style.height = `${next}px`;
-    textarea.style.overflowY = textarea.scrollHeight > 180 ? "auto" : "hidden";
-  }, [state.input]);
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== "Enter" || event.shiftKey) return;
-    if (composingRef.current || event.nativeEvent.isComposing) return;
-    event.preventDefault();
-    submit();
-  };
   const showDragTarget = (event: ReactDragEvent<HTMLElement>): void => {
     if (!attachmentDisabled && [...event.dataTransfer.types].includes("Files")) setDragActive(true);
   };
@@ -366,6 +363,10 @@ export const ReactComposer = ({
     <DesktopComposerFrame
       data-drag-active={dragActive ? "true" : "false"}
       aria-label="Message composer"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit(editorRef.current?.readValue() ?? state.input);
+      }}
       onDragEnter={showDragTarget}
       onDragOver={showDragTarget}
       onDragLeave={hideDragTarget}
@@ -423,10 +424,9 @@ export const ReactComposer = ({
       )}
       {dragActive ? <span className="oa-react-composer-drop-target" role="status">Drop images to attach</span> : null}
       <DesktopComposerInput>
-        <Textarea
-          ref={textareaRef}
+        <LexicalComposerEditor
+          editorRef={editorRef}
           value={state.input}
-          rows={2}
           placeholder={
             state.pending
               ? state.pendingSubmitMode === "steer"
@@ -434,16 +434,10 @@ export const ReactComposer = ({
                 : "Queue a follow-up…"
               : "Message Codex…"
           }
-          aria-label={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
-          title={`Enter to ${submitLabel.toLocaleLowerCase()} · Shift+Enter for a new line`}
-          onInput={(event) => dispatch(report, "DesktopInputChanged", event.currentTarget.value)}
-          onCompositionStart={() => {
-            composingRef.current = true;
-          }}
-          onCompositionEnd={() => {
-            composingRef.current = false;
-          }}
-          onKeyDown={onKeyDown}
+          ariaLabel={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
+          disabled={false}
+          onChange={(value) => dispatch(report, "DesktopInputChanged", value)}
+          onSubmit={submit}
         />
         <DesktopComposerBar>
         <DesktopComposerButton
@@ -529,7 +523,11 @@ export const ReactComposer = ({
             <span className="sr-only">Stop</span>
           </DesktopComposerButton>
         ) : null}
-        <DesktopComposerButton kind="submit" disabled={!canSubmit} onClick={submit}
+        <DesktopComposerButton
+          kind="submit"
+          type="button"
+          disabled={!canSubmit}
+          onClick={() => submit(editorRef.current?.readValue() ?? state.input)}
           aria-label={submitLabel} title={submitLabel}>
           <ArrowUp data-icon-name={composerIconNames.submit} aria-hidden="true" />
           <span className="sr-only">{submitLabel}</span>

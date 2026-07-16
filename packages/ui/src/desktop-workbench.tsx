@@ -276,6 +276,8 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
             : sessions.map(session => <button
                 aria-current={session.selected ? "page" : undefined}
                 className="oa-react-session-row justify-start text-left"
+                data-en-key={`sidebar-thread-${session.id}`}
+                data-en-tag="Button"
                 data-selected={session.selected ? "true" : "false"}
                 data-session-row
                 key={session.id}
@@ -283,7 +285,7 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
                 type="button"
               >
                 <span className="oa-react-session-title">{session.title}</span>
-                <small className="oa-react-session-meta">{session.meta}</small>
+                <small className="oa-react-session-meta" data-en-role="meta">{session.meta}</small>
               </button>)}
         {canLoadMore ? <button className="oa-react-load-more" onClick={onLoadMore} type="button">Load more sessions</button> : null}
       </nav>
@@ -646,17 +648,21 @@ export const DesktopQueuedFollowup = ({ itemKey, position, text }: Readonly<{
   <Pause aria-hidden="true" /><strong>Queued follow-up (#{position})</strong><span>{text}</span><small>Runs when this turn completes</small>
 </article>
 
-export const DesktopComposerFrame = forwardRef<HTMLElement, ComponentPropsWithoutRef<"section">>(({
+export const DesktopComposerFrame = forwardRef<
+  HTMLFormElement,
+  ComponentPropsWithoutRef<"form">
+>(({
   children,
   className,
   ...props
-}, ref): ReactElement => <section
+}, ref): ReactElement => <form
   {...props}
   className={cx("oa-react-composer", className)}
   data-chat-composer="true"
+  data-chat-composer-form="true"
   data-en-key="shell-composer"
   ref={ref}
->{children}</section>)
+>{children}</form>)
 DesktopComposerFrame.displayName = "DesktopComposerFrame"
 
 export const DesktopComposerInput = ({ children }: Readonly<{ children: ReactNode }>): ReactElement =>

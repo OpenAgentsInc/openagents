@@ -34,12 +34,14 @@ import { readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 
 import { iconNames } from "@effect-native/core"
+import { autopilotTheme } from "@effect-native/tokens"
 
 import {
   desktopShellView,
   initialDesktopShellState,
   type DesktopShellState,
 } from "../src/renderer/shell.ts"
+import { openagentsDesktopTheme } from "../src/renderer/theme.ts"
 import { openAgentsDesktopUxContractRegistry } from "../src/contracts/ux-contracts.ts"
 
 const testsDir = path.dirname(new URL(import.meta.url).pathname)
@@ -390,5 +392,68 @@ describe("openagents_desktop.microinteraction.owner_review_register.v1", () => {
     )
     for (const contractId of registeredRuleIds) expect(doc).toContain(contractId)
     expect(doc).toContain("openagents_desktop.microinteraction.owner_review_register.v1")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openagents_desktop.design.autopilot_palette.v1
+//
+// Owner statement (2026-07-15, recorded verbatim in the registry): "Product
+// surfaces adopt the Autopilot UI palette (accent #5262FD on near-black
+// #16161E, square corners, muted danger) superseding Protoss blue."
+//
+// Enforcement shape: (a) the mounted desktop theme IS the tokens-package
+// autopilotTheme with the pinned Autopilot roles; (b) the superseded Protoss
+// pins are proven absent (falsifier sensitivity); (c) no non-test desktop
+// source module imports khalaTheme anymore — the historical theme may only be
+// referenced by name in comments/registry prose, never mounted.
+// ---------------------------------------------------------------------------
+
+describe("openagents_desktop.design.autopilot_palette.v1", () => {
+  test("the desktop theme IS autopilotTheme with the pinned Autopilot roles", () => {
+    expect(openagentsDesktopTheme).toBe(autopilotTheme)
+    expect(openagentsDesktopTheme.color.accent).toBe("#5262fd")
+    expect(openagentsDesktopTheme.color.background).toBe("#16161e")
+    // Muted danger is a rule of the language: brick red, never alarm red.
+    expect(openagentsDesktopTheme.color.danger).toBe("#8e4445")
+    // Square corners: every radius step is 0 except the schema-completeness full.
+    expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 0, md: 0, lg: 0, xl: 0, full: 9999 })
+  })
+
+  test("falsifier: the superseded Protoss-blue pins are rejected", () => {
+    expect(openagentsDesktopTheme.color.accent).not.toBe("#3b82f6")
+    expect(openagentsDesktopTheme.color.background).not.toBe("#05070d")
+    expect(openagentsDesktopTheme.color.danger).not.toBe("#f87171")
+    expect(openagentsDesktopTheme.radius.md).not.toBe(4)
+  })
+
+  test("no desktop source module imports the historical khalaTheme", () => {
+    const offenders: Array<string> = []
+    for (const file of sourceFiles(srcDir)) {
+      const source = readFileSync(file, "utf8")
+      // Match value imports of khalaTheme/khalaThemeLayer from the tokens
+      // package (comment/prose mentions of the historical theme are fine).
+      for (const match of source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']@effect-native\/tokens["']/g)) {
+        if (/(?:^|[,\s])khalaTheme(?:Layer)?(?:[,\s]|$)/.test(match[1]!)) {
+          offenders.push(path.relative(appDir, file))
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  test("the contract is registered, enforced, and points at this suite", () => {
+    const contract = openAgentsDesktopUxContractRegistry.contracts.find(
+      (candidate) => candidate.contractId === "openagents_desktop.design.autopilot_palette.v1",
+    )
+    expect(contract).toBeDefined()
+    expect(contract?.state).toBe("enforced")
+    expect(contract?.source.statedOn).toBe("2026-07-15")
+    expect(contract?.statement).toBe(
+      "Product surfaces adopt the Autopilot UI palette (accent #5262FD on near-black #16161E, square corners, muted danger) superseding Protoss blue.",
+    )
+    expect(
+      contract?.oracles.some((oracle) => oracle.ref === "apps/openagents-desktop/tests/owner-ux-rules.test.ts"),
+    ).toBe(true)
   })
 })

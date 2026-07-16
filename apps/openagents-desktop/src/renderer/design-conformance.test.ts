@@ -16,7 +16,7 @@
 import { describe, expect, test } from "vite-plus/test"
 import { readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
-import { khalaTheme, radiusTokens, spacingTokens } from "@effect-native/tokens"
+import { autopilotTheme, radiusTokens, spacingTokens } from "@effect-native/tokens"
 import { openagentsDesktopTheme } from "./theme.ts"
 
 import {
@@ -35,7 +35,7 @@ const sharedWorkbenchSourcePath = path.resolve(rendererDir, "../../../../package
 
 /**
  * Files allowed to carry raw color values. theme.ts is the single theme
- * module (it re-exports khalaTheme and is where any future desktop-scoped
+ * module (it re-exports autopilotTheme and is where any future desktop-scoped
  * color value would live); test files assert against literals.
  */
 const colorAllowlist = new Set(["theme.ts"])
@@ -90,10 +90,13 @@ describe("design conformance (a): no raw color literals in renderer modules", ()
     expect(css).not.toMatch(/--color-(?:blue|red|slate|gray)-/)
   })
 
-  test("the only desktop theme stays dark khalaTheme with the canonical Protoss-blue primary", () => {
-    expect(openagentsDesktopTheme).toBe(khalaTheme)
-    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
-    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
+  test("the only desktop theme stays dark autopilotTheme with the canonical indigo primary", () => {
+    // Owner supersession 2026-07-15 (#8858): the Autopilot UI palette
+    // replaces Protoss blue on product surfaces — see
+    // openagents_desktop.design.autopilot_palette.v1.
+    expect(openagentsDesktopTheme).toBe(autopilotTheme)
+    expect(openagentsDesktopTheme.color.background).toBe("#16161e")
+    expect(openagentsDesktopTheme.color.accent).toBe("#5262fd")
   })
 
   test("macOS integrated chrome uses the shared control and spacing scales", () => {

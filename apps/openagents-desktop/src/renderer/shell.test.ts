@@ -52,7 +52,7 @@ import { withWorkspaceBrowserRoot, type WorkspaceBrowserBridge } from "./workspa
 import type { WorkspaceDocumentBridge } from "./workspace-editor.ts"
 import type { ComposerImageAttachment } from "./composer-images.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
-import { khalaTheme } from "@effect-native/tokens"
+import { autopilotTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
 import { desktopCanonicalCommandRegistry } from "../desktop-command-contract.ts"
@@ -367,14 +367,14 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "sidebar-navigation")?._tag).toBe("NavRail")
-    expect(navItemById(view, "workspace-chat")).toMatchObject({icon:"Chats",accessibilityLabel:"Chat"})
+    expect(navItemById(view, "workspace-chat")).toBeUndefined()
     // UX-4 (#8790): the palette keeps only its ⌘K / native-menu entry points —
     // no dock icon renders for it.
     expect(navItemById(view, "shell-command-palette-toggle")).toBeUndefined()
     expect(navItemById(view, "shell-settings-toggle")).toMatchObject({icon:"Settings",accessibilityLabel:"Open Settings"})
     const dockItems = ((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[0]?.items ?? []) as Array<AnyNode>
     expect(dockItems.at(-1)?.id).toBe("shell-settings-toggle")
-    expect(navItemById(view, "workspace-home")?.icon).toBe("Home")
+    expect(navItemById(view, "workspace-home")).toBeUndefined()
     // #8789: before hydration settles the header claims scanning, never a
     // scope ("all time") the projection has not yet earned.
     expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Coding history · scanning…")
@@ -406,8 +406,6 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(dock?.items[0]?.id).toBe("workspace-new-chat")
     expect(dock?.items.map(item => item.id)).toEqual([
       "workspace-new-chat",
-      "workspace-chat",
-      "workspace-home",
       "shell-settings-toggle",
     ])
     expect(navItemById(view, "workspace-new-chat")).toMatchObject({ icon: "ChatCompose", accessibilityLabel: "New session" })
@@ -1343,17 +1341,10 @@ describe("pure transitions", () => {
     ])
   })
 
-  test("Project home is a typed durable coding-session projection", () => {
+  test("legacy Project home state renders chat and no Project home surface", () => {
     const home = { ...withWorkspace(baseState, "home"), codingCatalog: codingCatalogFixture }
-    expect(nodeByKey(desktopShellView(home), "workspace-home-panel")?._tag).toBe("Stack")
-    expect(nodeByKey(desktopShellView(home), "workspace-home-session-session.desktop.fixture")?._tag).toBe("Stack")
-    expect(nodeByKey(desktopShellView(home), "workspace-home-session-open-session.desktop.fixture")?.onPress).toMatchObject({
-      name: "DesktopCodingSessionOpened",
-    })
-    expect(nodeByKey(desktopShellView(home), "workspace-home-query")?.onChange).toMatchObject({
-      name: "DesktopCodingCatalogQueryChanged",
-    })
-    expect(nodeByKey(desktopShellView(home), "shell-composer")).toBeUndefined()
+    expect(nodeByKey(desktopShellView(home), "workspace-home-panel")).toBeUndefined()
+    expect(nodeByKey(desktopShellView(home), "shell-composer")).toBeDefined()
   })
 
   test("Files workspace composes only grant-scoped relative tree entries", () => {
@@ -1625,58 +1616,33 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           ),
         )
 
-        const empty = desktopShellView(yield* SubscriptionRef.get(state))
-        const choose = nodeByKey(empty, "workspace-home-open-folder") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(choose.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCodingCatalogChooseRequested"), null))
         expect((yield* SubscriptionRef.get(state)).codingCatalog).toEqual(firstPage)
+        expect((yield* SubscriptionRef.get(state)).workspace).toBe("chat")
 
-        const firstPageView = desktopShellView(yield* SubscriptionRef.get(state))
-        const loadMore = nodeByKey(firstPageView, "workspace-home-load-more") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(loadMore.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCodingCatalogMoreRequested"), null))
         expect(pageOffsets).toEqual([1])
         expect((yield* SubscriptionRef.get(state)).codingCatalog.sessions.map(value => value.sessionRef)).toEqual([
           "session.desktop.fixture",
           "session.desktop.older",
         ])
 
-        const populated = desktopShellView(yield* SubscriptionRef.get(state))
-        const open = nodeByKey(populated, "workspace-home-session-open-session.desktop.fixture") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(open.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCodingSessionOpened", StaticPayload("session.desktop.fixture")), null))
         expect(opened).toEqual(["session.desktop.fixture"])
 
-        const archive = nodeByKey(populated, "workspace-home-session-archive-session.desktop.fixture") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(archive.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCodingSessionArchived", StaticPayload("session.desktop.fixture")), null))
         expect((yield* SubscriptionRef.get(state)).codingCatalog.sessions[0]?.state).toBe("archived")
 
-        const archivedView = desktopShellView(yield* SubscriptionRef.get(state))
-        const filters = nodeByKey(archivedView, "workspace-home-filters") as {
-          onChange: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(filters.onChange, "archived"))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCodingCatalogFilterSelected", StaticPayload("archived")), null))
         expect((yield* SubscriptionRef.get(state)).codingSessionFilter).toBe("archived")
 
-        let deleteView = desktopShellView(yield* SubscriptionRef.get(state))
-        const requestDelete = nodeByKey(deleteView, "workspace-home-session-delete-session.desktop.fixture") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(requestDelete.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCodingSessionDeleteRequested", StaticPayload("session.desktop.fixture")), null))
         expect(deleted).toEqual([])
-        deleteView = desktopShellView(yield* SubscriptionRef.get(state))
-        expect(nodeByKey(deleteView, "workspace-home-session-delete-warning-session.desktop.fixture")).toBeDefined()
-        const confirmDelete = nodeByKey(deleteView, "workspace-home-session-delete-confirm-session.desktop.fixture") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(confirmDelete.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).codingSessionDeleteConfirmRef).toBe("session.desktop.fixture")
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCodingSessionDeleteConfirmed", StaticPayload("session.desktop.fixture")), null))
         expect(deleted).toEqual(["session.desktop.fixture"])
         expect((yield* SubscriptionRef.get(state)).codingCatalog.sessions).toEqual([])
+        expect((yield* SubscriptionRef.get(state)).workspace).toBe("chat")
       }),
     )
   })
@@ -3221,24 +3187,26 @@ describe("EP250 window + sidebar owner contracts", () => {
   })
 })
 
-describe("theme parity (one OpenAgents blue theme, many hosts)", () => {
-  test("desktop theme IS the canonical khalaTheme — no app-local drift", () => {
-    // EP250 chrome pass (#8712): the app-local palette/radius/type drift was
-    // deleted; the tokens-package khalaTheme is the single source of truth.
-    expect(openagentsDesktopTheme).toBe(khalaTheme)
-    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
-    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
-    // The quantized radius scale the harmonization rule pins (2/4/6/8).
-    expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 2, md: 4, lg: 6, xl: 8, full: 9999 })
+describe("theme parity (one OpenAgents product theme, many hosts)", () => {
+  test("desktop theme IS the canonical autopilotTheme — no app-local drift", () => {
+    // EP250 chrome pass (#8712) deleted the app-local palette/radius/type
+    // drift; Autopilot UI (#8858, owner 2026-07-15) made the tokens-package
+    // autopilotTheme the single source of truth, superseding khalaTheme.
+    expect(openagentsDesktopTheme).toBe(autopilotTheme)
+    expect(openagentsDesktopTheme.color.background).toBe("#16161e")
+    expect(openagentsDesktopTheme.color.accent).toBe("#5262fd")
+    // Square corners are a rule of the Autopilot language: every radius step
+    // is 0 (full stays 9999 for schema completeness).
+    expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 0, md: 0, lg: 0, xl: 0, full: 9999 })
     // Chrome-language roles are present for the state-overlay engine.
-    expect(openagentsDesktopTheme.color.stateHover).toBe("#8fb3ff14")
-    expect(openagentsDesktopTheme.color.stateSelected).toBe("#3b82f629")
-    expect(openagentsDesktopTheme.color.textFaint).toBe("#6b7ca1")
-    expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#182640")
+    expect(openagentsDesktopTheme.color.stateHover).toBe("#aeb4f214")
+    expect(openagentsDesktopTheme.color.stateSelected).toBe("#5262fd33")
+    expect(openagentsDesktopTheme.color.textFaint).toBe("#58595b")
+    expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#18181d")
     expect(openagentsDesktopTheme.motion.durationFastMs).toBe(150)
-    // Control-lattice sub-tokens (harmonization #76) added `radius`/`fontSize`
-    // per step; height/gutter/icon are unchanged from before the vendor bump.
-    expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, radius: 4, fontSize: 13, icon: 16 })
+    // Control-lattice sub-tokens (harmonization #76): height/gutter/icon are
+    // unchanged; radii are 0 per the square-corner rule.
+    expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, radius: 0, fontSize: 13, icon: 16 })
   })
 })
 

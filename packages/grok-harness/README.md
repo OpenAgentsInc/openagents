@@ -6,6 +6,17 @@ Grok Build CLI as a Khala Code multi-harness adapter (MH-3 / MH-4).
 land; until then uses provisional local literals that match the planned
 shape (`grok_cli`, `marginal_cost_class`, typed failures).
 
+This package is a narrow Grok fixture, not OpenAgents' shared Agent Client
+Protocol implementation. It currently covers outbound
+initialize/auth/session/prompt requests and a small `session/update`
+projection; it does not implement the bidirectional permission, filesystem, or
+terminal surface required for general Agent Client Protocol support. Grok's
+current source uses Rust `agent-client-protocol` 0.10.4 with unstable features,
+resolving schema 0.11.4, while the OpenAgents target starts from current stable
+wire version 1 and `schema-v1.19.0`. See the
+[T3 Code Agent Client Protocol implementation teardown](../../docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
+for the compatibility verdict and ordered replacement plan.
+
 ## Scope
 
 | Module             | Role                                                                      |

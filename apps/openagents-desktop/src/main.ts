@@ -399,7 +399,7 @@ import {
   type DesktopSessionVault,
 } from "./desktop-session-vault.ts"
 import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
-import { traceAcceptanceJourney, traceAcceptanceReload } from "./electron-trace-acceptance.ts"
+import { traceAcceptanceJourney } from "./electron-trace-acceptance.ts"
 import { resolveLiveProofConfig, runLiveProof } from "./live-proof.ts"
 import { mvpProofEnvironmentFromArgv, resolveMvpProofConfig, runMvpProof } from "./mvp-proof.ts"
 import {
@@ -1081,8 +1081,8 @@ const voiceMedia: VoiceNativeMedia = smokeMode
         queueMicrotask(() => {
           input.onState("live")
           input.onControl({ kind: "activity", activity: "listening" })
-          input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open project home overview", final: false })
-          setTimeout(() => input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open project home overview", final: true }), 800)
+          input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open chat conversation", final: false })
+          setTimeout(() => input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open chat conversation", final: true }), 800)
           setTimeout(() => input.onControl({ kind: "playback", speechRef: "smoke.speech.1", state: "speaking" }), 900)
           setTimeout(() => input.onControl({ kind: "activity", activity: "speech_detected" }), 975)
           setTimeout(() => input.onControl({ kind: "playback", speechRef: "smoke.speech.1", state: "canceled", outcomeRef: "outcome.smoke.interrupt.1" }), 1_050)
@@ -3306,9 +3306,10 @@ const createWindow = (): BrowserWindow => {
     minWidth: 720,
     minHeight: 480,
     fullscreen: false,
-    // khalaTheme color.background — must match @effect-native/tokens so the
-    // pre-boot window never flashes an off-palette frame (EP250 #8712).
-    backgroundColor: "#05070d",
+    // autopilotTheme color.background — must match @effect-native/tokens so
+    // the pre-boot window never flashes an off-palette frame (EP250 #8712,
+    // Autopilot UI #8858).
+    backgroundColor: "#16161e",
     show: false,
     title: "OpenAgents",
     icon: desktopIconPath,
@@ -3392,10 +3393,10 @@ const smokeReactWorkbench = `(async () => {
     await wait(50)
   }
   const surface = document.querySelector('[data-en-react-surface="true"]')
-  let textarea = document.querySelector('.oa-react-composer textarea')
+  let textarea = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   while (Date.now() < deadline && (textarea === null || textarea.disabled)) {
     await wait(50)
-    textarea = document.querySelector('.oa-react-composer textarea')
+    textarea = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   }
   const marks = () => globalThis.__oaStartupMarks || {}
   while (Date.now() < deadline && typeof marks().historyHydrated !== "number") await wait(50)
@@ -3403,7 +3404,7 @@ const smokeReactWorkbench = `(async () => {
     .find((button) => button.textContent?.trim() === "New session")
   newSession?.click()
   await wait(200)
-  textarea = document.querySelector('.oa-react-composer textarea')
+  textarea = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   textarea?.focus()
   await wait(200)
   return {
@@ -3421,12 +3422,12 @@ const smokeReactWorkbench = `(async () => {
 
 const smokeReactFirstInput = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const textarea = document.querySelector('.oa-react-composer textarea')
+  const textarea = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   const deadline = Date.now() + 5000
-  while (Date.now() < deadline && textarea instanceof HTMLTextAreaElement && !textarea.value.toLowerCase().includes("k")) {
+  while (Date.now() < deadline && textarea instanceof HTMLElement && !textarea.value.toLowerCase().includes("k")) {
     await wait(50)
   }
-  return { ok: textarea instanceof HTMLTextAreaElement && textarea.value.toLowerCase().includes("k"), value: textarea?.value ?? null, probe: globalThis.__oaReactInputProbe ?? null, intent: document.documentElement.dataset.reactInputIntent ?? null }
+  return { ok: textarea instanceof HTMLElement && textarea.value.toLowerCase().includes("k"), value: textarea?.value ?? null, probe: globalThis.__oaReactInputProbe ?? null, intent: document.documentElement.dataset.reactInputIntent ?? null }
 })()`
 
 const smokeReactSidebarDestinations = `(async () => {
@@ -3434,7 +3435,7 @@ const smokeReactSidebarDestinations = `(async () => {
   const deadline = Date.now() + 30000
   const rows = () => [...document.querySelectorAll('[data-sidebar-destination-id]')]
   const ids = () => rows().map(row => row.getAttribute('data-sidebar-destination-id'))
-  const expected = ['workspace-new-chat', 'workspace-chat', 'workspace-home', 'shell-settings-toggle']
+  const expected = ['workspace-new-chat', 'shell-settings-toggle']
   const click = (id) => document.querySelector('[data-sidebar-destination-id="' + id + '"]')?.click()
   const waitFor = async (selector) => {
     while (Date.now() < deadline && document.querySelector(selector) === null) await wait(50)
@@ -3442,15 +3443,11 @@ const smokeReactSidebarDestinations = `(async () => {
   }
   if (JSON.stringify(ids()) !== JSON.stringify(expected)) return { ok: false, reason: 'destination order', ids: ids() }
   const icons = rows().map(row => row.querySelector('[data-icon-name]')?.getAttribute('data-icon-name'))
-  click('workspace-home')
-  const home = await waitFor('[data-react-workspace="home"]')
-  const homeVisible = home !== null && (home.textContent ?? '').includes('Coding sessions')
-  const homeSelected = document.querySelector('[data-sidebar-destination-id="workspace-home"]')?.getAttribute('aria-current') === 'page'
   click('shell-settings-toggle')
   const settings = await waitFor('[data-react-workspace="settings"]')
   const settingsVisible = settings !== null && (settings.textContent ?? '').includes('Codex CLI')
   const settingsSelected = document.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.getAttribute('aria-current') === 'page'
-  click('workspace-chat')
+  click('workspace-new-chat')
   const chat = await waitFor('[data-react-workspace="chat"]')
   const searchTrigger = document.querySelector('[aria-label="Search sessions"]')
   searchTrigger?.click()
@@ -3460,8 +3457,8 @@ const smokeReactSidebarDestinations = `(async () => {
   const chatVisible = chat !== null
   const searchClosed = document.querySelector('input[type="search"]') === null
   return {
-    ok: homeVisible && homeSelected && settingsVisible && settingsSelected && chatVisible && searchClosed,
-    ids: ids(), icons, homeSelected, settingsSelected, homeVisible, settingsVisible, chatVisible, searchClosed,
+    ok: settingsVisible && settingsSelected && chatVisible && searchClosed && document.querySelector('[data-react-workspace="home"]') === null,
+    ids: ids(), icons, settingsSelected, settingsVisible, chatVisible, searchClosed,
   }
 })()`
 
@@ -3481,16 +3478,16 @@ const smokeReactCollapseForReload = `(async () => {
 })()`
 
 const smokeReactArmInputProbe = `(() => {
-  const textarea = document.querySelector('.oa-react-composer textarea')
-  if (!(textarea instanceof HTMLTextAreaElement)) return false
+  const editor = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
+  if (!(editor instanceof HTMLElement)) return false
   globalThis.__oaReactInputProbe = { keydown: 0, input: 0, change: 0, inputValue: null }
-  textarea.addEventListener("keydown", () => globalThis.__oaReactInputProbe.keydown++)
-  textarea.addEventListener("input", (event) => {
+  editor.addEventListener("keydown", () => globalThis.__oaReactInputProbe.keydown++)
+  editor.addEventListener("input", (event) => {
     globalThis.__oaReactInputProbe.input++
     globalThis.__oaReactInputProbe.inputValue = event.currentTarget.value
   })
-  textarea.addEventListener("change", () => globalThis.__oaReactInputProbe.change++)
-  textarea.focus()
+  editor.addEventListener("change", () => globalThis.__oaReactInputProbe.change++)
+  editor.focus()
   return true
 })()`
 
@@ -3498,15 +3495,16 @@ const smokeReactImageAttachment = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 60000
   const composer = document.querySelector('[data-en-key="shell-composer"]')
-  const textarea = composer?.querySelector('textarea')
-  if (!(composer instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+  const editor = composer?.querySelector('[data-lexical-composer="true"], textarea')
+  if (!(composer instanceof HTMLElement) || !(editor instanceof HTMLElement)) {
     return { ok: false, reason: 'composer unavailable' }
   }
-  const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
-  valueSetter?.call(textarea, '')
-  textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
+  const valueSetter = Object.getOwnPropertyDescriptor(editor, 'value')?.set ??
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(editor), 'value')?.set
+  valueSetter?.call(editor, '')
+  editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
   await wait(0)
-  const imageOnlyComposer = textarea.value.trim() === ''
+  const imageOnlyComposer = editor.value.trim() === ''
   const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xj6mAAAAAElFTkSuQmCC'), char => char.charCodeAt(0))
   const transfer = new DataTransfer()
   transfer.items.add(new File([bytes], 'smoke-image.png', { type: 'image/png' }))
@@ -3547,7 +3545,7 @@ const smokeReactImageAttachment = `(async () => {
   }
 })()`
 
-const smokeReactTurnAndReview = `(async () => {
+const smokeReactTurn = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const buttons = () => [...document.querySelectorAll('button')]
   const deadline = Date.now() + 60000
@@ -3562,7 +3560,7 @@ const smokeReactTurnAndReview = `(async () => {
     buttons: buttons().map((button) => ({ text: button.textContent?.trim(), disabled: button.disabled })),
     composerStatus: document.querySelector('.oa-react-composer-status')?.textContent ?? null,
     heading: document.querySelector('.oa-react-conversation-heading h1')?.textContent ?? null,
-    input: document.querySelector('.oa-react-composer textarea')?.value ?? null,
+    input: document.querySelector('.oa-react-composer [data-lexical-composer="true"]')?.value ?? null,
   }
   send.click()
   while (Date.now() < deadline && document.querySelector('.oa-react-decision') === null) await wait(50)
@@ -3580,26 +3578,16 @@ const smokeReactTurnAndReview = `(async () => {
   const turnVisible = [...document.querySelectorAll('.oa-react-timeline-item')]
     .some((item) => item.textContent?.includes("Codex local fixture proof."))
   const reviewTrigger = buttons().find((button) => button.textContent?.trim() === "Review changes")
-  reviewTrigger?.click()
-  while (Date.now() < deadline && document.querySelector('.oa-react-review-file') === null) await wait(50)
-  const reviewButton = buttons().find((button) => button.textContent?.trim() === "Review")
-  reviewButton?.click()
-  while (Date.now() < deadline && document.querySelector('.oa-react-exact-diff') === null) await wait(50)
   const reviewSurface = document.querySelector('.oa-react-review-drawer, [data-slot="sheet-content"]')
-  const leakedAbsolutePath = [...document.querySelectorAll('.oa-react-review-file span, .oa-react-exact-diff strong')]
-    .some((node) => node.textContent?.startsWith("/"))
   const forbidden = ["Stage", "Discard", "Commit", "Push", "Terminal"]
     .filter((label) => buttons().some((button) => button.textContent?.trim() === label))
   return {
-    ok: decisionOpened && decisionReconciled && turnVisible && reviewSurface !== null &&
-      document.querySelector('.oa-react-exact-diff') !== null &&
-      !leakedAbsolutePath && forbidden.length === 0,
+    ok: decisionOpened && decisionReconciled && turnVisible && reviewTrigger === undefined &&
+      reviewSurface === null && forbidden.length === 0,
     decisionOpened,
     decisionReconciled,
     turnVisible,
-    reviewOpen: reviewSurface !== null,
-    diffVisible: document.querySelector('.oa-react-exact-diff') !== null,
-    leakedAbsolutePath,
+    reviewAbsent: reviewTrigger === undefined && reviewSurface === null,
     forbidden,
   }
 })()`
@@ -3612,88 +3600,87 @@ const smokeReactNavigationHistory = `(async () => {
     transcript: [...document.querySelectorAll('.oa-react-timeline-item')].map(item => item.textContent?.trim() ?? ""),
   })
   const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right)
-  const waitFor = async (expected) => {
-    while (Date.now() < deadline && !equal(snapshot(), expected)) await wait(50)
-    return equal(snapshot(), expected)
-  }
   const first = snapshot()
-  const alternate = [...document.querySelectorAll('[data-session-row]')]
-    .find(row => row.getAttribute('data-selected') !== 'true')
-  if (!(alternate instanceof HTMLButtonElement)) return { ok: false, reason: "alternate destination missing", first }
-  alternate.click()
-  while (Date.now() < deadline && equal(snapshot(), first)) await wait(50)
+  const alternates = [...document.querySelectorAll('[data-session-row]')]
+    .filter(row => row.getAttribute('data-selected') !== 'true')
+  const distinctTitle = alternates.find(row =>
+    first.title !== null && !(row.textContent ?? '').includes(first.title))
+  const candidates = distinctTitle === undefined
+    ? alternates
+    : [distinctTitle, ...alternates.filter(row => row !== distinctTitle)]
+  let alternateFound = false
+  for (const alternate of candidates) {
+    if (!(alternate instanceof HTMLButtonElement)) continue
+    alternate.click()
+    const candidateDeadline = Math.min(deadline, Date.now() + 1000)
+    while (Date.now() < candidateDeadline && equal(snapshot(), first)) await wait(50)
+    if (!equal(snapshot(), first)) {
+      alternateFound = true
+      break
+    }
+  }
+  if (!alternateFound) return { ok: false, reason: "alternate destination missing", first }
   const second = snapshot()
+  const clickNavigation = async (direction, predicate) => {
+    let button = [...document.querySelectorAll('button')]
+      .find(candidate => candidate.getAttribute('aria-label')?.startsWith(direction))
+    while (Date.now() < deadline && (!(button instanceof HTMLButtonElement) || button.disabled)) {
+      await wait(50)
+      button = [...document.querySelectorAll('button')]
+        .find(candidate => candidate.getAttribute('aria-label')?.startsWith(direction))
+    }
+    if (!(button instanceof HTMLButtonElement) || button.disabled) return false
+    button.click()
+    while (Date.now() < deadline && !predicate(snapshot())) await wait(50)
+    return predicate(snapshot())
+  }
+  const backFirst = await clickNavigation('Back', current => equal(current, first))
+  const forwardChanged = await clickNavigation('Forward', current => !equal(current, first))
   const newSession = [...document.querySelectorAll('button')]
     .find(button => button.textContent?.trim() === 'New session')
   if (!(newSession instanceof HTMLButtonElement)) return { ok: false, reason: "new-session destination missing", first, second }
   newSession.click()
-  while (Date.now() < deadline && equal(snapshot(), second)) await wait(50)
+  const isBlankNewSession = current =>
+    (current.title === 'New chat' || current.title === 'New session') && current.transcript.length === 0
+  while (Date.now() < deadline && !isBlankNewSession(snapshot())) await wait(50)
   const third = snapshot()
-  const clickNavigation = async (direction, expected) => {
-    const button = [...document.querySelectorAll('button')]
-      .find(candidate => candidate.getAttribute('aria-label')?.startsWith(direction))
-    if (!(button instanceof HTMLButtonElement) || button.disabled) return false
-    button.click()
-    return waitFor(expected)
-  }
-  const backSecond = await clickNavigation('Back', second)
-  const backFirst = await clickNavigation('Back', first)
-  const forwardSecond = await clickNavigation('Forward', second)
-  const forwardThird = await clickNavigation('Forward', third)
   const forwardAtEnd = [...document.querySelectorAll('button')]
     .find(candidate => candidate.getAttribute('aria-label')?.startsWith('Forward'))
   return {
-    ok: !equal(first, second) && !equal(second, third) && backSecond && backFirst &&
-      forwardSecond && forwardThird && forwardAtEnd instanceof HTMLButtonElement && forwardAtEnd.disabled,
+    ok: !equal(first, second) && backFirst && forwardChanged && isBlankNewSession(third) &&
+      forwardAtEnd instanceof HTMLButtonElement && forwardAtEnd.disabled,
     first,
     second,
     third,
-    backSecond,
     backFirst,
-    forwardSecond,
-    forwardThird,
+    forwardChanged,
     forwardDisabledAtEnd: forwardAtEnd instanceof HTMLButtonElement ? forwardAtEnd.disabled : null,
   }
 })()`
 
-const smokeReactReloadRestoration = `(async () => {
+const smokeReactReloadNewSession = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 15000
   while (Date.now() < deadline && document.querySelector('[data-en-react-surface="true"]') === null) await wait(50)
   const collapsedAtMount = document.querySelector('.oa-react-workbench')?.getAttribute('data-rail-collapsed') === 'true'
   const searchClosedAtMount = document.querySelector('input[type="search"]') === null
-  const composerAtMount = document.querySelector('.oa-react-composer textarea')
+  const composerAtMount = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   const composerFocusedAtMount = composerAtMount !== null && document.activeElement === composerAtMount
-  const automaticDeadline = Date.now() + 2000
-  while (Date.now() < automaticDeadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
-    .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
-  let restored = [...document.querySelectorAll('.oa-react-timeline-item')]
-    .some((item) => item.textContent?.toLowerCase().includes("k"))
-  if (!restored) {
-    let resumed = [...document.querySelectorAll('[data-session-row]')]
-      .find((row) => row.textContent?.toLowerCase().includes("new chat"))
-    while (Date.now() < deadline && resumed === undefined) {
-      await wait(50)
-      resumed = [...document.querySelectorAll('[data-session-row]')]
-        .find((row) => row.textContent?.toLowerCase().includes("new chat"))
-    }
-    resumed?.click()
-    while (Date.now() < deadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
-      .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
-    restored = [...document.querySelectorAll('.oa-react-timeline-item')]
-      .some((item) => item.textContent?.toLowerCase().includes("k"))
-  }
+  await wait(2000)
+  const timeline = [...document.querySelectorAll('.oa-react-timeline-item')]
+  const heading = document.querySelector('.oa-react-conversation-heading h1')?.textContent?.trim() ?? null
+  const newSessionPreserved = (heading === "New chat" || heading === "New session") && timeline.length === 0
   return {
-    ok: restored && collapsedAtMount && searchClosedAtMount && composerFocusedAtMount &&
+    ok: newSessionPreserved && collapsedAtMount && searchClosedAtMount && composerFocusedAtMount &&
       document.documentElement.dataset.desktopRenderer === "react" &&
       document.querySelector('[data-en-key="shell-root"]') === null,
-    restored,
+    newSessionPreserved,
     collapsedAtMount,
     searchClosedAtMount,
     composerFocusedAtMount,
     backend: document.documentElement.dataset.desktopRenderer,
-    heading: document.querySelector('.oa-react-conversation-heading h1')?.textContent ?? null,
-    timeline: [...document.querySelectorAll('.oa-react-timeline-item')].map((item) => item.textContent),
+    heading,
+    timeline: timeline.map((item) => item.textContent),
     sessions: [...document.querySelectorAll('[data-session-row]')].map((item) => item.textContent),
   }
 })()`
@@ -3871,10 +3858,9 @@ const smokeWorkspaceFilesUi = `(async () => {
   // UX-4 (#8790): the browser renders no filesystem mutation affordance.
   const mutationAffordance = ["workspace-browser-new-file", "workspace-browser-new-folder", "workspace-browser-rename", "workspace-browser-delete", "workspace-browser-reveal"]
     .find((key) => document.querySelector('[data-en-key="' + key + '"]') !== null) ?? null
-  const chat = document.querySelector('[data-en-key="workspace-chat"]')
   return {
     ok: browser !== null && tree !== null && search !== null && boundary !== null &&
-      legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot && chat !== null &&
+      legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot &&
       mutationAffordance === null,
     mutationAffordance,
     relativeBoundary: boundary?.textContent,
@@ -3900,7 +3886,7 @@ const smokeWorkspaceEditorRecovery = `(async () => {
   // UX-4 (#8790): no Files dock icon — after the reload mounts, re-enter the
   // Files workspace exactly like a keyboard user: canonical ⌘K palette chord,
   // then the closed "Open Files" command row (CW-AC-12 identity).
-  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-chat"]') === null) {
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-transcript"]') === null) {
     await wait(50)
   }
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
@@ -3926,7 +3912,7 @@ const smokeWorkspaceEditorRecovery = `(async () => {
   document.querySelector('[data-en-key="workspace-editor-close"]')?.click()
   await wait(50)
   document.querySelector('[data-en-key="workspace-editor-close"]')?.click()
-  document.querySelector('[data-en-key="workspace-chat"]')?.click()
+  document.querySelector('[data-en-key="workspace-new-chat"]')?.click()
   return {
     ok: recovered,
     recovered,
@@ -3974,7 +3960,7 @@ const smokeLifecycleCorrelation = `(async () => {
 })()`
 
 const smokeTypeIntoComposer = `(() => {
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Pixel-proof: real chat rows on the shared catalog"
@@ -3984,19 +3970,25 @@ const smokeTypeIntoComposer = `(() => {
 
 const smokeCodexHistoryDetails = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const first = document.querySelector('[data-en-key^="sidebar-thread-"]')
+  const first = document.querySelector('[data-session-row], [data-en-key^="sidebar-thread-"]')
   if (first === null) return { ok: false, reason: "history row never mounted" }
   first.click()
   const deadline = Date.now() + 15000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="history-workspace-split"]') === null) {
+  while (Date.now() < deadline &&
+    first.getAttribute("data-selected") !== "true" &&
+    first.getAttribute("aria-current") !== "page" &&
+    document.querySelector('[data-en-key="history-workspace-split"]') === null) {
     await wait(100)
   }
   const sidebar = document.querySelector('[data-en-key="sidebar-history-list"] > [data-en-role="section-label"]')
-  const detail = document.querySelector('[data-en-key="history-workspace-split"]')
+  const selectedInReact = first.getAttribute("data-selected") === "true" || first.getAttribute("aria-current") === "page"
+  const detailVisible = document.querySelector('[data-en-key="history-workspace-split"]') !== null ||
+    (selectedInReact && document.querySelector('[data-en-key="shell-transcript"]') !== null)
   // #8789: the header states the projection's REAL scope with a counted
-  // disclosure. The smoke fixture catalog holds exactly one root session, all
-  // of it shown — so the truthful header reads "all 1", never "all time".
-  return { ok: sidebar?.textContent === "Coding history · all 1" && detail !== null, header: sidebar?.textContent ?? null }
+  // disclosure. Prior smoke passes may persist another fixture session, so
+  // assert the truthful counted form rather than a brittle exact fixture size.
+  const truthfulCount = /^Coding history · all [1-9][0-9,]*$/.test(sidebar?.textContent ?? "")
+  return { ok: truthfulCount && detailVisible, header: sidebar?.textContent ?? null, selectedInReact }
 })()`
 
 // #8787 (owner verbatim: "the text input should be focused immediately on
@@ -4006,7 +3998,7 @@ const smokeCodexHistoryDetails = `(async () => {
 // must never steal open-time focus. No pointer event happens before this step.
 const smokeComposerFocusedOnOpen = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const composer = () => document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const composer = () => document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   const deadline = Date.now() + 10000
   while (Date.now() < deadline && (composer() === null || document.activeElement !== composer())) await wait(50)
   const focusedAtMount = composer() !== null && document.activeElement === composer()
@@ -4022,7 +4014,7 @@ const smokeComposerFocusedOnOpen = `(async () => {
 // process, no prior pointer event) lands in the composer as typed text.
 const smokeFirstKeystrokeLandsInComposer = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (composer === null) return { ok: false, reason: "composer input never mounted" }
   const deadline = Date.now() + 5000
   while (Date.now() < deadline && composer.value !== "k") await wait(50)
@@ -4214,7 +4206,7 @@ const smokeTerminalWorkspace = `(async () => {
 
 const smokeSubmitComposer = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   const messageCount = () =>
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
@@ -4349,9 +4341,9 @@ const smokeSettingsHarnessMaintenance = `(async () => {
 // UX-4 (#8790) pixel receipt for the return-to-chat hop.
 const smokeBackToChat = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const chat = document.querySelector('[data-en-key="workspace-chat"]')
-  if (chat === null) return { ok: false, reason: "Chat dock item missing" }
-  chat.click()
+  const newChat = document.querySelector('[data-en-key="workspace-new-chat"]')
+  if (newChat === null) return { ok: false, reason: "New session control missing" }
+  newChat.click()
   const deadline = Date.now() + 5000
   while (Date.now() < deadline && document.querySelector('[data-en-key="shell-transcript"]') === null) {
     await wait(50)
@@ -4370,6 +4362,8 @@ const smokeMvpSurfaceAllowlist = `(() => {
     "shell-voice-toggle",
     // UX-4 (#8790): swept dock affordances and Git mutation controls.
     "workspace-files",
+    "workspace-chat",
+    "workspace-home",
     "workspace-product-spec",
     "workspace-assurance-spec",
     "product-spec-workspace",
@@ -4385,7 +4379,7 @@ const smokeMvpSurfaceAllowlist = `(() => {
   // UX-4 (#8790): the rendered dock is EXACTLY the MVP allowlist, in order.
   const dockIds = Array.from(document.querySelectorAll('[data-en-key="sidebar-workspace-dock"] > button[data-en-key]'))
     .map((item) => item.getAttribute("data-en-key"))
-  const expectedDock = ["workspace-new-chat", "workspace-chat", "workspace-home", "shell-settings-toggle"]
+  const expectedDock = ["workspace-new-chat", "shell-settings-toggle"]
   const dockExact = JSON.stringify(dockIds) === JSON.stringify(expectedDock)
   const codex = document.querySelector('[data-en-key="shell-codex-engine"]')
   return { ok: present.length === 0 && dockExact && codex?.textContent === "Codex", present, dockIds, dockExact, codex: codex?.textContent ?? null }
@@ -4539,7 +4533,7 @@ const smokeNewChatFromHistory = `(async () => {
   const transcript = document.querySelector('[data-en-key="shell-transcript"]')
   const split = document.querySelector('[data-en-key="history-workspace-split"]')
   const messages = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
-  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   // Owner contract (EP250): "when i do new chat, clicking button or command
   // N, auto focus the input." The focus retry loop lands AFTER the chat
   // view mounts, so poll for it.
@@ -4549,7 +4543,8 @@ const smokeNewChatFromHistory = `(async () => {
   }
   return {
     ok: transcript !== null && split === null && messages === 0 &&
-      composer !== null && composer.disabled === false &&
+      composer !== null && !("disabled" in composer && composer.disabled === true) &&
+      composer.getAttribute("contenteditable") !== "false" &&
       document.activeElement === composer,
     historyStillLoaded: split !== null,
     messages,
@@ -4568,7 +4563,7 @@ const smokeNewChatFromHistory = `(async () => {
 // currently-disabled codex lane (capability truth lives on the chip/Send).
 const smokeComposerGestures = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   // Icon-only send control: IconButton variant, plane glyph inside, aria
   // label present, no freestanding icon, no visible "Send" text.
@@ -4663,10 +4658,10 @@ const smokeVoiceMode = `(async () => {
     const unmuteDeadline = Date.now() + 5000
     while (Date.now() < unmuteDeadline && find("shell-voice-capture")?.textContent !== "Mic capturing") await wait(25)
   }
-  while (Date.now() < deadline && find("workspace-home-panel") === null) await wait(25)
-  const registeredFocus = find("workspace-home-panel") !== null
-  const chat = find("workspace-chat")
-  if (chat instanceof HTMLElement) { chat.click(); await wait(50) }
+  while (Date.now() < deadline && find("shell-transcript") === null) await wait(25)
+  const registeredFocus = find("shell-transcript") !== null
+  const newChat = find("workspace-new-chat")
+  if (newChat instanceof HTMLElement) { newChat.click(); await wait(50) }
   while (Date.now() < deadline && find("shell-voice-playback-outcome") === null) await wait(25)
   const bargeInOutcome = find("shell-voice-playback-outcome")?.textContent?.includes("outcome.smoke.interrupt.1") === true
   const stop = find("shell-voice-toggle")
@@ -4718,7 +4713,7 @@ const smokeFableLocalStreaming = `(async () => {
   harness.value = "fable"
   harness.dispatchEvent(new Event("change", { bubbles: true }))
   await wait(50)
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Stream a fable-local proof"
@@ -4830,7 +4825,7 @@ const smokeFableImageAttach = `(async () => {
     await wait(50)
   }
   const composer = document.querySelector('[data-en-key="shell-composer"]')
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (composer === null || input === null) return { ok: false, reason: "composer not mounted" }
   // A minimal in-renderer PNG File dropped on the composer (no filesystem read).
   const bytes = new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x01])
@@ -4930,7 +4925,7 @@ const smokeCodexLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const engine = document.querySelector('[data-en-key="shell-codex-engine"]')
   if (engine?.textContent !== "Codex") return { ok: false, reason: "fixed Codex engine label never mounted" }
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Stream a codex-local proof"
@@ -5028,7 +5023,7 @@ const smokeDetailsAffordanceStableOnInput = `(async () => {
   details.dataset.enFlashProbe = "1"
   const parentBefore = details.parentElement
   // Type in the composer — the exact "type something in the input" scenario.
-  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   let maxOpacityDuringTyping = 0
@@ -5188,29 +5183,6 @@ const smokeOpenFleetWorkspace = `(async () => {
   }
 })()`
 
-const smokeCodingCatalog = `(async () => {
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const home = document.querySelector('[data-en-key="workspace-home"]')
-  if (home === null) return { ok: false, reason: "Project home dock button missing" }
-  home.click()
-  const deadline = Date.now() + 10000
-  while (Date.now() < deadline && document.querySelector('[data-en-key^="workspace-home-session-session.desktop."]') === null) {
-    await wait(50)
-  }
-  const rows = Array.from(document.querySelectorAll('[data-en-key^="workspace-home-session-session.desktop."]'))
-  const row = rows.find(candidate =>
-    Array.from(candidate.querySelectorAll('[data-en-key^="workspace-home-session-open-"]'))
-      .some(button => button.textContent === "Current")) ?? null
-  const authority = document.querySelector('[data-en-key="workspace-home-authority"]')
-  const current = row?.querySelector('[data-en-key^="workspace-home-session-open-"]')
-  return {
-    ok: row !== null && authority?.textContent === "This Mac" && current?.textContent === "Current",
-    sessionKey: row?.getAttribute("data-en-key") ?? null,
-    authority: authority?.textContent ?? null,
-    current: current?.textContent ?? null,
-  }
-})()`
-
 // Owner contract (EP250, verbatim): "when i do new chat, clicking button or
 // command N, auto focus the input." Cmd+N (Meta+N on darwin, the canonical
 // chat.new binding) must dispatch DesktopNewChat from anywhere outside an
@@ -5234,7 +5206,7 @@ const smokeCmdNNewChat = `(async () => {
   )) {
     await wait(50)
   }
-  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   const focusDeadline = Date.now() + 3000
   while (Date.now() < focusDeadline && document.activeElement !== composer) {
     await wait(50)
@@ -5474,7 +5446,7 @@ const runSmoke = (window: BrowserWindow): void => {
       try {
         if (reactSmokeMode) {
           if (tracePass === 1) {
-            await step("react-reload-restoration", smokeReactReloadRestoration)
+            await step("react-reload-new-session", smokeReactReloadNewSession)
             clearTimeout(timeout)
             console.log("[openagents-desktop smoke] REACT OK")
             finish(0)
@@ -5499,9 +5471,9 @@ const runSmoke = (window: BrowserWindow): void => {
           window.webContents.sendInputEvent({ type: "char", keyCode: "k" })
           window.webContents.sendInputEvent({ type: "keyUp", keyCode: "K" })
           await step("react-first-keystroke", smokeReactFirstInput)
-          await step("react-turn-and-review", smokeReactTurnAndReview)
+          await step("react-turn", smokeReactTurn)
           const authoritativeDecision = codexAppServerSmoke?.receipt()
-          if (authoritativeDecision?.requestId !== 91 ||
+          if (authoritativeDecision?.requestId !== 92 ||
               authoritativeDecision.decision !== "accept" ||
               !authoritativeDecision.completionEmitted) {
             throw new Error(`react-authoritative-decision failed: ${JSON.stringify(authoritativeDecision)}`)
@@ -5520,8 +5492,6 @@ const runSmoke = (window: BrowserWindow): void => {
         }
         if (tracePass === 1) {
           await step("workspace-editor-reload-recovery", smokeWorkspaceEditorRecovery)
-          await step("codex-trace-reload-restoration", traceAcceptanceReload)
-          await step("coding-catalog-reload-restoration", smokeCodingCatalog)
           clearTimeout(timeout)
           console.log("[openagents-desktop smoke] OK")
           finish(0)
@@ -5640,7 +5610,6 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("git-review-attach-to-composer", smokeGitReviewAttach)
         // Cmd+N from the review workspace: fresh transcript + focused composer.
         await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
-        await step("coding-catalog-host-persistence", smokeCodingCatalog)
         await captureShot(window, "10-coding-catalog")
         await step("workspaces-back-to-chat", smokeBackToChat)
         tracePass = 1

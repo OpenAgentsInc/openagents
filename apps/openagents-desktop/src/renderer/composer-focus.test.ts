@@ -39,13 +39,15 @@ const makeShell = (withComposer = true) => {
   return { window, document, root }
 }
 
-const mountComposer = (root: HTMLElement): HTMLTextAreaElement => {
+const mountComposer = (root: HTMLElement): HTMLElement => {
   const host = root.ownerDocument.createElement("div")
   host.setAttribute("data-en-key", "shell-input")
-  const textarea = root.ownerDocument.createElement("textarea")
-  host.appendChild(textarea)
+  const editor = root.ownerDocument.createElement("div")
+  editor.setAttribute("contenteditable", "true")
+  editor.setAttribute("data-lexical-composer", "true")
+  host.appendChild(editor)
   root.appendChild(host)
-  return textarea
+  return editor
 }
 
 describe("composer focused on open (#8787)", () => {

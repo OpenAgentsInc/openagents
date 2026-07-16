@@ -253,3 +253,69 @@ describe("result snippets, compact summaries, icons", () => {
     expect(toolCardIcon("mystery")).toBe("Tools")
   })
 })
+
+describe("typed WorkbenchItem passthrough (#8859)", () => {
+  const runningItem = {
+    kind: "command",
+    source: "codex",
+    command: "pnpm test",
+    status: "in_progress",
+  } as const
+  const completedItem = {
+    kind: "command",
+    source: "codex",
+    command: "pnpm test",
+    status: "completed",
+    exitCode: 0,
+    durationMs: 950,
+    outputTail: "42 passed",
+  } as const
+
+  test("a started trace item rides the card and the completion item supersedes it in place", () => {
+    const entries = projectToolCardEntries([
+      note({
+        key: "b1",
+        text: "Bash · started",
+        meta: { trace: { toolName: "Bash", phase: "started", summary: '{"command":"pnpm test"}', item: runningItem } },
+      }),
+      note({
+        key: "b2",
+        text: "Bash · ok · 42 passed",
+        meta: { trace: { toolName: "Bash", phase: "ok", summary: "42 passed", item: completedItem } },
+      }),
+    ])
+    expect(entries).toHaveLength(1)
+    const entry = entries[0]!
+    if (entry.kind !== "tool") throw new Error("expected a tool card")
+    expect(entry.card.status).toBe("ok")
+    expect(entry.card.item).toEqual(completedItem)
+    // The string contract is untouched — summaries still populate the card.
+    expect(entry.card.argsSummary).toBe('{"command":"pnpm test"}')
+    expect(entry.card.resultSummary).toBe("42 passed")
+  })
+
+  test("a completion without a typed item keeps the started item; notes without items stay item-free", () => {
+    const entries = projectToolCardEntries([
+      note({
+        key: "c1",
+        text: "Bash · started",
+        meta: { trace: { toolName: "Bash", phase: "started", summary: "", item: runningItem } },
+      }),
+      note({
+        key: "c2",
+        text: "Bash · failed · exit 1",
+        meta: { trace: { toolName: "Bash", phase: "failed", summary: "exit 1" } },
+      }),
+      note({
+        key: "d1",
+        text: "Read · started",
+        meta: { trace: { toolName: "Read", phase: "started", summary: "" } },
+      }),
+    ])
+    const cards = entries.flatMap(entry => entry.kind === "tool" ? [entry.card] : [])
+    expect(cards).toHaveLength(2)
+    expect(cards[0]!.status).toBe("failed")
+    expect(cards[0]!.item).toEqual(runningItem)
+    expect(cards[1]!.item).toBeUndefined()
+  })
+})

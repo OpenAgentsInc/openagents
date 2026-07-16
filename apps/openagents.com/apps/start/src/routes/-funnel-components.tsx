@@ -1,7 +1,9 @@
-import { ArrowRight, CheckCircle2, ExternalLink, Menu, Terminal } from 'lucide-react'
+import { ArrowRight, CheckCircle2, ExternalLink, Terminal } from 'lucide-react'
 import type * as React from 'react'
 
 import { InternalLink } from '@/components/internal-link'
+import { PublicHeader } from '@/components/public-header'
+import '../blog.css'
 
 import {
   blogPosts,
@@ -11,7 +13,6 @@ import {
   khalaCodeInstall,
   ladderSteps,
   legalVerifiedStats,
-  publicNavLinks,
   type BlogPost,
   type DocPage,
 } from './-funnel-data'
@@ -27,53 +28,7 @@ export function PageShell({ children, dataRoute }: PageShellProps) {
       data-route={dataRoute}
       className="min-h-dvh bg-khala-void text-khala-text selection:bg-khala-energy selection:text-white"
     >
-      <header className="sticky top-0 z-20 border-b border-khala-border/70 bg-khala-void/88 backdrop-blur-md">
-        <div className="mx-auto flex w-[min(100%,1120px)] items-center justify-between gap-4 px-4 py-3">
-          <InternalLink
-            className="khala-focus font-mono text-sm text-khala-energy-cyan"
-            href="/"
-            preload="render"
-          >
-            OpenAgents
-          </InternalLink>
-          <nav
-            aria-label="Primary"
-            className="hidden items-center gap-5 font-mono text-sm text-khala-text-muted lg:flex"
-          >
-            {publicNavLinks.slice(1).map(link => (
-              <InternalLink
-                className="khala-focus transition-colors hover:text-white motion-reduce:transition-none"
-                href={link.href}
-                key={link.href}
-                preload="render"
-              >
-                {link.label}
-              </InternalLink>
-            ))}
-          </nav>
-          <details className="relative lg:hidden">
-            <summary className="khala-focus flex size-11 cursor-pointer list-none items-center justify-center border border-khala-border bg-khala-surface-raised text-khala-text">
-              <Menu aria-hidden="true" className="size-5" />
-              <span className="sr-only">Open navigation</span>
-            </summary>
-            <nav
-              aria-label="Mobile primary"
-              className="absolute right-0 mt-2 grid w-64 gap-1 border border-khala-border bg-khala-surface p-2 font-mono text-base text-khala-text shadow-2xl"
-            >
-              {publicNavLinks.map(link => (
-                <InternalLink
-                  className="khala-focus px-3 py-2 text-khala-text-muted hover:bg-khala-surface-raised hover:text-white"
-                  href={link.href}
-                  key={link.href}
-                  preload="render"
-                >
-                  {link.label}
-                </InternalLink>
-              ))}
-            </nav>
-          </details>
-        </div>
-      </header>
+      <PublicHeader />
       {children}
     </div>
   )
@@ -473,28 +428,27 @@ export function BlogIndexPage() {
 
   return (
     <PageShell dataRoute="blog">
-      <Hero
-        eyebrow="Blog"
-        title="OpenAgents Blog"
-        body="Build notes and launch notes from the OpenAgents network."
-      />
-      <main className="mx-auto grid w-[min(100%,920px)] gap-4 px-4 py-10">
+      <section className="oa-blog-hero" aria-labelledby="oa-blog-index-title">
+        <div className="oa-blog-hero-inner">
+          <span className="oa-blog-label">OpenAgents journal</span>
+          <h1 id="oa-blog-index-title">Notes from the workroom.</h1>
+          <p>Product decisions, release notes, and the reasoning behind OpenAgents Desktop.</p>
+        </div>
+      </section>
+      <main className="oa-blog-index" aria-label="OpenAgents articles">
         {listedPosts.map(post => (
           <InternalLink
-            className={`${panelClass} khala-focus grid gap-2 transition-colors hover:border-khala-border-strong motion-reduce:transition-none`}
+            className="oa-blog-index-row"
             href={`/blog/${post.slug}`}
             key={post.slug}
             preload="render"
           >
-            <p className="m-0 font-mono text-sm text-khala-text-faint">
-              {post.date} · {post.readTime}
-            </p>
-            <h2 className="m-0 text-xl font-semibold tracking-tight text-white">
-              {post.title}
-            </h2>
-            <p className="m-0 text-base/7 text-khala-text-muted">
-              {post.excerpt}
-            </p>
+            <time>{post.date}</time>
+            <div>
+              <h2>{post.title}</h2>
+              <p>{post.excerpt}</p>
+            </div>
+            <ArrowRight aria-hidden="true" />
           </InternalLink>
         ))}
       </main>
@@ -505,22 +459,27 @@ export function BlogIndexPage() {
 export function BlogPostPage({ post }: Readonly<{ post: BlogPost }>) {
   return (
     <PageShell dataRoute="blog-post">
-      <Hero eyebrow="Blog" title={post.title} body={post.excerpt}>
-        <p className="m-0 font-mono text-sm text-khala-text-faint">
-          {post.date} · {post.readTime}
-        </p>
-      </Hero>
-      <main className="mx-auto grid w-[min(100%,920px)] gap-8 px-4 py-10">
-        <article className={`${panelClass} grid gap-8`}>
+      <section className="oa-blog-hero oa-blog-post-hero" aria-labelledby="oa-blog-post-title">
+        <div className="oa-blog-hero-inner">
+          <InternalLink className="oa-blog-label" href="/blog" preload="render">
+            OpenAgents journal
+            <ArrowRight aria-hidden="true" />
+          </InternalLink>
+          <h1 id="oa-blog-post-title">{post.title}</h1>
+          <p>{post.excerpt}</p>
+          <div className="oa-blog-meta">
+            <time>{post.date}</time>
+            <span>{post.readTime}</span>
+          </div>
+        </div>
+      </section>
+      <main className="oa-blog-main">
+        <article className="oa-blog-article">
           {post.sections.map(section => (
-            <section className="grid gap-3" key={section.title}>
-              <h2 className="m-0 text-2xl font-semibold tracking-tight text-white">
-                {section.title}
-              </h2>
+            <section key={section.title}>
+              <h2>{section.title}</h2>
               {section.paragraphs.map(paragraph => (
-                <p className="m-0 text-pretty text-base/7" key={paragraph}>
-                  {paragraph}
-                </p>
+                <p key={paragraph}>{paragraph}</p>
               ))}
             </section>
           ))}

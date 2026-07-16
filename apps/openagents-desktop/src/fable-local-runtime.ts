@@ -82,6 +82,7 @@ import {
   type CodexChildResult,
   type CodexChildRunInput,
 } from "./codex-child-contract.ts"
+import { workbenchToolCallFromSdkUse } from "./workbench-item-contract.ts"
 import { resolveBundledClaudeExecutable } from "./provider-runtime-host.ts"
 
 const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
@@ -1211,6 +1212,9 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       let totalTokens: number | null = null
       let usageSplit: FableChildUsage | null = null
       const pendingToolCalls = new Map<string, string>()
+      // Raw tool_use inputs by call id so the completion event can carry the
+      // same typed args the started event did (#8859 typed item payloads).
+      const pendingToolInputs = new Map<string, unknown>()
 
       const finish = (
         result: FableLocalTurnResult,
@@ -1371,11 +1375,22 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 const toolCallId = typeof block.id === "string" ? block.id : `${pendingToolCalls.size}`
                 const toolName = bounded(typeof block.name === "string" ? block.name : "tool", 120)
                 pendingToolCalls.set(toolCallId, toolName)
+                pendingToolInputs.set(toolCallId, block.input ?? {})
                 const summary = bounded(
                   redact(JSON.stringify(block.input ?? {}) ?? ""),
                   FABLE_LOCAL_SUMMARY_LIMIT,
                 )
-                input.emit({ kind: "tool_use", toolName, summary })
+                input.emit({
+                  kind: "tool_use",
+                  toolName,
+                  summary,
+                  // Typed item (#8859): the same SDK tool call, source-tagged
+                  // "claude", args projected k/v instead of JSON-in-a-string.
+                  item: workbenchToolCallFromSdkUse(
+                    { toolName, input: block.input ?? {}, status: "in_progress" },
+                    redact,
+                  ),
+                })
                 // J2/J4: the TodoWrite tool carries the current plan/todo list.
                 // Emit the structured plan_updated ADDITIONALLY (the tool_use
                 // trace above is unchanged) so a renderer can draw progress.
@@ -1403,7 +1418,19 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 toolName,
                 ok,
                 summary: bounded(redact(content), FABLE_LOCAL_SUMMARY_LIMIT),
+                // Typed item (#8859): completion-side payload keeps the
+                // started args (from the pending map) plus the result/error.
+                item: workbenchToolCallFromSdkUse(
+                  {
+                    toolName,
+                    input: pendingToolInputs.get(toolCallId) ?? {},
+                    status: ok ? "completed" : "failed",
+                    ...(ok ? { resultSnippet: content } : { errorMessage: content }),
+                  },
+                  redact,
+                ),
               })
+              pendingToolInputs.delete(toolCallId)
             }
             continue
           }

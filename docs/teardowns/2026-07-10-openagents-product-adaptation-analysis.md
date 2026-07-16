@@ -1860,7 +1860,8 @@ dies by its owning roadmap gate, issue, or contract when promoted.
 
 The [Grok Build teardown](./2026-07-15-grok-build-teardown.md) adds the
 reference set's strongest open implementation of the terminal as a durable
-agent application platform: a Rust ACP runtime and process-shared leader under
+agent application platform: a Rust Agent Client Protocol runtime and
+process-shared leader under
 full-screen and native-scrollback TUI modes, headless automation, dashboards,
 persistent sessions, worktrees, tools, subagents, permissions, telemetry, and
 runtime-aware updates. Its unusually deep emulator/PTY, signal, resize,
@@ -1885,13 +1886,14 @@ Its evidence changes this document's decisions in the following ways.
    protected per-generation client secret, owner-only endpoint creation,
    bounded mailboxes, overload responses, and receipts. Ambient filesystem
    permission around a local socket is not sufficient authority.
-3. **ACP belongs at the compatibility edge, not at the center of the domain.**
-   Grok proves ACP can let TUI, headless, editor, and filesystem/terminal-owning
-   clients share one runtime. OpenAgents should expose ACP through the same
-   Runtime Gateway command processor, authority compiler, event log, and
-   receipts as every first-party client while keeping Thread/Turn/Item/Work
-   Unit/Receipt canonical and generated. xAI or OpenAgents extension structs
-   must not become a second state machine.
+3. **Agent Client Protocol belongs at the compatibility edge, not at the
+   center of the domain.** Grok proves the protocol can let TUI, headless,
+   editor, and filesystem/terminal-owning clients share one runtime.
+   OpenAgents should control Grok through an outbound client adapter backed by
+   the same Runtime Gateway command processor, authority compiler, event log,
+   and receipts as every first-party provider while keeping
+   Thread/Turn/Item/Work Unit/Receipt canonical and generated. xAI or
+   OpenAgents extension structs must not become a second state machine.
 4. **Reconnect ordering is worth copying; durability names need tightening.**
    Grok's stable event IDs, cursor reconnect, full-replay fallback on any
    idempotency gap, and flush/gate/replay/delta-replay ordering are strong.
@@ -1989,3 +1991,80 @@ Its evidence changes this document's decisions in the following ways.
 
 Per the standing rule, none of these items is authority here: each lives or
 dies by its owning roadmap gate, issue, or contract when promoted.
+
+## T3 Code Agent Client Protocol implementation addendum (2026-07-16)
+
+The
+[T3 Code Agent Client Protocol implementation teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
+adds the reference set's strongest TypeScript/Effect implementation of the
+protocol needed to control `grok agent stdio` and other compatible coding
+agents. It audits T3's generated `effect-acp` package, custom bidirectional
+Effect RPC transport, client and agent facades, structured errors, shared
+session runtime, Cursor/Grok launch and extension layers, event projection,
+restore gate, hardening history, and tests. It also verifies current Grok
+packages, current official schema and SDK versions, registry scope, and
+OpenAgents' existing Grok fixture.
+
+The evidence changes this document's decisions in the following ways.
+
+1. **The required product is an Agent Client Protocol client.** OpenAgents
+   hosts Grok's stdio agent and controls it through initialize,
+   authentication, session, prompt, update, cancellation, and negotiated
+   reverse methods. Exposing OpenAgents itself as an ACP agent is out of scope.
+2. **Grok is using the standard protocol family.** Current Grok source pins
+   Rust `agent-client-protocol` 0.10.4 with unstable features, resolves
+   `agent-client-protocol-schema` 0.11.4, wraps it in `xai-acp-lib`, implements
+   `acp::Agent`, and negotiates wire version 1. The published JavaScript hello
+   path is not a separate xAI protocol.
+3. **`schema-v1.19.0` should consume Grok's documented core path.** It also
+   describes stable wire version 1 and contains `initialize`, `authenticate`,
+   `session/new`, `session/prompt`, and `session/update`. Ship confidence still
+   requires a pinned real-Grok compatibility fixture because xAI extensions
+   and older unstable methods sit above that stable core.
+4. **One schema does not erase peer profiles.** Wire compatibility comes from
+   `protocolVersion`; optional behavior comes from capabilities; generated API
+   compatibility comes from the schema or SDK artifact. The current registry
+   spans Cursor, Codex, Claude, Gemini, Copilot, OpenCode, Qwen, Goose, and
+   other agents, but every peer still needs launch/install/auth, capability,
+   extension, and conformance metadata. Grok is source-compatible even though
+   it is not currently in the curated registry.
+5. **Copy T3's layering, not its pinned code.** T3 cleanly separates generated
+   schema, bidirectional wire transport, typed facades, session lifecycle,
+   canonical event projection, and provider quirks. Its pinned `v0.11.3`
+   unstable schema predates `schema-v1.19.0`; OpenAgents starts from current
+   stable wire version 1 and gates only the unstable families required by a
+   named peer.
+6. **Bidirectionality is the security boundary.** An agent can call the client
+   for permissions, files, and terminals while a prompt is outstanding. Those
+   calls enter Runtime Interactions and brokered workspace capabilities; they
+   never become direct renderer or peer authority. Capabilities default false
+   until the handler, authority compiler, cancellation, bounds, evidence, and
+   tests all exist.
+7. **OpenAgents' current Grok code is a fixture, not the foundation.** It proves
+   initialize/auth/new/prompt and minimal update projection, but cannot answer
+   reverse requests, kills the process to interrupt, loses most native update
+   types, and advertises file/terminal capabilities it does not implement.
+   Replace it behind the shared package and make those capabilities false
+   before describing the path as general Agent Client Protocol support.
+8. **Lifecycle and transport laws must be stronger than T3's private
+   adapter.** Reuse idempotent startup, prompt serialization, session cancel,
+   generation checks, update merging, drain barriers, and replay/live gating.
+   Add bounded queues and pending maps, overload outcomes, request and session
+   cancellation, deadlines, late-response policy, partial-write failure,
+   scoped handlers, restart repair, and exact connection/session generations.
+9. **Native fidelity and safe diagnostics are separate stores.** Retain the
+   complete decoded native envelope in a bounded private evidence plane before
+   portable projection, with explicit loss accounting. Prompts, file bodies,
+   terminal output, headers, auth material, and error data never enter public
+   receipts or ordinary diagnostics.
+10. **The implementation order is Grok-first and concrete.** Pin/generate
+    current stable schemas and manifests; build the bounded bidirectional
+    connection and conformance fixtures; replace the Grok fixture with the
+    shared outbound client; prove auth, prompt/update, reverse requests,
+    cancellation, resume, restart, and extensions against a pinned Grok binary;
+    then admit additional registry agents through separate peer profiles.
+
+This addendum accepts Agent Client Protocol client support as an architecture
+direction. Per the standing rule, the owning roadmap gate, typed contracts,
+issues, tests, receipts, and public promise state still determine when Grok or
+any additional peer is implemented or shipped.

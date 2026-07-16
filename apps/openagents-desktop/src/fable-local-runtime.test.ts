@@ -196,6 +196,24 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const toolResult = sink.events[4] as Extract<FableLocalEvent, { kind: "tool_result" }>
     expect(toolResult.ok).toBe(false)
     expect(toolResult.toolName).toBe("Read")
+    // Typed item payloads (#8859): the Claude lane maps into the same
+    // harness-neutral model, source-tagged "claude", args redacted k/v.
+    expect(toolUse.item).toMatchObject({
+      kind: "toolCall",
+      source: "claude",
+      callKind: "dynamic",
+      tool: "Read",
+      status: "in_progress",
+    })
+    const toolUseItem = toolUse.item as Extract<NonNullable<typeof toolUse.item>, { kind: "toolCall" }>
+    expect(toolUseItem.args).toEqual([{ key: "file_path", value: "~/secret/notes.md" }])
+    expect(toolResult.item).toMatchObject({
+      kind: "toolCall",
+      source: "claude",
+      tool: "Read",
+      status: "failed",
+      errorMessage: "permission denied by policy",
+    })
     const completed = sink.events[5] as Extract<FableLocalEvent, { kind: "turn_completed" }>
     expect(completed.totalTokens).toBe(17)
 

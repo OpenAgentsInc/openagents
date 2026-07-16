@@ -11,8 +11,6 @@ describe("Desktop sidebar destination projection", () => {
   test("keeps the exact admitted catalog order and closed icon identities", () => {
     expect(desktopSidebarDestinationDefinitions.map(({ id, label, icon }) => ({ id, label, icon }))).toEqual([
       { id: "workspace-new-chat", label: "New session", icon: "ChatCompose" },
-      { id: "workspace-chat", label: "Chat", icon: "Chats" },
-      { id: "workspace-home", label: "Project home", icon: "Home" },
       { id: "shell-settings-toggle", label: "Settings", icon: "Settings" },
     ])
     for (const destination of desktopSidebarDestinationDefinitions) {
@@ -23,8 +21,6 @@ describe("Desktop sidebar destination projection", () => {
   test("binds every row to its existing canonical command and typed intent", () => {
     expect(desktopSidebarDestinationDefinitions.map(({ commandId, intent }) => ({ commandId, intent }))).toEqual([
       { commandId: "chat.new", intent: { name: "DesktopNewChat", payload: null } },
-      { commandId: "chat.open", intent: { name: "DesktopWorkspaceSelected", payload: "chat" } },
-      { commandId: "workspace.home", intent: { name: "DesktopWorkspaceSelected", payload: "home" } },
       { commandId: "settings.open", intent: { name: "DesktopSettingsToggled", payload: null } },
     ])
     for (const destination of desktopSidebarDestinationDefinitions) {
@@ -37,15 +33,9 @@ describe("Desktop sidebar destination projection", () => {
     }
   })
 
-  test("projects one selected destination and matching accessibility state", () => {
-    const destinations = projectDesktopSidebarDestinations("home")
-    expect(destinations.filter(destination => destination.selected).map(destination => destination.id)).toEqual([
-      "workspace-home",
-    ])
-    expect(destinations.find(destination => destination.id === "workspace-home")).toMatchObject({
-      accessibilityLabel: "Project home",
-      accessibilityCurrent: "page",
-    })
+  test("keeps the primary new-session action unselected", () => {
+    const destinations = projectDesktopSidebarDestinations("chat")
+    expect(destinations.filter(destination => destination.selected)).toEqual([])
     expect(destinations.find(destination => destination.id === "workspace-new-chat")).toMatchObject({
       selected: false,
       accessibilityLabel: "New session",
@@ -54,14 +44,9 @@ describe("Desktop sidebar destination projection", () => {
     })
   })
 
-  test("does not paint Chat active when a nested conversation is the active row", () => {
+  test("leaves destinations unselected when a conversation row owns selection", () => {
     const destinations = projectDesktopSidebarDestinations("chat", true)
     expect(destinations.filter(destination => destination.selected)).toEqual([])
-    expect(destinations.find(destination => destination.id === "workspace-chat")).toMatchObject({
-      selected: false,
-      accessibilityCurrent: undefined,
-      indicator: null,
-    })
   })
 
   test("uses truthful Settings toggle labels without selecting the primary action", () => {

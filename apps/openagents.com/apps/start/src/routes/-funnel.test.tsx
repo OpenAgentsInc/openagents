@@ -51,20 +51,25 @@ describe('Start funnel routes', () => {
     expect(apiHtml).toContain('/.well-known/openagents.json')
   })
 
-  test('server-renders the blog index and Khala Code post copy', () => {
+  test('server-renders the blog index and OpenAgents Desktop post copy', () => {
     const indexHtml = renderToStaticMarkup(<BlogIndexPage />)
-    const post = findBlogPost('introducing-khala-code')
+    const post = findBlogPost('introducing-openagents-desktop')
 
     expect(post).toBeDefined()
-    expect(indexHtml).toContain('OpenAgents Blog')
-    expect(indexHtml).toContain('Introducing Khala Code')
+    expect(indexHtml).toContain('Notes from the workroom.')
+    expect(indexHtml).toContain('Introducing OpenAgents Desktop')
+    expect(indexHtml).toContain('OpenAgents on GitHub')
+    expect(indexHtml).toContain('Open app')
+    expect(indexHtml).not.toContain('Introducing Khala Code')
+    expect(indexHtml).not.toContain('>Business<')
 
     const postHtml = renderToStaticMarkup(<BlogPostPage post={post!} />)
-    expect(postHtml).toContain('The coding front door')
+    expect(postHtml).toContain('One workroom for the whole turn')
     expect(postHtml).toContain(
-      'Khala Code is the OpenAgents front door for coding work.',
+      'OpenAgents Desktop is a local-first workroom around the Codex session you already use.',
     )
-    expect(postHtml).toContain('Free, paid, and the honest promise state')
+    expect(postHtml).toContain('App-server events, not flattened logs')
+    expect(postHtml).toContain('oa-blog-article')
   })
 
   test('server-renders the Khala Code download page inside the promise gate', () => {

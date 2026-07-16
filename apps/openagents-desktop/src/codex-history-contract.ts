@@ -1,5 +1,7 @@
 import { Exit, Schema } from "@effect-native/core/effect"
 
+import { WorkbenchItemSchema } from "./workbench-item-contract.ts"
+
 const Ref = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))
 const Text = Schema.String.check(Schema.isMaxLength(20_000))
 const Timestamp = Schema.String.check(Schema.isMaxLength(64))
@@ -74,6 +76,15 @@ export const CodexHistoryItemSchema = Schema.Struct({
   redacted: Schema.Boolean,
   sourceType: Schema.String.check(Schema.isMaxLength(160)),
   relatedAgent: CodexHistoryAgentPreviewSchema.pipe(Schema.optionalKey),
+  /**
+   * Typed sidecar (#8859): the structured `WorkbenchItem` a renderer needs to
+   * rebuild the same typed card the live turn showed (command cwd/exit/
+   * duration/output tail, per-file diffs, tool args/results). Additive —
+   * absent on rows the projection has no tool-class source record for, and
+   * the bounded label/summary/fields presentation stays authoritative for
+   * loss accounting.
+   */
+  item: Schema.optional(WorkbenchItemSchema),
 })
 export type CodexHistoryItem = typeof CodexHistoryItemSchema.Type
 
