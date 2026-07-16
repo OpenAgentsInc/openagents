@@ -1099,7 +1099,24 @@ More specific invariant ledgers apply inside imported apps and packages.
   its condensed/mono instrumentation, tactical density, and compatible color
   relationships may be folded into Khala semantic roles, but `autopilotTheme`
   may not mount beside, override, or conflict with Khala's blue background and
-  surface hierarchy. One authoritative
+  surface hierarchy — background/surface/accent/focus stay exactly Khala's
+  blue family everywhere (owner, 2026-07-16: "I want autopilot colors but not
+  overriding our blue — gray is not supposed to dominate over blue in general
+  theming"). Autopilot's STRUCTURAL/typographic grammar (square corners, mono
+  badge/status conventions) is genuinely adopted, not merely aspirational
+  prose — it lands as a component-scoped CSS custom-property override inside
+  `packages/ui`'s workbench stylesheet (e.g. shadowing `--en-radius-*` under
+  `.oa-react-workbench`'s own selector) rather than a change to the shared
+  `khalaTheme` token values themselves, so the rest of the app (buttons,
+  settings, forms) keeps khalaTheme's default corners/tones untouched. Do not
+  attempt to flatten `khalaTheme.radius` or hand-pick a custom `danger` hex to
+  achieve this — `packages/tokens` (effect-native) enforces that every color
+  role derives from the palette and clears WCAG AA text contrast, and that the
+  control lattice's radii stay members of the theme's radius scale; changing
+  those at the token level was tried and reverted (2026-07-16) because it
+  either breaks those invariants or squares every control app-wide, a far
+  bigger change than the workbench chat/tool-card scope calls for. One
+  authoritative
   surface selects exactly one whole-surface backend for its lifetime: declared
   React lowerings or the proven direct catalog compatibility backend, never
   both. Desktop selects React for an ordinary launch; the catalog backend is

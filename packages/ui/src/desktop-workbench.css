@@ -1,6 +1,27 @@
 /* Shared OpenAgents workbench presentation. Desktop and web consume this same
    token-driven stylesheet; application state remains in their adapters. */
 .oa-react-workbench {
+  /*
+   * Autopilot UI grammar fold-in (2026-07-16, owner-directed): the mounted
+   * product theme stays khalaTheme (blue background/surface/accent — "not
+   * overriding our blue, gray is not supposed to dominate over blue"). Its
+   * shared radius scale keeps buttons/inputs/settings unchanged across the
+   * whole app (khalaTheme.radius sits on the theme's control lattice — see
+   * effect-native packages/tokens/src/index.ts's khalaTheme doc comment).
+   * Square corners are still a real rule of the Autopilot language for THIS
+   * component tree specifically (chat/tool/timeline cards), so these local
+   * custom-property declarations shadow the theme's --en-radius-* values
+   * only inside .oa-react-workbench's DOM subtree — every card/panel/badge
+   * that already correctly consumes var(--en-radius-*) (per epic 8857 T3's restyle)
+   * picks this up with zero further changes, and nothing outside this
+   * component tree is affected.
+   */
+  --en-radius-none: 0;
+  --en-radius-sm: 0;
+  --en-radius-md: 0;
+  --en-radius-lg: 0;
+  --en-radius-xl: 0;
+
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   width: 100%;
