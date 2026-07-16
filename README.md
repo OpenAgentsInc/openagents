@@ -121,9 +121,14 @@ adds private native evidence, canonical projection, false-by-default reverse
 authority, interactions, and refs-only receipts. The shared [session runtime](docs/adr/2026-07-16-agent-client-session-runtime.md)
 adds single-flight startup, capability-gated lifecycle calls, serialized prompts,
 accepted-frame draining, replay/live fencing, idempotent cancellation, and bounded
-recovery. The checked Grok/Cursor source-derived fixtures remain
-explicitly non-release evidence until their independent provider profiles and
-pinned live-binary gate land. Execution is tracked in
+recovery. The Grok and Cursor peer composers now add exact executable admission,
+real-workspace binding, advertised authentication, provider-isolated extensions,
+and digest-bound feature gates. Cursor's composer launches only a resolved
+`cursor-agent` installation through `agent acp`, pins and rechecks its complete
+flat installation closure, negotiates `cursor_login`, and
+keeps model discovery behind its versioned extension decoder. Diagnostic live
+probes and source-derived fixtures remain explicitly non-release evidence until
+the pinned live-binary matrix lands. Execution is tracked in
 [#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887);
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).

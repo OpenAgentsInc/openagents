@@ -62,6 +62,23 @@ export type AcpLifecycleFailure =
   | "incompatible_version"
   | "restart_budget_exhausted";
 
+export const classifyAcpLifecycleFailure = (error: unknown): AcpLifecycleFailure => {
+  const details = object(error);
+  const kind = details.kind;
+  if (kind === "missing_executable" || details.code === "ENOENT") return "missing_binary";
+  if (kind === "remote_error" && details.code === -32_002) return "missing_session";
+  if (kind === "remote_error") return "refused";
+  if (kind === "timeout") return "timed_out";
+  if (kind === "cancelled") return "cancelled";
+  if (kind === "process_exit" || kind === "not_running") return "process_exit";
+  const text = error instanceof Error ? error.message : String(error);
+  if (/initialize.+(?:protocolVersion|protocol version)/i.test(text)) return "incompatible_version";
+  if (/timed out/i.test(text)) return "timed_out";
+  if (/cancel/i.test(text)) return "cancelled";
+  if (/session.+(?:missing|not found)|missing session/i.test(text)) return "missing_session";
+  return "protocol_failure";
+};
+
 export type AcpLifecycleOutcome<Value = undefined> =
   | Readonly<{ ok: true; value: Value; receipt: AcpLifecycleReceipt }>
   | Readonly<{
@@ -182,6 +199,7 @@ export type AcpSessionRuntimeOptions = Readonly<{
   clientCapabilities: Readonly<{
     fs: Readonly<{ readTextFile: boolean; writeTextFile: boolean }>;
     terminal: boolean;
+    _meta?: Readonly<Record<string, unknown>>;
   }>;
   clientInfo?: Readonly<{ name: string; version: string; title?: string }>;
   peerIdentityFallback?: Readonly<{ name: string; version: string }>;
@@ -1499,22 +1517,7 @@ export class AcpSessionRuntime {
   }
 
   #failureOf(error: unknown): AcpLifecycleFailure {
-    const details = object(error);
-    const kind = details.kind;
-    if (kind === "missing_executable") return "missing_binary";
-    if (details.code === "ENOENT") return "missing_binary";
-    if (kind === "remote_error" && details.code === -32002) return "missing_session";
-    if (kind === "remote_error") return "refused";
-    if (kind === "timeout") return "timed_out";
-    if (kind === "cancelled") return "cancelled";
-    if (kind === "process_exit" || kind === "not_running") return "process_exit";
-    const text = error instanceof Error ? error.message : String(error);
-    if (/initialize.+(?:protocolVersion|protocol version)/i.test(text))
-      return "incompatible_version";
-    if (/timed out/i.test(text)) return "timed_out";
-    if (/cancel/i.test(text)) return "cancelled";
-    if (/session.+(?:missing|not found)|missing session/i.test(text)) return "missing_session";
-    return "protocol_failure";
+    return classifyAcpLifecycleFailure(error);
   }
 
   #safeError(error: unknown): string {

@@ -1,0 +1,30 @@
+{
+  "name": "@openagentsinc/cursor-agent-runtime",
+  "version": "0.1.0",
+  "private": false,
+  "files": [
+    "src",
+    "scripts",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --run packages/cursor-agent-runtime/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "live-smoke": "node --import tsx scripts/live-smoke.ts"
+  },
+  "dependencies": {
+    "@openagentsinc/agent-client-protocol": "workspace:*",
+    "@openagentsinc/agent-client-runtime-bridge": "workspace:*",
+    "@openagentsinc/agent-stdio-transport": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

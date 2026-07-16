@@ -553,6 +553,7 @@ describe("executable trust and support-state derivation", () => {
 
   it("extracts pinned versions and refuses unparsable ones", () => {
     expect(extractLeadingSemver("synthetic-agent 1.2.3 (release)")).toBe("1.2.3");
+    expect(extractLeadingSemver("2026.06.24-00-45-58-build")).toBe("2026.6.24");
     expect(extractLeadingSemver("dev build")).toBeUndefined();
     const trust = evaluateAcpExecutableTrust({
       profile,
@@ -769,6 +770,24 @@ describe("peer admission", () => {
         priorPin: first.identityPin,
       }),
     ).toMatchObject({ _tag: "PeerAdmissionRefused", reason: "path_replacement" });
+    const closureFirst = admitAcpPeerProfile({
+      registry,
+      profileId: "synthetic-stable",
+      probe: syntheticProbe({ closureSha256: "a".repeat(64) }),
+      evidence: fullEvidence,
+      now: NOW,
+    });
+    if (closureFirst._tag !== "PeerAdmitted") throw new Error("closure admission must pass");
+    expect(
+      admitAcpPeerProfile({
+        registry,
+        profileId: "synthetic-stable",
+        probe: syntheticProbe({ closureSha256: "b".repeat(64) }),
+        evidence: fullEvidence,
+        now: NOW,
+        priorPin: closureFirst.identityPin,
+      }),
+    ).toMatchObject({ _tag: "PeerAdmissionRefused", reason: "path_replacement" });
   });
 
   it("quarantines capability lies and undeclared extension methods instead of granting them", () => {
@@ -789,7 +808,7 @@ describe("peer admission", () => {
     expect(decision.grants.vendorExtensionMethods).not.toContain("vendor.rogue/exfiltrate");
   });
 
-  it("admits Grok and Cursor as experimental until pinned live evidence exists", () => {
+  it("admits pinned Grok and Cursor builds as experimental until live evidence exists", () => {
     const grok = admitAcpPeerProfile({
       registry,
       profileId: "grok-cli",
@@ -820,8 +839,9 @@ describe("peer admission", () => {
       profileId: "cursor-agent",
       probe: syntheticProbe({
         requestedExecutable: "agent",
-        resolvedPath: "/opt/tools/bin/agent",
-        reportedVersion: "2025.9.12",
+        resolvedPath: "/opt/cursor/cursor-agent",
+        realPath: "/opt/cursor/cursor-agent",
+        reportedVersion: "2026.06.24-00-45-58-9f61de7",
       }),
       evidence: [],
       now: NOW,

@@ -48,6 +48,12 @@ GROK_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live:g
 CURSOR_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live:cursor
 ```
 
+The checked Cursor initialize result in
+`compatibility/live/cursor-2026.06.24-darwin-arm64.json` is diagnostic only. It
+pins the installed command, full reported build, launcher and installation-closure digests, wire
+version, advertised auth method, and capability keys; every unexercised
+scenario is explicitly `not-proven` and remains blocked on #8897.
+
 Each probe emits one machine-readable diagnostic result with command, binary
 version, schema identity, and initialize outcome. It does not authenticate,
 print secrets, or establish a release claim.

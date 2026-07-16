@@ -1,0 +1,49 @@
+{
+  "proofClass": "diagnostic-live",
+  "claimAuthority": "initialize-only-final-release-gated-by-8897",
+  "recordedAt": "2026-07-16T15:06:00Z",
+  "openAgentsRevisionBase": "7e01915e98",
+  "schemaRelease": "schema-v1.19.0",
+  "profileId": "cursor-agent",
+  "profileRevision": 2,
+  "peer": {
+    "command": ["agent", "acp"],
+    "reportedVersion": "2026.06.24-00-45-58-9f61de7",
+    "classifiedVersion": "2026.6.24",
+    "resolvedExecutableName": "cursor-agent",
+    "sha256": "b7babf47d8b1eee28ac27a74affa02a559bb38103a6e71fbb1f120805d51fedf",
+    "installationClosureSha256": "69d078daa4db8cbb4163ce2f010207553efb06d652c1e1ea421d739795532faa",
+    "platform": "darwin-arm64"
+  },
+  "negotiation": {
+    "wireVersion": 1,
+    "authMethodIds": ["cursor_login"],
+    "advertisedCapabilityKeys": [
+      "loadSession",
+      "mcpCapabilities",
+      "promptCapabilities",
+      "sessionCapabilities"
+    ],
+    "advertisedSessionCapabilityKeys": ["list"]
+  },
+  "scenarios": {
+    "versionAndDigestProbe": "pass",
+    "initialize": "pass",
+    "cursorLoginAuthenticate": "not-proven",
+    "sessionNew": "not-proven",
+    "promptAndUpdates": "not-proven",
+    "loadAndRestart": "not-proven",
+    "reverseAuthority": "not-proven",
+    "cursorExtensions": "not-proven",
+    "modeConfigAndModels": "not-proven",
+    "cancelAndShutdown": "not-proven"
+  },
+  "redaction": {
+    "promptTextRetained": false,
+    "responseTextRetained": false,
+    "authMaterialRetained": false,
+    "providerMetadataRetained": false,
+    "hostIdentityRetained": false
+  },
+  "result": "diagnostic-pass-release-blocked"
+}

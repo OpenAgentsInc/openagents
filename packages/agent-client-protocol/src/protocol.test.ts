@@ -8,6 +8,7 @@ import {
   CURSOR_ACP_EXTENSIONS,
   CURSOR_ACP_PROFILE,
   decodeCursorAcpExtensionEnvelope,
+  decodeCursorListAvailableModelsResponse,
 } from "./extensions/cursor.ts";
 import {
   decodeGrokAcpExtensionEnvelope,
@@ -326,6 +327,35 @@ describe("Agent Client Protocol schema-v1.19.0 authority", () => {
         message: { jsonrpc: "2.0", method: "cursor/update_todos", params: { todos: [] } },
       }),
     ).toMatchObject({ _tag: "DecodedVendorExtension" });
+  });
+
+  it("validates Cursor model discovery recursively and rejects duplicates", () => {
+    expect(
+      decodeCursorListAvailableModelsResponse({
+        models: [
+          {
+            value: "cursor-auto",
+            name: "Auto",
+            configOptions: [
+              { id: "thinking", name: "Thinking", type: "boolean", currentValue: true },
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({ models: [{ value: "cursor-auto", name: "Auto" }] });
+    expect(
+      decodeCursorListAvailableModelsResponse({
+        models: [
+          { value: "duplicate", name: "One" },
+          { value: "duplicate", name: "Two" },
+        ],
+      }),
+    ).toBeUndefined();
+    expect(
+      decodeCursorListAvailableModelsResponse({
+        models: [{ value: "bad", name: "Bad", configOptions: [{ id: "missing-shape" }] }],
+      }),
+    ).toBeUndefined();
   });
 
   it("accepts and rejects representative values across stable codec families", () => {

@@ -1,11 +1,10 @@
 /**
  * Cursor Agent CLI trusted peer profile (ACP-9 #8896; peer implementation
- * ACP-8 #8894). Launch pin: `agent acp`. Extension identity comes only from
+ * ACP-7 #8894). Launch pin: `agent acp`. Extension identity comes only from
  * the Cursor vendor-extension module — no Grok code is shared here.
  *
- * Version pins are deliberately conservative: no version is marked
- * `supported` until the pinned live compatibility matrix (#8897) lands its
- * evidence, so admission derives at most `experimental` for current builds.
+ * Version pins are deliberately conservative: the probe-verified build remains
+ * experimental until #8897 installs the complete compatibility matrix.
  */
 
 import { CURSOR_ACP_PROFILE } from "../extensions/cursor.ts";
@@ -17,7 +16,7 @@ export const CURSOR_TRUSTED_PEER_PROFILE = {
   wireVersion: 1,
   profileId: "cursor-agent",
   providerId: "cursor",
-  profileRevision: 1,
+  profileRevision: 2,
   display: {
     name: "Cursor Agent CLI",
     description:
@@ -29,8 +28,10 @@ export const CURSOR_TRUSTED_PEER_PROFILE = {
   },
   versions: {
     supported: [],
-    // Cursor Agent CLI publishes date-shaped numeric versions (e.g. 2025.9.12).
-    experimental: [{ kind: "bounded", fromInclusive: "2024.1.0", toExclusive: "2028.1.0" }],
+    // Diagnostic live pin from the official Cursor Agent CLI distribution on
+    // Darwin arm64. Full support remains gated by the #8897 compatibility
+    // matrix; unknown builds are not admitted by this profile.
+    experimental: [{ kind: "exact", version: "2026.6.24" }],
     denied: [],
   },
   launch: {
@@ -39,32 +40,15 @@ export const CURSOR_TRUSTED_PEER_PROFILE = {
     args: ["acp"],
     versionProbeArgs: ["--version"],
   },
-  environment: {
-    allowedKeys: ["CURSOR_API_KEY"],
-    secretRefs: [
-      {
-        key: "CURSOR_API_KEY",
-        requirement: "optional",
-        secretRef: "secret-manager:cursor-api-key",
-      },
-    ],
-  },
+  environment: { allowedKeys: ["HOME"], secretRefs: [] },
   identity: {
-    expectedExecutableBasename: "agent",
+    expectedExecutableBasename: "cursor-agent",
     expectedAgentName: { kind: "prefix", value: "cursor" },
     versionExtraction: "leading-semver",
   },
   auth: {
     policy: "advertised-methods-only",
-    methods: [
-      { id: "cursor-login", kind: "interactive-login", interaction: "external-browser" },
-      {
-        id: "api-key",
-        kind: "api-key-secret",
-        interaction: "none",
-        secretRefKey: "CURSOR_API_KEY",
-      },
-    ],
+    methods: [{ id: "cursor_login", kind: "interactive-login", interaction: "external-browser" }],
   },
   capabilities: [
     { capability: "prompt.text", state: "supported" },
@@ -97,7 +81,7 @@ export const CURSOR_TRUSTED_PEER_PROFILE = {
     shutdown: "dispose-process",
   },
   evidence: {
-    fixtureSuites: ["acp-wire-v1-conformance"],
+    fixtureSuites: ["acp-wire-v1-conformance", "cursor-t3-bde0a4c0"],
     liveMatrixRequired: true,
     maxEvidenceAgeDays: 30,
   },
@@ -112,5 +96,5 @@ export const CURSOR_TRUSTED_PEER_PROFILE = {
     guidance:
       "Install the Cursor Agent CLI through Cursor's official distribution (provides the agent executable). Admission trusts only the probe-verified executable identity, never the installer.",
   },
-  redaction: { additionalSensitiveKeys: ["CURSOR_API_KEY", "login_state"] },
+  redaction: { additionalSensitiveKeys: ["login_state", "device_code", "verification_uri"] },
 } as const;

@@ -23,11 +23,17 @@ export type AcpExecutableProbe = Readonly<{
   resolvedPath: string;
   realPath: string;
   sha256: string;
+  /** Optional peer-specific digest of every executable dependency in its installation closure. */
+  closureSha256?: string;
   reportedVersion: string;
   platform: Readonly<{ os: string; arch: string }>;
 }>;
 
-export type AcpExecutableIdentityPin = Readonly<{ realPath: string; sha256: string }>;
+export type AcpExecutableIdentityPin = Readonly<{
+  realPath: string;
+  sha256: string;
+  closureSha256?: string;
+}>;
 
 export type AcpConformanceEvidenceRecord = Readonly<{
   suiteId: string;
@@ -35,6 +41,7 @@ export type AcpConformanceEvidenceRecord = Readonly<{
   result: "pass" | "fail";
   peerVersion: string;
   executableSha256?: string;
+  installationClosureSha256?: string;
   recordedAt: string;
   artifactRef: string;
 }>;
@@ -125,7 +132,9 @@ const SEMVER_TRIPLE = /(\d{1,6})\.(\d{1,6})\.(\d{1,6})/;
 
 export const extractLeadingSemver = (text: string): string | undefined => {
   const match = SEMVER_TRIPLE.exec(text.slice(0, 256));
-  return match === null ? undefined : `${match[1]}.${match[2]}.${match[3]}`;
+  return match === null
+    ? undefined
+    : `${String(Number(match[1]))}.${String(Number(match[2]))}.${String(Number(match[3]))}`;
 };
 
 const triple = (version: string): readonly [number, number, number] | undefined => {
@@ -265,7 +274,9 @@ export const evaluateAcpExecutableTrust = (
   }
   if (
     priorPin !== undefined &&
-    (priorPin.realPath !== probe.realPath || priorPin.sha256 !== probe.sha256)
+    (priorPin.realPath !== probe.realPath ||
+      priorPin.sha256 !== probe.sha256 ||
+      priorPin.closureSha256 !== probe.closureSha256)
   ) {
     return {
       _tag: "ExecutableRejected",
@@ -292,7 +303,11 @@ export const evaluateAcpExecutableTrust = (
   return {
     _tag: "ExecutableTrusted",
     peerVersion,
-    pin: Object.freeze({ realPath: probe.realPath, sha256: probe.sha256 }),
+    pin: Object.freeze({
+      realPath: probe.realPath,
+      sha256: probe.sha256,
+      ...(probe.closureSha256 === undefined ? {} : { closureSha256: probe.closureSha256 }),
+    }),
   };
 };
 

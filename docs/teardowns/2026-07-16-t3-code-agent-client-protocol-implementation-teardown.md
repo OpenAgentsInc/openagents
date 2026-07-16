@@ -838,8 +838,9 @@ The provider-independent lifecycle now single-flights startup, capability-gates
 stable optional methods, serializes prompts, drains accepted inbound frames,
 fences replay from live work, separates cancellation sources, observes process
 exit, and performs bounded generation-safe recovery. Grok real-binary
-admission is implemented by #8893; Cursor admission remains #8894, and final
-release claims remain #8897.
+admission is implemented by #8893. Cursor's separate `agent acp` composer,
+`cursor_login` negotiation, modes/configuration surface, and four directional
+extension gates are implemented by #8894. Final release claims remain #8897.
 
 1. Exercise every stable method and notification.
 2. Assert capability-gated call refusal.
@@ -857,6 +858,21 @@ release claims remain #8897.
    provider claims.
 
 ### Phase ACP-3 — ACP client adapter and Grok/Cursor proof
+
+**Implemented structurally by #8893 and #8894; release evidence remains
+#8897.** The Cursor implementation deliberately resolves only a PATH candidate
+whose real basename is `cursor-agent`, pins the launcher plus every regular file
+in its installation closure and the normalized date version, rechecks that
+closure before spawn, supplies only `HOME` plus a fixed `/usr/bin:/bin` launcher PATH,
+and never treats another vendor's `agent` shim as Cursor. It negotiates only an
+advertised `cursor_login` through a typed external-browser interaction. Stable
+session modes and config options come from the peer; model discovery is a
+versioned, bounded `cursor/list_available_models` response with explicit
+provenance. The parameterized model-picker `_meta` flag, reverse authority, and
+all Cursor extensions require fresh evidence bound to the admitted version and
+digest. The observed version remains experimental until #8897 promotes it.
+Initialize-only and incomplete prompt probes remain diagnostic and cannot mint
+their own feature evidence.
 
 1. Replace `grok-harness`'s raw client with the shared package.
 2. Correct advertised capabilities before enabling any peer.
