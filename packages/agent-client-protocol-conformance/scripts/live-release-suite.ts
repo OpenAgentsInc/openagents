@@ -188,8 +188,9 @@ const qualifyCursorExtensions = async (
       todos += 1;
     });
     transport.registerReverseHandler("session/request_permission", async (params) => {
-      const options = Array.isArray(object(params).options)
-        ? object(params).options.map(object)
+      const rawOptions = object(params).options;
+      const options: ReadonlyArray<Record<string, unknown>> = Array.isArray(rawOptions)
+        ? rawOptions.map(object)
         : [];
       const preferred = options.find((option) =>
         preferApproval
