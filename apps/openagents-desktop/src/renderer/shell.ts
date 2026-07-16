@@ -1272,7 +1272,9 @@ export const capabilityForHarness = (
 
 export type ChatHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<DesktopThread>>
-  newThread: () => Promise<DesktopThread | null>
+  newThread: (laneRef?: string) => Promise<DesktopThread | null>
+  selectLane?: (threadRef: string, laneRef: string) => Promise<Readonly<{ ok: boolean; reason?: string; message?: string }>>
+  laneForThread?: (threadRef: string) => Promise<string | null>
   openThread: (id: string) => Promise<DesktopThread | null>
   hydrateThread?: (id: string) => Promise<DesktopThread | null>
   sendMessage: (input: Readonly<{
@@ -1957,7 +1959,7 @@ export const makeDesktopShellHandlers = (
     // create the exact same durable local session here and continue the
     // submission instead of dropping the user's first message.
     if (current.activeThreadId === null) {
-      const thread = yield* Effect.promise(chat.newThread)
+      const thread = yield* Effect.promise(() => chat.newThread(current.selectedHarness === "codex" ? "codex-local" : "fable-local"))
       if (thread === null) return
       const draft = current.input
       const draftImages = current.composerImages
@@ -2072,6 +2074,15 @@ export const makeDesktopShellHandlers = (
     // re-hydrating this thread's toggle from durable registry truth never
     // blocks the switch — it only corrects a stale/missing map entry.
     yield* hydrateFullAuto(threadRef)
+    if (chat.laneForThread !== undefined) {
+      const laneRef = yield* Effect.promise(() => chat.laneForThread!(threadRef))
+      if (laneRef === "codex-local" || laneRef === "fable-local") {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          selectedHarness: laneRef === "codex-local" ? "codex" as const : "fable" as const,
+        }))
+      }
+    }
     if (chat.hydrateThread !== undefined) {
       const hydrated = yield* Effect.promise(() => chat.hydrateThread!(threadRef))
       if (hydrated !== null) {
@@ -2472,13 +2483,24 @@ export const makeDesktopShellHandlers = (
       yield* SubscriptionRef.update(state, (next) => withFleetDeploymentResult(next, result, now()))
     }),
   DesktopNewChat: () => Effect.gen(function* () {
-    const thread = yield* Effect.promise(chat.newThread)
+    const current = yield* SubscriptionRef.get(state)
+    const thread = yield* Effect.promise(() => chat.newThread(current.selectedHarness === "codex" ? "codex-local" : "fable-local"))
     if (thread === null) return
     yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
     yield* recordNavigation({ kind: "local_session", threadRef: thread.id, title: thread.title || "New session" })
   }),
-  DesktopHarnessSelected: (harness) =>
-    SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
+  DesktopHarnessSelected: (harness) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.selectedHarness === harness) return
+    if (current.activeThreadId !== null && chat.selectLane !== undefined) {
+      const selected = yield* Effect.promise(() => chat.selectLane!(
+        current.activeThreadId!,
+        harness === "codex" ? "codex-local" : "fable-local",
+      ))
+      if (!selected.ok) return
+    }
+    yield* SubscriptionRef.update(state, value => ({ ...value, selectedHarness: harness }))
+  }),
   DesktopCodexReasoningSelected: (reasoningEffort) =>
     SubscriptionRef.update(state, (current) => ({ ...current, codexReasoningEffort: reasoningEffort })),
   DesktopModelSelected: (model) =>

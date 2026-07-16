@@ -76,6 +76,19 @@ export const fullAutoControlOpenApiDocument = {
         },
       },
     },
+    "/v1/lanes": {
+      get: {
+        operationId: "listProviderLanes",
+        summary: "List configured provider lanes and their honest current status.",
+        responses: {
+          "200": {
+            description: "Public-safe provider lane registry, including unavailable and unadmitted lanes.",
+            content: { "application/json": { schema: { type: "object" } } },
+          },
+          "401": unauthorizedResponse,
+        },
+      },
+    },
     "/v1/full-auto": {
       get: {
         operationId: "listFullAuto",

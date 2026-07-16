@@ -36,6 +36,12 @@ import {
   decodeProviderLaneComposerProjections,
 } from "./provider-lane-capabilities.ts"
 import {
+  ProviderLaneRegistryListChannel,
+  ProviderLaneRegistrySelectChannel,
+  decodeProviderLaneRegistryProjection,
+  decodeProviderLaneSelectRequest,
+} from "./provider-lane-registry.ts"
+import {
   DesktopChatTurnChannel,
   DesktopLocalTurnRecoveryUpdateChannel,
   DesktopForkHistoryThreadChannel,
@@ -363,7 +369,13 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return () => ipcRenderer.removeListener(DesktopLocalTurnRecoveryUpdateChannel, handler)
     },
   },
-  newThread: () => ipcRenderer.invoke(DesktopNewThreadChannel),
+  newThread: (value?: unknown) => {
+    const laneRef = typeof value === "object" && value !== null &&
+      typeof (value as { laneRef?: unknown }).laneRef === "string"
+      ? (value as { laneRef: string }).laneRef
+      : "codex-local"
+    return ipcRenderer.invoke(DesktopNewThreadChannel, { laneRef })
+  },
   openThread: (value: unknown) => {
     const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
     return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopOpenThreadChannel, request)
@@ -672,6 +684,15 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       decodeProviderLaneComposerProjections(
         await ipcRenderer.invoke(ProviderLaneCapabilitiesChannel),
       ) ?? [],
+    list: async () => decodeProviderLaneRegistryProjection(
+      await ipcRenderer.invoke(ProviderLaneRegistryListChannel),
+    ) ?? { lanes: [], selections: [] },
+    select: (value: unknown) => {
+      const request = decodeProviderLaneSelectRequest(value)
+      return request === null
+        ? Promise.resolve({ ok: false, reason: "unknown_lane", message: "Invalid lane selection.", missingCapabilities: [] })
+        : ipcRenderer.invoke(ProviderLaneRegistrySelectChannel, request)
+    },
   },
   fleetRuns: {
     list: () => ipcRenderer.invoke(FleetRunProjectionListChannel),

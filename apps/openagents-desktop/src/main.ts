@@ -141,6 +141,13 @@ import {
   projectProviderLaneCapabilities,
 } from "./provider-lane-capabilities.ts"
 import {
+  ProviderLaneRegistryListChannel,
+  ProviderLaneRegistrySelectChannel,
+  decodeProviderLaneSelectRequest,
+  makeProviderLaneRegistry,
+  type ProviderLaneRegistryEntry,
+} from "./provider-lane-registry.ts"
+import {
   McpConfigAddChannel,
   McpConfigListChannel,
   McpConfigRemoveChannel,
@@ -1048,6 +1055,13 @@ const localTurnJournal = openLocalTurnJournal(
 const fullAutoRegistry = openFullAutoRegistry(
   path.join(app.getPath("userData"), "full-auto", "registry.json"),
 )
+const providerLaneRegistry = makeProviderLaneRegistry({
+  file: path.join(app.getPath("userData"), "provider-lanes", "registry.json"),
+})
+const providerLaneAuthentication = new Map<string, "ready" | "missing" | "unknown">([
+  ["fable-local", "unknown"],
+  ["codex-local", "unknown"],
+])
 /** Full Auto (#8853): broadcasts an updated thread the same way local turn
  * recovery already does, so any open window's existing localTurnRecovery
  * subscription picks up a background continuation without new renderer wiring. */
@@ -1888,7 +1902,15 @@ ipcMain.handle(TerminalPreviewOpenChannel, (_event, value: unknown) => {
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.
 ipcMain.handle(DesktopThreadsChannel, () => hostLifecycle.history()?.run({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }) ?? Promise.resolve(null))
-ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
+ipcMain.handle(DesktopNewThreadChannel, (_event, value: unknown) => {
+  const requestedLane = typeof value === "object" && value !== null &&
+    typeof (value as { laneRef?: unknown }).laneRef === "string"
+    ? (value as { laneRef: string }).laneRef
+    : "codex-local"
+  const thread = threads().newThread()
+  providerLaneRegistry.bind(thread.id, requestedLane)
+  return thread
+})
 // H1 resume picker: app-local threads only. Returning the exact persisted
 // thread id lets the next local turn hit fable/codex-local's existing
 // per-thread SDK resume seam; imported provider history is never mutated.
@@ -2546,7 +2568,11 @@ ipcMain.handle(DiagnosticsActionChannel, (_event, value: unknown) => {
   return action === null ? { ok: false, notice: "Unknown action" } : diagnosticsHost.runAction(action)
 })
 
-ipcMain.handle(FableLocalAvailabilityChannel, () => fableLocal.availability())
+ipcMain.handle(FableLocalAvailabilityChannel, async () => {
+  const availability = await fableLocal.availability()
+  providerLaneAuthentication.set("fable-local", availability.state === "available" ? "ready" : "missing")
+  return availability
+})
 // Image file picker (capability I1): open the native dialog in MAIN, read the
 // chosen images from disk here (never the renderer), bound size + count, and
 // return decoded base64 attachments plus the first honest rejection. Smoke and
@@ -2866,6 +2892,9 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
 ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
   if (request === null) return { ok: false, error: "That message could not be sent." }
+  if (providerLaneRegistry.selection(request.threadRef) !== "fable-local") {
+    return { ok: false, error: "This thread is assigned to a different provider lane." }
+  }
   return laneDispatcher.dispatchTurn(fableLocalLane, request, event.sender)
 })
 
@@ -2894,7 +2923,9 @@ const smokeCodexAvailabilityGate: Promise<void> | null = smokeMode
 if (reactSmokeMode) (releaseSmokeCodexAvailability as (() => void) | null)?.()
 ipcMain.handle(CodexLocalAvailabilityChannel, async () => {
   if (smokeCodexAvailabilityGate !== null) await smokeCodexAvailabilityGate
-  return codexLocal.availability()
+  const availability = await codexLocal.availability()
+  providerLaneAuthentication.set("codex-local", availability.state === "available" ? "ready" : "missing")
+  return availability
 })
 ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
   const request = decodeFableLocalInterruptRequest(value)
@@ -3212,13 +3243,110 @@ const codexLocalLane: ProviderLane<null> = {
   },
 }
 
-// L2 #8900: the renderer receives only the policy-intersected projection,
-// never a raw provider advertisement. Over-claiming lanes cross the boundary
-// as quarantined with every actionable affordance removed.
-ipcMain.handle(ProviderLaneCapabilitiesChannel, event =>
+const providerLaneEntries = async (): Promise<ReadonlyArray<ProviderLaneRegistryEntry>> => {
+  const lanes = [fableLocalLane, codexLocalLane] as const
+  const nativeEntries: ReadonlyArray<ProviderLaneRegistryEntry> = lanes.map(lane => {
+    const report = lane.capabilities()
+    const capabilities = projectProviderLaneCapabilities(report)
+    return {
+      laneRef: lane.laneRef,
+      provider: report.provider,
+      profileRef: report.policy.profileRef,
+      configuration: "configured",
+      authentication: providerLaneAuthentication.get(lane.laneRef) ?? "unknown",
+      admission: capabilities.admission,
+      reason: capabilities.reason,
+      capabilities,
+    }
+  })
+  // ACP peer profiles are registry facts even before a runnable peer adapter
+  // is configured. Keeping them visible is what distinguishes "not set up"
+  // from absence; no capability or admission is inferred from profile
+  // existence alone. #8894 ships the Cursor profile/runtime package, but no
+  // Desktop session adapter is configured yet; a later adapter replaces the
+  // matching row without changing this registry contract.
+  const unavailableAcpPeer = (
+    laneRef: string,
+    provider: string,
+    profileRef: string,
+    displayName: string,
+  ): ProviderLaneRegistryEntry => ({
+    laneRef,
+    provider,
+    profileRef,
+    configuration: "unconfigured",
+    authentication: "unknown",
+    admission: "quarantined",
+    reason: `${displayName} has a trusted peer profile but no configured Desktop session lane.`,
+    capabilities: {
+      laneRef,
+      provider,
+      displayName,
+      admission: "quarantined",
+      reason: `${displayName} has a trusted peer profile but no configured Desktop session lane.`,
+      models: [], reasoningEfforts: [], permissionModes: [], approvals: "none",
+      questions: false, skills: false, images: false, fullAuto: false,
+      interrupt: false, queueFollowup: false, steerTurn: false,
+      extensions: [], evidence: "experimental",
+    },
+  })
+  return [
+    ...nativeEntries,
+    unavailableAcpPeer("acp:grok-cli", "grok", "grok-cli", "Grok CLI"),
+    unavailableAcpPeer("acp:cursor-agent", "cursor", "cursor-agent", "Cursor Agent"),
+  ]
+}
+
+// L2 #8900 + L8 #8903: the renderer receives only policy-intersected,
+// public-safe registry projections. Authentication is explicit even when a
+// probe fails; no lane is silently omitted because it is unavailable.
+ipcMain.handle(ProviderLaneCapabilitiesChannel, async event =>
   isTrustedRuntimeGatewaySender(event)
-    ? [fableLocalLane, codexLocalLane].map(lane => projectProviderLaneCapabilities(lane.capabilities()))
+    ? (await providerLaneEntries()).map(entry => entry.capabilities)
     : [])
+ipcMain.handle(ProviderLaneRegistryListChannel, async event =>
+  isTrustedRuntimeGatewaySender(event)
+    ? { lanes: await providerLaneEntries(), selections: providerLaneRegistry.listSelections() }
+    : { lanes: [], selections: [] })
+ipcMain.handle(ProviderLaneRegistrySelectChannel, async (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return { ok: false, reason: "unadmitted_peer", message: "Untrusted renderer.", missingCapabilities: [] }
+  }
+  const request = decodeProviderLaneSelectRequest(value)
+  if (request === null) {
+    return { ok: false, reason: "unknown_lane", message: "Invalid lane selection.", missingCapabilities: [] }
+  }
+  const thread = threads().open(request.threadRef)
+  const requiredCapabilities = [
+    ...(fullAutoRegistry.get(request.threadRef) ? ["fullAuto" as const] : []),
+    ...(thread?.notes.some(note => note.question?.status === "pending") ? ["answerQuestion" as const] : []),
+  ]
+  const result = providerLaneRegistry.switchThread({
+    ...request,
+    lanes: await providerLaneEntries(),
+    thread,
+    requiredCapabilities,
+  })
+  if (result.ok && result.previousLaneRef !== result.laneRef) {
+    if (result.laneRef === "codex-local") codexLocal.resetContinuity(result.threadRef)
+    if (result.laneRef === "fable-local") fableLocal.resetContinuity(result.threadRef)
+  }
+  if (!result.ok && thread !== null) {
+    const updated = threads().append(thread.id, {
+      key: randomUUID(),
+      role: "system",
+      text: `Provider switch refused (${result.reason}): ${result.message}`,
+      timestamp: new Date().toISOString(),
+      meta: { lane: providerLaneRegistry.selection(thread.id) },
+    })
+    if (updated !== null && !event.sender.isDestroyed()) {
+      event.sender.send(DesktopLocalTurnRecoveryUpdateChannel, updated)
+    }
+  }
+  return result.ok
+    ? { ok: true, threadRef: result.threadRef, laneRef: result.laneRef, previousLaneRef: result.previousLaneRef, truncated: result.truncated }
+    : result
+})
 
 /**
  * Full Auto (#8853): extracted so both a renderer-initiated send (via the IPC
@@ -3395,6 +3523,9 @@ void localTurnRecovery.then(() => runFullAutoReconciliation({ startup: true })).
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
   if (request === null) return { ok: false, error: "That message could not be sent." }
+  if (providerLaneRegistry.selection(request.threadRef) !== "codex-local") {
+    return { ok: false, error: "This thread is assigned to a different provider lane." }
+  }
   return dispatchCodexLocalTurn(request, event.sender)
 })
 
@@ -3471,7 +3602,12 @@ if (isFullAutoControlEnabled(process.env)) {
       // start bootstrap: main mints the thread in its own store -- callers
       // never name a ref -- so the reconcile dispatcher finds a real thread
       // and the first continuation opens a brand-new provider conversation.
-      createThread: title => threads().newThread(title ?? "Full Auto").id,
+      createThread: (title, laneRef) => {
+        const thread = threads().newThread(title ?? "Full Auto")
+        providerLaneRegistry.bind(thread.id, laneRef)
+        return thread.id
+      },
+      listLanes: providerLaneEntries,
       isLaneEligible: laneRef => {
         const lane = laneRef === "codex-local" ? codexLocalLane : laneRef === "fable-local" ? fableLocalLane : null
         const policy = fullAutoLanePolicy(laneRef)

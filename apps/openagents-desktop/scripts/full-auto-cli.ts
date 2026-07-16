@@ -23,6 +23,7 @@ import {
 
 const USAGE = `usage: full-auto-cli <command> [args] [--user-data <path>]
 commands:
+  lanes
   list
   status <threadRef>
   start --workspace <path> [--title <title>] [--lane <provider-lane>]
@@ -58,7 +59,9 @@ const main = async (): Promise<void> => {
     return threadRef
   }
 
-  const result = command === "list"
+  const result = command === "lanes"
+    ? await operations.lanes()
+    : command === "list"
     ? await operations.list()
     : command === "openapi"
     ? await operations.openapi()

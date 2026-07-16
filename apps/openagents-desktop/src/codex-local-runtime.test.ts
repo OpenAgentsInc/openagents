@@ -781,6 +781,30 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(resumeArgs[resumeArgs.length - 1]).toBe("what was the codeword?")
   })
 
+  test("L8 switch reset starts fresh and seeds the new Codex session from host history", async () => {
+    const captured: SpawnCapture[] = []
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      initialSessions: [{ threadRef: "thread-switched", threadId: "thread-old", accountRef: "codex" }],
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [{ stdout: fixtureCodexLocalTurnStdout("thread-fresh"), exitCode: 0 }],
+        input => captured.push(input),
+      ),
+      discoverImpl: async () => [accounts[0]!],
+      health: makeCodexAccountHealth(),
+    })
+    runtime.resetContinuity("thread-switched")
+    const result = await runtime.runTurn({
+      turnRef: "turn-switched", threadRef: "thread-switched",
+      history: [{ role: "user", text: "prior question" }, { role: "assistant", text: "prior answer" }],
+      message: "continue here", emit: collect().emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(captured[0]!.args.slice(0, 2)).not.toEqual(["exec", "resume"])
+    expect(captured[0]!.args.at(-1)).toContain("prior question")
+    expect(captured[0]!.args.at(-1)).toContain("continue here")
+  })
+
   test("PROCESS RESTART: durable continuity resumes the exact recorded account/thread once and reports provider identity", async () => {
     const captured: SpawnCapture[] = []
     const observed: Array<Record<string, string>> = []

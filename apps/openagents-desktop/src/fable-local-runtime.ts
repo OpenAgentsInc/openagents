@@ -583,6 +583,9 @@ export type FableLocalRuntime = Readonly<{
   /** H1 resume-picker truth: only a thread with a completed SDK session in
    * this runtime can be advertised as using the resume seam. */
   hasContinuity: (threadRef: string) => boolean
+  /** L8: force the next turn to open a fresh provider conversation. Host
+   * history still seeds that turn through ProviderLane.runTurn. */
+  resetContinuity: (threadRef: string) => void
   interrupt: (turnRef: string) => boolean
   /**
    * Delivers the user's answers to a pending AskUserQuestion (EP250 question
@@ -1542,6 +1545,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
     availability,
     runTurn,
     hasContinuity: threadRef => sessionByThread.has(threadRef),
+    resetContinuity: threadRef => { sessionByThread.delete(threadRef) },
     interrupt: turnRef => {
       const active = activeTurns.get(turnRef)
       if (active === undefined) return false

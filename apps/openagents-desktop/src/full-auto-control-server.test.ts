@@ -99,6 +99,26 @@ const startHarness = async (): Promise<Harness> => {
         createdThreads.push({ threadRef, title })
         return threadRef
       },
+      listLanes: async () => [{
+        laneRef: "peer.cursor",
+        provider: "cursor",
+        profileRef: "acp:cursor",
+        configuration: "unconfigured",
+        authentication: "missing",
+        admission: "quarantined",
+        reason: "Peer profile is not admitted.",
+        capabilities: {
+          laneRef: "peer.cursor",
+          provider: "cursor",
+          displayName: "Cursor",
+          admission: "quarantined",
+          reason: "Peer profile is not admitted.",
+          models: [], reasoningEfforts: [], permissionModes: [], approvals: "none",
+          questions: false, skills: false, images: false, fullAuto: false,
+          interrupt: false, queueFollowup: false, steerTurn: false,
+          extensions: [], evidence: "experimental",
+        },
+      }],
       isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "fable-local",
     },
     controlFilePath: path.join(root, "full-auto", "control.json"),
@@ -133,6 +153,19 @@ const startHarness = async (): Promise<Harness> => {
 }
 
 describe("Full Auto control surface (FA-H13 #8886)", () => {
+  test("lists unavailable and unadmitted lanes honestly through the bearer-gated route", async () => {
+    const harness = await startHarness()
+    try {
+      const result = await harness.request("GET", "/v1/lanes")
+      expect(result.status).toBe(200)
+      expect(result.body.lanes).toEqual([expect.objectContaining({
+        laneRef: "peer.cursor",
+        authentication: "missing",
+        admission: "quarantined",
+        reason: "Peer profile is not admitted.",
+      })])
+    } finally { await harness.dispose() }
+  })
   test("off by default: main's guard requires OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1 exactly", () => {
     expect(isFullAutoControlEnabled({})).toBe(false)
     expect(isFullAutoControlEnabled({ OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL: undefined })).toBe(false)

@@ -75,6 +75,7 @@ const call = async (
 
 export const controlOperations = (connection: ControlConnection) => ({
   openapi: () => call(connection, "GET", "/v1/openapi.json"),
+  lanes: () => call(connection, "GET", "/v1/lanes"),
   list: () => call(connection, "GET", "/v1/full-auto"),
   status: (threadRef: string) =>
     call(connection, "GET", `/v1/full-auto/${encodeURIComponent(threadRef)}`),

@@ -183,6 +183,7 @@ export type FullAutoControlError = typeof FullAutoControlErrorSchema.Type
  */
 export const FULL_AUTO_CONTROL_ROUTES = [
   { method: "get", path: "/v1/openapi.json", operationId: "getOpenApiDocument" },
+  { method: "get", path: "/v1/lanes", operationId: "listProviderLanes" },
   { method: "get", path: "/v1/full-auto", operationId: "listFullAuto" },
   { method: "post", path: "/v1/full-auto/start", operationId: "startFullAuto" },
   { method: "get", path: "/v1/full-auto/{threadRef}", operationId: "getFullAutoStatus" },

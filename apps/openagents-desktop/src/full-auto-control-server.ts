@@ -25,6 +25,7 @@ import { fullAutoControlOpenApiDocument } from "./full-auto-control-openapi.ts"
 import type { FullAutoRecord, FullAutoRegistry } from "./full-auto-registry.ts"
 import type { LocalTurnRecord } from "./local-turn-journal.ts"
 import { FULL_AUTO_DEFAULT_LANE } from "./full-auto-lane.ts"
+import type { ProviderLaneRegistryEntry } from "./provider-lane-registry.ts"
 
 /**
  * FA-H13 (#8886): the Phase 1 local Full Auto control server. A plain
@@ -128,9 +129,11 @@ export type FullAutoControlCapabilities = Readonly<{
   appendSystemNote: (threadRef: string, text: string) => void
   /** start bootstrap: mint a brand-new local thread in main's own thread
    * store (main mints the ref -- callers never name one) and return its ref. */
-  createThread: (title: string | null) => string
+  createThread: (title: string | null, laneRef: string) => string
   /** L6: capability-gated ProviderLane selection. */
   isLaneEligible?: (laneRef: string) => boolean
+  /** L8: public-safe lane registry. Includes unavailable/unadmitted lanes. */
+  listLanes?: () => Promise<ReadonlyArray<ProviderLaneRegistryEntry>>
 }>
 
 export type StartFullAutoControlServerInput = Readonly<{
@@ -283,6 +286,17 @@ export const startFullAutoControlServer = (
       sendJson(response, 200, fullAutoControlOpenApiDocument)
       return
     }
+    if (url.pathname === "/v1/lanes") {
+      if (method !== "get") {
+        sendError(response, 405, { error: "method_not_allowed", message: "Use GET." })
+        return
+      }
+      sendJson(response, 200, {
+        schema: FULL_AUTO_CONTROL_SCHEMA,
+        lanes: await (capabilities.listLanes?.() ?? Promise.resolve([])),
+      })
+      return
+    }
     if (url.pathname === "/v1/full-auto") {
       if (method !== "get") {
         sendError(response, 405, { error: "method_not_allowed", message: "Use GET." })
@@ -337,7 +351,7 @@ export const startFullAutoControlServer = (
       // Bootstrap: main mints the thread, the same registry.set path as the
       // composer toggle binds workspace + enables, and the shared serialized
       // reconcile pass dispatches the first continuation.
-      const startedThreadRef = capabilities.createThread(body.title ?? null)
+      const startedThreadRef = capabilities.createThread(body.title ?? null, lane)
       const record = capabilities.registry.set(startedThreadRef, true, {
         workspaceRef: resolvedWorkspaceRef,
         profile: { lane },

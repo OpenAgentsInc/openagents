@@ -362,6 +362,25 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(harness.captured[1]!.prompt).toBe("two")
   })
 
+  test("L8 switch reset opens a fresh SDK conversation seeded by bounded history", async () => {
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-fresh" }
+        yield { type: "result", subtype: "success", is_error: false, result: "ok", usage: null }
+      },
+      initialSessions: [{ threadRef: "thread-switched", sessionId: "session-old", accountRef: "claude-pylon-a" }],
+    })
+    harness.runtime.resetContinuity("thread-switched")
+    await harness.runtime.runTurn({
+      turnRef: "turn-switched", threadRef: "thread-switched",
+      history: [{ role: "user", text: "prior question" }, { role: "assistant", text: "prior answer" }],
+      message: "continue here", emit: collect().emit,
+    })
+    expect(harness.captured[0]!.options.resume).toBeUndefined()
+    expect(String(harness.captured[0]!.prompt)).toContain("prior question")
+    expect(String(harness.captured[0]!.prompt)).toContain("continue here")
+  })
+
   test("PROCESS RESTART: hydrated continuity stays pinned and provider init identity is reported", async () => {
     const observed: Array<Record<string, string>> = []
     const harness = makeRuntimeHarness({

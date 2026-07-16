@@ -147,7 +147,7 @@ type DesktopBridge = Readonly<{
   localTurnRecovery?: Readonly<{
     onUpdate?: (listener: (thread: DesktopThread) => void) => () => void
   }>
-  newThread?: () => Promise<unknown>
+  newThread?: (value?: unknown) => Promise<unknown>
   openThread?: (value: unknown) => Promise<unknown>
   hydrateThread?: (value: unknown) => Promise<unknown>
   historyThreads?: Readonly<{
@@ -197,7 +197,11 @@ type DesktopBridge = Readonly<{
     list?: () => Promise<unknown>
     usage?: (ref: string) => Promise<unknown>
   }>
-  providerLanes?: Readonly<{ capabilities?: () => Promise<unknown> }>
+  providerLanes?: Readonly<{
+    capabilities?: () => Promise<unknown>
+    list?: () => Promise<unknown>
+    select?: (value: unknown) => Promise<unknown>
+  }>
   fleetRuns?: Readonly<{ list?: () => Promise<unknown> }>
   fableLocal?: Readonly<{
     availability?: () => Promise<unknown>
@@ -684,9 +688,22 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         const raw = await bridge?.historyThreads?.listLocal?.()
         return Array.isArray(raw) ? raw as DesktopThread[] : []
       },
-      newThread: async () => {
-        const raw = await bridge?.newThread?.()
+      newThread: async (laneRef?: string) => {
+        const raw = await bridge?.newThread?.({ laneRef: laneRef ?? "codex-local" })
         return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+      },
+      selectLane: async (threadRef: string, laneRef: string) => {
+        const raw = await bridge?.providerLanes?.select?.({ threadRef, laneRef })
+        return typeof raw === "object" && raw !== null && typeof (raw as { ok?: unknown }).ok === "boolean"
+          ? raw as { ok: boolean; reason?: string; message?: string }
+          : { ok: false, reason: "unknown_lane", message: "Provider lane registry unavailable." }
+      },
+      laneForThread: async (threadRef: string) => {
+        const raw = await bridge?.providerLanes?.list?.()
+        if (typeof raw !== "object" || raw === null || !Array.isArray((raw as { selections?: unknown }).selections)) return null
+        const selection = ((raw as { selections: Array<{ threadRef?: unknown; laneRef?: unknown }> }).selections)
+          .find(row => row.threadRef === threadRef)
+        return typeof selection?.laneRef === "string" ? selection.laneRef : "codex-local"
       },
       openThread: async (id: string) => {
         const raw = await bridge?.historyThreads?.resumeLocal?.({ threadRef: id })

@@ -249,6 +249,9 @@ export type CodexLocalRuntimeOptions = Readonly<{
 export type CodexLocalRuntime = Readonly<{
   availability: () => Promise<CodexLocalAvailability>
   runTurn: (input: CodexLocalTurnInput) => Promise<CodexLocalTurnResult>
+  /** L8: force the next turn to open a fresh provider conversation while
+   * the shared dispatcher supplies bounded host-owned history. */
+  resetContinuity: (threadRef: string) => void
   interrupt: (turnRef: string) => boolean
   steerCurrent: (request: FableLocalQueueFollowupRequest) => Promise<Readonly<{
     ok: boolean
@@ -1399,6 +1402,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         ? pending.accept(request)
         : false
     },
+    resetContinuity: threadRef => { sessionByThread.delete(threadRef) },
     dispose: () => {
       for (const pending of pendingQuestions.values()) pending.deny()
       pendingQuestions.clear()

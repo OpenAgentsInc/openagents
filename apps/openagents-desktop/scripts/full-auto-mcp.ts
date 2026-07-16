@@ -34,6 +34,11 @@ const threadRefProperty = {
 
 const TOOLS = [
   {
+    name: "provider_lanes_list",
+    description: "List every configured provider lane with honest authentication, admission, and capability status.",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} },
+  },
+  {
     name: "full_auto_list",
     description: "List every Full Auto registry record with its coarse live state (public-safe projection).",
     inputSchema: { type: "object", additionalProperties: false, properties: {} },
@@ -126,7 +131,9 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
   const operations = controlOperations(connection)
   const threadRef = typeof args.threadRef === "string" ? args.threadRef : ""
   const workspaceRef = typeof args.workspaceRef === "string" ? args.workspaceRef : ""
-  const result = name === "full_auto_list"
+  const result = name === "provider_lanes_list"
+    ? await operations.lanes()
+    : name === "full_auto_list"
     ? await operations.list()
     : name === "full_auto_status"
     ? await operations.status(threadRef)

@@ -4190,5 +4190,46 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         verification:
           "Desktop focused ProviderLane/capability/composer suites, behavior-contract registry validation, and Desktop typecheck.",
       },
+      {
+        contractId: "openagents_desktop.chat.provider_lane_registry_and_switch_honesty.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "multi-lane thread selection and switching",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "issue-8903", statedOn: "2026-07-16" },
+        statement:
+          "Every configured provider lane remains visible with its authentication, admission, and capability truth; a thread's selected lane is durable, and switching either carries bounded host-owned history into a compatible lane or returns an exact typed refusal without changing selection.",
+        authorityBoundary:
+          "Electron main owns the durable lane registry, thread existence, history read, capability requirements, authentication evidence, peer admission, and selection write. The renderer can request only a bounded threadRef/laneRef pair and receives a public-safe outcome. Missing authentication, an unadmitted peer, an unknown lane, a missing thread, and a capability mismatch are distinct refusals; none may silently fall back to another provider or discard transcript history.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/provider-lane-registry.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/preload.cts",
+          "apps/openagents-desktop/src/full-auto-control-server.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8903",
+        ],
+        oracles: [
+          {
+            id: "provider_lane_registry.durable_selection_and_typed_switch",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/provider-lane-registry.test.ts",
+            description:
+              "Reopens durable per-thread selection, proves unavailable and unadmitted lanes stay explicit, refuses incompatible switches without mutation, and carries a bounded host-read history window on a compatible switch.",
+          },
+          {
+            id: "provider_lane_registry.control_route_parity",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+            description:
+              "Keeps GET /v1/lanes in the shared control route/OpenAPI parity table and behind the same loopback bearer boundary as every control operation.",
+          },
+        ],
+        verification:
+          "Provider lane registry, Full Auto control route parity, renderer composer/shell suites, Desktop typecheck, and repository behavior-contract validation.",
+      },
     ],
   };
