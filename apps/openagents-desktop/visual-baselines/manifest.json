@@ -46,6 +46,83 @@
       "sha256": "b4d017240ea3c077c50789d2fd68448fbab429da442a360b2a5914775cb5a974",
       "width": 1280,
       "height": 800
+    },
+    {
+      "name": "workbench-messages-reasoning",
+      "file": "workbench-messages-reasoning.png",
+      "sha256": "49e7218e57f4cae03c02c38034bda2c30ef6aee6baa8bbcca2c367b952c3d7eb",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-commands",
+      "file": "workbench-commands.png",
+      "sha256": "6ee36a565a3e5cbc1d1c23c4b76a7148ef898cf3f8562b761b3e410d0163ff39",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-files",
+      "file": "workbench-files.png",
+      "sha256": "e43b2bc9d2e43af073608361ff4ca46deff3d67ed1d06e418e563c9bb548ef21",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-tools-mcp-dynamic",
+      "file": "workbench-tools-mcp-dynamic.png",
+      "sha256": "fca7ae528065001144c15c88d689c4b91e063d8713db101841f504a5e676c623",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-tools-web-image",
+      "file": "workbench-tools-web-image.png",
+      "sha256": "8baec44e0a6df220b1bc70cac679689816bbd3aff84dbaedf44a4b45c640c0de",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-plans-approvals",
+      "file": "workbench-plans-approvals.png",
+      "sha256": "d495580f040f44dcc37dfe19f310b5b4cd0fe0327689c410c93552875151c403",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-agents",
+      "file": "workbench-agents.png",
+      "sha256": "c7f25bf4db75aecd8bcfd408d80304d371551eda5c683256a24635df0866c823",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-context",
+      "file": "workbench-context.png",
+      "sha256": "4d586968e41c88628d144b19459bf8e075f6f086c5a15b9a393d51b801b182b5",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-notices-long-tail",
+      "file": "workbench-notices-long-tail.png",
+      "sha256": "3f2355146facd6f11b4f28b879b46f1b2134a861302147a6a829d22985a761ee",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-shell",
+      "file": "workbench-shell.png",
+      "sha256": "6bbaa723c676594b6676e09430e15e37593fe4d89725965c391cc3bc29dc2db8",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "workbench-frame",
+      "file": "workbench-frame.png",
+      "sha256": "ffc1e36ce04bff4f20abb6a1a4fc0d023947e309cb586a961d9984a56edc3fb6",
+      "width": 1280,
+      "height": 800
     }
   ]
 }

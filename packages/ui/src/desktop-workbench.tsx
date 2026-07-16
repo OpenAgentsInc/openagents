@@ -64,7 +64,15 @@ export {
   type DesktopPlanCardFixture,
 } from "./workbench/plan-card.fixtures.ts";
 export { DesktopCommandCard } from "./workbench/command-card.tsx";
+export {
+  desktopCommandCardFixtures,
+  type DesktopCommandCardFixture,
+} from "./workbench/command-card.fixtures.ts";
 export { DesktopFileChangeCard, type DesktopFileChange } from "./workbench/file-change-card.tsx";
+export {
+  desktopFileChangeCardFixtures,
+  type DesktopFileChangeCardFixture,
+} from "./workbench/file-change-card.fixtures.ts";
 export {
   DesktopToolCallCard,
   type DesktopToolKind,

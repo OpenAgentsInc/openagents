@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.qa.swarm-lane.v1",
+  "lane": "desktop",
+  "surface": "OpenAgents Desktop shell and shared workbench components",
+  "runFromRepositoryRoot": "pnpm run qa:swarm:desktop",
+  "supportedPlatform": "darwin-arm64",
+  "successExitCode": 0,
+  "receiptLinePrefix": "[openagents-desktop visual-baseline] gate OK ",
+  "receiptSchema": "openagents.qa.desktop-visual-lane.v1",
+  "failureLinePrefix": "[openagents-desktop visual-baseline] gate FAILED",
+  "evidence": [
+    "stdout receipt JSON",
+    "committed baseline manifest and PNGs",
+    "side-by-side and current PNG artifacts on drift"
+  ]
+}

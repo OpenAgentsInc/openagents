@@ -18,6 +18,20 @@ pnpm run qa:visual
 pnpm run qa:visual -- --update-baselines
 ```
 
+The QA-1 swarm Desktop lane runs the same gate verbatim from the repository
+root:
+
+```sh
+pnpm run qa:swarm:desktop
+```
+
+Its machine-readable invocation and receipt contract is checked in at
+`docs/qa/swarm/desktop-visual-lane.json`. Success is exit code 0 plus the
+`[openagents-desktop visual-baseline] gate OK ` line whose JSON payload has
+schema `openagents.qa.desktop-visual-lane.v1` and `lane: "desktop"`. QA-1 may
+embed that payload unchanged in its dated findings report; it must not infer
+success from screenshots or build output alone.
+
 On drift the gate prints a `gate FAILED — pixel drift` line naming the scratch
 directory holding side-by-side review artifacts
 (`<state>.side-by-side.png` = baseline | current | drift mask, plus
@@ -27,16 +41,27 @@ shows the new pixels.
 
 ## What is captured
 
-Five frozen fixture shell states (window 1280x800, device scale 1, TZ=UTC,
+Sixteen frozen fixture states (window 1280x800, device scale 1, TZ=UTC,
 animations and caret disabled, clock frozen to the fixture instant):
 
-| State | Surface |
-| --- | --- |
-| `composer-idle` | Empty transcript, composer idle, both lanes available |
-| `thread-plan-card` | Thread with a typed runtime plan card (completed / in-progress / pending steps) |
-| `approval-card` | Pending `tool_approval` question card (Approve / Deny) |
-| `reasoning-disclosure` | Reasoning system row in the timeline |
-| `full-auto-running` | Full Auto enabled with the background `turn_running` badge |
+| State                          | Surface                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `composer-idle`                | Empty transcript, composer idle, both lanes available                                             |
+| `thread-plan-card`             | Thread with a typed runtime plan card (completed / in-progress / pending steps)                   |
+| `approval-card`                | Pending `tool_approval` question card (Approve / Deny)                                            |
+| `reasoning-disclosure`         | Reasoning system row in the timeline                                                              |
+| `full-auto-running`            | Full Auto enabled with the background `turn_running` badge                                        |
+| `workbench-messages-reasoning` | Every shared message and reasoning fixture, including honest redacted absence                     |
+| `workbench-commands`           | Running, completed, failed, and bounded-output command cards                                      |
+| `workbench-files`              | Running, applied, failed, and bounded file-change/diff cards                                      |
+| `workbench-tools-mcp-dynamic`  | All shared MCP and dynamic tool-call fixtures                                                     |
+| `workbench-tools-web-image`    | All shared web and image tool-call fixtures                                                       |
+| `workbench-plans-approvals`    | Every shared plan and approval fixture                                                            |
+| `workbench-agents`             | Every shared delegation/agent-group fixture                                                       |
+| `workbench-context`            | Every exact-value context/rate-limit meter fixture                                                |
+| `workbench-notices-long-tail`  | Notice severities plus compaction, sleep, review, hook, and declined-command rows                 |
+| `workbench-shell`              | Work-group fold, composer, queued follow-up, populated rail, header, timeline, and shell controls |
+| `workbench-frame`              | The complete shared app frame: rail, header, timeline, and composer together                      |
 
 Baselines live in `apps/openagents-desktop/visual-baselines/` (PNG per state +
 `manifest.json` with sha256, dimensions, capture geometry, and thresholds).
@@ -51,10 +76,12 @@ across platforms.
   `data-visual-baseline-ready` flag, and writes `capturePage` PNGs into
   `OPENAGENTS_DESKTOP_VISUAL_BASELINE_SHOTS`, then `app.exit`s with a
   public-safe receipt line.
-- **Renderer fixture mode** (`src/renderer/visual-baseline.ts` +
-  `visual-baseline-fixtures.ts`): mounts the REAL React workbench over one
-  frozen `DesktopShellState` built with the production state constructors —
-  no preload bridge, no providers, no clocks (Date is frozen to
+- **Renderer fixture mode** (`src/renderer/visual-baseline.ts`,
+  `visual-baseline-fixtures.ts`, and `visual-baseline-workbench.tsx`): mounts
+  the REAL React shell for five frozen `DesktopShellState` projections and
+  mounts the shared `@openagentsinc/ui/desktop-workbench` components for eleven
+  catalog pages consuming every #8870 fixture. There is no preload bridge,
+  provider, network, or live clock (Date is frozen to
   `2026-07-15T09:45:00.000Z`).
 - **Gate** (`scripts/visual-baseline-smoke.ts`): builds the current Desktop,
   then spawns that just-built app through Electron as a second OS process

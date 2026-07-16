@@ -11,37 +11,41 @@
  * mount) and unit-tested for determinism in
  * `visual-baseline-fixtures.test.ts`.
  */
-import type { DesktopThread } from "../chat-contract.ts"
+import type { DesktopThread } from "../chat-contract.ts";
 import {
   initialDesktopShellState,
   withChatSelected,
   withFullAutoLiveState,
   withHarnessLanes,
   type DesktopShellState,
-} from "./shell.ts"
+} from "./shell.ts";
 
 /** The one frozen instant every fixture clock reads (see the Date shim in
  * visual-baseline.ts). Rail relative timestamps derive from this. */
-export const VISUAL_BASELINE_FROZEN_NOW_ISO = "2026-07-15T09:45:00.000Z"
+export const VISUAL_BASELINE_FROZEN_NOW_ISO = "2026-07-15T09:45:00.000Z";
 
 export {
+  VISUAL_BASELINE_SHELL_STATES,
   VISUAL_BASELINE_STATES,
+  VISUAL_BASELINE_WORKBENCH_STATES,
   isVisualBaselineStateName,
+  isVisualBaselineShellStateName,
+  isVisualBaselineWorkbenchStateName,
   type VisualBaselineStateName,
-} from "../visual-baseline-contract.ts"
-import { type VisualBaselineStateName } from "../visual-baseline-contract.ts"
+} from "../visual-baseline-contract.ts";
+import { type VisualBaselineShellStateName } from "../visual-baseline-contract.ts";
 
-const FIXTURE_HOST = "visual-baseline/fixture"
+const FIXTURE_HOST = "visual-baseline/fixture";
 /** Frozen display timestamp ("HH:MM", the shell's message format). */
-const FIXTURE_CLOCK = "09:41"
-const FIXTURE_UPDATED_AT = "2026-07-15T09:41:00.000Z"
-const FIXTURE_CREATED_AT = "2026-07-15T09:40:00.000Z"
+const FIXTURE_CLOCK = "09:41";
+const FIXTURE_UPDATED_AT = "2026-07-15T09:41:00.000Z";
+const FIXTURE_CREATED_AT = "2026-07-15T09:40:00.000Z";
 
 const fixtureBase = (): DesktopShellState =>
   withHarnessLanes(initialDesktopShellState(FIXTURE_HOST, FIXTURE_CLOCK), {
     fable: { available: true, reason: null },
     codex: { available: true, reason: null },
-  })
+  });
 
 const fixtureThread = (
   suffix: string,
@@ -53,10 +57,10 @@ const fixtureThread = (
   createdAt: FIXTURE_CREATED_AT,
   updatedAt: FIXTURE_UPDATED_AT,
   notes,
-})
+});
 
 const selected = (state: DesktopShellState, thread: DesktopThread): DesktopShellState =>
-  withChatSelected({ ...state, threads: [thread] }, thread)
+  withChatSelected({ ...state, threads: [thread] }, thread);
 
 const planThread = (): DesktopThread =>
   fixtureThread("plan", "Wire the payout receipts", [
@@ -86,7 +90,7 @@ const planThread = (): DesktopThread =>
       text: "Plan staged — starting with the receipt schema audit.",
       timestamp: FIXTURE_CLOCK,
     },
-  ])
+  ]);
 
 const approvalThread = (): DesktopThread =>
   fixtureThread("approval", "Run the verification sweep", [
@@ -120,7 +124,7 @@ const approvalThread = (): DesktopThread =>
         ],
       },
     },
-  ])
+  ]);
 
 const reasoningThread = (): DesktopThread =>
   fixtureThread("reasoning", "Migrate the ledger projection", [
@@ -142,7 +146,7 @@ const reasoningThread = (): DesktopThread =>
       text: "Migration plan settled — the projection keeps exact rows.",
       timestamp: FIXTURE_CLOCK,
     },
-  ])
+  ]);
 
 const fullAutoThread = (): DesktopThread =>
   fixtureThread("full-auto", "Keep working the backlog", [
@@ -158,31 +162,31 @@ const fullAutoThread = (): DesktopThread =>
       text: "Full Auto engaged — continuing with the next backlog item.",
       timestamp: FIXTURE_CLOCK,
     },
-  ])
+  ]);
 
 /**
  * The fixed capture set. Pure: same name -> deep-equal state, always.
  * `full-auto-running` layers the durable toggle AND the live turn_running
  * push so the composer renders the "Full Auto running…" badge (FA-H4).
  */
-export const visualBaselineShellState = (name: VisualBaselineStateName): DesktopShellState => {
+export const visualBaselineShellState = (name: VisualBaselineShellStateName): DesktopShellState => {
   switch (name) {
     case "composer-idle":
-      return fixtureBase()
+      return fixtureBase();
     case "thread-plan-card":
-      return selected(fixtureBase(), planThread())
+      return selected(fixtureBase(), planThread());
     case "approval-card":
-      return selected(fixtureBase(), approvalThread())
+      return selected(fixtureBase(), approvalThread());
     case "reasoning-disclosure":
-      return selected(fixtureBase(), reasoningThread())
+      return selected(fixtureBase(), reasoningThread());
     case "full-auto-running": {
-      const thread = fullAutoThread()
-      const state = selected(fixtureBase(), thread)
+      const thread = fullAutoThread();
+      const state = selected(fixtureBase(), thread);
       return withFullAutoLiveState(
         { ...state, fullAutoByThread: { [thread.id]: true } },
         thread.id,
         { state: "turn_running", turnRef: "turn.visual.full-auto" },
-      )
+      );
     }
   }
-}
+};

@@ -4,6 +4,7 @@ import {
   desktopAgentGroupFixtures,
   desktopApprovalCardInteractiveFixture,
   desktopApprovalCardStaticFixtures,
+  desktopCommandCardFixtures,
   desktopContextMeterFixtures,
   desktopDispatchLongTailFixtures,
   DesktopAgentGroup,
@@ -16,6 +17,7 @@ import {
   DesktopConversation,
   DesktopConversationHeader,
   DesktopFileChangeCard,
+  desktopFileChangeCardFixtures,
   desktopPlanCardFixtures,
   DesktopPlanCard,
   DesktopQueuedFollowup,
@@ -94,131 +96,6 @@ function SectionHeader({
 function StoryGrid({ children }: Readonly<{ children: ReactNode }>): ReactElement {
   return <div className="grid gap-5 xl:grid-cols-2">{children}</div>;
 }
-
-const commandStories = [
-  {
-    id: "command-running",
-    title: "Streaming",
-    props: {
-      command: "pnpm test --filter desktop",
-      commandSource: "agent" as const,
-      cwd: "/workspace/openagents",
-      output: "RUN  desktop\n✓ contracts\n▌",
-      status: "running" as const,
-    },
-  },
-  {
-    id: "command-completed",
-    title: "Completed",
-    props: {
-      command: "pnpm run typecheck",
-      commandSource: "userShell" as const,
-      cwd: "/workspace/openagents/apps/openagents-desktop",
-      durationMs: 950,
-      exitCode: 0,
-      output: "TypeScript check passed.",
-      status: "completed" as const,
-    },
-  },
-  {
-    id: "command-failed",
-    title: "Failed",
-    props: {
-      command: "pnpm run build",
-      commandSource: "agent" as const,
-      cwd: "/workspace/openagents",
-      durationMs: 1480,
-      exitCode: 1,
-      output: "error TS2322: Type 'string' is not assignable.",
-      status: "failed" as const,
-    },
-  },
-  {
-    id: "command-capped",
-    title: "Bounded output tail",
-    props: {
-      command: "pnpm test",
-      commandSource: "unifiedExecStartup" as const,
-      cwd: "/workspace/openagents",
-      durationMs: 8240,
-      exitCode: 0,
-      output: "…\nTest Files  84 passed\nTests  1552 passed",
-      outputCapReached: true,
-      status: "completed" as const,
-    },
-  },
-] as const;
-
-const fileStories = [
-  {
-    id: "file-turn-running",
-    title: "Running turn diff",
-    scope: "turn" as const,
-    status: "running" as const,
-    changes: [
-      {
-        path: "src/workbench.tsx",
-        kind: "update" as const,
-        additions: 7,
-        deletions: 2,
-        diff: "@@ -18,2 +18,7 @@\n-old surface\n+const surface = khalaTheme\n+render(surface)",
-      },
-      {
-        path: "src/file-card.test.tsx",
-        kind: "add" as const,
-        additions: 4,
-        deletions: 0,
-        diff: "--- /dev/null\n+++ b/src/file-card.test.tsx\n+test('renders diffs', () => {\n+  expect(card).toBeVisible()\n+})",
-      },
-    ],
-  },
-  {
-    id: "file-completed",
-    title: "Applied patch",
-    scope: "item" as const,
-    status: "completed" as const,
-    changes: [
-      {
-        path: "docs/design-contract.md",
-        kind: "update" as const,
-        additions: 2,
-        deletions: 1,
-        diff: "@@ -4,1 +4,2 @@\n-Autopilot palette\n+Khala is the sole mounted theme.\n+Autopilot is donor grammar only.",
-      },
-    ],
-  },
-  {
-    id: "file-failed",
-    title: "Failed patch",
-    scope: "item" as const,
-    status: "failed" as const,
-    changes: [
-      {
-        path: "src/conflicted.ts",
-        kind: "delete" as const,
-        additions: 0,
-        deletions: 2,
-        diff: "@@ -1,2 +0,0 @@\n-export const stale = true\n-export const duplicate = true",
-      },
-    ],
-  },
-  {
-    id: "file-capped",
-    title: "Bounded diff",
-    scope: "item" as const,
-    status: "completed" as const,
-    changes: [
-      {
-        path: "src/generated.ts",
-        kind: "update" as const,
-        additions: 48,
-        deletions: 12,
-        diff: "@@ -400,2 +400,3 @@\n-old generated tail\n+new generated tail\n+…",
-        diffCapReached: true,
-      },
-    ],
-  },
-] as const;
 
 /** The one interactive story in the family: a real Approve/Deny decision, wired with local state. */
 function ApprovalPendingInteractiveStory(): ReactElement {
@@ -338,9 +215,9 @@ export function WorkbenchStorybook(): ReactElement {
         title="Command execution"
       />
       <StoryGrid>
-        {commandStories.map((story) => (
-          <Story id={story.id} key={story.id} title={story.title}>
-            <DesktopCommandCard {...story.props} defaultOpen itemKey={story.id} />
+        {desktopCommandCardFixtures.map((fixture) => (
+          <Story id={slug(fixture.props.itemKey)} key={fixture.props.itemKey} title={fixture.name}>
+            <DesktopCommandCard {...fixture.props} />
           </Story>
         ))}
       </StoryGrid>
@@ -350,15 +227,9 @@ export function WorkbenchStorybook(): ReactElement {
         title="File changes and turn diff"
       />
       <StoryGrid>
-        {fileStories.map((story) => (
-          <Story id={story.id} key={story.id} title={story.title}>
-            <DesktopFileChangeCard
-              changes={story.changes}
-              defaultOpen
-              itemKey={story.id}
-              scope={story.scope}
-              status={story.status}
-            />
+        {desktopFileChangeCardFixtures.map((fixture) => (
+          <Story id={slug(fixture.props.itemKey)} key={fixture.props.itemKey} title={fixture.name}>
+            <DesktopFileChangeCard {...fixture.props} />
           </Story>
         ))}
       </StoryGrid>
@@ -665,7 +536,12 @@ export function WorkbenchStorybook(): ReactElement {
           />
           <DesktopConversation
             composer={<p className="m-0 text-xs text-khala-text-faint">(composer mounts here)</p>}
-            header={<DesktopConversationHeader lifecycle="Running" title="Wire the reasoning delta into the timeline" />}
+            header={
+              <DesktopConversationHeader
+                lifecycle="Running"
+                title="Wire the reasoning delta into the timeline"
+              />
+            }
             timeline={<p className="m-0 text-xs text-khala-text-faint">(timeline mounts here)</p>}
           />
         </DesktopWorkbench>
