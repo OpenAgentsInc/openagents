@@ -25,7 +25,8 @@
     "lucide-react": "^1.24.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "^4.1.8"
   },
   "peerDependencies": {
     "lucide-react": ">=1.7.0 <2",

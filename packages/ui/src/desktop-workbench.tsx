@@ -31,7 +31,16 @@ export { type DesktopActivityStatus } from "./workbench/activity-status.tsx"
 export { DesktopPlanCard, type DesktopPlanEntry } from "./workbench/plan-card.tsx"
 export { DesktopCommandCard } from "./workbench/command-card.tsx"
 export { DesktopFileChangeCard, type DesktopFileChange } from "./workbench/file-change-card.tsx"
-export { DesktopToolCallCard, type DesktopToolKind } from "./workbench/tool-call-card.tsx"
+export {
+  DesktopToolCallCard,
+  type DesktopToolKind,
+  type DesktopToolCallArg,
+  type DesktopToolCallCardProps,
+} from "./workbench/tool-call-card.tsx"
+export {
+  desktopToolCallCardFixtures,
+  type DesktopToolCallCardFixture,
+} from "./workbench/tool-call-card.fixtures.ts"
 export {
   DesktopAgentGroup,
   type DesktopAgentStatus,

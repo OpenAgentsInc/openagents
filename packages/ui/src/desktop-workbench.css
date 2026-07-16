@@ -968,6 +968,23 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-file-change > p { margin: var(--en-spacing-1) 0 var(--en-spacing-2); color: var(--en-color-textFaint); }
 .oa-react-diff-cap { display: block; margin-bottom: var(--en-spacing-2); color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; text-transform: uppercase; }
 
+/* Tool-call cards (mcp/dynamic/web/image, epic 8857 T7). KEY: VALUE args
+   table follows the same convention as `.oa-react-command-meta` but allows
+   values to wrap instead of truncating — bounded upstream, never silently
+   cut here. */
+.oa-react-tool-args { display: grid; gap: var(--en-spacing-1); }
+.oa-react-tool-arg-row { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--en-spacing-2); color: var(--en-color-textFaint); }
+.oa-react-tool-arg-row span { font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.oa-react-tool-arg-row span::after { content: ":"; }
+.oa-react-tool-arg-row code { overflow-wrap: anywhere; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); }
+.oa-react-tool-result { max-height: 220px; margin: 0; overflow: auto; border-left: 1px solid var(--en-color-borderSubtle); padding-left: var(--en-spacing-2); color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Muted-red failure (design spec §2.3: red stays muted, never a shout). */
+.oa-react-tool-error { margin: 0; color: var(--en-color-danger); font-size: 11px; }
+.oa-react-tool-progress { margin: 0; color: var(--en-color-accent); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.oa-react-tool-empty { margin: 0; color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+/* Badge formula (design spec §2.4): accent at ~20% fill, ~80% text, square, mono, uppercase. */
+.oa-react-tool-badge { display: inline-flex; align-items: center; width: fit-content; padding: 1px 6px; border-radius: var(--en-radius-none); color: var(--en-color-accent); background: color-mix(in srgb, var(--en-color-accent) 20%, transparent); font-family: var(--oa-font-mono); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+
 .oa-react-agent-group { overflow: hidden; }
 .oa-react-agent-group > header { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: var(--en-spacing-2); padding: var(--en-spacing-2) var(--en-spacing-3); border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textFaint); font-size: 11px; }
 .oa-react-agent-list { display: grid; }

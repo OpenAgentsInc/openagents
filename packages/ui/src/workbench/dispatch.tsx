@@ -18,12 +18,12 @@
  * §5):
  *   - message / plan / agent / notice: real shared components (already
  *     wired upstream of this table).
- *   - command (T4 #8861) / fileChange (T5 #8862) / reasoning (T6 #8863) /
- *     toolCall (T7 #8864) / approval (T9 #8866) / meter (T11 #8868) /
- *     compaction, sleep, review, hook (T12 #8869): render through the
- *     existing generic `DesktopWorkEntry` (or `DesktopToolCallCard` for
- *     toolCall) shell for now. Each Wave-2 lane replaces its own branch with
- *     the polished, typed card — never another lane's branch.
+ *   - command (T4 #8861) / toolCall (T7 #8864): wired to their typed cards.
+ *   - fileChange (T5 #8862) / reasoning (T6 #8863) / approval (T9 #8866) /
+ *     meter (T11 #8868) / compaction, sleep, review, hook (T12 #8869):
+ *     render through the existing generic `DesktopWorkEntry` shell for now.
+ *     Each Wave-2 lane replaces its own branch with the polished, typed
+ *     card — never another lane's branch.
  */
 import type { ReactElement } from "react"
 
@@ -104,6 +104,20 @@ export type WorkbenchToolCallDispatchItem = Readonly<{
   query?: string
   resultCount?: number
   path?: string
+  /**
+   * mcp: connector/app-context badge (`McpToolCallAppContext`). Not yet
+   * projected by `workbench-item-contract.ts` (#8859) — declared here
+   * additively so the card renders it the moment a producer starts setting
+   * it. See the T7 (#8864) issue comment for the wiring decision.
+   */
+  appContext?: string
+  /**
+   * mcp: latest `item/mcpToolCall/progress` tick
+   * (`McpToolCallProgressNotification.message`) while the call is still
+   * running. Not yet emitted by `codex-app-server-turn.ts` — declared here
+   * additively for the same reason as `appContext` above.
+   */
+  progressMessage?: string
 }>
 
 export type WorkbenchAgentDispatchItem = Readonly<{
@@ -221,10 +235,10 @@ const messageLabel = (role: WorkbenchMessageDispatchItem["role"]): string =>
 /**
  * Renders one `WorkbenchDispatchItem` through its shared component. Every
  * branch is handled — nothing silently drops (design-spec §8 rule 7 /
- * component-audit gap list) — but only message/plan/agent/notice render
- * through their intended real card today; the rest render the generic
- * `DesktopWorkEntry`/`DesktopToolCallCard` shell until their Wave-2 lane
- * lands (see the module-level status list above).
+ * component-audit gap list) — but only message/plan/agent/notice/command/
+ * toolCall render through their intended real card today; the rest render
+ * the generic `DesktopWorkEntry` shell until their Wave-2 lane lands (see
+ * the module-level status list above).
  */
 export const dispatchWorkbenchItem = (
   item: WorkbenchDispatchItem,
@@ -309,19 +323,29 @@ export const dispatchWorkbenchItem = (
       />
     }
 
-    // TODO(T7 #8864): wire args table / result snippet / duration / query
-    // per `callKind`; today this passes the bounded fields straight through
-    // the existing generic tool-call shell.
+    // T7 (#8864): the structured payload (args table, result/error, duration,
+    // web query+resultCount, image path) drives `DesktopToolCallCard`'s own
+    // per-`callKind` title/summary/meta/body computation — see
+    // `tool-call-card.tsx`. `appContext`/`progressMessage` ride through
+    // untouched for forward-compatibility; no current producer sets them.
     case "toolCall": {
       const toolCallItem: WorkbenchToolCallDispatchItem = item
       const toolKind: DesktopToolKind = toolCallItem.callKind
       return <DesktopToolCallCard
-        body={toolCallItem.resultSnippet ?? toolCallItem.errorMessage ?? ""}
+        appContext={toolCallItem.appContext}
+        args={toolCallItem.args}
+        durationMs={toolCallItem.durationMs}
+        errorMessage={toolCallItem.errorMessage}
         itemKey={context.itemKey}
-        label={toolCallItem.tool}
-        meta={toolCallItem.server ?? toolCallItem.namespace}
+        namespace={toolCallItem.namespace}
+        path={toolCallItem.path}
+        progressMessage={toolCallItem.progressMessage}
+        query={toolCallItem.query}
+        resultCount={toolCallItem.resultCount}
+        resultSnippet={toolCallItem.resultSnippet}
+        server={toolCallItem.server}
         status={toActivityStatus(toolCallItem.status)}
-        summary={toolCallItem.query ?? toolCallItem.tool}
+        tool={toolCallItem.tool}
         toolKind={toolKind}
       />
     }
