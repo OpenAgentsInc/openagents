@@ -33,6 +33,7 @@ import {
   DesktopSessionRail,
   DesktopSidebarExpand,
   DesktopWorkbench,
+  type DesktopConversationHeaderMeter,
   type DesktopRailIcon,
 } from "@openagentsinc/ui/desktop-workbench"
 import {
@@ -148,16 +149,35 @@ const selectedLifecycle = (state: DesktopShellState): string => {
   return "Ready"
 }
 
+/**
+ * Projects the active thread's live context/usage meter (T11 #8868) onto the
+ * shared `ContextMeter` mount's prop shape. `DesktopShellState.meter` carries
+ * flat token fields + `rateLimits`; the header component nests the token
+ * fields under `usage`. Returns `undefined` (not an empty object) when no
+ * meter has been observed yet, so the header renders nothing extra rather
+ * than an honest-but-premature "NO DATA" row before any turn has streamed.
+ */
+export const projectHeaderMeter = (state: DesktopShellState): DesktopConversationHeaderMeter | undefined => {
+  if (state.meter === null) return undefined
+  const { rateLimits, ...usage } = state.meter
+  return {
+    usage,
+    ...(rateLimits === undefined ? {} : { rateLimits }),
+  }
+}
+
 export const ConversationHeader = ({ state }: {
   readonly state: DesktopShellState
 }): ReactElement => {
   const selectedCoding = state.codingCatalog.sessions.find(
     session => session.sessionRef === state.codingCatalog.selectedSessionRef,
   )
+  const meter = projectHeaderMeter(state)
   return <DesktopConversationHeader
     lifecycle={selectedLifecycle(state)}
     secondary={selectedCoding?.repositoryLabel}
     title={selectedTitle(state)}
+    {...(meter === undefined ? {} : { meter })}
   />
 }
 

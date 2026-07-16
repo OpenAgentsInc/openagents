@@ -11,7 +11,7 @@ import {
   type CodexAppServerLease,
   type CodexAppServerSupervisor,
 } from "./codex-app-server-supervisor.ts"
-import type { FableLocalEvent } from "./fable-local-contract.ts"
+import type { FableLocalEvent, FableLocalRateLimitWindow } from "./fable-local-contract.ts"
 import { makeCodexTurnState } from "./codex-turn-state.ts"
 import {
   WORKBENCH_OUTPUT_TAIL_LIMIT,
@@ -93,6 +93,8 @@ const record = (value: unknown): Record<string, unknown> | null =>
 
 const string = (value: unknown): string | null => typeof value === "string" ? value : null
 
+const number = (value: unknown): number | undefined => typeof value === "number" ? value : undefined
+
 const usageFromNotification = (params: Record<string, unknown>): CodexChildUsage | null => {
   const tokenUsage = record(params.tokenUsage)
   const last = record(tokenUsage?.last)
@@ -110,6 +112,68 @@ const usageFromNotification = (params: Record<string, unknown>): CodexChildUsage
       ? last.totalTokens
       : inputTokens + outputTokens + reasoningOutputTokens,
   }
+}
+
+/**
+ * T11 #8868: the live-meter projection of `thread/tokenUsage/updated`,
+ * additive to `usageFromNotification` above (which still defaults absent
+ * fields to `0` for internal turn-outcome accounting). This projection never
+ * defaults — an absent wire field stays absent so the ContextMeter renders
+ * an honest "—" instead of a fabricated zero.
+ */
+const meterFromTokenUsageNotification = (
+  params: Record<string, unknown>,
+): Extract<FableLocalEvent, { kind: "meter_updated" }> | null => {
+  const tokenUsage = record(params.tokenUsage)
+  const last = record(tokenUsage?.last)
+  if (last === null) return null
+  const inputTokens = number(last.inputTokens)
+  const cachedInputTokens = number(last.cachedInputTokens)
+  const outputTokens = number(last.outputTokens)
+  const reasoningOutputTokens = number(last.reasoningOutputTokens)
+  const totalTokens = number(last.totalTokens)
+  if (
+    inputTokens === undefined && cachedInputTokens === undefined && outputTokens === undefined &&
+    reasoningOutputTokens === undefined && totalTokens === undefined
+  ) return null
+  return {
+    kind: "meter_updated",
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(reasoningOutputTokens === undefined ? {} : { reasoningTokens: reasoningOutputTokens }),
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+  }
+}
+
+/**
+ * T11 #8868: project `account/rateLimits/updated` (`AccountRateLimitsUpdatedNotification`
+ * — previously entirely unconsumed) into the same `meter_updated` event's
+ * `rateLimits` field. Codex reports at most a `primary` and `secondary`
+ * rolling window; a window the server omitted from this sparse update is
+ * simply absent here, never synthesized.
+ */
+const meterFromRateLimitsNotification = (
+  params: Record<string, unknown>,
+): Extract<FableLocalEvent, { kind: "meter_updated" }> | null => {
+  const rateLimits = record(params.rateLimits)
+  if (rateLimits === null) return null
+  const windows: Array<FableLocalRateLimitWindow> = []
+  for (const label of ["primary", "secondary"] as const) {
+    const window = record(rateLimits[label])
+    const usedPercent = number(window?.usedPercent)
+    if (window === null || usedPercent === undefined) continue
+    const resetsAt = number(window.resetsAt)
+    const windowDurationMins = number(window.windowDurationMins)
+    windows.push({
+      label,
+      usedPercent,
+      ...(resetsAt === undefined ? {} : { resetsAt }),
+      ...(windowDurationMins === undefined ? {} : { windowDurationMins }),
+    })
+  }
+  if (windows.length === 0) return null
+  return { kind: "meter_updated", rateLimits: windows }
 }
 
 const toolFacts = (item: Record<string, unknown>): Readonly<{
@@ -455,6 +519,18 @@ export const runCodexAppServerTurn = async (
     }
     if (message.method === "thread/tokenUsage/updated") {
       usage = usageFromNotification(params) ?? usage
+      // T11 #8868: additive live-meter event alongside the accounting use
+      // above — never replaces it, never invents a value it lacks.
+      const meter = meterFromTokenUsageNotification(params)
+      if (meter !== null) input.emit(meter)
+      return
+    }
+    // T11 #8868: previously entirely unconsumed. Account-scoped (no
+    // threadId/turnId params), so it is not gated by the thread/turn checks
+    // above — every rolling update for this account-level connection applies.
+    if (message.method === "account/rateLimits/updated") {
+      const meter = meterFromRateLimitsNotification(params)
+      if (meter !== null) input.emit(meter)
       return
     }
     if (message.method === "turn/plan/updated") {

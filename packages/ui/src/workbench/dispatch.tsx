@@ -31,6 +31,7 @@ import { DesktopAgentGroup, type DesktopAgentActivity, type DesktopAgentStatus }
 import type { DesktopApprovalDecision } from "./approval-card.tsx"
 import type { DesktopActivityStatus } from "./activity-status.tsx"
 import { DesktopCommandCard } from "./command-card.tsx"
+import { ContextMeter } from "./context-meter.tsx"
 import { DesktopFileChangeCard } from "./file-change-card.tsx"
 import { DesktopPlanCard, type DesktopPlanEntry } from "./plan-card.tsx"
 import { DesktopTimelineMessage } from "./message.tsx"
@@ -372,17 +373,25 @@ export const dispatchWorkbenchItem = (
       />
     }
 
-    // TODO(T11 #8868): replace with a `ContextMeter` quantized block bar
-    // over `thread/tokenUsage/updated` + `AccountRateLimitsUpdated`.
+    // Historical/inspector rendering of a past usage snapshot (T11 #8868).
+    // The LIVE meter does not mount through this per-record dispatch path —
+    // a meter is a persistent header/rail widget, not one chat message — so
+    // this branch exists only so a "meter" item that appears in history
+    // (e.g. a rollout-replayed snapshot) still renders honestly instead of
+    // falling back to the generic work-entry shell. See
+    // `./context-meter.tsx` and `./header.tsx` for the live mount point.
     case "meter": {
       const meterItem: WorkbenchMeterDispatchItem = item
-      return <DesktopWorkEntry
-        body=""
+      return <ContextMeter
+        historical
         itemKey={context.itemKey}
-        kind="meter"
-        label="Usage"
-        preview={meterItem.totalTokens === undefined ? "" : `${meterItem.totalTokens} tokens`}
-        status="completed"
+        usage={{
+          ...(meterItem.inputTokens === undefined ? {} : { inputTokens: meterItem.inputTokens }),
+          ...(meterItem.cachedInputTokens === undefined ? {} : { cachedInputTokens: meterItem.cachedInputTokens }),
+          ...(meterItem.outputTokens === undefined ? {} : { outputTokens: meterItem.outputTokens }),
+          ...(meterItem.reasoningTokens === undefined ? {} : { reasoningTokens: meterItem.reasoningTokens }),
+          ...(meterItem.totalTokens === undefined ? {} : { totalTokens: meterItem.totalTokens }),
+        }}
       />
     }
 

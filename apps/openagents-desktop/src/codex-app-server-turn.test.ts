@@ -315,3 +315,204 @@ describe("codex-app-server-turn `plan` ThreadItem projection (T8 #8865)", () => 
     expect(planEvents[1]).toMatchObject({ entries: [], prose: "Investigate, then fix behind a flag." })
   })
 })
+
+/**
+ * Protocol-speaking fixture app-server (T11 #8868): after turn/start it
+ * streams `thread/tokenUsage/updated` (partial then fuller) and
+ * `account/rateLimits/updated` (primary only, then secondary only — the
+ * sparse-rolling-update shape the wire actually documents), then completes.
+ */
+const makeMeterSpawn = (): CodexAppServerSpawn => () => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough
+    stdout: PassThrough
+    stderr: PassThrough
+    kill: () => boolean
+  }
+  child.stdin = stdin
+  child.stdout = stdout
+  child.stderr = new PassThrough()
+  child.kill = () => {
+    child.emit("close", 0)
+    return true
+  }
+  const write = (message: unknown): void => { stdout.write(`${JSON.stringify(message)}\n`) }
+  const notify = (method: string, params: unknown): void => write({ method, params })
+  let buffered = ""
+  stdin.on("data", chunk => {
+    buffered += chunk.toString("utf8")
+    while (buffered.includes("\n")) {
+      const newline = buffered.indexOf("\n")
+      const line = buffered.slice(0, newline)
+      buffered = buffered.slice(newline + 1)
+      if (line === "") continue
+      const message = JSON.parse(line) as Record<string, unknown>
+      if (message.method === "initialize" && typeof message.id === "number") {
+        write({ id: message.id, result: {} })
+      } else if (message.method === "thread/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { thread: { id: THREAD_ID } } })
+      } else if (message.method === "turn/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { turn: { id: TURN_ID } } })
+        // First rolling token-usage update omits reasoning/cached — an
+        // honest partial snapshot, never a fabricated zero for them.
+        notify("thread/tokenUsage/updated", {
+          threadId: THREAD_ID, turnId: TURN_ID,
+          tokenUsage: { last: { inputTokens: 100, outputTokens: 20, totalTokens: 120 } },
+        })
+        // Sparse rate-limit update: primary only this round.
+        notify("account/rateLimits/updated", {
+          rateLimits: { primary: { usedPercent: 12, windowDurationMins: 300 } },
+        })
+        // Second rolling token-usage update adds cached/reasoning + a new total.
+        notify("thread/tokenUsage/updated", {
+          threadId: THREAD_ID, turnId: TURN_ID,
+          tokenUsage: {
+            last: { inputTokens: 150, cachedInputTokens: 30, outputTokens: 25, reasoningOutputTokens: 5, totalTokens: 180 },
+          },
+        })
+        // Second rate-limit update: secondary only — must not erase primary.
+        notify("account/rateLimits/updated", {
+          rateLimits: { secondary: { usedPercent: 4, resetsAt: 1_800_000_000 } },
+        })
+        notify("item/agentMessage/delta", { threadId: THREAD_ID, turnId: TURN_ID, delta: "done" })
+        notify("turn/completed", { threadId: THREAD_ID, turn: { id: TURN_ID, status: "completed", error: null } })
+      }
+    }
+  })
+  return child as never
+}
+
+describe("codex-app-server-turn context/usage meter (T11 #8868)", () => {
+  test("emits meter_updated events with exact wire values (no fabricated zeros) alongside existing accounting", async () => {
+    const events: Array<FableLocalEvent> = []
+    const outcome = await runCodexAppServerTurn({
+      binary: "/packaged/codex",
+      env: {},
+      workspace: "/safe/repo",
+      threadRef: "thread-ref",
+      turnRef: "turn-ref",
+      accountRef: "codex",
+      prompt: "run the suite",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.5",
+      reasoningEffort: "medium",
+      productSpecSkill: { skillRoot: "/skills", skillPath: "/skills/productspec-work" },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: event => events.push(event),
+      spawnImpl: makeMeterSpawn(),
+    })
+    expect(outcome.outcome).toBe("success")
+    // The pre-existing internal-accounting field is unaffected by the new
+    // additive event (still tracks the LATEST tokenUsage snapshot).
+    expect(outcome.usage).toEqual({
+      inputTokens: 150,
+      cachedInputTokens: 30,
+      outputTokens: 25,
+      reasoningOutputTokens: 5,
+      totalTokens: 180,
+    })
+
+    const meterEvents = events.filter(event => event.kind === "meter_updated") as
+      Array<Extract<FableLocalEvent, { kind: "meter_updated" }>>
+    expect(meterEvents).toHaveLength(4)
+
+    // First tokenUsage update: honest partial snapshot — no cachedInputTokens
+    // or reasoningTokens key at all (never a fake 0).
+    expect(meterEvents[0]).toEqual({
+      kind: "meter_updated",
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 120,
+    })
+    expect(meterEvents[0]).not.toHaveProperty("cachedInputTokens")
+    expect(meterEvents[0]).not.toHaveProperty("reasoningTokens")
+
+    // First rate-limit update: primary only.
+    expect(meterEvents[1]).toEqual({
+      kind: "meter_updated",
+      rateLimits: [{ label: "primary", usedPercent: 12, windowDurationMins: 300 }],
+    })
+
+    // Second tokenUsage update: the fuller snapshot.
+    expect(meterEvents[2]).toEqual({
+      kind: "meter_updated",
+      inputTokens: 150,
+      cachedInputTokens: 30,
+      outputTokens: 25,
+      reasoningTokens: 5,
+      totalTokens: 180,
+    })
+
+    // Second rate-limit update: secondary only, per-event — the renderer
+    // (not this emitter) is responsible for merging it with the earlier
+    // primary window (see local-harness.test.ts mergeMeterSnapshot coverage).
+    expect(meterEvents[3]).toEqual({
+      kind: "meter_updated",
+      rateLimits: [{ label: "secondary", usedPercent: 4, resetsAt: 1_800_000_000 }],
+    })
+  })
+
+  test("emits no meter_updated event when a tokenUsage notification carries no usable fields", async () => {
+    const events: Array<FableLocalEvent> = []
+    await runCodexAppServerTurn({
+      binary: "/packaged/codex",
+      env: {},
+      workspace: "/safe/repo",
+      threadRef: "thread-ref-empty",
+      turnRef: "turn-ref-empty",
+      accountRef: "codex",
+      prompt: "run the suite",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.5",
+      reasoningEffort: "medium",
+      productSpecSkill: { skillRoot: "/skills", skillPath: "/skills/productspec-work" },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: event => events.push(event),
+      spawnImpl: (() => {
+        const stdin = new PassThrough()
+        const stdout = new PassThrough()
+        const child = new EventEmitter() as EventEmitter & {
+          stdin: PassThrough
+          stdout: PassThrough
+          stderr: PassThrough
+          kill: () => boolean
+        }
+        child.stdin = stdin
+        child.stdout = stdout
+        child.stderr = new PassThrough()
+        child.kill = () => { child.emit("close", 0); return true }
+        const write = (message: unknown): void => { stdout.write(`${JSON.stringify(message)}\n`) }
+        const notify = (method: string, params: unknown): void => write({ method, params })
+        let buffered = ""
+        stdin.on("data", chunk => {
+          buffered += chunk.toString("utf8")
+          while (buffered.includes("\n")) {
+            const newline = buffered.indexOf("\n")
+            const line = buffered.slice(0, newline)
+            buffered = buffered.slice(newline + 1)
+            if (line === "") continue
+            const message = JSON.parse(line) as Record<string, unknown>
+            if (message.method === "initialize" && typeof message.id === "number") {
+              write({ id: message.id, result: {} })
+            } else if (message.method === "thread/start" && typeof message.id === "number") {
+              write({ id: message.id, result: { thread: { id: "thread-ref-empty" } } })
+            } else if (message.method === "turn/start" && typeof message.id === "number") {
+              write({ id: message.id, result: { turn: { id: "turn-ref-empty" } } })
+              notify("thread/tokenUsage/updated", { threadId: "thread-ref-empty", turnId: "turn-ref-empty", tokenUsage: {} })
+              notify("item/agentMessage/delta", { threadId: "thread-ref-empty", turnId: "turn-ref-empty", delta: "done" })
+              notify("turn/completed", { threadId: "thread-ref-empty", turn: { id: "turn-ref-empty", status: "completed", error: null } })
+            }
+          }
+        })
+        return child as never
+      })(),
+    })
+    expect(events.filter(event => event.kind === "meter_updated")).toHaveLength(0)
+  })
+})

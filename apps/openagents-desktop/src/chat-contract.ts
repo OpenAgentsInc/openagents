@@ -202,9 +202,36 @@ export const DesktopThreadSchema = Schema.Struct({
   model: Schema.optional(Schema.String),
   notes: Schema.Array(DesktopMessageSchema),
 })
+
+/**
+ * Renderer-local live context/usage meter snapshot (T11 #8868). Mirrors the
+ * exact wire fields from `thread/tokenUsage/updated` (context-window
+ * composition) and `account/rateLimits/updated` (rolling rate-limit
+ * windows) — never a synthesized value. Carried on `DesktopThread` the same
+ * way `agentGraph` is: a renderer-local projection field, not part of the
+ * `DesktopThreadSchema` IPC boundary (the boundary-crossing shape lives on
+ * the `meter_updated` FableLocalEvent in `fable-local-contract.ts`).
+ */
+export type DesktopMeterRateLimitWindow = Readonly<{
+  label: "primary" | "secondary"
+  usedPercent: number
+  resetsAt?: number
+  windowDurationMins?: number
+}>
+export type DesktopMeterSnapshot = Readonly<{
+  inputTokens?: number
+  cachedInputTokens?: number
+  outputTokens?: number
+  reasoningTokens?: number
+  totalTokens?: number
+  rateLimits?: ReadonlyArray<DesktopMeterRateLimitWindow>
+}>
+
 export type DesktopThread = typeof DesktopThreadSchema.Type & Readonly<{
   /** Renderer-local projection of confirmed Runtime Gateway v8 graph data. */
   agentGraph?: LiveAgentGraphPresentation
+  /** Renderer-local live meter snapshot for the header/rail ContextMeter mount. */
+  meter?: DesktopMeterSnapshot
 }>
 
 export const DesktopThreadRequestSchema = Schema.Struct({ id: Schema.String })

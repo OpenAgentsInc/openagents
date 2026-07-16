@@ -481,4 +481,65 @@ describe("makeLocalHarnessChatHost", () => {
     expect(harness.startCalls).toHaveLength(2)
     expect(harness.startCalls[1]).toMatchObject({ threadRef: "thread-1", message: "second" })
   })
+
+  test("meter_updated projects a live thread.meter snapshot, NOT a timeline note (T11 #8868)", async () => {
+    const harness = makeHarness()
+    const updates: DesktopThread[] = []
+    const pending = harness.host.sendMessage({
+      id: "thread-1",
+      message: "hello fable",
+      harness: "fable",
+      onUpdate: thread => updates.push(thread),
+    })
+    await settle()
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
+    await settle()
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "meter_updated", inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+    })
+    await settle()
+    const afterFirst = updates.at(-1)!
+    expect(afterFirst.meter).toEqual({ inputTokens: 100, outputTokens: 20, totalTokens: 120 })
+    // A meter update is not a chat message — the note count is unaffected.
+    expect(afterFirst.notes).toEqual(threadWithUserNote.notes)
+
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "meter_updated", rateLimits: [{ label: "primary", usedPercent: 12 }] },
+    })
+    await settle()
+    // Sparse rate-limit update: primary added, prior token fields carried forward.
+    expect(updates.at(-1)!.meter).toEqual({
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 120,
+      rateLimits: [{ label: "primary", usedPercent: 12 }],
+    })
+
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "meter_updated", rateLimits: [{ label: "secondary", usedPercent: 4 }] },
+    })
+    await settle()
+    // A secondary-only rolling update must NOT erase the already-known primary.
+    expect(updates.at(-1)!.meter!.rateLimits).toEqual([
+      { label: "primary", usedPercent: 12 },
+      { label: "secondary", usedPercent: 4 },
+    ])
+
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "meter_updated", rateLimits: [{ label: "primary", usedPercent: 30 }] },
+    })
+    await settle()
+    // A repeated label REPLACES that window (not merged field-by-field).
+    expect(updates.at(-1)!.meter!.rateLimits).toEqual([
+      { label: "primary", usedPercent: 30 },
+      { label: "secondary", usedPercent: 4 },
+    ])
+
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
+  })
 })

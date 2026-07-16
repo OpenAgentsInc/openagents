@@ -22,7 +22,17 @@ export {
   type DesktopSessionRailProps,
 } from "./workbench/rail.tsx"
 export { desktopThemeCssVariables, type DesktopThemeCssVariables } from "./workbench/theme-bridge.ts"
-export { DesktopConversationHeader, DesktopConversation } from "./workbench/header.tsx"
+export {
+  DesktopConversationHeader,
+  DesktopConversation,
+  type DesktopConversationHeaderMeter,
+} from "./workbench/header.tsx"
+export {
+  ContextMeter,
+  type ContextMeterProps,
+  type ContextMeterUsage,
+  type ContextMeterRateLimitWindow,
+} from "./workbench/context-meter.tsx"
 export { DesktopTimeline } from "./workbench/timeline.tsx"
 export { DesktopTimelineMessage } from "./workbench/message.tsx"
 export { DesktopTimelineNotice } from "./workbench/notice.tsx"

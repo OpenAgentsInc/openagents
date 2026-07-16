@@ -1805,3 +1805,59 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
     padding-left: 96px;
   }
 }
+
+/* -----------------------------------------------------------------------
+   Context/usage meter (T11, issue 8868, epic 8857). Reuses the exact
+   quantized-block-progress dimensional/color language `.oa-react-working` established
+   (design spec §5.2/§7: discrete rectangles, sharp corners, no eased fade) —
+   same block size, same gap, same accent/border tokens — but as a STATIC
+   proportional fill rather than an infinite "still working" pulse, so the
+   two components read as one family without literally sharing markup.
+   ----------------------------------------------------------------------- */
+.oa-react-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(420px, 100%);
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.oa-react-meter-empty { flex-direction: row; align-items: center; justify-content: space-between; color: var(--en-color-textFaint); }
+.oa-react-meter-row { display: flex; align-items: center; gap: 6px; }
+.oa-react-meter-label { flex: 0 0 auto; min-width: 56px; color: var(--en-color-textFaint); }
+.oa-react-meter-empty-state { color: var(--en-color-textFaint); }
+.oa-react-meter-blocks {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.oa-react-meter-blocks i {
+  width: 4px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: var(--en-radius-none);
+  background: var(--en-color-borderStrong);
+}
+.oa-react-meter-blocks i[data-tone="dim"] { background: color-mix(in srgb, var(--en-color-accent) 25%, var(--en-color-borderStrong)); }
+.oa-react-meter-blocks i[data-tone="medium"] { background: color-mix(in srgb, var(--en-color-accent) 60%, var(--en-color-borderStrong)); }
+.oa-react-meter-blocks i[data-tone="bright"] { background: var(--en-color-accent); }
+.oa-react-meter-blocks i[data-danger="true"] { background: var(--en-color-danger); }
+.oa-react-meter-total { flex: 0 0 auto; color: var(--en-color-textMuted); white-space: nowrap; }
+.oa-react-meter-total[data-near-limit="true"] { color: var(--en-color-danger); }
+.oa-react-meter-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--en-spacing-3);
+  padding-left: 62px;
+  color: var(--en-color-textFaint);
+}
+.oa-react-meter-breakdown span { display: inline-flex; align-items: baseline; gap: 4px; }
+.oa-react-meter-breakdown small { color: var(--en-color-textFaint); letter-spacing: .08em; }
+.oa-react-meter[data-historical="true"] { opacity: .82; }
+.oa-react-meter-row[data-rate-limited="true"] .oa-react-meter-label { color: var(--en-color-danger); }

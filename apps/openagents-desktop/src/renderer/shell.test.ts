@@ -296,6 +296,28 @@ test("same-thread streaming transcript updates cannot close the live agent sideb
   })
   expect(switched.agentGraph).toBeNull()
 })
+
+test("withChatSelected/withNewChat project thread.meter onto state.meter (T11 #8868)", () => {
+  const withMeter = withNewChat(baseState, {
+    ...testThread,
+    meter: { totalTokens: 500, inputTokens: 400, outputTokens: 100 },
+  })
+  expect(withMeter.meter).toEqual({ totalTokens: 500, inputTokens: 400, outputTokens: 100 })
+
+  const updated = withChatSelected(withMeter, {
+    ...testThread,
+    meter: { totalTokens: 900, inputTokens: 700, outputTokens: 200 },
+  })
+  expect(updated.meter).toEqual({ totalTokens: 900, inputTokens: 700, outputTokens: 200 })
+
+  // A real thread switch (not the same active thread) with no meter on the
+  // incoming projection clears the stale meter — same reset rule as agentGraph.
+  const switchedAway = withChatSelected(updated, { ...testThread, id: "another-thread" })
+  expect(switchedAway.meter).toBeNull()
+
+  // No meter observed yet: initialDesktopShellState starts null, not a fake snapshot.
+  expect(baseState.meter).toBeNull()
+})
 const codingCatalogFixture: DesktopShellState["codingCatalog"] = {
   authority: "device_local",
   authorityLabel: "This Mac",

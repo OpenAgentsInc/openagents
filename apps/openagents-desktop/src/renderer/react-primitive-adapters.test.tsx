@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client"
 import { resolveIntentRef, type IntentReporter } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts"
-import { WorkbenchShell, projectReactSessionRows } from "./react-primitive-adapters.tsx"
+import { WorkbenchShell, projectHeaderMeter, projectReactSessionRows } from "./react-primitive-adapters.tsx"
 import { RedactedSensitiveText, redactedSensitivePlaceholder } from "./react-sensitive-text.tsx"
 
 const restores: Array<() => void> = []
@@ -308,6 +308,30 @@ describe("React workbench shell", () => {
     }, new Date("2026-07-14T12:01:00.000Z"))
     expect(hinted.map(row => row.meta)).toEqual(["⌘1", "⌘2"])
     expect(hinted.map(row => row.id)).toEqual(rows.map(row => row.id))
+  })
+
+  test("projects the header meter shape, nesting token fields under usage (T11 #8868)", () => {
+    const state = initialDesktopShellState("electron/darwin", "18:04")
+    expect(projectHeaderMeter(state)).toBeUndefined()
+
+    const withMeter = projectHeaderMeter({
+      ...state,
+      meter: {
+        inputTokens: 100,
+        outputTokens: 20,
+        totalTokens: 120,
+        rateLimits: [{ label: "primary", usedPercent: 12 }],
+      },
+    })
+    expect(withMeter).toEqual({
+      usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+      rateLimits: [{ label: "primary", usedPercent: 12 }],
+    })
+
+    // No rate limits observed yet: the key is absent, not an empty array.
+    const tokensOnly = projectHeaderMeter({ ...state, meter: { totalTokens: 42 } })
+    expect(tokensOnly).toEqual({ usage: { totalTokens: 42 } })
+    expect(tokensOnly).not.toHaveProperty("rateLimits")
   })
 
   test("renders exactly one active background across destinations and conversation rows", async () => {

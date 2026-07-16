@@ -490,7 +490,10 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
       case "plan_updated":
       case "mcp_server_unavailable":
       case "followup_queued":
-      case "followup_promoted": {
+      case "followup_promoted":
+      // T11 #8868: a context/usage meter update carries no graph-topology
+      // information — same bucket as the other non-graph activity events.
+      case "meter_updated": {
         return commit(at, [advanceNode(root, at, {})])
       }
       case "tool_use": {

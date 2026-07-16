@@ -72,6 +72,9 @@ export const FABLE_LOCAL_SUMMARY_LIMIT = 400
 export const FABLE_LOCAL_FINAL_TEXT_LIMIT = 32_000
 /** Max plan/todo entries surfaced in one plan_updated event. */
 export const FABLE_LOCAL_PLAN_ENTRY_LIMIT = 64
+/** Max rate-limit windows carried per meter_updated event (T11 #8868;
+ * Codex's `account/rateLimits/updated` reports at most `primary`+`secondary`). */
+export const FABLE_LOCAL_RATE_LIMIT_WINDOW_LIMIT = 4
 /** Max user-configured MCP servers accepted per turn (bounded passthrough). */
 export const FABLE_LOCAL_MCP_SERVER_LIMIT = 16
 /** Bound on a queued follow-up message crossing the boundary. */
@@ -202,6 +205,22 @@ export const FableLocalPlanEntrySchema = Schema.Struct({
   status: Schema.Literals(["pending", "in_progress", "completed"]),
 })
 export type FableLocalPlanEntry = typeof FableLocalPlanEntrySchema.Type
+
+/**
+ * One rolling rate-limit window from Codex's `account/rateLimits/updated`
+ * (T11 #8868). `label` is bounded to the exact two window names the wire
+ * reports (`primary`/`secondary`) rather than a free string — never invented
+ * by this lane. `usedPercent`/`resetsAt`/`windowDurationMins` are the exact
+ * wire values (`ServerNotification__RateLimitWindow`); a field the server
+ * omitted stays absent here too.
+ */
+export const FableLocalRateLimitWindowSchema = Schema.Struct({
+  label: Schema.Literals(["primary", "secondary"]),
+  usedPercent: Schema.Number,
+  resetsAt: Schema.optional(Schema.Number),
+  windowDurationMins: Schema.optional(Schema.Number),
+})
+export type FableLocalRateLimitWindow = typeof FableLocalRateLimitWindowSchema.Type
 
 export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
@@ -455,6 +474,29 @@ export const FableLocalEventSchema = Schema.Union([
     kind: Schema.Literal("mcp_server_unavailable"),
     name: Schema.String.check(Schema.isMaxLength(120)),
     reason: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
+  /**
+   * Context/usage meter update (T11 #8868). Emitted ADDITIVELY alongside the
+   * existing internal-accounting use of `thread/tokenUsage/updated`
+   * (`codex-app-server-turn.ts` still tracks `CodexChildUsage` for its own
+   * outcome classification) and from the previously-unconsumed
+   * `account/rateLimits/updated` notification. Every field is optional and
+   * carries the EXACT wire number — a field the server did not report in
+   * this rolling update stays absent, never a synthesized `0`. At least one
+   * of the token fields or `rateLimits` is present on any real emission.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("meter_updated"),
+    inputTokens: Schema.optional(Schema.Number),
+    cachedInputTokens: Schema.optional(Schema.Number),
+    outputTokens: Schema.optional(Schema.Number),
+    reasoningTokens: Schema.optional(Schema.Number),
+    totalTokens: Schema.optional(Schema.Number),
+    rateLimits: Schema.optional(
+      Schema.Array(FableLocalRateLimitWindowSchema).check(
+        Schema.isMaxLength(FABLE_LOCAL_RATE_LIMIT_WINDOW_LIMIT),
+      ),
+    ),
   }),
 ])
 export type FableLocalEvent = typeof FableLocalEventSchema.Type

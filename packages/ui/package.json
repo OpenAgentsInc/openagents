@@ -26,6 +26,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "typescript": "catalog:",
+    "vite-plus": "catalog:",
     "vitest": "^4.1.8"
   },
   "peerDependencies": {

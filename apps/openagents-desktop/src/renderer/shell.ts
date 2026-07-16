@@ -46,7 +46,7 @@ import {
   type View,
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
-import { compareDesktopThreadsByRecency, type DesktopMessageMeta, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
+import { compareDesktopThreadsByRecency, type DesktopMessageMeta, type DesktopMeterSnapshot, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
 import { isCodexModel, type ClaudeModel, type CodexModel, type CodexReasoningEffort, type LocalModel } from "../fable-local-contract.ts"
 import {
   composerActionPresentation,
@@ -401,6 +401,10 @@ export type DesktopShellState = Readonly<{
   /** Confirmed Runtime Gateway v8 graph presentation for the active thread. */
   agentGraph: LiveAgentGraphPresentation | null
   agentGraphExpanded: boolean
+  /** Live context/usage meter for the active thread (T11 #8868), projected
+   * from `thread.meter` the same way `agentGraph` is. Feeds the conversation
+   * header's `ContextMeter` mount — never a timeline record. */
+  meter: DesktopMeterSnapshot | null
   selectedAgentRef: string | null
   /** User-resized width of the live/message context rail. */
   chatContextWidth: number
@@ -513,6 +517,7 @@ export const initialDesktopShellState = (
   questionAnswerHostAvailable: false,
   agentGraph: null,
   agentGraphExpanded: false,
+  meter: null,
   selectedAgentRef: null,
   chatContextWidth: 336,
   voice: idleVoiceModeState(),
@@ -901,6 +906,7 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   agentGraphExpanded: thread.agentGraph !== undefined && (
     thread.agentGraph.totalCount <= 8 || thread.agentGraph.attentionCount > 0
   ),
+  meter: thread.meter ?? null,
   selectedAgentRef: thread.agentGraph === undefined
     ? null
     : resolveLiveAgentGraphSelection(thread.agentGraph, null),
@@ -929,6 +935,12 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
   // thread switch still clears it unless the destination owns a graph.
   const agentGraph = thread.agentGraph ??
     (state.activeThreadId === thread.id ? state.agentGraph ?? undefined : undefined)
+  // T11 #8868: same carry-forward rule as agentGraph — a same-thread
+  // streaming projection that hasn't observed a meter update yet must not
+  // blank out the already-known live meter; a real thread switch resets it
+  // unless the destination thread already carries its own snapshot.
+  const meter = thread.meter ??
+    (state.activeThreadId === thread.id ? state.meter ?? undefined : undefined)
   return {
     ...state,
     notes: thread.notes,
@@ -955,6 +967,7 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
           agentGraph,
           state.activeThreadId === thread.id ? state.selectedAgentRef : null,
         ),
+    meter: meter ?? null,
     fleetDeskOpen: false,
     workspace: "chat",
     commandPaletteOpen: false,

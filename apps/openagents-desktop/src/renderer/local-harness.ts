@@ -18,13 +18,14 @@
  * frozen fable-local event envelope), so codex turns render through the
  * exact same transcript cards.
  */
-import type { DesktopMessage, DesktopThread } from "../chat-contract.ts"
+import type { DesktopMessage, DesktopMeterRateLimitWindow, DesktopMeterSnapshot, DesktopThread } from "../chat-contract.ts"
 import {
   fableLocalFailureMessage,
   fableLocalModelNoteText,
   fableLocalTraceNoteMeta,
   fableLocalTraceNoteText,
   type FableLocalAvailability,
+  type FableLocalEvent,
   type FableLocalEventEnvelope,
   type FableLocalImageAttachment,
   type LocalProviderTarget,
@@ -62,6 +63,38 @@ export const codexLocalUnavailableMessage =
 
 const noteTimestamp = (now: Date = new Date()): string =>
   `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+
+/**
+ * Merge a `meter_updated` event onto the previous live snapshot (T11 #8868).
+ * `account/rateLimits/updated` is documented as a SPARSE rolling update
+ * ("clients should merge available values... does not clear a previously
+ * observed value"), so a window this event omits keeps its last known value
+ * instead of disappearing; a window it DOES report replaces the prior one by
+ * label. Token fields likewise carry forward when a later event omits them
+ * (Codex sends the full current tally together, but this stays defensive).
+ */
+const mergeMeterSnapshot = (
+  previous: DesktopMeterSnapshot | null,
+  event: Extract<FableLocalEvent, { kind: "meter_updated" }>,
+): DesktopMeterSnapshot => {
+  const rateLimitsByLabel = new Map<DesktopMeterRateLimitWindow["label"], DesktopMeterRateLimitWindow>()
+  for (const window of previous?.rateLimits ?? []) rateLimitsByLabel.set(window.label, window)
+  for (const window of event.rateLimits ?? []) rateLimitsByLabel.set(window.label, window)
+  const rateLimits = [...rateLimitsByLabel.values()]
+  const inputTokens = event.inputTokens ?? previous?.inputTokens
+  const cachedInputTokens = event.cachedInputTokens ?? previous?.cachedInputTokens
+  const outputTokens = event.outputTokens ?? previous?.outputTokens
+  const reasoningTokens = event.reasoningTokens ?? previous?.reasoningTokens
+  const totalTokens = event.totalTokens ?? previous?.totalTokens
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+    ...(rateLimits.length === 0 ? {} : { rateLimits }),
+  }
+}
 
 const decodeTurnResult = (
   raw: unknown,
@@ -143,6 +176,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     let pendingAssistantChunks: string[] = []
     let cancelProjection: (() => void) | null = null
     let projectionDirty = false
+    /** T11 #8868: live context/usage meter for this turn's ContextMeter mount
+     * (header/rail — NOT a timeline note; see `header.tsx`). */
+    let latestMeter: DesktopMeterSnapshot | null = null
 
     const commitAssistantText = (): void => {
       if (activeAssistantIndex === null || pendingAssistantChunks.length === 0) return
@@ -162,6 +198,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
           ...baseThread.notes,
           ...orderedNotes,
         ],
+        ...(latestMeter === null ? {} : { meter: latestMeter }),
       })
     }
     const project = (): void => {
@@ -370,6 +407,15 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
           { kind: "plan", entries: event.entries.map(entry => ({ step: entry.step, status: entry.status })) },
           "Plan updated",
         )
+        return
+      }
+      // Context/usage meter (T11 #8868): NOT a timeline note — it drives the
+      // conversation header's live ContextMeter mount (`header.tsx`), merged
+      // (never replaced) so a sparse rate-limit update can't erase an
+      // already-known window.
+      if (event.kind === "meter_updated") {
+        latestMeter = mergeMeterSnapshot(latestMeter, event)
+        project()
         return
       }
       // Delegate-child lifecycle (G4): a running child card offers Interrupt;
