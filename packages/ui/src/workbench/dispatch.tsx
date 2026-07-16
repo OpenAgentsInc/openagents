@@ -121,6 +121,19 @@ export type WorkbenchToolCallDispatchItem = Readonly<{
   progressMessage?: string
 }>
 
+/** Wire vocabulary mirror of `WorkbenchCollabAgentStatus` (workbench-item-contract.ts). */
+export type WorkbenchCollabAgentStatusDispatch =
+  | "pendingInit" | "running" | "interrupted" | "completed" | "errored" | "shutdown" | "notFound"
+
+/** Wire vocabulary mirror of `WorkbenchSubAgentActivityKind`. */
+export type WorkbenchSubAgentActivityKindDispatch = "started" | "interacted" | "interrupted"
+
+export type WorkbenchAgentChildDispatch = Readonly<{
+  threadRef: string
+  status: WorkbenchCollabAgentStatusDispatch
+  nickname?: string
+}>
+
 export type WorkbenchAgentDispatchItem = Readonly<{
   kind: "agent"
   source: WorkbenchDispatchSource
@@ -128,6 +141,11 @@ export type WorkbenchAgentDispatchItem = Readonly<{
   prompt?: string
   status: WorkbenchDispatchStatus
   childRefs?: ReadonlyArray<string>
+  /** Per-child status (#8867 T10) — one row per collab agent or the single subAgentActivity target. */
+  children?: ReadonlyArray<WorkbenchAgentChildDispatch>
+  /** Present when this item projects a subAgentActivity ping rather than a collabAgentToolCall. */
+  activityKind?: WorkbenchSubAgentActivityKindDispatch
+  agentPath?: string
 }>
 
 export type WorkbenchPlanDispatchItem = Readonly<{
@@ -230,6 +248,36 @@ const toAgentStatus = (status: WorkbenchDispatchStatus): DesktopAgentStatus => {
   }
 }
 
+/** collabAgentToolCall.tool -> the short operation verb `DesktopAgentGroup` brackets as `[SPAWN]`/`[SEND]`/etc. */
+const agentOperationTag = (tool: string): string => {
+  switch (tool) {
+    case "spawnAgent": return "spawn"
+    case "sendInput": return "send"
+    case "resumeAgent": return "resume"
+    case "wait": return "wait"
+    case "closeAgent": return "close"
+    default: return tool
+  }
+}
+
+/** CollabAgentStatus -> the coarse icon/tone bucket `DesktopAgentRow` already understands. */
+const toDesktopAgentStatusFromCollab = (status: WorkbenchCollabAgentStatusDispatch): DesktopAgentStatus => {
+  switch (status) {
+    case "running": return "running"
+    case "completed": return "completed"
+    case "pendingInit": return "waiting"
+    case "interrupted":
+    case "errored":
+    case "shutdown":
+    case "notFound":
+      return "failed"
+  }
+}
+
+/** "pendingInit" -> "PENDING INIT"; "notFound" -> "NOT FOUND"; the rest just uppercase. */
+const collabStatusLabel = (status: WorkbenchCollabAgentStatusDispatch): string =>
+  status.replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase()
+
 const toApprovalDecision = (item: WorkbenchApprovalDispatchItem): DesktopApprovalDecision => {
   if (item.decision === "approved") return "approved"
   if (item.decision === "denied" || item.status === "declined") return "denied"
@@ -269,14 +317,33 @@ export const dispatchWorkbenchItem = (
 
     case "agent": {
       const agentItem: WorkbenchAgentDispatchItem = item
-      const agents: ReadonlyArray<DesktopAgentActivity> = [{
-        agentKey: context.itemKey,
-        detail: agentItem.prompt ?? "",
-        name: agentItem.tool ?? "Agent",
-        role: "agent",
-        status: toAgentStatus(agentItem.status),
-      }]
-      return <DesktopAgentGroup agents={agents} itemKey={context.itemKey} />
+      const operation = agentItem.tool === undefined ? undefined : agentOperationTag(agentItem.tool)
+      const agents: ReadonlyArray<DesktopAgentActivity> = agentItem.children !== undefined && agentItem.children.length > 0
+        ? agentItem.children.map(child => ({
+            agentKey: child.threadRef,
+            detail: agentItem.activityKind !== undefined ? "" : (agentItem.prompt ?? ""),
+            name: child.nickname ?? child.threadRef,
+            role: agentItem.activityKind !== undefined ? "Subagent activity" : "Delegated agent",
+            status: toDesktopAgentStatusFromCollab(child.status),
+            statusLabel: collabStatusLabel(child.status),
+            ...(agentItem.agentPath === undefined ? {} : { path: agentItem.agentPath }),
+            ...(agentItem.activityKind === undefined ? {} : { activityKind: agentItem.activityKind }),
+          }))
+        : [{
+            agentKey: context.itemKey,
+            detail: agentItem.prompt ?? "",
+            name: agentItem.tool ?? "Agent",
+            role: "agent",
+            status: toAgentStatus(agentItem.status),
+            ...(agentItem.agentPath === undefined ? {} : { path: agentItem.agentPath }),
+            ...(agentItem.activityKind === undefined ? {} : { activityKind: agentItem.activityKind }),
+          }]
+      return <DesktopAgentGroup
+        agents={agents}
+        itemKey={context.itemKey}
+        operation={operation}
+        prompt={agentItem.prompt}
+      />
     }
 
     case "notice":

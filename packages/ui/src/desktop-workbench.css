@@ -1028,18 +1028,82 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-agent-group { overflow: hidden; }
 .oa-react-agent-group > header { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: var(--en-spacing-2); padding: var(--en-spacing-2) var(--en-spacing-3); border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textFaint); font-size: 11px; }
+/* Operation tag (design spec §2.4 badge formula): [SPAWN]/[SEND]/[WAIT]/[CLOSE]/[RESUME] for collabAgentToolCall.tool. */
+.oa-react-agent-operation {
+  padding: 1px 5px;
+  border-radius: var(--en-radius-none);
+  color: var(--en-color-accent);
+  background: color-mix(in srgb, var(--en-color-accent) 20%, transparent);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.oa-react-agent-operation::before { content: "["; }
+.oa-react-agent-operation::after { content: "]"; }
+/* Bounded operation prompt line (collabAgentToolCall.prompt), one KEY: VALUE row for the whole group. */
+.oa-react-agent-prompt {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--en-spacing-2);
+  margin: 0;
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  overflow: hidden;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-agent-prompt > span { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.oa-react-agent-prompt > span::after { content: ":"; }
 .oa-react-agent-list { display: grid; }
 .oa-react-agent-card { border-bottom: 1px solid var(--en-color-borderSubtle); }
 .oa-react-agent-card:last-child { border-bottom: 0; }
 .oa-react-agent-card[data-depth="1"] { margin-left: var(--en-spacing-5); border-left: 1px solid var(--en-color-borderStrong); }
 .oa-react-agent-card[data-depth="2"] { margin-left: calc(var(--en-spacing-5) * 2); border-left: 1px solid var(--en-color-borderStrong); }
-.oa-react-agent-card > summary { display: grid; grid-template-columns: 24px minmax(96px, .45fr) minmax(0, 1fr) max-content; align-items: center; gap: var(--en-spacing-2); min-height: 46px; padding: var(--en-spacing-2) var(--en-spacing-3); cursor: pointer; list-style: none; }
+.oa-react-agent-card > summary { display: grid; grid-template-columns: 24px minmax(96px, .45fr) minmax(0, 1fr) max-content max-content; align-items: center; gap: var(--en-spacing-2); min-height: 46px; padding: var(--en-spacing-2) var(--en-spacing-3); cursor: pointer; list-style: none; }
 .oa-react-agent-avatar { display: grid; width: 24px; height: 24px; border: 1px solid var(--en-color-borderStrong); color: var(--en-color-accent); place-items: center; }
 .oa-react-agent-avatar > svg { width: 13px; height: 13px; }
 .oa-react-agent-heading { display: grid; min-width: 0; }
 .oa-react-agent-heading strong { overflow: hidden; color: var(--en-color-textPrimary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .oa-react-agent-heading small { overflow: hidden; color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
-.oa-react-agent-task { overflow: hidden; color: var(--en-color-textMuted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+/* Nickname/path line (subAgentActivity.agentPath or any caller-resolved friendly label). */
+.oa-react-agent-heading small.oa-react-agent-path { color: var(--en-color-textMuted); text-transform: none; }
+.oa-react-agent-task { display: flex; align-items: center; gap: var(--en-spacing-2); overflow: hidden; color: var(--en-color-textMuted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+/* Activity-kind row (subAgentActivity.kind): started/interacted/interrupted, distinct from lifecycle status. */
+.oa-react-agent-activity-tag {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: var(--en-radius-none);
+  color: var(--en-color-textFaint);
+  background: color-mix(in srgb, var(--en-color-textFaint) 15%, transparent);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.oa-react-agent-activity-tag::before { content: "["; }
+.oa-react-agent-activity-tag::after { content: "]"; }
+.oa-react-agent-activity-tag[data-activity="interrupted"] {
+  color: var(--en-color-danger);
+  background: color-mix(in srgb, var(--en-color-danger) 25%, transparent);
+}
+.oa-react-agent-interrupt {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--en-color-borderStrong);
+  border-radius: var(--en-radius-none);
+  background: transparent;
+  color: var(--en-color-danger);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.oa-react-agent-interrupt:hover { background: color-mix(in srgb, var(--en-color-danger) 15%, transparent); }
 .oa-react-agent-transcript { display: grid; gap: var(--en-spacing-2); padding: 0 var(--en-spacing-3) var(--en-spacing-3) calc(24px + var(--en-spacing-5)); }
 .oa-react-agent-transcript p { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: var(--en-spacing-2); margin: 0; color: var(--en-color-textMuted); font-size: 11px; line-height: 1.5; }
 .oa-react-agent-transcript strong { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }

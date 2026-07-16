@@ -16,11 +16,25 @@ import {
   workbenchItemSignature,
   workbenchPlanItemFromEntries,
   workbenchToolCallFromSdkUse,
+  type WorkbenchAgentChild,
   type WorkbenchCommandItem,
   type WorkbenchFileChangeItem,
   type WorkbenchPlanItem,
   type WorkbenchToolCallItem,
 } from "./workbench-item-contract.ts"
+
+/** Structurally narrows a decoded WorkbenchItem to the "agent" variant for assertions below. */
+type WorkbenchAgentItemLike = Readonly<{
+  kind: "agent"
+  source: string
+  tool?: string
+  prompt?: string
+  status: string
+  children?: ReadonlyArray<WorkbenchAgentChild>
+  activityKind?: string
+  agentPath?: string
+  agentThreadId?: string
+}>
 
 /**
  * camelCase fixtures asserted VALID against the current-source app-server
@@ -89,11 +103,33 @@ const wirePlan = {
   type: "plan",
   text: "Investigate the flaky auth test, then land the fix behind a flag.",
 }
+const wireCollabAgentToolCall = {
+  id: "item-7",
+  type: "collabAgentToolCall",
+  agentsStates: {
+    "thread-child-1": { status: "running", message: "Reading tests" },
+    "thread-child-2": { status: "completed", message: null },
+  },
+  model: "gpt-5.6-sol",
+  prompt: "Wire the file-change card to per-file diffs",
+  receiverThreadIds: ["thread-child-1", "thread-child-2"],
+  senderThreadId: "thread-parent",
+  status: "inProgress",
+  tool: "spawnAgent",
+}
+const wireSubAgentActivity = {
+  id: "item-8",
+  type: "subAgentActivity",
+  agentPath: "timeline-builder/a11y-oracle",
+  agentThreadId: "thread-child-3",
+  kind: "interacted",
+}
 
 describe("WorkbenchItem projection from app-server (camelCase) wire items", () => {
   test("every fixture is valid against the generated current-source item/completed wire schema", () => {
     for (const fixture of [
       wireCommandExecution, wireFileChange, wireMcpToolCall, wireDynamicToolCall, wireWebSearch, wirePlan,
+      wireCollabAgentToolCall, wireSubAgentActivity,
     ]) {
       const result = decodeCurrentServerNotification("item/completed", {
         threadId: "thread-1",
@@ -236,7 +272,55 @@ describe("WorkbenchItem projection from app-server (camelCase) wire items", () =
     expect(viewed).toMatchObject({ callKind: "image", tool: "imageView", path: "/tmp/in.png" })
   })
 
-  test("non-tool items project as null (this wave emits tool-class payloads only)", () => {
+  test("collabAgentToolCall keeps tool, prompt, and per-agent children from agentsStates{}", () => {
+    const item = workbenchItemFromThreadItem(wireCollabAgentToolCall, "codex") as WorkbenchAgentItemLike
+    expect(item).toMatchObject({
+      kind: "agent",
+      source: "codex",
+      tool: "spawnAgent",
+      prompt: "Wire the file-change card to per-file diffs",
+      status: "in_progress",
+    })
+    expect(item.children).toEqual([
+      { threadRef: "thread-child-1", status: "running" },
+      { threadRef: "thread-child-2", status: "completed" },
+    ])
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("collabAgentToolCall status inProgress/completed/failed normalize to the coarse bucket", () => {
+    for (const [wire, expected] of [["inProgress", "in_progress"], ["completed", "completed"], ["failed", "failed"]] as const) {
+      const item = workbenchItemFromThreadItem({ ...wireCollabAgentToolCall, status: wire }, "codex") as WorkbenchAgentItemLike
+      expect(item.status).toBe(expected)
+    }
+  })
+
+  test("subAgentActivity keeps agentPath, activityKind, and the single agentThreadId as a child row", () => {
+    const item = workbenchItemFromThreadItem(wireSubAgentActivity, "codex") as WorkbenchAgentItemLike
+    expect(item).toMatchObject({
+      kind: "agent",
+      source: "codex",
+      status: "in_progress",
+      agentPath: "timeline-builder/a11y-oracle",
+      agentThreadId: "thread-child-3",
+      activityKind: "interacted",
+    })
+    expect(item.children).toEqual([{ threadRef: "thread-child-3", status: "running" }])
+    expect(item.tool).toBeUndefined()
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("subAgentActivity kind=interrupted maps to a failed item status and an interrupted child row", () => {
+    const item = workbenchItemFromThreadItem(
+      { ...wireSubAgentActivity, kind: "interrupted" },
+      "codex",
+    ) as WorkbenchAgentItemLike
+    expect(item.status).toBe("failed")
+    expect(item.activityKind).toBe("interrupted")
+    expect(item.children).toEqual([{ threadRef: "thread-child-3", status: "interrupted" }])
+  })
+
+  test("non-tool items project as null (this wave emits tool-class and agent-class payloads only)", () => {
     expect(workbenchItemFromThreadItem({ id: "x", type: "agentMessage", text: "hi" }, "codex")).toBeNull()
     expect(workbenchItemFromThreadItem({ id: "x", type: "reasoning" }, "codex")).toBeNull()
     expect(workbenchItemFromThreadItem({ id: "x", type: "contextCompaction" }, "codex")).toBeNull()
@@ -358,6 +442,25 @@ describe("WorkbenchItem projection from rollout/exec (snake_case) records", () =
       expect(item.status).toBe("in_progress")
     }
   })
+
+  test("collab_agent_tool_call and sub_agent_activity read snake_case identity fields", () => {
+    const collab = workbenchItemFromThreadItem({
+      type: "collab_agent_tool_call",
+      tool: "closeAgent",
+      prompt: "Wrap up",
+      status: "completed",
+      agents_states: { "child-1": { status: "shutdown" } },
+    }, "codex") as WorkbenchAgentItemLike
+    expect(collab).toMatchObject({ kind: "agent", tool: "closeAgent", status: "completed" })
+    expect(collab.children).toEqual([{ threadRef: "child-1", status: "shutdown" }])
+    const activity = workbenchItemFromThreadItem({
+      type: "sub_agent_activity",
+      agent_path: "root/child",
+      agent_thread_id: "child-2",
+      kind: "started",
+    }, "codex") as WorkbenchAgentItemLike
+    expect(activity).toMatchObject({ kind: "agent", agentPath: "root/child", agentThreadId: "child-2", activityKind: "started" })
+  })
 })
 
 describe("bounds and redaction discipline", () => {
@@ -411,6 +514,30 @@ describe("bounds and redaction discipline", () => {
     }, "codex", redact) as WorkbenchToolCallItem
     expect(mcp.args).toEqual([{ key: "token", value: "[REDACTED]" }])
   })
+
+  test("collabAgentToolCall caps agentsStates{} children at 16 and drops unrecognized statuses", () => {
+    const agentsStates: Record<string, unknown> = {}
+    for (let index = 0; index < 24; index++) agentsStates[`child-${index}`] = { status: "running" }
+    agentsStates["child-bogus"] = { status: "not-a-real-status" }
+    const item = workbenchItemFromThreadItem(
+      { type: "collabAgentToolCall", tool: "wait", status: "inProgress", agentsStates },
+      "codex",
+    ) as WorkbenchAgentItemLike
+    expect(item.children).toHaveLength(16)
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("the redactor applies to collabAgentToolCall.prompt and subAgentActivity.agentPath", () => {
+    const redact = (value: string): string => value.replaceAll("secret", "[REDACTED]")
+    const collab = workbenchItemFromThreadItem({
+      type: "collabAgentToolCall", tool: "spawnAgent", prompt: "hold the secret", status: "inProgress",
+    }, "codex", redact) as WorkbenchAgentItemLike
+    expect(collab.prompt).toBe("hold the [REDACTED]")
+    const activity = workbenchItemFromThreadItem({
+      type: "subAgentActivity", agentPath: "secret/child", agentThreadId: "c", kind: "started",
+    }, "codex", redact) as WorkbenchAgentItemLike
+    expect(activity.agentPath).toBe("[REDACTED]/child")
+  })
 })
 
 describe("Claude SDK lane projection (source-tagged, no Codex assumptions)", () => {
@@ -463,5 +590,15 @@ describe("workbenchItemSignature (cheap memo equality)", () => {
     const withProse = workbenchPlanItemFromEntries({ source: "codex", entries: [{ step: "a", status: "pending" }], prose: "narrative" })
     expect(workbenchItemSignature(withoutProse)).not.toBe(workbenchItemSignature(withProse))
     expect(workbenchItemSignature(withProse)).toBe(workbenchItemSignature({ ...withProse }))
+  })
+
+  test("agent items flip when a child's status changes, stable otherwise", () => {
+    const running = workbenchItemFromThreadItem(wireCollabAgentToolCall, "codex")!
+    const settled = workbenchItemFromThreadItem({
+      ...wireCollabAgentToolCall,
+      agentsStates: { "thread-child-1": { status: "completed" }, "thread-child-2": { status: "completed" } },
+    }, "codex")!
+    expect(workbenchItemSignature(running)).not.toBe(workbenchItemSignature(settled))
+    expect(workbenchItemSignature(running)).toBe(workbenchItemSignature({ ...running }))
   })
 })

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vite-plus/test"
-import type { IntentReporter } from "@effect-native/core"
+import { resolveIntentRef, type IntentReporter } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import { Window } from "happy-dom"
 import { createRoot } from "react-dom/client"
@@ -650,6 +650,198 @@ describe("plan unification across all three sources (T8 #8865)", () => {
     expect(rows).toHaveLength(1) // in place, not appended/duplicated
     expect(rows[0]).toBe(before) // the SAME DOM node — never remounted
     expect(rows[0]?.textContent).toContain("1 of 2 done")
+    root.unmount()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Delegated-agent collab states + subagent activity (#8867 T10, epic #8857
+// Wave 2). Today's live `child_started`/`child_activity`/`child_completed`/
+// `child_failed` FableLocalEvents (codex-app-server-turn.ts's
+// `collabAgentToolCall`/`subAgentActivity` handling) project as a
+// `runtime: {kind:"child"}` note (local-harness.ts); before this change that
+// note fell through to a flat system-notice line on the PRIMARY React
+// timeline (only the `?renderer=compatibility` fallback in shell.ts +
+// runtime-cards.ts rendered it as a real card with Interrupt). These tests
+// prove the primary path now shows the same delegated-agent status through
+// `DesktopAgentGroup`, and that the Interrupt affordance transfers to the new
+// call site using the SAME `childInterruptable` predicate and the SAME
+// `DesktopChildInterruptRequested` intent the compatibility renderer
+// dispatches (runtime-cards.test.ts, untouched, still proves that renderer
+// unregressed).
+// ---------------------------------------------------------------------------
+describe("delegated-agent collab states on the primary React timeline (#8867)", () => {
+  const childNote = (overrides: Partial<{
+    status: "running" | "completed" | "failed"
+    steered: null | { action: "message" | "interrupt"; outcome: "interrupted" | "delivered" | "unsupported" | "not_found"; detail: string }
+    title: string
+    detail: string
+  }> = {}) => ({
+    key: "turn-1-child-child-9",
+    role: "system" as const,
+    text: "Delegate child · summarizing",
+    timestamp: "05:41",
+    runtime: {
+      kind: "child" as const,
+      turnRef: "turn-1",
+      childRef: "child-9",
+      status: "running" as const,
+      title: "Summarize the task",
+      detail: "reading files",
+      steered: null,
+      ...overrides,
+    },
+  })
+
+  test("a live delegate-child note projects as a typed agent item, not flattened notice text", () => {
+    const records = projectLocalTimelineRecords([childNote()])
+    expect(records).toHaveLength(1)
+    expect(records[0]!.item).toMatchObject({
+      kind: "agent",
+      source: "codex",
+      status: "in_progress",
+      children: [{ threadRef: "child-9", status: "running", nickname: "Summarize the task" }],
+    })
+    expect(records[0]!.runtimeChild).toEqual({ turnRef: "turn-1", childRef: "child-9", interruptable: true })
+  })
+
+  test("a completed child is no longer interruptable and maps to the completed bucket", () => {
+    const records = projectLocalTimelineRecords([childNote({ status: "completed" })])
+    expect(records[0]!.item).toMatchObject({ status: "completed", children: [{ status: "completed" }] })
+    expect(records[0]!.runtimeChild?.interruptable).toBe(false)
+  })
+
+  test("a failed child maps to the errored child bucket and the failed item status", () => {
+    const records = projectLocalTimelineRecords([childNote({ status: "failed" })])
+    expect(records[0]!.item).toMatchObject({ status: "failed", children: [{ status: "errored" }] })
+    expect(records[0]!.runtimeChild?.interruptable).toBe(false)
+  })
+
+  test("an already-steered running child is no longer interruptable (childInterruptable reused verbatim)", () => {
+    const records = projectLocalTimelineRecords([childNote({
+      steered: { action: "interrupt", outcome: "interrupted", detail: "child interrupt requested" },
+    })])
+    expect(records[0]!.runtimeChild?.interruptable).toBe(false)
+  })
+
+  test("queue runtime notes are UNCHANGED (still fall through to generic note text); plan is T8's, not mine", () => {
+    // `plan` runtime notes get their OWN typed-item branch from T8 (#8865,
+    // unrelated to this change) — only asserting `queue` here to avoid
+    // claiming credit for that lane's fix.
+    const queueRecords = projectLocalTimelineRecords([{
+      key: "turn-1-queue",
+      role: "system" as const,
+      text: "Queued follow-up (#1)",
+      timestamp: "05:41",
+      runtime: { kind: "queue" as const, turnRef: "turn-1", queueRef: "q1", position: 1 },
+    }])
+    expect(queueRecords).toHaveLength(1)
+    expect(queueRecords[0]!.item).toBeUndefined()
+  })
+
+  test("renders a running delegate child through DesktopAgentGroup with an Interrupt control", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const records = projectLocalTimelineRecords([childNote()])
+    root.render(<ReactTimeline sessionKey="thread-1" records={records}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const card = container.querySelector<HTMLElement>('[data-kind="collabAgentToolCall"]')
+    expect(card).not.toBeNull()
+    expect(card?.textContent).toContain("Summarize the task")
+    // Exact wire-status label (design spec badge formula), not the coarse "Running" bucket text.
+    expect(card?.textContent).toContain("RUNNING")
+    const interruptButton = card?.querySelector<HTMLButtonElement>(".oa-react-agent-interrupt")
+    expect(interruptButton).not.toBeNull()
+    expect(interruptButton?.getAttribute("aria-label")).toBe("Interrupt Summarize the task")
+    root.unmount()
+  })
+
+  test("clicking Interrupt dispatches DesktopChildInterruptRequested with the exact turnRef/childRef", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const received: Array<unknown> = []
+    const capturingReport: IntentReporter = (ref, payload) =>
+      Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const records = projectLocalTimelineRecords([childNote()])
+    root.render(<ReactTimeline sessionKey="thread-1" records={records}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={capturingReport} />)
+    await settle()
+    const interruptButton = container.querySelector<HTMLButtonElement>(".oa-react-agent-interrupt")
+    interruptButton?.click()
+    await settle()
+    expect(received).toContainEqual({ name: "DesktopChildInterruptRequested", payload: { turnRef: "turn-1", childRef: "child-9" } })
+    root.unmount()
+  })
+
+  test("a completed delegate child renders WITHOUT an Interrupt control", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const records = projectLocalTimelineRecords([childNote({ status: "completed" })])
+    root.render(<ReactTimeline sessionKey="thread-1" records={records}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const card = container.querySelector<HTMLElement>('[data-kind="collabAgentToolCall"]')
+    expect(card?.querySelector(".oa-react-agent-interrupt")).toBeNull()
+    expect(card?.textContent).toContain("COMPLETED")
+    root.unmount()
+  })
+
+  test("history collaboration rows (codex-history.ts) surface the raw operation/activity fields as tags", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const historyRecord: ReactTimelineRecord = {
+      ...record("collab-1", 0),
+      kind: "collaboration",
+      label: "spawn agent",
+      body: "Delegated implementation work",
+      status: "running",
+      fields: [
+        { label: "agent", value: "child-thread-7" },
+        { label: "operation", value: "spawn_agent" },
+        { label: "activity", value: "started" },
+      ],
+    }
+    root.render(<ReactTimeline sessionKey="thread-1" records={[historyRecord]}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const card = container.querySelector<HTMLElement>('[data-kind="collabAgentToolCall"]')
+    expect(card?.querySelector('[data-operation="spawn"]')).not.toBeNull()
+    expect(card?.querySelector('[data-activity="started"]')).not.toBeNull()
+    root.unmount()
+  })
+
+  test("multiple collabAgentToolCall children render as separate rows in one group", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const multiAgentRecord: ReactTimelineRecord = {
+      ...record("collab-multi", 0),
+      kind: "collaboration",
+      label: "Delegated agents",
+      body: "",
+      status: null,
+      fields: [],
+      item: {
+        kind: "agent",
+        source: "codex",
+        tool: "spawnAgent",
+        prompt: "Implement the reviewer pass",
+        status: "in_progress",
+        children: [
+          { threadRef: "child-a", status: "running", nickname: "protocol-scout" },
+          { threadRef: "child-b", status: "completed", nickname: "timeline-builder" },
+        ],
+      },
+    }
+    root.render(<ReactTimeline sessionKey="thread-1" records={[multiAgentRecord]}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const rows = container.querySelectorAll(".oa-react-agent-card")
+    expect(rows).toHaveLength(2)
+    expect(container.querySelector('[data-operation="spawn"]')).not.toBeNull()
+    expect(container.textContent).toContain("Implement the reviewer pass")
+    expect(container.textContent).toContain("protocol-scout")
+    expect(container.textContent).toContain("timeline-builder")
     root.unmount()
   })
 })

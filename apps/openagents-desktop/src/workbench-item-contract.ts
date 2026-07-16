@@ -138,13 +138,55 @@ export const WorkbenchReasoningItemSchema = Schema.Struct({
   summary: BoundedString(4_000),
 })
 
+/**
+ * `collabAgentToolCall.agentsStates{}` wire vocabulary
+ * (`ServerNotification__CollabAgentStatus`, schema.gen.ts). Kept distinct
+ * from the coarser `WorkbenchItemStatusSchema` (4 buckets) so the per-agent
+ * row can show the EXACT wire status (design spec §2.4 badge formula reads
+ * the real status text, not a lossy bucket).
+ */
+export const WorkbenchCollabAgentStatusSchema = Schema.Literals([
+  "pendingInit", "running", "interrupted", "completed", "errored", "shutdown", "notFound",
+])
+export type WorkbenchCollabAgentStatus = typeof WorkbenchCollabAgentStatusSchema.Type
+
+/** `subAgentActivity.kind` wire vocabulary (`ServerNotification__SubAgentActivityKind`). */
+export const WorkbenchSubAgentActivityKindSchema = Schema.Literals(["started", "interacted", "interrupted"])
+export type WorkbenchSubAgentActivityKind = typeof WorkbenchSubAgentActivityKindSchema.Type
+
+/** One entry of `collabAgentToolCall.agentsStates{threadId: CollabAgentState}}`, keyed form flattened to an array. */
+export const WorkbenchAgentChildSchema = Schema.Struct({
+  threadRef: BoundedString(120),
+  status: WorkbenchCollabAgentStatusSchema,
+  /** Friendly label when a caller can resolve one (e.g. from the history agent graph); the wire itself has none. */
+  nickname: Schema.optional(BoundedString(120)),
+})
+export type WorkbenchAgentChild = typeof WorkbenchAgentChildSchema.Type
+
+/**
+ * agent → collabAgentToolCall (tool, prompt, per-child agentsStates) AND
+ * subAgentActivity (agentPath, agentThreadId, kind) both project here (#8867
+ * T10, epic #8857 Wave 2): presentation-wise both are "delegated agent
+ * status" rows for the same `DesktopAgentGroup` card. `children` is additive
+ * alongside the original flat `childRefs` (#8859) — existing consumers of
+ * `childRefs` keep working unchanged.
+ */
 export const WorkbenchAgentItemSchema = Schema.Struct({
   kind: Schema.Literal("agent"),
   source: WorkbenchItemSourceSchema,
+  /** collabAgentToolCall.tool: spawnAgent|sendInput|resumeAgent|wait|closeAgent. */
   tool: Schema.optional(BoundedString(40)),
   prompt: Schema.optional(BoundedString(2_000)),
   status: WorkbenchItemStatusSchema,
   childRefs: Schema.optional(Schema.Array(BoundedString(120)).check(Schema.isMaxLength(16))),
+  /** Per-child status (#8867), one entry per `agentsStates` key or the single subAgentActivity target. */
+  children: Schema.optional(Schema.Array(WorkbenchAgentChildSchema).check(Schema.isMaxLength(16))),
+  /** subAgentActivity.kind, when this item projects a subagent activity ping rather than a collab tool call. */
+  activityKind: Schema.optional(WorkbenchSubAgentActivityKindSchema),
+  /** subAgentActivity.agentPath: the nested agent's path/nickname. */
+  agentPath: Schema.optional(BoundedString(WORKBENCH_PATH_LIMIT)),
+  /** subAgentActivity.agentThreadId, kept alongside `children` for callers that only need the raw ref. */
+  agentThreadId: Schema.optional(BoundedString(120)),
 })
 
 export const WorkbenchPlanItemSchema = Schema.Struct({
@@ -268,6 +310,20 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 const asString = (value: unknown): string | null => typeof value === "string" ? value : null
 const asNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null
+/** Tolerant reader for `CollabAgentStatus`; a defensive snake_case fallback (`pending_init`) beyond the exact wire literal. */
+const asCollabAgentStatus = (value: unknown): WorkbenchCollabAgentStatus | null => {
+  const raw = asString(value)
+  if (raw === null) return null
+  const normalized = raw === "pending_init" ? "pendingInit" : raw === "not_found" ? "notFound" : raw
+  return normalized === "pendingInit" || normalized === "running" || normalized === "interrupted" ||
+      normalized === "completed" || normalized === "errored" || normalized === "shutdown" || normalized === "notFound"
+    ? normalized
+    : null
+}
+const asSubAgentActivityKind = (value: unknown): WorkbenchSubAgentActivityKind | null => {
+  const raw = asString(value)
+  return raw === "started" || raw === "interacted" || raw === "interrupted" ? raw : null
+}
 
 const head = (value: string, limit: number): string => value.slice(0, limit)
 const tail = (value: string, limit: number): string => value.slice(-limit)
@@ -602,6 +658,47 @@ export const workbenchItemFromThreadItem = (
     if (text === null || text.trim() === "") return null
     return workbenchPlanItemFromEntries({ source, entries: [], prose: text }, redact)
   }
+  if (type === "collabAgentToolCall" || type === "collab_agent_tool_call") {
+    const statesRecord = asRecord(item.agentsStates ?? item.agents_states)
+    const children: Array<WorkbenchAgentChild> = []
+    if (statesRecord !== null) {
+      for (const [threadRef, raw] of Object.entries(statesRecord)) {
+        if (children.length >= 16) break
+        const status = asCollabAgentStatus(asRecord(raw)?.status)
+        if (status === null) continue
+        children.push({ threadRef: head(redact(threadRef), 120), status })
+      }
+    }
+    const tool = asString(item.tool)
+    const prompt = asString(item.prompt)
+    return {
+      kind: "agent",
+      source,
+      ...(tool === null ? {} : { tool: head(tool, 40) }),
+      ...(prompt === null ? {} : { prompt: head(redact(prompt), 2_000) }),
+      status: normalizeWorkbenchStatus(item.status, "in_progress"),
+      ...(children.length === 0 ? {} : { children }),
+    }
+  }
+  if (type === "subAgentActivity" || type === "sub_agent_activity") {
+    const agentThreadId = asString(item.agentThreadId ?? item.agent_thread_id)
+    const agentPath = asString(item.agentPath ?? item.agent_path)
+    const activityKind = asSubAgentActivityKind(item.kind)
+    const childStatus: WorkbenchCollabAgentStatus = activityKind === "interrupted" ? "interrupted" : "running"
+    return {
+      kind: "agent",
+      source,
+      status: activityKind === "interrupted" ? "failed" : "in_progress",
+      ...(agentPath === null ? {} : { agentPath: head(redact(agentPath), WORKBENCH_PATH_LIMIT) }),
+      ...(activityKind === null ? {} : { activityKind }),
+      ...(agentThreadId === null
+        ? {}
+        : {
+          agentThreadId: head(agentThreadId, 120),
+          children: [{ threadRef: head(redact(agentThreadId), 120), status: childStatus }],
+        }),
+    }
+  }
   return null
 }
 
@@ -678,7 +775,11 @@ export const workbenchItemSignature = (item: WorkbenchItem | undefined): string 
     case "reasoning":
       return ["reasoning", item.source, item.summary.length].join("|")
     case "agent":
-      return ["agent", item.source, item.status, item.tool ?? "", item.prompt?.length ?? 0].join("|")
+      return [
+        "agent", item.source, item.status, item.tool ?? "", item.prompt?.length ?? 0,
+        item.activityKind ?? "", item.agentPath ?? "",
+        ...(item.children ?? []).map(child => `${child.threadRef}:${child.status}:${child.nickname ?? ""}`),
+      ].join("|")
     case "plan":
       return [
         "plan", item.source, item.prose?.length ?? 0,

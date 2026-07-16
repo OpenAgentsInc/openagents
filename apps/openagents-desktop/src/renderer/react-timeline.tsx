@@ -16,6 +16,8 @@ import {
   DesktopTimelineNotice,
   DesktopWorkEntry,
   dispatchWorkbenchItem,
+  type DesktopAgentActivity,
+  type DesktopAgentStatus,
   type WorkbenchDispatchItem,
 } from "@openagentsinc/ui/desktop-workbench"
 import type { ReactElement, ReactNode } from "react"
@@ -23,9 +25,15 @@ import { Component, createElement, memo, useEffect, useMemo, useRef, useState } 
 import { ChevronRight, Folder } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
-import { workbenchItemSignature, workbenchPlanItemFromEntries, type WorkbenchItem } from "../workbench-item-contract.ts"
+import {
+  workbenchItemSignature,
+  workbenchPlanItemFromEntries,
+  type WorkbenchCollabAgentStatus,
+  type WorkbenchItem,
+} from "../workbench-item-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
 import { parseChatMarkdown } from "./markdown.ts"
+import { childInterruptable } from "./runtime-cards.ts"
 import { humanizeToolInvocation, projectToolCardEntries } from "./tool-cards.ts"
 
 const terminalStatuses = new Set([
@@ -63,6 +71,14 @@ export type ReactTimelineRecord = Readonly<{
    * until then.
    */
   item?: WorkbenchItem
+  /**
+   * Desktop-only interrupt wiring for a live delegate-child runtime note
+   * (#8867 T10). NOT part of the shared `WorkbenchItem` contract — the
+   * Interrupt affordance is a desktop-local capability (`runtime-cards.ts`'s
+   * `childInterruptable`, the same predicate the compatibility renderer
+   * uses), never assumed by the web host that also consumes `dispatchWorkbenchItem`.
+   */
+  runtimeChild?: Readonly<{ turnRef: string; childRef: string; interruptable: boolean }>
 }>
 
 const recordFromItem = (
@@ -149,6 +165,49 @@ export const projectLocalTimelineRecords = (
       resultBody: entry.card.resultSummary,
       resultStatus: entry.card.status === "failed" ? "failed" : entry.card.status === "ok" ? "completed" : null,
       ...(entry.card.item === undefined ? {} : { item: entry.card.item }),
+    }]
+  }
+  // Delegate-child lifecycle (collabAgentToolCall/subAgentActivity, projected
+  // by local-harness.ts as a `runtime: {kind:"child"}` note): route through
+  // the SAME typed "agent" WorkbenchItem the DesktopAgentGroup card renders
+  // (#8867 T10) instead of falling through to a flat system-notice line.
+  // `queue` runtime notes are untouched (unchanged generic fallthrough
+  // below); `plan` runtime notes get their own typed-item branch further
+  // down (T8 #8865).
+  if (entry.kind === "runtime" && entry.note.runtime?.kind === "child") {
+    const runtime = entry.note.runtime
+    const coarseStatus = runtime.status === "running" ? "in_progress" as const
+      : runtime.status === "completed" ? "completed" as const : "failed" as const
+    const childCollabStatus = runtime.status === "running" ? "running" as const
+      : runtime.status === "completed" ? "completed" as const : "errored" as const
+    return [{
+      key: entry.note.key,
+      itemRef: entry.note.key,
+      sequence: index,
+      kind: "collaboration" as const,
+      label: "Delegated agent",
+      body: runtime.detail || runtime.title,
+      timestamp: entry.note.timestamp,
+      status: runtime.status,
+      redacted: false,
+      fields: [],
+      resultRef: null,
+      resultBody: null,
+      resultStatus: null,
+      item: {
+        kind: "agent",
+        // Delegate-child events ride the codex-app-server collab wire today
+        // (`collabAgentToolCall`/`subAgentActivity`); revisit if another
+        // harness starts emitting `child_*` FableLocalEvents.
+        source: "codex",
+        status: coarseStatus,
+        children: [{
+          threadRef: runtime.childRef,
+          status: childCollabStatus,
+          ...(runtime.title === "" ? {} : { nickname: runtime.title }),
+        }],
+      },
+      runtimeChild: { turnRef: runtime.turnRef, childRef: runtime.childRef, interruptable: childInterruptable(runtime) },
     }]
   }
   const note = entry.note
@@ -289,6 +348,59 @@ const compact = (value: string, limit = 180): string => {
   return normalized.length <= limit ? normalized : `${normalized.slice(0, limit - 1)}…`
 }
 
+// ---------------------------------------------------------------------------
+// Agent status/operation formatting (#8867 T10). Mirrors
+// `packages/ui/src/workbench/dispatch.tsx`'s private helpers of the same
+// name for the shared `dispatchWorkbenchItem` "agent" branch; kept local
+// here because this file's history-branch enrichment reads the raw
+// snake_case `operation` string codex-history.ts already captures
+// (`spawn_agent`/`send_input`/...), a different vocabulary than the live
+// camelCase `collabAgentToolCall.tool`.
+// ---------------------------------------------------------------------------
+
+/** collabAgentToolCall.tool -> the short operation verb DesktopAgentGroup brackets as [SPAWN]/[SEND]/etc. */
+const agentOperationTag = (tool: string): string => {
+  switch (tool) {
+    case "spawnAgent": return "spawn"
+    case "sendInput": return "send"
+    case "resumeAgent": return "resume"
+    case "wait": return "wait"
+    case "closeAgent": return "close"
+    default: return tool
+  }
+}
+
+/** codex-history.ts's raw snake_case `operation` field -> the same short verb vocabulary. */
+const historyOperationTag = (operation: string): string => {
+  switch (operation) {
+    case "spawn_agent": return "spawn"
+    case "send_input": return "send"
+    case "resume_agent": return "resume"
+    case "wait": return "wait"
+    case "close_agent": return "close"
+    case "interrupt_agent": return "interrupt"
+    default: return operation.replaceAll("_", " ")
+  }
+}
+
+/** CollabAgentStatus -> the coarse icon/tone bucket DesktopAgentRow understands. */
+const toDesktopAgentStatusFromCollab = (status: WorkbenchCollabAgentStatus): DesktopAgentStatus => {
+  switch (status) {
+    case "running": return "running"
+    case "completed": return "completed"
+    case "pendingInit": return "waiting"
+    case "interrupted":
+    case "errored":
+    case "shutdown":
+    case "notFound":
+      return "failed"
+  }
+}
+
+/** "pendingInit" -> "PENDING INIT"; "notFound" -> "NOT FOUND"; the rest just uppercase. */
+const collabStatusLabel = (status: WorkbenchCollabAgentStatus): string =>
+  status.replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase()
+
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
     payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload,
@@ -308,6 +420,42 @@ export const TimelineItem = ({ record, report }: {
       sequence: record.sequence,
     })
   }
+  // Typed live delegate-child status (#8867 T10): a per-agent status row
+  // built from collabAgentToolCall/subAgentActivity (via
+  // `projectLocalTimelineRecords`'s runtime-child branch above). Placed
+  // BEFORE the history-only `collaboration` string branch below so a record
+  // that carries both (never true today, but future-proof) prefers the typed
+  // path.
+  if (record.item?.kind === "agent") {
+    const agentItem = record.item
+    const operation = agentItem.tool === undefined ? undefined : agentOperationTag(agentItem.tool)
+    const agents: ReadonlyArray<DesktopAgentActivity> = agentItem.children !== undefined && agentItem.children.length > 0
+      ? agentItem.children.map(child => ({
+          agentKey: child.threadRef,
+          detail: agentItem.activityKind !== undefined ? "" : (agentItem.prompt ?? ""),
+          name: child.nickname ?? child.threadRef,
+          role: agentItem.activityKind !== undefined ? "Subagent activity" : "Delegated agent",
+          status: toDesktopAgentStatusFromCollab(child.status),
+          statusLabel: collabStatusLabel(child.status),
+          ...(agentItem.agentPath === undefined ? {} : { path: agentItem.agentPath }),
+          ...(agentItem.activityKind === undefined ? {} : { activityKind: agentItem.activityKind }),
+          ...(record.runtimeChild === undefined ? {} : {
+            interruptable: record.runtimeChild.interruptable,
+            onInterrupt: () => dispatch(report, "DesktopChildInterruptRequested", {
+              turnRef: record.runtimeChild!.turnRef,
+              childRef: record.runtimeChild!.childRef,
+            }),
+          }),
+        }))
+      : [{
+          agentKey: record.key,
+          detail: agentItem.prompt ?? "",
+          name: agentItem.tool ?? "Agent",
+          role: "agent",
+          status: agentItem.status === "in_progress" ? "running" : agentItem.status === "completed" ? "completed" : "failed",
+        }]
+    return <DesktopAgentGroup agents={agents} itemKey={record.key} operation={operation} prompt={agentItem.prompt} />
+  }
   if (record.kind === "collaboration") {
     const status = ["failed", "errored", "interrupted"].includes(record.status ?? "")
       ? "failed"
@@ -315,6 +463,15 @@ export const TimelineItem = ({ record, report }: {
         ? "running"
         : "completed"
     const agentRef = record.fields.find(entry => entry.label.toLocaleLowerCase() === "agent")?.value ?? record.itemRef
+    // Nice-to-have enrichment (#8867 T10 §4): codex-history.ts already
+    // captures the raw `operation`/`activity` fields on collab-like rows
+    // (see `projectRow`'s collab branch); surface them the same way the live
+    // typed path does, without a deeper history-graph restructure.
+    const historyOperation = record.fields.find(entry => entry.label.toLocaleLowerCase() === "operation")?.value
+    const historyActivity = record.fields.find(entry => entry.label.toLocaleLowerCase() === "activity")?.value
+    const activityKind = historyActivity === "started" || historyActivity === "interacted" || historyActivity === "interrupted"
+      ? historyActivity
+      : undefined
     return <DesktopAgentGroup
       agents={[{
         agentKey: agentRef,
@@ -323,8 +480,10 @@ export const TimelineItem = ({ record, report }: {
         role: "Delegated agent",
         status,
         transcript: [{ label: "Activity", text: record.body }],
+        ...(activityKind === undefined ? {} : { activityKind }),
       }]}
       itemKey={record.key}
+      operation={historyOperation === undefined ? undefined : historyOperationTag(historyOperation)}
     />
   }
   if (isWorkRecord(record)) return <DesktopWorkEntry
@@ -396,6 +555,12 @@ const sameTimelineRecord = (left: ReactTimelineRecord, right: ReactTimelineRecor
   // Scalar signature comparison — content changes flip it without
   // stringifying multi-kilobyte diffs on every memo check (#8859).
   workbenchItemSignature(left.item) === workbenchItemSignature(right.item) &&
+  // Interrupt eligibility (#8867 T10) can flip (child_steered) without any
+  // other field moving; compare it explicitly so the button disappears the
+  // instant the runtime marks the child no-longer-interruptable.
+  left.runtimeChild?.interruptable === right.runtimeChild?.interruptable &&
+  left.runtimeChild?.turnRef === right.runtimeChild?.turnRef &&
+  left.runtimeChild?.childRef === right.runtimeChild?.childRef &&
   left.fields.length === right.fields.length && left.fields.every((field, index) => {
     const candidate = right.fields[index]
     return candidate !== undefined && field.label === candidate.label && field.value === candidate.value

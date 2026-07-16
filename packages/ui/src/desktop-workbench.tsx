@@ -55,6 +55,7 @@ export {
   DesktopAgentGroup,
   type DesktopAgentStatus,
   type DesktopAgentActivity,
+  type DesktopAgentActivityKind,
 } from "./workbench/agent-group.tsx"
 export { DesktopApprovalCard, type DesktopApprovalDecision } from "./workbench/approval-card.tsx"
 export { DesktopQueuedFollowup } from "./workbench/queued-followup.tsx"
@@ -81,6 +82,9 @@ export {
   type WorkbenchFileChangeEntryDispatch,
   type WorkbenchToolCallDispatchItem,
   type WorkbenchAgentDispatchItem,
+  type WorkbenchAgentChildDispatch,
+  type WorkbenchCollabAgentStatusDispatch,
+  type WorkbenchSubAgentActivityKindDispatch,
   type WorkbenchPlanDispatchItem,
   type WorkbenchApprovalDispatchItem,
   type WorkbenchMeterDispatchItem,
