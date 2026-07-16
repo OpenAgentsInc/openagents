@@ -30,6 +30,8 @@ import { settingsView, initialSettingsState } from "./settings.ts"
 import { fleetWorkspaceView, emptyFleetWorkspaceState } from "./fleet-workspace.ts"
 
 const rendererDir = path.dirname(new URL(import.meta.url).pathname)
+const sharedWorkbenchCssPath = path.resolve(rendererDir, "../../../../packages/ui/src/desktop-workbench.css")
+const sharedWorkbenchSourcePath = path.resolve(rendererDir, "../../../../packages/ui/src/desktop-workbench.tsx")
 
 /**
  * Files allowed to carry raw color values. theme.ts is the single theme
@@ -148,7 +150,7 @@ describe("design conformance (b): style values come from the shared scales", () 
 
 describe("design conformance (b2): app.css is a token bridge and host physics, not a component recipe layer", () => {
   test("React shell keeps the T3-proportioned rail and topbar hierarchy", () => {
-    const css = readFileSync(path.join(rendererDir, "react-workbench.css"), "utf8")
+    const css = readFileSync(sharedWorkbenchCssPath, "utf8")
     const rule = (selector: string): string =>
       css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]+)\\}`))?.[1] ?? ""
     expect(rule(".oa-react-conversation-header")).toContain("height: 52px")
@@ -173,9 +175,18 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
   })
 
   test("every Codex update spinner stops under reduced motion", () => {
-    const css = readFileSync(path.join(rendererDir, "react-workbench.css"), "utf8")
+    const css = readFileSync(sharedWorkbenchCssPath, "utf8")
     const reducedMotion = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ""
     expect(reducedMotion).toContain(".oa-react-codex-update-spinner { animation: none; }")
+  })
+
+  test("shared workbench presentation cannot become a second Desktop runtime authority", () => {
+    const source = readFileSync(sharedWorkbenchSourcePath, "utf8")
+    expect(source).not.toContain("DesktopShellState")
+    expect(source).not.toMatch(/electron|SubscriptionRef|IntentReporter|TanStack|createRouter|localStorage|sessionStorage/)
+    expect(source).toContain("DesktopSessionRail")
+    expect(source).toContain("DesktopComposerFrame")
+    expect(source).toContain('import "./desktop-workbench.css"')
   })
 
   test("the stylesheet stays within the bounded token-bridge/host-physics payload budget", () => {

@@ -46,6 +46,7 @@ const testsDir = path.dirname(new URL(import.meta.url).pathname)
 const appDir = path.dirname(testsDir)
 const srcDir = path.join(appDir, "src")
 const repoRoot = path.dirname(path.dirname(appDir))
+const sharedUiSrcDir = path.join(repoRoot, "packages", "ui", "src")
 
 // ---------------------------------------------------------------------------
 // Shared: recursive source listing for the desktop app (non-test sources).
@@ -129,7 +130,7 @@ export const fontDeclarationOffenders = (
 describe("openagents_desktop.typography.approved_fonts_only.v1", () => {
   test("every font declaration under src/ resolves to the approved stack", () => {
     const offenders: Array<string> = []
-    for (const file of sourceFiles(srcDir)) {
+    for (const file of [...sourceFiles(srcDir), ...sourceFiles(sharedUiSrcDir)]) {
       offenders.push(...fontDeclarationOffenders(path.relative(appDir, file), readFileSync(file, "utf8")))
     }
     expect(offenders).toEqual([])
@@ -137,7 +138,7 @@ describe("openagents_desktop.typography.approved_fonts_only.v1", () => {
 
   test("the approved body and heading stacks remain declared on their host stylesheets", () => {
     const css = readFileSync(path.join(srcDir, "renderer", "app.css"), "utf8")
-    const workbenchCss = readFileSync(path.join(srcDir, "renderer", "react-workbench.css"), "utf8")
+    const workbenchCss = readFileSync(path.join(sharedUiSrcDir, "desktop-workbench.css"), "utf8")
     expect(css).toContain(approvedBaseStackDeclaration)
     expect(workbenchCss).toContain(approvedHeadingStackDeclaration)
   })

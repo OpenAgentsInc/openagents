@@ -31,6 +31,11 @@ import {
 } from "@effect-native/core";
 import { Effect } from "@effect-native/core/effect";
 import {
+  DesktopComposerBar,
+  DesktopComposerFrame,
+  DesktopComposerInput,
+} from "@openagentsinc/ui/desktop-workbench";
+import {
   ArrowDown,
   ArrowUp,
   CheckCircle2,
@@ -357,9 +362,7 @@ export const ReactComposer = ({
     setDragActive(false);
   };
   return (
-    <section
-      className="oa-react-composer"
-      data-en-key="shell-composer"
+    <DesktopComposerFrame
       data-drag-active={dragActive ? "true" : "false"}
       aria-label="Message composer"
       onDragEnter={showDragTarget}
@@ -418,7 +421,7 @@ export const ReactComposer = ({
         </p>
       )}
       {dragActive ? <span className="oa-react-composer-drop-target" role="status">Drop images to attach</span> : null}
-      <div className="oa-react-composer-input" data-en-key="shell-input">
+      <DesktopComposerInput>
         <Textarea
           ref={textareaRef}
           value={state.input}
@@ -441,7 +444,7 @@ export const ReactComposer = ({
           }}
           onKeyDown={onKeyDown}
         />
-        <div className="oa-react-composer-bar">
+        <DesktopComposerBar>
         <Button
           data-en-key="shell-attach-image"
           type="button"
@@ -539,15 +542,15 @@ export const ReactComposer = ({
           <ArrowUp data-icon-name={composerIconNames.submit} aria-hidden="true" />
           <span className="sr-only">{submitLabel}</span>
         </Button>
-      </div>
+      </DesktopComposerBar>
       {state.pending ? (
         <p className="oa-react-composer-consequence" role="status" aria-live="polite">
           <strong>{pendingAction.label}</strong>
           <span>{state.composerQueueEditingRef === null ? pendingAction.consequence : "Editing a durable queued turn; its position is preserved."}</span>
         </p>
       ) : null}
-      </div>
-    </section>
+      </DesktopComposerInput>
+    </DesktopComposerFrame>
   );
 };
 

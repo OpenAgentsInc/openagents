@@ -282,12 +282,15 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     const sharedOrSibling =
       /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/
     const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/
+    const sharedReactWorkbenchImport = "@openagentsinc/ui/desktop-workbench"
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!)
       specifiers.push(...[...source.matchAll(/import\s+"([^"]+)"/g)].map((match) => match[1]!))
       for (const specifier of specifiers) {
         expect(
-          sharedOrSibling.test(specifier) || (reactHostFiles.has(name) && reactHostImport.test(specifier)),
+          sharedOrSibling.test(specifier) ||
+            (reactHostFiles.has(name) &&
+              (reactHostImport.test(specifier) || specifier === sharedReactWorkbenchImport)),
           `${name} imports disallowed renderer dependency ${specifier}`,
         ).toBe(true)
       }

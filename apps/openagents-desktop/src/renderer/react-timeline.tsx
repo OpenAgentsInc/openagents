@@ -9,6 +9,11 @@ import {
 } from "#components/ui/message-scroller"
 import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter, type JsonPayload, type MarkdownBlock, type MarkdownInline } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
+import {
+  DesktopTimelineMessage,
+  DesktopTimelineNotice,
+  DesktopWorkEntry,
+} from "@openagentsinc/ui/desktop-workbench"
 import type { ReactElement, ReactNode } from "react"
 import { Component, createElement, memo, useEffect, useMemo, useRef, useState } from "react"
 import { ChevronRight, Folder } from "lucide-react"
@@ -234,22 +239,20 @@ export const TimelineItem = ({ record, report }: {
   if (record.kind === "lifecycle" && !["failed", "errored", "interrupted"].includes(record.status ?? "")) {
     return <span data-timeline-key={record.key} data-kind="lifecycle" hidden />
   }
-  if (isWorkRecord(record)) return <details className="oa-react-work-entry"
-    data-timeline-key={record.key} data-kind={record.kind} role="listitem">
-    <summary>
-      <span className="oa-react-work-label">{record.label}</span>
-      <span className="oa-react-work-preview">{compact(record.body || record.resultBody || record.label)}</span>
-      <span className="oa-react-work-status" data-status={record.status ?? "completed"}>
-        {["failed", "errored", "interrupted"].includes(record.status ?? "") ? "Failed" : record.status === "running" ? "Running" : "Done"}
-      </span>
-    </summary>
-    <div className="oa-react-work-detail">
+  if (isWorkRecord(record)) return <DesktopWorkEntry
+    body={<>
       {record.redacted ? <p>Details unavailable.</p> : <pre><code>{record.body}</code></pre>}
       {record.resultBody === null ? null : <><strong>{record.resultStatus === "failed" ? "Result · failed" : "Result"}</strong><pre><code>{record.resultBody}</code></pre></>}
       <Button className="oa-react-item-details" type="button" variant="ghost" size="xs"
         onClick={() => dispatch(report, "HistoryItemSelected", record.itemRef)}>Inspect event</Button>
-    </div>
-  </details>
+    </>}
+    itemKey={record.key}
+    kind={record.kind}
+    label={record.label}
+    preview={compact(record.body || record.resultBody || record.label)}
+    status={record.status ?? "completed"}
+    statusLabel={["failed", "errored", "interrupted"].includes(record.status ?? "") ? "Failed" : record.status === "running" ? "Running" : "Done"}
+  />
 
   if (record.kind === "plan") return <article className="oa-react-plan" data-timeline-key={record.key} data-kind="plan" role="listitem">
     <header><strong>Plan</strong><span>{record.status}</span></header>
@@ -258,26 +261,21 @@ export const TimelineItem = ({ record, report }: {
   </article>
 
   const danger = record.kind === "error" || record.kind === "gap" || ["failed", "errored", "interrupted"].includes(record.status ?? "")
-  if (!isMessageRecord(record) || danger || record.redacted) return <article className="oa-react-notice"
-    data-timeline-key={record.key} data-kind={record.kind} data-danger={danger ? "true" : "false"} role="listitem">
-    <strong>{danger ? record.label : "Update"}</strong>
-    <span>{record.redacted ? "Message content unavailable." : record.body}</span>
-  </article>
+  if (!isMessageRecord(record) || danger || record.redacted) return <DesktopTimelineNotice
+    body={record.redacted ? "Message content unavailable." : record.body}
+    danger={danger}
+    itemKey={record.key}
+    kind={record.kind}
+    label={danger ? record.label : "Update"}
+  />
 
-  return <article
-    className="oa-react-timeline-item"
-    data-timeline-key={record.key}
-    data-kind={record.kind}
-    data-tone={isUserRecord(record) ? "user" : "assistant"}
-    role="listitem"
-    aria-label={`${record.label}. Item ${record.sequence + 1}`}
-  >
+  return <DesktopTimelineMessage itemKey={record.key} kind={record.kind} label={record.label} sequence={record.sequence} tone={isUserRecord(record) ? "user" : "assistant"}>
     <SafeReactMarkdown value={record.body} />
     {record.kind === "local_message" || record.kind === "question" ? null
       : <Button className="oa-react-item-details" type="button" variant="ghost" size="xs"
           onClick={() => dispatch(report, "HistoryItemSelected", record.itemRef)}
           aria-label={`Show details for ${record.label}, item ${record.sequence + 1}`}>Details</Button>}
-  </article>
+  </DesktopTimelineMessage>
 }
 
 class TimelineItemBoundary extends Component<Readonly<{

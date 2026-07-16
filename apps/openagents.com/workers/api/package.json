@@ -68,8 +68,8 @@
     "hono": "^4.12.23",
     "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz",
     "postgres": "3.4.9",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@openagentsinc/khala-sync-client": "workspace:*",

@@ -54,6 +54,7 @@
     "@openagentsinc/product-spec": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
+    "@openagentsinc/ui": "workspace:*",
     "@openai/codex": "0.144.1",
     "@openai/codex-darwin-arm64": "npm:@openai/codex@0.144.1-darwin-arm64",
     "@shadcn/react": "^0.2.1",

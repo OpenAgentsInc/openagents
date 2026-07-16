@@ -1,5 +1,5 @@
-/* MVP-02B React workbench shell. Renderer-private selectors consume the same
-   Effect Native token sheet as the compatibility renderer. */
+/* Shared OpenAgents workbench presentation. Desktop and web consume this same
+   token-driven stylesheet; application state remains in their adapters. */
 .oa-react-workbench {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
@@ -12,6 +12,28 @@
   font-size: 14px;
   line-height: 1.5;
 }
+
+.oa-react-workbench button,
+.oa-react-workbench input,
+.oa-react-workbench textarea { font: inherit; }
+
+.oa-react-icon-button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--en-radius-md);
+  background: transparent;
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+}
+.oa-react-icon-button:hover:not(:disabled) { background: var(--en-color-stateHover); color: var(--en-color-textPrimary); }
+.oa-react-icon-button:disabled { opacity: .35; cursor: default; }
+.oa-react-icon-button svg { width: 15px; height: 15px; }
 
 .oa-react-codex-update-notice {
   position: fixed;
@@ -271,7 +293,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   overflow: visible;
 }
 
-.oa-react-session-scroll { min-height: 0; flex: 1 1 auto; }
+.oa-react-session-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
 .oa-react-session-scroll [data-slot="scroll-area-viewport"] { height: 100%; overscroll-behavior: contain; }
 
 .oa-react-session-list > p {

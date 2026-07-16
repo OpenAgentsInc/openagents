@@ -27,7 +27,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
-          "apps/openagents-desktop/src/renderer/react-workbench.css",
+          "packages/ui/src/desktop-workbench.css",
         ],
         oracles: [
           {
@@ -95,7 +95,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/components/ui/message-scroller.tsx",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
           "apps/openagents-desktop/src/renderer/react-composer.tsx",
-          "apps/openagents-desktop/src/renderer/react-workbench.css",
+          "packages/ui/src/desktop-workbench.css",
           "apps/openagents-desktop/src/renderer/react-timeline.test.tsx",
           "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
         ],
@@ -137,7 +137,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/renderer/sidebar-destinations.ts",
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
-          "apps/openagents-desktop/src/renderer/react-workbench.css",
+          "packages/ui/src/desktop-workbench.css",
           "apps/openagents-desktop/src/renderer/boot.ts",
           "apps/openagents-desktop/src/main.ts",
           "github:OpenAgentsInc/openagents#8826",
@@ -716,7 +716,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "The React transcript never renders the removed top metadata row. Message metadata remains available through the existing stable details inspector and accessible item label. More generally, hover and focus selectors within readable transcript rows are paint-only: they may alter opacity, color, visibility, or an out-of-flow overlay, but may not change box dimensions, margin, padding, border width, type metrics, display, grid, or flex geometry. A hidden in-flow element may never become layout-bearing on hover/focus, so pointer movement cannot move prose, change the reader's scroll anchor, or shift neighboring messages.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
-          "apps/openagents-desktop/src/renderer/react-workbench.css",
+          "packages/ui/src/desktop-workbench.css",
           "apps/openagents-desktop/src/react-conversation-assurance.test.ts",
           "apps/openagents-desktop/src/renderer/react-timeline.test.tsx",
         ],
@@ -3750,7 +3750,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
             description:
-              "Scans every non-test .ts/.cts/.css file under apps/openagents-desktop/src recursively: every CSS font-family declaration and every TypeScript fontFamily value must resolve family-by-family to the approved allowlist, every CSS font shorthand must be exactly 'inherit', the Oxanium body stack must remain in app.css, and the Geist heading stack must remain in react-workbench.css. The falsifier test proves a rogue family (Comic Sans MS / Papyrus / a font shorthand smuggle) is rejected while both approved stacks pass.",
+              "Scans every non-test .ts/.cts/.css file under apps/openagents-desktop/src and packages/ui/src recursively: every CSS font-family declaration and every TypeScript fontFamily value must resolve family-by-family to the approved allowlist, every CSS font shorthand must be exactly 'inherit', the Oxanium body stack must remain in app.css, and the Geist heading stack must remain in desktop-workbench.css. The falsifier test proves a rogue family (Comic Sans MS / Papyrus / a font shorthand smuggle) is rejected while both approved stacks pass.",
           },
         ],
         verification:

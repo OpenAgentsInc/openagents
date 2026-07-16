@@ -5,7 +5,7 @@ import { resolve } from "node:path"
 const root = resolve(import.meta.dirname, "../../..")
 const read = (path: string): string => readFileSync(resolve(root, path), "utf8")
 const timeline = read("apps/openagents-desktop/src/renderer/react-timeline.tsx")
-const styles = read("apps/openagents-desktop/src/renderer/react-workbench.css")
+const styles = read("packages/ui/src/desktop-workbench.css")
 const shell = read("apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx")
 const releaseAcceptance = read("apps/openagents-desktop/scripts/run-release-acceptance.ts")
 const gates = read("docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md")
@@ -25,8 +25,8 @@ describe("revision 3 conversation-first assurance gates", () => {
   })
 
   test("keeps authored messages primary and raw work collapsed", () => {
-    expect(timeline).toContain('data-tone={isUserRecord(record) ? "user" : "assistant"}')
-    expect(timeline).toContain('<details className="oa-react-work-entry"')
+    expect(timeline).toContain('tone={isUserRecord(record) ? "user" : "assistant"}')
+    expect(timeline).toContain('<DesktopWorkEntry')
     expect(timeline).toContain('"Worked"')
     expect(timeline).toContain('aria-label="Codex is working"')
     expect(timeline).not.toContain('oa-react-message-meta')

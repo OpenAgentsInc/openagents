@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type KeyboardEvent,
   type RefObject,
   type ReactElement,
 } from "react"
@@ -23,21 +22,22 @@ import {
 import { Effect, Scope, Stream } from "@effect-native/core/effect"
 import { mountDomThemeStyleSheet } from "@effect-native/render-dom"
 import {
-  ChevronLeft,
-  ChevronRight,
   Folder,
-  House,
   CircleAlert,
   Download,
   LoaderCircle,
-  MessageCircle,
-  PanelLeft,
-  Search,
-  Settings,
-  SquarePen,
   X,
   type LucideIcon,
 } from "lucide-react"
+import {
+  DesktopConversation,
+  DesktopConversationHeader,
+  DesktopRailScrim,
+  DesktopSessionRail,
+  DesktopSidebarExpand,
+  DesktopWorkbench,
+  type DesktopRailIcon,
+} from "@openagentsinc/ui/desktop-workbench"
 import {
   ReactSurfaceErrorBoundary,
   makeReactViewStore,
@@ -50,8 +50,6 @@ import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "#components/ui/dialog"
-import { Input } from "#components/ui/input"
-import { ScrollArea } from "#components/ui/scroll-area"
 import { Separator } from "#components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
 import type { DesktopShellState } from "./shell.ts"
@@ -62,23 +60,11 @@ import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
-import "./react-workbench.css"
 
-type ReactSidebarIconName = Extract<
-  IconName,
-  "ChatCompose" | "Chats" | "ChevronLeft" | "ChevronRight" | "Folder" | "Home" | "Menu" | "Search" | "Settings"
->
+type ReactSidebarIconName = Extract<IconName, "Folder">
 
 const sidebarIconAssets: Readonly<Record<ReactSidebarIconName, LucideIcon>> = {
-  ChatCompose: SquarePen,
-  Chats: MessageCircle,
-  ChevronLeft,
-  ChevronRight,
   Folder,
-  Home: House,
-  Menu: PanelLeft,
-  Search,
-  Settings,
 }
 
 /** Closed-catalog React lowering; Lucide remains a renderer-private asset implementation. */
@@ -177,26 +163,18 @@ export const ConversationHeader = ({ state }: {
   const selectedCoding = state.codingCatalog.sessions.find(
     session => session.sessionRef === state.codingCatalog.selectedSessionRef,
   )
-  return <header className="oa-react-conversation-header">
-    <div className="oa-react-conversation-heading">
-      <h1>{selectedTitle(state)}</h1>
-      <div className="oa-react-conversation-meta" aria-label="Session status">
-        <span data-lifecycle={selectedLifecycle(state).toLocaleLowerCase().replaceAll(" ", "-")}>
-          {selectedLifecycle(state)}
-        </span>
-        {selectedCoding === undefined ? null : <span>{selectedCoding.repositoryLabel}</span>}
-      </div>
-    </div>
-  </header>
+  return <DesktopConversationHeader
+    lifecycle={selectedLifecycle(state)}
+    secondary={selectedCoding?.repositoryLabel}
+    title={selectedTitle(state)}
+  />
 }
 
-const focusAdjacentSession = (event: KeyboardEvent<HTMLElement>): void => {
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
-  const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-session-row]")]
-  const index = rows.indexOf(event.target as HTMLButtonElement)
-  if (index < 0 || rows.length === 0) return
-  event.preventDefault()
-  rows[(index + (event.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length]?.focus()
+const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Home" | "Settings"): DesktopRailIcon => {
+  if (icon === "ChatCompose") return "new-session"
+  if (icon === "Chats") return "chat"
+  if (icon === "Home") return "home"
+  return "settings"
 }
 
 export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRef }: {
@@ -214,134 +192,25 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
   )
   const shown = state.history.visibleRootCount
   const searchOpen = state.presentation.sessionSearchOpen
-  const searchRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (searchOpen) searchRef.current?.focus()
-  }, [searchOpen])
   const closeSearch = (): void => {
     if (state.history.searchQuery !== "") dispatch(report, "HistorySearchChanged", "")
     dispatch(report, "DesktopSessionSearchDisclosureChanged", false)
   }
-  return <aside
-    ref={railRef}
-    className="oa-react-session-rail"
-    data-open={open ? "true" : "false"}
-    aria-label="Sessions"
-    onKeyDown={focusAdjacentSession}
-  >
-    <div className="oa-react-rail-windowbar" aria-label="Sidebar controls">
-      <Button className="oa-react-rail-collapse" variant="ghost" size="icon-xs" type="button" onClick={onCollapse} aria-label="Collapse sidebar" title="Collapse sidebar">
-        <ReactCatalogIcon name="Menu" />
-      </Button>
-      <div className="oa-react-history-controls" aria-label="Session navigation">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          type="button"
-          disabled={!state.navigation.canGoBack}
-          aria-label={state.navigation.backTitle === null ? "Back" : `Back to ${state.navigation.backTitle}`}
-          title={state.navigation.backTitle === null ? "Back" : `Back to ${state.navigation.backTitle}`}
-          onClick={() => dispatch(report, "DesktopNavigationBackRequested")}
-        >
-          <ReactCatalogIcon name="ChevronLeft" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          type="button"
-          disabled={!state.navigation.canGoForward}
-          aria-label={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
-          title={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
-          onClick={() => dispatch(report, "DesktopNavigationForwardRequested")}
-        >
-          <ReactCatalogIcon name="ChevronRight" />
-        </Button>
-      </div>
-    </div>
-    <div className="oa-react-rail-titlebar">
-      <div className="oa-react-rail-brand" aria-label={`OpenAgents ${DESKTOP_STAGE_LABEL}`}>
-        <strong>OpenAgents</strong>
-        <span className="oa-react-rail-stage" data-app-stage={DESKTOP_STAGE_LABEL.toLowerCase()}>
-          {DESKTOP_STAGE_LABEL}
-        </span>
-      </div>
-      <Button
-        className="oa-react-search-trigger"
-        variant="ghost"
-        size="icon-xs"
-        type="button"
-        onClick={() => searchOpen ? closeSearch() : dispatch(report, "DesktopSessionSearchDisclosureChanged", true)}
-        aria-label={searchOpen ? "Close session search" : "Search sessions"}
-        aria-expanded={searchOpen}
-        title={searchOpen ? "Close search" : "Search sessions"}
-      >
-        <ReactCatalogIcon name="Search" />
-      </Button>
-    </div>
-    {searchOpen ? <label className="oa-react-search">
-        <span className="sr-only">Search sessions</span>
-        <Input
-          ref={searchRef}
-          type="search"
-          value={state.history.searchQuery}
-          placeholder="Search sessions"
-          onKeyDown={event => {
-            if (event.key !== "Escape") return
-            event.preventDefault()
-            closeSearch()
-          }}
-          onInput={event => dispatch(report, "HistorySearchChanged", event.currentTarget.value)}
-        />
-      </label> : null}
-    <nav className="oa-react-primary-nav" aria-label="Primary">
-      {destinations.map(destination => <Button
-        key={destination.id}
-        className="oa-react-primary-destination justify-start text-left"
-        variant="ghost"
-        type="button"
-        data-sidebar-destination-id={destination.id}
-        data-selected={destination.selected ? "true" : "false"}
-        aria-current={destination.accessibilityCurrent}
-        aria-label={destination.accessibilityLabel}
-        onClick={() => {
-          dispatch(report, destination.intent.name, destination.intent.payload)
-          onDismiss()
-        }}
-      >
-        <ReactCatalogIcon name={destination.icon} />
-        <span>{destination.label}</span>
-        {destination.indicator === null ? null : <i data-destination-indicator={destination.indicator.kind} aria-hidden="true" />}
-      </Button>)}
-    </nav>
-    <p className="oa-react-section-label">Recent</p>
-    <ScrollArea className="oa-react-session-scroll">
-    <nav className="oa-react-session-list" aria-label="Recent sessions">
-      {!state.history.hydrated && rows.length === 0
-        ? <p role="status">Scanning sessions…</p>
-        : rows.length === 0
-          ? <p>{state.history.searchPending ? "Searching…" : "No sessions found"}</p>
-          : rows.map(row => <Button
-              key={`${row.source}:${row.id}`}
-              type="button"
-              variant="ghost"
-              className="oa-react-session-row justify-start text-left"
-              data-session-row
-              data-selected={row.selected ? "true" : "false"}
-              aria-current={row.selected ? "page" : undefined}
-              onClick={() => {
-                dispatch(report, row.intent, row.id)
-                onDismiss()
-              }}
-            >
-              <span className="oa-react-session-title">{row.title}</span>
-              <small className="oa-react-session-meta">{row.meta}</small>
-            </Button>)}
-      {state.history.searchQuery.trim() === "" && shown < state.history.catalog.roots.length
-        ? <Button type="button" variant="outline" size="sm" className="oa-react-load-more" onClick={() => dispatch(report, "HistoryCatalogMoreRequested")}>Load more sessions</Button>
-        : null}
-    </nav>
-    </ScrollArea>
-    {state.codingCatalog.sessions.length === 0 ? null : <section className="oa-react-workspaces" aria-label="Coding workspaces">
+  return <DesktopSessionRail
+    backLabel={state.navigation.backTitle === null ? "Back" : `Back to ${state.navigation.backTitle}`}
+    canGoBack={state.navigation.canGoBack}
+    canGoForward={state.navigation.canGoForward}
+    canLoadMore={state.history.searchQuery.trim() === "" && shown < state.history.catalog.roots.length}
+    destinations={destinations.map(destination => ({
+      accessibilityLabel: destination.accessibilityLabel,
+      current: destination.accessibilityCurrent,
+      icon: sharedRailIcon(destination.icon),
+      id: destination.id,
+      indicator: destination.indicator?.kind ?? null,
+      label: destination.label,
+      selected: destination.selected,
+    }))}
+    footer={state.codingCatalog.sessions.length === 0 ? null : <section className="oa-react-workspaces" aria-label="Coding workspaces">
       <Separator />
       <h2><ReactCatalogIcon name="Folder" /> <span>Workspaces</span></h2>
       {state.codingCatalog.sessions.map(session => <div className="oa-react-workspace-row" key={session.sessionRef}>
@@ -363,7 +232,36 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       {state.codingCatalog.nextOffset === null ? null
         : <Button type="button" variant="outline" size="sm" className="oa-react-load-more" onClick={() => dispatch(report, "DesktopCodingCatalogMoreRequested")}>Load more workspaces</Button>}
     </section>}
-  </aside>
+    forwardLabel={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
+    hydrated={state.history.hydrated}
+    onBack={() => dispatch(report, "DesktopNavigationBackRequested")}
+    onCollapse={onCollapse}
+    onDestinationSelect={selected => {
+      const destination = destinations.find(candidate => candidate.id === selected.id)
+      if (destination === undefined) return
+      dispatch(report, destination.intent.name, destination.intent.payload)
+      onDismiss()
+    }}
+    onForward={() => dispatch(report, "DesktopNavigationForwardRequested")}
+    onLoadMore={() => dispatch(report, "HistoryCatalogMoreRequested")}
+    onSearchOpenChange={nextOpen => nextOpen
+      ? dispatch(report, "DesktopSessionSearchDisclosureChanged", true)
+      : closeSearch()}
+    onSearchQueryChange={query => dispatch(report, "HistorySearchChanged", query)}
+    onSessionSelect={selected => {
+      const row = rows.find(candidate => candidate.id === selected.id)
+      if (row === undefined) return
+      dispatch(report, row.intent, row.id)
+      onDismiss()
+    }}
+    open={open}
+    ref={railRef}
+    searchOpen={searchOpen}
+    searchPending={state.history.searchPending}
+    searchQuery={state.history.searchQuery}
+    sessions={rows.map(row => ({ id: row.id, meta: row.meta, selected: row.selected, title: row.title }))}
+    stageLabel={DESKTOP_STAGE_LABEL}
+  />
 }
 
 const staticKhalaReporter: IntentReporter = () => Effect.void
@@ -515,30 +413,24 @@ export const WorkbenchShell = ({ state, report }: {
     setDismissedCodexVersion(codex.latestVersion)
     dispatch(report, "DesktopHarnessUpdateRequested", "codex")
   }
-  return <div className="oa-react-workbench" data-en-react-surface="true" data-rail-collapsed={railCollapsed ? "true" : "false"}>
+  return <DesktopWorkbench railCollapsed={railCollapsed}>
     <ReactCommandPalette state={state} report={report} />
     <DecisionSurface state={state} report={report} />
-    <Button
+    <DesktopSidebarExpand
       ref={toggleRef}
-      className="oa-react-sidebar-expand"
-      variant="ghost"
-      size="icon-xs"
-      type="button"
       onClick={openRail}
       aria-expanded={railOpen}
       aria-label="Expand sidebar"
       title="Expand sidebar"
-    ><ReactCatalogIcon name="Menu" /></Button>
+    />
     <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} />
-    {railOpen ? <button className="oa-react-rail-scrim" aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
-    {workspaceSurface ?? <main className="oa-react-conversation" data-react-workspace="chat">
-        <ConversationHeader state={state} />
-        <div className="oa-react-conversation-body">
-          <StatusNotices state={state} report={report} />
-          <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.pending} workingDirectory={state.workingDirectory} report={report} />
-        </div>
-        <ReactComposer state={state} report={report} />
-      </main>}
+    {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
+    {workspaceSurface ?? <DesktopConversation
+      composer={<ReactComposer state={state} report={report} />}
+      header={<ConversationHeader state={state} />}
+      notices={<StatusNotices state={state} report={report} />}
+      timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.pending} workingDirectory={state.workingDirectory} report={report} />}
+    />}
     {codexUpdateAvailable && dismissedCodexVersion !== codex.latestVersion
       ? <Alert className="oa-react-codex-update-notice" role="status">
           <CircleAlert aria-hidden="true" />
@@ -593,7 +485,7 @@ export const WorkbenchShell = ({ state, report }: {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  </div>
+  </DesktopWorkbench>
 }
 
 const ReactWorkbenchProjection = ({ store, report }: {

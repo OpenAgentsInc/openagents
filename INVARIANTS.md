@@ -1064,10 +1064,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   remain Effect Native. React 19 owns the renderer root, lifecycle, synchronous
   snapshot consumption, and declared ordinary-element lowerings through the
   shared `@effect-native/render-dom/react` renderer. The bounded Desktop MVP
-  transition may also define ordinary renderer-private React workbench
-  components only in the explicitly scanned `renderer/react-primitive-adapters.tsx`,
-  `renderer/react-timeline.tsx`, `renderer/react-composer.tsx`, and
-  `renderer/react-review.tsx` hosts; they consume the same Effect-owned
+  transition may also define ordinary renderer adapters only in the explicitly
+  scanned `renderer/react-primitive-adapters.tsx`, `renderer/react-timeline.tsx`,
+  `renderer/react-composer.tsx`, and `renderer/react-review.tsx` hosts. Pure,
+  controlled workbench presentation and its canonical token-driven stylesheet
+  live in `packages/ui`; Desktop and web may consume those same visual
+  primitives, but the package may not import Desktop domain state, Effect
+  subscriptions/intents, Electron, routing, persistence, or model-stream
+  clients. Desktop adapters consume the shared primitives from the same Effect-owned
   `DesktopShellState` snapshot and existing intent keys and may retain only
   ephemeral focus/overlay/scroll-anchor/IME/palette-query mechanics. They do not define a
   second domain store, runtime client, command identity, persistence path,

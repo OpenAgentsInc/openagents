@@ -7,8 +7,8 @@ import { codexTurnEffectByMethod, makeCodexTurnState } from "./codex-turn-state.
 
 describe("generated Codex turn/item effects", () => {
   test("replays the complete generated notification and current item fixture corpus", () => {
-    const notifications = JSON.parse(readFileSync("packages/codex-app-server-protocol/fixtures/current-source-notifications.json", "utf8")) as Record<string, unknown>
-    const items = JSON.parse(readFileSync("packages/codex-app-server-protocol/fixtures/current-source-thread-items.json", "utf8")) as Array<Record<string, unknown>>
+    const notifications = JSON.parse(readFileSync(new URL("../../../packages/codex-app-server-protocol/fixtures/current-source-notifications.json", import.meta.url), "utf8")) as Record<string, unknown>
+    const items = JSON.parse(readFileSync(new URL("../../../packages/codex-app-server-protocol/fixtures/current-source-thread-items.json", import.meta.url), "utf8")) as Array<Record<string, unknown>>
     const machine = makeCodexTurnState()
     for (const [method, params] of Object.entries(notifications)) machine.apply({ generation: 1, message: { method, params } })
     items.forEach((item, index) => {
