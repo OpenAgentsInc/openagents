@@ -97,7 +97,7 @@ a checked 5,200-byte ceiling. No global landing or `/tanstack` output changed.
 
 Completed locally:
 
-- all Start tests: 47 files and 200 passing tests;
+- all Start tests: 48 files and 202 passing tests;
 - focused Worker monolith route agreement, route, and redirect suites: 36
   passing tests;
 - Start TypeScript check and production client/server/Cloud Run build;
