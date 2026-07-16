@@ -17,6 +17,8 @@ one honest navigation/status index, not link-breaking file churn.
 
 - [QA-1 six-lane swarm — first current-main/production run](./2026-07-16-six-lane-swarm/README.md)
 - [QA Observer execution loop (QA-2, #8907)](./observer/README.md)
+- [Desktop visual baseline gate (QA-3, #8908)](./2026-07-16-desktop-visual-baselines.md)
+- [Live QA board pixel proof (QA-4, #8909)](./2026-07-16-live-qa-board/README.md)
 - [Independent verifier — no agent accepts its own work (QA-5, #8910)](./verifier/README.md)
 - [AssuranceSpec and the MVP dogfood plan](../assurance/README.md)
 - [ProductSpec Evidence Loop boundary](../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md)

@@ -16,6 +16,7 @@ import { Route as StatsRouteImport } from './routes/stats'
 import { Route as Stage1RouteImport } from './routes/stage1'
 import { Route as SplashRouteImport } from './routes/splash'
 import { Route as RunRouteImport } from './routes/run'
+import { Route as QaRouteImport } from './routes/qa'
 import { Route as PylonsRouteImport } from './routes/pylons'
 import { Route as PromisesRouteImport } from './routes/promises'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -98,6 +99,11 @@ const SplashRoute = SplashRouteImport.update({
 const RunRoute = RunRouteImport.update({
   id: '/run',
   path: '/run',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QaRoute = QaRouteImport.update({
+  id: '/qa',
+  path: '/qa',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PylonsRoute = PylonsRouteImport.update({
@@ -363,6 +369,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
+  '/qa': typeof QaRoute
   '/run': typeof RunRoute
   '/splash': typeof SplashRoute
   '/stage1': typeof Stage1Route
@@ -419,6 +426,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
+  '/qa': typeof QaRoute
   '/run': typeof RunRoute
   '/splash': typeof SplashRoute
   '/stage1': typeof Stage1Route
@@ -477,6 +485,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
+  '/qa': typeof QaRoute
   '/run': typeof RunRoute
   '/splash': typeof SplashRoute
   '/stage1': typeof Stage1Route
@@ -536,6 +545,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/promises'
     | '/pylons'
+    | '/qa'
     | '/run'
     | '/splash'
     | '/stage1'
@@ -592,6 +602,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/promises'
     | '/pylons'
+    | '/qa'
     | '/run'
     | '/splash'
     | '/stage1'
@@ -649,6 +660,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/promises'
     | '/pylons'
+    | '/qa'
     | '/run'
     | '/splash'
     | '/stage1'
@@ -707,6 +719,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   PromisesRoute: typeof PromisesRoute
   PylonsRoute: typeof PylonsRoute
+  QaRoute: typeof QaRoute
   RunRoute: typeof RunRoute
   SplashRoute: typeof SplashRoute
   Stage1Route: typeof Stage1Route
@@ -792,6 +805,13 @@ declare module '@tanstack/react-router' {
       path: '/run'
       fullPath: '/run'
       preLoaderRoute: typeof RunRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/qa': {
+      id: '/qa'
+      path: '/qa'
+      fullPath: '/qa'
+      preLoaderRoute: typeof QaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pylons': {
@@ -1165,6 +1185,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   PromisesRoute: PromisesRoute,
   PylonsRoute: PylonsRoute,
+  QaRoute: QaRoute,
   RunRoute: RunRoute,
   SplashRoute: SplashRoute,
   Stage1Route: Stage1Route,

@@ -9,6 +9,7 @@ import {
 } from '../../../workers/api/src/inference/discovery-surfaces'
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
+import { routeQaBoardRequest } from './qa-board-projection.server'
 
 type StartWorkerEnv = Record<string, unknown>
 
@@ -60,6 +61,9 @@ export async function routeSharedAgentSurface(
       renderDiscoverySurface(request, path as DiscoverySurfacePath),
     )
   }
+
+  const qaBoardResponse = await routeQaBoardRequest(request)
+  if (qaBoardResponse !== undefined) return qaBoardResponse
 
   return undefined
 }
