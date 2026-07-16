@@ -152,6 +152,9 @@ method as unavailable while retaining expiry/failure requirements separately.
 Cursor's current exact-binary qualification reproducibly observes model listing
 and create-plan but not ask-question or todo notifications, so the combined
 extension row remains unpromoted.
+Grok's exact-binary qualification now live-proves enabled filesystem and
+terminal reverse calls through bounded disposable handlers; permission calls
+remain unobserved and only one question-extension spelling was emitted.
 The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference

@@ -25,7 +25,7 @@ never changes Grok's gate.
 
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
-| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    23 live passes |                                  9 | experimental |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    24 live passes |                                  8 | experimental |
 | Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    24 live passes |                                  7 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
@@ -119,6 +119,14 @@ only offered allow/reject permission options and attempted two disposable file
 operations, but Cursor emitted zero `session/request_permission` calls; approval
 and refusal therefore remain unobserved rather than promoted.
 
+Grok's exact-binary reverse qualification enabled the stable client filesystem
+and terminal capabilities against the disposable repository. The peer made
+seven filesystem and sixteen terminal reverse calls through bounded handlers,
+so `fs-terminal-enabled` now passes. It again emitted only one of the two
+allowlisted question spellings and emitted no permission request; those rows
+remain blocked. The checked receipt is
+[`release-run-grok-reverse-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json).
+
 The production main-owned Desktop host then ran both pinned drivers and
 serialized the closed `openagents.desktop.acp-support.v1` bundle. The bundle
 contained two provider entries, two receipt references and one evidence
@@ -163,7 +171,7 @@ tool/plan/config/usage variants, and non-Darwin-arm64 platform evidence.
 Provider-specific gaps:
 
 - Grok: intentional valid `xai.api_key`, auth cancel/expiry, the
-  non-underscore ask-question spelling, full permission/reverse authority, and
+  non-underscore ask-question spelling, live permission outcomes, and
   rich plan/config/usage streaming. The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.

@@ -10,6 +10,7 @@ import {
   probeCursorAcpExecutable,
 } from "@openagentsinc/cursor-agent-runtime";
 import { CURSOR_ACP_PROFILE } from "@openagentsinc/agent-client-protocol/extensions/cursor";
+import { GROK_ACP_PROFILE } from "@openagentsinc/agent-client-protocol/extensions/grok";
 import { createGrokAcpPeerRuntime, probeGrokAcpExecutable } from "@openagentsinc/grok-harness";
 import { AgentStdioTransport } from "@openagentsinc/agent-stdio-transport";
 
@@ -282,6 +283,155 @@ const qualifyCursorExtensions = async (
   }
 };
 
+const qualifyGrokReverse = async (
+  root: string,
+  probe: Awaited<ReturnType<typeof probeGrokAcpExecutable>>,
+): Promise<
+  Readonly<{
+    questionMethods: ReadonlyArray<string>;
+    permissionApprovals: number;
+    permissionRefusals: number;
+    filesystemCalls: number;
+    terminalCalls: number;
+  }>
+> => {
+  let transport: AgentStdioTransport | undefined;
+  const questionMethods = new Set<string>();
+  let permissionApprovals = 0;
+  let permissionRefusals = 0;
+  let filesystemCalls = 0;
+  let terminalCalls = 0;
+  let preferApproval = true;
+  try {
+    transport = await AgentStdioTransport.start({
+      executable: probe.realPath,
+      args: ["agent", "stdio"],
+      cwd: root,
+      env: { HOME: process.env.HOME },
+      identityPin: { realPath: probe.realPath, sha256: probe.sha256 },
+      methodKinds: GROK_ACP_PROFILE.methods.map((entry) => ({
+        method: entry.method,
+        kind: entry.kind,
+      })),
+      limits: { requestTimeoutMs: 120_000 },
+    });
+    for (const method of ["x.ai/ask_user_question", "_x.ai/ask_user_question"] as const) {
+      transport.registerReverseHandler(method, async (params) => {
+        questionMethods.add(method);
+        const answers: Record<string, ReadonlyArray<string>> = {};
+        const requested = object(params).questions;
+        if (Array.isArray(requested)) {
+          for (const rawQuestion of requested) {
+            const question = object(rawQuestion);
+            if (typeof question.question !== "string") continue;
+            const firstOption = Array.isArray(question.options) ? object(question.options[0]) : {};
+            answers[question.question] = [
+              typeof firstOption.label === "string" ? firstOption.label : "Continue",
+            ];
+          }
+        }
+        return { outcome: "accepted", answers };
+      });
+    }
+    transport.registerReverseHandler("session/request_permission", async (params) => {
+      const rawOptions = object(params).options;
+      const options: ReadonlyArray<Record<string, unknown>> = Array.isArray(rawOptions)
+        ? rawOptions.map(object)
+        : [];
+      const preferred = options.find((option) =>
+        preferApproval
+          ? typeof option.kind === "string" && option.kind.startsWith("allow")
+          : typeof option.kind === "string" &&
+            (option.kind.startsWith("reject") || option.kind.startsWith("deny")),
+      );
+      if (typeof preferred?.optionId !== "string") return { outcome: { outcome: "cancelled" } };
+      if (preferApproval) permissionApprovals += 1;
+      else permissionRefusals += 1;
+      return { outcome: { outcome: "selected", optionId: preferred.optionId } };
+    });
+    transport.registerReverseHandler("fs/read_text_file", async () => {
+      filesystemCalls += 1;
+      return { content: "# Disposable ACP qualification workspace\n" };
+    });
+    transport.registerReverseHandler("fs/write_text_file", async () => {
+      filesystemCalls += 1;
+      return {};
+    });
+    transport.registerReverseHandler("terminal/create", async () => {
+      terminalCalls += 1;
+      return { terminalId: "terminal.release.proof" };
+    });
+    transport.registerReverseHandler("terminal/output", async () => {
+      terminalCalls += 1;
+      return { output: "", truncated: false };
+    });
+    transport.registerReverseHandler("terminal/wait_for_exit", async () => {
+      terminalCalls += 1;
+      return { exitCode: 0 };
+    });
+    for (const method of ["terminal/kill", "terminal/release"] as const)
+      transport.registerReverseHandler(method, async () => {
+        terminalCalls += 1;
+        return {};
+      });
+    const initialized = object(
+      await transport.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {
+          fs: { readTextFile: true, writeTextFile: true },
+          terminal: true,
+        },
+        clientInfo: { name: "openagents-release-qualification", version: "0.1.0" },
+      }),
+    );
+    const authMethods = Array.isArray(initialized.authMethods)
+      ? initialized.authMethods.map(object)
+      : [];
+    if (!authMethods.some((method) => method.id === "cached_token"))
+      throw new Error("Grok did not advertise cached_token");
+    await transport.request("authenticate", {
+      methodId: "cached_token",
+      _meta: { headless: true },
+    });
+    const attached = object(await transport.request("session/new", { cwd: root, mcpServers: [] }));
+    if (typeof attached.sessionId !== "string") throw new Error("Grok returned no session id");
+    for (const text of [
+      "Before answering, call ask_user_question with one multiple-choice question, accept the answer, then reply briefly.",
+      "Use the ACP client filesystem read capability to read README.md, then reply briefly.",
+      "Use the ACP client terminal capability for one harmless printf command, then reply briefly.",
+    ])
+      await transport
+        .request("session/prompt", {
+          sessionId: attached.sessionId,
+          prompt: [{ type: "text", text }],
+        })
+        .catch(() => undefined);
+    preferApproval = true;
+    await transport
+      .request("session/prompt", {
+        sessionId: attached.sessionId,
+        prompt: [{ type: "text", text: "Create PERMISSION_ALLOW_GROK.txt with one word." }],
+      })
+      .catch(() => undefined);
+    preferApproval = false;
+    await transport
+      .request("session/prompt", {
+        sessionId: attached.sessionId,
+        prompt: [{ type: "text", text: "Create PERMISSION_REFUSE_GROK.txt with one word." }],
+      })
+      .catch(() => undefined);
+    return {
+      questionMethods: [...questionMethods].toSorted(),
+      permissionApprovals,
+      permissionRefusals,
+      filesystemCalls,
+      terminalCalls,
+    };
+  } finally {
+    await transport?.dispose();
+  }
+};
+
 const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
   const root = await workspace("grok");
   const canary = `oa-mcp-${randomBytes(24).toString("hex")}`;
@@ -450,6 +600,29 @@ const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
           : `Bounded post-shutdown scan incomplete after ${scan.files} files or found ${scan.matches} matches`,
       ),
       scenario("cleanup-bounds", "live-pass", "Runtime completed bounded shutdown before scanning"),
+    );
+    const reverse = await qualifyGrokReverse(root, probe);
+    scenarios.push(
+      scenario(
+        "grok-question-extensions",
+        reverse.questionMethods.length === 2 ? "live-pass" : "not-observed",
+        `Pinned question methods observed: ${reverse.questionMethods.length}`,
+      ),
+      scenario(
+        "permission-approval",
+        reverse.permissionApprovals > 0 ? "live-pass" : "not-observed",
+        `Pinned permission approval selections: ${reverse.permissionApprovals}`,
+      ),
+      scenario(
+        "permission-refusal",
+        reverse.permissionRefusals > 0 ? "live-pass" : "not-observed",
+        `Pinned permission refusal selections: ${reverse.permissionRefusals}`,
+      ),
+      scenario(
+        "fs-terminal-enabled",
+        reverse.filesystemCalls > 0 && reverse.terminalCalls > 0 ? "live-pass" : "not-observed",
+        `Pinned reverse calls: filesystem ${reverse.filesystemCalls}, terminal ${reverse.terminalCalls}`,
+      ),
     );
     return {
       peer: "grok",
