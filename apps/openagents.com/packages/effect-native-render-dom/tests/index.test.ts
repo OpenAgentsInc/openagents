@@ -9,9 +9,12 @@ import {
   IconButton,
   IntentRef,
   List,
+  RecoveryOverlay,
   SplitPane,
   Stack,
+  StatusBanner,
   Text,
+  TextField,
   Transcript,
   UnknownIntentError,
   iconNames,
@@ -33,6 +36,53 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("DOM renderer host boundaries", () => {
+  test("contained overlay specimens preserve document scroll and render real action buttons", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.style.overflow = "auto"
+    document.body.appendChild(root)
+    await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      yield* makeDomRenderer({ document, overlayMode: "contained" }).mount(
+        root,
+        Stream.succeed(Stack({ direction: "column" }, [
+          TextField({
+            label: "Focused production field",
+            value: "Contained previews must not steal host focus",
+            focused: true,
+            onChange: IntentRef("Change"),
+          }),
+          StatusBanner({
+            tone: "warn",
+            message: "Connection degraded",
+            onRetry: IntentRef("Retry"),
+            onDismiss: IntentRef("Dismiss"),
+          }),
+          RecoveryOverlay({
+            open: true,
+            title: "Recovering session",
+            actions: [
+              { id: "retry", label: "Retry now", variant: "primary", action: IntentRef("Retry") },
+              { id: "restart", label: "Restart", variant: "secondary", action: IntentRef("Restart") },
+            ],
+          }),
+        ])),
+        () => Effect.succeed(undefined),
+      )
+
+      expect(document.body.style.overflow).toBe("auto")
+      expect(document.activeElement).toBe(document.body)
+      const retry = root.querySelector<HTMLButtonElement>('[data-en-role="retry"]')!
+      const restart = root.querySelector<HTMLButtonElement>('[data-en-action="restart"]')!
+      expect(retry.getAttribute("data-en-component")).toBe("button")
+      expect(retry.getAttribute("data-en-variant")).toBe("soft")
+      expect(restart.getAttribute("data-en-component")).toBe("button")
+      expect(restart.getAttribute("data-en-tone")).toBe("secondary")
+      expect(restart.getAttribute("data-en-variant")).toBe("solid")
+    })))
+    expect(document.body.style.overflow).toBe("auto")
+  })
+
   test("a changed Stack scroll target reveals once after scroll restoration", async () => {
     const window = new Window({ url: "http://localhost/" })
     const document = window.document as unknown as Document

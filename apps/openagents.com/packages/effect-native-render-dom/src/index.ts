@@ -424,6 +424,10 @@ export interface DomRendererOptions {
   // that media query; `Spinner`/`LoadingDots`/`ShimmerText` only ever see
   // the already-resolved typed `reduceMotion` field.
   readonly reducedMotion?: boolean
+  // Document overlays own focus and body scroll in production surfaces.
+  // Contained overlays are preview/test specimens: they render in their
+  // mounting surface without locking or focusing the host document.
+  readonly overlayMode?: "document" | "contained"
 }
 
 type DomHostInstanceBinding = Readonly<{
@@ -1079,6 +1083,7 @@ class DomRendererState {
   readonly copyFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>()
   // Injected clipboard driver (v35, #84); the only write path for copy intents.
   readonly clipboard: Clipboard
+  readonly overlayMode: "document" | "contained"
   readonly hostDrivers: Map<HostKind, DomHostDriver>
   readonly hostInstances = new Map<string, DomHostInstanceBinding>()
   readonly retainedHostInstanceKeys = new Set<string>()
@@ -1094,7 +1099,8 @@ class DomRendererState {
     document: Document,
     theme: Theme,
     hostDrivers: ReadonlyArray<DomHostDriver> = [],
-    clipboard?: Clipboard
+    clipboard?: Clipboard,
+    overlayMode: "document" | "contained" = "document"
   ) {
     this.theme = theme
     this.root = document.createElement("div")
@@ -1103,6 +1109,7 @@ class DomRendererState {
     this.styles = new AtomicStyleSheet(document, theme)
     this.hostDrivers = new Map(hostDrivers.map((driver) => [driver.kind, driver] as const))
     this.clipboard = clipboard ?? makeNavigatorClipboard(document)
+    this.overlayMode = overlayMode
   }
 
   dispose(): void {
@@ -1128,7 +1135,7 @@ class DomRendererState {
     }
     this.allListeners.clear()
     this.keyed.clear()
-    if (this.overlayOpen) {
+    if (this.overlayOpen && this.overlayMode === "document") {
       this.root.ownerDocument.body.style.overflow = this.overlayBodyOverflow ?? ""
     }
     this.root.remove()
@@ -1153,6 +1160,7 @@ class DomRendererState {
   }
 
   requestFocus(element: HTMLElement): void {
+    if (this.overlayMode === "contained") return
     this.focusRequest = element
   }
 
@@ -1172,6 +1180,10 @@ class DomRendererState {
   }
 
   syncOverlayLifecycle(hasOpenOverlay: boolean, activeBefore: HTMLElement | null): HTMLElement | undefined {
+    if (this.overlayMode === "contained") {
+      this.overlayOpen = hasOpenOverlay
+      return undefined
+    }
     const document = this.root.ownerDocument
     if (hasOpenOverlay && !this.overlayOpen) {
       this.overlayOpen = true
@@ -1555,14 +1567,19 @@ const renderText = (view: TextView, state: DomRendererState, report: IntentRepor
   return element
 }
 
-const renderButton = (view: ButtonView, state: DomRendererState, report: IntentReporter): HTMLElement => {
-  const element = state.keyedElement(view, "button") as HTMLButtonElement
-  state.resetListeners(element)
-  element.type = "button"
-  element.textContent = view.label
-  const appearance: ResolvedButtonAppearance = resolveButtonAppearance(view)
-  const loading = view.loading === true
-  const disabled = view.disabled === true || loading
+const applyButtonChrome = (
+  element: HTMLButtonElement,
+  appearance: ResolvedButtonAppearance,
+  state: Readonly<{
+    disabled?: boolean
+    pill?: boolean
+    block?: boolean
+    loading?: boolean
+    selected?: boolean
+  }> = {}
+): void => {
+  const loading = state.loading === true
+  const disabled = state.disabled === true || loading
   element.disabled = disabled
   // Component-token tier lowering (C1 tier 3 + C4 data-* lowering, issue
   // #77; extended to the full tone/variant/size matrix by #78): the themed
@@ -1583,14 +1600,31 @@ const renderButton = (view: ButtonView, state: DomRendererState, report: IntentR
   element.setAttribute("data-en-variant", appearance.variant)
   element.setAttribute("data-en-size", appearance.size)
   element.setAttribute("data-en-disabled", disabled ? "true" : "false")
-  element.setAttribute("data-en-pill", view.pill === true ? "true" : "false")
-  element.setAttribute("data-en-block", view.block === true ? "true" : "false")
+  element.setAttribute("data-en-pill", state.pill === true ? "true" : "false")
+  element.setAttribute("data-en-block", state.block === true ? "true" : "false")
   element.setAttribute("data-en-loading", loading ? "true" : "false")
-  element.setAttribute("data-en-selected", view.selected === true ? "true" : "false")
+  element.setAttribute("data-en-selected", state.selected === true ? "true" : "false")
   if (loading) element.setAttribute("aria-busy", "true")
   else element.removeAttribute("aria-busy")
-  if (view.selected !== undefined) element.setAttribute("aria-pressed", String(view.selected))
+  if (state.selected !== undefined) element.setAttribute("aria-pressed", String(state.selected))
   else element.removeAttribute("aria-pressed")
+}
+
+const renderButton = (view: ButtonView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const element = state.keyedElement(view, "button") as HTMLButtonElement
+  state.resetListeners(element)
+  element.type = "button"
+  element.textContent = view.label
+  const appearance: ResolvedButtonAppearance = resolveButtonAppearance(view)
+  const loading = view.loading === true
+  const disabled = view.disabled === true || loading
+  applyButtonChrome(element, appearance, {
+    disabled,
+    loading,
+    ...(view.pill === undefined ? {} : { pill: view.pill }),
+    ...(view.block === undefined ? {} : { block: view.block }),
+    ...(view.selected === undefined ? {} : { selected: view.selected })
+  })
   state.addListener(element, "click", () => {
     if (!disabled) runReportedIntent(report, view.onPress)
   })
@@ -2087,7 +2121,10 @@ const renderRefreshAffordance = (
   button.type = "button"
   button.setAttribute("data-en-role", "refresh")
   button.textContent = view.refreshing === true ? "Refreshing…" : "Refresh"
-  button.disabled = view.refreshing === true
+  applyButtonChrome(button, { tone: "accent", variant: "soft", size: "sm" }, {
+    disabled: view.refreshing === true,
+    block: true
+  })
   button.style.display = "block"
   button.style.width = "100%"
   button.style.marginBottom = "var(--en-spacing-2)"
@@ -4404,6 +4441,7 @@ const renderNotificationCard = (
     actionButton.type = "button"
     actionButton.setAttribute("data-en-role", "action")
     actionButton.textContent = notification.actionLabel
+    applyButtonChrome(actionButton, { tone: "accent", variant: "soft", size: "sm" })
     const action = notification.action
     state.addListener(actionButton, "click", () => runReportedIntent(report, action, notification.id))
     card.appendChild(actionButton)
@@ -4413,6 +4451,7 @@ const renderNotificationCard = (
   dismissButton.setAttribute("data-en-role", "dismiss")
   dismissButton.setAttribute("aria-label", "Dismiss")
   dismissButton.textContent = "×"
+  applyButtonChrome(dismissButton, { tone: "secondary", variant: "ghost", size: "sm" })
   state.addListener(dismissButton, "click", () => runReportedIntent(report, onDismiss, notification.id))
   card.appendChild(dismissButton)
 
@@ -4458,18 +4497,22 @@ const renderStatusBanner = (view: StatusBannerView, state: DomRendererState, rep
   element.style.alignItems = "center"
   element.style.gap = "var(--en-spacing-2)"
   element.style.padding = "var(--en-spacing-2) var(--en-spacing-3)"
-  element.style.background = "var(--en-color-surfaceRaised)"
-  element.style.borderLeft = `3px solid ${colorValue(toneColorToken[view.tone])}`
+  element.style.background = `color-mix(in srgb, ${colorValue(toneColorToken[view.tone])} 10%, var(--en-color-surfaceRaised))`
+  element.style.border = `1px solid ${colorValue(toneColorToken[view.tone])}`
+  element.style.borderRadius = "var(--en-radius-md)"
   const document = element.ownerDocument
   const message = document.createElement("span")
   message.setAttribute("data-en-role", "message")
   message.textContent = view.message
+  message.style.flex = "1"
+  message.style.minWidth = "0"
   const children: Array<HTMLElement> = [message]
   if (view.onRetry !== undefined) {
     const retry = document.createElement("button") as HTMLButtonElement
     retry.type = "button"
     retry.setAttribute("data-en-role", "retry")
     retry.textContent = "Retry"
+    applyButtonChrome(retry, { tone: "accent", variant: "soft", size: "sm" })
     const onRetry = view.onRetry
     state.addListener(retry, "click", () => runReportedIntent(report, onRetry))
     children.push(retry)
@@ -4480,6 +4523,7 @@ const renderStatusBanner = (view: StatusBannerView, state: DomRendererState, rep
     dismiss.setAttribute("data-en-role", "dismiss")
     dismiss.setAttribute("aria-label", "Dismiss")
     dismiss.textContent = "×"
+    applyButtonChrome(dismiss, { tone: "secondary", variant: "ghost", size: "sm" })
     const onDismiss = view.onDismiss
     state.addListener(dismiss, "click", () => runReportedIntent(report, onDismiss))
     children.push(dismiss)
@@ -4538,6 +4582,7 @@ const renderAlert = (view: AlertView, state: DomRendererState, report: IntentRep
     dismiss.setAttribute("data-en-role", "dismiss")
     dismiss.setAttribute("aria-label", "Dismiss")
     dismiss.textContent = "×"
+    applyButtonChrome(dismiss, { tone: "secondary", variant: "ghost", size: "sm" })
     const onDismiss = view.onDismiss
     state.addListener(dismiss, "click", () => runReportedIntent(report, onDismiss))
     children.push(dismiss)
@@ -4573,6 +4618,7 @@ const renderRecoveryOverlay = (view: RecoveryOverlayView, state: DomRendererStat
   panel.style.border = "1px solid var(--en-color-border)"
   panel.style.borderRadius = "var(--en-radius-lg)"
   panel.style.padding = "var(--en-spacing-4)"
+  panel.style.width = "min(calc(100% - var(--en-spacing-4)), 32rem)"
   const title = element.ownerDocument.createElement("h2")
   title.id = titleId
   title.textContent = view.title
@@ -4594,13 +4640,20 @@ const renderRecoveryOverlay = (view: RecoveryOverlayView, state: DomRendererStat
   const actions = element.ownerDocument.createElement("div")
   actions.setAttribute("data-en-role", "actions")
   actions.style.display = "flex"
+  actions.style.flexWrap = "wrap"
   actions.style.gap = "var(--en-spacing-2)"
+  actions.style.marginTop = "var(--en-spacing-3)"
   for (const action of view.actions) {
     const button = element.ownerDocument.createElement("button") as HTMLButtonElement
     button.type = "button"
     button.setAttribute("data-en-action", action.id)
-    button.setAttribute("data-en-variant", action.variant ?? "primary")
     button.textContent = action.label
+    applyButtonChrome(
+      button,
+      action.variant === "secondary"
+        ? { tone: "secondary", variant: "solid", size: "md" }
+        : { tone: "accent", variant: "solid", size: "md" }
+    )
     const intent = action.action
     state.addListener(button, "click", () => runReportedIntent(report, intent, action.id))
     actions.appendChild(button)
@@ -4850,6 +4903,7 @@ const renderCodeBlock = (view: CodeBlockView, state: DomRendererState, report: I
     copy.setAttribute("data-en-role", "copy")
     copy.setAttribute("aria-label", "Copy code")
     copy.textContent = "Copy"
+    applyButtonChrome(copy, { tone: "secondary", variant: "soft", size: "sm" })
     const onCopy = view.onCopy
     state.addListener(copy, "click", () => runReportedIntent(report, onCopy, codeBlockPlainText(view.lines)))
     element.appendChild(copy)
@@ -4951,6 +5005,11 @@ const renderDiffView = (view: DiffViewView, state: DomRendererState, report: Int
             button.type = "button"
             button.setAttribute("data-en-verdict-action", verdict)
             button.textContent = verdict === "approved" ? "✓" : "✕"
+            applyButtonChrome(button, {
+              tone: verdict === "approved" ? "success" : "danger",
+              variant: "ghost",
+              size: "sm"
+            })
             state.addListener(button, "click", () => runReportedIntent(report, onLineVerdict, { rowId, verdict }))
             rowEl.appendChild(button)
           }
@@ -4961,6 +5020,7 @@ const renderDiffView = (view: DiffViewView, state: DomRendererState, report: Int
           comment.type = "button"
           comment.setAttribute("data-en-role", "comment-action")
           comment.textContent = "Comment"
+          applyButtonChrome(comment, { tone: "secondary", variant: "ghost", size: "sm" })
           state.addListener(comment, "click", () => runReportedIntent(report, onLineComment, { rowId }))
           rowEl.appendChild(comment)
         }
@@ -4986,6 +5046,7 @@ const renderDiffView = (view: DiffViewView, state: DomRendererState, report: Int
       button.type = "button"
       button.setAttribute("data-en-action", action.id)
       button.textContent = action.label
+      applyButtonChrome(button, { tone: "accent", variant: "soft", size: "sm" })
       state.addListener(button, "click", () => runReportedIntent(report, onAction, action.id))
       bar.appendChild(button)
     }
@@ -5666,7 +5727,14 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
             ? { reduced: options.reducedMotion }
             : readDomMotionPreference(document)
         )
-        const state = new DomRendererState(container, document, theme, options.hostDrivers ?? [], clipboard)
+        const state = new DomRendererState(
+          container,
+          document,
+          theme,
+          options.hostDrivers ?? [],
+          clipboard,
+          options.overlayMode ?? "document"
+        )
         const ready = yield* Deferred.make<void>()
         const window = document.defaultView
         const resolvedViewStream = viewStream.pipe(

@@ -1,10 +1,17 @@
-import { type IntentReporter, type Theme } from "@effect-native/core";
-import { allStories, defaultStorybook, type Story, type StoryGroup } from "@effect-native/gallery";
+import { type IntentReporter, type JsonPayload, type Theme } from "@effect-native/core";
+import {
+  allStories,
+  applyStoryControlValue,
+  defaultStorybook,
+  type Story,
+  type StoryControl,
+  type StoryGroup,
+} from "@effect-native/gallery";
 import { makeDomRenderer } from "@effect-native/render-dom";
 import { useEffectNativeScopedEffect } from "@effect-native/render-dom/react";
 import { khalaTheme } from "@effect-native/tokens";
 import { Effect, Stream } from "effect";
-import { type CSSProperties, type ReactElement, useRef } from "react";
+import { type CSSProperties, type ReactElement, useId, useRef, useState } from "react";
 
 const noopReport: IntentReporter = () => Effect.void;
 
@@ -16,6 +23,7 @@ const themeCssVariables = (theme: Theme): ThemeCssVariables => {
   const variables: Record<string, string | number> = {
     backgroundColor: theme.color.background,
     color: theme.color.textPrimary,
+    colorScheme: "dark",
   };
 
   for (const [key, value] of Object.entries(theme.color)) variables[`--en-color-${key}`] = value;
@@ -51,25 +59,98 @@ const themeCssVariables = (theme: Theme): ThemeCssVariables => {
   return variables as ThemeCssVariables;
 };
 
-const storyValue = (value: unknown): string => {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value);
+const controlClass =
+  "khala-focus min-h-9 border border-khala-border-strong bg-khala-surface-raised px-3 text-xs text-white accent-khala-energy hover:border-khala-energy";
+
+function StoryControlEditor({
+  control,
+  onChange,
+}: Readonly<{
+  control: StoryControl;
+  onChange: (value: JsonPayload) => void;
+}>): ReactElement {
+  const inputId = useId();
+
+  if (control.kind === "boolean") {
+    const active = control.value === true;
+    return (
+      <button
+        aria-pressed={active}
+        className={`${controlClass} flex items-center gap-2 ${
+          active ? "border-khala-energy bg-khala-energy/15" : ""
+        }`}
+        onClick={() => onChange(!active)}
+        type="button"
+      >
+        <span
+          aria-hidden="true"
+          className={`size-2 ${active ? "bg-khala-energy-cyan" : "bg-khala-text-faint"}`}
+        />
+        {control.label}: {active ? "On" : "Off"}
+      </button>
+    );
   }
-  return JSON.stringify(value);
-};
+
+  if (control.kind === "enum" || control.kind === "token") {
+    return (
+      <label className="grid gap-1 text-[11px] text-khala-text-faint" htmlFor={inputId}>
+        {control.label}
+        <select
+          className={controlClass}
+          id={inputId}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          value={String(control.value)}
+        >
+          {(control.options ?? []).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  return (
+    <label
+      className="grid min-w-40 flex-1 gap-1 text-[11px] text-khala-text-faint"
+      htmlFor={inputId}
+    >
+      {control.label}
+      <input
+        className={controlClass}
+        id={inputId}
+        onChange={(event) =>
+          onChange(
+            control.kind === "number"
+              ? Number(event.currentTarget.value)
+              : event.currentTarget.value,
+          )
+        }
+        type={control.kind === "number" ? "number" : "text"}
+        value={String(control.value)}
+      />
+    </label>
+  );
+}
 
 function StoryPreview({ story }: Readonly<{ story: Story }>): ReactElement {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [activeStory, setActiveStory] = useState(story);
 
   useEffectNativeScopedEffect(() => {
     const canvas = canvasRef.current;
     if (canvas === null) return Effect.void;
-    return makeDomRenderer({ theme: story.theme, viewport: story.viewport }).mount(
-      canvas,
-      Stream.make(story.view),
-      noopReport,
-    );
-  }, [story]);
+    return makeDomRenderer({
+      theme: khalaTheme,
+      viewport: activeStory.viewport,
+      overlayMode: "contained",
+    }).mount(canvas, Stream.make(activeStory.view), noopReport);
+  }, [activeStory]);
+
+  const overlayStory = ["Modal", "Sheet", "RecoveryOverlay", "CommandPalette"].includes(
+    activeStory.component,
+  );
 
   return (
     <article
@@ -77,13 +158,15 @@ function StoryPreview({ story }: Readonly<{ story: Story }>): ReactElement {
       data-storybook-story={story.id}
     >
       <div
-        className="effect-native-story-canvas relative isolate min-h-48 transform-gpu overflow-auto p-5"
+        aria-label={`${activeStory.title} component preview`}
+        className={`effect-native-story-canvas relative isolate transform-gpu overflow-hidden p-5 ${
+          overlayStory ? "min-h-72" : "min-h-44"
+        }`}
         data-effect-native-surface="dom"
+        data-story-theme="khala"
         ref={canvasRef}
-        style={themeCssVariables(story.theme)}
-      >
-        <span className="text-xs text-khala-text-faint">Mounting {story.component} preview…</span>
-      </div>
+        style={themeCssVariables(khalaTheme)}
+      />
       <div className="grid gap-3 border-t border-khala-border/70 bg-black p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="grid gap-1">
@@ -92,25 +175,28 @@ function StoryPreview({ story }: Readonly<{ story: Story }>): ReactElement {
           </div>
           <code className="text-[11px] text-khala-energy-cyan">{story.id}</code>
         </div>
-        {story.controls.length > 0 ? (
-          <dl className="m-0 flex flex-wrap gap-1.5" aria-label={`${story.title} controls`}>
-            {story.controls.map((control) => (
-              <div
-                className="flex items-center gap-1.5 border border-khala-border/70 bg-khala-surface px-2 py-1 text-[11px]"
+        {activeStory.controls.length > 0 ? (
+          <div
+            className="flex flex-wrap items-end gap-2 border-t border-khala-border/50 pt-3"
+            aria-label={`${story.title} controls`}
+          >
+            {activeStory.controls.map((control) => (
+              <StoryControlEditor
+                control={control}
                 key={control.id}
-              >
-                <dt className="text-khala-text-faint">{control.label}</dt>
-                <dd className="m-0 text-khala-text">{storyValue(control.value)}</dd>
-              </div>
+                onChange={(value) =>
+                  setActiveStory((current) => applyStoryControlValue(current, control.id, value))
+                }
+              />
             ))}
-          </dl>
+          </div>
         ) : null}
         <details className="text-xs text-khala-text-muted">
           <summary className="khala-focus w-fit cursor-pointer py-1 text-khala-text-faint">
             Inspect typed view
           </summary>
           <pre className="mt-2 max-h-72 overflow-auto border border-khala-border/70 bg-khala-surface p-3 text-[11px]/5 text-khala-text-muted">
-            {JSON.stringify(story.view, null, 2)}
+            {JSON.stringify(activeStory.view, null, 2)}
           </pre>
         </details>
       </div>

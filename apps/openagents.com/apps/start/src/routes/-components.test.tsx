@@ -46,11 +46,14 @@ describe("Start components workbench routes", () => {
     expect(core).toContain('data-storybook-story="button-primary"');
     expect(core).toContain('data-storybook-story="button-secondary"');
     expect(core).toContain('data-storybook-story="button-ghost"');
-    expect(core).toContain("Mounting Composer preview");
-    expect(core).toContain("Mounting Transcript preview");
-    expect(core).toContain("Mounting DiffView preview");
-    expect(core).toContain("Mounting Modal preview");
+    expect(core).toContain('data-storybook-story="composer-basic"');
+    expect(core).toContain('data-storybook-story="transcript-basic"');
+    expect(core).toContain('data-storybook-story="diff-view-basic"');
+    expect(core).toContain('data-storybook-story="modal-open"');
     expect(core).toContain("Inspect typed view");
+    expect(core).toContain("background-color:#05070d");
+    expect(core).toContain("<select");
+    expect(core).toContain("aria-pressed=");
   });
 
   test("server-renders visual token and renderer family workbenches", () => {
@@ -69,7 +72,7 @@ describe("Start components workbench routes", () => {
     expect(native).toContain('data-storybook-family="render-rn"');
     expect(native.match(/data-storybook-story=/g)).toHaveLength(108);
     expect(training).toContain('data-storybook-family="training"');
-    expect(training).toContain("Mounting GraphFigure preview");
-    expect(training).toContain("Mounting Timeline preview");
+    expect(training).toContain('data-storybook-story="graph-figure-basic"');
+    expect(training).toContain('data-storybook-story="timeline-basic"');
   });
 });
