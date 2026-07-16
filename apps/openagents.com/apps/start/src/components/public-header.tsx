@@ -9,12 +9,13 @@ type PublicHeaderProps = Readonly<{
   docsActive?: boolean
   leading?: ReactNode
   utility?: ReactNode
+  variant?: 'default' | 'docs'
 }>
 
-export function PublicHeader({ docsActive = false, leading, utility }: PublicHeaderProps = {}) {
+export function PublicHeader({ docsActive = false, leading, utility, variant = 'default' }: PublicHeaderProps = {}) {
   return (
     <>
-      <header className="oa-unified-header">
+      <header className={variant === 'docs' ? 'oa-unified-header oa-unified-header--docs' : 'oa-unified-header'}>
         <nav aria-label="Primary navigation" className="oa-unified-nav">
           <div className="oa-unified-nav-left">
             {leading}

@@ -96,15 +96,14 @@
 .docs-shell {
   display: grid;
   grid-template-columns: 16rem minmax(0, 1fr);
-  width: min(100%, 96rem);
+  width: 100%;
   min-height: calc(100dvh - var(--docs-header-height));
-  margin-inline: auto;
 }
 
 .docs-sidebar {
   position: fixed;
   top: var(--docs-header-height);
-  left: max(0px, calc((100vw - 96rem) / 2));
+  left: 0;
   width: 16rem;
   height: calc(100dvh - var(--docs-header-height));
   padding: 1.5rem 1rem 2rem 1.5rem;

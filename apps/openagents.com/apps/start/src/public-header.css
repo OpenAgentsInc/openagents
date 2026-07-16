@@ -106,6 +106,43 @@
   background: rgb(58 123 255 / 0.24);
 }
 
+/* Documentation is an application shell, not a centered marketing page.
+   Continue its 16rem navigation column through the fixed header so every
+   vertical boundary shares one grid. */
+.oa-unified-header--docs .oa-unified-nav {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  width: 100%;
+  margin-inline: 0;
+}
+
+.oa-unified-header--docs .oa-unified-nav-left {
+  align-self: stretch;
+  padding-inline: 1.5rem;
+  border-right: 1px solid var(--docs-border, rgb(116 164 255 / 0.16));
+}
+
+.oa-unified-header--docs .oa-unified-nav-actions {
+  min-width: 0;
+  padding-inline: 1.5rem;
+  justify-content: flex-end;
+}
+
+@media (max-width: 64rem) {
+  .oa-unified-header--docs .oa-unified-nav {
+    display: flex;
+    width: min(100% - 2rem, 76rem);
+    margin-inline: auto;
+  }
+
+  .oa-unified-header--docs .oa-unified-nav-left,
+  .oa-unified-header--docs .oa-unified-nav-actions {
+    align-self: auto;
+    padding-inline: 0;
+    border-right: 0;
+  }
+}
+
 @media (max-width: 760px) {
   .oa-unified-nav {
     width: min(100% - 2rem, 76rem);

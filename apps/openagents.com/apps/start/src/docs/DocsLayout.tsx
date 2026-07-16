@@ -188,6 +188,7 @@ export function DocsLayout() {
           </button>
         }
         utility={<DocsSearch />}
+        variant="docs"
       />
 
       <div className="docs-shell">
