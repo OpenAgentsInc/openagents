@@ -18,7 +18,7 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8880 (FA-H7 cap semantics), 8883 (FA-H10 registry robustness)"
+  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
   openagents_revision_note: "rev 3 (#8880, #8882, #8883) covers three changes landed together. FA-H7 (#8880) pins the continuation-cap reset semantics unambiguously: the counter resets ONLY when Full Auto is toggled off; a manual send while the toggle stays on does not reset it; the dead resetContinuation API is removed. FA-H10 (#8883) hardens the registry: a corrupt/invalid registry file is quarantined and the app starts with an empty registry instead of failing main initialization, and record eviction never drops enabled records -- only the disabled tail is bounded. FA-H9 (#8882, audit Finding 9) removes the three unmeasurable automated success metrics (toggle adoption, observed continuation, restart survival): no consent surface or counter implementation exists, and the spec's telemetry posture keeps metrics absent (not inferred) without consent; they are replaced by one manual owner-receipt metric that is actually measurable today. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
@@ -145,7 +145,7 @@ cut:
 - **FA-AC-10:** No Full Auto packet performs a direct commit, merge, or push;
   Codex proposes changes exactly as every other Desktop Codex turn already
   does. (Unchanged existing boundary; no new authority was added.)
-- **FA-AC-11 (rev 3, #8883):** A corrupt or schema-invalid registry file never
+- **FA-AC-11:** A corrupt or schema-invalid registry file never
   blocks Desktop main initialization. Opening it fails closed for the feature
   and open for the app: the bad file is quarantined beside the registry
   (best-effort rename to `registry.json.quarantined-<ISO timestamp>` with an
@@ -155,7 +155,7 @@ cut:
   Proof: `full-auto-registry.test.ts` "a corrupt registry file is quarantined
   and the registry opens empty instead of throwing" and "a schema-invalid (but
   valid JSON) registry file is also quarantined rather than thrown".
-- **FA-AC-12 (rev 3, #8883):** Registry record eviction never drops an
+- **FA-AC-12:** Registry record eviction never drops an
   `enabled: true` record. All enabled records are kept; only the disabled tail
   is bounded, filling remaining capacity (up to 128 total) with the
   most-recently-updated disabled records. An owner-enabled thread therefore

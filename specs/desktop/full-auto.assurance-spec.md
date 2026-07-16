@@ -29,9 +29,11 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-07",
       "FA-AC-08",
       "FA-AC-09",
-      "FA-AC-10"
+      "FA-AC-10",
+      "FA-AC-11",
+      "FA-AC-12"
     ],
-    "document_digest": "sha256:2434d9cfa593b052a3d9b99991251ebaa5849cbabe293f8d8c589f757ad45552",
+    "document_digest": "sha256:aae6173d4c12d63045f328f0b63bfeaf6104b59ad938fab0b05319db8bfd7558",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
@@ -264,6 +266,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/tests/fixtures/codex-smoke/sessions/2026/07/11/smoke-root.jsonl",
       "apps/openagents-desktop/tests/fixtures/provider-accounts/accounts-list.json",
       "apps/openagents-desktop/tests/fleet-control.test.ts",
+      "apps/openagents-desktop/tests/full-auto-registry.test.ts",
       "apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts",
       "apps/openagents-desktop/tests/git-fixture.ts",
       "apps/openagents-desktop/tests/harness-maintenance.test.ts",
@@ -352,6 +355,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-run.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-sales-landing.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-share.test.tsx",
+      "apps/openagents.com/apps/start/src/routes/-splash-khala-canvas.test.ts",
       "apps/openagents.com/apps/start/src/routes/-splash.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-stage1-effect-native.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-stats.test.tsx",
@@ -462,9 +466,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/workers/api/src/artanis-forum-publication.test.ts",
       "apps/openagents.com/workers/api/src/artanis-forum-responder-khala.test.ts",
       "apps/openagents.com/workers/api/src/artanis-forum-reward-smoke.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-reward-visibility.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-forum-verification.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-gepa-production-smoke.test.ts"
+      "apps/openagents.com/workers/api/src/artanis-forum-reward-visibility.test.ts"
     ],
     "declared_scripts": [
       {
@@ -3003,12 +3005,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "a323f69fb65f05a2347667421e8dc216a7dd85ce",
-    "inventory_digest": "sha256:b11c69a4f2d8d10484cfa52cb4ca3fad00e1bdfb67456787d45aee84b8b74ae9",
-    "repository_label": "oa-fa-w1-docs",
+    "head": "64e4f69c8c37099246c653aa91b7a3d8203bbb60",
+    "inventory_digest": "sha256:64b87ac67ea138290df0374caa8bf78636f94618062a8d4f439deaa167f62a02",
+    "repository_label": "oa-fa-integrate",
     "state": "dirty",
-    "tracked_file_count": 8916,
-    "tree": "7ea6e944b1af4365ec7a80f2b2ed99be48e7786b",
+    "tracked_file_count": 8924,
+    "tree": "069fd8e23f2478a7c633ea6288feade94f74d45e",
     "truncated": true
   }
 }
@@ -3082,8 +3084,8 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     ],
     "disposition": "required",
     "id": "AO-FA-AC-06-01",
-    "source_claim_digest": "sha256:38c7b2c0cceba9d0cc58311c9cb09677086a211de5cd3f3cf1d09b4bffa1b2b6",
-    "source_claim_snapshot": "A run of 20 consecutive automatic continuations without an\nintervening manual stop turns Full Auto off durably (registry, not\nrenderer state) and appends an explanatory system note, rather than\ncontinuing unbounded -- and this holds even if a restart happens partway\nthrough the count.\nProof: `full-auto-restart.e2e.test.ts` \"a genuinely stuck loop self-disables\nat the continuation cap across restarts, rather than continuing unbounded\".",
+    "source_claim_digest": "sha256:55fc7cedaab5b2dd8fe703766572e6c9c31307ae9159967201ac53109494af89",
+    "source_claim_snapshot": "A run of 20 consecutive automatic continuations turns Full\nAuto off durably (registry, not renderer state) and appends an explanatory\nsystem note, rather than continuing unbounded -- and this holds even if a\nrestart happens partway through the count. The consecutive-continuation\ncounter resets only when Full Auto is toggled off for that thread; a manual\nsend while the toggle stays on does NOT reset it, and re-enabling an\nalready-enabled thread preserves the count.\nProof: `full-auto-restart.e2e.test.ts` \"a genuinely stuck loop self-disables\nat the continuation cap across restarts, rather than continuing unbounded\";\n`full-auto-registry.test.ts` \"continuationCount resets ONLY on toggle-off: a\nmanual send leaves it unchanged; off-then-on zeroes it\".",
     "title": "Assure FA-AC-06"
   },
   {
@@ -3129,6 +3131,28 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:d1daf49b0dffa4a3db43527a9d08ceac7b8c450c367d16f34c3d54fa6b5b66f7",
     "source_claim_snapshot": "No Full Auto packet performs a direct commit, merge, or push;\nCodex proposes changes exactly as every other Desktop Codex turn already\ndoes. (Unchanged existing boundary; no new authority was added.)",
     "title": "Assure FA-AC-10"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-11"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-11-01",
+    "source_claim_digest": "sha256:c4801546b6e401d8e1f127f2d3bb0c94521df237aab304b8f0f84f9b5c17e6ca",
+    "source_claim_snapshot": "A corrupt or schema-invalid registry file never\nblocks Desktop main initialization. Opening it fails closed for the feature\nand open for the app: the bad file is quarantined beside the registry\n(best-effort rename to `registry.json.quarantined-<ISO timestamp>` with an\nowner-visible console diagnostic naming the quarantine path), the registry\nstarts empty (Full Auto disabled for all threads), and subsequent writes\npersist normally.\nProof: `full-auto-registry.test.ts` \"a corrupt registry file is quarantined\nand the registry opens empty instead of throwing\" and \"a schema-invalid (but\nvalid JSON) registry file is also quarantined rather than thrown\".",
+    "title": "Assure FA-AC-11"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-12"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-12-01",
+    "source_claim_digest": "sha256:27450f70ca5382f43098d7df09b20a74f7ecd2370302593d44cce1f89f8a9564",
+    "source_claim_snapshot": "Registry record eviction never drops an\n`enabled: true` record. All enabled records are kept; only the disabled tail\nis bounded, filling remaining capacity (up to 128 total) with the\nmost-recently-updated disabled records. An owner-enabled thread therefore\nalways survives to the next restart, no matter how many other records were\ntouched more recently.\nProof: `full-auto-registry.test.ts` \"eviction never drops an enabled record:\nthe oldest enabled thread survives while old disabled records are evicted\".",
+    "title": "Assure FA-AC-12"
   }
 ]
 ```
