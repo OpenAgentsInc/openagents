@@ -50,6 +50,24 @@ pnpm --filter @openagentsinc/openagents-desktop build
 PASS — production Electron assets built
 ```
 
-The remaining end-to-end L6 receipt is the bounded actual Desktop Full Auto
-continuation using one of these registered lanes after integration. Release
-support language remains owned by ACP-10 (#8897) and remains experimental.
+## Actual Desktop Full Auto receipt
+
+The integrated production build was launched with the repository's isolated
+app-proof gate, a fresh temporary user-data directory, the opt-in loopback
+control server, and a disposable Git workspace. No default Desktop profile or
+credential store was inspected.
+
+- `/v1/lanes` reported `acp:grok-cli` configured, admitted, Full Auto capable,
+  and experimental.
+- `start --lane acp:grok-cli` created thread
+  `35347e8f-1dfa-4e57-8d9d-546cdad8844f` and dispatched turn
+  `turn.full-auto.22b3a6d7-8e81-48c1-b0d4-6886b4922eaf` through Desktop main.
+- The durable journal reached `phase: completed`, `disposition: completed` in
+  13.446 seconds. The real peer made and committed one harmless README change
+  in the disposable repository (`1a41dae`).
+- The control API then durably disabled the thread. Final state was
+  `enabled: false`, `continuationCount: 0`, `live.state: turn_completed`; no
+  second turn fired. Desktop shut down cleanly.
+
+This closes the L6 actual-ACP-loop evidence gap. Release support language
+remains owned by ACP-10 (#8897) and remains experimental.
