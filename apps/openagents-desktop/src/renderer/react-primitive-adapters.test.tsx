@@ -533,6 +533,55 @@ describe("React workbench shell", () => {
     expect(container.querySelector('[data-react-workspace="home"] h1')?.textContent).toBe("Coding sessions")
   })
 
+  test("keeps the Settings Khala frame singular while status articles remain semantic and unframed", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const base = fixtureState()
+    const state: DesktopShellState = {
+      ...base,
+      workspace: "settings",
+      settings: {
+        ...base.settings,
+        harnessMaintenance: {
+          view: {
+            state: "loaded",
+            harnesses: [{
+              harness: "codex",
+              installed: true,
+              installedVersion: "0.144.1",
+              latestVersion: "0.144.4",
+              channel: "npm-global",
+              advisory: "behind_latest",
+              updateSupported: true,
+            }],
+          },
+          updating: null,
+          lastOutcome: "Update completed and version re-probed.",
+          codexReleaseNotes: null,
+        },
+      },
+    }
+    await render(root, <StrictMode><WorkbenchShell state={state} report={() => Effect.void} /></StrictMode>)
+
+    expect(container.querySelectorAll('[data-khala-decoration="settings-frame"]')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-khala-decoration="settings-header"]')).toHaveLength(1)
+    expect(container.querySelectorAll("#en-khala-desktop-settings-frame")).toHaveLength(1)
+    expect(container.querySelectorAll("#en-khala-desktop-settings-header")).toHaveLength(1)
+    expect(container.querySelectorAll('[data-react-workspace="settings"] [data-en-khala-decoration]')).toHaveLength(2)
+    expect(container.querySelectorAll(".oa-react-settings-status-article")).toHaveLength(1)
+    expect(container.querySelector('[data-harness="codex"]')?.getAttribute("data-status")).toBe("behind_latest")
+    expect(container.querySelector('[data-harness="codex"] .oa-react-settings-status-label')?.textContent).toBe("Update available")
+    expect(container.querySelector('[data-harness="codex"] [data-en-khala-decoration]')).toBeNull()
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("Update completed")
+    for (const decoration of container.querySelectorAll<HTMLElement>('[data-react-workspace="settings"] .oa-react-khala-decoration')) {
+      expect(decoration.getAttribute("aria-hidden")).toBe("true")
+      expect(decoration.querySelector("button, a, input, [tabindex]")).toBeNull()
+    }
+
+    await render(root, <StrictMode><WorkbenchShell state={state} report={() => Effect.void} /></StrictMode>)
+    expect(container.querySelectorAll('[data-react-workspace="settings"] [data-en-khala-decoration]')).toHaveLength(2)
+  })
+
   test("projects authoritative back/forward availability and dispatches one typed intent per click", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []

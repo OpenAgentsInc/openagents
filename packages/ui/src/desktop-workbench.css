@@ -374,9 +374,55 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-project-home-khala > :not(.oa-react-khala-decoration),
+.oa-react-settings-khala > :not(.oa-react-khala-decoration),
+.oa-react-settings-header > :not(.oa-react-khala-decoration),
 .oa-react-project-home-status > span {
   position: relative;
   z-index: 1;
+}
+
+.oa-react-settings-khala {
+  position: relative;
+  isolation: isolate;
+  scrollbar-gutter: stable;
+}
+
+.oa-react-settings-header {
+  position: relative;
+  min-width: 0;
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+}
+
+.oa-react-settings-header .oa-react-khala-decoration {
+  inset: 0;
+}
+
+.oa-react-settings-section {
+  min-width: 0;
+  padding-top: var(--en-spacing-4);
+  border-top: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-react-settings-status-article {
+  min-width: 0;
+  border: 0;
+  border-left: 2px solid var(--en-color-borderStrong);
+  border-radius: 0;
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-react-settings-status-article[data-status="current"],
+.oa-react-settings-status-article[data-status="ready"] {
+  border-left-color: var(--en-color-success);
+}
+
+.oa-react-settings-status-article[data-status="behind_latest"],
+.oa-react-settings-status-article[data-status="degraded"] {
+  border-left-color: var(--en-color-warning);
+}
+
+.oa-react-settings-status-label {
+  font-weight: 600;
 }
 
 .oa-react-khala-decoration {
@@ -414,6 +460,28 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
   .oa-react-khala-decoration path {
     stroke: CanvasText;
+  }
+
+  .oa-react-settings-section,
+  .oa-react-settings-status-article {
+    border-color: CanvasText !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .oa-react-workspace-surface {
+    padding: calc(var(--en-spacing-6) * 2) var(--en-spacing-4) var(--en-spacing-6);
+  }
+
+  .oa-react-settings-header,
+  .oa-react-settings-status-article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .oa-react-settings-header > button,
+  .oa-react-settings-status-article > button {
+    align-self: flex-start;
   }
 }
 

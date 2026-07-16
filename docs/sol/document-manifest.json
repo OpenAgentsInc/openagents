@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "1d63835c0089f6e2c5241b262cf79469254c67a6d62ddeb1d77383c71a81e82b",
+  "sourceTreeSha256": "48045dd122cec001adcfd35a58985827cc49a977c29aa26cfda9ce017548a235",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1604,6 +1604,28 @@
       ]
     },
     {
+      "path": "docs/sol/2026-07-15-khala-ui-desktop-settings-pilot-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8846",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "6a52e19737371688343889269df3ba85ade5fd4ed9070f32987161ea69848b53",
+      "status": "implementation and deterministic visual proof complete",
+      "snapshot": "`269574234dd5b072fdf39d6352a9ea21fc236a84`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8844,
+        8845,
+        8846,
+        8847
+      ]
+    },
+    {
       "path": "docs/sol/2026-07-15-tanstack-start-unified-docs-migration-audit.md",
       "class": "historical-analysis",
       "owner": "OpenAgents docs architecture",
@@ -2997,7 +3019,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "1fcb059fb917baf44e9a5de6afa71e492688fc73ec272818583288d89d1e1db9",
+      "sha256": "e478ed4cc85ad594f097d08be5166fe7b29fe1a94fbbc9c4835ba5ffb70966dc",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3043,7 +3065,8 @@
         8748,
         8796,
         8845,
-        8846
+        8846,
+        8847
       ]
     },
     {
