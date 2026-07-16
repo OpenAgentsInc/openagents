@@ -3767,7 +3767,11 @@ ipcMain.handle(CodexLocalFullAutoInterruptChannel, async (_event, value: unknown
   if (request === null) return { ok: false }
   const live = fullAutoLiveState.get(request.threadRef)
   if (live === undefined || live.state !== "turn_running" || live.turnRef === null) return { ok: false }
-  return { ok: codexLocal.interrupt(live.turnRef) }
+  return {
+    ok: codexLocal.interrupt(live.turnRef) ||
+      grokAcpDriver.interrupt(live.turnRef) ||
+      cursorAcpDriver.interrupt(live.turnRef),
+  }
 })
 
 /**
@@ -3802,10 +3806,10 @@ if (isFullAutoControlEnabled(process.env)) {
       },
       listLanes: providerLaneEntries,
       isLaneEligible: laneRef => {
-        const lane = laneRef === "codex-local" ? codexLocalLane : laneRef === "fable-local" ? fableLocalLane : null
+        const report = providerLaneCapabilityByRef(laneRef)
         const policy = fullAutoLanePolicy(laneRef)
-        if (lane === null || policy?.autoResolveQuestions !== true) return false
-        const projection = projectProviderLaneCapabilities(lane.capabilities())
+        if (report === null || policy?.autoResolveQuestions !== true) return false
+        const projection = projectProviderLaneCapabilities(report)
         return projection.admission === "admitted" && projection.fullAuto === true
       },
     },
