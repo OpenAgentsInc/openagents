@@ -109,6 +109,19 @@ const safeCode = (error: unknown): string => {
       : "probe_failed";
   return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(candidate) ? candidate : "probe_failed";
 };
+
+export const defaultGrokDesktopAuthOptions = (
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): Readonly<{
+  environment: Readonly<{ HOME?: string }>;
+  apiKeyConfigured: false;
+}> => ({
+  environment: Object.freeze({
+    ...(typeof environment.HOME === "string" ? { HOME: environment.HOME } : {}),
+  }),
+  apiKeyConfigured: false,
+});
+
 const receiptRef = (provider: AcpProviderId, index: number): string =>
   `acp.${provider}.receipt.${index}`;
 
@@ -320,9 +333,10 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
                 cwd: root,
                 admission,
                 onUpdate,
-                environment: { HOME: process.env.HOME, XAI_API_KEY: process.env.XAI_API_KEY },
-                apiKeyConfigured:
-                  typeof process.env.XAI_API_KEY === "string" && process.env.XAI_API_KEY.length > 0,
+                // Desktop ACP intentionally uses Grok's existing local login. An ambient
+                // shell API key is not an owner configuration decision and must not
+                // override the advertised cached_token path.
+                ...defaultGrokDesktopAuthOptions(),
               }))
           )(cwd, slot.admission, (record) => projectRuntimeUpdate(provider, record))
         : await (

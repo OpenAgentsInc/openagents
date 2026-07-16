@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { createAcpProviderHost } from "./acp-provider-host.ts";
+import {
+  createAcpProviderHost,
+  defaultGrokDesktopAuthOptions,
+} from "./acp-provider-host.ts";
 
 const probe = (provider: "grok" | "cursor") =>
   ({
@@ -89,6 +92,15 @@ const fakeRuntime = (provider: "grok" | "cursor", calls: string[] = []) => {
 };
 
 describe("main-owned ACP provider host", () => {
+  test("uses existing Grok login without promoting an ambient API key to configuration", () => {
+    expect(
+      defaultGrokDesktopAuthOptions({
+        HOME: "/ordinary/home",
+        XAI_API_KEY: "ambient-must-not-select-api-key",
+      }),
+    ).toEqual({ environment: { HOME: "/ordinary/home" }, apiKeyConfigured: false });
+  });
+
   test("drives distinct clean-machine probe, auth, and session flows without renderer authority", async () => {
     const host = createAcpProviderHost({
       cwd: async () => "/workspace",
