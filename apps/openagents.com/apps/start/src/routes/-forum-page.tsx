@@ -21,6 +21,7 @@ import {
   Card,
   CodeBlock,
   Divider,
+  Frame,
   IntentRef,
   Link,
   Markdown,
@@ -198,15 +199,44 @@ const panelCard = (key: string, children: ReadonlyArray<View>): View =>
     children,
   )
 
+const forumBoardFrameSize = [1180, 640] as const
+const forumBreadcrumbFrameSize = [1180, 56] as const
+
+const khalaBoardPanel = (key: string, children: ReadonlyArray<View>): View =>
+  Frame(
+    {
+      key,
+      khala: {
+        id: 'forum-board-index',
+        motif: 'cut-corner-surface',
+        width: forumBoardFrameSize[0],
+        height: forumBoardFrameSize[1],
+        density: 'compact',
+      },
+      style: {
+        backgroundColor: 'surface',
+        borderColor: 'border',
+        borderWidth: 1,
+        width: 'full',
+      },
+    },
+    [Stack({ key: `${key}-content`, direction: 'column', gap: '3', padding: '4' }, children)],
+  )
+
 const breadcrumb = (
   key: string,
   trail: ReadonlyArray<Readonly<{ key: string; label: string; path?: string }>>,
 ): View =>
-  Card(
+  Frame(
     {
       key,
-      padding: '3',
-      radius: 'md',
+      khala: {
+        id: `${key}-status-band`,
+        motif: 'signal-separator',
+        width: forumBreadcrumbFrameSize[0],
+        height: forumBreadcrumbFrameSize[1],
+        density: 'compact',
+      },
       style: {
         backgroundColor: 'surfaceRaised',
         borderColor: 'border',
@@ -216,7 +246,7 @@ const breadcrumb = (
     },
     [
       Stack(
-        { key: `${key}-row`, direction: 'row', gap: '2', align: 'center' },
+        { key: `${key}-row`, direction: 'row', gap: '2', padding: '3', align: 'center' },
         trail.flatMap((item, index) => {
           const node =
             item.path === undefined
@@ -310,7 +340,7 @@ const forumRow = (
       },
     },
     [
-      Stack({ key: `${key}-head`, direction: 'row', gap: '3', align: 'center' }, [
+      Stack({ key: `${key}-head`, direction: 'column', gap: '1', align: 'start' }, [
         pathLink(`${key}-title`, forum.title ?? 'Forum', forumPath(forum), 'title'),
         Text({
           key: `${key}-slug`,
@@ -347,7 +377,7 @@ const indexView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> =>
       : state.forums.map((forum, index) => forumRow(forum, index, nowMs))
   return [
     breadcrumb('forum-index-crumbs', [boardBreadcrumbItem]),
-    panelCard('forum-index-panel', [
+    khalaBoardPanel('forum-index-panel', [
       text('forum-index-title', 'OpenAgents Forum', 'heading'),
       ...rows,
     ]),

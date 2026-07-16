@@ -182,6 +182,7 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     expect(indexHtml).toContain('data-forum-en-root=""')
     expect(indexHtml).toContain('aria-label="OpenAgents Forum"')
     expect(indexHtml).not.toContain('OpenAgents Forum</') // content lives in the EN tree
+    expect(new TextEncoder().encode(indexHtml).byteLength).toBe(112)
 
     const receiptHtml = renderToStaticMarkup(
       <ForumReceiptPage receiptRef="receipt_1" />,
@@ -212,10 +213,15 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     const serialized = JSON.stringify(tree)
 
     expect(structure).toMatchObject({ tag: 'Stack', key: 'forum-root' })
+    expect(new TextEncoder().encode(serialized).byteLength).toBeLessThanOrEqual(5_200)
     expect(serialized).toContain('"catalogVersion":"effect-native/v43"')
-    for (const tag of ['Stack', 'Card', 'Link', 'Text', 'Badge']) {
+    for (const tag of ['Stack', 'Frame', 'Card', 'Link', 'Text', 'Badge']) {
       expect(serialized).toContain(`"_tag":"${tag}"`)
     }
+    expect(serialized).toContain('"motif":"cut-corner-surface"')
+    expect(serialized).toContain('"motif":"signal-separator"')
+    expect(serialized.match(/"motif":"cut-corner-surface"/gu)).toHaveLength(1)
+    expect(serialized.match(/"motif":"signal-separator"/gu)).toHaveLength(1)
     expect(serialized).toContain('OpenAgents Forum')
     expect(serialized).toContain('Product Promises')
     expect(serialized).toContain('"path":"/forum/f/product-promises"')
@@ -226,6 +232,18 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     expect(serialized).toContain('"label":"Locked"')
     // Adapter rule: no React class names inside the typed tree.
     expect(serialized).not.toContain('className')
+  })
+
+  test('keeps Khala decoration bounded to the board and breadcrumb without changing semantic rows', () => {
+    const tree = forumPageView(readyIndexState, NOW)
+    const serialized = JSON.stringify(tree)
+
+    expect(serialized.match(/"_tag":"Frame"/gu)).toHaveLength(2)
+    expect(serialized.match(/"_tag":"Card"/gu)).toHaveLength(FORUMS.length)
+    expect(serialized).toContain('"id":"forum-board-index"')
+    expect(serialized).toContain('"id":"forum-index-crumbs-status-band"')
+    expect(serialized).toContain('Product Promises')
+    expect(serialized).toContain('Void')
   })
 
   test('forum view renders the topic list with moderation state labels', () => {
@@ -337,6 +355,16 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
       )
       expect(container.textContent).toContain('OpenAgents Forum')
       expect(container.querySelector('[data-en-key="forum-root"]')).not.toBeNull()
+      expect(container.querySelectorAll('[data-en-khala-decoration]')).toHaveLength(2)
+      expect(container.querySelectorAll('[data-en-khala="cut-corner-surface"]')).toHaveLength(1)
+      expect(container.querySelectorAll('[data-en-khala="signal-separator"]')).toHaveLength(1)
+      expect(
+        container.querySelectorAll('[data-en-key^="forum-row-"] [data-en-khala-decoration]'),
+      ).toHaveLength(0)
+      const undecorated = container.cloneNode(true) as HTMLElement
+      undecorated.querySelectorAll('[data-en-khala-decoration]').forEach((node) => node.remove())
+      expect(undecorated.textContent).toContain('OpenAgents Forum')
+      expect(undecorated.textContent).toContain('Product Promises')
       // Forum links are real anchors with real hrefs (crawlable deep links).
       const link = container.querySelector(
         '[data-en-key="forum-row-product-promises-title"]',
