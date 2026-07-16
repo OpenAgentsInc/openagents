@@ -6,11 +6,11 @@ export const Route = createFileRoute('/download')({
   component: DownloadPage,
   head: () => ({
     meta: [
-      { title: 'Download OpenAgents for Mac' },
+      { title: 'Download OpenAgents Desktop' },
       {
         name: 'description',
         content:
-          'Download the latest OpenAgents Desktop release candidate for Apple-silicon Macs.',
+          'Download OpenAgents Desktop for Apple silicon Macs. Windows, Linux, and Intel Mac builds are coming soon.',
       },
       { name: 'theme-color', content: '#05070d' },
     ],

@@ -134,9 +134,48 @@ export function DesktopLandingPage() {
 export function DownloadPage() {
   return (
     <PublicSiteShell>
-      <section className="oa-install-hero"><div className="oa-container oa-install-layout"><div><p className="oa-kicker">OpenAgents Desktop</p><h1>Bring your Codex work<br />into one durable place.</h1><p className="oa-install-summary">Download the latest OpenAgents Desktop candidate for Mac. It uses your ordinary Codex session and keeps your work local, legible, and ready to resume.</p><div className="oa-download-row"><a className="oa-download-button" href={MAC_RELEASE.downloadUrl} rel="noreferrer"><span>Download for Mac</span><small>{MAC_RELEASE.version} · {MAC_RELEASE.size}</small></a><p>{MAC_RELEASE.architecture}<br />macOS disk image</p></div><p className="oa-candidate-note">This is a release candidate for early use, not the stable release.</p></div><aside className="oa-release-panel" aria-label="Release details"><p className="oa-kicker">Current candidate</p><dl><div><dt>Version</dt><dd>{MAC_RELEASE.version}</dd></div><div><dt>Platform</dt><dd>{MAC_RELEASE.platform}</dd></div><div><dt>Chip</dt><dd>{MAC_RELEASE.architecture}</dd></div><div><dt>Package</dt><dd>.dmg</dd></div></dl><a href={MAC_RELEASE.releaseUrl} target="_blank" rel="noreferrer">View release notes <span aria-hidden="true">↗</span></a></aside></div></section>
-      <section className="oa-install-steps"><div className="oa-container oa-install-steps-layout"><div><p className="oa-kicker">Install</p><h2>From download to workroom.</h2></div><ol>{[['Open the disk image', 'Double-click the downloaded DMG in Finder.'], ['Move OpenAgents to Applications', 'Drag the app into your Applications folder.'], ['Launch and start working', 'Open OpenAgents and continue with your existing Codex setup.']].map(([title, body], index) => <li key={title}><span>{String(index + 1).padStart(2, '0')}</span><div><h3>{title}</h3><p>{body}</p></div></li>)}</ol></div></section>
-      <section className="oa-install-help"><div className="oa-container"><p>Need the setup details or product boundaries?</p><InternalLink href={DOCS_URL} preload="render">Read the docs <span aria-hidden="true">→</span></InternalLink></div></section>
+      <section className="oa-download-page">
+        <div className="oa-container oa-download-shell">
+          <header className="oa-download-heading">
+            <h1>Download OpenAgents Desktop</h1>
+            <p>Available now for Apple silicon Macs.</p>
+          </header>
+
+          <div className="oa-platform-list" aria-label="Desktop downloads">
+            <div className="oa-platform-row">
+              <div className="oa-platform-name">
+                <span className="oa-platform-mark" aria-hidden="true">M</span>
+                <div><strong>macOS</strong><span>Apple silicon</span></div>
+              </div>
+              <span className="oa-platform-release">{MAC_RELEASE.version} · .dmg · {MAC_RELEASE.size}</span>
+              <a className="oa-platform-action" href={MAC_RELEASE.downloadUrl} rel="noreferrer">Download</a>
+            </div>
+
+            {[
+              ['M', 'macOS', 'Intel'],
+              ['W', 'Windows', 'x64'],
+              ['L', 'Linux', 'x64 · .deb / .rpm'],
+            ].map(([mark, platform, detail]) => (
+              <div className="oa-platform-row oa-platform-row-pending" key={`${platform}-${detail}`}>
+                <div className="oa-platform-name">
+                  <span className="oa-platform-mark" aria-hidden="true">{mark}</span>
+                  <div><strong>{platform}</strong><span>{detail}</span></div>
+                </div>
+                <span className="oa-platform-release">Not yet available</span>
+                <span className="oa-platform-action" aria-label={`${platform} ${detail} coming soon`}>Coming soon</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="oa-download-notes">
+            <p>Release candidate for early use. Open the DMG and move OpenAgents to Applications.</p>
+            <div>
+              <a href={MAC_RELEASE.releaseUrl} target="_blank" rel="noreferrer">Release notes <span aria-hidden="true">↗</span></a>
+              <InternalLink href={DOCS_URL} preload="render">Installation help <span aria-hidden="true">→</span></InternalLink>
+            </div>
+          </div>
+        </div>
+      </section>
     </PublicSiteShell>
   )
 }
