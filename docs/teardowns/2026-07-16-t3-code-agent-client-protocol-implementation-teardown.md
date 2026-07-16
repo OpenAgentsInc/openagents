@@ -822,7 +822,9 @@ behavior without an explicit namespaced codec and peer profile.
 known variant inventories, a production-transport-backed scripted peer,
 concurrent sessions and reverse requests, deterministic redacted transcripts,
 MCP reference refusal/redaction, fault and compatibility artifacts, and inert
-by default Grok/Cursor live probes. Product-native projection remains #8891;
+by default Grok/Cursor live probes. Product-native projection and reverse
+authority are implemented by [#8891](https://github.com/OpenAgentsInc/openagents/issues/8891)
+and specified in the [runtime bridge ADR](../adr/2026-07-16-agent-client-runtime-bridge.md);
 provider-specific real-binary admission remains #8893, #8894, and #8897.
 
 1. Exercise every stable method and notification.

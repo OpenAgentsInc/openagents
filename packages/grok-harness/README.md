@@ -2,14 +2,11 @@
 
 Grok Build CLI as a Khala Code multi-harness adapter (MH-3 / MH-4).
 
-**Does not edit `agent-runtime-schema`.** Consumes MH-0 contracts when they
-land; until then uses provisional local literals that match the planned
-shape (`grok_cli`, `marginal_cost_class`, typed failures).
-
 This package is a narrow Grok fixture, not OpenAgents' shared Agent Client
 Protocol implementation. It currently covers outbound
-initialize/auth/session/prompt requests and a small `session/update`
-projection; it does not implement the bidirectional permission, filesystem, or
+initialize/auth/session/prompt requests and delegates validated `session/update`
+admission/projection to [`agent-client-runtime-bridge`](../agent-client-runtime-bridge/README.md).
+Capabilities are false by default. This package does not itself install the bidirectional permission, filesystem, or
 terminal surface required for general Agent Client Protocol support. Grok's
 current source uses Rust `agent-client-protocol` 0.10.4 with unstable features,
 resolving schema 0.11.4, while the OpenAgents target starts from current stable
@@ -29,7 +26,7 @@ which uses the generated protocol authority and production stdio transport.
 | ------------------ | ------------------------------------------------------------------------- |
 | `mock-acp-server`  | In-process ACP fixture (initialize → authenticate → session/new → prompt) |
 | `acp-client`       | JSON-RPC stdio client for real `grok agent stdio` or mock                 |
-| `event-projector`  | ACP `session/update` chunks → neutral chat turn events                    |
+| `event-projector`  | Shared canonical bridge output → legacy neutral chat compatibility events |
 | `chat-runtime`     | Axis A: startThread / startTurn / interruptTurn                           |
 | `session-store`    | desktop session ↔ Grok session id mapping                                 |
 | `worker-executor`  | Axis B: claim-shaped worker run behind a pylon-core-shaped port           |

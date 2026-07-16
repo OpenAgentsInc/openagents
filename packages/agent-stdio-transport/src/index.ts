@@ -157,7 +157,12 @@ export class AgentStdioHandlerError extends Error {
 
 export type AgentStdioReverseHandler = (
   params: unknown,
-  context: Readonly<{ method: string; signal: AbortSignal; generation: number }>,
+  context: Readonly<{
+    method: string;
+    requestId: string | number | null;
+    signal: AbortSignal;
+    generation: number;
+  }>,
 ) => unknown | Promise<unknown>;
 
 export type AgentStdioTransportOptions = Readonly<{
@@ -913,7 +918,12 @@ export class AgentStdioTransport {
     this.syncPressure();
     void Promise.resolve()
       .then(() =>
-        handler(params, { method, signal: controller.signal, generation: this.generation }),
+        handler(params, {
+          method,
+          requestId: id,
+          signal: controller.signal,
+          generation: this.generation,
+        }),
       )
       .then((result) => {
         const active = this.reverseActive.get(key);

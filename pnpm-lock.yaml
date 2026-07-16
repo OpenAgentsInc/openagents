@@ -1188,6 +1188,31 @@ importers:
         specifier: 'catalog:'
         version: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
 
+  packages/agent-client-runtime-bridge:
+    dependencies:
+      '@openagentsinc/agent-client-protocol':
+        specifier: workspace:*
+        version: link:../agent-client-protocol
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../agent-runtime-schema
+      '@openagentsinc/agent-stdio-transport':
+        specifier: workspace:*
+        version: link:../agent-stdio-transport
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.1
+        version: 24.13.1
+      fast-check:
+        specifier: ^4.8.0
+        version: 4.9.0
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
+
   packages/agent-readiness:
     dependencies:
       '@openagentsinc/runtime-platform':
@@ -1454,6 +1479,12 @@ importers:
 
   packages/grok-harness:
     dependencies:
+      '@openagentsinc/agent-client-protocol':
+        specifier: workspace:*
+        version: link:../agent-client-protocol
+      '@openagentsinc/agent-client-runtime-bridge':
+        specifier: workspace:*
+        version: link:../agent-client-runtime-bridge
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../runtime-platform
@@ -9546,6 +9577,7 @@ packages:
   typescript@5.4.5:
     resolution: {integrity: sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ==}
     engines: {node: '>=14.17'}
+    hasBin: true
 
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}

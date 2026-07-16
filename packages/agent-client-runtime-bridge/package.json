@@ -1,0 +1,27 @@
+{
+  "name": "@openagentsinc/agent-client-runtime-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./reverse-handlers": "./src/reverse-handlers.ts",
+    "./node-brokers": "./src/node-brokers.ts",
+    "./vendor-handlers": "./src/vendor-handlers.ts"
+  },
+  "scripts": {
+    "test": "vp test --run packages/agent-client-runtime-bridge/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/agent-client-protocol": "workspace:*",
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/agent-stdio-transport": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "fast-check": "^4.8.0",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

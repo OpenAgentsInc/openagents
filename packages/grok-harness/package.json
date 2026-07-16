@@ -24,6 +24,8 @@
     "live-acp-smoke": "node --import tsx scripts/live-acp-smoke.ts"
   },
   "dependencies": {
+    "@openagentsinc/agent-client-protocol": "workspace:*",
+    "@openagentsinc/agent-client-runtime-bridge": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:"
   },

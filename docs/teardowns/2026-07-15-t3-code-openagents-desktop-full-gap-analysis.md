@@ -44,6 +44,8 @@ multi-provider parity. The
 [T3 Code Agent Client Protocol implementation teardown](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
 defines the generated bidirectional client foundation, Grok-first proof, and
 capability-gated peer profiles. The scope is client-only.
+The canonical event/evidence and reverse-request authority boundary is in the
+[Agent Client Protocol runtime bridge ADR](../adr/2026-07-16-agent-client-runtime-bridge.md).
 
 ## Scope, snapshots, and method
 
@@ -61,9 +63,9 @@ This document compares implementation, not marketing claims. It reconciles:
 
 The implementation snapshots used for the final reconciliation are:
 
-| Product | Local source revision | Snapshot note |
-|---|---|---|
-| T3 Code | `c1ec1915fc16f3dc1ec5d47d9a97f6210a574526` | Local `projects/repos/t3code` `main`; 2026-07-12 Android-support commit. The teardown separately pins the upstream revisions used for its deeper claims. |
+| Product    | Local source revision                      | Snapshot note                                                                                                                                                     |
+| ---------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T3 Code    | `c1ec1915fc16f3dc1ec5d47d9a97f6210a574526` | Local `projects/repos/t3code` `main`; 2026-07-12 Android-support commit. The teardown separately pins the upstream revisions used for its deeper claims.          |
 | OpenAgents | `2268392f3501bda8cf2735c69ff784a08c842806` | Local OpenAgents `main` after reconciliation with `origin/main`; includes the generated Codex protocol authority foundation and the latest Desktop startup fixes. |
 
 This is a point-in-time source audit. A type, route, component, or dormant
@@ -73,40 +75,40 @@ support until the running client decodes, retains, projects, and tests it.
 
 ### Status legend
 
-| Mark | Meaning |
-|---|---|
-| **I** | Implemented in the current OpenAgents Desktop product path |
+| Mark  | Meaning                                                                   |
+| ----- | ------------------------------------------------------------------------- |
+| **I** | Implemented in the current OpenAgents Desktop product path                |
 | **P** | Partial: a foundation or narrower path exists, but not T3's product depth |
-| **M** | Missing from the current OpenAgents Desktop product path |
-| **D** | Deliberately deferred or excluded from the Codex-only MVP |
-| **S** | OpenAgents is materially stronger; parity would be a regression |
+| **M** | Missing from the current OpenAgents Desktop product path                  |
+| **D** | Deliberately deferred or excluded from the Codex-only MVP                 |
+| **S** | OpenAgents is materially stronger; parity would be a regression           |
 
 ## Top-level scorecard
 
-| Capability family | T3 Code | OpenAgents Desktop | OA status | Material gap |
-|---|---|---|---:|---|
-| Provider breadth | Codex, Claude Code, Cursor, Grok, OpenCode | Codex-only visible MVP | **D** | Four provider adapters, instance management, and provider-neutral UX are absent by policy. |
-| Codex process model | Persistent provider runtime | One app-server process per active turn | **P** | No scoped, long-lived supervisor or idle-event/reconnect lifecycle. |
-| Codex protocol declarations | Generated pinned protocol package | Generated pinned protocol authority now exists | **I/P** | The package exists; the production client still uses a narrow manual runtime path. |
-| Codex behavioral coverage | Broad subscription, narrow normalization | Six client methods, three reverse handlers, eight notifications | **P** | Both are incomplete; OpenAgents remains much farther from the full current protocol. |
-| Orchestration | Event-sourced CQRS over SQLite | Typed hosts, ledgers, projections, Sync, but no equivalent whole-product CQRS core | **P** | No single durable command/event/projection model for every project, thread, provider, and operation. |
-| Project/thread model | Projects, provider threads, worktrees, checkpoints | Workspace + Codex conversations + checkpoints | **P** | Worktree-per-thread lifecycle and provider-neutral project hierarchy are missing. |
-| Parallel execution | Worktree-isolated concurrent threads | Multiple sessions/fleet machinery, no equivalent Desktop worktree lifecycle | **P** | Desktop cannot create/manage parallel project worktrees as the primary thread model. |
-| Git/forge | Git mutations and four forge integrations | Read-only review plus guarded checkpoint revert | **P** | Branch, commit, push, PR/MR creation, stack flow, and forge integrations are absent. |
-| Remote environments | Environment catalog and several endpoint types | Local workspace-first product | **M** | No remote environment catalog, attach flow, SSH/Tailscale/tunnel transport, or portable session surface. |
-| Mobile control | Expo iOS/Android remote workbench | Mobile app exists in monorepo, not a shipped Desktop-control peer | **M** | No equivalent endpoint catalog, thread control, Live Activities, or notification loop. |
-| Preview/browser automation | Preview manager, browser, Playwright-style tools, MCP loop | No equivalent integrated workbench preview loop | **M** | Visual application work cannot be inspected and controlled inside the Codex workbench. |
-| Files/editor | Project tree, file views, search, diffs | Workspace file browser/editor/save exists but is de-emphasized in MVP shell | **P** | Breadth, navigation, search sessions, and integrated worktree context trail T3. |
-| Terminal | Rich terminal/process surfaces | Typed terminal host/workspace foundations | **P** | No equivalent xterm-grade, persistent, project/thread terminal product. |
-| Timeline | Virtualized rich activity/message renderer | Typed React timeline with MessageScroller and activity grouping | **P** | Native-event fidelity, virtualization depth, minimap, cache discipline, and item coverage are incomplete. |
-| Composer | Lexical rich composer and contextual nodes | Focused textarea composer, images, steer/queue | **P/S** | T3 is richer; OpenAgents has clearer explicit concurrency semantics. |
-| Renderer architecture | React 19 + Vite + Effect Atom + Zustand + Base UI/shadcn | React 19 + Vite + Tailwind/shadcn under Effect Native state/intent authority | **I/S** | No need to copy T3's duplicate state topology; component/workbench depth remains the gap. |
-| Themes/responsiveness | Light/dark/system, mobile/responsive variants | Khala dark desktop theme | **P** | Light/system themes and broader responsive behavior are absent. |
-| Desktop platforms | macOS, Windows, Linux; WSL/SSH bridge | Release lane centered on signed/notarized macOS arm64 | **P** | Windows, Linux, x64, WSL, and equivalent packaging/update proof are missing. |
-| Updates | Stable/nightly application and provider update flows | Strong staged/rollback receipts; delivery feed is not guaranteed | **P/S** | OA has safer application semantics but lacks comparable automatic distribution/channel breadth. |
-| Onboarding | `npx t3@latest` bootstrap | Conventional install/dev/release paths | **M** | No equally simple product bootstrap or remote-host onboarding flow. |
-| Execution safety | Defaults to unrestricted execution; weak user receipts | Typed authority direction, closed IPC, explicit approvals/receipts | **S** | T3 behavior must not be copied. |
-| Release trust | Broad artifacts; audited macOS outer artifact had Gatekeeper failure | Fail-closed signed, notarized, stapled artifact and rollback receipt contract | **S** | Preserve OpenAgents' stronger gate while expanding platform coverage. |
+| Capability family           | T3 Code                                                              | OpenAgents Desktop                                                                 | OA status | Material gap                                                                                              |
+| --------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------: | --------------------------------------------------------------------------------------------------------- |
+| Provider breadth            | Codex, Claude Code, Cursor, Grok, OpenCode                           | Codex-only visible MVP                                                             |     **D** | Four provider adapters, instance management, and provider-neutral UX are absent by policy.                |
+| Codex process model         | Persistent provider runtime                                          | One app-server process per active turn                                             |     **P** | No scoped, long-lived supervisor or idle-event/reconnect lifecycle.                                       |
+| Codex protocol declarations | Generated pinned protocol package                                    | Generated pinned protocol authority now exists                                     |   **I/P** | The package exists; the production client still uses a narrow manual runtime path.                        |
+| Codex behavioral coverage   | Broad subscription, narrow normalization                             | Six client methods, three reverse handlers, eight notifications                    |     **P** | Both are incomplete; OpenAgents remains much farther from the full current protocol.                      |
+| Orchestration               | Event-sourced CQRS over SQLite                                       | Typed hosts, ledgers, projections, Sync, but no equivalent whole-product CQRS core |     **P** | No single durable command/event/projection model for every project, thread, provider, and operation.      |
+| Project/thread model        | Projects, provider threads, worktrees, checkpoints                   | Workspace + Codex conversations + checkpoints                                      |     **P** | Worktree-per-thread lifecycle and provider-neutral project hierarchy are missing.                         |
+| Parallel execution          | Worktree-isolated concurrent threads                                 | Multiple sessions/fleet machinery, no equivalent Desktop worktree lifecycle        |     **P** | Desktop cannot create/manage parallel project worktrees as the primary thread model.                      |
+| Git/forge                   | Git mutations and four forge integrations                            | Read-only review plus guarded checkpoint revert                                    |     **P** | Branch, commit, push, PR/MR creation, stack flow, and forge integrations are absent.                      |
+| Remote environments         | Environment catalog and several endpoint types                       | Local workspace-first product                                                      |     **M** | No remote environment catalog, attach flow, SSH/Tailscale/tunnel transport, or portable session surface.  |
+| Mobile control              | Expo iOS/Android remote workbench                                    | Mobile app exists in monorepo, not a shipped Desktop-control peer                  |     **M** | No equivalent endpoint catalog, thread control, Live Activities, or notification loop.                    |
+| Preview/browser automation  | Preview manager, browser, Playwright-style tools, MCP loop           | No equivalent integrated workbench preview loop                                    |     **M** | Visual application work cannot be inspected and controlled inside the Codex workbench.                    |
+| Files/editor                | Project tree, file views, search, diffs                              | Workspace file browser/editor/save exists but is de-emphasized in MVP shell        |     **P** | Breadth, navigation, search sessions, and integrated worktree context trail T3.                           |
+| Terminal                    | Rich terminal/process surfaces                                       | Typed terminal host/workspace foundations                                          |     **P** | No equivalent xterm-grade, persistent, project/thread terminal product.                                   |
+| Timeline                    | Virtualized rich activity/message renderer                           | Typed React timeline with MessageScroller and activity grouping                    |     **P** | Native-event fidelity, virtualization depth, minimap, cache discipline, and item coverage are incomplete. |
+| Composer                    | Lexical rich composer and contextual nodes                           | Focused textarea composer, images, steer/queue                                     |   **P/S** | T3 is richer; OpenAgents has clearer explicit concurrency semantics.                                      |
+| Renderer architecture       | React 19 + Vite + Effect Atom + Zustand + Base UI/shadcn             | React 19 + Vite + Tailwind/shadcn under Effect Native state/intent authority       |   **I/S** | No need to copy T3's duplicate state topology; component/workbench depth remains the gap.                 |
+| Themes/responsiveness       | Light/dark/system, mobile/responsive variants                        | Khala dark desktop theme                                                           |     **P** | Light/system themes and broader responsive behavior are absent.                                           |
+| Desktop platforms           | macOS, Windows, Linux; WSL/SSH bridge                                | Release lane centered on signed/notarized macOS arm64                              |     **P** | Windows, Linux, x64, WSL, and equivalent packaging/update proof are missing.                              |
+| Updates                     | Stable/nightly application and provider update flows                 | Strong staged/rollback receipts; delivery feed is not guaranteed                   |   **P/S** | OA has safer application semantics but lacks comparable automatic distribution/channel breadth.           |
+| Onboarding                  | `npx t3@latest` bootstrap                                            | Conventional install/dev/release paths                                             |     **M** | No equally simple product bootstrap or remote-host onboarding flow.                                       |
+| Execution safety            | Defaults to unrestricted execution; weak user receipts               | Typed authority direction, closed IPC, explicit approvals/receipts                 |     **S** | T3 behavior must not be copied.                                                                           |
+| Release trust               | Broad artifacts; audited macOS outer artifact had Gatekeeper failure | Fail-closed signed, notarized, stapled artifact and rollback receipt contract      |     **S** | Preserve OpenAgents' stronger gate while expanding platform coverage.                                     |
 
 ## 1. Provider and Codex runtime gaps
 
@@ -521,67 +523,67 @@ ambient privileged renderer.
 This table is the consolidated list of meaningful T3 capabilities that are
 absent or materially incomplete in OpenAgents Desktop.
 
-| Priority | Capability | OA state | Dependency / disposition |
-|---:|---|---|---|
-| P0 | Long-lived Codex app-server supervisor | **P** | Protocol manifest exists; replace per-turn process ownership. |
-| P0 | Generated runtime decoding of the bundled Codex protocol | **P** | Integrate the generated authority package into production transport. |
-| P0 | Lossless native Codex event journal | **M** | Required before broad projection/UI work. |
-| P0 | Complete reverse-RPC inbox and arbiter | **P** | Own all methods, deny safely where UI is deferred. |
-| P0 | Restart/reconnect repair for thread, turn, request, and item state | **P** | Depends on supervisor and event journal. |
-| P0 | Durable queue/steer ownership | **P** | Preserve explicit semantics; persist and arbitrate them. |
-| P0 | Full Codex lifecycle/account/model/configuration surface | **P** | Codex-only scope; derive disclosure from capability manifest. |
-| P0 | Complete timeline item fidelity | **P** | Consume native events; do not add one-off string switches. |
-| P0 | Large-thread virtualization and bounded render caches | **P** | Extend current fast-start and MessageScroller contracts. |
-| P1 | Project/thread/worktree aggregate | **P** | Establish stable IDs and durable lifecycle. |
-| P1 | Create/manage worktree per parallel thread | **M** | Requires Git authority and collision-safe cleanup. |
-| P1 | Worktree/branch ownership visible throughout UI | **M** | Depends on aggregate. |
-| P1 | Rich file tree, fuzzy navigation, and search sessions | **P** | Build on existing workspace host. |
-| P1 | Persistent xterm-grade terminal sessions | **P** | PTY identity, resize, replay, authority. |
-| P1 | Worker-backed rich diff engine | **P** | Keep review contextual, not an intrusive bottom panel. |
-| P1 | Stage/discard/commit/branch/push workflows | **M** | Typed intents, approvals, receipts. |
-| P1 | PR/MR preparation and creation | **M** | Starts with GitHub if product priority warrants; do not imply four forges. |
-| P1 | Embedded preview and port/process manager | **M** | Requires process supervision and isolation. |
-| P1 | Browser automation tools fed to Codex through MCP | **M** | Requires preview, permissions, evidence capture. |
-| P1 | Contextual composer nodes for files/skills/commands | **P** | Prefer bounded progressive enhancement over editor rewrite. |
-| P2 | Remote environment catalog | **M** | Stable runtime/environment identities first. |
-| P2 | SSH launch/forward transport | **M** | Scoped credentials and reconnect repair. |
-| P2 | Tailnet endpoint discovery | **M** | Explicit trust and endpoint ranking. |
-| P2 | Capability-scoped token exchange/DPoP | **M** | Adapt shape, retain OpenAgents identity/policy authority. |
-| P2 | Remote filesystem/Git/terminal/preview/provider transport | **M** | Builds on all remote foundations. |
-| P2 | Mobile paired-host directory and live workbench | **M** | Shared durable projections and access protocol first. |
-| P2 | Mobile approval/steer/queue/interrupt | **M** | Complete decision inbox and arbitration first. |
-| P2 | Push notifications and Live Activities | **M** | Attention policy and replay-safe deep links. |
-| P2 | Automatic application update feed/channels | **P** | Preserve fail-closed staging and rollback semantics. |
-| P2 | macOS x64, Windows, Linux, WSL support | **M** | Per-platform release/install/update proof. |
-| P2 | One-command product/host onboarding | **M** | Must not bypass signing, identity, or environment trust. |
-| P3 | Skills/hooks/plugins/apps/marketplace management | **M/P** | Codex ecosystem only first. |
-| P3 | Provider-neutral domain projection | **P** | Keep native plane; avoid lowest-common-denominator loss. |
-| P3 | Claude Code adapter and product UI | **D** | Post-MVP product decision. |
-| P3 | Cursor adapter and product UI | **D** | Post-MVP product decision. |
-| P3 | Grok adapter and product UI | **D** | Post-MVP product decision. |
-| P3 | OpenCode adapter and product UI | **D** | Post-MVP product decision. |
-| P3 | Multiple instances of each provider | **D/P** | Account/fleet foundations exist; visible multi-provider product does not. |
-| P3 | GitLab, Bitbucket, Azure DevOps integrations | **M** | Only after one forge path and Git authority are proven. |
-| P3 | Light/system themes and broad responsive variants | **M/P** | Product-quality enhancement, not core runtime blocker. |
+| Priority | Capability                                                         | OA state | Dependency / disposition                                                   |
+| -------: | ------------------------------------------------------------------ | -------- | -------------------------------------------------------------------------- |
+|       P0 | Long-lived Codex app-server supervisor                             | **P**    | Protocol manifest exists; replace per-turn process ownership.              |
+|       P0 | Generated runtime decoding of the bundled Codex protocol           | **P**    | Integrate the generated authority package into production transport.       |
+|       P0 | Lossless native Codex event journal                                | **M**    | Required before broad projection/UI work.                                  |
+|       P0 | Complete reverse-RPC inbox and arbiter                             | **P**    | Own all methods, deny safely where UI is deferred.                         |
+|       P0 | Restart/reconnect repair for thread, turn, request, and item state | **P**    | Depends on supervisor and event journal.                                   |
+|       P0 | Durable queue/steer ownership                                      | **P**    | Preserve explicit semantics; persist and arbitrate them.                   |
+|       P0 | Full Codex lifecycle/account/model/configuration surface           | **P**    | Codex-only scope; derive disclosure from capability manifest.              |
+|       P0 | Complete timeline item fidelity                                    | **P**    | Consume native events; do not add one-off string switches.                 |
+|       P0 | Large-thread virtualization and bounded render caches              | **P**    | Extend current fast-start and MessageScroller contracts.                   |
+|       P1 | Project/thread/worktree aggregate                                  | **P**    | Establish stable IDs and durable lifecycle.                                |
+|       P1 | Create/manage worktree per parallel thread                         | **M**    | Requires Git authority and collision-safe cleanup.                         |
+|       P1 | Worktree/branch ownership visible throughout UI                    | **M**    | Depends on aggregate.                                                      |
+|       P1 | Rich file tree, fuzzy navigation, and search sessions              | **P**    | Build on existing workspace host.                                          |
+|       P1 | Persistent xterm-grade terminal sessions                           | **P**    | PTY identity, resize, replay, authority.                                   |
+|       P1 | Worker-backed rich diff engine                                     | **P**    | Keep review contextual, not an intrusive bottom panel.                     |
+|       P1 | Stage/discard/commit/branch/push workflows                         | **M**    | Typed intents, approvals, receipts.                                        |
+|       P1 | PR/MR preparation and creation                                     | **M**    | Starts with GitHub if product priority warrants; do not imply four forges. |
+|       P1 | Embedded preview and port/process manager                          | **M**    | Requires process supervision and isolation.                                |
+|       P1 | Browser automation tools fed to Codex through MCP                  | **M**    | Requires preview, permissions, evidence capture.                           |
+|       P1 | Contextual composer nodes for files/skills/commands                | **P**    | Prefer bounded progressive enhancement over editor rewrite.                |
+|       P2 | Remote environment catalog                                         | **M**    | Stable runtime/environment identities first.                               |
+|       P2 | SSH launch/forward transport                                       | **M**    | Scoped credentials and reconnect repair.                                   |
+|       P2 | Tailnet endpoint discovery                                         | **M**    | Explicit trust and endpoint ranking.                                       |
+|       P2 | Capability-scoped token exchange/DPoP                              | **M**    | Adapt shape, retain OpenAgents identity/policy authority.                  |
+|       P2 | Remote filesystem/Git/terminal/preview/provider transport          | **M**    | Builds on all remote foundations.                                          |
+|       P2 | Mobile paired-host directory and live workbench                    | **M**    | Shared durable projections and access protocol first.                      |
+|       P2 | Mobile approval/steer/queue/interrupt                              | **M**    | Complete decision inbox and arbitration first.                             |
+|       P2 | Push notifications and Live Activities                             | **M**    | Attention policy and replay-safe deep links.                               |
+|       P2 | Automatic application update feed/channels                         | **P**    | Preserve fail-closed staging and rollback semantics.                       |
+|       P2 | macOS x64, Windows, Linux, WSL support                             | **M**    | Per-platform release/install/update proof.                                 |
+|       P2 | One-command product/host onboarding                                | **M**    | Must not bypass signing, identity, or environment trust.                   |
+|       P3 | Skills/hooks/plugins/apps/marketplace management                   | **M/P**  | Codex ecosystem only first.                                                |
+|       P3 | Provider-neutral domain projection                                 | **P**    | Keep native plane; avoid lowest-common-denominator loss.                   |
+|       P3 | Claude Code adapter and product UI                                 | **D**    | Post-MVP product decision.                                                 |
+|       P3 | Cursor adapter and product UI                                      | **D**    | Post-MVP product decision.                                                 |
+|       P3 | Grok adapter and product UI                                        | **D**    | Post-MVP product decision.                                                 |
+|       P3 | OpenCode adapter and product UI                                    | **D**    | Post-MVP product decision.                                                 |
+|       P3 | Multiple instances of each provider                                | **D/P**  | Account/fleet foundations exist; visible multi-provider product does not.  |
+|       P3 | GitLab, Bitbucket, Azure DevOps integrations                       | **M**    | Only after one forge path and Git authority are proven.                    |
+|       P3 | Light/system themes and broad responsive variants                  | **M/P**  | Product-quality enhancement, not core runtime blocker.                     |
 
 ## 14. OpenAgents advantages that must not regress
 
 A gap analysis that counts only T3 features would produce the wrong plan.
 OpenAgents already has several stronger contracts:
 
-| OpenAgents advantage | Why it matters |
-|---|---|
-| Effect Native owns application state, intents, and component grammar | React/shadcn can evolve without creating a second application authority. |
-| Closed typed Electron IPC | Renderer compromise does not become ambient host privilege. |
-| Explicit approval/question/plan/interrupt surfaces | Decisions are first-class rather than generic transcript text. |
-| Explicit steer versus queue semantics | User intent is clearer than T3's draft-ahead/implicit steering seam. |
-| Loss-accounted Codex history catalog | Missing, compressed, paged, and subagent history has explicit accounting. |
-| Hidden-ref checkpoint with staged safe revert | Revert is guarded rather than a casual destructive action. |
-| Local-first identity and optional Sync link | Local product use is not forced through a cloud account. |
-| Runtime gateway cursors and recovery direction | Multi-surface state can be made replayable rather than live-stream-only. |
-| Fail-closed signed/notarized/stapled release artifact | The downloadable outer artifact, not just the inner app, is release authority. |
-| Update launch and rollback receipts | Applying bytes is not falsely equated with a successful upgrade. |
-| Typed authority/evidence/receipt distinctions | Internal completion events cannot silently become user or release authority. |
+| OpenAgents advantage                                                 | Why it matters                                                                 |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Effect Native owns application state, intents, and component grammar | React/shadcn can evolve without creating a second application authority.       |
+| Closed typed Electron IPC                                            | Renderer compromise does not become ambient host privilege.                    |
+| Explicit approval/question/plan/interrupt surfaces                   | Decisions are first-class rather than generic transcript text.                 |
+| Explicit steer versus queue semantics                                | User intent is clearer than T3's draft-ahead/implicit steering seam.           |
+| Loss-accounted Codex history catalog                                 | Missing, compressed, paged, and subagent history has explicit accounting.      |
+| Hidden-ref checkpoint with staged safe revert                        | Revert is guarded rather than a casual destructive action.                     |
+| Local-first identity and optional Sync link                          | Local product use is not forced through a cloud account.                       |
+| Runtime gateway cursors and recovery direction                       | Multi-surface state can be made replayable rather than live-stream-only.       |
+| Fail-closed signed/notarized/stapled release artifact                | The downloadable outer artifact, not just the inner app, is release authority. |
+| Update launch and rollback receipts                                  | Applying bytes is not falsely equated with a successful upgrade.               |
+| Typed authority/evidence/receipt distinctions                        | Internal completion events cannot silently become user or release authority.   |
 
 ## 15. Ordered closure plan
 

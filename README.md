@@ -116,7 +116,9 @@ The source audit and ordered implementation gates are in the
 [T3 Code Agent Client Protocol implementation teardown](docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md);
 the pinned protocol authority, bounded stdio transport, and hermetic 23-method
 [conformance package](packages/agent-client-protocol-conformance/README.md) are
-now implemented. The checked Grok/Cursor source-derived fixtures remain
+now implemented. The shared [runtime bridge contract](docs/adr/2026-07-16-agent-client-runtime-bridge.md)
+adds private native evidence, canonical projection, false-by-default reverse
+authority, interactions, and refs-only receipts. The checked Grok/Cursor source-derived fixtures remain
 explicitly non-release evidence until their independent provider profiles and
 pinned live-binary gate land. Execution is tracked in
 [#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887);
