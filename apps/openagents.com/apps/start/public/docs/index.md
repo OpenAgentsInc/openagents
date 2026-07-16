@@ -28,4 +28,3 @@ OpenAgents Desktop is not a full editor, interactive terminal, browser, payment 
 - [Use the workroom](/docs/workroom) for sessions, timeline, and composer behavior.
 - [Review changes](/docs/review-and-recovery) for read-only repository review and recovery semantics.
 - [Understand the boundary](/docs/security-and-privacy) for credential, renderer, and local-authority rules.
-- [Explore Future / Advanced](/docs/future) for clearly labeled historical ideas and dormant design horizons.

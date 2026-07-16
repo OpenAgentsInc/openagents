@@ -61,12 +61,12 @@ This is the invariant ledger for `openagents`.
 - The public content graph is exactly the curated
   `apps/start/content/docs` tree.
   Repository-wide audits, runbooks, evidence, transcripts, internal topology,
-  and secrets must not enter that graph. A bounded `Future / Advanced` section
-  may summarize and link to public historical sources for retired or dormant
-  ideas, but each page must state that it is not a live feature or roadmap
-  commitment. It must not expose operational instructions, revive authority,
-  or restate retired payment/credit/market/settlement/Sites/Autopilot claims as
-  current product behavior.
+  secrets, and archived product notes must not enter that graph. Historical or
+  dormant material belongs in `docs/archive/`; it must not be routed, indexed,
+  mirrored, or linked from public documentation, expose operational
+  instructions, revive authority, or restate retired
+  payment/credit/market/settlement/Sites/Autopilot claims as current product
+  behavior.
 - Product promises do not appear in human top-level navigation.
   `/docs/product-promises` remains a stable compatibility redirect into the
   agent-readable docs; mutable promise state stays authoritative in its JSON,

@@ -38,12 +38,7 @@
 }
 
 .oa-nav { min-height: 4rem; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1.5rem; }
-.oa-brand { width: fit-content; display: inline-flex; align-items: center; gap: .75rem; font-size: .94rem; font-weight: 650; letter-spacing: -.015em; }
-.oa-brand-mark { width: 1.1rem; height: 1.1rem; display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; gap: 2px; }
-.oa-brand-mark span { display: block; background: var(--oa-energy); }
-.oa-brand-mark span:nth-child(1) { height: 45%; }
-.oa-brand-mark span:nth-child(2) { height: 100%; background: var(--oa-cyan); }
-.oa-brand-mark span:nth-child(3) { height: 68%; }
+.oa-brand { width: fit-content; display: inline-flex; align-items: center; font-size: .94rem; font-weight: 650; letter-spacing: -.015em; }
 .oa-nav-status { display: inline-flex; align-items: center; gap: .55rem; color: var(--oa-muted); font-family: var(--oa-mono); font-size: .72rem; }
 .oa-nav-status span { width: .42rem; height: .42rem; border-radius: 50%; background: var(--oa-success); }
 .oa-nav-links, .oa-footer-links { display: flex; align-items: center; justify-content: flex-end; gap: 1.25rem; color: var(--oa-muted); font-size: .82rem; }

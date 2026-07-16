@@ -14,6 +14,7 @@ import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as TanstackRouteImport } from './routes/tanstack'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as Stage1RouteImport } from './routes/stage1'
+import { Route as SplashRouteImport } from './routes/splash'
 import { Route as RunRouteImport } from './routes/run'
 import { Route as PylonsRouteImport } from './routes/pylons'
 import { Route as PromisesRouteImport } from './routes/promises'
@@ -87,6 +88,11 @@ const StatsRoute = StatsRouteImport.update({
 const Stage1Route = Stage1RouteImport.update({
   id: '/stage1',
   path: '/stage1',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SplashRoute = SplashRouteImport.update({
+  id: '/splash',
+  path: '/splash',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RunRoute = RunRouteImport.update({
@@ -358,6 +364,7 @@ export interface FileRoutesByFullPath {
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
   '/run': typeof RunRoute
+  '/splash': typeof SplashRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
   '/tanstack': typeof TanstackRoute
@@ -413,6 +420,7 @@ export interface FileRoutesByTo {
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
   '/run': typeof RunRoute
+  '/splash': typeof SplashRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
   '/tanstack': typeof TanstackRoute
@@ -470,6 +478,7 @@ export interface FileRoutesById {
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
   '/run': typeof RunRoute
+  '/splash': typeof SplashRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
   '/tanstack': typeof TanstackRoute
@@ -528,6 +537,7 @@ export interface FileRouteTypes {
     | '/promises'
     | '/pylons'
     | '/run'
+    | '/splash'
     | '/stage1'
     | '/stats'
     | '/tanstack'
@@ -583,6 +593,7 @@ export interface FileRouteTypes {
     | '/promises'
     | '/pylons'
     | '/run'
+    | '/splash'
     | '/stage1'
     | '/stats'
     | '/tanstack'
@@ -639,6 +650,7 @@ export interface FileRouteTypes {
     | '/promises'
     | '/pylons'
     | '/run'
+    | '/splash'
     | '/stage1'
     | '/stats'
     | '/tanstack'
@@ -696,6 +708,7 @@ export interface RootRouteChildren {
   PromisesRoute: typeof PromisesRoute
   PylonsRoute: typeof PylonsRoute
   RunRoute: typeof RunRoute
+  SplashRoute: typeof SplashRoute
   Stage1Route: typeof Stage1Route
   StatsRoute: typeof StatsRoute
   TanstackRoute: typeof TanstackRoute
@@ -765,6 +778,13 @@ declare module '@tanstack/react-router' {
       path: '/stage1'
       fullPath: '/stage1'
       preLoaderRoute: typeof Stage1RouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/splash': {
+      id: '/splash'
+      path: '/splash'
+      fullPath: '/splash'
+      preLoaderRoute: typeof SplashRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/run': {
@@ -1146,6 +1166,7 @@ const rootRouteChildren: RootRouteChildren = {
   PromisesRoute: PromisesRoute,
   PylonsRoute: PylonsRoute,
   RunRoute: RunRoute,
+  SplashRoute: SplashRoute,
   Stage1Route: Stage1Route,
   StatsRoute: StatsRoute,
   TanstackRoute: TanstackRoute,
@@ -1183,3 +1204,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

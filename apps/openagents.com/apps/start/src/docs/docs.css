@@ -93,21 +93,11 @@
 .docs-brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.625rem;
   min-height: 2.75rem;
   color: var(--docs-text);
   text-decoration: none;
   font-weight: 680;
   letter-spacing: -0.015em;
-}
-
-.docs-brand-mark {
-  width: 1.125rem;
-  height: 1.125rem;
-  border: 1px solid #4b8dff;
-  background: var(--docs-accent);
-  box-shadow: inset 0 0 0 4px #05070d;
-  transform: rotate(45deg);
 }
 
 .docs-section-link {
@@ -140,6 +130,7 @@
 .docs-header-link {
   display: inline-flex;
   align-items: center;
+  gap: 0.375rem;
   min-height: 2.75rem;
   padding-inline: 0.75rem;
   color: var(--docs-muted);
@@ -297,10 +288,10 @@
   max-width: 16ch;
   margin: 0;
   color: #f6f9ff;
-  font-size: clamp(2.25rem, 5vw, 4.5rem);
-  font-weight: 760;
-  letter-spacing: -0.035em;
-  line-height: 0.98;
+  font-size: clamp(2rem, 3.2vw, 3.5rem);
+  font-weight: 720;
+  letter-spacing: -0.025em;
+  line-height: 1.04;
   text-wrap: balance;
 }
 
