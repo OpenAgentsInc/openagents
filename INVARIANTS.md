@@ -413,6 +413,74 @@ More specific invariant ledgers apply inside imported apps and packages.
   whose derived public key differs from the committed pin is refused at
   publish time. The unsigned `artifactUrl` is transport only — the download
   is gated by the SIGNED sha256/byteLength.
+- (DIST-01, #8914) Cross-platform Desktop release policy is owned by
+  `docs/deploy/openagents-desktop-cross-platform-release.md`. ReleaseSet v2
+  preserves the pinned Ed25519 authority above while closing target keys to
+  `darwin-{arm64,x64}`, `win32-{arm64,x64}`, and
+  `linux-{arm64,x64}`. Stable and RC are separate application identities and
+  state roots. Exactly one version/source revision must converge across all
+  required target/format cells before atomic promotion; a declared maker,
+  runner, candidate, or download is not a support claim. The intended
+  automated boundaries are the ReleaseSet schema/canonicalization/signature
+  tests, channel/state identity model, target staging/component-ledger gates,
+  coordinator convergence model, and download resolver contract. The release
+  boundary is the signed ReleaseSet plus native per-target install/update/
+  rollback-or-explicit-no-rollback receipts and one promotion receipt.
+- (DIST-01, #8914) Desktop production signing has no unsigned fallback on any
+  platform. macOS retains its app+nested-code+DMG Developer ID, notarization,
+  staple, and Gatekeeper gates; Windows requires `Valid` Authenticode from
+  exactly `OpenAgents, Inc.` for the installer and executable payload before
+  publication and install; Linux packages remain gated by the signed
+  ReleaseSet digest/length and native package/payload oracles. Credential-
+  absence, unsigned-marker, wrong-publisher, foreign-architecture, and
+  unledgered-component tests are the intended automated boundary; native
+  downloaded-artifact receipts are the release boundary.
+- (DIST-01, #8914) Remote Desktop versions are strictly monotonic and never
+  use `allowDowngrade`. Rollback is only the local immediately retained slot
+  after a typed first-launch failure. macOS DMG, Windows NSIS, and Linux
+  AppImage may claim retained-slot rollback after their native receipts;
+  macOS ZIP and Linux DEB/RPM explicitly have no app-owned rollback claim.
+  Reducer/model/property and restart-interruption tests are the intended
+  automated boundary; N-1 update, deliberate first-launch failure, recovery,
+  and format-specific rollback receipts are the release boundary.
+- (DIST-01, #8914) Desktop builds/tests/signing/publication/promotion run only
+  on owned orchestration and target-capable owned workers; GitHub Actions and
+  GitHub-hosted CI remain prohibited. A concrete runner registry must bind
+  opaque worker identity, native OS/architecture, image/toolchain revision,
+  signing-access class, native acceptance host, attestation, freshness, and
+  quarantine. Repository authority guards and runner-registry validation are
+  the intended automated boundary; owned worker and native-host attestations
+  are the release boundary.
+- (DIST-01, #8914) `oa-updates` Desktop publication must preserve the complete
+  mobile OTA export, manifest selection, headers, assets, and known-good probe.
+  A Desktop metadata-only deploy cannot replace the service image. Route/asset
+  regressions and candidate-feed fixtures are the intended automated boundary;
+  pre- and post-promotion mobile manifest/asset receipts are the release
+  boundary and any failure blocks or rolls back Cloud Run traffic.
+- (DIST-01, #8914) `/download` resolves only the verified promoted Desktop
+  ReleaseSet and cannot contain handwritten artifact URLs or infer support
+  from a requested OS. Public availability requires the target/format native
+  receipt; direct DEB/RPM downloads never imply a package repository,
+  unattended update, or app-owned rollback. Typed resolver/route/accessibility
+  and telemetry-redaction tests are the intended automated boundary; public
+  target-resolution/download receipts are the release boundary.
+- (DIST-01, #8914) Once DIST-13 lands, the only documented production Desktop
+  release entrypoint is root `pnpm run release` mapped exactly to
+  `node --import tsx scripts/release.ts`. It owns freeze, target-capable owned
+  worker bring-up, six-target build/test/sign, candidate smoke, changelog
+  generation, atomic promotion, `/download`/homepage/`/changelog` verification,
+  and the one final public-safe receipt. Dry-run, durable resume, partial-matrix
+  refusal, idempotence, and pre-promotion failure tests are the intended
+  automated boundary; a real RC command receipt is the release boundary. The
+  v1 macOS compatibility runbook is the sole temporary exception until #8915.
+- (DIST-01, #8914) Every Desktop release has a reviewed human changelog and a
+  detailed public-safe agent changelog with the exact ProductSpec §15.1 names.
+  The bounded human notes and digest-bound refs enter ReleaseSet v2 before its
+  signature; `/changelog`, `/download`, and the in-app prompt cannot diverge
+  from those signed inputs. Accumulator generation, bounds, roll-forward
+  idempotence, route state, and cross-artifact consistency tests are the
+  intended automated boundary; the two indefinitely retained dated artifacts
+  and signed ReleaseSet notes refs are the release boundary.
 - OpenAgents Desktop macOS artifacts carry the product-owned
   `resources/openagents-icon.icns` bundle. Finder, Dock, ZIP, and DMG output
   must never fall back to Electron's atom icon; the packaging contract test
@@ -1055,10 +1123,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   path. Cancel retains the prior WorkContext. Selection uses the same admitted
   workspace grant consumed by Files, Terminal, Git, and the next Codex turn.
 - Generated OpenAgents Desktop release artifacts use a stable, version-first
-  public filename. macOS disk images are
-  `OpenAgents-<version>-<arch>.dmg`; platform-neutral archives include the OS
-  as `OpenAgents-<version>-<platform>-<arch>.<extension>`. Forge defaults may
-  not leak into release receipts, update manifests, or uploaded filenames.
+  public filename. The bounded v1 macOS compatibility lane uses
+  `OpenAgents-<version>-<arch>.dmg` and
+  `OpenAgents-<version>-<platform>-<arch>.<extension>`. ReleaseSet v2 adds the
+  explicit channel and target/format conventions in the DIST-01 ProductSpec
+  §6. Forge defaults may not leak into release receipts, signed manifests, or
+  uploaded filenames.
 - Desktop's mixed runtime/provider conversation sidebar has one canonical
   target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation;
   numbering never restarts at a source boundary. Selecting a runtime/app-local

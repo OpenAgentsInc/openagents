@@ -1,43 +1,65 @@
-# OpenAgents Desktop production release
+# OpenAgents Desktop production release operator runbook
 
-This is the operator runbook for building and publishing the signed OpenAgents
-Desktop macOS release. Run it from a clean worktree at exact `origin/main`.
-The first frozen release identity is:
+This runbook operates the normative [OpenAgents Desktop cross-platform release
+ProductSpec](./openagents-desktop-cross-platform-release.md). The ProductSpec
+owns identities, targets, formats, trust, support, and rollback claims. This
+file owns the operator sequence and MUST NOT be used to infer support for a
+target whose implementation and native receipts are absent.
 
-- product: `OpenAgents`
-- bundle ID: `com.openagents.desktop`
-- update product: `openagents-desktop`
-- channels: `rc`, then `stable`
-- tags: `openagents-desktop-v*`
-- first RC: `0.1.0-rc.1`
-- first downloaded-artifact smoke to pass: `0.1.0-rc.5`
+## Current transition status
 
-Never reuse the retired Khala Code or Autopilot Desktop identities or feeds.
+The repository currently implements the existing signed macOS arm64
+DMG/ZIP, update-manifest v1, and `oa-updates` lane. The six-target ReleaseSet
+v2 coordinator and non-arm64 makers are child work in
+[#8913](https://github.com/OpenAgentsInc/openagents/issues/8913). Until those
+children land:
 
-Generated release filenames are canonical and version-first:
+- operators MAY run the compatibility procedure in the final section for an
+  explicitly bounded macOS arm64 RC;
+- operators MUST NOT synthesize missing target commands, manually merge
+  artifacts, or call another platform supported;
+- stable cross-platform promotion is unavailable;
+- the current path remains fail-closed on signing and preserves the mobile
+  feed exactly as before.
 
-- macOS DMG: `OpenAgents-<version>-<arch>.dmg` (for example,
-  `OpenAgents-0.1.2-arm64.dmg`)
-- neutral archive: `OpenAgents-<version>-<platform>-<arch>.zip` (for example,
-  `OpenAgents-0.1.2-darwin-arm64.zip`)
+## Canonical owner entrypoint
 
-Forge's `postMake` hook normalizes every generated artifact to this form.
-Release receipts, preflight arguments, uploads, and update manifests must use
-the normalized basename; do not retain Forge's default version-last ZIP name.
+When DIST-13 lands, operators release only through:
 
-## Prerequisites
+```sh
+pnpm run release -- --channel <stable|rc> --version <semver>
+```
 
-- Apple Developer ID identity
-  `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)` is available in
-  the login keychain.
-- `.secrets/appstoreconnect.env` contains the `ASC_API_*` notarization values
-  and `OA_DEVELOPER_ID_APPLICATION`.
-- `.secrets/openagents-release-signing.env` contains the production ed25519
-  update-manifest key. Never print or commit either secret file.
-- The automation gcloud config is active through
-  `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config`.
+The root package key `release` maps exactly to
+`node --import tsx scripts/release.ts`. `--dry-run` walks the complete graph
+with fixture workers and no cloud spend, `--yes` approves only declared-safe
+gates, and `--resume <transaction-ref>` resumes one durable transaction. The
+command prints bounded receipt lines, names every owner gate before effects,
+and performs sections 1–9 without intermediate manual commands. Until it is
+implemented and its real RC receipt lands, the current macOS arm64 v1 procedure
+in §10 is the sole temporary release exception.
 
-Confirm the signing identity and the clean source revision:
+## Release roles
+
+One release has distinct roles even when one operator invokes several of
+them:
+
+| Role              | Authority                                                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Coordinator       | Freezes version/channel/source revision/target set, runs common gates, dispatches owned workers, converges receipts, and requests signing/promotion |
+| Target worker     | Builds one target-specific staged closure and emits artifacts, component ledger, and build receipt                                                  |
+| Platform verifier | Verifies native package/signature/install/update behavior on the required native hosts                                                              |
+| ReleaseSet signer | Accepts only a complete policy-valid receipt set and signs canonical ReleaseSet bytes with the pinned Ed25519 authority                             |
+| Publisher         | Uploads immutable candidates and deploys `oa-updates`; cannot declare support                                                                       |
+| Promoter          | Atomically advances a channel only after candidate and public-surface verification                                                                  |
+
+Production secrets never enter source, logs, issue comments, or public
+receipts. Unattended agents MUST NOT probe the macOS Keychain. Owner-only
+actions are requested only under the readiness rule in ProductSpec §17.
+
+## 1. Freeze immutable release inputs
+
+Start in a new clean worktree at exact `origin/main`:
 
 ```sh
 git fetch origin main
@@ -45,41 +67,189 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 test -z "$(git status --porcelain)"
 ```
 
-The release scripts verify the identity supplied through
-`OA_DEVELOPER_ID_APPLICATION`. Do not probe the macOS keychain from an
-unattended agent session: `security` can trigger an interactive keychain
-prompt. Confirm identity access through the gated signed packaging step.
+Record in the coordinator request:
 
-## Candidate and installed-app safety
+- exact semantic version and `stable` or `rc` channel;
+- exact 40-character source revision and lockfile digest;
+- ProductSpec version and ReleaseSet schema version;
+- all six required target keys and formats;
+- expected package/product/publisher/signing-policy identities;
+- owned worker and native acceptance-host inventory revisions;
+- previous promoted version in the same channel;
+- release-notes ref and retention class.
 
-Never splice, replace, or re-sign nested components inside
-`/Applications/OpenAgents.app`. Experimental candidates stay under `/tmp` and
-must never become evidence for an installed release by mutating the known-good
-installation in place. Build the complete artifact, notarize it, verify it,
-and install only that complete artifact through the release/update path.
+Reject a dirty checkout, non-main revision, reused/non-monotonic version,
+prerelease on stable, partial target set, unavailable runner, or mismatched
+identity before a build starts.
 
-Before launching any experimental candidate, verify the outer app and every
-nested signed component. Every reported TeamIdentifier must be `HQWSG26L43`,
-and deep strict verification must pass:
+## 2. Run common gates once
 
-```sh
-CANDIDATE=/tmp/OpenAgents-candidate/OpenAgents.app
-codesign --verify --deep --strict --verbose=2 "$CANDIDATE"
-find "$CANDIDATE/Contents" -type f -perm +111 -print0 | while IFS= read -r -d '' file; do
-  codesign -dv --verbose=4 "$file" 2>&1 | grep -E '^(Authority|TeamIdentifier)='
-done
+The coordinator runs the exact repository checks required by its release
+contract, including lock/generated-contract guards, unit/integration/type and
+format checks, Electron security/fuse assertions, ReleaseSet
+canonicalization/signature fixtures, update/rollback model checks, mobile-feed
+preservation tests, and the no-GitHub-Actions authority guard.
+
+The receipt binds the source revision and command manifest. A later code or
+lockfile change invalidates every downstream receipt; do not reuse green
+results across revisions.
+
+## 3. Dispatch the owned six-target matrix
+
+Dispatch exactly:
+
+```text
+darwin-arm64  -> DMG, ZIP
+darwin-x64    -> DMG, ZIP
+win32-arm64   -> NSIS EXE
+win32-x64     -> NSIS EXE
+linux-arm64   -> AppImage, DEB, RPM
+linux-x64     -> AppImage, DEB, RPM
 ```
 
-`OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1` is test-only evidence. It is accepted
-only with user data strictly below Electron's actual OS temporary directory
-(use `$TMPDIR`, not a guessed `/tmp` alias), disables account-session custody,
-and uses an in-memory browser partition. It must never be used for production,
-release acceptance, or authenticated cross-device claims.
+Each worker uses the target-aware staging command and runner registry delivered
+by DIST-03/DIST-04. A command is operator-authorized only after it is checked
+into the repository, tests its target key, and emits the ProductSpec §9–10
+ledger/receipt. The absence of such a command is a typed unavailable target,
+not permission to substitute Forge flags manually.
 
-## Build and preflight
+Workers upload to immutable candidate object keys only. They never write a
+current channel pointer or public download catalog.
 
-Set the intended version in `apps/openagents-desktop/package.json`, run the
-release-contract tests, commit it to `main`, and then build:
+## 4. Verify platform packages natively
+
+For each target, verify the staged closure and every outer package against the
+component ledger. Then run clean install, first launch, provider/agent runtime
+startup, clean shutdown, N-1 update, interrupted update recovery, the
+format-specific rollback boundary, reinstall, uninstall, and diagnostics on
+the ProductSpec minimum/current native hosts.
+
+Mandatory trust boundaries:
+
+- macOS: Developer ID `OpenAgents, Inc. (HQWSG26L43)`, Team ID
+  `HQWSG26L43`, notarization, staples, Gatekeeper, hardened runtime,
+  entitlements, bundle/architecture/fuse/ASAR checks on downloaded bytes;
+- Windows: Windows trust and Authenticode `Valid` with publisher
+  `OpenAgents, Inc.` for installer, application, uninstaller, bundled CLIs,
+  and native helpers before publication and before install;
+- Linux: signed ReleaseSet digest/length for every package, architecture and
+  payload/metadata oracles, plus native DEB/RPM package-manager lifecycle and
+  AppImage retained-image update/rollback.
+
+DEB/RPM receipts explicitly say `appOwnedRollback: false`. ZIP receipts say
+`appOwnedUpdate: false` and `appOwnedRollback: false`.
+
+## 5. Converge, generate changelogs, and sign ReleaseSet v2
+
+The finalizer rejects unless all matrix cells agree on version, channel,
+source revision, ProductSpec/schema/signing policy, target/format identity,
+artifact basename, digest/length, component-ledger digest, and required native
+receipts. Missing, duplicate, extra, stale, quarantined, or conflicting cells
+fail closed.
+
+After convergence and before signing, the command consumes
+`docs/changelog/UNRELEASED.md` and the exact commit/issue range since the prior
+release. It requires reviewed human-centric text, writes the immutable human
+and detailed agent files at the ProductSpec §15.1 names, rolls the accumulator
+forward idempotently, and inserts bounded human notes plus changelog refs and
+digests into the ReleaseSet. A missing, unreviewed, over-bound, or inconsistent
+changelog fails the transaction before signature or publication.
+
+The isolated signer validates policy and signs the canonical ReleaseSet. It
+self-verifies the exact bytes through the client verification seam before
+publication. Electron Updater YAML, a storage listing, or a GitHub release is
+never substituted for this signature.
+
+## 6. Upload and serve a candidate
+
+Upload artifacts and the immutable signed ReleaseSet to the Desktop candidate
+prefix in the production Google Cloud project. Deploy `oa-updates` through its
+sanctioned Google Cloud path with zero production traffic and a candidate tag.
+
+The deploy MUST derive from or include the complete known-good mobile export.
+A Desktop metadata-only directory cannot replace the service image. Before any
+traffic move, GET and validate:
+
+- every target resolution document and immutable artifact through the tagged
+  candidate;
+- ReleaseSet signature, target selection, SHA-256, byte length, and content
+  type;
+- the retained OpenAgents mobile manifest using its required Expo headers;
+- unavailable/wrong-channel/wrong-architecture and signature/hash failure
+  behavior.
+
+Any mobile failure, partial target, or candidate/public-byte mismatch blocks
+promotion.
+
+## 7. Verify `/download` and `/changelog` candidate truth
+
+Before promotion, the typed download resolver must read the verified candidate
+set without handwritten URLs. Exercise platform/architecture detection,
+explicit alternatives, minimum-OS/version/channel/format copy, unavailable
+targets, accessibility, and telemetry classification. A successful resolver
+event is a download response, never an install or user count.
+
+Verify `/changelog` renders the same candidate's human entry, newest-first,
+links its detailed agent ledger, and exposes honest empty/degraded states. The
+signed ReleaseSet notes, human source, and agent source must agree on version,
+channel, date, and digests.
+
+Public production `/download` continues resolving the old promoted set until
+the atomic promotion in the next step.
+
+## 8. Promote atomically
+
+The promoter compares the candidate with the still-current channel, rechecks
+monotonicity and all receipt refs, and advances one signed channel pointer (or
+equivalent atomic selection) to the already-uploaded immutable ReleaseSet. It
+does not rebuild or copy artifacts.
+
+After promotion, repeat through production origins:
+
+- all six target resolutions and downloaded hash/length checks;
+- native update check for stable/RC identity isolation;
+- `/download` default and alternatives;
+- homepage download CTAs and `/changelog` version/channel/release-notes truth;
+- mobile OTA manifest and representative retained asset;
+- download telemetry admission/redaction;
+- old/invalid client fail-closed fixtures.
+
+Archive the promotion receipt, both changelogs, release notes, exact source revision, signed
+ReleaseSet, per-target ledgers/receipts, `/download` proof, and mobile
+preservation proof under ProductSpec §16. The command writes and echoes the
+single final receipt at
+`docs/deploy/receipts/YYYY-MM-DD-openagents-desktop-v<version>-<channel>.md`.
+
+## 9. Failure, service rollback, and revocation
+
+Before channel promotion, abandon/quarantine the candidate and retain the
+bounded failure receipt. Never promote a partial set.
+
+If the `oa-updates` service deployment is unhealthy, move Cloud Run traffic
+back to the previous ready revision immediately. Service traffic rollback does
+not change the signed Desktop channel pointer or overwrite artifacts.
+
+If a promoted release is defective, follow the ProductSpec revocation path:
+publish a signed typed revocation/unavailable state, remove it from
+`/download`, and produce a strictly newer fixed release. Never repoint current
+to an older version or enable downgrade. Installed clients may use only their
+locally retained previous slot under the applicable format claim.
+
+## 10. Current macOS arm64 v1 compatibility procedure
+
+This section preserves the existing lane while ReleaseSet v2 is not yet
+implemented. It is an RC compatibility operation, not cross-platform support
+evidence, and it MUST be retired by the v1 migration close rule in #8915.
+
+Prerequisites:
+
+- Apple identity `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`;
+- scoped `ASC_API_*` and `OA_DEVELOPER_ID_APPLICATION` environment values;
+- production Ed25519 manifest key through
+  `OPENAGENTS_RELEASE_SECRETS_PATH` or its documented private JWK seam;
+- sanctioned automation gcloud config outside the repository.
+
+Run the existing focused contract gates and build:
 
 ```sh
 pnpm exec vp test --run --max-concurrency 1 \
@@ -92,50 +262,16 @@ pnpm exec vp test --run --max-concurrency 1 \
   apps/openagents-desktop/tests/update-rollback.test.ts
 pnpm --dir apps/openagents-desktop run typecheck
 pnpm --dir apps/openagents-desktop run build
-set -a; source ~/work/.secrets/appstoreconnect.env; set +a
 node --import tsx apps/openagents-desktop/scripts/release-preflight.ts \
   --channel rc --latest-released <latest-version> --json
-```
-
-The preflight is fail-closed on signing credentials (#8786): with no
-`OA_DEVELOPER_ID_APPLICATION`/`ASC_API_*` in the environment the
-`signing_credentials_present` row is RED and the lane refuses. For a
-non-release dev iteration only, pass `--allow-unsigned-dev`.
-
-Then sign, package, notarize, and staple in one gated step (#8786):
-
-```sh
-set -a
-source ~/work/.secrets/appstoreconnect.env
-set +a
 pnpm --dir apps/openagents-desktop run make:mac
 ```
 
-`make:mac` first rebuilds the `macos-alias` and `fs-xattr` native addons with
-the Node runtime executing the release. This is required even in a clean
-worktree because pnpm's shared dependency store can retain addon binaries from
-a different Node ABI. The preparation script resolves the installed package
-roots, uses the workspace-pinned `node-gyp`, and fails before Forge if either
-addon cannot be compiled.
+`make:mac` rebuilds the DMG native addons and refuses without signing/notary
+credentials. `OA_ALLOW_UNSIGNED_DEV=1` is local development only; its
+`UNSIGNED-DEV` output cannot pass preflight or publication.
 
-`make:mac` is fail-closed (Gatekeeper release oracles, issue #8786; from the
-2026-07-13 T3 Gatekeeper-dead-DMG and ChatGPT dead-update incidents):
-
-- Forge notarizes the `.app` during packaging; the `postMake` hook then
-  submits the **DMG itself** to `notarytool` (the ticket covers the nested
-  app) and staples the ticket to BOTH the `.app` and the `.dmg`.
-- The make then refuses to finish unless every Gatekeeper oracle is green:
-  `codesign --verify --deep --strict` (app), `spctl -a -t open --context
-  context:primary-signature` (image), `spctl -a -t exec` (app), and
-  `xcrun stapler validate` (both).
-- If `OA_DEVELOPER_ID_APPLICATION` or the `ASC_API_*` credentials are absent
-  the make REFUSES outright — there is no unsigned release fallback. The only
-  escape valve is `OA_ALLOW_UNSIGNED_DEV=1`, which renames the output
-  `-UNSIGNED-DEV`; preflight and `publish-release.ts` refuse that marker
-  unconditionally.
-
-Re-run the preflight against the built artifacts to record the oracle table
-(the same checks the make already enforced):
+Re-run preflight against final post-staple bytes, then hash only those bytes:
 
 ```sh
 DMG=apps/openagents-desktop/out/make/OpenAgents-<version>-arm64.dmg
@@ -143,108 +279,45 @@ APP=apps/openagents-desktop/out/OpenAgents-darwin-arm64/OpenAgents.app
 node --import tsx apps/openagents-desktop/scripts/release-preflight.ts \
   --channel rc --latest-released <latest-version> \
   --dmg "$DMG" --app "$APP" --json
-```
-
-Wait for stapling to finish before hashing. Hash and size the final bytes twice
-if necessary; the signed update manifest must describe the post-staple file,
-not the pre-staple DMG.
-
-```sh
 shasum -a 256 "$DMG"
 stat -f '%z' "$DMG"
 ```
 
-## Sign and publish the RC feed
-
-Stage the production-signed manifest with the exact final DMG bytes:
+Stage v1 only through the scripted publisher:
 
 ```sh
 DIST=/tmp/openagents-desktop-release-dist
 rm -rf "$DIST" && mkdir -p "$DIST"
-OPENAGENTS_RELEASE_SECRETS_PATH=~/work/.secrets/openagents-release-signing.env \
+OPENAGENTS_RELEASE_SECRETS_PATH=<scoped-secret-path> \
   node --import tsx apps/openagents-desktop/scripts/publish-release.ts \
   --channel rc --version <version> --artifact "$DMG" \
   --dist-dir "$DIST" --notes-ref release.notes.<version>
-cp "$DIST"/*.json apps/oa-updates/openagents-desktop-dist/
 ```
 
-Upload the identical artifact and confirm its public byte length:
+Upload the identical immutable DMG and deploy `oa-updates` by deriving from the
+current known-good image with the checked-in incremental Cloud Build path.
+Never deploy a metadata-only source tree. First route only a tagged candidate.
+
+Verify the three current Desktop documents, immutable artifact, and mobile
+manifest through the candidate before traffic moves:
 
 ```sh
-CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config gcloud storage cp "$DMG" \
-  gs://openagentsgemini-oa-updates/desktop/openagents-desktop/"$(basename "$DMG")"
-curl -fsSI \
-  "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/openagents-desktop/$(basename "$DMG")" \
-  | grep -i content-length
-```
-
-Deploy without erasing the existing mobile OTA seed. Do **not** use a fresh
-`gcloud run deploy --source` unless a complete new Expo export is present in
-`apps/oa-updates/dist`; a metadata-only directory will replace the baked mobile
-assets and make the mobile manifest return 404. Instead, derive from the
-immutable digest of the current known-good revision with the incremental
-Dockerfile:
-
-```sh
-BASE_IMAGE=$(CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config gcloud run \
-  revisions describe <current-ready-revision> --project openagentsgemini \
-  --region us-central1 --format='value(spec.containers[0].image)')
-IMAGE=us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-updates:desktop-<version>
-CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config gcloud builds submit \
-  apps/oa-updates --project openagentsgemini --region us-central1 \
-  --config apps/oa-updates/cloudbuild.incremental.yaml \
-  --substitutions="_BASE_IMAGE=$BASE_IMAGE,_IMAGE=$IMAGE"
-CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config gcloud run deploy oa-updates \
-  --project openagentsgemini --region us-central1 --image "$IMAGE" \
-  --update-env-vars OA_OPENAGENTS_DESKTOP_RELEASE_DIST=/app/openagents-desktop-dist \
-  --no-traffic --tag desktop-candidate
-```
-
-## Production verification and rollback
-
-Verify all three feed documents, the immutable artifact, and the retained
-mobile feed on the tagged candidate URL. Use GET for the Expo manifest; this
-server does not promise HEAD parity:
-
-```sh
-curl -fsS https://updates.openagents.com/desktop/openagents/rc/release.json
-curl -fsS https://updates.openagents.com/desktop/openagents/rc/manifest.json
-curl -fsS https://updates.openagents.com/desktop/openagents/rc/manifest.sig.json
-curl -fsS https://desktop-candidate---oa-updates-ezxz4mgdsq-uc.a.run.app/openagents-mobile/manifest \
-  -o /tmp/mobile-manifest \
+curl -fsS <candidate>/desktop/openagents/rc/release.json
+curl -fsS <candidate>/desktop/openagents/rc/manifest.json
+curl -fsS <candidate>/desktop/openagents/rc/manifest.sig.json
+curl -fsS <candidate>/openagents-mobile/manifest \
   -H 'expo-protocol-version: 1' \
   -H 'expo-platform: ios' \
   -H 'expo-runtime-version: <current-mobile-runtime>' \
-  -H 'expo-channel-name: openagents-production'
+  -H 'expo-channel-name: openagents-production' \
+  -o /tmp/mobile-manifest
 ```
 
-Only after both candidate feeds pass, move 100% traffic to the candidate
-revision and repeat the checks through `https://updates.openagents.com`.
-
-Download the public DMG to a new path, verify its SHA-256 against the signed
-manifest, mount it, and run the packaged smoke from a pristine user-data root
-before any wider lifecycle acceptance:
-
-```sh
-mkdir -p /tmp/openagents-release-mount
-hdiutil attach /tmp/OpenAgents-<version>-arm64.dmg -nobrowse \
-  -mountpoint /tmp/openagents-release-mount
-rm -rf /tmp/openagents-release-smoke
-OPENAGENTS_DESKTOP_SMOKE=1 \
-OPENAGENTS_DESKTOP_USER_DATA=/tmp/openagents-release-smoke \
-  /tmp/openagents-release-mount/OpenAgents.app/Contents/MacOS/OpenAgents
-```
-
-The smoke must reach `[openagents-desktop smoke] OK` and lifecycle teardown
-`{"ok":true,"active":0}`. In particular, verify the packaged renderer exists
-under `app.asar.unpacked/dist/renderer`; RC1 failed on a browser-specific V8
-snapshot fuse and RC2 failed because Chromium could not admit the renderer from
-inside ASAR while the hardened file-protocol fuse was disabled. Never relax
-`GrantFileProtocolExtraPrivileges=false` to repair this.
-
-Before lifecycle acceptance, prove provider execution cannot drift to a
-global Codex or NVM shim. Run the artifact oracle against the mounted signed
-app; it supplies the minimal macOS GUI PATH to the exact unpacked binary:
+After traffic promotion, download the public DMG to a fresh path, verify its
+signed SHA-256/length, mount it, and run the packaged smoke from pristine
+temporary user data. Require `[openagents-desktop smoke] OK`, lifecycle
+teardown `{"ok":true,"active":0}`, the unpacked renderer and worker boundary,
+and the bundled Codex artifact oracle:
 
 ```sh
 pnpm --dir apps/openagents-desktop run smoke:artifact:codex-runtime -- \
@@ -252,16 +325,8 @@ pnpm --dir apps/openagents-desktop run smoke:artifact:codex-runtime -- \
 ```
 
 Require `state:"ready"`, `source:"desktop-bundle"`, `minimalPath:true`,
-`signatureVerified:true`, and equal expected/observed versions. The receipt
-contains an identity SHA-256 but no path or raw output. Signed Forge makes run
-this same gate after notarization.
-
-Then run the clean-install lifecycle and record first launch, account
-readiness, a coding turn, update interruption/resume, rollback,
-uninstall/reinstall, and diagnostics export.
-
-If the feed deploy is unhealthy, route Cloud Run traffic back to the previous
-ready revision immediately. Do not overwrite or delete the immutable GCS
-artifact; publish a strictly newer RC after fixing the cause. The client rejects
-duplicate, downgrade, wrong-channel, wrong-signature, wrong-hash, and wrong-size
-releases fail closed.
+`signatureVerified:true`, and equal expected/observed versions. Then record
+clean install, account readiness, a coding turn, interruption/resume,
+first-launch/rollback boundary, reinstall, diagnostics, and the repeated
+mobile-feed probe. Experimental candidates remain under the OS temporary
+directory and MUST NOT splice or re-sign `/Applications/OpenAgents.app`.

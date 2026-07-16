@@ -87,25 +87,22 @@ context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.
   Gemma4 yet, the drop-OpenRouter agent will report exactly what a
   Gemma4 adapter needs; that may come back as one small decision.
 
-## OpenAgents Desktop identity freeze — required before first package
+## OpenAgents Desktop identity freeze — resolved by DIST-01
 
-Source issue: OpenAgentsInc/openagents#8574
+Source issues: OpenAgentsInc/openagents#8574 and #8914
 
-No action is needed until the greenfield Electron scaffold is ready to package.
-Before its first packaged build, the owner must approve one coherent identity
-set: macOS bundle ID/product name/executable; Windows AppUserModelId and
-installer identity; Linux desktop/app ID; deep-link scheme; Electron `userData`
-root and session partition; update product/feed/channel; GitHub tag namespace;
-and OAuth redirect/client ownership. `com.openagents.desktop` is a candidate,
-not a decision. Never reuse `com.openagents.khala.code.desktop`,
-`khala-code://`, `~/.khala-code`, `desktop/khala-code-desktop`, or
-`khala-code-desktop-v*`.
+No owner action is currently ready. The normative identity set is now frozen
+in `docs/deploy/openagents-desktop-cross-platform-release.md` §2: stable and RC
+are separate installs/state roots; stable uses `com.openagents.desktop` and RC
+uses `com.openagents.desktop.rc`, with exact Windows/Linux/protocol identities
+recorded there. Retired Khala Code and Autopilot identities remain prohibited.
 
-The first package gate must also record the imported
-`LuanRoger/electron-shadcn` commit/MIT attribution, prove its updater/publisher
-targets were removed, and attach the Electron security/Effect Native/fuse
-oracles defined by #8574. Do not create signing profiles, OAuth clients, update
-feeds, or public artifacts before the identity set is approved.
+Apple, Windows, release-key, runner-enrollment, DNS, certificate, or account
+actions are added here only when the corresponding implementation has landed,
+the least-privilege UI action is exact, and an agent can verify it immediately
+under ProductSpec §17. Generic signing or runner requests are intentionally not
+owner tasks.
+
 ---
 
 # Contract-anchored owner gates (kept verbatim for QAM oracles — do not delete; update state inline)
