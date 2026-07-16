@@ -108,6 +108,83 @@ const evidence = [
 ];
 
 describe("Grok admitted ACP peer runtime", () => {
+  it.each(["grok.com", "oidc"] as const)(
+    "fails closed when the owner cancels %s interactive login",
+    async (methodId) => {
+      const transport = new FakeGrokTransport();
+      transport.respond("initialize", {
+        protocolVersion: 1,
+        agentInfo: { name: "grok", version: "0.2.101" },
+        agentCapabilities: { loadSession: true, sessionCapabilities: {} },
+        authMethods: [{ id: methodId, name: methodId === "oidc" ? "Company SSO" : "Grok" }],
+      });
+      let decisions = 0;
+      const peer = await createGrokAcpPeerRuntime({
+        cwd: process.cwd(),
+        environment: { HOME: "/tmp/grok-home" },
+        evidence,
+        now: new Date("2026-07-16T12:00:00.000Z"),
+        probe: {
+          requestedExecutable: "grok",
+          resolvedPath: "/opt/bin/grok",
+          realPath: "/opt/grok/grok-0.2.101",
+          sha256: digest,
+          reportedVersion: "grok 0.2.101 (fixture)",
+          platform: { os: process.platform, arch: process.arch },
+        },
+        authorizeLogin: async (interaction) => {
+          decisions += 1;
+          expect(interaction).toMatchObject({
+            methodId,
+            kind: "external-browser",
+            state: "login-required",
+          });
+          return "cancel";
+        },
+        createTransport: async () => transport,
+      });
+
+      await expect(peer.start()).resolves.toMatchObject({ ok: false, reason: "auth_required" });
+      expect(decisions).toBe(1);
+      expect(transport.requests.map((request) => request.method)).toEqual(["initialize"]);
+      expect(transport.state).toBe("disposed");
+    },
+  );
+
+  it("authenticates advertised grok.com only after explicit owner continuation", async () => {
+    const transport = new FakeGrokTransport();
+    transport.respond("initialize", {
+      protocolVersion: 1,
+      agentInfo: { name: "grok", version: "0.2.101" },
+      agentCapabilities: { loadSession: true, sessionCapabilities: {} },
+      authMethods: [{ id: "grok.com", name: "Grok" }],
+    });
+    transport.respond("authenticate", {});
+    const peer = await createGrokAcpPeerRuntime({
+      cwd: process.cwd(),
+      environment: { HOME: "/tmp/grok-home" },
+      evidence,
+      now: new Date("2026-07-16T12:00:00.000Z"),
+      probe: {
+        requestedExecutable: "grok",
+        resolvedPath: "/opt/bin/grok",
+        realPath: "/opt/grok/grok-0.2.101",
+        sha256: digest,
+        reportedVersion: "grok 0.2.101 (fixture)",
+        platform: { os: process.platform, arch: process.arch },
+      },
+      authorizeLogin: async () => "continue",
+      createTransport: async () => transport,
+    });
+
+    await expect(peer.start()).resolves.toMatchObject({ ok: true });
+    expect(transport.requests[1]).toEqual({
+      method: "authenticate",
+      params: { methodId: "grok.com", _meta: { headless: true } },
+    });
+    await peer.shutdown();
+  });
+
   it.each([
     ["cached token", { XAI_API_KEY: "ambient-must-not-select" }, "cached_token"],
     ["intentional API key", { XAI_API_KEY: "not-a-real-secret" }, "xai.api_key"],

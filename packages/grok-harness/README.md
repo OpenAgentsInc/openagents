@@ -7,6 +7,9 @@ Protocol transport and session runtime. It admits only the trusted
 `grok agent stdio` launch, probes and pins executable identity, negotiates
 advertised authentication, streams `session/update`, settles the prompt stop
 reason once, and uses protocol cancellation before process shutdown.
+Cached-token remains preferred when advertised. Interactive `grok.com` and
+enterprise `oidc` methods require an explicit typed owner continuation; the
+default and cancellation paths stop before `authenticate`.
 
 Capabilities are false unless supported admission evidence and an installed
 authority broker both authorize them. The raw `acp-client` and in-process mock

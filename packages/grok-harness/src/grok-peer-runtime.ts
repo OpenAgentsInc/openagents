@@ -39,12 +39,20 @@ export type GrokAcpAuthorityInstallation = Readonly<{
   install(transport: GrokAcpTransport): void | (() => void);
 }>;
 
+export type GrokAuthInteraction = Readonly<{
+  methodId: "grok.com" | "oidc";
+  kind: "external-browser";
+  state: "login-required";
+  label?: string;
+}>;
+
 export type CreateGrokAcpPeerRuntimeOptions = Readonly<{
   cwd: string;
   environment?: Readonly<Record<string, string | undefined>>;
   apiKeyConfigured?: boolean;
   evidence?: ReadonlyArray<AcpConformanceEvidenceRecord>;
   now?: Date;
+  authorizeLogin?: (interaction: GrokAuthInteraction) => Promise<"continue" | "cancel">;
   authority?: GrokAcpAuthorityInstallation;
   installVendorHandlers?: (transport: GrokAcpTransport) => void | (() => void);
   materializeMcp?: AcpSessionRuntimeOptions["materializeMcp"];
@@ -233,7 +241,20 @@ export const createGrokAcpPeerRuntime = async (
     selectAuthMethod: async (advertised) => {
       const ids = new Set(advertised.map((method) => method.id));
       if (apiKeyEnabled && ids.has("xai.api_key")) return "xai.api_key";
-      return ids.has("cached_token") ? "cached_token" : undefined;
+      if (ids.has("cached_token")) return "cached_token";
+      const interactive = advertised.find(
+        (method): method is typeof method & { id: "grok.com" | "oidc" } =>
+          method.id === "grok.com" || method.id === "oidc",
+      );
+      if (interactive === undefined) return undefined;
+      const decision =
+        (await options.authorizeLogin?.({
+          methodId: interactive.id,
+          kind: "external-browser",
+          state: "login-required",
+          ...(interactive.name === undefined ? {} : { label: interactive.name }),
+        })) ?? "cancel";
+      return decision === "continue" ? interactive.id : undefined;
     },
     authenticateMeta: { headless: true },
     createTransport: async () => {

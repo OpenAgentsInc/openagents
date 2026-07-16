@@ -23,9 +23,12 @@ version`, resolves the real executable, and pins its SHA-256 at spawn.
   when admission receives fresh fixture and digest-bound live evidence.
 - The child environment is reduced to `HOME` for cached local login and an
   intentionally supplied `XAI_API_KEY`. Values never enter receipts.
-- Authentication is selected only from advertised methods: intentional API
-  key uses `xai.api_key`; otherwise cached login uses `cached_token`. Both send
-  `_meta: { headless: true }`. No OAuth-referrer metadata is enabled.
+- Authentication is selected only from advertised methods. An intentional API
+  key uses `xai.api_key`, cached login uses `cached_token`, and a peer that has
+  neither may advertise interactive `grok.com` or enterprise `oidc`. Interactive
+  authentication is fail-closed behind a typed owner decision and is never
+  invoked after cancellation. Every selected method sends `_meta: { headless:
+  true }`; no OAuth-referrer metadata is enabled.
 
 ## Capability truth
 
@@ -40,8 +43,9 @@ until an exact-version live matrix proves either is necessary.
 
 ## Evidence
 
-The hermetic profile tests cover cached-token and API-key selection, truthful
-capabilities, update streaming, stop reason, extension gating, and cleanup.
+The hermetic profile tests cover cached-token and API-key selection,
+`grok.com`/`oidc` owner continuation and cancellation, truthful capabilities,
+update streaming, stop reason, extension gating, and cleanup.
 The candidate live record for Grok `0.2.101` is
 `packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json`.
 It contains no prompt/response text, auth material, provider metadata, or host

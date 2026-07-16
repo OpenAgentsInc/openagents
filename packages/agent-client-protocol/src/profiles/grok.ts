@@ -79,6 +79,8 @@ export const GROK_TRUSTED_PEER_PROFILE = {
         interaction: "none",
         secretRefKey: "XAI_API_KEY",
       },
+      { id: "grok.com", kind: "interactive-login", interaction: "external-browser" },
+      { id: "oidc", kind: "interactive-login", interaction: "external-browser" },
     ],
   },
   capabilities: [

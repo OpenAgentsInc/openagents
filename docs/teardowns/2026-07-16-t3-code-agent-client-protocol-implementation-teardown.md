@@ -285,7 +285,8 @@ For Grok specifically, the first profile must:
    separate;
 2. initialize with wire version 1 and truthful client capabilities;
 3. select an actually advertised auth method, including `cached_token` or
-   `xai.api_key` for the documented headless path;
+   `xai.api_key` for the documented headless path, while `grok.com` and
+   enterprise `oidc` remain behind explicit typed owner continuation;
 4. create a session with an absolute `cwd` and `mcpServers`;
 5. retain and project `session/update` while `session/prompt` is pending;
 6. answer reverse permission/filesystem/terminal calls only when the matching
@@ -638,7 +639,10 @@ Grok:
 
 - launches `grok agent stdio`;
 - sets an OAuth referrer;
-- selects `xai.api_key` when an API key is present, otherwise `cached_token`;
+- selects `xai.api_key` only when an admitted API key is intentionally present,
+  otherwise prefers `cached_token`; if neither is available, interactive
+  `grok.com` or enterprise `oidc` requires typed owner continuation and fails
+  closed on cancellation;
 - reads current model state from session setup; and
 - uses unstable `session/set_model` only when the model changes.
 
