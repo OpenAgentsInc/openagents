@@ -1,0 +1,72 @@
+{
+  "baseUrl": "https://openagents.com",
+  "issue": "OpenAgentsInc/openagents#8907",
+  "results": [
+    {
+      "durationMs": 279,
+      "id": "public.khala_tokens_served",
+      "severityOnDrift": "high",
+      "surface": "https://openagents.com/api/public/khala-tokens-served",
+      "consecutiveDriftRuns": 0,
+      "status": "pass"
+    },
+    {
+      "durationMs": 176,
+      "id": "public.khala_tokens_served_history",
+      "severityOnDrift": "high",
+      "surface": "https://openagents.com/api/public/khala-tokens-served/history",
+      "consecutiveDriftRuns": 0,
+      "status": "pass"
+    },
+    {
+      "durationMs": 68,
+      "id": "public.khala_model_mix",
+      "severityOnDrift": "medium",
+      "surface": "https://openagents.com/api/public/khala-tokens-served/model-mix",
+      "consecutiveDriftRuns": 0,
+      "status": "pass"
+    },
+    {
+      "durationMs": 73,
+      "id": "public.khala_channel_mix",
+      "severityOnDrift": "medium",
+      "surface": "https://openagents.com/api/public/khala-tokens-served/channel-mix",
+      "consecutiveDriftRuns": 0,
+      "status": "pass"
+    },
+    {
+      "durationMs": 560,
+      "id": "public.pylon_stats",
+      "severityOnDrift": "medium",
+      "surface": "https://openagents.com/api/public/pylon-stats",
+      "consecutiveDriftRuns": 0,
+      "status": "pass"
+    },
+    {
+      "durationMs": 74,
+      "id": "forum.launch_status",
+      "severityOnDrift": "medium",
+      "surface": "https://openagents.com/api/forum/launch-status",
+      "consecutiveDriftRuns": 0,
+      "status": "pass"
+    },
+    {
+      "durationMs": 99,
+      "id": "khala_sync.capture_health",
+      "severityOnDrift": "critical",
+      "surface": "https://openagents.com/api/internal/khala-sync/capture-health",
+      "consecutiveDriftRuns": 0,
+      "status": "pass"
+    }
+  ],
+  "runAt": "2026-07-16T13:49:02.877Z",
+  "schemaVersion": "openagents.qa_observer_results.v1",
+  "summary": {
+    "checksTotal": 7,
+    "drift": 0,
+    "exitCode": 0,
+    "highSeverityDrift": 0,
+    "pass": 7,
+    "unrunnable": 0
+  }
+}

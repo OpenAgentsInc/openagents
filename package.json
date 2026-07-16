@@ -87,6 +87,7 @@
     "test:sqlite-runtime": "pnpm --dir packages/sqlite-runtime run test",
     "test:sol-docs": "vp test --run scripts/check-sol-docs.test.ts",
     "qa:nightly": "node --import tsx scripts/qa-nightly-matrix.ts",
+    "qa:observer": "node --import tsx scripts/qa-observer.ts",
     "perf:ui-velocity": "node --import tsx scripts/ui-velocity-receipt.ts",
     "verify:tla": "specs/run-tlc.sh",
     "triage:issues": "node --import tsx scripts/github-issue-triage.ts",
