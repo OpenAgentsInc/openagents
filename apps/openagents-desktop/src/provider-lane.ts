@@ -59,6 +59,12 @@ import {
 import type { LocalTurnJournal } from "./local-turn-journal.ts"
 import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
 import type { makeThreadStore } from "./thread-store.ts"
+import {
+  projectProviderLaneCapabilities,
+  type ProviderLaneCapabilityReport,
+} from "./provider-lane-capabilities.ts"
+
+export type { ProviderLaneCapabilityReport } from "./provider-lane-capabilities.ts"
 
 type ThreadStore = ReturnType<typeof makeThreadStore>
 
@@ -79,33 +85,6 @@ export type ProviderLaneHistoryMessage = Readonly<{
  * truth for composer affordances. A lane must never advertise what it cannot
  * do — these values drive honest UI admission, not marketing.
  */
-export type ProviderLaneCapabilityReport = Readonly<{
-  laneRef: string
-  /** Usage-ledger attribution provider for completed turns. */
-  provider: string
-  /** Owner-selectable models (spawn-config truth, never a stream echo). */
-  models: ReadonlyArray<string>
-  features: Readonly<{
-    skills: boolean
-    planOnly: boolean
-    reasoningEffort: boolean
-    images: boolean
-    fullAuto: boolean
-    interrupt: boolean
-    queueFollowup: boolean
-    steerTurn: boolean
-    steerChild: boolean
-    answerQuestion: boolean
-  }>
-  /**
-   * Restart posture: a `provider_session_replay` lane may resume an
-   * interrupted turn from the journal's durable providerSessionRef;
-   * an `interrupt_on_restart` lane fails closed to an honest
-   * `interrupted_by_restart` disposition (see ./local-turn-recovery.ts).
-   */
-  recovery: "provider_session_replay" | "interrupt_on_restart"
-}>
-
 /** Typed admission verdict. `context` carries lane-private admission facts
  * (e.g. the resolved local skill) forward into `runTurn` without re-deriving
  * them, mirroring T3 Code's opaque driver-config envelope. */
@@ -309,6 +288,10 @@ export const makeProviderLaneDispatcher = (
   ): Promise<ProviderLaneDispatchResult> => {
     if (!startRequestHasContent(request)) {
       return { ok: false, error: "That message could not be sent." }
+    }
+    const capabilityAdmission = projectProviderLaneCapabilities(lane.capabilities())
+    if (capabilityAdmission.admission !== "admitted") {
+      return { ok: false, error: capabilityAdmission.reason ?? "That provider lane is quarantined." }
     }
     const admission = lane.admit(request)
     if (!admission.ok) return { ok: false, error: admission.error }

@@ -127,6 +127,10 @@ import {
 } from "./fable-local-contract.ts"
 import { makeProviderLaneDispatcher, type ProviderLane } from "./provider-lane.ts"
 import {
+  ProviderLaneCapabilitiesChannel,
+  projectProviderLaneCapabilities,
+} from "./provider-lane-capabilities.ts"
+import {
   McpConfigAddChannel,
   McpConfigListChannel,
   McpConfigRemoveChannel,
@@ -2657,6 +2661,21 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
       steerChild: true,
       answerQuestion: true,
     },
+    composer: {
+      displayName: "Claude",
+      reasoningEfforts: [],
+      permissionModes: ["owner_full", "plan_only"],
+      approvals: "provider_native",
+      extensions: ["skills"],
+    },
+    policy: {
+      source: "native-static-declaration",
+      profileRef: "native:claude-agent:v1",
+      evidence: "conformant",
+      allowedModels: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"],
+      allowedFeatures: ["skills", "planOnly", "images", "interrupt", "queueFollowup", "steerChild", "answerQuestion"],
+      allowedExtensions: ["skills"],
+    },
     recovery: "interrupt_on_restart",
   }),
   admit: request => {
@@ -2994,6 +3013,21 @@ const codexLocalLane: ProviderLane<null> = {
       steerChild: false,
       answerQuestion: true,
     },
+    composer: {
+      displayName: "Codex",
+      reasoningEfforts: ["low", "medium", "high", "xhigh"],
+      permissionModes: ["owner_full"],
+      approvals: "host_mediated",
+      extensions: [],
+    },
+    policy: {
+      source: "native-static-declaration",
+      profileRef: "native:codex-local:v1",
+      evidence: "conformant",
+      allowedModels: ["gpt-5.6-sol", "gpt-5.5"],
+      allowedFeatures: ["reasoningEffort", "images", "fullAuto", "interrupt", "queueFollowup", "steerTurn", "answerQuestion"],
+      allowedExtensions: [],
+    },
     recovery: "provider_session_replay",
   }),
   admit: request => {
@@ -3121,6 +3155,14 @@ const codexLocalLane: ProviderLane<null> = {
     if (request.fullAuto === true) void runFullAutoReconciliation()
   },
 }
+
+// L2 #8900: the renderer receives only the policy-intersected projection,
+// never a raw provider advertisement. Over-claiming lanes cross the boundary
+// as quarantined with every actionable affordance removed.
+ipcMain.handle(ProviderLaneCapabilitiesChannel, event =>
+  isTrustedRuntimeGatewaySender(event)
+    ? [fableLocalLane, codexLocalLane].map(lane => projectProviderLaneCapabilities(lane.capabilities()))
+    : [])
 
 /**
  * Full Auto (#8853): extracted so both a renderer-initiated send (via the IPC

@@ -83,7 +83,7 @@ import {
 } from "./composer-images.ts";
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
-import { activeFullAutoEnabled, activeFullAutoTurnRunning, formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import { activeFullAutoEnabled, activeFullAutoTurnRunning, capabilityForHarness, formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 import {
   LexicalComposerEditor,
   type LexicalComposerEditorHandle,
@@ -121,8 +121,9 @@ const questionKind = (
 const commandAvailable = (command: DesktopCommand, state: DesktopShellState): boolean => {
   const note = activeQuestionNote(state);
   const kind = note === null ? null : questionKind(note);
+  const capabilities = capabilityForHarness(state);
   if (command.id.startsWith("interaction.question"))
-    return kind === "provider_question" && state.questionAnswerHostAvailable;
+    return kind === "provider_question" && state.questionAnswerHostAvailable && (capabilities?.questions ?? true);
   if (command.id.startsWith("interaction.approval"))
     return kind === "tool_approval" && state.questionAnswerHostAvailable;
   if (command.id.startsWith("interaction.plan"))
@@ -309,6 +310,16 @@ export const ReactComposer = ({
   const lastSubmitRef = useRef<Readonly<{ value: string; at: number }> | null>(null);
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
   const lane = state.harnessLanes[state.selectedHarness];
+  const capabilities = capabilityForHarness(state);
+  const capabilityAdmitted = capabilities === null || capabilities.admission === "admitted";
+  const selectedModel = state.selectedHarness === "codex" ? state.codexModel : state.claudeModel;
+  const visibleModels = capabilities?.models ?? [selectedModel];
+  const selectedModelIndex = Math.max(0, visibleModels.indexOf(selectedModel));
+  const nextModel = visibleModels[(selectedModelIndex + 1) % visibleModels.length] ?? selectedModel;
+  const otherHarness = state.selectedHarness === "codex" ? "fable" : "codex";
+  const otherCapabilities = capabilityForHarness(state, otherHarness);
+  const canSwitchHarness = !state.pending && state.harnessLanes[otherHarness].available &&
+    (otherCapabilities === null || otherCapabilities.admission === "admitted");
   // FA-H4 (#8877): main reports a BACKGROUND Full Auto turn running on the
   // active thread (renderer non-pending — no live events reach it). Renders
   // the running badge and the Stop control; the send handler fences manual
@@ -318,11 +329,14 @@ export const ReactComposer = ({
   const hasText = state.input.trim() !== "";
   const canSubmit = state.pending
     ? state.activeThreadId !== null && hasText && pendingAction.enabled
-    : lane.available && (hasText || state.composerImages.length > 0);
+    : lane.available && capabilityAdmitted && (hasText || state.composerImages.length > 0);
   const atImageLimit = !canAttachMoreImages(state.composerImages);
-  const attachmentDisabled = state.pending || atImageLimit;
+  const imageSupported = capabilities?.images ?? true;
+  const attachmentDisabled = state.pending || atImageLimit || !imageSupported;
   const attachmentLabel = state.pending
     ? "Attach images after the current turn finishes"
+    : !imageSupported
+      ? `${capabilities?.displayName ?? "This lane"} does not support image attachments`
     : atImageLimit
       ? `Image limit reached (${COMPOSER_IMAGE_COUNT_LIMIT} max)`
       : "Attach images";
@@ -440,15 +454,15 @@ export const ReactComposer = ({
               ? state.pendingSubmitMode === "steer"
                 ? "Steer the current turn…"
                 : "Queue a follow-up…"
-              : "Message Codex…"
+              : `Message ${capabilities?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")}…`
           }
-          ariaLabel={state.pending ? `${submitLabel} a Codex message` : "Message Codex"}
+          ariaLabel={state.pending ? `${submitLabel} a ${capabilities?.displayName ?? "provider"} message` : `Message ${capabilities?.displayName ?? "provider"}`}
           disabled={false}
           onChange={(value) => dispatch(report, "DesktopInputChanged", value)}
           onSubmit={submit}
         />
         <DesktopComposerBar>
-        <DesktopComposerButton
+        {imageSupported ? <DesktopComposerButton
           data-en-key="shell-attach-image"
           kind="action"
           disabled={attachmentDisabled}
@@ -457,7 +471,7 @@ export const ReactComposer = ({
           title={attachmentLabel}
         >
           <ImagePlus data-icon-name={composerIconNames.attach} aria-hidden="true" />
-        </DesktopComposerButton>
+        </DesktopComposerButton> : null}
         <DesktopComposerButton
           kind="action"
           onClick={() => dispatch(report, "DesktopCommandPaletteToggled")}
@@ -467,6 +481,49 @@ export const ReactComposer = ({
           <CommandIcon data-icon-name={composerIconNames.commands} aria-hidden="true" />
         </DesktopComposerButton>
         <DesktopComposerButton
+          data-en-key="shell-provider-select"
+          kind="action"
+          disabled={!canSwitchHarness}
+          onClick={() => dispatch(report, "DesktopHarnessSelected", otherHarness)}
+          aria-label={`Provider: ${capabilities?.displayName ?? state.selectedHarness}. ${canSwitchHarness ? `Switch to ${otherCapabilities?.displayName ?? otherHarness}` : "No other admitted provider is available"}`}
+          title={`Provider: ${capabilities?.displayName ?? state.selectedHarness}`}
+        >
+          {capabilities?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")}
+        </DesktopComposerButton>
+        <DesktopComposerButton
+          data-en-key="shell-model-select"
+          kind="action"
+          disabled={state.pending || visibleModels.length < 2 || !capabilityAdmitted}
+          onClick={() => dispatch(report, "DesktopModelSelected", nextModel)}
+          aria-label={`Model: ${selectedModel}`}
+          title={`Model: ${selectedModel}`}
+        >
+          {selectedModel}
+        </DesktopComposerButton>
+        {capabilities !== null && capabilities.reasoningEfforts.length > 0 ? <DesktopComposerButton
+          data-en-key="shell-reasoning-select"
+          kind="action"
+          disabled={state.pending}
+          onClick={() => {
+            const index = Math.max(0, capabilities.reasoningEfforts.indexOf(state.codexReasoningEffort));
+            dispatch(report, "DesktopCodexReasoningSelected", capabilities.reasoningEfforts[(index + 1) % capabilities.reasoningEfforts.length] ?? state.codexReasoningEffort);
+          }}
+          aria-label={`Reasoning effort: ${state.codexReasoningEffort}`}
+          title={`Reasoning: ${state.codexReasoningEffort}`}
+        >
+          {state.codexReasoningEffort}
+        </DesktopComposerButton> : null}
+        {capabilities !== null && capabilities.permissionModes.includes("plan_only") && state.activeThreadId !== null ? <DesktopComposerButton
+          data-en-key="shell-permission-mode"
+          kind="action"
+          disabled={state.pending}
+          onClick={() => dispatch(report, "DesktopPermissionModeSelected", (state.permissionModeByThread[state.activeThreadId!] ?? "owner_full") === "owner_full" ? "plan_only" : "owner_full")}
+          aria-label={(state.permissionModeByThread[state.activeThreadId] ?? "owner_full") === "owner_full" ? "Full tools. Switch to plan only" : "Plan only. Switch to full tools"}
+          title="Permission mode"
+        >
+          {(state.permissionModeByThread[state.activeThreadId] ?? "owner_full") === "owner_full" ? "Full tools" : "Plan only"}
+        </DesktopComposerButton> : null}
+        {(capabilities?.fullAuto ?? true) ? <DesktopComposerButton
           data-en-key="shell-full-auto-toggle"
           kind="toggle"
           // FA-H1 #8874: the pressed state and label read the ACTIVE thread's
@@ -479,10 +536,10 @@ export const ReactComposer = ({
         >
           <Zap data-icon-name={composerIconNames.fullAuto} aria-hidden="true" />
           Full Auto
-        </DesktopComposerButton>
+        </DesktopComposerButton> : null}
         {state.pending ? (
           <div className="oa-react-submit-mode" role="radiogroup" aria-label="Pending message behavior">
-            <Button
+            {(capabilities?.steerTurn ?? true) ? <Button
               type="button"
               variant={state.pendingSubmitMode === "steer" ? "secondary" : "ghost"}
               size="sm"
@@ -494,8 +551,8 @@ export const ReactComposer = ({
               onClick={() => dispatch(report, "DesktopPendingSubmitModeSelected", "steer")}
             >
               Steer now
-            </Button>
-            <Button
+            </Button> : null}
+            {(capabilities?.queueFollowup ?? true) ? <Button
               type="button"
               variant={state.pendingSubmitMode === "queue" ? "secondary" : "ghost"}
               size="sm"
@@ -507,11 +564,11 @@ export const ReactComposer = ({
               onClick={() => dispatch(report, "DesktopPendingSubmitModeSelected", "queue")}
             >
               Queue next
-            </Button>
+            </Button> : null}
           </div>
         ) : null}
         <span className="oa-react-composer-spacer" />
-        {!state.pending && !lane.available ? (
+        {!state.pending && (!lane.available || !capabilityAdmitted) ? (
           <Badge
             className="oa-react-composer-status"
             variant="outline"
@@ -520,7 +577,7 @@ export const ReactComposer = ({
             data-codex-status={lane.reason === CODEX_CHIP_REASON_VERIFYING ? "checking" : "unavailable"}
           >
             <span className="oa-react-composer-status-dot" aria-hidden="true" />
-            {lane.reason === CODEX_CHIP_REASON_VERIFYING ? "Checking Codex…" : lane.reason ?? "Codex unavailable"}
+            {lane.reason === CODEX_CHIP_REASON_VERIFYING ? "Checking Codex…" : capabilities?.reason ?? lane.reason ?? `${capabilities?.displayName ?? "Provider"} unavailable`}
           </Badge>
         ) : null}
         {!state.pending && fullAutoRunning ? (
@@ -535,7 +592,7 @@ export const ReactComposer = ({
             Full Auto running…
           </Badge>
         ) : null}
-        {state.pending || fullAutoRunning ? (
+        {(state.pending || fullAutoRunning) && (capabilities?.interrupt ?? true) ? (
           <DesktopComposerButton
             kind="stop"
             onClick={() => dispatch(report, "DesktopTurnInterrupted")}

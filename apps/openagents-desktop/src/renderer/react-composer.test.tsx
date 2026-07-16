@@ -192,7 +192,7 @@ describe("React Codex composer", () => {
     expect(container.querySelector('[data-en-key="shell-input"] [contenteditable="true"]')).toBe(editor);
     expect(container.querySelector('[data-icon-name="Command"]')).not.toBeNull();
     expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(4);
     expect(container.querySelector('[data-composer-button-kind="toggle"]')).not.toBeNull();
     expect(container.querySelector('[data-composer-button-kind="submit"]')).not.toBeNull();
     await render(
@@ -433,6 +433,59 @@ describe("React Codex composer", () => {
       fullAutoLiveByThread: { "thread-2": { state: "turn_running", turnRef: "turn.full-auto.bg-2" } },
     })} report={report} />);
     expect(container.querySelector('[data-full-auto-status="running"]')).toBeNull();
+  });
+
+  test("L2 derives distinct composers when the active thread switches lanes", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    const codex = {
+      laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted" as const,
+      reason: null, models: ["gpt-5.6-sol", "gpt-5.5"], reasoningEfforts: ["low", "medium", "high", "xhigh"],
+      permissionModes: ["owner_full"] as const, approvals: "host_mediated" as const, questions: true, skills: false,
+      images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant" as const,
+    };
+    const claude = {
+      laneRef: "fable-local", provider: "claude_agent", displayName: "Claude", admission: "admitted" as const,
+      reason: null, models: ["claude-fable-5", "claude-opus-4-8"], reasoningEfforts: [],
+      permissionModes: ["owner_full", "plan_only"] as const, approvals: "provider_native" as const, questions: true, skills: true,
+      images: true, fullAuto: false, interrupt: true, queueFollowup: true, steerTurn: false, extensions: ["skills"], evidence: "conformant" as const,
+    };
+    const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
+    await render(root, <ReactComposer state={fixtureState({ providerLaneCapabilities: [codex, claude], harnessLanes: lanes })} report={report} />);
+    expect(container.querySelector('[data-en-key="shell-reasoning-select"]')).not.toBeNull();
+    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).not.toBeNull();
+    expect(container.querySelector('[data-en-key="shell-permission-mode"]')).toBeNull();
+    expect(container.querySelector('[data-en-key="shell-model-select"]')?.textContent).toBe("gpt-5.6-sol");
+
+    await render(root, <ReactComposer state={fixtureState({
+      selectedHarness: "fable", providerLaneCapabilities: [codex, claude], harnessLanes: lanes,
+    })} report={report} />);
+    expect(container.querySelector('[data-en-key="shell-reasoning-select"]')).toBeNull();
+    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
+    expect(container.querySelector('[data-en-key="shell-permission-mode"]')).not.toBeNull();
+    expect(container.querySelector('[data-en-key="shell-model-select"]')?.textContent).toBe("claude-fable-5");
+    expect(container.textContent).not.toContain("gpt-5.6-sol");
+  });
+
+  test("L2 refuses an over-claiming lane and exposes its quarantine reason", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactComposer state={fixtureState({
+      input: "must not send",
+      providerLaneCapabilities: [{
+        laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "quarantined", reason: "Lane capability over-claim quarantined (feature:fullAuto).",
+        models: [], reasoningEfforts: [], permissionModes: [], approvals: "none", questions: false, skills: false, images: false,
+        fullAuto: false, interrupt: false, queueFollowup: false, steerTurn: false, extensions: [], evidence: "conformant",
+      }],
+    })} report={report} />);
+    expect(container.querySelector('[data-en-key="shell-attach-image"]')).toBeNull();
+    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
+    expect((container.querySelector('[data-composer-button-kind="submit"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(container.textContent).toContain("Lane capability over-claim quarantined");
   });
 });
 

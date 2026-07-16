@@ -91,6 +91,15 @@ const makeFixtureHarness = (root: string, options?: Readonly<{
         steerChild: false,
         answerQuestion: false,
       },
+      composer: { displayName: "Fixture", reasoningEfforts: [], permissionModes: ["owner_full"], approvals: "none", extensions: [] },
+      policy: {
+        source: "native-static-declaration",
+        profileRef: "native:fixture:v1",
+        evidence: "conformant",
+        allowedModels: ["fixture-model-1"],
+        allowedFeatures: ["interrupt"],
+        allowedExtensions: [],
+      },
       recovery: "interrupt_on_restart",
     }),
     admit: request => {

@@ -32,6 +32,10 @@ import {
   unavailableProviderAccountUsageResult,
 } from "./provider-accounts-contract.ts"
 import {
+  ProviderLaneCapabilitiesChannel,
+  decodeProviderLaneComposerProjections,
+} from "./provider-lane-capabilities.ts"
+import {
   DesktopChatTurnChannel,
   DesktopLocalTurnRecoveryUpdateChannel,
   DesktopForkHistoryThreadChannel,
@@ -662,6 +666,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         ? Promise.resolve(unavailableProviderAccountUsageResult("unknown", "invalid_request"))
         : ipcRenderer.invoke(ProviderAccountsUsageChannel, request)
     },
+  },
+  providerLanes: {
+    capabilities: async () =>
+      decodeProviderLaneComposerProjections(
+        await ipcRenderer.invoke(ProviderLaneCapabilitiesChannel),
+      ) ?? [],
   },
   fleetRuns: {
     list: () => ipcRenderer.invoke(FleetRunProjectionListChannel),

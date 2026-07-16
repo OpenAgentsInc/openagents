@@ -117,6 +117,15 @@ describe("ACP projection to provider-lane envelope", () => {
           steerChild: false,
           answerQuestion: true,
         },
+        composer: { displayName: "Grok", reasoningEfforts: [], permissionModes: ["owner_full"], approvals: "provider_native", extensions: ["x.ai/ask_user_question"] },
+        policy: {
+          source: "trusted-acp-peer-profile",
+          profileRef: "grok-cli",
+          evidence: "experimental",
+          allowedModels: ["grok-code-fast"],
+          allowedFeatures: ["interrupt", "answerQuestion"],
+          allowedExtensions: ["x.ai/ask_user_question"],
+        },
         recovery: "interrupt_on_restart",
       },
       driver: {

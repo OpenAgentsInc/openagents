@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-16.2",
+    version: "2026-07-16.3",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -4146,6 +4146,49 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop typecheck, shell + history-catalog-scale suites, the built-host smoke header assertion, and the real-store diagnosis receipt (1,289 roots from 1,582 sessions in ~1.9 s where the pre-fix build ENOMEMed).",
+      },
+      {
+        contractId: "openagents_desktop.chat.provider_lane_capability_honesty.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "composer provider-lane capability truth",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "capability-audit", statedBy: "issue-8900", statedOn: "2026-07-16" },
+        statement:
+          "Every active provider lane renders a composer derived from its admitted capability projection; unsupported controls are absent or honestly disabled, and an over-claiming lane is quarantined before submission.",
+        authorityBoundary:
+          "ProviderLane.capabilities is the observed lane report. Electron main intersects it with the native static declaration or trusted ACP peer-profile/conformance allowlist and sends only the bounded projection through preload. The renderer may present that projection but cannot add models, modes, approvals, interactions, attachments, extensions, Full Auto, interrupt, queue, or steer authority. A model, feature, or extension outside the allowlist quarantines the whole lane with a public-safe reason and removes submission authority. Switching threads/providers re-derives the controls from the newly active lane; per-provider selections cannot leak Codex-only reasoning or Full Auto affordances into another lane.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/provider-lane.ts",
+          "apps/openagents-desktop/src/provider-lane-capabilities.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/preload.cts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/react-composer.tsx",
+          "github:OpenAgentsInc/openagents#8900",
+        ],
+        oracles: [
+          {
+            id: "provider_lane_capabilities.policy_intersection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/provider-lane-capabilities.test.ts",
+            description:
+              "Proves distinct Codex/Claude projections and fail-closed quarantine of an ACP fixture that advertises a feature and vendor extension absent from its trusted profile.",
+          },
+          {
+            id: "provider_lane_capabilities.composer_switch",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+            description:
+              "Switches the active composer fixture from Codex to Claude and proves models, reasoning, permission mode, Full Auto, attachments, and submission authority follow only the active admitted projection; a quarantined lane cannot send.",
+          },
+        ],
+        verification:
+          "Desktop focused ProviderLane/capability/composer suites, behavior-contract registry validation, and Desktop typecheck.",
       },
     ],
   };

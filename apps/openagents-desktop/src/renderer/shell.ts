@@ -55,6 +55,7 @@ import {
   type ComposerAdmission,
 } from "../composer-admission.ts"
 import type { CodexQueuedIntent } from "../codex-durable-queue.ts"
+import type { ProviderLaneComposerProjection } from "../provider-lane-capabilities.ts"
 import {
   contextGroupSummary,
   humanizeToolInvocation,
@@ -373,6 +374,8 @@ export type DesktopShellState = Readonly<{
   permissionModeByThread: Readonly<Record<string, LocalPermissionMode>>
   /** Probed lane availability; boot replaces this with real evidence pre-mount. */
   harnessLanes: HarnessLanes
+  /** Main-owned, policy-intersected L2 capability truth for each lane. */
+  providerLaneCapabilities: ReadonlyArray<ProviderLaneComposerProjection>
   threads: ReadonlyArray<DesktopThread>
   activeThreadId: string | null
   /**
@@ -509,6 +512,7 @@ export const initialDesktopShellState = (
     fable: { available: false, reason: "Fable — checking local availability" },
     codex: { available: false, reason: "Codex — checking availability" },
   },
+  providerLaneCapabilities: [],
   threads: [],
   activeThreadId: null,
   selectedMessageKey: null,
@@ -1253,6 +1257,19 @@ export const withHarnessLanes = (
   return { ...state, harnessLanes }
 }
 
+export const withProviderLaneCapabilities = (
+  state: DesktopShellState,
+  providerLaneCapabilities: ReadonlyArray<ProviderLaneComposerProjection>,
+): DesktopShellState => ({ ...state, providerLaneCapabilities })
+
+export const capabilityForHarness = (
+  state: DesktopShellState,
+  harness: DesktopHarnessName = state.selectedHarness,
+): ProviderLaneComposerProjection | null =>
+  state.providerLaneCapabilities.find(
+    lane => lane.laneRef === (harness === "codex" ? "codex-local" : "fable-local"),
+  ) ?? null
+
 export type ChatHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<DesktopThread>>
   newThread: () => Promise<DesktopThread | null>
@@ -1928,6 +1945,9 @@ export const makeDesktopShellHandlers = (
     // accept the action — the composer keeps the draft and the caption
     // already names the reason. Never substitute another lane silently.
     if (!current.harnessLanes[current.selectedHarness].available) return
+    const laneCapabilities = capabilityForHarness(current)
+    if (laneCapabilities !== null && laneCapabilities.admission !== "admitted") return
+    if (laneCapabilities !== null && current.composerImages.length > 0 && !laneCapabilities.images) return
     // Capability I1: a turn is submittable with text OR ≥1 image; an empty
     // turn with no images is a no-op (withNote returns state unchanged).
     if (message.trim() === "" && current.composerImages.length === 0 &&
@@ -1975,6 +1995,7 @@ export const makeDesktopShellHandlers = (
     // route. Context contents can therefore never invoke a skill.
     const skillSelection = parseExplicitSkillInvocation(message, current.settings.plugins.plugins)
     if (skillSelection.kind === "invalid") return
+    if (skillSelection.kind === "skill" && laneCapabilities !== null && !laneCapabilities.skills) return
     const providerMessage = messageWithReviewContext(
       skillSelection.message,
       current.composerReviewContext,
@@ -1989,8 +2010,17 @@ export const makeDesktopShellHandlers = (
       harness: current.selectedHarness,
       ...(providerTargetForSubmission(current) === null ? {} : { target: providerTargetForSubmission(current)! }),
       ...(skillSelection.kind === "skill" ? { skill: skillSelection.skill } : {}),
-      permissionMode: current.permissionModeByThread[current.activeThreadId!] ?? "owner_full",
-      ...(current.selectedHarness === "codex" ? { reasoningEffort: current.codexReasoningEffort } : {}),
+      permissionMode: (() => {
+        const selected = current.permissionModeByThread[current.activeThreadId!] ?? "owner_full"
+        return laneCapabilities === null || laneCapabilities.permissionModes.includes(selected)
+          ? selected
+          : "owner_full"
+      })(),
+      ...((laneCapabilities === null
+        ? current.selectedHarness === "codex"
+        : laneCapabilities.reasoningEfforts.includes(current.codexReasoningEffort))
+        ? { reasoningEffort: current.codexReasoningEffort }
+        : {}),
       model: current.selectedHarness === "codex" ? current.codexModel : current.claudeModel,
       ...(images.length > 0 ? { images } : {}),
       ...(fullAutoActive ? { fullAuto: true } : {}),

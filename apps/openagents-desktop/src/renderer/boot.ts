@@ -71,6 +71,7 @@ import {
   withLiveAgentGraph,
   withThreadCatalog,
   withThreads,
+  withProviderLaneCapabilities,
 } from "./shell.ts"
 import { makeCommandNoticeController } from "./command-notice.ts"
 import { makeComposerFocuser, makeComposerFocusSettler } from "./composer-focus.ts"
@@ -88,6 +89,7 @@ import {
   type FableLocalRendererBridge,
 } from "./local-harness.ts"
 import { withHarnessLanes, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
+import { decodeProviderLaneComposerProjections } from "../provider-lane-capabilities.ts"
 import {
   decodeFableLocalAvailability,
   type FableLocalAvailability,
@@ -195,6 +197,7 @@ type DesktopBridge = Readonly<{
     list?: () => Promise<unknown>
     usage?: (ref: string) => Promise<unknown>
   }>
+  providerLanes?: Readonly<{ capabilities?: () => Promise<unknown> }>
   fleetRuns?: Readonly<{ list?: () => Promise<unknown> }>
   fableLocal?: Readonly<{
     availability?: () => Promise<unknown>
@@ -892,6 +895,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         }
       : localLanes()
     yield* SubscriptionRef.update(state, current => withHarnessLanes(current, harnessLanes))
+    const laneCapabilities = decodeProviderLaneComposerProjections(
+      yield* Effect.promise(() => bridge?.providerLanes?.capabilities?.().catch(() => null) ?? Promise.resolve(null)),
+    )
+    if (laneCapabilities !== null) {
+      yield* SubscriptionRef.update(state, current =>
+        withProviderLaneCapabilities(current, laneCapabilities))
+    }
     if (selection.mode === "local" && codexLocalBridge !== null) {
       // Non-blocking: the probe round can take tens of seconds on broken
       // accounts; the shell mounts immediately and the chip updates when
