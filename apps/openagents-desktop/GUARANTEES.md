@@ -963,6 +963,35 @@ Canonical, completeness, mutation, byte-convergence, monotonicity, selection,
 and v1/v2 golden oracles:
 [`tests/release-set-contract.test.ts`](./tests/release-set-contract.test.ts).
 
+### The update host executes target selection and first-launch rollback (#8918)
+
+Electron main now distinguishes native host architecture from the running
+application architecture (including Rosetta), verifies ReleaseSet v2, chooses
+the one fixed preferred full artifact, and passes the expected executable
+architecture to a narrow platform-applier boundary. V1 remains a dated,
+macOS-arm64-only compatibility input.
+
+Replacement is fenced by the shared migration-ledger reducer and a bounded
+all-settled drain of agents, PTYs, local servers, helpers, windows, and WSL.
+Install success persists as `awaiting_launch_receipt`, not success. A second
+runtime must initialize the renderer, persistence, session custody, and
+provider gateway before writing the exact-version receipt. On macOS, a
+detached system-shell watchdog survives failure of the replacement app to
+launch and restores only the verified retained slot at the deadline. Durable
+`applying`, receipt-wait, rollback, and rollback-failure states reconcile on
+the next main-process start; renderer IPC exposes only bounded phase/version/
+reason data and has no subscription to leak.
+
+Contracts: `src/update-staging-host.ts`, `src/update-platform-applier.ts`,
+`src/update-runtime-drain.ts`, and `src/macos-update-applier.ts`. Oracles:
+`src/update-staging-host.test.ts`, `src/update-runtime-drain.test.ts`,
+`src/macos-update-applier.test.ts`, and
+`tests/release-set-contract.test.ts`.
+
+This does not claim native Windows or Linux installer execution. Their
+platform appliers and native receipts remain owned by the target-specific
+distribution issues.
+
 This implemented contract does not itself admit any cross-platform target as
 supported. The native install/update/interruption/rollback receipts required
 by the normative ProductSpec remain the support authority.

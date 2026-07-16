@@ -18,6 +18,7 @@ import {
   type UpdateSignature,
   UPDATE_CONTRACT_SCHEMA_ID,
   compareReleaseVersions,
+  decodeLaunchHealthReceipt,
   isMonotonicUpgrade,
   parseReleaseVersion,
   verifyArtifactDigest,
@@ -41,6 +42,16 @@ const signWithFixture = (payload: Uint8Array, overrides?: Partial<UpdateSignatur
   sha256: createHash("sha256").update(payload).digest("hex"),
   signature: edSign(null, payload, fixture.privateKey).toString("base64url"),
   ...overrides,
+})
+
+describe("launch health receipt", () => {
+  const valid = { schema: "openagents.desktop.launch_health.v1", app: "openagents-desktop", version: "0.1.0-rc.6", transactionRef: "a".repeat(32), rendererReadyAt: "2026-07-16T10:00:00.000Z", providerReadyAt: "2026-07-16T10:00:01.000Z", cleanShutdownAt: "2026-07-16T10:00:02.000Z" }
+  test("requires typed ISO instants in lifecycle order", () => {
+    expect(decodeLaunchHealthReceipt(valid)).toEqual(valid)
+    expect(decodeLaunchHealthReceipt({ ...valid, rendererReadyAt: "not-an-instant" })).toBeNull()
+    expect(decodeLaunchHealthReceipt({ ...valid, providerReadyAt: "2026-07-16T09:59:59.000Z" })).toBeNull()
+    expect(decodeLaunchHealthReceipt({ ...valid, cleanShutdownAt: "2026-07-16T10:00:00.500Z" })).toBeNull()
+  })
 })
 
 const artifactBytes = new TextEncoder().encode("fixture artifact bytes for cut-26")

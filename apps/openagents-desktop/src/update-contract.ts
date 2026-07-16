@@ -282,6 +282,7 @@ export const verifyArtifactDigest = (
 // ---------------------------------------------------------------------------
 
 export const LAUNCH_RECEIPT_SCHEMA_ID = "openagents.desktop.launch_receipt.v1" as const
+export const LAUNCH_HEALTH_RECEIPT_SCHEMA_ID = "openagents.desktop.launch_health.v1" as const
 
 const IsoInstantSchema = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/),
@@ -295,6 +296,26 @@ export const LaunchReceiptSchema = Schema.Struct({
   launchedAt: IsoInstantSchema,
 })
 export type LaunchReceipt = typeof LaunchReceiptSchema.Type
+
+export const LaunchHealthReceiptSchema = Schema.Struct({
+  schema: Schema.Literal(LAUNCH_HEALTH_RECEIPT_SCHEMA_ID),
+  app: Schema.Literal("openagents-desktop"),
+  version: ReleaseVersionSchema,
+  transactionRef: Schema.String.check(Schema.isPattern(/^[0-9a-f]{32}$/)),
+  rendererReadyAt: IsoInstantSchema,
+  providerReadyAt: IsoInstantSchema,
+  cleanShutdownAt: IsoInstantSchema,
+})
+export type LaunchHealthReceipt = typeof LaunchHealthReceiptSchema.Type
+
+export const decodeLaunchHealthReceipt = (value: unknown): LaunchHealthReceipt | null => {
+  const receipt = decodeExit<LaunchHealthReceipt>(LaunchHealthReceiptSchema, value)
+  if (receipt === null) return null
+  const renderer = Date.parse(receipt.rendererReadyAt)
+  const provider = Date.parse(receipt.providerReadyAt)
+  const shutdown = Date.parse(receipt.cleanShutdownAt)
+  return renderer <= provider && provider <= shutdown ? receipt : null
+}
 
 /**
  * Bounded receipt window: the previous release stays staged for rollback

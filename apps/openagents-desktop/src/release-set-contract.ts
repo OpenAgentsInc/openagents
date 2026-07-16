@@ -22,30 +22,25 @@ import {
   deriveReleaseKeyPin,
   signReleasePayload,
 } from "./release-publish.ts";
+import {
+  desktopArtifactFormats,
+  desktopTargetKeys,
+  type DesktopArtifactFormat,
+  type DesktopTargetKey,
+} from "./release-staging-contract.ts";
 
 export const RELEASE_SET_SCHEMA_ID = "openagents.desktop.release_set.v2" as const;
 export const RELEASE_SET_SCHEMA_VERSION = 2 as const;
 
-export const releaseTargetKeys = [
-  "darwin-arm64",
-  "darwin-x64",
-  "win32-arm64",
-  "win32-x64",
-  "linux-arm64",
-  "linux-x64",
-] as const;
-export type ReleaseTargetKey = (typeof releaseTargetKeys)[number];
+export const releaseTargetKeys = desktopTargetKeys;
+export type ReleaseTargetKey = DesktopTargetKey;
 export const ReleaseTargetKeySchema = Schema.Literals(releaseTargetKeys);
 
 export const macReleaseFormats = ["dmg", "zip"] as const;
 export const windowsReleaseFormats = ["nsis"] as const;
 export const linuxReleaseFormats = ["appimage", "deb", "rpm"] as const;
-export const releaseFormats = [
-  ...macReleaseFormats,
-  ...windowsReleaseFormats,
-  ...linuxReleaseFormats,
-] as const;
-export type ReleaseFormat = (typeof releaseFormats)[number];
+export const releaseFormats = desktopArtifactFormats;
+export type ReleaseFormat = DesktopArtifactFormat;
 export const MacReleaseFormatSchema = Schema.Literals(macReleaseFormats);
 export const WindowsReleaseFormatSchema = Schema.Literals(windowsReleaseFormats);
 export const LinuxReleaseFormatSchema = Schema.Literals(linuxReleaseFormats);
@@ -173,12 +168,19 @@ export type ReleaseSet = typeof ReleaseSetSchema.Type;
 // Compile each Effect decoder once. The exact projection check below then
 // makes unknown object keys fail instead of being silently stripped.
 const decodeReleaseSetExit = Schema.decodeUnknownExit(ReleaseSetSchema);
+const decodeReleaseSetArtifactExit = Schema.decodeUnknownExit(ReleaseSetArtifactSchema);
 const decodeUpdateManifestExit = Schema.decodeUnknownExit(UpdateManifestSchema);
 const decodeUpdateSignatureExit = Schema.decodeUnknownExit(UpdateSignatureSchema);
 
 const decodeReleaseSetSchema = (value: unknown): ReleaseSet | null => {
   const result = decodeReleaseSetExit(value);
   return Exit.isSuccess(result) ? result.value : null;
+};
+
+export const decodeReleaseSetArtifact = (value: unknown): ReleaseSetArtifact | null => {
+  const result = decodeReleaseSetArtifactExit(value);
+  if (!Exit.isSuccess(result)) return null;
+  return canonicalJson(value) === canonicalJson(result.value) ? result.value : null;
 };
 
 const decodeUpdateManifestSchema = (value: unknown): UpdateManifest | null => {
@@ -433,6 +435,7 @@ export const finalizeReleaseSet = (
 
 export type HostPlatform = "darwin" | "win32" | "linux";
 export type HostArchitecture = "arm64" | "x64";
+export type ApplicationArchitecture = HostArchitecture;
 const numericVersionParts = (value: string): readonly number[] =>
   (value.match(/\d+/g) ?? []).map(Number);
 
@@ -443,17 +446,26 @@ export const selectReleaseArtifact = (
     installedVersion: string;
     platform: HostPlatform;
     architecture: HostArchitecture;
+    /** Architecture of the running executable; distinct under Rosetta. */
+    applicationArchitecture?: ApplicationArchitecture;
     hostVersion: string;
   }>,
 ):
-  | { readonly ok: true; readonly target: ReleaseTargetKey; readonly artifact: ReleaseSetArtifact }
+  | {
+      readonly ok: true;
+      readonly target: ReleaseTargetKey;
+      readonly artifact: ReleaseSetArtifact;
+      readonly transition: "same_architecture" | "full_artifact_architecture_migration";
+    }
   | {
       readonly ok: false;
       readonly reason:
         | "channel_mismatch"
         | "not_monotonic"
         | "target_unavailable"
-        | "minimum_os_not_met";
+        | "minimum_os_not_met"
+        | "ambiguous_target"
+        | "preferred_format_invalid";
     } => {
   if (input.releaseSet.channel !== input.installedChannel)
     return { ok: false, reason: "channel_mismatch" };
@@ -464,9 +476,17 @@ export const selectReleaseArtifact = (
     return { ok: false, reason: "not_monotonic" };
   }
   const target = `${input.platform}-${input.architecture}` as ReleaseTargetKey;
-  const row = input.releaseSet.targets.find((candidate) => candidate.target === target);
-  const artifact = row?.artifacts.find((candidate) => candidate.format === row.preferredFormat);
-  if (row === undefined || artifact === undefined)
+  const rows = input.releaseSet.targets.filter((candidate) => candidate.target === target);
+  if (rows.length > 1) return { ok: false, reason: "ambiguous_target" };
+  const row = rows[0];
+  if (row === undefined) return { ok: false, reason: "target_unavailable" };
+  if (row.preferredFormat !== preferredFormatByTarget[target]) {
+    return { ok: false, reason: "preferred_format_invalid" };
+  }
+  const artifacts = row.artifacts.filter((candidate) => candidate.format === row.preferredFormat);
+  if (artifacts.length > 1) return { ok: false, reason: "ambiguous_target" };
+  const artifact = artifacts[0];
+  if (artifact === undefined || artifact.target !== target)
     return { ok: false, reason: "target_unavailable" };
   const minimum = numericVersionParts(row.minimumOs);
   const host = numericVersionParts(input.hostVersion);
@@ -476,7 +496,16 @@ export const selectReleaseArtifact = (
     if (hostPart > minimumPart) break;
     if (hostPart < minimumPart) return { ok: false, reason: "minimum_os_not_met" };
   }
-  return { ok: true, target, artifact };
+  return {
+    ok: true,
+    target,
+    artifact,
+    transition:
+      input.applicationArchitecture !== undefined &&
+      input.applicationArchitecture !== input.architecture
+        ? "full_artifact_architecture_migration"
+        : "same_architecture",
+  };
 };
 
 /**

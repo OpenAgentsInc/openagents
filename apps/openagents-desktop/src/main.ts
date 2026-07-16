@@ -11,7 +11,7 @@
  * Plain TypeScript, bundled by `scripts/build.ts` (Bun) into `dist/`.
  */
 import path from "node:path"
-import { homedir } from "node:os"
+import { homedir, release as osRelease } from "node:os"
 import { createHash, randomUUID } from "node:crypto"
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFile, execFileSync } from "node:child_process"
@@ -26,8 +26,10 @@ import {
   buildStartTurnIntent,
 } from "@openagentsinc/khala-sync-client"
 import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.ts"
-import { openDesktopUpdateStagingHost } from "./update-staging-host.ts"
+import { openDesktopUpdateStagingHost, updateRecoveryRequiresStartupExit } from "./update-staging-host.ts"
 import { openMacOSUpdateApplier } from "./macos-update-applier.ts"
+import { drainChildRuntimes } from "./update-runtime-drain.ts"
+import { evaluateNoMigrationInvariant } from "./update-migration-evidence.ts"
 import {
   DesktopUpdateStagingChannel,
   decodeDesktopUpdateStagingAction,
@@ -1127,19 +1129,84 @@ const codexHandoffBindings = openCodexHandoffBindings(
 )
 const desktopUpdateRoot = path.join(app.getPath("userData"), "updates")
 const desktopUpdateChannel = app.getVersion().includes("-rc.") ? "rc" : "stable"
+const desktopHostVersion = (): string => {
+  if (process.platform === "darwin") {
+    try { return execFileSync("/usr/bin/sw_vers", ["-productVersion"], { encoding: "utf8" }).trim() }
+    catch { return "0" }
+  }
+  if (process.platform === "linux") {
+    const report = process.report?.getReport() as { header?: { glibcVersionRuntime?: unknown } }
+    const glibc = report.header?.glibcVersionRuntime
+    return typeof glibc === "string" ? `glibc ${glibc}` : "glibc 0"
+  }
+  return osRelease()
+}
 const desktopUpdateApplier = openMacOSUpdateApplier({
   root: desktopUpdateRoot,
   installedAppPath: path.resolve(path.dirname(app.getPath("exe")), "../.."),
   installedVersion: app.getVersion(),
   channel: desktopUpdateChannel,
   packaged: app.isPackaged,
+  targetArchitecture: process.platform === "darwin" && app.runningUnderARM64Translation
+    ? "arm64"
+    : process.arch === "arm64" || process.arch === "x64" ? process.arch : undefined,
 })
+let desktopUpdateDrainActive = false
+const drainDesktopUpdateRuntimes = async () => {
+  desktopUpdateDrainActive = true
+  return await drainChildRuntimes({
+    timeoutMs: 15_000,
+    drainers: [
+      { kind: "agent", drain: async () => { fableLocal.dispose(); codexLocal.dispose(); await acpProviderHost.shutdown() } },
+      { kind: "pty", drain: () => terminalHost.dispose() },
+      { kind: "local_server", drain: () => { codexControlPlanes.close(); codexThreadLifecycles.close(); codexEcosystems.close(); codexHostServices.close(); codexExperimentalRuntimes.close(); codexAppServerSupervisor.close() } },
+      { kind: "helper", drain: () => {
+        for (const flush of localTurnFlushers) flush()
+        localTurnFlushers.clear()
+        workspaceSearchRegistry.dispose()
+        hostLifecycle.dispose()
+        providerAccounts.dispose()
+        codexDurableQueue.close()
+        usageLedger.dispose()
+        desktopCorrelationJournal.dispose()
+        runtimeGateway.dispose()
+      } },
+      { kind: "window", drain: () => { for (const window of BrowserWindow.getAllWindows()) window.destroy() } },
+      { kind: "wsl", drain: () => process.platform !== "win32" ? undefined : new Promise<void>((resolve, reject) => {
+        execFile("C:\\Windows\\System32\\wsl.exe", ["--shutdown"], error => error === null ? resolve() : reject(error))
+      }) },
+    ],
+  })
+}
 const desktopUpdateHost = openDesktopUpdateStagingHost({
   root: desktopUpdateRoot,
   installedVersion: app.getVersion(),
   channel: desktopUpdateChannel,
+  platform: process.platform === "darwin" || process.platform === "win32" || process.platform === "linux"
+    ? process.platform
+    : undefined,
+  hostArchitecture: process.platform === "darwin" && app.runningUnderARM64Translation
+    ? "arm64"
+    : process.arch === "arm64" || process.arch === "x64" ? process.arch : undefined,
+  applicationArchitecture: process.arch === "arm64" || process.arch === "x64" ? process.arch : undefined,
+  hostVersion: desktopHostVersion(),
   openPath: artifactPath => shell.openPath(artifactPath),
   applier: desktopUpdateApplier,
+  drainChildren: drainDesktopUpdateRuntimes,
+  migrationEvidence: () => evaluateNoMigrationInvariant({
+    installedApplicationRoot: path.resolve(path.dirname(app.getPath("exe")), "../.."),
+    categoryRoots: {
+      sessions: codexSessionsRoot(),
+      vaultRefs: path.join(app.getPath("userData"), "session", "native-session.enc"),
+      settings: app.getPath("userData"),
+      drafts: path.join(app.getPath("userData"), "sync", "khala-sync.sqlite"),
+    },
+    categoryKinds: { sessions: "directory", vaultRefs: "file", settings: "directory", drafts: "file" },
+    absentDispositions: {
+      sessions: "no_sessions",
+      ...(desktopSessionState === "signed_out" ? { vaultRefs: "signed_out" as const } : {}),
+    },
+  }),
   restart: () => setTimeout(() => {
     app.relaunch()
     app.quit()
@@ -6298,6 +6365,8 @@ const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): 
 
 void app.whenReady().then(async () => {
   if (!primaryDesktopInstance) return
+  const updateRecovery = await desktopUpdateHost.reconcile()
+  if (updateRecoveryRequiresStartupExit(updateRecovery)) return
   recordMainMark("appWhenReady")
   const providerAccountsBootstrapReceipt = isolatedAppProofMode
     ? isolatedProofReceiptPath({ env: process.env, temporaryDirectory: app.getPath("temp") })
@@ -6770,10 +6839,41 @@ void app.whenReady().then(async () => {
   // `createWindow()` on this path may touch SQLite, safeStorage, or the
   // network.
   const window = createWindow()
+  // Register the smoke driver before any readiness await. `did-finish-load`
+  // may fire while persistence/provider initialization is in flight; a late
+  // listener would miss the one-shot event and report a false timeout.
+  if (smokeMode && !startupMarksMode) runSmoke(window)
+  const rendererReady = new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("renderer_ready_timeout")), 30_000)
+    window.webContents.once("did-finish-load", () => { clearTimeout(timer); resolve(new Date().toISOString()) })
+    if (!window.webContents.isLoading()) { clearTimeout(timer); resolve(new Date().toISOString()) }
+  })
   recordMainMark("windowCreated")
   openLocalSyncPersistence()
   await recoverSessionVaultLocal()
   runtimeGateway.start()
+  const rendererReadyAt = await rendererReady
+  await ensureAcpProviders()
+  const providerReadyAt = new Date().toISOString()
+  // Reaching this point proves the replacement build initialized its native
+  // main host, renderer window, local persistence, session custody, and
+  // provider gateway. Only now may the retained previous slot become a
+  // user-visible rollback option rather than an automatic health fallback.
+  const launchHealth = await desktopUpdateHost.recordHealthyLaunch({ rendererReadyAt, providerReadyAt })
+  if (launchHealth.phase === "restarting") {
+    const drain = await drainDesktopUpdateRuntimes()
+    if (!drain.ok) {
+      app.exit(1)
+      return
+    }
+    if (!desktopUpdateHost.recordCleanShutdown(drain)) {
+      app.exit(1)
+      return
+    }
+    app.relaunch()
+    app.exit(0)
+    return
+  }
   void settleSessionRecovery()
   // Boot probe round (EP250 preflight): async and non-blocking — results
   // stream into the shared health ordering, the ledger's typed reconnect
@@ -6814,8 +6914,8 @@ void app.whenReady().then(async () => {
     desktopCorrelationJournal.dispose()
     app.exit(code)
   }
-  if (smokeMode) runSmoke(window)
-  else if (mvpProof.enabled) {
+  if (smokeMode) return
+  if (mvpProof.enabled) {
     const workspaceRoot = isolatedAppProofWorkspaceRoot({ enabled: isolatedAppProofMode, env: process.env })
     runMvpProof(window, {
       outDir: mvpProof.outDir,
@@ -6846,7 +6946,7 @@ void app.whenReady().then(async () => {
 })
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin" || smokeMode) {
+  if (!desktopUpdateDrainActive && (process.platform !== "darwin" || smokeMode)) {
     app.quit()
   }
 })

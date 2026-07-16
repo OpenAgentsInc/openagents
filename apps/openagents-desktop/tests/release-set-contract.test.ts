@@ -23,6 +23,7 @@ import {
 } from "../src/release-set-contract.ts";
 import type { PinnedReleaseKey, UpdateManifest } from "../src/update-contract.ts";
 import type { ReleaseSigningKey } from "../src/release-publish.ts";
+import { desktopArtifactFormats, desktopTargetKeys } from "../src/release-staging-contract.ts";
 
 // Ephemeral fixture keypair only. Production private material is never read.
 const fixturePair = generateKeyPairSync("ed25519");
@@ -99,6 +100,12 @@ const validReleaseSet: ReleaseSet = {
 const clone = (value: unknown): any => structuredClone(value);
 
 describe("ReleaseSet v2 bounded schema and canonicalization", () => {
+  test("shares the exact target and format enums with the DIST-03 staging contract", () => {
+    expect(releaseTargetKeys).toBe(desktopTargetKeys);
+    expect([...new Set(Object.values(requiredFormatsByTarget).flat())]).toEqual(
+      desktopArtifactFormats,
+    );
+  });
   test("accepts the exact complete matrix and produces insertion-order-independent canonical bytes", () => {
     expect(decodeReleaseSet(validReleaseSet)).toEqual({ ok: true, releaseSet: validReleaseSet });
     const reordered = {
@@ -377,6 +384,23 @@ describe("ReleaseSet deterministic selection and bounded v1 migration", () => {
         hostVersion: "12.6",
       }),
     ).toEqual({ ok: false, reason: "minimum_os_not_met" });
+
+    expect(
+      selectReleaseArtifact({
+        releaseSet: validReleaseSet,
+        installedChannel: channel,
+        installedVersion: "2.4.0-rc.2",
+        platform: "darwin",
+        architecture: "arm64",
+        applicationArchitecture: "x64",
+        hostVersion: "14.0",
+      }),
+    ).toMatchObject({
+      ok: true,
+      target: "darwin-arm64",
+      transition: "full_artifact_architecture_migration",
+      artifact: { format: "dmg", target: "darwin-arm64" },
+    });
   });
 
   test("v1 remains readable only as typed macOS arm64 compatibility input through the promised interval", () => {
