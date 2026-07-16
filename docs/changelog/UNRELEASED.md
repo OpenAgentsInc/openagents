@@ -57,13 +57,13 @@ Every release now publishes two changelog artifacts: a human-centric changelog a
 ## Target-aware release staging with provenance (DIST-03, #8916)
 
 - issues: #8916 (epic #8913)
-- commits: (integration commit on main)
-- contracts-specs: target_build_descriptor.v1, native_component_ledger.v1, build_receipt.v1 in apps/openagents-desktop/src/release-staging-contract.ts (integration point for ReleaseSet v2 refs)
-- invariants: INVARIANTS.md DIST-03 entry incl. signer/notary nondeterminism exception; packaging entrypoints require OA_DESKTOP_TARGET
-- evidence: tests/release-staging.test.ts (26) + release suite 99 green; live darwin-arm64 staging with identical ledgerRef across two runs; win32-arm64 typed missing_runtime_package refusal
+- commits: (integration commit on main; repaired per the two independent review comments)
+- contracts-specs: target_build_descriptor.v1 (exact format coverage), native_component_ledger.v1 (per-file §9 closure + toolchain/lockfile/OS metadata), build_receipt.v1 (full toolchain + stagedTree/asarAllowlist gates) in apps/openagents-desktop/src/release-staging-contract.ts (integration point for ReleaseSet v2 refs); packaging entrypoints require OA_DESKTOP_STAGING_WORKSPACE via scripts/stage-and-package.ts
+- invariants: INVARIANTS.md DIST-03 entry incl. signer/notary nondeterminism exception; staged-tree-only Forge consumption; live post-package ASAR gate
+- evidence: tests/release-staging.test.ts (37) + release suite green; real isolated darwin-arm64 staging with identical ledgerRef across two independent runs and a real Forge package/asar assembly consuming the staged tree; win32-arm64 typed missing_runtime_package refusal
 - lane: fable-dist03-staging-20260716
 
-Desktop packaging now requires an explicit build target: staging happens in a clean per-target workspace with target-correct native components, and every build emits a public-safe native-component ledger and a build receipt binding source revision, versions, toolchain, and worker identity. Unsigned development output is structurally inadmissible to publication.
+Desktop packaging now requires an explicit build target and a real isolated staging pipeline: each target stages in a clean temporary workspace from the exact exported source revision, executes a locked target-only production install from the immutable lockfile, builds native components with an explicit Rust triple into the staging workspace, and every build emits a public-safe per-file native-component ledger (ProductSpec §9 metadata: lockfile digest, OS image, Electron/Node/pnpm/Forge/maker/Rust/compiler identities, per-executable architecture/signing/ASAR state) and a build receipt binding descriptor, toolchain, gate results, artifacts, and worker identity. Electron Forge packages ONLY the staged tree (the developer checkout and shared node_modules are never the packaged source) and a live post-package gate re-audits the REAL app.asar entry list before any maker or signing work. Descriptors require exact per-target format coverage; unknown or truncated executable identity and escaping symlinks fail closed; unsigned development output is structurally inadmissible to publication.
 
 ## Verified desktop download resolution (DIST-10, #8923)
 

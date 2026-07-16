@@ -70,7 +70,7 @@ describe("CUT-26 macOS artifact contract", () => {
       scripts: Record<string, string>;
     };
     expect(manifest.scripts["make:mac"]).toBe(
-      "node --import tsx scripts/prepare-macos-maker.ts && OA_DESKTOP_TARGET=darwin-arm64 electron-forge make --platform=darwin --arch=arm64",
+      "node --import tsx scripts/prepare-macos-maker.ts && node --import tsx scripts/stage-and-package.ts --target darwin-arm64 --mode make",
     );
     const nativePreparation = readFileSync(
       path.join(root, "scripts", "prepare-macos-maker.ts"),
@@ -135,14 +135,16 @@ describe("CUT-26 macOS artifact contract", () => {
     const source = readFileSync(path.join(root, "forge.config.ts"), "utf8");
     expect(source).toContain('"oa-desktop-audio"');
     expect(source).toContain('"claude"');
-    expect(source).toContain("`@anthropic-ai/claude-agent-sdk-${platform}-${arch}`");
-    expect(source).toContain(
-      '["build", "--release", "-p", "oa-desktop-audio", "--target", target.rustTargetTriple]',
-    );
-    expect(source).toContain("requireExplicitDesktopTarget");
+    // Explicit-triple native builds and provider staging live in the DIST-03
+    // staging builder; Forge only consumes the staged workspace.
+    expect(source).toContain("requireStagedBuildInputs");
     expect(source).not.toContain("const architecture = process.arch");
-    expect(source).toContain("chmodSync(destination, 0o755)");
-    expect(source).toContain("manifest.json");
+    const staging = readFileSync(path.join(root, "scripts", "stage-target.ts"), "utf8");
+    expect(staging).toContain("`@anthropic-ai/claude-agent-sdk-${platform}-${arch}`");
+    expect(staging).toContain('"--target",');
+    expect(staging).toContain("rustTargetTriple");
+    expect(staging).toContain("chmod(destination, 0o755)");
+    expect(staging).toContain("manifest.json");
     expect(config.packagerConfig?.extendInfo).toMatchObject({
       NSMicrophoneUsageDescription: expect.any(String),
     });

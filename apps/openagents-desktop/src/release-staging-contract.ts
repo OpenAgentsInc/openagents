@@ -172,6 +172,16 @@ const BoundedVersionStringSchema = Schema.String.check(
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._+-]*$/),
 );
 
+/**
+ * Bounded toolchain identity line (e.g. `rustc 1.88.0 (6b00bc388 2026-06-23)`
+ * or `Apple clang version 17.0.0`). Never a path, hostname, or credential.
+ */
+const BoundedToolIdentitySchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(160),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9 ._:()+,-]*$/),
+);
+
 // ---------------------------------------------------------------------------
 // Target build descriptor
 // ---------------------------------------------------------------------------
@@ -207,6 +217,14 @@ export const DesktopTargetBuildDescriptorSchema = Schema.Struct(descriptorFields
       for (const format of descriptor.formats) {
         if (!definition.requiredFormats.includes(format)) {
           return `format ${format} is not defined for target ${descriptor.targetKey}`;
+        }
+      }
+      // EXACT per-target coverage (independent review, #8916): a descriptor
+      // may not declare a subset — darwin ships dmg+zip, win32 ships nsis,
+      // linux ships appimage+deb+rpm, always all of them.
+      for (const required of definition.requiredFormats) {
+        if (!unique.has(required)) {
+          return `descriptor omits required format ${required} for target ${descriptor.targetKey}`;
         }
       }
       const parsed = parseReleaseVersion(descriptor.version);
@@ -285,8 +303,53 @@ export const nativeComponentProvenances = [
 export type NativeComponentProvenance = (typeof nativeComponentProvenances)[number];
 export const NativeComponentProvenanceSchema = Schema.Literals(nativeComponentProvenances);
 
+/**
+ * ProductSpec §9 file classes: every bundled provider runtime, CLI, native
+ * Node module, shared library, helper, WASM module, and executable is
+ * enumerated per FILE — never as an aggregate package-tree digest.
+ */
+export const nativeComponentFileKinds = [
+  /** Native-header executable (Mach-O/ELF/PE): provider CLIs, helpers. */
+  "executable",
+  /** Native Node addon (`.node`). */
+  "native-module",
+  /** Shared library (`.dylib`/`.so`/`.dll`). */
+  "shared-library",
+  /** WebAssembly module (`.wasm`). */
+  "wasm-module",
+  /** Executable-bit script launcher (shebang/JS shim), not a native binary. */
+  "script-launcher",
+] as const;
+export type NativeComponentFileKind = (typeof nativeComponentFileKinds)[number];
+export const NativeComponentFileKindSchema = Schema.Literals(nativeComponentFileKinds);
+
+export const nativeComponentArchitectures = ["arm64", "x64", "none"] as const;
+export type NativeComponentArchitecture = (typeof nativeComponentArchitectures)[number];
+
+export const nativeComponentSigningStates = [
+  /** An embedded code signature is present in the staged bytes. */
+  "signed",
+  /** No embedded code signature (signing happens later in the maker lane). */
+  "unsigned",
+  /** The format has no embedded-signature concept (ELF, WASM, scripts). */
+  "not-applicable",
+  /** The header sample could not prove signature presence either way. */
+  "undetermined",
+] as const;
+export type NativeComponentSigningState = (typeof nativeComponentSigningStates)[number];
+
+export const nativeComponentAsarPlacements = [
+  /** Packed inside app.asar. */
+  "asar",
+  /** Beside the archive in app.asar.unpacked (child-process boundary). */
+  "unpacked",
+  /** Copied as an Electron extraResource under Contents/Resources. */
+  "extra-resource",
+] as const;
+export type NativeComponentAsarPlacement = (typeof nativeComponentAsarPlacements)[number];
+
 export const NativeComponentLedgerEntrySchema = Schema.Struct({
-  /** Public component name (package name or owned component name). */
+  /** Public component name (owning package name or owned component name). */
   name: Schema.String.check(
     Schema.isMinLength(1),
     Schema.isMaxLength(214),
@@ -297,10 +360,27 @@ export const NativeComponentLedgerEntrySchema = Schema.Struct({
   sha256: Sha256HexSchema,
   byteLength: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   provenance: NativeComponentProvenanceSchema,
-  /** Relative destination inside the staged bundle — never an absolute path. */
+  /** Exact relative file path inside the staged bundle — never absolute. */
   destination: BundleRelativePathSchema,
+  fileKind: NativeComponentFileKindSchema,
+  /** Header-derived executable architecture; `none` for wasm/scripts. */
+  architecture: Schema.Literals(nativeComponentArchitectures),
+  signingState: Schema.Literals(nativeComponentSigningStates),
+  /** Planned ASAR/unpacked/extraResource placement for this file. */
+  asarPlacement: Schema.Literals(nativeComponentAsarPlacements),
 });
 export type NativeComponentLedgerEntry = typeof NativeComponentLedgerEntrySchema.Type;
+
+/** §9 toolchain identity: Electron/Node/pnpm/Forge/maker/Rust/compiler. */
+export const DesktopBuildToolchainSchema = Schema.Struct({
+  electron: BoundedVersionStringSchema,
+  node: BoundedVersionStringSchema,
+  pnpm: BoundedVersionStringSchema,
+  forge: BoundedVersionStringSchema,
+  rust: BoundedToolIdentitySchema,
+  compiler: BoundedToolIdentitySchema,
+});
+export type DesktopBuildToolchain = typeof DesktopBuildToolchainSchema.Type;
 
 export const NativeComponentLedgerSchema = Schema.Struct({
   schema: Schema.Literal(NATIVE_COMPONENT_LEDGER_SCHEMA_ID),
@@ -308,13 +388,32 @@ export const NativeComponentLedgerSchema = Schema.Struct({
   channel: UpdateChannelSchema,
   version: ReleaseVersionSchema,
   sourceRevision: GitRevisionSchema,
+  /** sha256 of the exact immutable pnpm lockfile the closure installed from. */
+  lockfileSha256: Sha256HexSchema,
+  /** Public-safe OS image identity class of the staging worker. */
+  osImage: PublicRefSchema,
+  toolchain: DesktopBuildToolchainSchema,
+  /** Forge maker identity per required format (`maker:pending` until owned). */
+  makerIdentities: Schema.Array(
+    Schema.Struct({ format: DesktopArtifactFormatSchema, ref: PublicRefSchema }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(6)),
+  /**
+   * The staged-tree package-content oracle result. A ledger can only be
+   * constructed after the oracle passed, so this is structurally `pass`.
+   */
+  packageContentAllowlist: Schema.Literal("pass"),
+  /** Canonical §6 artifact identities this staged closure must produce. */
+  plannedArtifacts: Schema.Array(
+    Schema.Struct({ name: ArtifactNameSchema, format: DesktopArtifactFormatSchema }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(6)),
   components: Schema.Array(NativeComponentLedgerEntrySchema).check(
     Schema.isMinLength(1),
-    Schema.isMaxLength(256),
+    Schema.isMaxLength(512),
   ),
 }).check(
   Schema.makeFilter(
     (ledger) => {
+      const definition = desktopTargets[ledger.targetKey];
       const destinations = new Set<string>();
       for (const component of ledger.components) {
         if (component.targetKey !== ledger.targetKey) {
@@ -324,10 +423,50 @@ export const NativeComponentLedgerSchema = Schema.Struct({
           return `duplicate component destination ${component.destination}`;
         }
         destinations.add(component.destination);
+        const isNativeKind =
+          component.fileKind === "executable" ||
+          component.fileKind === "native-module" ||
+          component.fileKind === "shared-library";
+        if (isNativeKind && component.architecture !== definition.arch) {
+          return `${component.fileKind} ${component.destination} reports architecture ${component.architecture}, target requires ${definition.arch}`;
+        }
+        if (!isNativeKind && component.architecture !== "none") {
+          return `${component.fileKind} ${component.destination} cannot carry a native architecture`;
+        }
+        if (component.fileKind === "executable" && component.asarPlacement === "asar") {
+          return `executable ${component.destination} cannot run from inside app.asar`;
+        }
+      }
+      const plannedFormats = new Set(ledger.plannedArtifacts.map((artifact) => artifact.format));
+      if (
+        plannedFormats.size !== ledger.plannedArtifacts.length ||
+        plannedFormats.size !== definition.requiredFormats.length ||
+        !definition.requiredFormats.every((format) => plannedFormats.has(format))
+      ) {
+        return `planned artifacts must cover exactly ${definition.requiredFormats.join(", ")}`;
+      }
+      for (const artifact of ledger.plannedArtifacts) {
+        const canonical = desktopReleaseSetArtifactName({
+          version: ledger.version,
+          channel: ledger.channel,
+          targetKey: ledger.targetKey,
+          format: artifact.format,
+        });
+        if (artifact.name !== canonical) {
+          return `planned artifact ${artifact.name} is not the canonical name ${canonical}`;
+        }
+      }
+      const makerFormats = new Set(ledger.makerIdentities.map((entry) => entry.format));
+      if (
+        makerFormats.size !== ledger.makerIdentities.length ||
+        makerFormats.size !== definition.requiredFormats.length ||
+        !definition.requiredFormats.every((format) => makerFormats.has(format))
+      ) {
+        return `maker identities must cover exactly ${definition.requiredFormats.join(", ")}`;
       }
       return undefined;
     },
-    { title: "single-target ledger with unique destinations" },
+    { title: "single-target §9 ledger with per-file native closure" },
   ),
 );
 export type NativeComponentLedger = typeof NativeComponentLedgerSchema.Type;
@@ -391,10 +530,15 @@ export const DesktopBuildReceiptSchema = Schema.Struct({
     sha256: Sha256HexSchema,
     componentCount: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   }),
-  toolchain: Schema.Struct({
-    electron: BoundedVersionStringSchema,
-    node: BoundedVersionStringSchema,
-    pnpm: BoundedVersionStringSchema,
+  toolchain: DesktopBuildToolchainSchema,
+  /**
+   * Live gate results (§9/§10): the staged-tree package-content oracle and
+   * the post-package REAL app.asar allowlist gate. Both are structurally
+   * `pass` — a receipt cannot exist for a build whose gates did not run green.
+   */
+  gates: Schema.Struct({
+    stagedTree: Schema.Literal("pass"),
+    asarAllowlist: Schema.Literal("pass"),
   }),
   artifacts: Schema.Array(DesktopBuildArtifactInputSchema).check(
     Schema.isMinLength(1),

@@ -1,10 +1,12 @@
 /**
  * DIST-03 (#8916) — target-aware staging, native ledgers, and provenance
- * receipts. Fixture builds prove target selection for all six targets
- * WITHOUT six production runners; the negative oracles each fail on exactly
- * one injected defect (foreign binary, missing runtime, source-checkout
- * dependency, development file, unexpected ASAR entry); repeat staging from
- * the same inputs reproduces the same ledger identity.
+ * receipts (amended per the two independent review comments). Fixture builds
+ * prove target selection for all six targets WITHOUT six production runners;
+ * the negative oracles each fail on exactly one injected defect (foreign
+ * binary, unknown/truncated executable identity, escaping symlink, missing
+ * runtime, source-checkout dependency, development file, unexpected ASAR
+ * entry); repeat staging from the same inputs reproduces the same ledger
+ * identity; descriptors require EXACT per-target format coverage.
  */
 import { describe, expect, test } from "vite-plus/test";
 import { Exit, Schema } from "effect";
@@ -14,8 +16,10 @@ import path from "node:path";
 import {
   DesktopBuildReceiptSchema,
   DesktopTargetBuildDescriptorSchema,
+  type DesktopBuildToolchain,
   type DesktopTargetBuildDescriptor,
   type DesktopTargetKey,
+  type NativeComponentLedgerEntry,
   decodeDesktopTargetBuildDescriptor,
   desktopBuildReceiptRef,
   desktopReleaseSetArtifactName,
@@ -28,11 +32,17 @@ import {
 } from "../src/release-staging-contract.ts";
 import {
   buildNativeComponentLedger,
+  closureOwnerForDestination,
   detectExecutableArchitecture,
+  detectSigningState,
   finalizeDesktopBuildReceipt,
+  makerIdentityRefs,
+  nativeClosureEntries,
+  plannedAsarPlacement,
   readDesktopManifestPins,
   requiredRuntimePackages,
   stageTarget,
+  stagedTreePath,
   stagedTreeViolations,
   stagingPlanForDescriptor,
   type StagedFile,
@@ -65,6 +75,20 @@ const descriptorFor = (
 const pins = readDesktopManifestPins(readFileSync(path.join(root, "package.json"), "utf8"));
 const decodeDescriptorExit = Schema.decodeUnknownExit(DesktopTargetBuildDescriptorSchema);
 const decodeReceiptExit = Schema.decodeUnknownExit(DesktopBuildReceiptSchema);
+
+const fixtureToolchain: DesktopBuildToolchain = {
+  electron: "43.1.0",
+  node: "24.6.0",
+  pnpm: "11.10.0",
+  forge: "7.11.2",
+  rust: "rustc 1.88.0 (fixture)",
+  compiler: "Apple clang version 17.0.0 (fixture)",
+};
+const fixtureMetadata = {
+  lockfileSha256,
+  osImage: "darwin-arm64-25.4.0",
+  toolchain: fixtureToolchain,
+};
 
 // Native-header fixtures — real magic bytes, no real binaries required.
 const machO = (arch: "arm64" | "x64"): Uint8Array => {
@@ -106,37 +130,49 @@ const cleanStagedTree = (targetKey: DesktopTargetKey): Array<StagedFile> => {
       byteLength: 10,
       executable: false,
       header: new Uint8Array([0x2f, 0x2f]),
+      sha256: digest("a"),
     },
-    { path: "package.json", byteLength: 10, executable: false, header: new Uint8Array([0x7b]) },
+    {
+      path: "package.json",
+      byteLength: 10,
+      executable: false,
+      header: new Uint8Array([0x7b]),
+      sha256: digest("b"),
+    },
     {
       path: `native/${arch}/oa-desktop-audio${exeSuffix(targetKey)}`,
       byteLength: 100,
       executable: true,
       header,
+      sha256: digest("c"),
     },
     {
       path: `node_modules/@anthropic-ai/claude-agent-sdk/package.json`,
       byteLength: 10,
       executable: false,
       header: new Uint8Array([0x7b]),
+      sha256: digest("d"),
     },
     {
       path: `node_modules/@anthropic-ai/claude-agent-sdk-${platform}-${arch}/claude${exeSuffix(targetKey)}`,
       byteLength: 100,
       executable: true,
       header,
+      sha256: digest("e"),
     },
     {
       path: `node_modules/@openai/codex/bin/codex.js`,
       byteLength: 10,
       executable: false,
       header: new Uint8Array([0x23, 0x21]),
+      sha256: digest("f"),
     },
     {
       path: `node_modules/@openai/codex-${platform}-${arch}/vendor/${codexTriple}/bin/codex${exeSuffix(targetKey)}`,
       byteLength: 100,
       executable: true,
       header,
+      sha256: digest("0"),
     },
   ];
 };
@@ -178,6 +214,39 @@ describe("DIST-03 target build descriptor", () => {
     expect(Exit.isFailure(decode({ ...base, channel: "rc" }))).toBe(true);
     expect(Exit.isFailure(decode({ ...base, sourceRevision: "main" }))).toBe(true);
     expect(Exit.isSuccess(decode({ ...base, channel: "rc", version: "1.2.3-rc.1" }))).toBe(true);
+  });
+
+  test("REQUIRES exact per-target format coverage — subsets are refused", () => {
+    const decode = decodeDescriptorExit;
+    const base = {
+      schema: TARGET_BUILD_DESCRIPTOR_SCHEMA_ID,
+      product: "OpenAgents",
+      channel: "stable",
+      version: "1.2.3",
+      sourceRevision: sha,
+      lockfileSha256,
+      signingPolicy: "production",
+    };
+    // darwin cannot omit zip; linux cannot omit deb/rpm; win32 needs nsis.
+    expect(
+      Exit.isFailure(decode({ ...base, targetKey: "darwin-arm64", formats: ["dmg"] })),
+    ).toBe(true);
+    expect(
+      Exit.isFailure(decode({ ...base, targetKey: "darwin-x64", formats: ["zip"] })),
+    ).toBe(true);
+    expect(
+      Exit.isFailure(
+        decode({ ...base, targetKey: "linux-x64", formats: ["appimage", "deb"] }),
+      ),
+    ).toBe(true);
+    expect(
+      Exit.isSuccess(
+        decode({ ...base, targetKey: "linux-x64", formats: ["rpm", "appimage", "deb"] }),
+      ),
+    ).toBe(true);
+    expect(Exit.isSuccess(decode({ ...base, targetKey: "win32-x64", formats: ["nsis"] }))).toBe(
+      true,
+    );
   });
 });
 
@@ -236,17 +305,21 @@ describe("DIST-03 version-first immutable artifact names", () => {
 });
 
 describe("DIST-03 staging plan (fixture target selection, no production runners)", () => {
-  test("every target maps to its explicit Rust triple and target-only install env", () => {
+  test("every target maps to its explicit Rust triple and target-only locked install", () => {
     for (const targetKey of desktopTargetKeys) {
       const { platform, arch, rustTargetTriple } = desktopTargets[targetKey];
       const plan = stagingPlanForDescriptor(descriptorFor(targetKey), pins);
       expect(plan.cargo.args).toContain("--target");
       expect(plan.cargo.args).toContain(rustTargetTriple);
       expect(plan.cargo.outputRelativePath).toContain(rustTargetTriple);
-      expect(plan.install.env.npm_config_platform).toBe(platform);
-      expect(plan.install.env.npm_config_arch).toBe(arch);
+      expect(plan.install.command).toBe("pnpm");
       expect(plan.install.args).toContain("--prod");
       expect(plan.install.args).toContain("--frozen-lockfile");
+      expect(plan.install.args).toContain("--ignore-scripts");
+      expect(plan.install.supportedArchitectures.os).toEqual([platform]);
+      expect(plan.install.supportedArchitectures.cpu).toEqual([arch]);
+      expect(plan.install.env.npm_config_platform).toBe(platform);
+      expect(plan.install.env.npm_config_arch).toBe(arch);
       expect(plan.workspacePrefix).toContain(targetKey);
       expect(plan.nativeHelperDestination.startsWith(`native/${arch}/`)).toBe(true);
     }
@@ -272,8 +345,30 @@ describe("DIST-03 staging plan (fixture target selection, no production runners)
     expect(planningSource).not.toContain("process.arch");
     expect(planningSource).not.toContain("process.platform");
     const forgeSource = readFileSync(path.join(root, "forge.config.ts"), "utf8");
-    expect(forgeSource).toContain("OA_DESKTOP_TARGET");
-    expect(forgeSource).toContain("requireExplicitDesktopTarget");
+    expect(forgeSource).toContain("OA_DESKTOP_STAGING_WORKSPACE");
+    expect(forgeSource).toContain("requireStagedBuildInputs");
+    expect(forgeSource).not.toContain("process.arch");
+  });
+
+  test("forge packages the STAGED tree with the descriptor decoded once — never process.cwd() content", () => {
+    const forgeSource = readFileSync(path.join(root, "forge.config.ts"), "utf8");
+    // The checkout copy is fully ignored; the staged tree is the sole source.
+    expect(forgeSource).toContain("ignore: () => true");
+    expect(forgeSource).toContain("decodeDesktopTargetBuildDescriptor");
+    expect(forgeSource).toContain("cachedStagedBuildInputs");
+    expect(forgeSource).toContain('for (const entry of ["dist", "package.json", "node_modules"])');
+    // Packaging never builds: staging owns app + native builds.
+    expect(forgeSource).not.toContain('execFileSync("cargo"');
+    expect(forgeSource).not.toContain("scripts/build.ts");
+    // The live post-package asar gate is wired.
+    expect(forgeSource).toContain("postPackage");
+    expect(forgeSource).toContain("assertPackagedAsarAdmissible");
+    // The packaging entrypoints route through the descriptor-first wrapper.
+    const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(manifest.scripts["package:mac"]).toContain("stage-and-package.ts");
+    expect(manifest.scripts["make:mac"]).toContain("stage-and-package.ts");
   });
 });
 
@@ -297,6 +392,58 @@ describe("DIST-03 executable architecture detection", () => {
       platform: "darwin",
       arch: "universal",
     });
+  });
+
+  test("truncated or unprovable native identity reports unknown — never null", () => {
+    // Mach-O magic with the cputype outside the sample.
+    expect(detectExecutableArchitecture(new Uint8Array([0xcf, 0xfa, 0xed, 0xfe]))).toEqual({
+      platform: "darwin",
+      arch: "unknown",
+    });
+    // ELF magic with the machine field outside the sample.
+    expect(detectExecutableArchitecture(new Uint8Array([0x7f, 0x45, 0x4c, 0x46]))).toEqual({
+      platform: "linux",
+      arch: "unknown",
+    });
+    // MZ stub whose PE header offset points outside the sample.
+    const truncatedPe = new Uint8Array(0x40);
+    truncatedPe.set([0x4d, 0x5a]);
+    truncatedPe[0x3c] = 0xf0;
+    expect(detectExecutableArchitecture(truncatedPe)).toEqual({
+      platform: "unknown",
+      arch: "unknown",
+    });
+    // MZ stub without a verifiable PE signature.
+    const dosOnly = new Uint8Array(0x60);
+    dosOnly.set([0x4d, 0x5a]);
+    expect(detectExecutableArchitecture(dosOnly)).toEqual({
+      platform: "unknown",
+      arch: "unknown",
+    });
+  });
+
+  test("reports embedded signing state from header truth", () => {
+    // Mach-O with one LC_CODE_SIGNATURE load command.
+    const signed = new Uint8Array(64);
+    signed.set([0xcf, 0xfa, 0xed, 0xfe]);
+    signed.set([0x0c, 0x00, 0x00, 0x01], 4); // arm64
+    signed[16] = 1; // ncmds = 1
+    signed[32] = 0x1d; // LC_CODE_SIGNATURE
+    signed[36] = 16; // cmdsize
+    expect(detectSigningState(signed, { platform: "darwin", arch: "arm64" })).toBe("signed");
+    // Mach-O with one non-signature load command.
+    const unsigned = new Uint8Array(64);
+    unsigned.set(signed);
+    unsigned[32] = 0x19; // LC_SEGMENT_64
+    expect(detectSigningState(unsigned, { platform: "darwin", arch: "arm64" })).toBe("unsigned");
+    // Truncated Mach-O cannot prove either way.
+    expect(detectSigningState(machO("arm64"), { platform: "darwin", arch: "arm64" })).toBe(
+      "undetermined",
+    );
+    // ELF has no embedded-signature concept.
+    expect(detectSigningState(elf("x64"), { platform: "linux", arch: "x64" })).toBe(
+      "not-applicable",
+    );
   });
 });
 
@@ -329,6 +476,101 @@ describe("DIST-03 staged-tree oracle", () => {
     );
   });
 
+  test("unknown/truncated executable identity FAILS CLOSED — even at allowlisted destinations", () => {
+    // A truncated Mach-O at the allowlisted native helper destination.
+    const truncated = cleanStagedTree("darwin-arm64").map((file) =>
+      file.path.endsWith("oa-desktop-audio")
+        ? { ...file, header: new Uint8Array([0xcf, 0xfa, 0xed, 0xfe]) }
+        : file,
+    );
+    expect(stagedTreeViolations(auditInput("darwin-arm64", truncated))).toContainEqual(
+      expect.objectContaining({
+        kind: "unknown_executable_identity",
+        path: "native/arm64/oa-desktop-audio",
+      }),
+    );
+    // An opaque non-native payload spoofing the allowlisted claude runtime.
+    const spoofed = cleanStagedTree("darwin-arm64").map((file) =>
+      file.path.endsWith("/claude") ? { ...file, header: new Uint8Array([0x23, 0x21]) } : file,
+    );
+    expect(stagedTreeViolations(auditInput("darwin-arm64", spoofed))).toContainEqual(
+      expect.objectContaining({
+        kind: "unknown_executable_identity",
+        detail: expect.stringContaining("provable native header"),
+      }),
+    );
+    // An MZ stub with an unverifiable PE header inside a runtime package.
+    const dosStub = new Uint8Array(0x60);
+    dosStub.set([0x4d, 0x5a]);
+    const injected = [
+      ...cleanStagedTree("win32-x64"),
+      {
+        path: "node_modules/@openai/codex/vendor/helper.exe",
+        byteLength: 96,
+        executable: true,
+        header: dosStub,
+        sha256: digest("9"),
+      },
+    ];
+    expect(stagedTreeViolations(auditInput("win32-x64", injected))).toContainEqual(
+      expect.objectContaining({
+        kind: "unknown_executable_identity",
+        path: "node_modules/@openai/codex/vendor/helper.exe",
+      }),
+    );
+    // A native-module extension without a provable native header.
+    const fakeNode = [
+      ...cleanStagedTree("darwin-arm64"),
+      {
+        path: "node_modules/@openai/codex/build/fake.node",
+        byteLength: 32,
+        executable: false,
+        header: new Uint8Array([0x00, 0x01, 0x02]),
+        sha256: digest("8"),
+      },
+    ];
+    expect(stagedTreeViolations(auditInput("darwin-arm64", fakeNode))).toContainEqual(
+      expect.objectContaining({
+        kind: "unknown_executable_identity",
+        path: "node_modules/@openai/codex/build/fake.node",
+      }),
+    );
+  });
+
+  test("an escaping symlink fails; a bounded relative symlink does not", () => {
+    const base = cleanStagedTree("darwin-arm64");
+    for (const target of ["/etc/passwd", "../../outside", "vendor/../../escape"]) {
+      const files = [
+        ...base,
+        {
+          path: "node_modules/@openai/codex/vendor/link",
+          byteLength: 1,
+          executable: false,
+          header: new Uint8Array(0),
+          symlinkTarget: target,
+        },
+      ];
+      expect(stagedTreeViolations(auditInput("darwin-arm64", files))).toContainEqual(
+        expect.objectContaining({
+          kind: "source_checkout_dependency",
+          path: "node_modules/@openai/codex/vendor/link",
+          detail: "symlink escapes the staging workspace",
+        }),
+      );
+    }
+    const bounded = [
+      ...base,
+      {
+        path: "node_modules/@openai/codex/vendor/link",
+        byteLength: 1,
+        executable: false,
+        header: new Uint8Array(0),
+        symlinkTarget: "sibling/file",
+      },
+    ];
+    expect(stagedTreeViolations(auditInput("darwin-arm64", bounded))).toEqual([]);
+  });
+
   test("one missing provider runtime package fails before maker work", () => {
     const files = cleanStagedTree("darwin-arm64").filter(
       (file) => !file.path.startsWith("node_modules/@openai/codex-darwin-arm64/"),
@@ -349,6 +591,7 @@ describe("DIST-03 staged-tree oracle", () => {
         byteLength: 64,
         executable: true,
         header: machO("arm64"),
+        sha256: digest("7"),
       },
     ];
     expect(stagedTreeViolations(auditInput("darwin-arm64", files))).toContainEqual(
@@ -360,7 +603,12 @@ describe("DIST-03 staged-tree oracle", () => {
   });
 
   test("script executables are admitted only inside dist/ or a required runtime package", () => {
-    const script = { byteLength: 32, executable: true, header: new Uint8Array([0x23, 0x21]) };
+    const script = {
+      byteLength: 32,
+      executable: true,
+      header: new Uint8Array([0x23, 0x21]),
+      sha256: digest("6"),
+    };
     const admitted = [
       ...cleanStagedTree("darwin-arm64"),
       {
@@ -384,7 +632,7 @@ describe("DIST-03 staged-tree oracle", () => {
     );
   });
 
-  test("a staged file carrying the absolute source checkout path fails", () => {
+  test("a staged file carrying the absolute source checkout or staging path fails", () => {
     const files = [
       ...cleanStagedTree("darwin-arm64"),
       {
@@ -392,11 +640,31 @@ describe("DIST-03 staged-tree oracle", () => {
         byteLength: 64,
         executable: false,
         header: new Uint8Array([0x7b]),
+        sha256: digest("5"),
         content: `{"rendererRoot":"${repoRoot}/apps/openagents-desktop/dist"}`,
       },
     ];
     expect(stagedTreeViolations(auditInput("darwin-arm64", files))).toContainEqual(
       expect.objectContaining({ kind: "source_checkout_dependency", path: "dist/config.json" }),
+    );
+    const stagingLeak = [
+      ...cleanStagedTree("darwin-arm64"),
+      {
+        path: "dist/paths.json",
+        byteLength: 64,
+        executable: false,
+        header: new Uint8Array([0x7b]),
+        sha256: digest("4"),
+        content: '{"source":"/tmp/oa-desktop-stage-darwin-arm64-xyz/source"}',
+      },
+    ];
+    expect(
+      stagedTreeViolations({
+        ...auditInput("darwin-arm64", stagingLeak),
+        forbiddenPathPrefixes: ["/tmp/oa-desktop-stage-darwin-arm64-xyz"],
+      }),
+    ).toContainEqual(
+      expect.objectContaining({ kind: "source_checkout_dependency", path: "dist/paths.json" }),
     );
   });
 
@@ -414,6 +682,7 @@ describe("DIST-03 staged-tree oracle", () => {
           byteLength: 8,
           executable: false,
           header: new Uint8Array([0x2f]),
+          sha256: digest("3"),
         },
       ];
       expect(stagedTreeViolations(auditInput("darwin-arm64", files))).toContainEqual(
@@ -449,57 +718,193 @@ describe("DIST-03 staged-tree oracle", () => {
   });
 });
 
-describe("DIST-03 native component ledger", () => {
-  const components = [
-    {
+describe("DIST-03 planned ASAR placement (mirror of the packaging boundary)", () => {
+  test("provider runtimes and renderer/worker entries unpack; resources ship beside the asar", () => {
+    expect(plannedAsarPlacement("native/arm64/oa-desktop-audio")).toBe("extra-resource");
+    expect(plannedAsarPlacement("dist/builtin-skills/manifest.json")).toBe("extra-resource");
+    expect(plannedAsarPlacement("dist/renderer/boot.js")).toBe("unpacked");
+    expect(plannedAsarPlacement("dist/workers/codex-history-worker.js")).toBe("unpacked");
+    expect(
+      plannedAsarPlacement("node_modules/@openai/codex-darwin-arm64/vendor/t/bin/codex"),
+    ).toBe("unpacked");
+    expect(
+      plannedAsarPlacement("node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs"),
+    ).toBe("unpacked");
+    expect(plannedAsarPlacement("dist/main.js")).toBe("asar");
+    expect(plannedAsarPlacement("package.json")).toBe("asar");
+  });
+});
+
+describe("DIST-03 native component ledger (§9)", () => {
+  const closureFiles = (targetKey: DesktopTargetKey): ReadonlyArray<StagedFile> =>
+    cleanStagedTree(targetKey);
+  const versionsFor = (targetKey: DesktopTargetKey): ReadonlyMap<string, string> =>
+    new Map(
+      requiredRuntimePackages(descriptorFor(targetKey), pins).map((pkg) => [
+        pkg.name,
+        pkg.version,
+      ]),
+    );
+
+  test("enumerates the per-FILE native dependency closure — never aggregate package trees", () => {
+    const descriptor = descriptorFor("darwin-arm64");
+    const entries = nativeClosureEntries(
+      descriptor,
+      closureFiles("darwin-arm64"),
+      versionsFor("darwin-arm64"),
+      "0.1.0",
+    );
+    const byDestination = new Map(entries.map((entry) => [entry.destination, entry]));
+    // Exact executable files with architecture, signing, and placement state.
+    expect(byDestination.get("native/arm64/oa-desktop-audio")).toMatchObject({
       name: "oa-desktop-audio",
-      version: "0.1.0",
-      sha256: digest("1"),
-      byteLength: 1024,
-      provenance: "workspace-crate" as const,
-      destination: "native/arm64/oa-desktop-audio",
-    },
-    {
-      name: "@openai/codex-darwin-arm64",
-      version: "0.144.1-darwin-arm64",
-      sha256: digest("2"),
-      byteLength: 2048,
-      provenance: "locked-dependency" as const,
-      destination: "node_modules/@openai/codex-darwin-arm64",
-    },
-  ];
+      fileKind: "executable",
+      architecture: "arm64",
+      provenance: "workspace-crate",
+      asarPlacement: "extra-resource",
+    });
+    expect(
+      byDestination.get("node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"),
+    ).toMatchObject({
+      name: "@anthropic-ai/claude-agent-sdk-darwin-arm64",
+      fileKind: "executable",
+      architecture: "arm64",
+      provenance: "locked-dependency",
+      asarPlacement: "unpacked",
+    });
+    expect(
+      byDestination.get(
+        "node_modules/@openai/codex-darwin-arm64/vendor/fixture-triple/bin/codex",
+      ),
+    ).toMatchObject({ name: "@openai/codex-darwin-arm64", fileKind: "executable" });
+    // Aggregate package entries (destination = the package directory) do not exist.
+    expect(byDestination.has("node_modules/@openai/codex-darwin-arm64")).toBe(false);
+    // Non-executable data files are not closure entries.
+    expect(byDestination.has("dist/main.js")).toBe(false);
+  });
+
+  test("carries the complete §9 metadata: lockfile digest, OS image, toolchain, makers, artifacts", () => {
+    const descriptor = descriptorFor("darwin-arm64");
+    const ledger = buildNativeComponentLedger(
+      descriptor,
+      nativeClosureEntries(
+        descriptor,
+        closureFiles("darwin-arm64"),
+        versionsFor("darwin-arm64"),
+        "0.1.0",
+      ),
+      fixtureMetadata,
+    );
+    expect(ledger.schema).toBe(NATIVE_COMPONENT_LEDGER_SCHEMA_ID);
+    expect(ledger.lockfileSha256).toBe(lockfileSha256);
+    expect(ledger.osImage).toBe("darwin-arm64-25.4.0");
+    expect(ledger.toolchain).toMatchObject({
+      electron: "43.1.0",
+      node: "24.6.0",
+      pnpm: "11.10.0",
+      forge: "7.11.2",
+      rust: expect.stringContaining("rustc"),
+      compiler: expect.stringContaining("clang"),
+    });
+    expect(ledger.makerIdentities).toEqual([
+      { format: "dmg", ref: "maker:forge-dmg-7.11.2" },
+      { format: "zip", ref: "maker:forge-zip-7.11.2" },
+    ]);
+    expect(ledger.packageContentAllowlist).toBe("pass");
+    expect(ledger.plannedArtifacts).toEqual([
+      { name: "OpenAgents-1.2.3-stable-darwin-arm64.dmg", format: "dmg" },
+      { name: "OpenAgents-1.2.3-stable-darwin-arm64.zip", format: "zip" },
+    ]);
+    expect(makerIdentityRefs("win32-x64", "7.11.2")).toEqual([
+      { format: "nsis", ref: "maker:pending-nsis" },
+    ]);
+  });
 
   test("is public-safe, single-target, and deterministic across repeat staging", () => {
     const descriptor = descriptorFor("darwin-arm64");
-    const first = buildNativeComponentLedger(descriptor, components);
-    const second = buildNativeComponentLedger(descriptor, components.toReversed());
-    expect(first.schema).toBe(NATIVE_COMPONENT_LEDGER_SCHEMA_ID);
+    const entries = nativeClosureEntries(
+      descriptor,
+      closureFiles("darwin-arm64"),
+      versionsFor("darwin-arm64"),
+      "0.1.0",
+    );
+    const first = buildNativeComponentLedger(descriptor, entries, fixtureMetadata);
+    const second = buildNativeComponentLedger(descriptor, [...entries].reverse(), fixtureMetadata);
     // Repeat staging from the same inputs — identical ledger identity, even
     // with a different component discovery order.
     expect(nativeComponentLedgerDigest(first)).toBe(nativeComponentLedgerDigest(second));
     expect(nativeComponentLedgerRef(first)).toBe(`sha256:${nativeComponentLedgerDigest(first)}`);
     // Any input change changes the identity.
-    const mutated = buildNativeComponentLedger(descriptor, [
-      { ...components[0]!, sha256: digest("3") },
-      components[1]!,
-    ]);
+    const mutated = buildNativeComponentLedger(
+      descriptor,
+      entries.map((entry, index) => (index === 0 ? { ...entry, sha256: digest("2") } : entry)),
+      fixtureMetadata,
+    );
     expect(nativeComponentLedgerDigest(mutated)).not.toBe(nativeComponentLedgerDigest(first));
     expect(JSON.stringify(first)).not.toContain(repoRoot);
   });
 
-  test("rejects absolute destinations, traversal, and duplicate destinations", () => {
+  test("rejects absolute destinations, traversal, duplicates, and cross-arch entries", () => {
     const descriptor = descriptorFor("darwin-arm64");
+    const entries = nativeClosureEntries(
+      descriptor,
+      closureFiles("darwin-arm64"),
+      versionsFor("darwin-arm64"),
+      "0.1.0",
+    );
+    const helper = entries.find((entry) => entry.name === "oa-desktop-audio")!;
     expect(() =>
-      buildNativeComponentLedger(descriptor, [
-        { ...components[0]!, destination: "/usr/local/bin/oa-desktop-audio" },
-      ]),
+      buildNativeComponentLedger(
+        descriptor,
+        [{ ...helper, destination: "/usr/local/bin/oa-desktop-audio" }],
+        fixtureMetadata,
+      ),
     ).toThrow();
     expect(() =>
-      buildNativeComponentLedger(descriptor, [{ ...components[0]!, destination: "../escape" }]),
+      buildNativeComponentLedger(
+        descriptor,
+        [{ ...helper, destination: "../escape" }],
+        fixtureMetadata,
+      ),
     ).toThrow();
     expect(() =>
-      buildNativeComponentLedger(descriptor, [components[0]!, components[0]!]),
+      buildNativeComponentLedger(descriptor, [helper, helper], fixtureMetadata),
     ).toThrow();
+    // A native executable claiming the wrong architecture is inadmissible.
+    expect(() =>
+      buildNativeComponentLedger(
+        descriptor,
+        [{ ...helper, architecture: "x64" as NativeComponentLedgerEntry["architecture"] }],
+        fixtureMetadata,
+      ),
+    ).toThrow();
+    // An executable placed inside app.asar is inadmissible.
+    expect(() =>
+      buildNativeComponentLedger(
+        descriptor,
+        [{ ...helper, destination: "dist/main.js", asarPlacement: "asar" }],
+        fixtureMetadata,
+      ),
+    ).toThrow();
+  });
+
+  test("closure ownership resolves package, workspace crate, and app resources", () => {
+    const descriptor = descriptorFor("darwin-arm64");
+    const versions = versionsFor("darwin-arm64");
+    expect(
+      closureOwnerForDestination(
+        "node_modules/@openai/codex-darwin-arm64/vendor/t/bin/codex",
+        descriptor,
+        versions,
+        "0.1.0",
+      ),
+    ).toMatchObject({ name: "@openai/codex-darwin-arm64", provenance: "locked-dependency" });
+    expect(
+      closureOwnerForDestination("native/arm64/oa-desktop-audio", descriptor, versions, "0.1.0"),
+    ).toEqual({ name: "oa-desktop-audio", version: "0.1.0", provenance: "workspace-crate" });
+    expect(
+      closureOwnerForDestination("dist/builtin-skills/run.sh", descriptor, versions, "0.1.0"),
+    ).toMatchObject({ name: "openagents-desktop-app", provenance: "application-resource" });
   });
 });
 
@@ -507,7 +912,8 @@ describe("DIST-03 build receipt", () => {
   const draftFor = (descriptor: DesktopTargetBuildDescriptor) => ({
     descriptor,
     componentLedger: { sha256: digest("4"), componentCount: 5 },
-    toolchain: { electron: "39.2.7", node: "24.6.0", pnpm: "11.10.0" },
+    toolchain: fixtureToolchain,
+    gates: { stagedTree: "pass" as const },
     worker: { workerRef: "runner:fixture-01", hostClass: "owned-mac-arm64" },
   });
   const artifactsFor = (descriptor: DesktopTargetBuildDescriptor) =>
@@ -523,16 +929,19 @@ describe("DIST-03 build receipt", () => {
       byteLength: 4096,
     }));
 
-  test("binds descriptor, lockfile identity, toolchain, ledger ref, artifacts, and worker", () => {
+  test("binds descriptor, lockfile identity, toolchain, gates, ledger ref, artifacts, and worker", () => {
     for (const targetKey of desktopTargetKeys) {
       const descriptor = descriptorFor(targetKey);
       const receipt = finalizeDesktopBuildReceipt(
         draftFor(descriptor),
         artifactsFor(descriptor),
         "2026-07-16T12:00:00Z",
+        "pass",
       );
       expect(receipt.descriptor.lockfileSha256).toBe(lockfileSha256);
       expect(receipt.componentLedger.sha256).toBe(digest("4"));
+      expect(receipt.gates).toEqual({ stagedTree: "pass", asarAllowlist: "pass" });
+      expect(receipt.toolchain.forge).toBe("7.11.2");
       expect(desktopBuildReceiptRef(receipt)).toMatch(/^sha256:[0-9a-f]{64}$/);
     }
   });
@@ -544,6 +953,7 @@ describe("DIST-03 build receipt", () => {
         draftFor(descriptor),
         artifactsFor(descriptor),
         "2026-07-16T12:00:00Z",
+        "pass",
       ),
     ).toThrow(/unsigned-dev builds are ineligible/);
     const production = descriptorFor("darwin-arm64");
@@ -553,7 +963,7 @@ describe("DIST-03 build receipt", () => {
         : artifact,
     );
     expect(() =>
-      finalizeDesktopBuildReceipt(draftFor(production), marked, "2026-07-16T12:00:00Z"),
+      finalizeDesktopBuildReceipt(draftFor(production), marked, "2026-07-16T12:00:00Z", "pass"),
     ).toThrow(/UNSIGNED-DEV/);
   });
 
@@ -565,16 +975,23 @@ describe("DIST-03 build receipt", () => {
         draftFor(descriptor),
         [{ ...artifacts[0]!, name: "OpenAgents-darwin-arm64.dmg" }, artifacts[1]!],
         "2026-07-16T12:00:00Z",
+        "pass",
       ),
     ).toThrow(/canonical/);
     expect(() =>
-      finalizeDesktopBuildReceipt(draftFor(descriptor), [artifacts[0]!], "2026-07-16T12:00:00Z"),
+      finalizeDesktopBuildReceipt(
+        draftFor(descriptor),
+        [artifacts[0]!],
+        "2026-07-16T12:00:00Z",
+        "pass",
+      ),
     ).toThrow(/cover every descriptor format/);
     expect(() =>
       finalizeDesktopBuildReceipt(
         draftFor(descriptor),
         [artifacts[0]!, artifacts[0]!],
         "2026-07-16T12:00:00Z",
+        "pass",
       ),
     ).toThrow(/duplicate artifact format/);
     expect(Exit.isFailure(decodeReceiptExit({}))).toBe(true);
@@ -586,6 +1003,7 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
     targetKey: DesktopTargetKey;
     unavailable?: ReadonlyArray<string>;
     injectViolation?: StagedFile;
+    lockfileSha256?: string;
   }): StageTargetIo & { readonly log: Array<string> } => {
     const log: Array<string> = [];
     return {
@@ -594,15 +1012,25 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
         log.push(`workspace:${prefix}`);
         return `/tmp/fixture/${prefix}x`;
       },
-      materializeRuntimePackage: async (_workspace, pkg) => {
+      exportSource: async (workspace, sourceRevision) => {
+        log.push(`export:${sourceRevision}`);
+        return `${workspace}/source`;
+      },
+      lockfileSha256: async () => input.lockfileSha256 ?? lockfileSha256,
+      runTargetProductionInstall: async (_sourceRoot, plan) => {
+        log.push(
+          `install:${plan.install.command} ${plan.install.args.join(" ")} os=${plan.install.supportedArchitectures.os.join(",")} cpu=${plan.install.supportedArchitectures.cpu.join(",")}`,
+        );
+      },
+      materializeRuntimePackage: async (_workspace, _sourceRoot, pkg) => {
         log.push(`materialize:${pkg.name}`);
         if (input.unavailable?.includes(pkg.name)) return { available: false };
-        return { available: true, version: pkg.version, sha256: digest("6"), byteLength: 32 };
+        return { available: true, version: pkg.version };
       },
       buildApplication: async () => {
         log.push("buildApplication");
       },
-      buildNativeHelper: async (_workspace, plan) => {
+      buildNativeHelper: async (_workspace, _sourceRoot, plan) => {
         log.push(`cargo:${plan.cargo.args.join(" ")}`);
         return { sha256: digest("7"), byteLength: 64, version: "0.1.0" };
       },
@@ -611,12 +1039,13 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
         return input.injectViolation ? [...files, input.injectViolation] : files;
       },
       repoRoot,
-      toolchain: { electron: "39.2.7", node: "24.6.0", pnpm: "11.10.0" },
+      osImage: fixtureMetadata.osImage,
+      toolchain: fixtureToolchain,
       worker: { workerRef: "runner:fixture-01", hostClass: "owned-fixture" },
     };
   };
 
-  test("stages any of the six targets from one host and emits a deterministic ledger", async () => {
+  test("stages any of the six targets from one host and emits a deterministic §9 ledger", async () => {
     for (const targetKey of desktopTargetKeys) {
       const descriptor = descriptorFor(targetKey);
       const io = fixtureIo({ targetKey });
@@ -627,13 +1056,33 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
       if (!first.ok || !second.ok) return;
       expect(first.ledgerDigest).toBe(second.ledgerDigest);
       expect(first.unsignedDev).toBe(false);
+      expect(first.stagedTree).toBe(stagedTreePath(first.workspace));
+      expect(first.ledger.lockfileSha256).toBe(lockfileSha256);
       expect(first.receiptDraft?.componentLedger.componentCount).toBe(
         first.ledger.components.length,
       );
+      expect(first.receiptDraft?.gates).toEqual({ stagedTree: "pass" });
+      // The plan's locked target-only install EXECUTED, before materialization.
+      const installIndex = io.log.findIndex((line) => line.startsWith("install:pnpm install"));
+      const materializeIndex = io.log.findIndex((line) => line.startsWith("materialize:"));
+      expect(installIndex).toBeGreaterThanOrEqual(0);
+      expect(io.log[installIndex]).toContain("--prod");
+      expect(io.log[installIndex]).toContain("--frozen-lockfile");
+      expect(io.log[installIndex]).toContain(`os=${desktopTargets[targetKey].platform}`);
+      expect(io.log[installIndex]).toContain(`cpu=${desktopTargets[targetKey].arch}`);
+      expect(materializeIndex).toBeGreaterThan(installIndex);
       expect(io.log).toContainEqual(
         `cargo:build --release -p oa-desktop-audio --target ${desktopTargets[targetKey].rustTargetTriple}`,
       );
     }
+  });
+
+  test("a lockfile identity mismatch fails typed BEFORE any install or build", async () => {
+    const io = fixtureIo({ targetKey: "darwin-arm64", lockfileSha256: "c".repeat(64) });
+    const result = await stageTarget(descriptorFor("darwin-arm64"), pins, io);
+    expect(result).toMatchObject({ ok: false, failure: "lockfile_mismatch" });
+    expect(io.log.some((line) => line.startsWith("install:"))).toBe(false);
+    expect(io.log).not.toContainEqual("buildApplication");
   });
 
   test("fails typed and BEFORE native build/maker work when a runtime package is unavailable", async () => {
@@ -656,6 +1105,7 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
         byteLength: 16,
         executable: true,
         header: elf("x64"),
+        sha256: digest("1"),
       },
     });
     const result = await stageTarget(descriptorFor("darwin-arm64"), pins, io);

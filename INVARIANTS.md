@@ -500,27 +500,47 @@ More specific invariant ledgers apply inside imported apps and packages.
   and signed ReleaseSet notes refs are the release boundary.
 - (DIST-03, #8916) Desktop packaging entrypoints require an EXPLICIT target
   build descriptor (`openagents.desktop.target_build_descriptor.v1`; the six
-  closed target keys). Host inference (`process.arch`/`process.platform`)
-  never selects a release target, and owned native components
-  (`oa-desktop-audio`) build only with the descriptor's explicit Rust target
-  triple. Staging runs in a clean per-target temporary workspace — the
-  developer checkout and another architecture's dependency tree are never
-  packaged — and the exact provider runtime packages for the target must
-  resolve BEFORE any maker/signing work; unavailable runtimes are a typed
-  `missing_runtime_package` failure. The staged-tree oracle
-  (`apps/openagents-desktop/scripts/stage-target.ts`) fails closed on one
-  foreign-architecture or universal binary, unallowlisted executable,
-  source-checkout path, development file, or unexpected ASAR entry. Every
-  target build emits a public-safe native-component ledger
-  (`native_component_ledger.v1`: name, version, target, digest, provenance,
-  relative destination — never absolute paths) whose canonical-JSON sha256
-  identity is deterministic across repeat staging from the same inputs
-  (signer/notary bytes are the sole documented nondeterminism and never
-  enter the ledger), plus a build receipt (`build_receipt.v1`) binding the
-  descriptor (source revision, version, channel, lockfile identity),
-  Electron/Node/pnpm versions, the ledger reference, canonical version-first
-  artifact identities, and opaque worker identity. ReleaseSet v2 (#8915)
-  consumes only the `sha256:<hex>` ledger/receipt references exported by
+  closed target keys; EXACT per-target format coverage — darwin dmg+zip,
+  win32 nsis, linux appimage+deb+rpm; subsets are refused). Host inference
+  (`process.arch`/`process.platform`) never selects a release target. Staging
+  (`apps/openagents-desktop/scripts/stage-target.ts`) runs in a clean
+  per-target temporary workspace: the EXACT source revision is exported into
+  it, the immutable lockfile identity is verified against the descriptor
+  before any install, the staging plan's locked target-only production
+  install EXECUTES there (pnpm, frozen lockfile, target
+  `supportedArchitectures`), the exact provider runtime packages materialize
+  from THAT install — unavailable runtimes are a typed
+  `missing_runtime_package` failure BEFORE any app build, native build, or
+  maker/signing work — and owned native components (`oa-desktop-audio`) build
+  only with the descriptor's explicit Rust target triple, with build output
+  inside the staging workspace (path-prefix remapped for cross-run
+  determinism). The developer checkout, shared node_modules, and the shared
+  cargo target directory are never the packaged source: Electron Forge
+  requires `OA_DESKTOP_STAGING_WORKSPACE`, decodes the staged descriptor
+  once, discards its checkout copy wholesale, and packages ONLY the staged
+  tree; after package/asar assembly a LIVE gate re-audits the REAL app.asar
+  entry list through `stagedTreeViolations` before any maker/signing work.
+  The staged-tree oracle fails closed on one foreign-architecture or
+  universal binary, unknown/truncated executable identity (including at
+  allowlisted/runtime destinations), unallowlisted executable, escaping
+  symlink (recorded via lstat), source-checkout or staging-workspace path,
+  development file, or unexpected ASAR entry. Every target build emits a
+  public-safe §9 native-component ledger (`native_component_ledger.v1`)
+  enumerating the per-FILE native dependency closure — bundled runtimes,
+  CLIs, native modules, shared libraries, helpers, WASM modules, and
+  executables, each with header-derived architecture, embedded signing
+  state, and planned ASAR placement — plus the lockfile digest, OS image
+  identity, and Electron/Node/pnpm/Forge/maker/Rust/compiler toolchain
+  identity, with relative destinations only (never absolute paths). The
+  ledger's canonical-JSON sha256 identity is deterministic across repeat
+  staging from the same inputs (signer/notary bytes are the sole documented
+  nondeterminism and never enter the ledger). Each build also emits a build
+  receipt (`build_receipt.v1`) binding the descriptor (source revision,
+  version, channel, lockfile identity), the full toolchain, structural
+  `pass` results for the staged-tree and live ASAR gates, the ledger
+  reference, canonical version-first artifact identities, and opaque worker
+  identity. ReleaseSet v2 (#8915) consumes only the `sha256:<hex>`
+  ledger/receipt references exported by
   `apps/openagents-desktop/src/release-staging-contract.ts`. Unsigned-dev
   output is structurally inadmissible: an `unsigned-dev` descriptor can never
   construct a receipt and `UNSIGNED-DEV`-marked artifact names fail the

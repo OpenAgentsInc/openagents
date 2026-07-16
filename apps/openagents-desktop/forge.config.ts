@@ -3,19 +3,9 @@ import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
-import { execFileSync } from "node:child_process";
-import { cp, mkdir, rm } from "node:fs/promises";
-import {
-  chmodSync,
-  copyFileSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
-import { createHash } from "node:crypto";
+import { cp, mkdir, readdir, rm } from "node:fs/promises";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
 import {
   assertGatekeeperGreen,
   gatekeeperAppChecks,
@@ -25,28 +15,73 @@ import {
 } from "./scripts/macos-gatekeeper.ts";
 import { desktopReleaseArtifactName } from "./scripts/release-artifact-name.ts";
 import { verifyPackagedCodexRuntime } from "./scripts/codex-runtime-artifact-smoke.ts";
+import { assertPackagedAsarAdmissible, stagedTreePath } from "./scripts/stage-target.ts";
 import {
-  type DesktopTargetKey,
-  desktopTargetKeys,
+  type DesktopTargetBuildDescriptor,
+  decodeDesktopTargetBuildDescriptor,
   desktopTargets,
 } from "./src/release-staging-contract.ts";
 
 /**
- * DIST-03 (#8916): packaging entrypoints require an EXPLICIT target
- * descriptor. `OA_DESKTOP_TARGET` selects one of the six closed target keys;
- * host inference (`process.arch`) never chooses a release target. The
- * package.json make/package scripts pin `darwin-arm64` for the current macOS
- * lane; remote workers export their own target key.
+ * DIST-03 (#8916, repaired): packaging entrypoints require an EXPLICIT typed
+ * target build descriptor AND a staged workspace produced by
+ * `scripts/stage-target.ts`. `OA_DESKTOP_STAGING_WORKSPACE` points at that
+ * workspace; the descriptor is decoded ONCE from its `descriptor.json` and
+ * threaded through every hook. The developer checkout and shared
+ * node_modules are NEVER the packaged source: Forge's copy of the checkout is
+ * discarded wholesale and the staged tree becomes the sole packaged content.
+ * Host architecture inference never chooses a release target.
  */
-const requireExplicitDesktopTarget = (): DesktopTargetKey => {
-  const targetKey = process.env.OA_DESKTOP_TARGET;
-  if (targetKey === undefined || !desktopTargetKeys.includes(targetKey as DesktopTargetKey)) {
+interface StagedBuildInputs {
+  readonly descriptor: DesktopTargetBuildDescriptor;
+  readonly workspace: string;
+  readonly stagedTree: string;
+}
+
+let cachedStagedBuildInputs: StagedBuildInputs | null = null;
+const requireStagedBuildInputs = (): StagedBuildInputs => {
+  if (cachedStagedBuildInputs !== null) return cachedStagedBuildInputs;
+  const workspace = process.env.OA_DESKTOP_STAGING_WORKSPACE;
+  if (workspace === undefined || workspace === "") {
     throw new Error(
-      "packaging REFUSED: OA_DESKTOP_TARGET must name an explicit target " +
-        `(${desktopTargetKeys.join(", ")}); host architecture is never inferred (DIST-03 #8916)`,
+      "packaging REFUSED: OA_DESKTOP_STAGING_WORKSPACE must point at a stage:target staging " +
+        "workspace (scripts/stage-target.ts). Packaging never consumes the developer checkout " +
+        "or shared node_modules, and host architecture is never inferred (DIST-03 #8916).",
     );
   }
-  return targetKey as DesktopTargetKey;
+  // Decode the typed descriptor exactly once and thread it through.
+  const descriptor = decodeDesktopTargetBuildDescriptor(
+    JSON.parse(readFileSync(path.join(workspace, "descriptor.json"), "utf8")),
+  );
+  const stagedTree = stagedTreePath(workspace);
+  for (const required of ["package.json", "dist", "node_modules", "../ledger.json"]) {
+    if (!existsSync(path.resolve(stagedTree, required))) {
+      throw new Error(
+        `packaging REFUSED: staging workspace is incomplete (missing ${required}); ` +
+          "re-run pnpm run stage:target (DIST-03 #8916)",
+      );
+    }
+  }
+  cachedStagedBuildInputs = { descriptor, workspace, stagedTree };
+  return cachedStagedBuildInputs;
+};
+
+const stagingWorkspaceEnv = process.env.OA_DESKTOP_STAGING_WORKSPACE;
+const stagedPathOr = (fallback: string, ...stagedSegments: ReadonlyArray<string>): string =>
+  stagingWorkspaceEnv === undefined || stagingWorkspaceEnv === ""
+    ? fallback
+    : path.join(stagedTreePath(stagingWorkspaceEnv), ...stagedSegments);
+
+const assertDescriptorMatchesMakerTarget = (
+  descriptor: DesktopTargetBuildDescriptor,
+  platform: string,
+  arch: string,
+): void => {
+  if (`${platform}-${arch}` !== descriptor.targetKey) {
+    throw new Error(
+      `packaging REFUSED: maker invocation targets ${platform}-${arch} but the staged descriptor declares ${descriptor.targetKey}`,
+    );
+  }
 };
 
 export const OPENAGENTS_DESKTOP_BUNDLE_ID = "com.openagents.desktop";
@@ -72,11 +107,6 @@ const renameArtifact = (artifact: string, destination: string): string => {
   return destination;
 };
 
-const ignoredCheckoutPath =
-  /^\/(src|scripts|tests|docs|receipts|node_modules)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/;
-const resolveFromApp = createRequire(path.join(process.cwd(), "package.json"));
-const resolveFromClaudeSdk = (): NodeRequire =>
-  createRequire(resolveFromApp.resolve("@anthropic-ai/claude-agent-sdk"));
 const developerIdApplication = process.env.OA_DEVELOPER_ID_APPLICATION;
 const notarizeCredentials =
   process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &&
@@ -114,20 +144,6 @@ const isMacCodeSignablePath = (file: string): boolean =>
   /\.(?:app|framework|dylib|node)$/u.test(file) ||
   macCodeSignableBasenames.has(path.basename(file));
 
-const copyRuntimePackage = async (
-  buildPath: string,
-  packageName: string,
-  resolveSpecifier = packageName,
-  ascend = 0,
-  resolver: NodeRequire = resolveFromApp,
-): Promise<void> => {
-  let source = path.dirname(resolver.resolve(resolveSpecifier));
-  for (let index = 0; index < ascend; index += 1) source = path.dirname(source);
-  const destination = path.join(buildPath, "node_modules", ...packageName.split("/"));
-  await mkdir(path.dirname(destination), { recursive: true });
-  await cp(source, destination, { recursive: true, dereference: true });
-};
-
 const config: ForgeConfig = {
   packagerConfig: {
     name: "OpenAgents",
@@ -155,20 +171,25 @@ const config: ForgeConfig = {
       // beside the renderer on the signed, unpacked filesystem.
       unpackDir: "dist/{renderer,workers}",
     },
-    // Forge's npm-oriented dependency walker does not own pnpm workspace
-    // links. Ignore the workspace node_modules tree entirely: the application
-    // bundle already contains ordinary dependencies, and packageAfterCopy
-    // materializes only the provider packages/native executables that must
-    // remain external. This avoids a large, racy copy that is deleted anyway.
-    // The release preflight/ASAR oracle enforces the resulting allowlist.
+    // The developer checkout is NEVER the packaged source (DIST-03 #8916):
+    // ignore every checkout path so Electron Packager's initial copy is
+    // empty, then packageAfterCopy materializes the STAGED tree produced by
+    // scripts/stage-target.ts as the sole packaged content. The release
+    // preflight/ASAR oracle plus the postPackage live gate enforce the
+    // resulting allowlist.
     prune: false,
     derefSymlinks: true,
     // Electron Packager does not convert a PNG into a macOS application icon.
     // Point it at the product-owned ICNS bundle so Finder/Dock never inherit
-    // Electron's atom icon. The renderer still uses the shared PNG below.
-    icon: "resources/openagents-icon.icns",
-    extraResource: ["dist/native", "dist/builtin-skills"],
-    ignore: (path) => ignoredCheckoutPath.test(path),
+    // Electron's atom icon. Packaging inputs come from the staged tree
+    // (exported at the descriptor's source revision), with the checkout path
+    // as the config-import fallback for tests that never package.
+    icon: stagedPathOr("resources/openagents-icon.icns", "resources", "openagents-icon.icns"),
+    extraResource: [
+      stagedPathOr("dist/native", "native"),
+      stagedPathOr("dist/builtin-skills", "dist", "builtin-skills"),
+    ],
+    ignore: () => true,
     protocols: [{ name: "OpenAgents", schemes: [OPENAGENTS_DESKTOP_PROTOCOL] }],
     osxSign:
       developerIdApplication === undefined
@@ -182,74 +203,88 @@ const config: ForgeConfig = {
               file.includes("/Electron Framework.framework/Versions/Current/") ||
               !isMacCodeSignablePath(file),
             optionsForFile: () => ({
-              entitlements: "build/entitlements.mac.plist",
+              entitlements: stagedPathOr(
+                "build/entitlements.mac.plist",
+                "build",
+                "entitlements.mac.plist",
+              ),
               hardenedRuntime: true,
             }),
           },
     osxNotarize: notarizeCredentials,
   },
   hooks: {
-    generateAssets: async () => {
-      const target = desktopTargets[requireExplicitDesktopTarget()];
-      execFileSync("node", ["--import", "tsx", "scripts/build.ts"], {
-        cwd: process.cwd(),
-        stdio: "inherit",
-      });
-      // Owned native components build with the EXPLICIT Rust target triple —
-      // never `process.arch` inference (DIST-03 #8916, audit §10.2).
-      execFileSync(
-        "cargo",
-        ["build", "--release", "-p", "oa-desktop-audio", "--target", target.rustTargetTriple],
-        { cwd: path.resolve(process.cwd(), "../.."), stdio: "inherit" },
-      );
-      const architecture = target.arch;
-      const destinationDirectory = path.join(process.cwd(), "dist", "native", architecture);
-      const destination = path.join(destinationDirectory, "oa-desktop-audio");
-      mkdirSync(destinationDirectory, { recursive: true });
-      copyFileSync(
-        path.resolve(
-          process.cwd(),
-          "../..",
-          "target",
-          target.rustTargetTriple,
-          "release",
-          "oa-desktop-audio",
-        ),
-        destination,
-      );
-      chmodSync(destination, 0o755);
-      const sha256 = createHash("sha256").update(readFileSync(destination)).digest("hex");
-      writeFileSync(
-        path.join(destinationDirectory, "manifest.json"),
-        JSON.stringify({ protocolVersion: 1, helperVersion: "0.1.0", architecture, sha256 }) + "\n",
-        { mode: 0o644 },
-      );
+    /**
+     * Packaging performs NO building (DIST-03 #8916, repaired): the staged
+     * workspace produced by `pnpm run stage:target` — clean source export,
+     * locked target-only production install, explicit-Rust-triple native
+     * helper — is the only admissible input. This hook merely proves the
+     * staged inputs exist and match the maker invocation before any copy.
+     */
+    generateAssets: async (_forgeConfig, platform, arch) => {
+      const { descriptor } = requireStagedBuildInputs();
+      assertDescriptorMatchesMakerTarget(descriptor, platform, arch);
+      // Explicit-triple native builds happen in staging (stage-target.ts),
+      // never here: the maker lane consumes the descriptor's closed target
+      // definition and the already-built staged closure.
+      void desktopTargets[descriptor.targetKey].rustTargetTriple;
     },
+    /**
+     * The staged tree IS the packaged source. Electron Packager's initial
+     * copy of the checkout is fully discarded (packagerConfig.ignore already
+     * excludes everything) and replaced with the staged application content:
+     * dist/, package.json, and the target-only runtime node_modules
+     * materialized by the locked production install. `process.cwd()` and the
+     * shared workspace node_modules never reach the package.
+     */
     packageAfterCopy: async (_forgeConfig, buildPath, _electronVersion, platform, arch) => {
-      const declaredTarget = requireExplicitDesktopTarget();
-      if (`${platform}-${arch}` !== declaredTarget) {
+      const { descriptor, stagedTree } = requireStagedBuildInputs();
+      assertDescriptorMatchesMakerTarget(descriptor, platform, arch);
+      // packagerConfig.ignore excludes the entire checkout, so the packager
+      // may not even create the app directory; materialize it and discard any
+      // stray copied content so the staged tree is the SOLE packaged source.
+      await mkdir(buildPath, { recursive: true });
+      for (const leftover of await readdir(buildPath)) {
+        await rm(path.join(buildPath, leftover), { recursive: true, force: true });
+      }
+      for (const entry of ["dist", "package.json", "node_modules"]) {
+        await cp(path.join(stagedTree, entry), path.join(buildPath, entry), {
+          recursive: true,
+          dereference: true,
+        });
+      }
+      const stagedManifest = JSON.parse(
+        readFileSync(path.join(stagedTree, "package.json"), "utf8"),
+      ) as { version: string };
+      if (stagedManifest.version !== descriptor.version) {
         throw new Error(
-          `packaging REFUSED: maker invocation targets ${platform}-${arch} but OA_DESKTOP_TARGET declares ${declaredTarget}`,
+          `packaging REFUSED: staged tree version ${stagedManifest.version} does not match descriptor ${descriptor.version}`,
         );
       }
-      // The application build bundles every dependency except provider packages whose
-      // native payloads must remain relative to their package. Replace the
-      // copied workspace node_modules with that explicit runtime allowlist.
-      await rm(path.join(buildPath, "node_modules"), { recursive: true, force: true });
-      await copyRuntimePackage(buildPath, "@anthropic-ai/claude-agent-sdk");
-      await copyRuntimePackage(
-        buildPath,
-        `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`,
-        `@anthropic-ai/claude-agent-sdk-${platform}-${arch}/package.json`,
-        0,
-        resolveFromClaudeSdk(),
-      );
-      await copyRuntimePackage(buildPath, "@openai/codex", "@openai/codex/bin/codex.js", 1);
-      await copyRuntimePackage(
-        buildPath,
-        `@openai/codex-${platform}-${arch}`,
-        `@openai/codex-${platform}-${arch}/package.json`,
-      );
+    },
+    /**
+     * LIVE post-package ASAR gate (DIST-03 #8916 review blocker 3): list the
+     * REAL entries of the just-assembled app.asar and re-run the staged-tree
+     * oracle with them. One unexpected ASAR entry fails the build here —
+     * before any maker or signing work.
+     */
+    postPackage: async (_forgeConfig, packageResult) => {
+      const { descriptor, stagedTree } = requireStagedBuildInputs();
+      for (const outputPath of packageResult.outputPaths) {
+        const asarPath =
+          packageResult.platform === "darwin"
+            ? path.join(outputPath, "OpenAgents.app", "Contents", "Resources", "app.asar")
+            : path.join(outputPath, "resources", "app.asar");
+        const gate = await assertPackagedAsarAdmissible({
+          descriptor,
+          stagedTree,
+          asarPath,
+          repoRoot: path.resolve(process.cwd(), "../.."),
+        });
+        process.stderr.write(
+          `[forge] postPackage asar gate: ${gate.result} (${gate.asarEntryCount} entries) for ${descriptor.targetKey}\n`,
+        );
+      }
     },
     /**
      * Gatekeeper release gate (#8786) — mechanized from two 2026-07-13

@@ -22,6 +22,10 @@ const BUILD_MINIFY = process.env.OA_DESKTOP_BUILD_MINIFY !== "0"
 
 const stageDevelopmentVoiceHelper = async (dist: string): Promise<void> => {
   if (process.platform !== "darwin") return
+  // Release staging (DIST-03 #8916) builds the target helper with an explicit
+  // Rust triple into the staging workspace; the host-arch DEBUG helper is a
+  // development convenience it never packages, so staging skips this step.
+  if (process.env.OA_DESKTOP_SKIP_DEV_VOICE_HELPER === "1") return
   const workspaceRoot = path.resolve(appRoot, "../..")
   execFileSync("cargo", ["build", "-p", "oa-desktop-audio"], { cwd: workspaceRoot, stdio: "pipe" })
   const destinationDirectory = path.join(dist, "native", process.arch)
