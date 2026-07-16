@@ -25,8 +25,8 @@ never changes Grok's gate.
 
 | Peer | Exact live identity | Basic live result | Code-owned requirements unresolved | Claim |
 |---|---|---:|---:|---|
-| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 18 live passes | 15 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 20 live passes | 12 | experimental |
+| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 20 live passes | 13 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 22 live passes | 10 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -82,6 +82,12 @@ not promoted. Cursor model discovery returned 33 models (26 with configuration)
 and `cursor/create_plan` passed live; the other Cursor extension requests were
 not observed.
 
+The production main-owned Desktop host then ran both pinned drivers and
+serialized the closed `openagents.desktop.acp-support.v1` bundle. The bundle
+contained two provider entries, two receipt references and one evidence
+reference per provider, and zero matches for retained prompt, private path,
+authorization material, or provider-secret canaries.
+
 The Cursor run authenticated through the advertised `cursor_login` method
 against an already signed-in local session. It does **not** prove pending login,
 cancellation, expiry, or clean re-authentication. The Grok run used its existing
@@ -125,8 +131,10 @@ Provider-specific gaps:
 - Desktop: the isolated production build completed a real Grok Full Auto turn,
   durable journal settlement, disposable-repository commit, disable, and clean
   shutdown. Grok failure/recovery journeys, the corresponding packaged Cursor
-  journey, and live support export remain incomplete. The combined matrix row
-  therefore stays `fixture-pass`, not `live-pass`.
+  journey remain incomplete. The production main-owned host ran both pinned
+  drivers, and its sanitized closed support bundle is live-proven for both
+  peers. The combined Desktop journey row therefore stays `fixture-pass`, not
+  `live-pass`.
 
 The ACP-10 validator now publishes the proof, derives the claim independently
 for each peer, and fails closed. Its current verdict is a release denial for

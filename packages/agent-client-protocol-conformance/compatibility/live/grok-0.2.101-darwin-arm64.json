@@ -80,5 +80,14 @@
     "providerMetadataRetained": false,
     "hostIdentityRetained": false
   },
+  "supportBundle": {
+    "schema": "openagents.desktop.acp-support.v1",
+    "providerCount": 2,
+    "receiptRefsPerProvider": 2,
+    "evidenceRefsPerProvider": 1,
+    "serializedBytes": 1020,
+    "forbiddenMatches": 0,
+    "realDrivers": ["grok", "cursor"]
+  },
   "result": "live-basic-pass-release-blocked"
 }
