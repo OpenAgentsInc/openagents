@@ -361,6 +361,10 @@ describe("React Codex composer", () => {
       createdAt: "2026-07-15T00:00:00.000Z", updatedAt: "2026-07-15T00:00:00.000Z",
     });
     await render(root, <ReactComposer state={fixtureState({ composerQueue: [entry("one", 1, "queued"), entry("two", 0, "promoting")] })} report={report} />);
+    const queuePanel = container.querySelector(".oa-react-composer-queue-panel");
+    expect(queuePanel?.getAttribute("aria-labelledby")).toBe("composer-queue-heading");
+    expect(queuePanel?.querySelector("#composer-queue-heading")?.textContent).toBe("Queued messages");
+    expect(queuePanel?.nextElementSibling?.classList.contains("oa-react-composer-input")).toBe(true);
     expect(container.textContent).toContain("#1Message onepending");
     expect(container.textContent).toContain("Message twodispatching");
     const edit = [...container.querySelectorAll("button")].find(button => button.textContent === "Edit" && !button.disabled);

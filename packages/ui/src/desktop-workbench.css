@@ -1680,12 +1680,41 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   opacity: 0.6;
 }
 
+.oa-react-composer-queue-panel {
+  display: grid;
+  min-width: 0;
+  gap: var(--en-spacing-1);
+  padding: var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceBase);
+}
+
+.oa-react-composer-queue-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--en-spacing-1);
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.oa-react-composer-queue-header > svg {
+  width: 13px;
+  height: 13px;
+  color: var(--en-color-accent);
+}
+
+.oa-react-composer-queue-header > :last-child {
+  margin-left: auto;
+}
+
 .oa-react-composer-queue {
   display: grid;
-  max-height: 132px;
+  max-height: 120px;
   margin: 0;
   padding: 0;
-  gap: var(--en-spacing-1);
   overflow-y: auto;
   list-style: none;
 }
@@ -1696,6 +1725,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   align-items: center;
   min-width: 0;
   gap: var(--en-spacing-1);
+  padding: var(--en-spacing-1) 0;
+  border-top: 1px solid var(--en-color-borderSubtle);
 }
 
 .oa-react-composer-queue-order,

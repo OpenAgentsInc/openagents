@@ -395,25 +395,32 @@ export const ReactComposer = ({
       onDrop={() => setDragActive(false)}
     >
       {state.composerQueue.length === 0 ? null : (
-        <ol className="oa-react-composer-queue" aria-label="Queued turns">
-          {state.composerQueue.map(entry => {
-            const editable = entry.status === "queued";
-            const status = entry.status === "queued" ? "pending" : entry.status === "promoting" ? "dispatching" : entry.status === "promoted" ? "settled" : entry.status;
-            return (
-              <li key={entry.queueRef} data-queue-status={status}>
-                <span className="oa-react-composer-queue-order">{entry.position > 0 ? `#${entry.position}` : "—"}</span>
-                <span className="oa-react-composer-queue-message" title={entry.message}>{entry.message}</span>
-                <Badge variant="outline">{status}</Badge>
-                <Button type="button" variant="ghost" size="sm" disabled={!editable}
-                  title={editable ? "Edit queued turn" : "This turn is already dispatching"}
-                  onClick={() => dispatch(report, "DesktopQueuedIntentEditRequested", entry.queueRef)}>Edit</Button>
-                <Button type="button" variant="ghost" size="sm" disabled={!editable}
-                  title={editable ? "Remove queued turn" : "This turn is already dispatching"}
-                  onClick={() => dispatch(report, "DesktopQueuedIntentCancelRequested", entry.queueRef)}>Remove</Button>
-              </li>
-            );
-          })}
-        </ol>
+        <section className="oa-react-composer-queue-panel" aria-labelledby="composer-queue-heading">
+          <header className="oa-react-composer-queue-header">
+            <ListPlus aria-hidden="true" />
+            <span id="composer-queue-heading">Queued messages</span>
+            <Badge variant="outline">{state.composerQueue.length}</Badge>
+          </header>
+          <ol className="oa-react-composer-queue">
+            {state.composerQueue.map(entry => {
+              const editable = entry.status === "queued";
+              const status = entry.status === "queued" ? "pending" : entry.status === "promoting" ? "dispatching" : entry.status === "promoted" ? "settled" : entry.status;
+              return (
+                <li key={entry.queueRef} data-queue-status={status}>
+                  <span className="oa-react-composer-queue-order">{entry.position > 0 ? `#${entry.position}` : "—"}</span>
+                  <span className="oa-react-composer-queue-message" title={entry.message}>{entry.message}</span>
+                  <Badge variant="outline">{status}</Badge>
+                  <Button type="button" variant="ghost" size="sm" disabled={!editable}
+                    title={editable ? "Edit queued turn" : "This turn is already dispatching"}
+                    onClick={() => dispatch(report, "DesktopQueuedIntentEditRequested", entry.queueRef)}>Edit</Button>
+                  <Button type="button" variant="ghost" size="sm" disabled={!editable}
+                    title={editable ? "Remove queued turn" : "This turn is already dispatching"}
+                    onClick={() => dispatch(report, "DesktopQueuedIntentCancelRequested", entry.queueRef)}>Remove</Button>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
       )}
       {state.composerImages.length === 0 ? null : (
         <div className="oa-react-composer-images" role="list" aria-label="Attached images">
