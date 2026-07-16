@@ -1,7 +1,20 @@
 import { Effect, Schema } from "effect"
 
 /** The complete KU-2 motif vocabulary. Adding a value is a contract change. */
-export const khalaMotifIds = ["cut-corner-surface", "header-line", "signal-separator"] as const
+export const khalaMotifIds = [
+  "cut-corner-surface",
+  "header-line",
+  "signal-separator",
+  "edge-underline",
+  "corner-line-array",
+  "corner-brackets",
+  "octagonal-surface",
+  "corner-chevron",
+  "split-corner",
+  "asymmetric-cut",
+  "header-rail",
+  "radial-dial"
+] as const
 export type KhalaMotifId = (typeof khalaMotifIds)[number]
 
 export const khalaEdgeWidthTokens = ["hairline", "structural", "emphasis"] as const
@@ -273,6 +286,42 @@ export interface KhalaMotifGeometry {
   readonly lines: ReadonlyArray<KhalaLine>
 }
 
+export type KhalaFrameElementGroup = "background" | "line" | "deco"
+
+export interface KhalaFramePolygonElement {
+  readonly _tag: "Polygon"
+  readonly id: string
+  readonly group: KhalaFrameElementGroup
+  readonly role: KhalaLuminanceRole
+  readonly width: number
+  readonly points: ReadonlyArray<KhalaPoint>
+}
+
+export interface KhalaFrameLineElement {
+  readonly _tag: "Line"
+  readonly id: string
+  readonly group: KhalaFrameElementGroup
+  readonly role: KhalaLuminanceRole
+  readonly width: number
+  readonly from: KhalaPoint
+  readonly to: KhalaPoint
+}
+
+export type KhalaFrameElement = KhalaFramePolygonElement | KhalaFrameLineElement
+
+/**
+ * Closed generic frame scene. `clip` and `mask` apply only to the inert paint
+ * layer; semantic content is deliberately outside the compositing graph.
+ */
+export interface KhalaFrameScene {
+  readonly motif: KhalaMotifId
+  readonly geometry: KhalaMotifGeometry
+  readonly elements: ReadonlyArray<KhalaFrameElement>
+  readonly clip: ReadonlyArray<KhalaPoint> | null
+  readonly mask: ReadonlyArray<KhalaPoint> | null
+  readonly pattern: KhalaLinearPaint | null
+}
+
 const point = (x: number, y: number): KhalaPoint => ({ x, y })
 const line = (x1: number, y1: number, x2: number, y2: number, role: KhalaLuminanceRole, width: number): KhalaLine => ({
   from: point(x1, y1),
@@ -288,6 +337,59 @@ const rectangle = (width: number, height: number): ReadonlyArray<KhalaPoint> => 
   point(0, height)
 ]
 
+const octagon = (width: number, height: number, cut: number): ReadonlyArray<KhalaPoint> => [
+  point(cut, 0),
+  point(width - cut, 0),
+  point(width, cut),
+  point(width, height - cut),
+  point(width - cut, height),
+  point(cut, height),
+  point(0, height - cut),
+  point(0, cut)
+]
+
+const cornerBrackets = (
+  width: number,
+  height: number,
+  length: number,
+  role: KhalaLuminanceRole,
+  stroke: number
+): ReadonlyArray<KhalaLine> => [
+  line(0, 0, length, 0, role, stroke),
+  line(0, 0, 0, length, role, stroke),
+  line(width - length, 0, width, 0, role, stroke),
+  line(width, 0, width, length, role, stroke),
+  line(0, height, length, height, role, stroke),
+  line(0, height - length, 0, height, role, stroke),
+  line(width - length, height, width, height, role, stroke),
+  line(width, height - length, width, height, role, stroke)
+]
+
+const ringLines = (
+  width: number,
+  height: number,
+  role: KhalaLuminanceRole,
+  stroke: number,
+  segments = 32
+): ReadonlyArray<KhalaLine> => {
+  const centerX = width / 2
+  const centerY = height / 2
+  const radiusX = Math.max(0, width / 2 - stroke)
+  const radiusY = Math.max(0, height / 2 - stroke)
+  return Array.from({ length: segments }, (_, index) => {
+    const start = (index / segments) * Math.PI * 2
+    const end = ((index + 1) / segments) * Math.PI * 2
+    return line(
+      centerX + Math.cos(start) * radiusX,
+      centerY + Math.sin(start) * radiusY,
+      centerX + Math.cos(end) * radiusX,
+      centerY + Math.sin(end) * radiusY,
+      role,
+      stroke
+    )
+  })
+}
+
 const collapseFor = (input: KhalaMotifInput, theme: KhalaUiTheme): KhalaCollapseRole => {
   const effectiveWidth = input.width / input.zoom
   return effectiveWidth < theme.responsiveCollapse.borderOnlyBelow
@@ -298,7 +400,7 @@ const collapseFor = (input: KhalaMotifInput, theme: KhalaUiTheme): KhalaCollapse
 }
 
 /**
- * Resolve one of the three motifs to logical points and line segments.
+ * Resolve the closed static motif vocabulary to logical points and line segments.
  * Content inset is always zero: decoration gives way before semantic space or
  * focus clearance. Renderers consume this data in KU-3.
  */
@@ -346,6 +448,41 @@ export const resolveKhalaMotif = (input: unknown, theme: unknown) =>
       } satisfies KhalaMotifGeometry
     }
 
+    if (decodedInput.motif === "octagonal-surface") {
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon: cut === 0 ? rectangle(decodedInput.width, decodedInput.height) : octagon(decodedInput.width, decodedInput.height, cut),
+        lines: []
+      } satisfies KhalaMotifGeometry
+    }
+
+    if (decodedInput.motif === "asymmetric-cut") {
+      const asymmetric = Math.min(Math.max(cut, decodedTheme.cutSize.small), decodedInput.width / 3, decodedInput.height / 3)
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon:
+          collapse === "border-only"
+            ? rectangle(decodedInput.width, decodedInput.height)
+            : [
+                point(asymmetric * 2, 0),
+                point(decodedInput.width, 0),
+                point(decodedInput.width, decodedInput.height - asymmetric * 2),
+                point(decodedInput.width - asymmetric * 2, decodedInput.height),
+                point(0, decodedInput.height),
+                point(0, asymmetric * 2)
+              ],
+        lines: []
+      } satisfies KhalaMotifGeometry
+    }
+
     if (decodedInput.motif === "header-line") {
       const lines =
         collapse === "border-only"
@@ -362,6 +499,150 @@ export const resolveKhalaMotif = (input: unknown, theme: unknown) =>
         forcedColors: decodedInput.forcedColors,
         polygon: [],
         lines
+      } satisfies KhalaMotifGeometry
+    }
+
+
+    if (decodedInput.motif === "edge-underline") {
+      const y = decodedInput.height
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon: [],
+        lines:
+          collapse === "border-only"
+            ? [line(0, y, decodedInput.width, y, quietRole, strokeWidth)]
+            : [
+                line(0, y, Math.min(accentLength, decodedInput.width), y, signalRole, signalWidth),
+                line(Math.min(accentLength, decodedInput.width), y, decodedInput.width, y, quietRole, strokeWidth)
+              ]
+      } satisfies KhalaMotifGeometry
+    }
+
+    if (decodedInput.motif === "corner-brackets") {
+      const length = collapse === "border-only" ? 0 : Math.min(accentLength, decodedInput.width / 3, decodedInput.height / 3)
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon: length === 0 ? rectangle(decodedInput.width, decodedInput.height) : [],
+        lines: length === 0 ? [] : cornerBrackets(decodedInput.width, decodedInput.height, length, signalRole, signalWidth)
+      } satisfies KhalaMotifGeometry
+    }
+
+    if (decodedInput.motif === "corner-line-array") {
+      const bracketLength = Math.min(accentLength, decodedInput.width / 3, decodedInput.height / 3)
+      const base = cornerBrackets(decodedInput.width, decodedInput.height, bracketLength, quietRole, strokeWidth)
+      const offset = Math.max(2, density.gap)
+      const accents =
+        collapse === "full"
+          ? [
+              line(offset, offset, bracketLength, offset, signalRole, signalWidth),
+              line(decodedInput.width - bracketLength, offset, decodedInput.width - offset, offset, signalRole, signalWidth),
+              line(offset, decodedInput.height - offset, bracketLength, decodedInput.height - offset, signalRole, signalWidth),
+              line(decodedInput.width - bracketLength, decodedInput.height - offset, decodedInput.width - offset, decodedInput.height - offset, signalRole, signalWidth)
+            ]
+          : []
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon: collapse === "border-only" ? rectangle(decodedInput.width, decodedInput.height) : [],
+        lines: collapse === "border-only" ? [] : [...base, ...accents]
+      } satisfies KhalaMotifGeometry
+    }
+
+    if (decodedInput.motif === "corner-chevron") {
+      const length = Math.min(accentLength, decodedInput.width / 4, decodedInput.height / 4)
+      const lines = [
+        line(0, length, length, 0, signalRole, signalWidth),
+        line(decodedInput.width - length, 0, decodedInput.width, length, signalRole, signalWidth),
+        line(0, decodedInput.height - length, length, decodedInput.height, signalRole, signalWidth),
+        line(decodedInput.width - length, decodedInput.height, decodedInput.width, decodedInput.height - length, signalRole, signalWidth)
+      ]
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon: collapse === "border-only" ? rectangle(decodedInput.width, decodedInput.height) : [],
+        lines: collapse === "border-only" ? [] : lines
+      } satisfies KhalaMotifGeometry
+    }
+
+    if (decodedInput.motif === "split-corner") {
+      const length = Math.min(accentLength, decodedInput.width / 4, decodedInput.height / 4)
+      const offset = Math.max(2, density.gap)
+      const lines = [
+        line(0, offset, length, offset, quietRole, strokeWidth),
+        line(offset, 0, offset, length, signalRole, signalWidth),
+        line(decodedInput.width - length, decodedInput.height - offset, decodedInput.width, decodedInput.height - offset, quietRole, strokeWidth),
+        line(decodedInput.width - offset, decodedInput.height - length, decodedInput.width - offset, decodedInput.height, signalRole, signalWidth)
+      ]
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon: collapse === "border-only" ? rectangle(decodedInput.width, decodedInput.height) : [],
+        lines: collapse === "border-only" ? [] : lines
+      } satisfies KhalaMotifGeometry
+    }
+
+    if (decodedInput.motif === "header-rail") {
+      const vertical = Math.min(decodedInput.height, Math.max(6, accentLength / 3))
+      const rail = collapse === "border-only"
+        ? [line(0, 0, decodedInput.width, 0, quietRole, strokeWidth)]
+        : [
+            line(0, 0, decodedInput.width, 0, quietRole, strokeWidth),
+            line(0, 0, accentLength, 0, signalRole, signalWidth),
+            ...(collapse === "full"
+              ? [
+                  line(accentLength + density.gap, 0, accentLength + density.gap, vertical, signalRole, signalWidth),
+                  line(accentLength + density.gap * 2, 0, accentLength + density.gap * 2, vertical * 0.66, quietRole, strokeWidth),
+                  line(accentLength + density.gap * 3, 0, accentLength + density.gap * 3, vertical * 0.33, quietRole, strokeWidth)
+                ]
+              : [])
+          ]
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon: [],
+        lines: rail
+      } satisfies KhalaMotifGeometry
+    }
+
+    if (decodedInput.motif === "radial-dial") {
+      const ring = collapse === "border-only" ? [] : ringLines(decodedInput.width, decodedInput.height, quietRole, strokeWidth)
+      const tick = Math.min(accentLength / 3, decodedInput.width / 6, decodedInput.height / 6)
+      const ticks = collapse === "full"
+        ? [
+            line(decodedInput.width / 2, 0, decodedInput.width / 2, tick, signalRole, signalWidth),
+            line(decodedInput.width / 2, decodedInput.height - tick, decodedInput.width / 2, decodedInput.height, signalRole, signalWidth),
+            line(0, decodedInput.height / 2, tick, decodedInput.height / 2, signalRole, signalWidth),
+            line(decodedInput.width - tick, decodedInput.height / 2, decodedInput.width, decodedInput.height / 2, signalRole, signalWidth)
+          ]
+        : []
+      return {
+        motif: decodedInput.motif,
+        collapse,
+        contentInset: 0 as const,
+        focusClearance: decodedTheme.focusClearance,
+        forcedColors: decodedInput.forcedColors,
+        polygon: collapse === "border-only" ? rectangle(decodedInput.width, decodedInput.height) : [],
+        lines: [...ring, ...ticks]
       } satisfies KhalaMotifGeometry
     }
 
@@ -387,3 +668,129 @@ export const resolveKhalaMotif = (input: unknown, theme: unknown) =>
       lines
     } satisfies KhalaMotifGeometry
   })
+
+/** Resolve motif geometry into the generic grouping/compositing frame scene. */
+export const resolveKhalaFrameScene = (input: unknown, theme: unknown) =>
+  Effect.map(resolveKhalaMotif(input, theme), (geometry): KhalaFrameScene => {
+    const outlineRole: KhalaLuminanceRole = geometry.forcedColors ? "focus" : "structural"
+    const polygonElements: ReadonlyArray<KhalaFramePolygonElement> =
+      geometry.polygon.length === 0
+        ? []
+        : [
+            {
+              _tag: "Polygon",
+              id: `${geometry.motif}-background`,
+              group: "background",
+              role: outlineRole,
+              width: 1,
+              points: geometry.polygon
+            }
+          ]
+    const lineElements = geometry.lines.map(
+      (value, index): KhalaFrameLineElement => ({
+        _tag: "Line",
+        id: `${geometry.motif}-line-${index}`,
+        group: value.role === "signal" || value.role === "focus" ? "deco" : "line",
+        role: value.role,
+        width: value.width,
+        from: value.from,
+        to: value.to
+      })
+    )
+    const clips = new Set<KhalaMotifId>(["cut-corner-surface", "octagonal-surface", "asymmetric-cut"])
+    return {
+      motif: geometry.motif,
+      geometry,
+      elements: [...polygonElements, ...lineElements],
+      clip: clips.has(geometry.motif) ? geometry.polygon : null,
+      mask: geometry.motif === "radial-dial" && geometry.polygon.length > 0 ? geometry.polygon : null,
+      pattern: geometry.motif === "corner-line-array" ? resolveKhalaStepsPaint(4) : null
+    }
+  })
+
+export interface KhalaPaintStop {
+  readonly offset: number
+  readonly role: KhalaLuminanceRole | "transparent"
+}
+
+export interface KhalaLinearPaint {
+  readonly direction: "horizontal" | "vertical"
+  readonly repeating: boolean
+  readonly stops: ReadonlyArray<KhalaPaintStop>
+}
+
+const boundedPaintLength = (value: number, minimum = 1, maximum = 64): number =>
+  Math.min(maximum, Math.max(minimum, Math.round(value)))
+
+/** Owned, renderer-neutral equivalent of an alternating hard-stop gradient. */
+export const resolveKhalaStepsPaint = (
+  length: number,
+  direction: KhalaLinearPaint["direction"] = "horizontal",
+  role: KhalaLuminanceRole = "signal"
+): KhalaLinearPaint => {
+  const count = boundedPaintLength(length, 1, 32)
+  const total = count === 1 ? 1 : count * 2 - 1
+  return {
+    direction,
+    repeating: false,
+    stops: Array.from({ length: total }, (_, index) => {
+      const start = index / total
+      const end = (index + 1) / total
+      const color = index % 2 === 0 ? role : "transparent"
+      return [
+        { offset: start, role: color },
+        { offset: end, role: color }
+      ] as const
+    }).flat()
+  }
+}
+
+/** Owned, bounded equivalent of a repeating multi-role strip. */
+export const resolveKhalaStripPaint = (
+  roles: ReadonlyArray<KhalaLuminanceRole>,
+  direction: KhalaLinearPaint["direction"] = "horizontal"
+): KhalaLinearPaint => {
+  const safeRoles = roles.slice(0, 8)
+  const resolved = safeRoles.length === 0 ? (["structural"] as const) : safeRoles
+  return {
+    direction,
+    repeating: true,
+    stops: resolved.flatMap((role, index) => [
+      { offset: index / resolved.length, role },
+      { offset: (index + 1) / resolved.length, role }
+    ])
+  }
+}
+
+/** Separator paint used by horizontal and vertical signal rails. */
+export const resolveKhalaSeparatorPaint = (
+  direction: "start" | "end" | "both" = "end",
+  axis: KhalaLinearPaint["direction"] = "horizontal"
+): KhalaLinearPaint => {
+  const start: ReadonlyArray<KhalaPaintStop> =
+    direction === "start" || direction === "both"
+      ? [
+          { offset: 0, role: "signal" },
+          { offset: 0.08, role: "signal" },
+          { offset: 0.08, role: "transparent" },
+          { offset: 0.12, role: "transparent" },
+          { offset: 0.12, role: "signal" },
+          { offset: 0.2, role: "signal" }
+        ]
+      : [{ offset: 0, role: "structural" }]
+  const end: ReadonlyArray<KhalaPaintStop> =
+    direction === "end" || direction === "both"
+      ? [
+          { offset: 0.8, role: "structural" },
+          { offset: 0.8, role: "transparent" },
+          { offset: 0.88, role: "transparent" },
+          { offset: 0.88, role: "signal" },
+          { offset: 0.92, role: "signal" },
+          { offset: 0.92, role: "transparent" },
+          { offset: 0.96, role: "transparent" },
+          { offset: 0.96, role: "signal" },
+          { offset: 1, role: "signal" }
+        ]
+      : [{ offset: 1, role: "structural" }]
+  return { direction: axis, repeating: false, stops: [...start, ...end] }
+}

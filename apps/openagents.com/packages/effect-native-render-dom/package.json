@@ -20,8 +20,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "19.2.3",
     "happy-dom": "^20.10.6",
-    "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -37,6 +37,6 @@
   },
   "effectNativeVendor": {
     "repo": "OpenAgentsInc/effect-native",
-    "commit": "712c112fa2f0176cfe2d45dc50bc5bbeb9ea60b7"
+    "commit": "f7f7fe6ed8e4245126d7149b3f3060d3d8d8c0e9"
   }
 }

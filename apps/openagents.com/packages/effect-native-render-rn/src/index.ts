@@ -5666,7 +5666,20 @@ const renderMobileSurfaceShell = (
       : undefined
   const khalaDecoration =
     khala !== undefined && khalaGeometry !== undefined
-      ? createElement(
+      ? (() => {
+          const polygonSegments = khalaGeometry.polygon.flatMap((value, index, polygon) => {
+            const next = polygon[(index + 1) % polygon.length]
+            return next === undefined
+              ? []
+              : [{
+                  from: value,
+                  to: next,
+                  role: khala.forcedColors === true ? "focus" as const : "structural" as const,
+                  width: theme.khalaUi.edgeWidth.structural
+                }]
+          })
+          const segments = [...polygonSegments, ...khalaGeometry.lines]
+          return createElement(
           dependencies,
           dependencies.ReactNative.View,
           {
@@ -5678,28 +5691,12 @@ const renderMobileSurfaceShell = (
             pointerEvents: "none",
             style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 0 }
           },
-          ...(khala.motif === "cut-corner-surface"
-            ? [
-                createElement(dependencies, dependencies.ReactNative.View, {
-                  key: `en-khala-${khala.id}-degraded-border`,
-                  testID: `en-khala-${khala.id}-degraded-border`,
-                  accessible: false,
-                  pointerEvents: "none",
-                  style: {
-                    position: "absolute",
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-                    left: 0,
-                    borderWidth: theme.khalaUi.edgeWidth.structural,
-                    borderColor: colorValue(
-                      theme,
-                      theme.khalaUi.luminance[khala.forcedColors === true ? "focus" : "structural"]
-                    )
-                  }
-                })
-              ]
-            : khalaGeometry.lines.map((segment, index) =>
+          ...segments.map((segment, index) => {
+            const deltaX = segment.to.x - segment.from.x
+            const deltaY = segment.to.y - segment.from.y
+            const length = Math.hypot(deltaX, deltaY)
+            const angle = Math.atan2(deltaY, deltaX)
+            return (
                 createElement(dependencies, dependencies.ReactNative.View, {
                   key: `en-khala-${khala.id}-line-${index}`,
                   testID: `en-khala-${khala.id}-line-${index}`,
@@ -5709,13 +5706,17 @@ const renderMobileSurfaceShell = (
                     position: "absolute",
                     left: segment.from.x,
                     top: segment.from.y,
-                    width: Math.max(0, segment.to.x - segment.from.x),
+                    width: length,
                     height: segment.width,
-                    backgroundColor: colorValue(theme, theme.khalaUi.luminance[segment.role])
+                    backgroundColor: colorValue(theme, theme.khalaUi.luminance[segment.role]),
+                    transformOrigin: "left center",
+                    transform: [{ rotate: `${angle}rad` }]
                   }
                 })
-              ))
+              )
+          })
         )
+        })()
       : undefined
   const children =
     khalaDecoration === undefined || khala === undefined

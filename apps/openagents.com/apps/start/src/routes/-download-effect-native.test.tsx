@@ -35,7 +35,7 @@ describe('EN-4 /download Effect Native route', () => {
       tag: 'Stack',
       key: 'download-root',
     })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v39"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v43"')
     expect(serialized).toContain('Download Autopilot for Mac')
     expect(serialized).toContain('Download for Mac (Apple Silicon)')
     expect(serialized).toContain(AUTOPILOT_DESKTOP_DMG_URL)

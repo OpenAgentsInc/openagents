@@ -1,5 +1,5 @@
 /** React-owned Effect Native DOM surface with an explicit whole-surface backend. */
-import { Component, StrictMode, createElement, useLayoutEffect, useSyncExternalStore, type ErrorInfo, type ReactElement, type ReactNode } from "react"
+import { Component, StrictMode, createElement, useEffect, useLayoutEffect, useSyncExternalStore, type ErrorInfo, type ReactElement, type ReactNode } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { Deferred, Effect, Exit, Fiber, Scope, Stream } from "effect"
 import type { IntentReporter, MountedSurface, RendererAdapter, View } from "@effect-native/core"
@@ -127,6 +127,35 @@ const ReactViewProjection = (props: EffectNativeReactDomSurfaceProps): ReactElem
 export const EffectNativeReactDomSurface = (
   props: EffectNativeReactDomSurfaceProps
 ): ReactElement => createElement(ReactViewProjection, props)
+
+export interface EffectNativeScopedEffectOptions {
+  readonly onError?: (cause: unknown) => void
+}
+
+/**
+ * Own an Effect resource Scope from an ordinary React component. React only
+ * signals mount/unmount; Effect remains the lifecycle and choreography
+ * authority. Strict Mode replay closes the first Scope before reacquiring.
+ */
+export const useEffectNativeScopedEffect = (
+  makeEffect: () => Effect.Effect<unknown, unknown, Scope.Scope>,
+  dependencies: ReadonlyArray<unknown>,
+  options: EffectNativeScopedEffectOptions = {}
+): void => {
+  useEffect(() => {
+    const scope = Effect.runSync(Scope.make())
+    const fiber = Effect.runFork(makeEffect().pipe(Scope.provide(scope)))
+    Effect.runFork(Fiber.await(fiber).pipe(Effect.flatMap((exit) =>
+      exit._tag === "Failure"
+        ? Effect.sync(() => options.onError?.(exit.cause))
+        : Effect.void
+    )))
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+      Effect.runFork(Scope.close(scope, Exit.void))
+    }
+  }, dependencies)
+}
 
 const mountCompatibilityBackend = (
   container: Element,

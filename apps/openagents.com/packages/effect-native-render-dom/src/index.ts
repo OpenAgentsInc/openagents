@@ -18,7 +18,9 @@ import {
   type DiffViewView,
   type DiffRow,
   type GraphFigureView,
+  type GraphEdgeStatus,
   type GraphStatus,
+  graphEdgeStatusColorToken,
   graphStatusColorToken,
   layoutGraphNodes,
   type TimelineView,
@@ -5002,6 +5004,8 @@ const renderDiffView = (view: DiffViewView, state: DomRendererState, report: Int
 const SVG_NS = "http://www.w3.org/2000/svg"
 const graphStatusColor = (status: GraphStatus | undefined): string =>
   colorValue(graphStatusColorToken[status ?? "idle"])
+const graphEdgeStatusColor = (status: GraphEdgeStatus | undefined): string =>
+  colorValue(graphEdgeStatusColorToken[status ?? "idle"])
 
 const renderGraphFigure = (view: GraphFigureView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "div")
@@ -5040,8 +5044,8 @@ const renderGraphFigure = (view: GraphFigureView, state: DomRendererState, repor
     lineEl.setAttribute("y1", String(from.y))
     lineEl.setAttribute("x2", String(to.x))
     lineEl.setAttribute("y2", String(to.y))
-    lineEl.setAttribute("stroke", graphStatusColor(edge.status))
-    lineEl.setAttribute("stroke-width", "2")
+    lineEl.setAttribute("stroke", graphEdgeStatusColor(edge.status))
+    lineEl.setAttribute("stroke-width", edge.status === "evidence_backed" ? "3" : "2")
     root.appendChild(lineEl)
   }
 

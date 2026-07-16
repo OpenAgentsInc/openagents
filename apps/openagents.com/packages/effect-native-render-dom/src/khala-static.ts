@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import type { KhalaFrameDecoration } from "@effect-native/core"
 import {
-  resolveKhalaMotif,
+  resolveKhalaFrameScene,
   type ColorToken,
   type KhalaLuminanceRole,
   type KhalaMotifGeometry,
@@ -29,8 +29,8 @@ const segment = (x: number, y: number): string => `L${coordinate(x)} ${coordinat
 export const stableKhalaDomId = (id: string): string => `en-khala-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`
 
 export const resolveKhalaStaticDecoration = (decoration: KhalaFrameDecoration, theme: Theme): KhalaStaticDecoration => {
-  const geometry = Effect.runSync(
-    resolveKhalaMotif(
+  const scene = Effect.runSync(
+    resolveKhalaFrameScene(
       {
         motif: decoration.motif,
         width: decoration.width,
@@ -42,6 +42,7 @@ export const resolveKhalaStaticDecoration = (decoration: KhalaFrameDecoration, t
       theme.khalaUi
     )
   )
+  const geometry = scene.geometry
   const grouped = new Map<string, { readonly role: KhalaLuminanceRole; readonly width: number; data: string }>()
   const append = (role: KhalaLuminanceRole, width: number, data: string): void => {
     const key = `${role}:${width}`
@@ -50,18 +51,15 @@ export const resolveKhalaStaticDecoration = (decoration: KhalaFrameDecoration, t
     else current.data = `${current.data} ${data}`
   }
 
-  if (geometry.polygon.length > 0) {
-    const [first, ...rest] = geometry.polygon
-    if (first !== undefined) {
-      append(
-        decoration.forcedColors === true ? "focus" : "structural",
-        theme.khalaUi.edgeWidth.structural,
-        `${move(first.x, first.y)} ${rest.map((value) => segment(value.x, value.y)).join(" ")} Z`
-      )
+  for (const element of scene.elements) {
+    if (element._tag === "Polygon") {
+      const [first, ...rest] = element.points
+      if (first !== undefined) {
+        append(element.role, element.width, `${move(first.x, first.y)} ${rest.map((value) => segment(value.x, value.y)).join(" ")} Z`)
+      }
+    } else {
+      append(element.role, element.width, `${move(element.from.x, element.from.y)} ${segment(element.to.x, element.to.y)}`)
     }
-  }
-  for (const value of geometry.lines) {
-    append(value.role, value.width, `${move(value.from.x, value.from.y)} ${segment(value.to.x, value.to.y)}`)
   }
 
   return {

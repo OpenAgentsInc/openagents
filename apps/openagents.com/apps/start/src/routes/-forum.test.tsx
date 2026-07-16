@@ -212,7 +212,7 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     const serialized = JSON.stringify(tree)
 
     expect(structure).toMatchObject({ tag: 'Stack', key: 'forum-root' })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v39"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v43"')
     for (const tag of ['Stack', 'Card', 'Link', 'Text', 'Badge']) {
       expect(serialized).toContain(`"_tag":"${tag}"`)
     }

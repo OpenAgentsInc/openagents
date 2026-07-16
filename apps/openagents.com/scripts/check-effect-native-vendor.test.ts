@@ -50,7 +50,7 @@ describe('effect-native vendor guard', () => {
     expect(source).toContain('data-en-react-surface')
   })
 
-  test('catalog v42 carries the continuous static Khala frame boundary atomically', () => {
+  test('catalog v43 carries the complete non-audio Khala visual boundary atomically', () => {
     const manifest = readManifest()
     const core = readFileSync(
       new URL('../packages/effect-native-core/src/index.ts', import.meta.url),
@@ -72,8 +72,21 @@ describe('effect-native vendor guard', () => {
       new URL('../packages/effect-native-render-rn/src/index.ts', import.meta.url),
       'utf8',
     )
+    const khala = readFileSync(
+      new URL('../packages/effect-native-khala-ui/src/index.ts', import.meta.url),
+      'utf8',
+    )
+    const canvas = readFileSync(
+      new URL('../packages/effect-native-render-canvas/src/khala-background.ts', import.meta.url),
+      'utf8',
+    )
+    const parity = readFileSync(
+      new URL('../packages/effect-native-gallery/src/khala-ui-parity.ts', import.meta.url),
+      'utf8',
+    )
 
-    expect(manifest.catalogVersion).toBe('effect-native/v42')
+    expect(manifest.catalogVersion).toBe('effect-native/v43')
+    expect(manifest.vendoredPackages).toHaveLength(7)
     expect(core).toContain('KhalaFrameDecorationSchema')
     expect(tokens).toContain('resolveKhalaMotif')
     expect(tokens).toContain(
@@ -82,7 +95,10 @@ describe('effect-native vendor guard', () => {
     expect(tokens).toContain('polygon,\n        lines: []')
     expect(dom).toContain('resolveKhalaStaticDecoration')
     expect(react).toContain('data-en-khala-decoration')
-    expect(native).toContain('degraded-border')
+    expect(native).toContain('polygonSegments')
+    expect(khala).toContain('export * from "./illumination.js"')
+    expect(canvas).toContain('makeKhalaCanvasBackground')
+    expect(parity).toContain('khalaUiVisualParity')
   })
 
   test('catalog-version extractor follows the alias hop and direct assignment', () => {

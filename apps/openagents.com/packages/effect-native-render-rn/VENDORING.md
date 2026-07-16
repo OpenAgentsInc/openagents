@@ -1,4 +1,11 @@
-# Vendored `@effect-native/render-rn` (EN-3, issue #8568)
+# Vendored Effect Native package set (Khala UI parity, issue #8855)
+
+> Current pin (2026-07-15): `f7f7fe6ed8e4245126d7149b3f3060d3d8d8c0e9`,
+> catalog `effect-native/v43`. The coherent seven-package source snapshot is
+> `core`, `tokens`, `render-dom`, `render-rn`, `khala-ui`, `render-canvas`, and
+> `gallery`. Khala UI adds all 30 non-audio visual capabilities, including all
+> 12 frame motifs and four Canvas backgrounds. This notice supersedes older
+> package-count and Canvas/Gallery-not-vendored notes retained below as history.
 
 `@effect-native/render-rn` is the React Native renderer for the Effect Native
 component set — the renderer used by `apps/openagents-mobile`. It is a vendored snapshot of the public
@@ -20,7 +27,7 @@ so swapping to the real published dependency later is a package.json-only change
 ## Provenance
 
 - Upstream repo: `OpenAgentsInc/effect-native`
-- Upstream commit: `ec04d1a066d6f3ed0c67735ba451cfc90a343aa8` (catalog `v39`)
+- Upstream commit: `f7f7fe6ed8e4245126d7149b3f3060d3d8d8c0e9` (catalog `v43`)
 - Vendored: 2026-07-14 (bumped from `6db0a67b`, catalog `v30`; earlier
   `f8251374` `v30`, `e0c57cb` `v29`, `eb9685b` `v25`, `1aa6e364` `v19`,
   `e32b97e` `v5`)
@@ -30,7 +37,8 @@ so swapping to the real published dependency later is a package.json-only change
 
 The pinned commit + catalog version now live in ONE manifest,
 [`../effect-native-vendor.json`](../effect-native-vendor.json), covering all
-four vendored packages (`core`, `tokens`, `render-dom`, `render-rn`). Each
+seven vendored packages (`core`, `tokens`, `render-dom`, `render-rn`,
+`khala-ui`, `render-canvas`, `gallery`). Each
 vendored `package.json` also records the same commit under `effectNativeVendor`.
 
 - `bun run --cwd apps/openagents.com test:effect-native-vendor-guard` — HARD
@@ -66,9 +74,8 @@ unused import/local in the vendored source is a consumer RED. The deltas:
   `Accordion`/`PricingColumn`/`PricingTable`/`LogoRow`/`StatsBand`/`Glow`/`MockupFrame`).
   The DOM renderer consumes only the `*View` types, not the factory functions.
 
-The upstream `@effect-native/render-canvas` package (Three.js scene-graph
-renderer) is NOT vendored: no monorepo consumer imports it yet. See the manifest
-`upstreamPackagesNotVendored`.
+The upstream `@effect-native/render-canvas` and `@effect-native/gallery`
+packages are now vendored for the `/components/khala` visual workbench.
 
 ## Coherence bump of the shared core (this change)
 

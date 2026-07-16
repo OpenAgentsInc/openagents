@@ -202,6 +202,10 @@ const jsonBoundaryFiles = new Set([
   'packages/sync-schema/src/json-boundary.ts',
   'packages/sync-worker/src/json-boundary.ts',
   'workers/api/src/json-boundary.ts',
+  // Named Schema-backed JSON boundary exported by the vendored Effect Native
+  // story catalog (`parseStory` and `parseStorybook`). Keep this exact-file
+  // exception instead of widening the raw JSON.parse budget.
+  'packages/effect-native-gallery/src/index.ts',
 ])
 
 const deterministicBusinessLogicFiles = sourceFiles.filter(

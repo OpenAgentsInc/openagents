@@ -18,6 +18,9 @@
   },
   "dependencies": {
     "@effect-native/core": "workspace:*",
+    "@effect-native/gallery": "workspace:*",
+    "@effect-native/khala-ui": "workspace:*",
+    "@effect-native/render-canvas": "workspace:*",
     "@effect-native/render-dom": "workspace:*",
     "@effect-native/tokens": "workspace:*",
     "@openagentsinc/effect-start": "workspace:*",

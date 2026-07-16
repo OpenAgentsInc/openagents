@@ -133,8 +133,9 @@ export const MatrixAxesCatalogVersion = "effect-native/v39" as const
 export const KhalaStaticCatalogVersion = "effect-native/v40" as const
 export const KhalaHeaderLineContinuityCatalogVersion = "effect-native/v41" as const
 export const KhalaCutCornerContinuityCatalogVersion = "effect-native/v42" as const
-export const PreviousCatalogVersion = KhalaHeaderLineContinuityCatalogVersion
-export const CatalogVersion = KhalaCutCornerContinuityCatalogVersion
+export const KhalaCompleteStaticCatalogVersion = "effect-native/v43" as const
+export const PreviousCatalogVersion = KhalaCutCornerContinuityCatalogVersion
+export const CatalogVersion = KhalaCompleteStaticCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -180,7 +181,8 @@ export const compatibleCatalogVersions = [
   MatrixAxesCatalogVersion,
   KhalaStaticCatalogVersion,
   KhalaHeaderLineContinuityCatalogVersion,
-  KhalaCutCornerContinuityCatalogVersion
+  KhalaCutCornerContinuityCatalogVersion,
+  KhalaCompleteStaticCatalogVersion
 ] as const
 export type CompatibleCatalogVersion = (typeof compatibleCatalogVersions)[number]
 export const CompatibleCatalogVersionSchema = Schema.Literals(compatibleCatalogVersions)
@@ -2965,11 +2967,36 @@ export type GraphEdgeKind = (typeof graphEdgeKinds)[number]
 export const graphLayouts = ["precomputed", "force", "tree"] as const
 export type GraphLayout = (typeof graphLayouts)[number]
 
+export const graphEdgeStatuses = [...graphStatuses, "evidence_backed"] as const
+export type GraphEdgeStatus = (typeof graphEdgeStatuses)[number]
+export const graphChipKinds = ["provenance", "evidence", "datum"] as const
+export type GraphChipKind = (typeof graphChipKinds)[number]
+export const graphNodeEntryPolicies = ["none", "fade", "pop"] as const
+export type GraphNodeEntryPolicy = (typeof graphNodeEntryPolicies)[number]
+
+export interface GraphNodeBadge {
+  readonly label: string
+  readonly tone?: Tone
+}
+export interface GraphNodeChip {
+  readonly id: string
+  readonly label: string
+  readonly kind?: GraphChipKind
+  readonly ref?: string
+}
+export interface GraphChipSelectPayload {
+  readonly nodeId: string
+  readonly chipId: string
+  readonly ref?: string
+}
+
 export interface GraphNodeModel {
   readonly id: string
   readonly label: string
   readonly kind?: GraphNodeKind
   readonly status?: GraphStatus
+  readonly badge?: GraphNodeBadge
+  readonly chips?: ReadonlyArray<GraphNodeChip>
   // Precomputed position (used when layout is "precomputed").
   readonly x?: number
   readonly y?: number
@@ -2979,7 +3006,7 @@ export interface GraphEdgeModel {
   readonly from: string
   readonly to: string
   readonly kind?: GraphEdgeKind
-  readonly status?: GraphStatus
+  readonly status?: GraphEdgeStatus
 }
 export interface GraphCamera {
   readonly x: number
@@ -2994,8 +3021,10 @@ export interface GraphFigureView extends NodeBase {
   readonly camera?: GraphCamera
   readonly width?: number
   readonly height?: number
+  readonly nodeEntry?: GraphNodeEntryPolicy
   readonly onNodeSelect?: IntentRef
   readonly onNodeHover?: IntentRef
+  readonly onChipSelect?: IntentRef
   readonly onCameraChange?: IntentRef
   readonly style?: CardStyle
 }
@@ -4711,11 +4740,28 @@ export const DiffViewSchema: Schema.Codec<DiffViewView, DiffViewView> = Schema.T
 })
 
 const GraphNumberSchema = Schema.Number.check(Schema.isFinite({ title: "FiniteGraphNumber" }))
+export const GraphNodeBadgeSchema: Schema.Codec<GraphNodeBadge, GraphNodeBadge> = Schema.Struct({
+  label: Schema.NonEmptyString,
+  tone: ToneSchema.pipe(Schema.optionalKey)
+})
+export const GraphNodeChipSchema: Schema.Codec<GraphNodeChip, GraphNodeChip> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  kind: Schema.Literals(graphChipKinds).pipe(Schema.optionalKey),
+  ref: Schema.String.pipe(Schema.optionalKey)
+})
+export const GraphChipSelectPayloadSchema: Schema.Codec<GraphChipSelectPayload, GraphChipSelectPayload> = Schema.Struct({
+  nodeId: Schema.NonEmptyString,
+  chipId: Schema.NonEmptyString,
+  ref: Schema.String.pipe(Schema.optionalKey)
+})
 export const GraphNodeModelSchema: Schema.Codec<GraphNodeModel, GraphNodeModel> = Schema.Struct({
   id: Schema.NonEmptyString,
   label: Schema.String,
   kind: Schema.Literals(graphNodeKinds).pipe(Schema.optionalKey),
   status: Schema.Literals(graphStatuses).pipe(Schema.optionalKey),
+  badge: GraphNodeBadgeSchema.pipe(Schema.optionalKey),
+  chips: Schema.Array(GraphNodeChipSchema).pipe(Schema.optionalKey),
   x: GraphNumberSchema.pipe(Schema.optionalKey),
   y: GraphNumberSchema.pipe(Schema.optionalKey)
 })
@@ -4724,7 +4770,7 @@ export const GraphEdgeModelSchema: Schema.Codec<GraphEdgeModel, GraphEdgeModel> 
   from: Schema.NonEmptyString,
   to: Schema.NonEmptyString,
   kind: Schema.Literals(graphEdgeKinds).pipe(Schema.optionalKey),
-  status: Schema.Literals(graphStatuses).pipe(Schema.optionalKey)
+  status: Schema.Literals(graphEdgeStatuses).pipe(Schema.optionalKey)
 })
 export const GraphCameraSchema: Schema.Codec<GraphCamera, GraphCamera> = Schema.Struct({
   x: GraphNumberSchema,
@@ -4739,8 +4785,10 @@ export const GraphFigureSchema: Schema.Codec<GraphFigureView, GraphFigureView> =
   camera: GraphCameraSchema.pipe(Schema.optionalKey),
   width: NonNegativeNumberSchema.pipe(Schema.optionalKey),
   height: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  nodeEntry: Schema.Literals(graphNodeEntryPolicies).pipe(Schema.optionalKey),
   onNodeSelect: IntentRefSchema.pipe(Schema.optionalKey),
   onNodeHover: IntentRefSchema.pipe(Schema.optionalKey),
+  onChipSelect: IntentRefSchema.pipe(Schema.optionalKey),
   onCameraChange: IntentRefSchema.pipe(Schema.optionalKey),
   style: CardStyleSchema.pipe(Schema.optionalKey)
 })
@@ -4773,6 +4821,10 @@ export const graphStatusColorToken: Record<GraphStatus, ColorToken> = {
   success: "success",
   failed: "danger",
   pending: "warning"
+}
+export const graphEdgeStatusColorToken: Record<GraphEdgeStatus, ColorToken> = {
+  ...graphStatusColorToken,
+  evidence_backed: "accent"
 }
 
 export const MarkdownSchema: Schema.Codec<MarkdownView, MarkdownView> = Schema.TaggedStruct("Markdown", {

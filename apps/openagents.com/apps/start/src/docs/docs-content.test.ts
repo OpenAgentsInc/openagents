@@ -34,9 +34,9 @@ describe('unified TanStack Start docs content', () => {
   })
 
   test.each([
-    ['index.md', 'text'],
+    ['index.md', 'OpenAgents Desktop'],
     ['search.json', 'OpenAgents Desktop'],
-    ['llms.txt', '/docs/getting-started.md'],
+    ['llms.txt', 'https://openagents.com/docs/getting-started'],
     ['llms-full.txt', '# OpenAgents Desktop'],
     ['agent-readability.json', 'openagents-tanstack-start'],
     ['sitemap.xml', 'https://openagents.com/docs/getting-started'],

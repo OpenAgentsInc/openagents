@@ -1,60 +1,86 @@
 type ComponentFamily = Readonly<{
-  id: string
-  title: string
-  module: string
-  purpose: string
-  exports: ReadonlyArray<string>
-  contract: ReadonlyArray<string>
-}>
+  id: string;
+  title: string;
+  module: string;
+  purpose: string;
+  exports: ReadonlyArray<string>;
+  contract: ReadonlyArray<string>;
+}>;
 
 const families: ReadonlyArray<ComponentFamily> = [
   {
-    id: 'core',
-    title: 'Effect Native core',
-    module: '@effect-native/core',
-    purpose: 'Renderer-neutral layout, controls, overlays, data display, composer, feedback, and public-page views.',
-    exports: ['Stack', 'Text', 'Button', 'Card', 'Composer', 'Transcript', 'Table', 'Hero'],
-    contract: ['Typed view catalog', 'No renderer-specific markup'],
+    id: "khala",
+    title: "Khala UI",
+    module: "@effect-native/khala-ui + @effect-native/render-canvas",
+    purpose:
+      "The complete non-audio Khala visual-effects catalog: foundations, motion, choreography, frames, text, illumination, and animated backgrounds.",
+    exports: [
+      "12 frame motifs",
+      "31 easing curves",
+      "Motion and sequence drivers",
+      "Text sequence and decipher",
+      "HTML and SVG illumination",
+      "4 Canvas backgrounds",
+    ],
+    contract: [
+      "30 of 30 visual capabilities mounted",
+      "SSR-stable output; effects start after mount",
+    ],
   },
   {
-    id: 'tokens',
-    title: 'Tokens',
-    module: '@effect-native/tokens',
-    purpose: 'Canonical semantic theme and bounded spacing, type, radius, and control lattices.',
-    exports: ['khalaTheme', 'colorTokens', 'spacingTokens', 'radiusTokens', 'typeScaleTokens'],
-    contract: ['One semantic token authority', 'Renderer projections preserve roles'],
+    id: "core",
+    title: "Effect Native core",
+    module: "@effect-native/core",
+    purpose:
+      "Renderer-neutral layout, controls, overlays, data display, composer, feedback, and public-page views.",
+    exports: ["Stack", "Text", "Button", "Card", "Composer", "Transcript", "Table", "Hero"],
+    contract: ["Typed view catalog", "No renderer-specific markup"],
   },
   {
-    id: 'render-dom',
-    title: 'DOM renderer',
-    module: '@effect-native/render-dom',
-    purpose: 'Lowers the typed Effect Native catalog to accessible DOM output.',
-    exports: ['makeDomRenderer', 'viewStructure', 'serializeDomStructure'],
-    contract: ['Core never imports a renderer', 'Closed icon registry'],
+    id: "tokens",
+    title: "Tokens",
+    module: "@effect-native/tokens",
+    purpose: "Canonical semantic theme and bounded spacing, type, radius, and control lattices.",
+    exports: ["khalaTheme", "colorTokens", "spacingTokens", "radiusTokens", "typeScaleTokens"],
+    contract: ["One semantic token authority", "Renderer projections preserve roles"],
   },
   {
-    id: 'render-rn',
-    title: 'React Native renderer',
-    module: '@effect-native/render-rn',
-    purpose: 'Lowers the same typed catalog to native platform components and interactions.',
-    exports: ['makeReactNativeRenderer', 'EffectNativeSurface'],
-    contract: ['Same core view contract', 'Platform behavior stays renderer-owned'],
+    id: "render-dom",
+    title: "DOM renderer",
+    module: "@effect-native/render-dom",
+    purpose: "Lowers the typed Effect Native catalog to accessible DOM output.",
+    exports: ["makeDomRenderer", "viewStructure", "serializeDomStructure"],
+    contract: ["Core never imports a renderer", "Closed icon registry"],
   },
   {
-    id: 'training',
-    title: 'Training grammar',
-    module: 'oa-training-run / @openagentsinc/three-effect',
-    purpose: 'Training-run visual grammar references for replay and verification.',
-    exports: ['Run field', 'Contributor node', 'Replay pair', 'Verification gate', 'Receipt burst', 'Proof drawer'],
-    contract: ['three-effect owns visuals', 'No app-local replay renderer'],
+    id: "render-rn",
+    title: "React Native renderer",
+    module: "@effect-native/render-rn",
+    purpose: "Lowers the same typed catalog to native platform components and interactions.",
+    exports: ["makeReactNativeRenderer", "EffectNativeSurface"],
+    contract: ["Same core view contract", "Platform behavior stays renderer-owned"],
   },
-]
+  {
+    id: "training",
+    title: "Training grammar",
+    module: "oa-training-run / @openagentsinc/three-effect",
+    purpose: "Training-run visual grammar references for replay and verification.",
+    exports: [
+      "Run field",
+      "Contributor node",
+      "Replay pair",
+      "Verification gate",
+      "Receipt burst",
+      "Proof drawer",
+    ],
+    contract: ["three-effect owns visuals", "No app-local replay renderer"],
+  },
+];
 
-const familyById = new Map(families.map(family => [family.id, family]))
+const familyById = new Map(families.map((family) => [family.id, family]));
 const panelClass =
-  'grid gap-4 border border-khala-border/80 bg-khala-surface p-5 text-khala-text-muted'
-const eyebrowClass =
-  'm-0 font-mono text-sm uppercase tracking-wide text-khala-text-faint'
+  "grid gap-4 border border-khala-border/80 bg-khala-surface p-5 text-khala-text-muted";
+const eyebrowClass = "m-0 font-mono text-sm uppercase tracking-wide text-khala-text-faint";
 
 function FamilyCard({ family }: Readonly<{ family: ComponentFamily }>) {
   return (
@@ -75,7 +101,7 @@ function FamilyCard({ family }: Readonly<{ family: ComponentFamily }>) {
         Open family
       </a>
     </article>
-  )
+  );
 }
 
 function FamilyDetail({ family }: Readonly<{ family: ComponentFamily }>) {
@@ -94,24 +120,26 @@ function FamilyDetail({ family }: Readonly<{ family: ComponentFamily }>) {
         <div className={panelClass}>
           <p className={eyebrowClass}>Catalog anchors</p>
           <ul className="grid gap-2 font-mono text-base text-white sm:text-sm" role="list">
-            {family.exports.map(exportName => <li key={exportName}>{exportName}</li>)}
+            {family.exports.map((exportName) => (
+              <li key={exportName}>{exportName}</li>
+            ))}
           </ul>
         </div>
         <div className={panelClass}>
           <p className={eyebrowClass}>Contract</p>
           <ul className="grid gap-2 text-base/7 text-khala-text-muted sm:text-sm/6" role="list">
-            {family.contract.map(item => <li key={item}>{item}</li>)}
+            {family.contract.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
           </ul>
         </div>
       </div>
     </section>
-  )
+  );
 }
 
-export function ComponentsPage({
-  selectedFamily,
-}: Readonly<{ selectedFamily?: string }>) {
-  const family = selectedFamily === undefined ? undefined : familyById.get(selectedFamily)
+export function ComponentsPage({ selectedFamily }: Readonly<{ selectedFamily?: string }>) {
+  const family = selectedFamily === undefined ? undefined : familyById.get(selectedFamily);
 
   return (
     <main className="min-h-dvh bg-black text-white" data-route="components">
@@ -128,17 +156,23 @@ export function ComponentsPage({
             Component library
           </h1>
           <p className="m-0 max-w-[78ch] text-pretty text-base/7 text-khala-text-muted">
-            The active Effect Native component, token, and renderer boundaries used by OpenAgents surfaces.
+            The active Effect Native component, token, and renderer boundaries used by OpenAgents
+            surfaces.
           </p>
         </header>
-        {family === undefined ? (
+        {selectedFamily === "khala" ? (
+          <KhalaComponentsWorkbench />
+        ) : family === undefined ? (
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {families.map(item => <FamilyCard family={item} key={item.id} />)}
+            {families.map((item) => (
+              <FamilyCard family={item} key={item.id} />
+            ))}
           </section>
         ) : (
           <FamilyDetail family={family} />
         )}
       </div>
     </main>
-  )
+  );
 }
+import { KhalaComponentsWorkbench } from "./-components-khala-page";

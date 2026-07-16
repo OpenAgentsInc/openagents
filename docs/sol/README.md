@@ -75,6 +75,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-15-khala-ui-components-workbench-receipt.md`](./2026-07-15-khala-ui-components-workbench-receipt.md)
+  — deterministic implementation proof for the complete 30-capability,
+  non-audio Khala UI workbench at `/components/khala`, its seven-package Effect
+  Native vendor boundary, and its React/Electron-compatible lifecycle contract.
+
 - [`2026-07-15-tanstack-start-unified-docs-migration-receipt.md`](./2026-07-15-tanstack-start-unified-docs-migration-receipt.md)
   — live closure evidence for the unified TanStack Start documentation reader,
   same-origin agent artifacts, monolith load-balancer cutover, and complete

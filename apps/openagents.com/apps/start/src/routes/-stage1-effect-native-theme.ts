@@ -1,6 +1,7 @@
 import { defineTheme, khalaTheme } from '@effect-native/tokens'
 
 export const stage1EffectNativeTheme = defineTheme({
+  khalaUi: khalaTheme.khalaUi,
   // The tone x variant x state color matrix (harmonization #75) is theme data
   // consumed only by the newer matrix-aware components (Button/Badge/Chip/
   // TextField/Select/Alert, harmonization #78/#79) that this bounded stage1

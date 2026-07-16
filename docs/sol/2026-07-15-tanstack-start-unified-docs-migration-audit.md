@@ -65,7 +65,7 @@ HTTP redirects.
 ## What is live now
 
 The current docs source is
-[`apps/openagents.com/apps/docs`](../../apps/openagents.com/apps/docs). It uses
+the now-removed `apps/openagents.com/apps/docs` source application. It used
 exact-pinned `blume@1.0.4` to generate an Astro static site, then wraps the
 artifact in a small Node static server and deploys it as the independent
 `openagents-docs` Cloud Run service. Terraform sends `/docs` and `/docs/*` to
@@ -451,7 +451,7 @@ and deployment paths, not a speculative package-count headline.
 
 After production parity is accepted, remove:
 
-- [`apps/openagents.com/apps/docs`](../../apps/openagents.com/apps/docs), after
+- the now-removed `apps/openagents.com/apps/docs` source application, after
   moving its curated content and any retained font/license assets;
 - the docs `Dockerfile`, static server, deployment script, and service-specific
   tests;
