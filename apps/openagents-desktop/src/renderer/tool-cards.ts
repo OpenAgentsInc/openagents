@@ -35,6 +35,8 @@ export type ToolCardStatus = "running" | "ok" | "failed"
 export type ToolCardModel = Readonly<{
   /** The started note's key — stable across the in-place completion update. */
   key: string
+  /** Provider invocation identity when the harness exposes one. */
+  itemRef?: string
   toolName: string
   timestamp: string
   status: ToolCardStatus
@@ -148,6 +150,7 @@ export const projectToolCardEntries = (
   const entries: Array<ToolCardTranscriptEntry> = []
   // Open (still-running) cards by entries index, FIFO per toolName.
   const openByTool = new Map<string, Array<number>>()
+  const openByRef = new Map<string, number>()
   for (const note of notes) {
     if (note.runtime !== undefined) {
       entries.push({ kind: "runtime", note })
@@ -168,6 +171,7 @@ export const projectToolCardEntries = (
         kind: "tool",
         card: {
           key: note.key,
+          ...(trace.itemRef === undefined ? {} : { itemRef: trace.itemRef }),
           toolName: trace.toolName,
           timestamp: note.timestamp,
           status: "running",
@@ -179,10 +183,54 @@ export const projectToolCardEntries = (
       const queue = openByTool.get(trace.toolName) ?? []
       queue.push(index)
       openByTool.set(trace.toolName, queue)
+      if (trace.itemRef !== undefined) openByRef.set(trace.itemRef, index)
+      continue
+    }
+    if (trace.phase === "progress") {
+      const index = trace.itemRef === undefined
+        ? openByTool.get(trace.toolName)?.[0]
+        : openByRef.get(trace.itemRef)
+      if (index === undefined) {
+        const nextIndex = entries.length
+        entries.push({
+          kind: "tool",
+          card: {
+            key: note.key,
+            ...(trace.itemRef === undefined ? {} : { itemRef: trace.itemRef }),
+            toolName: trace.toolName,
+            timestamp: note.timestamp,
+            status: "running",
+            argsSummary: "",
+            resultSummary: null,
+            ...(trace.item === undefined ? {} : { item: trace.item }),
+          },
+        })
+        const queue = openByTool.get(trace.toolName) ?? []
+        queue.push(nextIndex)
+        openByTool.set(trace.toolName, queue)
+        if (trace.itemRef !== undefined) openByRef.set(trace.itemRef, nextIndex)
+      } else {
+        const open = entries[index]
+        if (open?.kind === "tool") {
+          entries[index] = {
+            kind: "tool",
+            card: {
+              ...open.card,
+              ...(trace.item === undefined ? {} : { item: trace.item }),
+            },
+          }
+        }
+      }
       continue
     }
     const queue = openByTool.get(trace.toolName) ?? []
-    const openIndex = queue.shift()
+    const exactIndex = trace.itemRef === undefined ? undefined : openByRef.get(trace.itemRef)
+    const openIndex = exactIndex ?? queue.shift()
+    if (exactIndex !== undefined) {
+      const queueIndex = queue.indexOf(exactIndex)
+      if (queueIndex !== -1) queue.splice(queueIndex, 1)
+    }
+    if (trace.itemRef !== undefined) openByRef.delete(trace.itemRef)
     const status: ToolCardStatus = trace.phase === "ok" ? "ok" : "failed"
     if (openIndex === undefined) {
       // A completion with no visible invocation (e.g. the page began after
@@ -191,6 +239,7 @@ export const projectToolCardEntries = (
         kind: "tool",
         card: {
           key: note.key,
+          ...(trace.itemRef === undefined ? {} : { itemRef: trace.itemRef }),
           toolName: trace.toolName,
           timestamp: note.timestamp,
           status,

@@ -227,15 +227,24 @@ export const FableLocalEventSchema = Schema.Union([
     kind: Schema.Literal("tool_use"),
     toolName: Schema.String.check(Schema.isMaxLength(120)),
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    itemRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     /** Typed item payload (#8859, additive): structured tool fields the
      * bounded summary string flattens. Absent on pre-#8859 emitters. */
     item: Schema.optional(WorkbenchItemSchema),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("tool_progress"),
+    toolName: Schema.String.check(Schema.isMaxLength(120)),
+    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    itemRef: Schema.String.check(Schema.isMaxLength(120)),
+    item: WorkbenchItemSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("tool_result"),
     toolName: Schema.String.check(Schema.isMaxLength(120)),
     ok: Schema.Boolean,
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    itemRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     /** Typed item payload (#8859, additive): completion-side structured
      * fields (exit code, duration, output tail, diffs, results). */
     item: Schema.optional(WorkbenchItemSchema),
@@ -765,20 +774,25 @@ export const decodeFableLocalAvailability = (value: unknown): FableLocalAvailabi
  * transcript does not change shape when the turn finalizes.
  */
 export const fableLocalTraceNoteText = (
-  event: Extract<FableLocalEvent, { kind: "tool_use" | "tool_result" }>,
+  event: Extract<FableLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>,
 ): string => {
-  const status = event.kind === "tool_use" ? "started" : event.ok ? "ok" : "failed"
+  const status = event.kind === "tool_use" ? "started"
+    : event.kind === "tool_progress" ? "running"
+      : event.ok ? "ok" : "failed"
   const summary = event.summary.trim() === "" ? "" : ` · ${event.summary.trim()}`
   return `${event.toolName} · ${status}${summary}`
 }
 
 /** The typed trace metadata carried on the same note (EP250 tool cards). */
 export const fableLocalTraceNoteMeta = (
-  event: Extract<FableLocalEvent, { kind: "tool_use" | "tool_result" }>,
+  event: Extract<FableLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>,
 ): DesktopToolTrace => ({
   toolName: event.toolName,
-  phase: event.kind === "tool_use" ? "started" : event.ok ? "ok" : "failed",
+  phase: event.kind === "tool_use" ? "started"
+    : event.kind === "tool_progress" ? "progress"
+      : event.ok ? "ok" : "failed",
   summary: event.summary.trim(),
+  ...(event.itemRef === undefined ? {} : { itemRef: event.itemRef }),
   // The typed item (#8859) rides the same note so persisted transcripts
   // rebuild the same typed cards the live stream showed.
   ...(event.item === undefined ? {} : { item: event.item }),
@@ -791,11 +805,11 @@ export const fableLocalTraceNoteMeta = (
  * is a fallback for historical thread-store rows, not an intent router.
  */
 export const parseFableLocalTraceNoteText = (text: string): DesktopToolTrace | null => {
-  const match = /^([A-Za-z0-9_.:/-]{1,120}) · (started|ok|failed)(?: · ([\s\S]*))?$/.exec(text)
+  const match = /^([A-Za-z0-9_.:/-]{1,120}) · (started|running|ok|failed)(?: · ([\s\S]*))?$/.exec(text)
   if (match === null) return null
   return {
     toolName: match[1] ?? "",
-    phase: (match[2] ?? "started") as DesktopToolTrace["phase"],
+    phase: match[2] === "running" ? "progress" : (match[2] ?? "started") as DesktopToolTrace["phase"],
     summary: (match[3] ?? "").slice(0, FABLE_LOCAL_SUMMARY_LIMIT),
   }
 }

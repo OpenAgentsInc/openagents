@@ -41,6 +41,19 @@ copied as raw literals or mounted as `autopilotTheme`:
 This is a fold-in rule: preserve the useful Autopilot grammar while keeping
 Khala's identity and blue depth unmistakable.
 
+### Command execution cards
+
+Command cards use Autopilot's dense scan-readout grammar only through Khala
+roles. The header keeps the command primary, with exit code and duration in a
+right-aligned mono column. The detail well reports `CWD` and `SOURCE`, streams
+a bounded mono output tail, and states when earlier output was omitted. Running,
+completed, and failed states use Khala semantic accent/success/danger roles;
+they never introduce a gray page surface or raw donor-palette literal.
+
+Live `item/commandExecution/outputDelta` updates and persisted rollout history
+must render the same shared component. Provider `itemId` is the reconciliation
+key so concurrent commands with the same label cannot cross streams.
+
 ## Typography
 
 ### Primary sans: Zalando Sans

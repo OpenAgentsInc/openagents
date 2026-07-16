@@ -1,5 +1,6 @@
 import { KhalaComponentsWorkbench } from "./-components-khala-page";
 import { EffectNativeStorybook, TokenStorybook } from "./-components-storybook-page";
+import { WorkbenchStorybook } from "./-components-workbench-page";
 
 type ComponentFamily = Readonly<{
   id: string;
@@ -11,6 +12,14 @@ type ComponentFamily = Readonly<{
 }>;
 
 const families: ReadonlyArray<ComponentFamily> = [
+  {
+    id: "workbench",
+    title: "Product workbench",
+    module: "@openagentsinc/ui/desktop-workbench",
+    purpose: "Typed Desktop and web conversation components projected from provider item facts.",
+    exports: ["Command execution", "File changes", "Tool calls", "Plans", "Agents", "Approvals"],
+    contract: ["Same components on Desktop and web", "Khala is the sole mounted theme"],
+  },
   {
     id: "khala",
     title: "Khala UI",
@@ -44,8 +53,8 @@ const families: ReadonlyArray<ComponentFamily> = [
     title: "Tokens",
     module: "@effect-native/tokens",
     purpose: "Canonical semantic theme and bounded spacing, type, radius, and control lattices.",
-    exports: ["autopilotTheme", "khalaTheme", "colorTokens", "spacingTokens", "radiusTokens", "typeScaleTokens"],
-    contract: ["One semantic token authority", "Renderer projections preserve roles"],
+    exports: ["khalaTheme", "Autopilot donor roles", "colorTokens", "spacingTokens", "radiusTokens", "typeScaleTokens"],
+    contract: ["Khala is the sole mounted product theme", "Autopilot grammar resolves through Khala roles"],
   },
   {
     id: "render-dom",
@@ -131,6 +140,8 @@ export function ComponentsPage({ selectedFamily }: Readonly<{ selectedFamily?: s
         </header>
         {selectedFamily === "khala" ? (
           <KhalaComponentsWorkbench />
+        ) : selectedFamily === "workbench" ? (
+          <WorkbenchStorybook />
         ) : selectedFamily === "tokens" ? (
           <TokenStorybook />
         ) : selectedFamily === "core" ||

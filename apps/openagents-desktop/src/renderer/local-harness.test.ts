@@ -232,6 +232,37 @@ describe("makeLocalHarnessChatHost", () => {
     expect((await pending).ok).toBe(true)
   })
 
+  test("item-keyed command progress updates one running note in place", async () => {
+    const harness = makeHarness()
+    const updates: DesktopThread[] = []
+    const pending = harness.host.sendMessage({
+      id: "thread-1", message: "run checks", harness: "fable",
+      onUpdate: thread => updates.push(thread),
+    })
+    await settle()
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
+    const started = {
+      kind: "command", source: "codex", command: "pnpm test", cwd: "/safe/repo",
+      status: "in_progress",
+    } as const
+    harness.emit({ turnRef: "turn.fable.fixed", event: {
+      kind: "tool_use", toolName: "Bash", itemRef: "cmd-1", summary: "pnpm test", item: started,
+    } })
+    harness.emit({ turnRef: "turn.fable.fixed", event: {
+      kind: "tool_progress", toolName: "Bash", itemRef: "cmd-1", summary: "7 output characters",
+      item: { ...started, outputTail: "running" },
+    } })
+    await settle()
+    const traces = updates.at(-1)!.notes.filter(note => note.meta?.trace !== undefined)
+    expect(traces).toHaveLength(1)
+    expect(traces[0]).toMatchObject({
+      key: "turn.fable.fixed-tool-cmd-1",
+      meta: { trace: { itemRef: "cmd-1", phase: "progress", item: { outputTail: "running" } } },
+    })
+    harness.resolveStart({ ok: true, thread: finalThread })
+    expect((await pending).ok).toBe(true)
+  })
+
   test("10,000 synchronous provider deltas publish once per cadence with exact text", async () => {
     const scheduled: Array<() => void> = []
     const harness = makeHarness({ scheduleProjection: flush => {

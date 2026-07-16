@@ -890,7 +890,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-event-heading > strong { flex: none; color: var(--en-color-textPrimary); font-family: var(--oa-font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
 .oa-react-event-heading > span { min-width: 0; overflow: hidden; color: var(--en-color-textMuted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .oa-react-event-heading code { color: inherit; font: inherit; }
-.oa-react-protocol-card > summary > small { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; }
+.oa-react-protocol-card > summary > small { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-align: right; white-space: nowrap; }
 .oa-react-event-status {
   display: inline-flex;
   align-items: center;
@@ -925,6 +925,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-command-meta span { font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .oa-react-command-meta span::after { content: ":"; }
 .oa-react-command-meta code { overflow: hidden; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-command-output { min-height: 44px; border-left: 1px solid var(--en-color-borderSubtle); padding-left: var(--en-spacing-2); background: color-mix(in srgb, var(--en-color-background) 72%, transparent); font-family: var(--oa-font-mono); }
+.oa-react-command-output[data-output-capped="true"] { border-left-color: var(--en-color-warning); }
+.oa-react-command-cap { color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
 .oa-react-file-list { display: grid; gap: var(--en-spacing-1); margin: 0; padding: 0; list-style: none; }
 .oa-react-file-list li { display: grid; grid-template-columns: 18px minmax(0, 1fr) max-content; align-items: center; gap: var(--en-spacing-2); min-height: 22px; }
 .oa-react-file-list li > span { color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; font-weight: 700; }

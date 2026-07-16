@@ -493,4 +493,38 @@ describe("typed WorkbenchItem surfacing on timeline records (#8859)", () => {
     expect(records).toHaveLength(1)
     expect(records[0]!.item).toEqual(commandItem)
   })
+
+  test("renders the typed command card with lifecycle metrics and cap honesty", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline
+      sessionKey="thread-command"
+      records={[{
+        ...record("command-row", 0),
+        kind: "tool_call",
+        label: "Bash",
+        status: "completed",
+        item: {
+          ...commandItem,
+          cwd: "/safe/repo",
+          commandSource: "agent",
+          outputCapReached: true,
+        },
+      }]}
+      loadedItemCount={1}
+      offset={0}
+      totalItems={1}
+      loadingEdge={null}
+      report={report}
+    />)
+    await settle()
+    const card = container.querySelector<HTMLElement>('[data-kind="commandExecution"]')
+    expect(card?.dataset.status).toBe("completed")
+    expect(card?.textContent).toContain("pnpm test")
+    expect(card?.textContent).toContain("EXIT: 0")
+    expect(card?.textContent).toContain("950MS")
+    expect(card?.textContent).toContain("/safe/repo")
+    expect(card?.textContent).toContain("Earlier output omitted")
+    root.unmount()
+  })
 })

@@ -16,6 +16,7 @@ describe("Start components workbench routes", () => {
     expect(html).toContain("React Native renderer");
     expect(html).toContain("Training grammar");
     expect(html).toContain("Khala UI");
+    expect(html).toContain("Product workbench");
   });
 
   test("server-renders the complete non-audio Khala visual catalog", () => {
@@ -74,5 +75,16 @@ describe("Start components workbench routes", () => {
     expect(training).toContain('data-storybook-family="training"');
     expect(training).toContain('data-storybook-story="graph-figure-basic"');
     expect(training).toContain('data-storybook-story="timeline-basic"');
+  });
+
+  test("server-renders command workbench variants as real shared components", () => {
+    const html = renderToStaticMarkup(<ComponentsPage selectedFamily="workbench" />);
+    expect(html).toContain('data-storybook-family="workbench"');
+    expect(html).toContain('data-storybook-story="command-running"');
+    expect(html).toContain('data-storybook-story="command-completed"');
+    expect(html).toContain('data-storybook-story="command-failed"');
+    expect(html).toContain('data-storybook-story="command-capped"');
+    expect(html.match(/data-kind="commandExecution"/g)).toHaveLength(4);
+    expect(html).toContain("Earlier output omitted");
   });
 });

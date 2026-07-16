@@ -2700,22 +2700,29 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
       // Persist tool trace and effective-model lines so the finalized
       // transcript keeps the same evidence the live stream showed (bounded by
       // the store's note cap).
-      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_result" ||
+      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_progress" || turnEvent.kind === "tool_result" ||
         turnEvent.kind === "model_effective") {
-        store.append(request.threadRef, {
-          key: randomUUID(),
+        const traceNote = turnEvent.kind === "model_effective" ? null : {
+          key: turnEvent.itemRef === undefined
+            ? randomUUID()
+            : `${request.turnRef}-tool-${turnEvent.itemRef}${turnEvent.kind === "tool_result" ? "-result" : ""}`,
           role: "system",
-          text: turnEvent.kind === "model_effective"
-            ? fableLocalModelNoteText(turnEvent.model)
-            : fableLocalTraceNoteText(turnEvent),
+          text: fableLocalTraceNoteText(turnEvent),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           // Typed trace facts (EP250 tool cards): the persisted note carries
           // the same typed payload the live stream note does, so the
           // finalized transcript renders the same typed tool cards.
-          ...(turnEvent.kind === "model_effective"
-            ? {}
-            : { meta: { trace: fableLocalTraceNoteMeta(turnEvent) } }),
-        })
+          meta: { trace: fableLocalTraceNoteMeta(turnEvent) },
+        } as const
+        if (turnEvent.kind === "model_effective") {
+          store.append(request.threadRef, {
+            key: randomUUID(), role: "system", text: fableLocalModelNoteText(turnEvent.model),
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          })
+        } else if (traceNote !== null) {
+          if (turnEvent.itemRef === undefined) store.append(request.threadRef, traceNote)
+          else store.upsert(request.threadRef, traceNote)
+        }
       }
       // Smoke-only question-card fixture (EP250 question cards): persist ONE
       // pending interactive question after the fixture Read completes so the
@@ -3074,14 +3081,18 @@ const dispatchCodexLocalTurn = async (
       }
       // Persist trace/model/reasoning/notice lines so the finalized
       // transcript keeps the same evidence the live stream showed.
-      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_result") {
-        store.append(request.threadRef, {
-          key: randomUUID(),
+      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_progress" || turnEvent.kind === "tool_result") {
+        const note = {
+          key: turnEvent.itemRef === undefined
+            ? randomUUID()
+            : `${request.turnRef}-tool-${turnEvent.itemRef}${turnEvent.kind === "tool_result" ? "-result" : ""}`,
           role: "system",
           text: fableLocalTraceNoteText(turnEvent),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           meta: { trace: fableLocalTraceNoteMeta(turnEvent) },
-        })
+        } as const
+        if (turnEvent.itemRef === undefined) store.append(request.threadRef, note)
+        else store.upsert(request.threadRef, note)
       }
       if (turnEvent.kind === "model_effective" || turnEvent.kind === "reasoning" ||
         turnEvent.kind === "lane_notice") {

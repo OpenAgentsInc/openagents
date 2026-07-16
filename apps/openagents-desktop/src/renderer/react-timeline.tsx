@@ -11,6 +11,7 @@ import { ComponentValueBinding, IntentRef, type IntentError, type IntentReporter
 import { Effect } from "@effect-native/core/effect"
 import {
   DesktopAgentGroup,
+  DesktopCommandCard,
   DesktopPlanCard,
   DesktopTimelineMessage,
   DesktopTimelineNotice,
@@ -268,6 +269,22 @@ export const TimelineItem = ({ record, report }: {
         transcript: [{ label: "Activity", text: record.body }],
       }]}
       itemKey={record.key}
+    />
+  }
+  if (record.item?.kind === "command") {
+    const command = record.item
+    const status = command.status === "in_progress" ? "running"
+      : command.status === "completed" ? "completed" : "failed"
+    return <DesktopCommandCard
+      command={command.command}
+      commandSource={command.commandSource}
+      cwd={command.cwd}
+      durationMs={command.durationMs}
+      exitCode={command.exitCode}
+      itemKey={record.key}
+      output={command.outputTail}
+      outputCapReached={command.outputCapReached}
+      status={status}
     />
   }
   if (isWorkRecord(record)) return <DesktopWorkEntry

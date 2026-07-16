@@ -61,6 +61,42 @@ describe("openagents_desktop.seam.codex_loss_accounted_history.v2 legacy compati
 })
 
 describe("typed WorkbenchItem history sidecar (#8859)", () => {
+  test("current camelCase commandExecution rows render through the same typed history card", () => {
+    const sessions = root()
+    write(sessions, "command-current.jsonl", [
+      meta("command-current", "2026-07-10T17:00:00.000Z"),
+      {
+        timestamp: "2026-07-10T17:01:00.000Z",
+        type: "response_item",
+        payload: {
+          id: "cmd-current",
+          type: "commandExecution",
+          command: "pnpm run typecheck",
+          cwd: "/safe/repo",
+          exitCode: 0,
+          durationMs: 420,
+          aggregatedOutput: "TypeScript check passed",
+          status: "completed",
+          source: "agent",
+        },
+      },
+    ])
+    const page = readCodexHistoryPage({ sessionsRoot: sessions, threadRef: "command-current", offset: 0, limit: 20 })!
+    expect(page.items).toHaveLength(2)
+    expect(page.items[1]).toMatchObject({
+      kind: "tool_call",
+      item: {
+        kind: "command",
+        command: "pnpm run typecheck",
+        cwd: "/safe/repo",
+        exitCode: 0,
+        durationMs: 420,
+        outputTail: "TypeScript check passed",
+        commandSource: "agent",
+      },
+    })
+  })
+
   test("tool-class rollout rows carry the structured item a renderer rebuilds typed cards from", () => {
     const sessions = root()
     write(sessions, "typed.jsonl", [

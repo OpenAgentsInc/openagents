@@ -36,11 +36,13 @@ export const DesktopForkHistoryThreadChannel = "openagents-desktop/history-fork-
  * without re-parsing display strings; the summary stays the same bounded,
  * redacted payload the text line carries.
  */
-export const DesktopToolTracePhaseSchema = Schema.Literals(["started", "ok", "failed"])
+export const DesktopToolTracePhaseSchema = Schema.Literals(["started", "progress", "ok", "failed"])
 export type DesktopToolTracePhase = typeof DesktopToolTracePhaseSchema.Type
 
 export const DesktopToolTraceSchema = Schema.Struct({
   toolName: Schema.String.check(Schema.isMaxLength(120)),
+  /** Provider invocation identity; lets concurrent same-name tools reconcile exactly. */
+  itemRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   phase: DesktopToolTracePhaseSchema,
   summary: Schema.String.check(Schema.isMaxLength(400)),
   /**

@@ -318,4 +318,24 @@ describe("typed WorkbenchItem passthrough (#8859)", () => {
     expect(cards[0]!.item).toEqual(runningItem)
     expect(cards[1]!.item).toBeUndefined()
   })
+
+  test("itemRef-keyed progress updates concurrent Bash cards in place", () => {
+    const second = { ...runningItem, command: "pnpm build", outputTail: "building" }
+    const entries = projectToolCardEntries([
+      note({ key: "a-start", text: "Bash · started", meta: { trace: {
+        toolName: "Bash", itemRef: "a", phase: "started", summary: "test", item: runningItem,
+      } } }),
+      note({ key: "b-start", text: "Bash · started", meta: { trace: {
+        toolName: "Bash", itemRef: "b", phase: "started", summary: "build", item: { ...runningItem, command: "pnpm build" },
+      } } }),
+      note({ key: "b-progress", text: "Bash · running", meta: { trace: {
+        toolName: "Bash", itemRef: "b", phase: "progress", summary: "8 output characters", item: second,
+      } } }),
+    ])
+    const cards = entries.flatMap(entry => entry.kind === "tool" ? [entry.card] : [])
+    expect(cards).toHaveLength(2)
+    expect(cards[0]!.item).toEqual(runningItem)
+    expect(cards[1]!.item).toEqual(second)
+    expect(cards[1]!.status).toBe("running")
+  })
 })

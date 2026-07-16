@@ -13,7 +13,11 @@ import {
 } from "./codex-app-server-supervisor.ts"
 import type { FableLocalEvent } from "./fable-local-contract.ts"
 import { makeCodexTurnState } from "./codex-turn-state.ts"
-import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
+import {
+  WORKBENCH_OUTPUT_TAIL_LIMIT,
+  workbenchItemFromThreadItem,
+  type WorkbenchCommandItem,
+} from "./workbench-item-contract.ts"
 
 export type CodexAppServerTurnOutcome = Readonly<{
   outcome: "success" | "reconnect_required" | "incompatible_workflow" | "failed" | "timeout" | "interrupted"
@@ -208,6 +212,12 @@ export const runCodexAppServerTurn = async (
     terminal: boolean
   }>()
   const pendingTools = new Set<string>()
+  const commandStreams = new Map<string, {
+    item: WorkbenchCommandItem | null
+    outputTail: string
+    outputCapReached: boolean
+    receivedCharacters: number
+  }>()
   let settle: ((outcome: CodexAppServerTurnOutcome) => void) | null = null
   let settled = false
   let turnTimer: ReturnType<typeof setTimeout> | null = null
@@ -363,6 +373,40 @@ export const runCodexAppServerTurn = async (
     const notifiedTurn = string(params.turnId) ?? string(record(params.turn)?.id)
     if (turnId !== null && notifiedTurn !== null && notifiedTurn !== turnId) return
 
+    if (message.method === "item/commandExecution/outputDelta") {
+      const itemRef = string(params.itemId)
+      const delta = string(params.delta)
+      if (itemRef === null || delta === null || delta === "") return
+      const previous = commandStreams.get(itemRef) ?? {
+        item: null,
+        outputTail: "",
+        outputCapReached: false,
+        receivedCharacters: 0,
+      }
+      const boundedDelta = delta.slice(-WORKBENCH_OUTPUT_TAIL_LIMIT)
+      const combined = `${previous.outputTail}${boundedDelta}`
+      const outputTail = combined.slice(-WORKBENCH_OUTPUT_TAIL_LIMIT)
+      const outputCapReached = previous.outputCapReached ||
+        delta.length > WORKBENCH_OUTPUT_TAIL_LIMIT || combined.length > WORKBENCH_OUTPUT_TAIL_LIMIT
+      const receivedCharacters = previous.receivedCharacters + delta.length
+      const item = previous.item === null ? null : {
+        ...previous.item,
+        outputTail,
+        ...(outputCapReached ? { outputCapReached: true } : {}),
+      }
+      commandStreams.set(itemRef, { item, outputTail, outputCapReached, receivedCharacters })
+      if (item !== null) {
+        input.emit({
+          kind: "tool_progress",
+          toolName: "Bash",
+          itemRef: itemRef.slice(0, 120),
+          summary: `${receivedCharacters} output character${receivedCharacters === 1 ? "" : "s"}`,
+          item,
+        })
+      }
+      return
+    }
+
     if (message.method === "item/agentMessage/delta") {
       const delta = string(params.delta)
       if (delta !== null && delta !== "") {
@@ -428,20 +472,51 @@ export const runCodexAppServerTurn = async (
       // (command cwd/exit/duration/output tail, per-file diffs, MCP args/
       // results, web queries) ride the same events additively. The string
       // summary stays populated for pre-wave-2 renderers and older notes.
-      const typedItem = workbenchItemFromThreadItem(item, "codex")
+      let typedItem = workbenchItemFromThreadItem(item, "codex")
+      if (typedItem?.kind === "command") {
+        const streamed = commandStreams.get(id)
+        if (message.method === "item/started") {
+          typedItem = {
+            ...typedItem,
+            ...(typedItem.outputTail === undefined && streamed?.outputTail !== undefined && streamed.outputTail !== ""
+              ? { outputTail: streamed.outputTail }
+              : {}),
+            ...(typedItem.outputCapReached === true || streamed?.outputCapReached === true
+              ? { outputCapReached: true }
+              : {}),
+          }
+          commandStreams.set(id, {
+            item: typedItem,
+            outputTail: typedItem.outputTail ?? streamed?.outputTail ?? "",
+            outputCapReached: typedItem.outputCapReached === true || streamed?.outputCapReached === true,
+            receivedCharacters: streamed?.receivedCharacters ?? typedItem.outputTail?.length ?? 0,
+          })
+        } else if (streamed !== undefined) {
+          typedItem = {
+            ...typedItem,
+            ...(typedItem.outputTail === undefined && streamed.outputTail !== ""
+              ? { outputTail: streamed.outputTail }
+              : {}),
+            ...(typedItem.outputCapReached === true || streamed.outputCapReached
+              ? { outputCapReached: true }
+              : {}),
+          }
+          commandStreams.delete(id)
+        }
+      }
       const typed = typedItem === null ? {} : { item: typedItem }
       if (message.method === "item/started") {
         pendingTools.add(id)
-        input.emit({ kind: "tool_use", toolName: facts.name, summary: facts.summary, ...typed })
+        input.emit({ kind: "tool_use", toolName: facts.name, itemRef: id.slice(0, 120), summary: facts.summary, ...typed })
       } else {
         if (!pendingTools.has(id)) {
-          input.emit({ kind: "tool_use", toolName: facts.name, summary: facts.summary, ...typed })
+          input.emit({ kind: "tool_use", toolName: facts.name, itemRef: id.slice(0, 120), summary: facts.summary, ...typed })
         }
         pendingTools.delete(id)
         const output = item.type === "commandExecution" && typeof item.aggregatedOutput === "string"
           ? item.aggregatedOutput.slice(0, 400)
           : facts.summary
-        input.emit({ kind: "tool_result", toolName: facts.name, ok: facts.ok, summary: output, ...typed })
+        input.emit({ kind: "tool_result", toolName: facts.name, itemRef: id.slice(0, 120), ok: facts.ok, summary: output, ...typed })
       }
       return
     }

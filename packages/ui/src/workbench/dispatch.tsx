@@ -30,6 +30,7 @@ import type { ReactElement } from "react"
 import { DesktopAgentGroup, type DesktopAgentActivity, type DesktopAgentStatus } from "./agent-group.tsx"
 import type { DesktopApprovalDecision } from "./approval-card.tsx"
 import type { DesktopActivityStatus } from "./activity-status.tsx"
+import { DesktopCommandCard } from "./command-card.tsx"
 import { DesktopPlanCard, type DesktopPlanEntry } from "./plan-card.tsx"
 import { DesktopTimelineMessage } from "./message.tsx"
 import { DesktopTimelineNotice } from "./notice.tsx"
@@ -66,6 +67,7 @@ export type WorkbenchCommandDispatchItem = Readonly<{
   exitCode?: number | null
   durationMs?: number
   outputTail?: string
+  outputCapReached?: boolean
   commandSource?: "agent" | "userShell" | "unifiedExecStartup" | "unifiedExecInteraction"
 }>
 
@@ -272,16 +274,17 @@ export const dispatchWorkbenchItem = (
         status="completed"
       />
 
-    // TODO(T4 #8861): replace with `DesktopCommandCard` wired to cwd/exit
-    // code/duration and the live `commandExecution/outputDelta` stream.
     case "command": {
       const commandItem: WorkbenchCommandDispatchItem = item
-      return <DesktopWorkEntry
-        body={commandItem.outputTail ?? ""}
+      return <DesktopCommandCard
+        command={commandItem.command}
+        commandSource={commandItem.commandSource}
+        cwd={commandItem.cwd}
+        durationMs={commandItem.durationMs}
+        exitCode={commandItem.exitCode}
         itemKey={context.itemKey}
-        kind="command"
-        label="Command"
-        preview={commandItem.command}
+        output={commandItem.outputTail}
+        outputCapReached={commandItem.outputCapReached}
         status={toActivityStatus(commandItem.status)}
       />
     }

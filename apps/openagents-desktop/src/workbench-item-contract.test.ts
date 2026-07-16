@@ -107,6 +107,15 @@ describe("WorkbenchItem projection from app-server (camelCase) wire items", () =
     expect(decodeWorkbenchItem(item)).not.toBeNull()
   })
 
+  test("commandExecution bounds long output to its tail and reports the cap", () => {
+    const output = `${"discarded".repeat(600)}VERDICT`
+    const item = workbenchItemFromThreadItem({ ...wireCommandExecution, aggregatedOutput: output }, "codex") as WorkbenchCommandItem
+    expect(item.outputTail).toHaveLength(WORKBENCH_OUTPUT_TAIL_LIMIT)
+    expect(item.outputTail?.endsWith("VERDICT")).toBe(true)
+    expect(item.outputCapReached).toBe(true)
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
   test("fileChange keeps per-file path, kind, diff, and derived add/del counts", () => {
     const item = workbenchItemFromThreadItem(wireFileChange, "codex") as WorkbenchFileChangeItem
     expect(item.kind).toBe("fileChange")

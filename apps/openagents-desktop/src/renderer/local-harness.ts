@@ -294,9 +294,12 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       // starts a new assistant segment after this event instead of mutating an
       // earlier bubble and teleporting it to the end of the transcript.
       closeAssistantSegment()
-      if (event.kind === "tool_use" || event.kind === "tool_result") {
-        orderedNotes.push({
-          key: `${turnRef}-trace-${orderedNotes.length}`,
+      if (event.kind === "tool_use" || event.kind === "tool_progress" || event.kind === "tool_result") {
+        const key = event.itemRef === undefined
+          ? `${turnRef}-trace-${orderedNotes.length}`
+          : `${turnRef}-tool-${event.itemRef}${event.kind === "tool_result" ? "-result" : ""}`
+        const note = {
+          key,
           role: "system",
           text: fableLocalTraceNoteText(event),
           timestamp: noteTimestamp(now()),
@@ -304,7 +307,10 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
           // the text line, so the renderer builds typed cards without
           // re-parsing display strings.
           meta: { trace: fableLocalTraceNoteMeta(event) },
-        })
+        } as const
+        const existing = orderedNotes.findIndex(entry => entry.key === key)
+        if (existing === -1) orderedNotes.push(note)
+        else orderedNotes[existing] = note
         project()
         return
       }

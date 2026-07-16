@@ -1060,6 +1060,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   or failure updates that row's status and bounded result in place. React and
   the compatibility renderer must share the same lifecycle reconciler and may
   not expose raw start/result transport events as separate conversation rows.
+- Command execution output deltas reconcile by provider `itemId`, never by
+  command text or arrival proximity. Live and durable projections update the
+  started row in place, retain only the bounded output tail, and disclose when
+  earlier output was omitted. Concurrent same-name commands cannot consume one
+  another's progress or completion. Current camelCase and retained snake_case
+  rollout records render through the same typed command component. Regression
+  coverage lives in `codex-app-server-turn.test.ts`, `tool-cards.test.ts`,
+  `local-harness.test.ts`, `react-timeline.test.tsx`, and
+  `tests/codex-history.test.ts`.
 - Desktop's application, component, state, projection, and typed-intent model
   remain Effect Native. React 19 owns the renderer root, lifecycle, synchronous
   snapshot consumption, and declared ordinary-element lowerings through the

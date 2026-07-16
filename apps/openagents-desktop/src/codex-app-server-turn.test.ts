@@ -59,7 +59,7 @@ const makeTypedPayloadSpawn = (): CodexAppServerSpawn => () => {
         write({ id: message.id, result: { thread: { id: THREAD_ID } } })
       } else if (message.method === "turn/start" && typeof message.id === "number") {
         write({ id: message.id, result: { turn: { id: TURN_ID } } })
-        itemPair({
+        const command = {
           id: "item-command",
           type: "commandExecution",
           command: "pnpm test --filter desktop",
@@ -70,7 +70,19 @@ const makeTypedPayloadSpawn = (): CodexAppServerSpawn => () => {
           aggregatedOutput: "42 tests passed",
           status: "completed",
           source: "agent",
-        }, { status: "inProgress", exitCode: null, durationMs: null, aggregatedOutput: null })
+        }
+        notify("item/started", {
+          threadId: THREAD_ID,
+          turnId: TURN_ID,
+          item: { ...command, status: "inProgress", exitCode: null, durationMs: null, aggregatedOutput: null },
+        })
+        notify("item/commandExecution/outputDelta", {
+          threadId: THREAD_ID, turnId: TURN_ID, itemId: "item-command", delta: "running tests\n",
+        })
+        notify("item/commandExecution/outputDelta", {
+          threadId: THREAD_ID, turnId: TURN_ID, itemId: "item-command", delta: "42 tests passed",
+        })
+        notify("item/completed", { threadId: THREAD_ID, turnId: TURN_ID, item: command })
         itemPair({
           id: "item-files",
           type: "fileChange",
@@ -134,13 +146,22 @@ describe("codex-app-server-turn typed item payloads (#8859)", () => {
       Array<Extract<FableLocalEvent, { kind: "tool_use" }>>
     const toolResults = events.filter(event => event.kind === "tool_result") as
       Array<Extract<FableLocalEvent, { kind: "tool_result" }>>
+    const toolProgress = events.filter(event => event.kind === "tool_progress") as
+      Array<Extract<FableLocalEvent, { kind: "tool_progress" }>>
     expect(toolUses).toHaveLength(4)
     expect(toolResults).toHaveLength(4)
+    expect(toolProgress).toHaveLength(2)
 
     // Backward compatibility: the string contract is unchanged.
     expect(toolUses[0]!.toolName).toBe("Bash")
     expect(toolUses[0]!.summary).toBe('{"command":"pnpm test --filter desktop"}')
+    expect(toolUses[0]!.itemRef).toBe("item-command")
     expect(toolResults[0]!.summary).toBe("42 tests passed")
+    expect(toolResults[0]!.itemRef).toBe("item-command")
+    expect(toolProgress.map(event => (event.item as WorkbenchCommandItem).outputTail)).toEqual([
+      "running tests\n",
+      "running tests\n42 tests passed",
+    ])
 
     // Command: started payload is running with no exit; completion carries
     // cwd/exitCode/durationMs/output tail/source — the fields toolFacts lost.

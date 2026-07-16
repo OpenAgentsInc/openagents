@@ -482,6 +482,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
         return commit(at, [advanceNode(root, at, { status: "running", startedAt: at })])
       }
       case "text_delta":
+      case "tool_progress":
       case "reasoning":
       case "lane_notice":
       case "model_effective":

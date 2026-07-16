@@ -67,6 +67,8 @@ export const WorkbenchCommandItemSchema = Schema.Struct({
   durationMs: Schema.optional(Schema.Number),
   /** Bounded TAIL of aggregated stdout+stderr (the end carries the verdict). */
   outputTail: Schema.optional(BoundedString(WORKBENCH_OUTPUT_TAIL_LIMIT)),
+  /** True when earlier output was discarded to preserve the bounded tail. */
+  outputCapReached: Schema.optional(Schema.Boolean),
   /** Wire `source` field: who initiated the command (agent vs user shell). */
   commandSource: Schema.optional(
     Schema.Literals(["agent", "userShell", "unifiedExecStartup", "unifiedExecInteraction"]),
@@ -361,6 +363,9 @@ export const workbenchItemFromThreadItem = (
         : { exitCode: Number.isInteger(exitCode) ? exitCode : null }),
       ...(durationMs === null ? {} : { durationMs }),
       ...(output === null ? {} : { outputTail: tail(redact(output), WORKBENCH_OUTPUT_TAIL_LIMIT) }),
+      ...(output !== null && output.length > WORKBENCH_OUTPUT_TAIL_LIMIT
+        ? { outputCapReached: true }
+        : {}),
       ...(commandSource === "agent" || commandSource === "userShell" ||
           commandSource === "unifiedExecStartup" || commandSource === "unifiedExecInteraction"
         ? { commandSource }
@@ -514,7 +519,8 @@ export const workbenchItemSignature = (item: WorkbenchItem | undefined): string 
     case "command":
       return [
         "command", item.source, item.status, item.command.length, item.cwd ?? "",
-        item.exitCode ?? "x", item.durationMs ?? "x", item.outputTail?.length ?? 0,
+        item.exitCode ?? "x", item.durationMs ?? "x", item.outputTail ?? "",
+        item.outputCapReached === true ? "capped" : "complete",
         item.commandSource ?? "",
       ].join("|")
     case "fileChange":

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "84792ea3373ed311f04cfcd642830195c60bc43d177086d4a779eab48d18d399",
+  "sourceTreeSha256": "ff7ff7c6ae22cd773d1a4ffad2647a5488b908c27ad779caa27766ec05332f4a",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1735,6 +1735,25 @@
       ]
     },
     {
+      "path": "docs/sol/2026-07-16-khala-ui-command-execution-card-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8861",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "3235cbdf73fe8c6b09664b92319abf1ea5f3f68837ada18487548434f37acba5",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8861
+      ]
+    },
+    {
       "path": "docs/sol/2026-07-16-khala-ui-splash-canvas-pilot-receipt.md",
       "class": "receipt",
       "owner": "Sol proof / issue #8850",
@@ -1754,6 +1773,25 @@
         8844,
         8849,
         8850
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-16-khala-ui-workbench-module-split-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8860",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "347cc538d83bd47c6d4bb38811ef3365b25ec540674f1e2c66d1916c0a2a2e35",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8860
       ]
     },
     {
@@ -3135,7 +3173,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "14a0c308d982f7059ad0d179775f71208dc538283e6ea0b220790c587caa1854",
+      "sha256": "bea729ea0bb6e31cc2ca9cf3d00041cdb8ece04c22cf6d224ce19acbcb94a9b0",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3185,7 +3223,9 @@
         8847,
         8848,
         8849,
-        8850
+        8850,
+        8860,
+        8861
       ]
     },
     {
