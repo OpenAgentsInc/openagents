@@ -6,14 +6,19 @@ import {
   WORKBENCH_COMMAND_LIMIT,
   WORKBENCH_DIFF_LIMIT,
   WORKBENCH_OUTPUT_TAIL_LIMIT,
+  WORKBENCH_PLAN_ENTRY_LIMIT,
+  WORKBENCH_PLAN_PROSE_LIMIT,
+  WORKBENCH_PLAN_STEP_LIMIT,
   decodeWorkbenchItem,
   workbenchArgEntries,
   workbenchFileChangeItemFromDiff,
   workbenchItemFromThreadItem,
   workbenchItemSignature,
+  workbenchPlanItemFromEntries,
   workbenchToolCallFromSdkUse,
   type WorkbenchCommandItem,
   type WorkbenchFileChangeItem,
+  type WorkbenchPlanItem,
   type WorkbenchToolCallItem,
 } from "./workbench-item-contract.ts"
 
@@ -76,11 +81,19 @@ const wireWebSearch = {
   results: [{}, {}, {}],
   action: null,
 }
+/** The `plan` ThreadItem variant (T8 #8865): a collaboration-mode plan
+ * write-up. Wire shape is exactly `{id, text, type: "plan"}` — no structured
+ * entries, unlike `turn/plan/updated`. */
+const wirePlan = {
+  id: "item-6",
+  type: "plan",
+  text: "Investigate the flaky auth test, then land the fix behind a flag.",
+}
 
 describe("WorkbenchItem projection from app-server (camelCase) wire items", () => {
   test("every fixture is valid against the generated current-source item/completed wire schema", () => {
     for (const fixture of [
-      wireCommandExecution, wireFileChange, wireMcpToolCall, wireDynamicToolCall, wireWebSearch,
+      wireCommandExecution, wireFileChange, wireMcpToolCall, wireDynamicToolCall, wireWebSearch, wirePlan,
     ]) {
       const result = decodeCurrentServerNotification("item/completed", {
         threadId: "thread-1",
@@ -228,6 +241,82 @@ describe("WorkbenchItem projection from app-server (camelCase) wire items", () =
     expect(workbenchItemFromThreadItem({ id: "x", type: "reasoning" }, "codex")).toBeNull()
     expect(workbenchItemFromThreadItem({ id: "x", type: "contextCompaction" }, "codex")).toBeNull()
   })
+
+  test("the `plan` ThreadItem projects as a prose-only plan item (T8 #8865) instead of being dropped", () => {
+    const item = workbenchItemFromThreadItem(wirePlan, "codex") as WorkbenchPlanItem
+    expect(item).toEqual({
+      kind: "plan",
+      source: "codex",
+      entries: [],
+      prose: "Investigate the flaky auth test, then land the fix behind a flag.",
+    })
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("a `plan` ThreadItem with empty/absent text is honestly dropped (nothing to show)", () => {
+    expect(workbenchItemFromThreadItem({ id: "x", type: "plan", text: "" }, "codex")).toBeNull()
+    expect(workbenchItemFromThreadItem({ id: "x", type: "plan" }, "codex")).toBeNull()
+    expect(workbenchItemFromThreadItem({ id: "x", type: "plan", text: "   " }, "codex")).toBeNull()
+  })
+})
+
+describe("workbenchPlanItemFromEntries (T8 #8865, the one plan-item constructor)", () => {
+  test("carries structured entries, prose, or both", () => {
+    expect(workbenchPlanItemFromEntries({
+      source: "codex",
+      entries: [{ step: "Read the audit", status: "completed" }, { step: "Ship it", status: "pending" }],
+    })).toEqual({
+      kind: "plan",
+      source: "codex",
+      entries: [{ step: "Read the audit", status: "completed" }, { step: "Ship it", status: "pending" }],
+    })
+    expect(workbenchPlanItemFromEntries({ source: "local", entries: [], prose: "Plan mode write-up." })).toEqual({
+      kind: "plan",
+      source: "local",
+      entries: [],
+      prose: "Plan mode write-up.",
+    })
+    expect(workbenchPlanItemFromEntries({
+      source: "claude",
+      entries: [{ step: "a", status: "in_progress" }],
+      prose: "Narrative alongside the checklist.",
+    })).toEqual({
+      kind: "plan",
+      source: "claude",
+      entries: [{ step: "a", status: "in_progress" }],
+      prose: "Narrative alongside the checklist.",
+    })
+  })
+
+  test("bounds entry count, step length, and prose length; drops blank prose", () => {
+    const entries = Array.from({ length: WORKBENCH_PLAN_ENTRY_LIMIT + 20 }, (_, index) => ({
+      step: `step ${index}`,
+      status: "pending" as const,
+    }))
+    const bounded = workbenchPlanItemFromEntries({
+      source: "codex",
+      entries: [{ step: "x".repeat(WORKBENCH_PLAN_STEP_LIMIT + 100), status: "completed" }, ...entries],
+      prose: "y".repeat(WORKBENCH_PLAN_PROSE_LIMIT + 100),
+    })
+    expect(bounded.entries).toHaveLength(WORKBENCH_PLAN_ENTRY_LIMIT)
+    expect(bounded.entries[0]!.step).toHaveLength(WORKBENCH_PLAN_STEP_LIMIT)
+    expect(bounded.prose).toHaveLength(WORKBENCH_PLAN_PROSE_LIMIT)
+    expect(decodeWorkbenchItem(bounded)).not.toBeNull()
+
+    expect(workbenchPlanItemFromEntries({ source: "codex", entries: [], prose: "   " }).prose).toBeUndefined()
+    expect(workbenchPlanItemFromEntries({ source: "codex", entries: [] }).prose).toBeUndefined()
+  })
+
+  test("applies the redactor to both entry steps and prose", () => {
+    const redact = (value: string): string => value.replaceAll("secret", "[REDACTED]")
+    const item = workbenchPlanItemFromEntries({
+      source: "codex",
+      entries: [{ step: "read the secret file", status: "pending" }],
+      prose: "the plan touches a secret",
+    }, redact)
+    expect(item.entries[0]!.step).toBe("read the [REDACTED] file")
+    expect(item.prose).toBe("the plan touches a [REDACTED]")
+  })
 })
 
 describe("WorkbenchItem projection from rollout/exec (snake_case) records", () => {
@@ -367,5 +456,12 @@ describe("workbenchItemSignature (cheap memo equality)", () => {
     expect(workbenchItemSignature(running)).not.toBe(workbenchItemSignature(done))
     expect(workbenchItemSignature(running)).toBe(workbenchItemSignature({ ...running }))
     expect(workbenchItemSignature(undefined)).toBe("")
+  })
+
+  test("plan signature flips on prose changes even with identical entries (T8 #8865)", () => {
+    const withoutProse = workbenchPlanItemFromEntries({ source: "codex", entries: [{ step: "a", status: "pending" }] })
+    const withProse = workbenchPlanItemFromEntries({ source: "codex", entries: [{ step: "a", status: "pending" }], prose: "narrative" })
+    expect(workbenchItemSignature(withoutProse)).not.toBe(workbenchItemSignature(withProse))
+    expect(workbenchItemSignature(withProse)).toBe(workbenchItemSignature({ ...withProse }))
   })
 })

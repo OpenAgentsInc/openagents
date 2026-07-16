@@ -10,7 +10,7 @@ import path from "node:path"
 
 import type { DesktopMessage, DesktopThread } from "./chat-contract.ts"
 import type { CodexHistoryAgent, CodexHistoryAgentPreview, CodexHistoryCatalog, CodexHistoryItem, CodexHistoryItemKind, CodexHistoryPage } from "./codex-history-contract.ts"
-import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
+import { workbenchItemFromThreadItem, workbenchPlanItemFromEntries, type WorkbenchItem, type WorkbenchPlanEntryInput } from "./workbench-item-contract.ts"
 
 const windowMs = 24 * 60 * 60 * 1000
 const recentMessageLimit = 5
@@ -381,6 +381,49 @@ export const readCodexHistoryCatalog = (sessionsRoot: string, graph = buildCodex
 }
 
 const contentText = (value: unknown): string => Array.isArray(value) ? value.map(part => { const row = object(part); return row === null ? "" : safeText(row.text ?? row.value ?? row.content) }).filter(Boolean).join("\n") : safeText(value)
+const planEntryStatus = (value: unknown): "pending" | "in_progress" | "completed" | null => {
+  const raw = string(value)?.toLowerCase().replaceAll(/[\s-]+/g, "_") ?? null
+  if (raw === "completed" || raw === "complete" || raw === "done") return "completed"
+  if (raw === "in_progress" || raw === "inprogress" || raw === "active" || raw === "started") return "in_progress"
+  if (raw === "pending" || raw === "todo" || raw === "not_started") return "pending"
+  return null
+}
+/**
+ * Tolerant structured-entry reader for history `plan`/`todo_list` rows (T8
+ * #8865). Supports the canonical `{step,status}` shape plus common alternate
+ * field names (`{content,status}`, `{text,completed}`); returns `[]` when the
+ * raw value isn't a recognizable list so callers fall back to the flattened
+ * prose summary instead of losing the row.
+ */
+export const planEntriesFromRecord = (value: unknown): ReadonlyArray<WorkbenchPlanEntryInput> => {
+  if (!Array.isArray(value)) return []
+  const out: Array<WorkbenchPlanEntryInput> = []
+  for (const raw of value) {
+    const row = object(raw)
+    if (row === null) continue
+    const step = string(row.step) ?? string(row.content) ?? string(row.text) ?? string(row.title)
+    if (step === null) continue
+    const status = planEntryStatus(row.status) ??
+      (row.completed === true ? "completed" : row.completed === false ? "pending" : null)
+    out.push({ step, status: status ?? "pending" })
+  }
+  return out
+}
+/** Typed plan sidecar (T8 #8865): structured entries when the raw record
+ * carries a recognizable list, else the flattened prose text — never both,
+ * so `DesktopPlanCard` shows one honest representation per row. */
+export const planWorkbenchItemFromRow = (
+  item: RecordValue,
+  redact: (value: string) => string,
+): WorkbenchItem | null => {
+  const entries = planEntriesFromRecord(item.plan ?? item.todos ?? item.items)
+  const prose = entries.length === 0 ? contentText(item.plan ?? item.content ?? item.text) : ""
+  if (entries.length === 0 && prose.trim() === "") return null
+  return workbenchPlanItemFromEntries(
+    { source: "codex", entries, ...(prose.trim() === "" ? {} : { prose }) },
+    redact,
+  )
+}
 const field = (label: string, value: unknown) => { const text = redactCodexHistoryText(safeText(value)); return text.text === "" ? null : { label, value: text.text, redacted: text.redacted } }
 const firstString = (value: unknown): string | null => Array.isArray(value) ? value.map(string).find((entry): entry is string => entry !== null) ?? null : string(value)
 const isInjectedAgentMetadata = (role: string | null, value: string): boolean => codexUserRecordKind(role, value) === "agent_metadata"
@@ -414,7 +457,11 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   else if (envelopeType === "inter_agent_communication_metadata") { kind="system_message";label="Agent communication metadata";summary="Inter-agent protocol handoff marker";push("trigger turn",item.trigger_turn) }
   else if (itemType === "message" || itemType === "agent_message") { const role = string(item.role) ?? (itemType === "agent_message" ? "assistant" : null); summary = contentText(item.content ?? item.text); const injectedAgentMetadata=isInjectedAgentMetadata(role,summary);const injectedPluginMetadata=isInjectedPluginMetadata(role,summary);const injectedEnvironmentContext=isInjectedEnvironmentContext(role,summary);kind = injectedAgentMetadata ? "metadata" : injectedPluginMetadata ? "system_message" : injectedEnvironmentContext ? "context" : itemType === "agent_message" ? "agent_message" : role === "user" ? "user_message" : role === "system" || role === "developer" ? "system_message" : "assistant_message"; label = injectedAgentMetadata ? "Agent metadata" : injectedPluginMetadata ? "Plugin metadata" : injectedEnvironmentContext ? "Execution environment" : itemType === "agent_message" ? "Agent message" : role === "user" ? "You" : role === "assistant" ? "Assistant" : `Message · ${role ?? "unknown"}`;if(itemType==="agent_message"){const envelope=agentMessageEnvelope(summary);push("message type",envelope.type);push("task",envelope.task);push("sender",envelope.sender??item.author);push("recipient",item.recipient);push("payload",envelope.payload)} }
   else if (itemType.includes("reasoning")) { kind = "reasoning"; label = "Reasoning summary"; summary = contentText(item.summary); if(summary==="")summary="[REDACTED: reasoning not persisted as summary]" }
-  else if (itemType.includes("plan") || itemType === "todo_list") { kind = "plan"; label = "Plan"; summary = contentText(item.plan ?? item.content ?? item.text) }
+  else if (itemType.includes("plan") || itemType === "todo_list") {
+    kind = "plan"; label = "Plan"
+    const structured = planEntriesFromRecord(item.plan ?? item.todos ?? item.items)
+    summary = structured.length > 0 ? structured.map(entry => entry.step).join("; ") : contentText(item.plan ?? item.content ?? item.text)
+  }
   else if (itemType.includes("collab") || itemType.includes("agent") || ["spawn_agent","send_input","wait","resume_agent","interrupt_agent","close_agent"].includes(itemType)) { const agentsState=object(item.agents_states); const operation=string(item.tool)??string(item.name)??itemType; const agentRef=string(item.new_thread_id)??string(item.agent_thread_id)??firstString(item.receiver_thread_ids)??string(item.agent_id)??string(item.receiver_thread_id)??(agentsState===null?null:Object.keys(agentsState)[0]??null); kind = "collaboration"; label = operation === "spawn_agent" ? "Subagent started" : operation.replaceAll("_"," "); summary = safeText(item.message ?? item.prompt ?? item.result ?? item.status ?? item.kind); push("agent", agentRef); push("operation", operation); push("activity", item.kind) }
   else if (itemType.includes("approval")) { kind = "approval"; label = "Approval"; summary = safeText(item.reason ?? item.message ?? item.status); push("decision", item.decision) }
   else if (itemType.includes("usage") || itemType.includes("token_count")) { kind = "usage"; label = "Usage"; summary = "Token usage update"; push("input", item.input_tokens); push("output", item.output_tokens); push("total", item.total_tokens) }
@@ -430,9 +477,15 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   const typedSource = [string(item.name), string(item.tool), itemType].some(value => value === "apply_patch" || value === "applyPatch")
     ? { ...item, type: "apply_patch", patch: item.input ?? item.arguments ?? item.content }
     : item
+  // T8 (#8865): plan/todo_list rows get the SAME typed sidecar (structured
+  // entries or prose fallback) so history plans render through the identical
+  // DesktopPlanCard the live turn and turn/plan/updated notification use,
+  // instead of a bespoke single-entry reconstruction in the timeline renderer.
   const typedItem = kind === "tool_call" || kind === "tool_result"
     ? workbenchItemFromThreadItem(typedSource, "codex", value => redactCodexHistoryText(value).text)
-    : null
+    : kind === "plan"
+      ? planWorkbenchItemFromRow(item, value => redactCodexHistoryText(value).text)
+      : null
   return { itemRef: `${threadRef}:${sequence}`, threadRef, sequence, timestamp, kind, label: label.slice(0,160), summary: redactedSummary.text, status, fields: fields.map(({label,value}) => ({label,value})), redacted, sourceType: `${envelopeType}/${itemType}`.slice(0,160), ...(typedItem === null ? {} : { item: typedItem }) }
 }
 

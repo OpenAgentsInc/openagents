@@ -122,6 +122,22 @@ describe("plan card render (J2/J4)", () => {
     expect(byKey(message.body, "plan-step-text-n1-1")).toMatchObject({ content: "Build the card", weight: "medium" })
     expect(byKey(message.body, "plan-step-text-n1-2")).toMatchObject({ weight: "regular" })
   })
+
+  test("renders prose above the checklist, and prose alone when there are no entries yet (T8 #8865)", () => {
+    const withEntries = {
+      kind: "plan" as const,
+      entries: [{ step: "Read the audit", status: "pending" as const }],
+      prose: "Plan: land the fix behind a flag.",
+    }
+    const withEntriesMessage = planCardMessage(note({ key: "n2", runtime: withEntries }), withEntries)
+    expect(byKey(withEntriesMessage.body, "plan-prose-n2")).toMatchObject({ content: "Plan: land the fix behind a flag." })
+    expect(byKey(withEntriesMessage.body, "plan-progress-n2")).toMatchObject({ content: "0 of 1 done" })
+
+    const proseOnly = { kind: "plan" as const, entries: [], prose: "Investigate the flaky test." }
+    const proseOnlyMessage = planCardMessage(note({ key: "n3", runtime: proseOnly }), proseOnly)
+    expect(byKey(proseOnlyMessage.body, "plan-prose-n3")).toMatchObject({ content: "Investigate the flaky test." })
+    expect(byKey(proseOnlyMessage.body, "plan-progress-n3")).toBeUndefined()
+  })
 })
 
 // ---------------------------------------------------------------------------

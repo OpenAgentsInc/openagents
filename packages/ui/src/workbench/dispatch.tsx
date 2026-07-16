@@ -133,6 +133,13 @@ export type WorkbenchPlanDispatchItem = Readonly<{
   kind: "plan"
   source: WorkbenchDispatchSource
   entries: ReadonlyArray<DesktopPlanEntry>
+  /**
+   * Free-form plan narrative (T8 #8865 unification). The `plan` ThreadItem
+   * (collaboration-mode write-ups) carries this instead of structured
+   * entries; `turn/plan/updated` and history rows carry entries instead. A
+   * plan item may carry either, or both.
+   */
+  prose?: string
 }>
 
 export type WorkbenchApprovalDispatchItem = Readonly<{
@@ -256,7 +263,7 @@ export const dispatchWorkbenchItem = (
 
     case "plan": {
       const planItem: WorkbenchPlanDispatchItem = item
-      return <DesktopPlanCard entries={planItem.entries} itemKey={context.itemKey} />
+      return <DesktopPlanCard entries={planItem.entries} itemKey={context.itemKey} prose={planItem.prose} />
     }
 
     case "agent": {

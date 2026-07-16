@@ -398,6 +398,13 @@ export const FableLocalEventSchema = Schema.Union([
     entries: Schema.Array(FableLocalPlanEntrySchema).check(
       Schema.isMaxLength(FABLE_LOCAL_PLAN_ENTRY_LIMIT),
     ),
+    /**
+     * Free-form plan narrative (T8 #8865 unification): additive so the
+     * dropped `plan` ThreadItem (`{id, text, type: "plan"}` collaboration-mode
+     * write-ups, which never carry structured entries) can ride the SAME
+     * per-turn stable-key plan note instead of being silently discarded.
+     */
+    prose: Schema.optional(Schema.String.check(Schema.isMaxLength(4_000))),
   }),
   /**
    * Result of a steer-child control (G4). `interrupted`: the child's abort

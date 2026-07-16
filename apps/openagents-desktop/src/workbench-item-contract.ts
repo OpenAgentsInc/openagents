@@ -154,7 +154,16 @@ export const WorkbenchPlanItemSchema = Schema.Struct({
     step: BoundedString(400),
     status: Schema.Literals(["pending", "in_progress", "completed"]),
   })).check(Schema.isMaxLength(64)),
+  /**
+   * Free-form plan narrative (T8 #8865 unification). The `plan` ThreadItem
+   * wire variant (`{id, text, type: "plan"}`, collaboration-mode write-ups)
+   * carries prose instead of a structured step list; `turn/plan/updated` and
+   * history `todo_list` rows carry structured `entries` instead. A plan item
+   * may carry either, or both (prose narrative + a live step checklist).
+   */
+  prose: Schema.optional(BoundedString(4_000)),
 })
+export type WorkbenchPlanItem = typeof WorkbenchPlanItemSchema.Type
 
 export const WorkbenchApprovalItemSchema = Schema.Struct({
   kind: Schema.Literal("approval"),
@@ -300,6 +309,45 @@ export const workbenchArgEntries = (
     })
   }
   return entries
+}
+
+export const WORKBENCH_PLAN_ENTRY_LIMIT = 64
+export const WORKBENCH_PLAN_STEP_LIMIT = 400
+export const WORKBENCH_PLAN_PROSE_LIMIT = 4_000
+
+export type WorkbenchPlanEntryInput = Readonly<{
+  step: string
+  status: "pending" | "in_progress" | "completed"
+}>
+
+/**
+ * Builds a bounded, redacted `WorkbenchPlanItem` from typed entries and/or
+ * free-form prose (T8 #8865 plan unification). This is the ONE constructor
+ * every plan source uses — the `turn/plan/updated` notification (structured
+ * entries), the `plan` ThreadItem (prose only, see `workbenchItemFromThreadItem`
+ * below), and history `plan`/`todo_list` rows (`codex-history.ts`, structured
+ * entries with a prose fallback) — so all three project into the identical
+ * shape `dispatchWorkbenchItem`'s "plan" branch renders through one
+ * `DesktopPlanCard`.
+ */
+export const workbenchPlanItemFromEntries = (
+  input: Readonly<{
+    source: WorkbenchItemSource
+    entries: ReadonlyArray<WorkbenchPlanEntryInput>
+    prose?: string
+  }>,
+  redact: WorkbenchRedactor = identity,
+): WorkbenchPlanItem => {
+  const prose = input.prose === undefined ? "" : redact(input.prose).trim()
+  return {
+    kind: "plan",
+    source: input.source,
+    entries: input.entries.slice(0, WORKBENCH_PLAN_ENTRY_LIMIT).map(entry => ({
+      step: head(redact(entry.step), WORKBENCH_PLAN_STEP_LIMIT),
+      status: entry.status,
+    })),
+    ...(prose === "" ? {} : { prose: head(prose, WORKBENCH_PLAN_PROSE_LIMIT) }),
+  }
 }
 
 const diffLineCounts = (diff: string): Readonly<{ adds: number; dels: number }> => {
@@ -543,6 +591,17 @@ export const workbenchItemFromThreadItem = (
       status: normalizeWorkbenchStatus(item.status, "completed"),
     }
   }
+  // T8 (#8865): the `plan` ThreadItem variant (`{id, text, type: "plan"}`,
+  // collaboration-mode plan write-ups) previously fell through to `null` here
+  // (dropped entirely by the live turn — `toolFacts()` has no "plan" case).
+  // It carries prose, never structured entries; `turn/plan/updated` and
+  // history `todo_list` rows carry the structured entries side of the same
+  // canonical plan model (see `workbenchPlanItemFromEntries`).
+  if (type === "plan") {
+    const text = asString(item.text)
+    if (text === null || text.trim() === "") return null
+    return workbenchPlanItemFromEntries({ source, entries: [], prose: text }, redact)
+  }
   return null
 }
 
@@ -621,7 +680,10 @@ export const workbenchItemSignature = (item: WorkbenchItem | undefined): string 
     case "agent":
       return ["agent", item.source, item.status, item.tool ?? "", item.prompt?.length ?? 0].join("|")
     case "plan":
-      return ["plan", item.source, ...item.entries.map(entry => `${entry.status}:${entry.step.length}`)].join("|")
+      return [
+        "plan", item.source, item.prose?.length ?? 0,
+        ...item.entries.map(entry => `${entry.status}:${entry.step.length}`),
+      ].join("|")
     case "approval":
       return ["approval", item.source, item.status, item.decision ?? "", item.detail ?? ""].join("|")
     case "meter":

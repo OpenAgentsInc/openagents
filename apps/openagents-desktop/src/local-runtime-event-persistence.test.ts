@@ -82,4 +82,31 @@ describe("durable local runtime event projection", () => {
     notes = apply(notes, { kind: "followup_promoted", queueRef: "queue-1", message: "Next" })
     expect(notes.some(note => note.runtime?.kind === "queue")).toBe(false)
   })
+
+  test("plan_updated merges onto ONE per-turn note: prose never wipes entries and vice versa (T8 #8865)", () => {
+    let notes: DesktopMessage[] = []
+    // The structured checklist arrives first (turn/plan/updated).
+    notes = apply(notes, { kind: "plan_updated", entries: [{ step: "One", status: "in_progress" }] })
+    // Then the collaboration-mode prose write-up (the previously-dropped
+    // `plan` ThreadItem) arrives with NO entries of its own.
+    notes = apply(notes, { kind: "plan_updated", entries: [], prose: "Plan: land the fix behind a flag." })
+    expect(notes).toHaveLength(1) // still one note, one stable key — never appended
+    expect(notes[0]?.runtime).toEqual({
+      kind: "plan",
+      entries: [{ step: "One", status: "in_progress" }],
+      prose: "Plan: land the fix behind a flag.",
+    })
+    // A later structured update replaces entries but keeps the prose (latest
+    // wins PER FIELD, not a blind whole-object replace).
+    notes = apply(notes, { kind: "plan_updated", entries: [{ step: "One", status: "completed" }] })
+    expect(notes).toHaveLength(1)
+    expect(notes[0]?.runtime).toEqual({
+      kind: "plan",
+      entries: [{ step: "One", status: "completed" }],
+      prose: "Plan: land the fix behind a flag.",
+    })
+    // A later prose-only update can still replace the prose text itself.
+    notes = apply(notes, { kind: "plan_updated", entries: [], prose: "Plan: ship it." })
+    expect(notes[0]?.runtime).toMatchObject({ prose: "Plan: ship it.", entries: [{ step: "One", status: "completed" }] })
+  })
 })

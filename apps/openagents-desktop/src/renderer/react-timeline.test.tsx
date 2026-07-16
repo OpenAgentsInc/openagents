@@ -571,3 +571,85 @@ describe("typed WorkbenchItem surfacing on timeline records (#8859)", () => {
     expect(card?.textContent).toContain("Diff truncated")
   })
 })
+
+describe("plan unification across all three sources (T8 #8865)", () => {
+  test("a live plan_updated note projects via note.runtime, NOT the broken text-prefix regex", () => {
+    const records = projectLocalTimelineRecords([
+      {
+        key: "turn-1-plan",
+        role: "system" as const,
+        // The real note text every plan note carries is the literal string
+        // below — it never matched the old `/^Plan\s*·/` prefix check, so
+        // this card silently degraded to a generic system-message notice
+        // before T8.
+        text: "Plan updated",
+        timestamp: "10:00",
+        runtime: {
+          kind: "plan" as const,
+          entries: [{ step: "Reproduce the bug", status: "completed" as const }, { step: "Ship the fix", status: "in_progress" as const }],
+          prose: "Investigate, then land the fix behind a flag.",
+        },
+      },
+    ])
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ kind: "plan", label: "Plan", body: "Investigate, then land the fix behind a flag." })
+    expect(records[0]!.item).toEqual({
+      kind: "plan",
+      source: "local",
+      entries: [{ step: "Reproduce the bug", status: "completed" }, { step: "Ship the fix", status: "in_progress" }],
+      prose: "Investigate, then land the fix behind a flag.",
+    })
+  })
+
+  test("a prose-only plan note (the previously-dropped `plan` ThreadItem path) still projects a typed item", () => {
+    const records = projectLocalTimelineRecords([
+      {
+        key: "turn-2-plan",
+        role: "system" as const,
+        text: "Plan updated",
+        timestamp: "10:01",
+        runtime: { kind: "plan" as const, entries: [], prose: "Collaboration-mode write-up." },
+      },
+    ])
+    expect(records[0]!.item).toEqual({ kind: "plan", source: "local", entries: [], prose: "Collaboration-mode write-up." })
+    expect(records[0]!.body).toBe("Collaboration-mode write-up.")
+  })
+
+  test("a history plan/todo_list row's typed item dispatches through the SAME DesktopPlanCard as a live plan", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const historyPlanItem = { kind: "plan" as const, source: "codex" as const, entries: [{ step: "Audit the queue", status: "pending" as const }] }
+    root.render(<ReactTimeline
+      sessionKey="thread-history-plan"
+      records={[{ ...record("history-plan-row", 0), kind: "plan", label: "Plan", item: historyPlanItem }]}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report}
+    />)
+    await settle()
+    const card = container.querySelector<HTMLElement>('[data-kind="plan"]')
+    expect(card).not.toBeNull()
+    expect(card?.textContent).toContain("Audit the queue")
+    root.unmount()
+  })
+
+  test("in-place plan updates never remount the card: same DOM node, same React key across entry changes", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const planRecord = (entries: ReadonlyArray<{ step: string; status: "pending" | "in_progress" | "completed" }>): ReactTimelineRecord => ({
+      ...record("turn-1-plan", 0),
+      kind: "plan",
+      label: "Plan",
+      item: { kind: "plan" as const, source: "local" as const, entries },
+    })
+    root.render(<ReactTimeline sessionKey="thread-plan" records={[planRecord([{ step: "a", status: "in_progress" }])]} loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const before = container.querySelector('[data-timeline-key="turn-1-plan"]')
+    expect(before?.textContent).toContain("0 of 1 done")
+    root.render(<ReactTimeline sessionKey="thread-plan" records={[planRecord([{ step: "a", status: "completed" }, { step: "b", status: "in_progress" }])]} loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const rows = container.querySelectorAll('[data-timeline-key="turn-1-plan"]')
+    expect(rows).toHaveLength(1) // in place, not appended/duplicated
+    expect(rows[0]).toBe(before) // the SAME DOM node — never remounted
+    expect(rows[0]?.textContent).toContain("1 of 2 done")
+    root.unmount()
+  })
+})

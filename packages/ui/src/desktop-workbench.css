@@ -846,7 +846,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-work-detail { display: grid; gap: var(--en-spacing-2); margin: var(--en-spacing-1) var(--en-spacing-2) var(--en-spacing-3); padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); background: var(--en-color-surface); }
 .oa-react-work-detail pre { max-height: 280px; margin: 0; overflow: auto; color: var(--en-color-textMuted); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .oa-react-plan { display: grid; gap: var(--en-spacing-2); padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); background: var(--en-color-surface); }
-.oa-react-plan > header { display: flex; justify-content: space-between; color: var(--en-color-textMuted); font-size: 12px; }
+.oa-react-plan > header { display: flex; justify-content: space-between; align-items: center; color: var(--en-color-textMuted); font-size: 12px; }
 .oa-react-plan > ol { display: grid; gap: var(--en-spacing-1); margin: 0; padding-left: var(--en-spacing-5); }
 .oa-react-plan > ol li { display: flex; justify-content: space-between; gap: var(--en-spacing-2); }
 .oa-react-plan small { color: var(--en-color-textFaint); }
@@ -854,11 +854,29 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-event-title > svg { width: 14px; height: 14px; color: var(--en-color-accent); }
 .oa-react-event-title > strong { font-family: var(--oa-font-mono); letter-spacing: .06em; text-transform: uppercase; }
 .oa-react-plan-card { gap: var(--en-spacing-3); padding: var(--en-spacing-3) var(--en-spacing-4); }
+/* Free-form plan narrative (plan-card unification): the `plan` ThreadItem's
+   prose write-up, shown above the checklist (or alone with no structured
+   entries). */
+.oa-react-plan-prose { margin: 0; color: var(--en-color-textMuted); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.oa-react-plan-summary { display: inline-flex; align-items: center; gap: var(--en-spacing-2); }
+/* Quantized block-progress strip (plan-card unification) — the SAME
+   discrete-rectangle, sharp-corner, accent-fill-vs-muted motif as the
+   "Working" indicator (`.oa-react-working` below), but a STATIC
+   completed/total ratio rather than a busy-pulse animation (design spec
+   §5.2/§7: progress is always quantized blocks, never a smooth/eased fill). */
+.oa-react-plan-progress { display: inline-flex; align-items: center; gap: 2px; }
+.oa-react-plan-progress i { width: 4px; height: 12px; border-radius: var(--en-radius-none); background: var(--en-color-borderStrong); }
+.oa-react-plan-progress i[data-filled="true"] { background: var(--en-color-accent); }
 .oa-react-plan-list { gap: var(--en-spacing-2) !important; padding: 0 !important; list-style: none; }
 .oa-react-plan-list li { display: grid !important; grid-template-columns: 16px minmax(0, 1fr) max-content; align-items: center; min-height: 20px; color: var(--en-color-textPrimary); font-size: 12px; }
+/* Luminance ladder (design spec: hierarchy by grey-stepping, never bold/hue).
+   in_progress (the active row) stays at the base full-bright color; completed
+   steps down to the muted step; pending steps down further to the faint
+   step — the active row reads as "one step brighter", nothing else changes. */
 .oa-react-plan-list li[data-status="completed"] > span:nth-child(2) { color: var(--en-color-textMuted); }
-.oa-react-plan-list li[data-status="in_progress"] > span:nth-child(2) { font-weight: 600; }
-/* Right-aligned status column, machine-voice mono (design spec §8 rule 7). */
+.oa-react-plan-list li[data-status="pending"] > span:nth-child(2) { color: var(--en-color-textFaint); }
+/* Right-aligned [STATUS] tag, machine-voice mono (design spec §8 rule 7),
+   same [TAG] bracket convention as the badge formula (§2.4). */
 .oa-react-plan-list li > small {
   color: var(--en-color-textFaint);
   font-family: var(--oa-font-mono);
@@ -867,6 +885,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   text-align: right;
   text-transform: uppercase;
 }
+.oa-react-plan-list li > small::before { content: "["; }
+.oa-react-plan-list li > small::after { content: "]"; }
 .oa-react-plan-list li[data-status="completed"] > small { color: var(--en-color-success); }
 .oa-react-plan-list li[data-status="in_progress"] > small { color: var(--en-color-accent); }
 .oa-react-plan-glyph { display: grid; color: var(--en-color-textFaint); place-items: center; }
@@ -1169,7 +1189,6 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textMuted);
 }
 
-.oa-react-plan-steps,
 .oa-react-usage {
   display: grid;
   gap: var(--en-spacing-1);
@@ -1177,7 +1196,6 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   padding-left: var(--en-spacing-5);
 }
 
-.oa-react-plan-steps li,
 .oa-react-usage div {
   display: flex;
   justify-content: space-between;

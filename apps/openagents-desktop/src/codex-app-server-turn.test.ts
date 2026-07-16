@@ -221,3 +221,97 @@ describe("codex-app-server-turn typed item payloads (#8859)", () => {
     })
   })
 })
+
+/**
+ * The `plan` ThreadItem (T8 #8865): `{id, text, type: "plan"}`,
+ * collaboration-mode plan write-ups. Previously `toolFacts()` had no case for
+ * it, so the item was silently dropped between `item/started` and
+ * `item/completed`. It now rides the SAME per-turn stable-key plan note as
+ * `turn/plan/updated` (`plan_updated`), so both plan representations render
+ * through one `DesktopPlanCard`.
+ */
+const makePlanItemSpawn = (): CodexAppServerSpawn => () => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough
+    stdout: PassThrough
+    stderr: PassThrough
+    kill: () => boolean
+  }
+  child.stdin = stdin
+  child.stdout = stdout
+  child.stderr = new PassThrough()
+  child.kill = () => {
+    child.emit("close", 0)
+    return true
+  }
+  const write = (message: unknown): void => {
+    stdout.write(`${JSON.stringify(message)}\n`)
+  }
+  const notify = (method: string, params: unknown): void => write({ method, params })
+  let buffered = ""
+  stdin.on("data", chunk => {
+    buffered += chunk.toString("utf8")
+    while (buffered.includes("\n")) {
+      const newline = buffered.indexOf("\n")
+      const line = buffered.slice(0, newline)
+      buffered = buffered.slice(newline + 1)
+      if (line === "") continue
+      const message = JSON.parse(line) as Record<string, unknown>
+      if (message.method === "initialize" && typeof message.id === "number") {
+        write({ id: message.id, result: {} })
+      } else if (message.method === "thread/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { thread: { id: THREAD_ID } } })
+      } else if (message.method === "turn/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { turn: { id: TURN_ID } } })
+        const plan = { id: "item-plan", type: "plan", text: "Investigate, then fix behind a flag." }
+        notify("item/started", { threadId: THREAD_ID, turnId: TURN_ID, item: { ...plan, text: "" } })
+        // A structured checklist arrives on the SAME turn via turn/plan/updated.
+        notify("turn/plan/updated", {
+          threadId: THREAD_ID, turnId: TURN_ID,
+          plan: [{ step: "Reproduce the bug", status: "completed" }],
+        })
+        notify("item/completed", { threadId: THREAD_ID, turnId: TURN_ID, item: plan })
+        notify("item/agentMessage/delta", { threadId: THREAD_ID, turnId: TURN_ID, delta: "done" })
+        notify("turn/completed", { threadId: THREAD_ID, turn: { id: TURN_ID, status: "completed", error: null } })
+      }
+    }
+  })
+  return child as never
+}
+
+describe("codex-app-server-turn `plan` ThreadItem projection (T8 #8865)", () => {
+  test("the dropped `plan` ThreadItem now emits plan_updated, merging onto the SAME plan note as the structured checklist", async () => {
+    const events: Array<FableLocalEvent> = []
+    const outcome = await runCodexAppServerTurn({
+      binary: "/packaged/codex",
+      env: {},
+      workspace: "/safe/repo",
+      threadRef: "thread-ref",
+      turnRef: "turn-ref",
+      accountRef: "codex",
+      prompt: "investigate the bug",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.5",
+      reasoningEffort: "medium",
+      productSpecSkill: { skillRoot: "/skills", skillPath: "/skills/productspec-work" },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: event => events.push(event),
+      spawnImpl: makePlanItemSpawn(),
+    })
+    expect(outcome.outcome).toBe("success")
+
+    const planEvents = events.filter(event => event.kind === "plan_updated") as
+      Array<Extract<FableLocalEvent, { kind: "plan_updated" }>>
+    expect(planEvents).toHaveLength(2)
+    // turn/plan/updated: the structured checklist, no prose.
+    expect(planEvents[0]).toMatchObject({ entries: [{ step: "Reproduce the bug", status: "completed" }] })
+    expect(planEvents[0]!.prose).toBeUndefined()
+    // The `plan` ThreadItem: prose only, no structured entries of its own —
+    // `local-runtime-event-persistence.ts` merges it onto the SAME note.
+    expect(planEvents[1]).toMatchObject({ entries: [], prose: "Investigate, then fix behind a flag." })
+  })
+})

@@ -64,8 +64,22 @@ export const localRuntimePersistenceOperation = (input: Readonly<{
       : { kind: "upsert", note: { ...existing, question: { ...existing.question, status: event.outcome } } }
   }
   if (event.kind === "plan_updated") {
-    return note(`${turnRef}-plan`, "Plan updated", timestamp, {
-      runtime: { kind: "plan", entries: event.entries.map(entry => ({ ...entry })) },
+    // T8 (#8865): a turn may emit the structured checklist
+    // (`turn/plan/updated` / SDK TodoWrite) and the prose write-up (the
+    // dropped `plan` ThreadItem, now routed through this SAME event) as
+    // separate calls. Merge onto the existing per-turn plan note rather than
+    // blindly replacing it, so a prose-only update never wipes a live
+    // checklist and vice versa — one note, one stable key, latest wins PER
+    // FIELD.
+    const key = `${turnRef}-plan`
+    const existingRuntime = notes.find(item => item.key === key)?.runtime
+    const existingPlan = existingRuntime?.kind === "plan" ? existingRuntime : null
+    const entries = event.entries.length > 0
+      ? event.entries.map(entry => ({ ...entry }))
+      : existingPlan?.entries.map(entry => ({ ...entry })) ?? []
+    const prose = event.prose ?? existingPlan?.prose
+    return note(key, "Plan updated", timestamp, {
+      runtime: { kind: "plan", entries, ...(prose === undefined ? {} : { prose }) },
     })
   }
   if (event.kind === "child_started") {

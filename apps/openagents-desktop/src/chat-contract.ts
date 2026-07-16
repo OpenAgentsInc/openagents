@@ -142,6 +142,13 @@ export const DesktopRuntimeCardSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("plan"),
     entries: Schema.Array(DesktopRuntimePlanEntrySchema).check(Schema.isMaxLength(64)),
+    /**
+     * Free-form plan narrative (T8 #8865 unification): Codex's `plan`
+     * ThreadItem variant (`{id, text, type: "plan"}`, collaboration-mode
+     * write-ups) carries prose instead of a structured step list. Optional so
+     * older persisted plan cards without it keep decoding.
+     */
+    prose: Schema.optional(Schema.String.check(Schema.isMaxLength(4_000))),
   }),
   Schema.Struct({
     kind: Schema.Literal("child"),

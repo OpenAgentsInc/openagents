@@ -504,6 +504,19 @@ export const runCodexAppServerTurn = async (
         if (summary !== "") input.emit({ kind: "reasoning", text: summary })
         return
       }
+      // T8 (#8865): the `plan` ThreadItem (`{id, text, type: "plan"}`,
+      // collaboration-mode plan write-ups) has no `toolFacts()` case and was
+      // silently dropped. It rides the SAME per-turn stable-key plan note as
+      // `turn/plan/updated` (`plan_updated` -> `${turnRef}-plan`, latest
+      // wins, never remounts) so both plan representations render through one
+      // DesktopPlanCard.
+      if (item.type === "plan" && message.method === "item/completed") {
+        const planText = string(item.text)
+        if (planText !== null && planText.trim() !== "") {
+          input.emit({ kind: "plan_updated", entries: [], prose: planText.slice(0, 4_000) })
+        }
+        return
+      }
       const facts = toolFacts(item)
       if (facts === null) return
       // Typed payload (#8859): the structured fields toolFacts() flattens

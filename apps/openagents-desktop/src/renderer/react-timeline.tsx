@@ -23,7 +23,7 @@ import { Component, createElement, memo, useEffect, useMemo, useRef, useState } 
 import { ChevronRight, Folder } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
-import { workbenchItemSignature, type WorkbenchItem } from "../workbench-item-contract.ts"
+import { workbenchItemSignature, workbenchPlanItemFromEntries, type WorkbenchItem } from "../workbench-item-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
 import { parseChatMarkdown } from "./markdown.ts"
 import { humanizeToolInvocation, projectToolCardEntries } from "./tool-cards.ts"
@@ -153,23 +153,51 @@ export const projectLocalTimelineRecords = (
   }
   const note = entry.note
   if (note.role === "system" && /^(Usage|Connected)\s*·/i.test(note.text)) return []
+  // T8 (#8865): a live plan_updated note carries its full typed payload on
+  // `note.runtime` (entries + optional prose) — read it DIRECTLY instead of
+  // pattern-matching `note.text` (which is always the literal "Plan updated"
+  // and never matched the old `/^Plan\s*·/` check, so this card silently
+  // degraded to a generic system-message notice on this surface). The typed
+  // `item` here is what makes `TimelineItem` dispatch through the SAME
+  // `DesktopPlanCard` history rows and `turn/plan/updated` already use.
+  if (note.runtime?.kind === "plan") {
+    const runtimePlan = note.runtime
+    return [{
+      key: note.key,
+      itemRef: note.key,
+      sequence: index,
+      kind: "plan" as const,
+      label: "Plan",
+      body: runtimePlan.prose ?? note.text,
+      timestamp: note.timestamp,
+      status: null,
+      redacted: false,
+      fields: [],
+      resultRef: null,
+      resultBody: null,
+      resultStatus: null,
+      item: workbenchPlanItemFromEntries({
+        source: "local",
+        entries: runtimePlan.entries,
+        ...(runtimePlan.prose === undefined ? {} : { prose: runtimePlan.prose }),
+      }),
+    }]
+  }
   const kind: ReactTimelineRecord["kind"] = note.question !== undefined
     ? "question"
     : note.role !== "system"
       ? "local_message"
       : /^Reasoning\s*·/i.test(note.text)
         ? "reasoning"
-        : /^Plan\s*·/i.test(note.text)
-          ? "plan"
-          : /^Approval\s*·/i.test(note.text)
-            ? "approval"
-            : /^Turn (completed|complete|canceled|cancelled)$/i.test(note.text)
-              ? "lifecycle"
-              : /^Turn (failed|interrupted)|error/i.test(note.text)
-                ? "error"
-                : /\s·\s(?:running|completed|failed|errored)$/i.test(note.text)
-                  ? "tool_call"
-                  : "system_message"
+        : /^Approval\s*·/i.test(note.text)
+          ? "approval"
+          : /^Turn (completed|complete|canceled|cancelled)$/i.test(note.text)
+            ? "lifecycle"
+            : /^Turn (failed|interrupted)|error/i.test(note.text)
+              ? "error"
+              : /\s·\s(?:running|completed|failed|errored)$/i.test(note.text)
+                ? "tool_call"
+                : "system_message"
   const label = note.question !== undefined
     ? note.question.kind === "tool_approval" ? "Tool approval"
       : note.question.kind === "plan_review" ? "Plan review" : "Question"
@@ -177,15 +205,14 @@ export const projectLocalTimelineRecords = (
       : note.role === "assistant" ? "Assistant"
         : kind === "tool_call" ? note.text.split(" · ")[0] || "Tool"
           : kind === "reasoning" ? "Reasoning"
-            : kind === "plan" ? "Plan"
-              : "System"
+            : "System"
   return [{
     key: note.key,
     itemRef: note.key,
     sequence: index,
     kind,
     label,
-    body: note.question?.questions[0]?.question ?? note.text.replace(/^(Reasoning|Plan|Approval)\s*·\s*/i, ""),
+    body: note.question?.questions[0]?.question ?? note.text.replace(/^(Reasoning|Approval)\s*·\s*/i, ""),
     timestamp: note.timestamp,
     status: note.question?.status ?? note.runtime?.kind ?? null,
     redacted: false,
@@ -236,19 +263,25 @@ const isWorkRecord = (record: ReactTimelineRecord): boolean =>
   ["reasoning", "tool_call", "tool_result", "approval", "collaboration"].includes(record.kind)
 
 /**
- * `WorkbenchItem` kinds (#8859) still rendered through the generic
- * `DesktopWorkEntry`/`DesktopToolCallCard` shell in `dispatch.tsx` (#8860).
- * When a record carries a typed item of one of these kinds, `TimelineItem`
- * defers entirely to `dispatchWorkbenchItem` instead of its own string-based
- * branches — today that is a no-op (same generic shell), but it means each
- * Wave-2 lane (T4-T12, epic #8857) ships its polished card by editing ONLY
- * its own `dispatch.tsx` branch, with zero further changes here. `message`,
- * `plan`, `agent`, and `notice` keep their existing bespoke branches below
- * unchanged (not part of Wave 2's scope).
+ * `WorkbenchItem` kinds (#8859) rendered through `dispatchWorkbenchItem`
+ * (`dispatch.tsx`, #8860) instead of a bespoke branch below. Most of these
+ * still resolve to the generic `DesktopWorkEntry`/`DesktopToolCallCard` shell
+ * until their own Wave-2 lane (T4-T12, epic #8857) lands its polished card —
+ * a no-op today, but it means that lane ships by editing ONLY its own
+ * `dispatch.tsx` branch, with zero further changes here.
+ *
+ * `plan` (T8 #8865) is the first Wave-2 kind to graduate: every plan source
+ * (live `turn/plan/updated` / the `plan` ThreadItem, and history
+ * `plan`/`todo_list` rows) now projects into one typed `WorkbenchPlanItem`
+ * carried on `record.item`, so it dispatches here through the SAME real
+ * `DesktopPlanCard` instead of the bespoke single-entry reconstruction below
+ * (kept only as a fallback for a record whose source carried neither
+ * structured entries nor prose). `message`, `agent`, and `notice` keep their
+ * existing bespoke branches below unchanged (not part of Wave 2's scope).
  */
 const dispatchableWorkbenchKinds: ReadonlySet<WorkbenchItem["kind"]> = new Set([
   "command", "fileChange", "toolCall", "reasoning", "approval",
-  "meter", "compaction", "sleep", "review", "hook",
+  "meter", "compaction", "sleep", "review", "hook", "plan",
 ])
 
 const compact = (value: string, limit = 180): string => {
@@ -309,6 +342,10 @@ export const TimelineItem = ({ record, report }: {
     statusLabel={["failed", "errored", "interrupted"].includes(record.status ?? "") ? "Failed" : record.status === "running" ? "Running" : "Done"}
   />
 
+  // Fallback only: a "plan" record always carries a typed `item` today (the
+  // live-note and history projectors above attach one whenever there is any
+  // real content), so `dispatchableWorkbenchKinds` already handled it. This
+  // stays for the edge case of a genuinely empty/untyped plan row.
   if (record.kind === "plan") return <DesktopPlanCard
     entries={[{
       step: record.body,

@@ -3319,6 +3319,11 @@ export const questionCardMessage = (
  * frozen enum), the in-progress row subtly emphasized. Updates in place as new
  * plan_updated events replace the entries (latest wins). Token styling only —
  * never raw JSON, no SYSTEM label.
+ *
+ * T8 (#8865): a plan may ALSO (or only) carry free-form `prose` — the
+ * collaboration-mode plan write-up (the previously-dropped `plan` ThreadItem)
+ * rides the same note. Prose renders as a muted paragraph above the checklist
+ * (or alone, when there are no structured entries yet).
  */
 export const planCardMessage = (note: DesktopNoteEntry, plan: RuntimePlanCardPayload): TranscriptMessage => ({
   key: note.key,
@@ -3332,9 +3337,14 @@ export const planCardMessage = (note: DesktopNoteEntry, plan: RuntimePlanCardPay
         [
           Icon({ key: `plan-icon-${note.key}`, name: "Compare", size: "sm", color: "accent" }),
           Text({ key: `plan-title-${note.key}`, content: "Plan", variant: "label", color: "textPrimary", weight: "medium" }),
-          Text({ key: `plan-progress-${note.key}`, content: planProgressSummary(plan.entries), variant: "body", color: "textMuted" }),
+          ...(plan.entries.length > 0
+            ? [Text({ key: `plan-progress-${note.key}`, content: planProgressSummary(plan.entries), variant: "body", color: "textMuted" })]
+            : []),
         ],
       ),
+      ...(plan.prose === undefined || plan.prose === ""
+        ? []
+        : [Text({ key: `plan-prose-${note.key}`, content: plan.prose, variant: "body", color: "textMuted" })]),
       ...plan.entries.map((entry, index) => {
         const glyph = planStatusGlyph(entry.status)
         return Stack(
