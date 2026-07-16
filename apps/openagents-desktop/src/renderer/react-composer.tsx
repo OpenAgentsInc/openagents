@@ -43,7 +43,6 @@ import {
   FileDiff,
   Files,
   FolderOpen,
-  House,
   ImagePlus,
   ListPlus,
   Maximize,
@@ -147,7 +146,6 @@ const commandIcon = (command: DesktopCommand): LucideIcon => {
   if (command.id === "window.fullscreen_toggle") return Maximize;
   if (command.id === "chat.open") return MessageCircle;
   if (command.id === "workspace.files") return Files;
-  if (command.id === "workspace.home") return House;
   if (command.id === "workspace.review") return FileDiff;
   if (command.id === "workspace.choose") return FolderOpen;
   if (command.id === "settings.open") return Settings;

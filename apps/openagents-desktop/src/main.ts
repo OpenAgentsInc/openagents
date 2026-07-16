@@ -1081,8 +1081,8 @@ const voiceMedia: VoiceNativeMedia = smokeMode
         queueMicrotask(() => {
           input.onState("live")
           input.onControl({ kind: "activity", activity: "listening" })
-          input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open project home overview", final: false })
-          setTimeout(() => input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open project home overview", final: true }), 800)
+          input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open chat conversation", final: false })
+          setTimeout(() => input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open chat conversation", final: true }), 800)
           setTimeout(() => input.onControl({ kind: "playback", speechRef: "smoke.speech.1", state: "speaking" }), 900)
           setTimeout(() => input.onControl({ kind: "activity", activity: "speech_detected" }), 975)
           setTimeout(() => input.onControl({ kind: "playback", speechRef: "smoke.speech.1", state: "canceled", outcomeRef: "outcome.smoke.interrupt.1" }), 1_050)
@@ -3435,7 +3435,7 @@ const smokeReactSidebarDestinations = `(async () => {
   const deadline = Date.now() + 30000
   const rows = () => [...document.querySelectorAll('[data-sidebar-destination-id]')]
   const ids = () => rows().map(row => row.getAttribute('data-sidebar-destination-id'))
-  const expected = ['workspace-new-chat', 'workspace-home', 'shell-settings-toggle']
+  const expected = ['workspace-new-chat', 'shell-settings-toggle']
   const click = (id) => document.querySelector('[data-sidebar-destination-id="' + id + '"]')?.click()
   const waitFor = async (selector) => {
     while (Date.now() < deadline && document.querySelector(selector) === null) await wait(50)
@@ -3443,10 +3443,6 @@ const smokeReactSidebarDestinations = `(async () => {
   }
   if (JSON.stringify(ids()) !== JSON.stringify(expected)) return { ok: false, reason: 'destination order', ids: ids() }
   const icons = rows().map(row => row.querySelector('[data-icon-name]')?.getAttribute('data-icon-name'))
-  click('workspace-home')
-  const home = await waitFor('[data-react-workspace="home"]')
-  const homeVisible = home !== null && (home.textContent ?? '').includes('Coding sessions')
-  const homeSelected = document.querySelector('[data-sidebar-destination-id="workspace-home"]')?.getAttribute('aria-current') === 'page'
   click('shell-settings-toggle')
   const settings = await waitFor('[data-react-workspace="settings"]')
   const settingsVisible = settings !== null && (settings.textContent ?? '').includes('Codex CLI')
@@ -3461,8 +3457,8 @@ const smokeReactSidebarDestinations = `(async () => {
   const chatVisible = chat !== null
   const searchClosed = document.querySelector('input[type="search"]') === null
   return {
-    ok: homeVisible && homeSelected && settingsVisible && settingsSelected && chatVisible && searchClosed,
-    ids: ids(), icons, homeSelected, settingsSelected, homeVisible, settingsVisible, chatVisible, searchClosed,
+    ok: settingsVisible && settingsSelected && chatVisible && searchClosed && document.querySelector('[data-react-workspace="home"]') === null,
+    ids: ids(), icons, settingsSelected, settingsVisible, chatVisible, searchClosed,
   }
 })()`
 
@@ -4367,6 +4363,7 @@ const smokeMvpSurfaceAllowlist = `(() => {
     // UX-4 (#8790): swept dock affordances and Git mutation controls.
     "workspace-files",
     "workspace-chat",
+    "workspace-home",
     "workspace-product-spec",
     "workspace-assurance-spec",
     "product-spec-workspace",
@@ -4382,7 +4379,7 @@ const smokeMvpSurfaceAllowlist = `(() => {
   // UX-4 (#8790): the rendered dock is EXACTLY the MVP allowlist, in order.
   const dockIds = Array.from(document.querySelectorAll('[data-en-key="sidebar-workspace-dock"] > button[data-en-key]'))
     .map((item) => item.getAttribute("data-en-key"))
-  const expectedDock = ["workspace-new-chat", "workspace-home", "shell-settings-toggle"]
+  const expectedDock = ["workspace-new-chat", "shell-settings-toggle"]
   const dockExact = JSON.stringify(dockIds) === JSON.stringify(expectedDock)
   const codex = document.querySelector('[data-en-key="shell-codex-engine"]')
   return { ok: present.length === 0 && dockExact && codex?.textContent === "Codex", present, dockIds, dockExact, codex: codex?.textContent ?? null }
@@ -4661,8 +4658,8 @@ const smokeVoiceMode = `(async () => {
     const unmuteDeadline = Date.now() + 5000
     while (Date.now() < unmuteDeadline && find("shell-voice-capture")?.textContent !== "Mic capturing") await wait(25)
   }
-  while (Date.now() < deadline && find("workspace-home-panel") === null) await wait(25)
-  const registeredFocus = find("workspace-home-panel") !== null
+  while (Date.now() < deadline && find("shell-transcript") === null) await wait(25)
+  const registeredFocus = find("shell-transcript") !== null
   const newChat = find("workspace-new-chat")
   if (newChat instanceof HTMLElement) { newChat.click(); await wait(50) }
   while (Date.now() < deadline && find("shell-voice-playback-outcome") === null) await wait(25)
@@ -5186,29 +5183,6 @@ const smokeOpenFleetWorkspace = `(async () => {
   }
 })()`
 
-const smokeCodingCatalog = `(async () => {
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const home = document.querySelector('[data-en-key="workspace-home"]')
-  if (home === null) return { ok: false, reason: "Project home dock button missing" }
-  home.click()
-  const deadline = Date.now() + 10000
-  while (Date.now() < deadline && document.querySelector('[data-en-key^="workspace-home-session-session.desktop."]') === null) {
-    await wait(50)
-  }
-  const rows = Array.from(document.querySelectorAll('[data-en-key^="workspace-home-session-session.desktop."]'))
-  const row = rows.find(candidate =>
-    Array.from(candidate.querySelectorAll('[data-en-key^="workspace-home-session-open-"]'))
-      .some(button => button.textContent === "Current")) ?? null
-  const authority = document.querySelector('[data-en-key="workspace-home-authority"]')
-  const current = row?.querySelector('[data-en-key^="workspace-home-session-open-"]')
-  return {
-    ok: row !== null && authority?.textContent === "This Mac" && current?.textContent === "Current",
-    sessionKey: row?.getAttribute("data-en-key") ?? null,
-    authority: authority?.textContent ?? null,
-    current: current?.textContent ?? null,
-  }
-})()`
-
 // Owner contract (EP250, verbatim): "when i do new chat, clicking button or
 // command N, auto focus the input." Cmd+N (Meta+N on darwin, the canonical
 // chat.new binding) must dispatch DesktopNewChat from anywhere outside an
@@ -5518,7 +5492,6 @@ const runSmoke = (window: BrowserWindow): void => {
         }
         if (tracePass === 1) {
           await step("workspace-editor-reload-recovery", smokeWorkspaceEditorRecovery)
-          await step("coding-catalog-reload-restoration", smokeCodingCatalog)
           clearTimeout(timeout)
           console.log("[openagents-desktop smoke] OK")
           finish(0)
@@ -5637,7 +5610,6 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("git-review-attach-to-composer", smokeGitReviewAttach)
         // Cmd+N from the review workspace: fresh transcript + focused composer.
         await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
-        await step("coding-catalog-host-persistence", smokeCodingCatalog)
         await captureShot(window, "10-coding-catalog")
         await step("workspaces-back-to-chat", smokeBackToChat)
         tracePass = 1

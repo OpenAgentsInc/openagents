@@ -32,10 +32,6 @@ export const mvpDockSurfaces = [
     authority: "ProductSpec Scope: session catalog with new, resume, fork, archive, delete",
   },
   {
-    id: "workspace-home",
-    authority: "CW-AC-03: explicit repository grant and stable coding-session home",
-  },
-  {
     id: "shell-settings-toggle",
     authority: "CW-AC-01/02 session truth, CW-AC-18 update/rollback, CW-AC-17 diagnostics, CW-AC-12 keyboard bindings, MAINT-1 #8785 harness maintenance",
   },
@@ -52,6 +48,9 @@ export const mvpRemovedDockItemIds: ReadonlyArray<string> = [
   // The session list itself is the chat navigator; a second Chat destination
   // was inert and duplicated the currently visible workspace.
   "workspace-chat",
+  // Project home was removed by explicit owner direction on 2026-07-16. The
+  // app opens directly into a new Codex conversation instead.
+  "workspace-home",
   // ProductSpec and AssuranceSpec remain internal authoring/verification
   // tooling for the MVP; neither is a user-facing destination.
   "workspace-product-spec",

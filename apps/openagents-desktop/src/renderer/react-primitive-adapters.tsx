@@ -161,10 +161,9 @@ export const ConversationHeader = ({ state }: {
   />
 }
 
-const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Home" | "Settings"): DesktopRailIcon => {
+const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Settings"): DesktopRailIcon => {
   if (icon === "ChatCompose") return "new-session"
   if (icon === "Chats") return "chat"
-  if (icon === "Home") return "home"
   return "settings"
 }
 
@@ -178,7 +177,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
 }): ReactElement => {
   const rows = projectReactSessionRows(state)
   const destinations = projectDesktopSidebarDestinations(
-    state.workspace === "home" || state.workspace === "settings" ? state.workspace : "chat",
+    state.workspace === "settings" ? "settings" : "chat",
     rows.some(row => row.selected),
   )
   const primaryDestinations = destinations.filter(destination => destination.id !== "shell-settings-toggle")
@@ -245,30 +244,6 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
 }
 
 const staticKhalaReporter: IntentReporter = () => Effect.void
-const projectHomeFrameSize = [960, 640] as const
-const projectHomeStatusSize = [240, 32] as const
-const projectHomeFrame = Frame({
-  key: "project-home-khala-frame",
-  a11y: { hidden: true },
-  khala: {
-    id: "desktop-project-home-frame",
-    motif: "cut-corner-surface",
-    width: projectHomeFrameSize[0],
-    height: projectHomeFrameSize[1],
-    density: "comfortable",
-  },
-})
-const projectHomeStatusAccent = Frame({
-  key: "project-home-khala-status-accent",
-  a11y: { hidden: true },
-  khala: {
-    id: "desktop-project-home-status",
-    motif: "header-line",
-    width: projectHomeStatusSize[0],
-    height: projectHomeStatusSize[1],
-    density: "compact",
-  },
-})
 const settingsFrameSize = [960, 720] as const
 const settingsHeaderSize = [360, 48] as const
 const settingsFrame = Frame({
@@ -296,13 +271,11 @@ const settingsHeaderAccent = Frame({
 
 const StaticKhalaDecoration = ({ view, placement }: {
   readonly view: FrameView
-  readonly placement: "frame" | "status" | "settings-frame" | "settings-header"
+  readonly placement: "settings-frame" | "settings-header"
 }): ReactElement => <div
   className="oa-react-khala-decoration"
   data-khala-decoration={placement}
-  {...(placement === "frame" || placement === "status"
-    ? { "data-project-home-khala-decoration": placement }
-    : { "data-settings-khala-decoration": placement })}
+  data-settings-khala-decoration={placement}
   aria-hidden="true"
 >{renderReactDomView(view, { report: staticKhalaReporter, theme: openagentsDesktopTheme })}</div>
 
@@ -349,25 +322,7 @@ export const WorkbenchShell = ({ state, report }: {
     dispatch(report, "DesktopSidebarCollapsedChanged", true)
     setRailOpen(false)
   }
-  const workspaceSurface = state.workspace === "home"
-    ? <main className="oa-react-workspace-surface oa-react-project-home-khala" data-react-workspace="home">
-        <StaticKhalaDecoration view={projectHomeFrame} placement="frame" />
-        <header><div><p>Project home</p><h1>Coding sessions</h1></div><div className="oa-react-project-home-status"><StaticKhalaDecoration view={projectHomeStatusAccent} placement="status" /><span>{state.codingCatalog.authorityLabel}</span></div></header>
-        <p>Resume the exact project, repository, worktree, and task context from this Mac.</p>
-        <Button type="button" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}>Open project folder</Button>
-        <section aria-label="Coding sessions">
-          {state.codingCatalog.sessions.length === 0
-            ? <p>No coding sessions yet.</p>
-            : state.codingCatalog.sessions.map(session => <Button
-                key={session.sessionRef}
-                type="button"
-                variant="outline"
-                data-coding-session-ref={session.sessionRef}
-                onClick={() => dispatch(report, "DesktopCodingSessionOpened", session.sessionRef)}
-              ><span>{session.projectLabel}</span><small>{session.repositoryLabel} · {session.worktreeLabel} · {session.state}</small></Button>)}
-        </section>
-      </main>
-    : state.workspace === "settings"
+  const workspaceSurface = state.workspace === "settings"
       ? <main className="oa-react-workspace-surface oa-react-settings-khala" data-react-workspace="settings">
           <StaticKhalaDecoration view={settingsFrame} placement="settings-frame" />
           <header className="oa-react-settings-header">

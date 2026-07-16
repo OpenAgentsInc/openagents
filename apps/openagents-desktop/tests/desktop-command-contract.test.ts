@@ -30,7 +30,6 @@ describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
       "settings.open",
       "workspace.choose",
       "workspace.files",
-      "workspace.home",
       "workspace.review",
     ]))
     expect(desktopCanonicalCommandRegistry.map(value => value.id)).not.toEqual(expect.arrayContaining([

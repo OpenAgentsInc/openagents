@@ -29,7 +29,6 @@ import {
   Icon,
   NavRail,
   Select,
-  SegmentedControl,
   Spacer,
   SplitPane,
   Stack,
@@ -150,8 +149,6 @@ import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse 
 import {
   emptyDesktopCodingCatalogProjection,
   desktopWorkspaceForCodingFocus,
-  filterDesktopCodingCatalog,
-  parseDesktopCodingCatalogQuery,
   type DesktopCodingCatalogProjection,
 } from "../coding-catalog-contract.ts"
 import {
@@ -1073,12 +1070,10 @@ const workspaceNavigationDestination = (
   workspace: "chat" | "home" | "files" | "review" | "settings",
 ): DesktopNavigationDestination => ({
   kind: "workspace",
-  workspace,
-  title: workspace === "chat"
+  workspace: workspace === "home" ? "chat" : workspace,
+  title: workspace === "chat" || workspace === "home"
     ? "Chat"
-    : workspace === "home"
-      ? "Project home"
-      : workspace === "files"
+    : workspace === "files"
         ? "Files"
         : workspace === "review"
           ? "Review changes"
@@ -1104,7 +1099,7 @@ const currentDesktopNavigationDestination = (
     }
   }
   return workspaceNavigationDestination(
-    state.workspace === "home" || state.workspace === "files" || state.workspace === "review" || state.workspace === "settings"
+    state.workspace === "files" || state.workspace === "review" || state.workspace === "settings"
       ? state.workspace
       : "chat",
   )
@@ -1941,6 +1936,7 @@ export const makeDesktopShellHandlers = (
     return true
   })
   const commitWorkspace = (workspace: "chat" | "home" | "files" | "review" | "settings") => Effect.gen(function* () {
+    if (workspace === "home") workspace = "chat"
     if (workspace === "settings") {
       yield* SubscriptionRef.update(state, current => withWorkspace(current, "settings"))
       const bindings = yield* Effect.promise(commandBindingHost.snapshot)
@@ -1966,9 +1962,6 @@ export const makeDesktopShellHandlers = (
     if (workspace === "files") {
       yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
       yield* recoverWorkspaceEditor
-    } else if (workspace === "home") {
-      const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
-      yield* SubscriptionRef.update(state, current => ({ ...current, codingCatalog }))
     } else {
       yield* SubscriptionRef.update(state, current => ({ ...current, git: { ...current.git, causalItemRef: null } }))
       yield* refreshGitPanel(state, gitBridge)
@@ -2448,7 +2441,7 @@ export const makeDesktopShellHandlers = (
     yield* SubscriptionRef.update(state, (current): DesktopShellState => ({
       ...current,
       codingCatalog,
-      workspace: "home",
+      workspace: "chat",
       codingSessionFilter: "active",
       codingSessionQuery: "",
     }))
@@ -2482,7 +2475,7 @@ export const makeDesktopShellHandlers = (
       ...current,
       codingCatalog,
       workspace: codingCatalog.selectedSessionRef === null
-        ? "home"
+        ? "chat"
         : desktopWorkspaceForCodingFocus(codingCatalog.focus),
       codingSessionDeleteConfirmRef: null,
     }))
@@ -2499,7 +2492,7 @@ export const makeDesktopShellHandlers = (
       ...value,
       codingCatalog,
       codingSessionDeleteConfirmRef: null,
-      workspace: "home" as const,
+      workspace: "chat" as const,
     }))
   }),
   DesktopCodingSessionRecovered: (sessionRef) => Effect.gen(function* () {
@@ -2681,14 +2674,11 @@ export const makeDesktopShellHandlers = (
   DesktopWorkspaceSelected: (workspace) =>
     Effect.gen(function* () {
       if (workspace === "fleet" || workspace === "terminal" || workspace === "inbox") return
+      if (workspace === "home") workspace = "chat"
       yield* SubscriptionRef.update(state, (current) => withWorkspace(current, workspace))
       if (workspace === "files") {
         yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
         yield* recoverWorkspaceEditor
-      }
-      if (workspace === "home") {
-        const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
-        yield* SubscriptionRef.update(state, current => ({ ...current, codingCatalog }))
       }
       if (workspace === "review") {
         yield* SubscriptionRef.update(state, current => ({ ...current, git: { ...current.git, causalItemRef: null } }))
@@ -3453,7 +3443,7 @@ const shellSidebar = (state: DesktopShellState): View => {
           //     entry point via ⌘K and the native Commands menu; no dock icon
           //     is called for.
           {id:"sidebar-workspace-dock",layout:"row",items:projectDesktopSidebarDestinations(
-            state.workspace === "home" || state.workspace === "settings" ? state.workspace : "chat",
+            state.workspace === "settings" ? "settings" : "chat",
             state.history.pendingThreadRef !== null || state.history.page !== null || state.activeThreadId !== null,
           ).map((destination: DesktopSidebarDestination) => ({
             id: destination.id,
@@ -3526,165 +3516,6 @@ const selectedCodexThreadDetails = (state: DesktopShellState): View | null => {
     [Stack({ key: "codex-thread-details-content", direction: "column", gap: "1" }, [
       Text({ key: "codex-thread-details-meta", content: fields.join(" · "), variant: "caption", color: "textMuted" }),
     ])],
-  )
-}
-
-const projectHome = (state: DesktopShellState): View => {
-  const parsedQuery = parseDesktopCodingCatalogQuery(state.codingSessionQuery)
-  const queried = parsedQuery.state === "invalid"
-    ? []
-    : filterDesktopCodingCatalog(state.codingCatalog, parsedQuery.plan)
-  const visible = queried.filter(session =>
-    state.codingSessionFilter === "active"
-      ? session.state === "active" || session.state === "idle"
-      : state.codingSessionFilter === "archived"
-        ? session.state === "archived"
-        : session.recoveryReason !== null || session.state === "recovery_required")
-  const activeCount = state.codingCatalog.activeCount
-  const recoveryCount = state.codingCatalog.recoveryCount
-  const archivedCount = state.codingCatalog.archivedCount
-  const focusLabel = state.codingCatalog.focus.kind === "none"
-    ? "No restored focus"
-    : `Restored ${state.codingCatalog.focus.kind} focus`
-  return Stack(
-    {
-      key: "workspace-home-panel",
-      direction: "column",
-      gap: "3",
-      style: { width: "full", maxWidth: columnWidth, alignSelf: "center", flex: 1, minHeight: 0 },
-    },
-    [
-      Stack({ key: "workspace-home-heading", direction: "row", gap: "2", align: "center" }, [
-        Text({ key: "workspace-home-title", content: "Coding sessions", variant: "heading", color: "textPrimary" }),
-        Badge({ key: "workspace-home-authority", label: state.codingCatalog.authorityLabel, tone: "neutral" }),
-      ]),
-      Text({ key: "workspace-home-copy", content: "Resume the exact project, repository, worktree, and task context from this Mac.", variant: "body", color: "textMuted" }),
-      Stack({ key: "workspace-home-actions", direction: "row", gap: "2", align: "center" }, [
-        Button({
-          key: "workspace-home-open-folder",
-          label: "Add workspace",
-          variant: "secondary",
-          onPress: IntentRef("DesktopCodingCatalogChooseRequested"),
-          a11y: { label: "Choose a workspace and create or resume its coding session" },
-        }),
-        Text({ key: "workspace-home-focus", content: focusLabel, variant: "caption", color: "textMuted" }),
-      ]),
-      // A single-choice filter switch (harmonization #8811 category 8): three
-      // buttons manually toggling variant secondary/ghost by selection was the
-      // exact one-off SegmentedControl now exists to replace.
-      SegmentedControl({
-        key: "workspace-home-filters",
-        value: state.codingSessionFilter,
-        options: [
-          { id: "active", label: `Active ${activeCount}` },
-          { id: "recovery", label: `Needs recovery ${recoveryCount}` },
-          { id: "archived", label: `Archived ${archivedCount}` },
-        ],
-        onChange: IntentRef("DesktopCodingCatalogFilterSelected", ComponentValueBinding()),
-      }),
-      TextField({
-        key: "workspace-home-query",
-        value: state.codingSessionQuery,
-        placeholder: "Filter by project:, repository:, or state:",
-        a11y: { label: "Structured coding session search" },
-        onChange: IntentRef("DesktopCodingCatalogQueryChanged", ComponentValueBinding()),
-        style: { width: "full" },
-      }),
-      ...(parsedQuery.state === "invalid" ? [Text({
-        key: "workspace-home-query-error",
-        content: parsedQuery.reason,
-        variant: "caption",
-        color: "warning",
-      })] : []),
-      ...(visible.length === 0 ? [Text({
-        key: "workspace-home-empty",
-        content: state.codingSessionFilter === "active"
-          ? "Add a workspace to create the first durable coding session."
-          : state.codingSessionFilter === "recovery"
-            ? "No sessions need recovery."
-            : "No archived sessions.",
-        variant: "body",
-        color: "textMuted",
-      })] : visible.map((session) => Card(
-        {
-          key: `workspace-home-session-box-${session.sessionRef}`,
-          padding: "3",
-          radius: "lg",
-          style: { width: "full", borderColor: "borderSubtle", borderWidth: 1 },
-        },
-        [Stack(
-        {
-          key: `workspace-home-session-${session.sessionRef}`,
-          direction: "row",
-          gap: "3",
-          align: "center",
-        },
-        [
-          Stack({ key: `workspace-home-session-copy-${session.sessionRef}`, direction: "column", gap: "0.5", style: { flex: 1, minWidth: 0 } }, [
-            Text({ key: `workspace-home-session-title-${session.sessionRef}`, content: session.projectLabel, variant: "title", color: "textPrimary" }),
-            Text({ key: `workspace-home-session-context-${session.sessionRef}`, content: `${session.repositoryLabel} · ${session.worktreeLabel} · ${formatRelativeTimestamp(session.lastActiveAt)}`, variant: "caption", color: "textMuted" }),
-          ]),
-          Badge({
-            key: `workspace-home-session-state-${session.sessionRef}`,
-            label: session.recoveryReason === null ? session.state : `Recovery · ${session.recoveryReason.replaceAll("_", " ")}`,
-            tone: session.recoveryReason !== null ? "warn" : session.state === "archived" ? "neutral" : "info",
-          }),
-          ...(session.recoveryReason !== null || session.state === "archived" ? [Button({
-            key: `workspace-home-session-recover-${session.sessionRef}`,
-            label: "Recover",
-            variant: "secondary",
-            onPress: IntentRef("DesktopCodingSessionRecovered", StaticPayload(session.sessionRef)),
-            a11y: { label: `Recover coding session for ${session.projectLabel}` },
-          })] : [Button({
-            key: `workspace-home-session-open-${session.sessionRef}`,
-            label: state.codingCatalog.selectedSessionRef === session.sessionRef ? "Current" : "Open",
-            variant: state.codingCatalog.selectedSessionRef === session.sessionRef ? "secondary" : "ghost",
-            onPress: IntentRef("DesktopCodingSessionOpened", StaticPayload(session.sessionRef)),
-            a11y: { label: `Open coding session for ${session.projectLabel}` },
-          })]),
-          ...(session.state === "archived" ? [] : [Button({
-            key: `workspace-home-session-archive-${session.sessionRef}`,
-            label: "Archive",
-            variant: "ghost",
-            onPress: IntentRef("DesktopCodingSessionArchived", StaticPayload(session.sessionRef)),
-            a11y: { label: `Archive coding session for ${session.projectLabel}` },
-          })]),
-          ...(session.state !== "archived" ? [] : state.codingSessionDeleteConfirmRef === session.sessionRef
-            ? [
-                Text({ key: `workspace-home-session-delete-warning-${session.sessionRef}`, content: "Permanently remove this local session and its orphaned workspace identity?", variant: "caption", color: "warning" }),
-                Button({
-                  key: `workspace-home-session-delete-confirm-${session.sessionRef}`,
-                  label: "Delete permanently",
-                  variant: "primary",
-                  onPress: IntentRef("DesktopCodingSessionDeleteConfirmed", StaticPayload(session.sessionRef)),
-                  a11y: { label: `Permanently delete coding session for ${session.projectLabel}` },
-                }),
-                Button({
-                  key: `workspace-home-session-delete-cancel-${session.sessionRef}`,
-                  label: "Keep",
-                  variant: "secondary",
-                  onPress: IntentRef("DesktopCodingSessionDeleteCancelled"),
-                  a11y: { label: `Keep coding session for ${session.projectLabel}` },
-                }),
-              ]
-            : [Button({
-                key: `workspace-home-session-delete-${session.sessionRef}`,
-                label: "Delete",
-                variant: "ghost",
-                onPress: IntentRef("DesktopCodingSessionDeleteRequested", StaticPayload(session.sessionRef)),
-                a11y: { label: `Delete archived coding session for ${session.projectLabel}` },
-              })]),
-        ],
-      )],
-      ))),
-      ...(state.codingCatalog.nextOffset === null ? [] : [Button({
-        key: "workspace-home-load-more",
-        label: `Load older sessions (${state.codingCatalog.sessions.length} of ${state.codingCatalog.totalSessions})`,
-        variant: "secondary",
-        onPress: IntentRef("DesktopCodingCatalogMoreRequested"),
-        a11y: { label: "Load the next bounded page of older coding sessions" },
-      })]),
-    ],
   )
 }
 
@@ -4739,7 +4570,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" || state.workspace === "home" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : chatTranscriptArea(state)),
         ],
       ),
     ],

@@ -177,14 +177,14 @@ const probeShellScript = `(() => {
   if (root === null) return { mounted: false }
   const sidebar = document.querySelector('[data-en-key="shell-sidebar"]')
   const dock = Array.from(document.querySelectorAll(
-    '[data-en-key="workspace-new-chat"], [data-en-key="workspace-fleet"], [data-en-key="workspace-files"], [data-en-key="workspace-home"], [data-en-key="shell-command-palette-toggle"], [data-en-key="shell-settings-toggle"]'
+    '[data-en-key="workspace-new-chat"], [data-en-key="workspace-fleet"], [data-en-key="workspace-files"], [data-en-key="shell-command-palette-toggle"], [data-en-key="shell-settings-toggle"]'
   )).map((element) => element.getAttribute("data-en-key"))
   return {
     mounted: true,
     sidebar: sidebar !== null,
     dock,
     newChatFirst: dock[0] === "workspace-new-chat",
-    homeSecond: dock[1] === "workspace-home",
+    settingsSecond: dock[1] === "shell-settings-toggle",
   }
 })()`
 
@@ -531,7 +531,7 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
     )
     const value = result.value
     const ok = result.ok && value["sidebar"] === true &&
-      value["newChatFirst"] === true && value["fleetSecond"] === true
+      value["newChatFirst"] === true && value["settingsSecond"] === true
     if (ok) {
       await capture("shell")
       record("shell-mounted", true, { dock: value["dock"] })

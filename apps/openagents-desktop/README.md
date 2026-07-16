@@ -66,8 +66,9 @@ repository pins, verifier, named account, and authority-backed closeout remain
 the Pylon contract.
 
 The primary sidebar is one Effect-owned typed projection shared by the
-compatibility and React renderers: **New session**, **Chat**, **Project home**,
-and **Settings**, in that exact order. ProductSpec and AssuranceSpec remain
+compatibility and React renderers: **New session** and **Settings**, in that
+exact order around the Recent session list. Project home and Chat are absent.
+ProductSpec and AssuranceSpec remain
 internal tooling rather than visible destinations. Collapse/expand is typed
 shell state whose boolean preference persists in the main-owned versioned
 preferences document; session-search disclosure deliberately starts closed on

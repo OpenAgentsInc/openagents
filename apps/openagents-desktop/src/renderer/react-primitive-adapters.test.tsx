@@ -482,20 +482,15 @@ describe("React workbench shell", () => {
     const destinations = () => [...container.querySelectorAll<HTMLButtonElement>("[data-sidebar-destination-id]")]
     expect(destinations().map(row => row.dataset.sidebarDestinationId)).toEqual([
       "workspace-new-chat",
-      "workspace-home",
       "shell-settings-toggle",
     ])
     expect(destinations().map(row => row.querySelector("[data-icon-name]")?.getAttribute("data-icon-name"))).toEqual([
-      "ChatCompose", "Home", "Settings",
+      "ChatCompose", "Settings",
     ])
     expect(container.querySelector(".oa-react-sidebar-footer [data-sidebar-destination-id=\"shell-settings-toggle\"]")).not.toBeNull()
     expect(container.textContent).not.toContain("Workspaces")
+    expect(container.querySelector('[data-react-workspace="home"]')).toBeNull()
     await interact(() => destinations()[1]?.click())
-    expect(received.at(-1)).toEqual({ name: "DesktopWorkspaceSelected", payload: "home" })
-    await render(root, <WorkbenchShell state={{ ...chat, workspace: "home" }} report={report} />)
-    expect(container.querySelector('[data-react-workspace="home"] h1')?.textContent).toBe("Coding sessions")
-    expect(container.querySelector('[data-sidebar-destination-id="workspace-home"]')?.getAttribute("aria-current")).toBe("page")
-    await interact(() => destinations()[2]?.click())
     expect(received.at(-1)).toEqual({ name: "DesktopSettingsToggled", payload: null })
     await render(root, <WorkbenchShell state={{ ...chat, workspace: "settings" }} report={report} />)
     expect(container.querySelector('[data-react-workspace="settings"] h1')?.textContent).toBe("Settings")
@@ -511,35 +506,6 @@ describe("React workbench shell", () => {
     expect(expand).not.toBeNull()
     expect(expand?.querySelector('[data-icon-name="Menu"]')).not.toBeNull()
     expect(container.querySelector('input[type="search"]')).toBeNull()
-  })
-
-  test("keeps static Project Home motifs inert and singular through Strict Mode replay", async () => {
-    const { container } = installDom()
-    const root = createTestRoot(container)
-    const state = { ...fixtureState(), workspace: "home" as const }
-    await render(root, <StrictMode>
-      <WorkbenchShell state={state} report={() => Effect.void} />
-    </StrictMode>)
-
-    const decorations = [...container.querySelectorAll<HTMLElement>("[data-project-home-khala-decoration]")]
-    expect(decorations.map(node => node.dataset.projectHomeKhalaDecoration)).toEqual(["frame", "status"])
-    expect(container.querySelectorAll('[data-en-khala="cut-corner-surface"]')).toHaveLength(1)
-    expect(container.querySelectorAll('[data-en-khala="header-line"]')).toHaveLength(1)
-    expect(container.querySelectorAll("#en-khala-desktop-project-home-frame")).toHaveLength(1)
-    expect(container.querySelectorAll("#en-khala-desktop-project-home-status")).toHaveLength(1)
-    expect(container.querySelectorAll("[data-en-khala-decoration]")).toHaveLength(2)
-    for (const decoration of decorations) {
-      expect(decoration.getAttribute("aria-hidden")).toBe("true")
-      expect(decoration.querySelector("button, a, input, [tabindex]")).toBeNull()
-      expect(decoration.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true")
-      expect(decoration.querySelector("svg")?.getAttribute("focusable")).toBe("false")
-    }
-
-    await render(root, <StrictMode>
-      <WorkbenchShell state={state} report={() => Effect.void} />
-    </StrictMode>)
-    expect(container.querySelectorAll("[data-project-home-khala-decoration]")).toHaveLength(2)
-    expect(container.querySelector('[data-react-workspace="home"] h1')?.textContent).toBe("Coding sessions")
   })
 
   test("keeps the Settings Khala frame singular while status articles remain semantic and unframed", async () => {
@@ -610,16 +576,16 @@ describe("React workbench shell", () => {
         canGoBack: true,
         canGoForward: true,
         backTitle: "Earlier session",
-        forwardTitle: "Project home",
+        forwardTitle: "Settings",
       },
     }
     await render(root, <WorkbenchShell state={enabled} report={report} />)
     const back = container.querySelector<HTMLButtonElement>('[aria-label="Back to Earlier session"]')
-    const forward = container.querySelector<HTMLButtonElement>('[aria-label="Forward to Project home"]')
+    const forward = container.querySelector<HTMLButtonElement>('[aria-label="Forward to Settings"]')
     expect(back?.disabled).toBe(false)
     expect(forward?.disabled).toBe(false)
     expect(back?.title).toBe("Back to Earlier session")
-    expect(forward?.title).toBe("Forward to Project home")
+    expect(forward?.title).toBe("Forward to Settings")
     await interact(() => back?.click())
     await interact(() => forward?.click())
     expect(received).toEqual([

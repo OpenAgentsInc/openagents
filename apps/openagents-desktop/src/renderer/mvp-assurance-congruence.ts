@@ -58,14 +58,6 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     oracleRefs: ["apps/openagents-desktop/src/renderer/runtime-conversation.test.ts", "apps/openagents-desktop/tests/native-conversation-continuation.e2e.test.ts"],
   },
   {
-    surfaceId: "workspace-home",
-    interaction: "Grant one repository and retain stable work-context identity",
-    criterionRefs: ["CW-AC-03"],
-    assuranceItemRefs: ["AO-CW-AC-03-01"],
-    contractRefs: ["openagents_desktop.mvp.visible_surface_allowlist.v1"],
-    oracleRefs: ["apps/openagents-desktop/tests/local-first-identity.e2e.test.ts", "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"],
-  },
-  {
     surfaceId: "shell-settings-toggle",
     interaction: "Open and scroll Settings without opening Command-K",
     criterionRefs: ["CW-AC-12"],

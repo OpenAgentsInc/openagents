@@ -1097,8 +1097,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             interrupt: () => Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted"), null))),
             focusRegisteredCommand: commandId => {
               const workspace = commandId === "workspace.files" ? "files"
-                : commandId === "workspace.home" ? "home"
-                  : commandId === "workspace.review" ? "review" : "chat"
+                : commandId === "workspace.review" ? "review" : "chat"
               return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspaceSelected", StaticPayload(workspace)), null)))
             },
             editFallback: text => Effect.runPromise(SubscriptionRef.update(state, current => withInput(current, text))),
