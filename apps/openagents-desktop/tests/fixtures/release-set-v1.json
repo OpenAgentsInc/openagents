@@ -1,0 +1,11 @@
+{
+  "schema": "openagents.desktop.update_manifest.v1",
+  "app": "openagents-desktop",
+  "channel": "rc",
+  "version": "1.2.3-rc.4",
+  "artifactName": "OpenAgents-1.2.3-rc.4-arm64.dmg",
+  "artifactSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "artifactByteLength": 123456,
+  "releasedAt": "2026-07-16T16:00:00Z",
+  "notesRef": "release.notes.1.2.3-rc.4"
+}

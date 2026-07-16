@@ -163,6 +163,28 @@ export interface SignedManifestResult {
 }
 
 /**
+ * Sign already-canonical release-selection bytes with the existing custody
+ * seam. This is shared by v1 and ReleaseSet v2; it deliberately accepts bytes
+ * rather than an object so the caller, not JSON.stringify insertion order,
+ * owns the canonical payload. The returned public pin is checked before any
+ * publisher can expose an envelope claiming the production key id.
+ */
+export const signReleasePayload = (
+  payloadBytes: Uint8Array,
+  key: ReleaseSigningKey,
+): SignedManifestResult => {
+  const pin = deriveReleaseKeyPin(key)
+  assertProductionKidIntegrity(pin)
+  const envelope: UpdateSignature = {
+    alg: "ed25519",
+    kid: key.kid,
+    sha256: createHash("sha256").update(payloadBytes).digest("hex"),
+    signature: edSign(null, payloadBytes, privateKeyFromSeed(key.d)).toString("base64url"),
+  }
+  return { payloadBytes, envelope, pin }
+}
+
+/**
  * Sign a manifest and SELF-VERIFY the result through the exact client seam
  * (`verifySignedUpdateManifest`) before returning — a publish that a client
  * would reject can never be produced.
@@ -172,13 +194,7 @@ export const signUpdateManifest = (
   key: ReleaseSigningKey,
 ): SignedManifestResult => {
   const payloadBytes = new TextEncoder().encode(JSON.stringify(manifest))
-  const envelope: UpdateSignature = {
-    alg: "ed25519",
-    kid: key.kid,
-    sha256: createHash("sha256").update(payloadBytes).digest("hex"),
-    signature: edSign(null, payloadBytes, privateKeyFromSeed(key.d)).toString("base64url"),
-  }
-  const pin = deriveReleaseKeyPin(key)
+  const { envelope, pin } = signReleasePayload(payloadBytes, key)
   const verified = verifySignedUpdateManifest(payloadBytes, envelope, pin, manifest.channel)
   if (!verified.ok) {
     throw new Error(`self-verification of the signed manifest failed: ${verified.reason}`)

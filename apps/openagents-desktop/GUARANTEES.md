@@ -935,6 +935,38 @@ Contracts: `src/update-contract.ts` (receipt schema + evaluation),
 [`tests/launch-receipt.test.ts`](./tests/launch-receipt.test.ts) and
 [`tests/update-rollback.test.ts`](./tests/update-rollback.test.ts).
 
+### ReleaseSet v2 is the complete signed selection authority (#8915)
+
+`openagents.desktop.release_set.v2` is a canonical, Effect-schema-bounded
+document with exactly six ordered target rows and all twelve required format
+artifacts. Each artifact binds its immutable name, credential-free HTTPS URL,
+object identity, SHA-256, byte length, component-ledger digest/ref, build
+receipt, and signing policy to one version, channel, source revision, release
+notes set, and pinned Ed25519 signature.
+
+- Unknown, missing, duplicate, reordered, or impossible target/format entries
+  fail closed. Stable refuses prereleases; RC refuses stable versions.
+- The finalizer accepts the existing private-key custody value only after the
+  complete artifact byte map independently matches every signed digest and
+  length. Partial sets, unledgered bytes, and non-monotonic candidates cannot
+  reach signing.
+- Clients verify canonical payload bytes and the pinned signature before
+  deterministic native OS/architecture selection, then select only the
+  target's fixed preferred format. TLS, object metadata, pointers, and mirrors
+  have no substitution authority.
+- The v1 single-artifact manifest is not converted to v2. It remains readable
+  only as the explicit `v1-darwin-arm64` compatibility variant through
+  2026-10-14T23:59:59Z; all other targets and all new publication are v2-only.
+
+Contract: [`src/release-set-contract.ts`](./src/release-set-contract.ts).
+Canonical, completeness, mutation, byte-convergence, monotonicity, selection,
+and v1/v2 golden oracles:
+[`tests/release-set-contract.test.ts`](./tests/release-set-contract.test.ts).
+
+This implemented contract does not itself admit any cross-platform target as
+supported. The native install/update/interruption/rollback receipts required
+by the normative ProductSpec remain the support authority.
+
 ## Not guaranteed yet
 
 This document does not promise automatic update delivery (the live feed

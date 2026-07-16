@@ -1,0 +1,249 @@
+{
+  "schema": "openagents.desktop.release_set.v2",
+  "schemaVersion": 2,
+  "app": "openagents-desktop",
+  "channel": "rc",
+  "version": "2.4.0-rc.3",
+  "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "publishedAt": "2026-07-16T16:00:00Z",
+  "signingPolicy": {
+    "id": "desktop-release-policy-v2",
+    "algorithm": "ed25519",
+    "keyId": "fixture-release-set-v2"
+  },
+  "releaseNotes": {
+    "summary": "Cross-platform fixture release.",
+    "human": {
+      "ref": "docs/changelog/human/fixture.md",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "agent": {
+      "ref": "docs/changelog/agent/fixture.md",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  "targets": [
+    {
+      "target": "darwin-arm64",
+      "minimumOs": "13.5",
+      "preferredFormat": "dmg",
+      "artifacts": [
+        {
+          "target": "darwin-arm64",
+          "format": "dmg",
+          "name": "OpenAgents-2.4.0-rc.3-rc-darwin-arm64.dmg",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/darwin-arm64/OpenAgents-2.4.0-rc.3-rc-darwin-arm64.dmg",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/darwin-arm64/OpenAgents-2.4.0-rc.3-rc-darwin-arm64.dmg",
+          "sha256": "4b672044ba1e15584f48e3b7716454dc3c08f8badb1c7d05912e9db607dfbdca",
+          "byteLength": 33,
+          "componentLedgerSha256": "57bad7413a86aba9617226be7cf8cca29cda8a4ef328cf26292274a81fcac2b1",
+          "componentLedgerRef": "receipt/ledger/darwin-arm64",
+          "buildReceiptRef": "receipt/build/darwin-arm64/dmg",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "target": "darwin-arm64",
+          "format": "zip",
+          "name": "OpenAgents-2.4.0-rc.3-rc-darwin-arm64.zip",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/darwin-arm64/OpenAgents-2.4.0-rc.3-rc-darwin-arm64.zip",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/darwin-arm64/OpenAgents-2.4.0-rc.3-rc-darwin-arm64.zip",
+          "sha256": "8e72f549aa3ee6104aa3e4684b408b81849f0a5c9efabc7886c461a2d6b83fb3",
+          "byteLength": 33,
+          "componentLedgerSha256": "57bad7413a86aba9617226be7cf8cca29cda8a4ef328cf26292274a81fcac2b1",
+          "componentLedgerRef": "receipt/ledger/darwin-arm64",
+          "buildReceiptRef": "receipt/build/darwin-arm64/zip",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "target": "darwin-x64",
+      "minimumOs": "13.5",
+      "preferredFormat": "dmg",
+      "artifacts": [
+        {
+          "target": "darwin-x64",
+          "format": "dmg",
+          "name": "OpenAgents-2.4.0-rc.3-rc-darwin-x64.dmg",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/darwin-x64/OpenAgents-2.4.0-rc.3-rc-darwin-x64.dmg",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/darwin-x64/OpenAgents-2.4.0-rc.3-rc-darwin-x64.dmg",
+          "sha256": "4c4e934e349d4b55403664aed5cdac21a89938ceb1e3e79721ea2cb3eade2262",
+          "byteLength": 31,
+          "componentLedgerSha256": "0e141bf0a3ea781062560e06230bd195cd30ecd3458a506113234cdf11803540",
+          "componentLedgerRef": "receipt/ledger/darwin-x64",
+          "buildReceiptRef": "receipt/build/darwin-x64/dmg",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "target": "darwin-x64",
+          "format": "zip",
+          "name": "OpenAgents-2.4.0-rc.3-rc-darwin-x64.zip",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/darwin-x64/OpenAgents-2.4.0-rc.3-rc-darwin-x64.zip",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/darwin-x64/OpenAgents-2.4.0-rc.3-rc-darwin-x64.zip",
+          "sha256": "491bbb9b9ab1fbc2845a84f58403dfbc79265a598eebf0f14ab090c4ca09828b",
+          "byteLength": 31,
+          "componentLedgerSha256": "0e141bf0a3ea781062560e06230bd195cd30ecd3458a506113234cdf11803540",
+          "componentLedgerRef": "receipt/ledger/darwin-x64",
+          "buildReceiptRef": "receipt/build/darwin-x64/zip",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "target": "win32-arm64",
+      "minimumOs": "10.0.26100",
+      "preferredFormat": "nsis",
+      "artifacts": [
+        {
+          "target": "win32-arm64",
+          "format": "nsis",
+          "name": "OpenAgents-2.4.0-rc.3-rc-win32-arm64-setup.exe",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/win32-arm64/OpenAgents-2.4.0-rc.3-rc-win32-arm64-setup.exe",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/win32-arm64/OpenAgents-2.4.0-rc.3-rc-win32-arm64-setup.exe",
+          "sha256": "7188f10500b66b3c976698ec5beaf7e6113bcfa5f4d80e190b04cb3fc3cc18c5",
+          "byteLength": 33,
+          "componentLedgerSha256": "587dff247fcf0a880a39299fe9a80b0d9bf4fc2a3a38f4cd4d1723922a0ed43e",
+          "componentLedgerRef": "receipt/ledger/win32-arm64",
+          "buildReceiptRef": "receipt/build/win32-arm64/nsis",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "target": "win32-x64",
+      "minimumOs": "10.0.19045",
+      "preferredFormat": "nsis",
+      "artifacts": [
+        {
+          "target": "win32-x64",
+          "format": "nsis",
+          "name": "OpenAgents-2.4.0-rc.3-rc-win32-x64-setup.exe",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/win32-x64/OpenAgents-2.4.0-rc.3-rc-win32-x64-setup.exe",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/win32-x64/OpenAgents-2.4.0-rc.3-rc-win32-x64-setup.exe",
+          "sha256": "2d3e9ca74fd01c41c06a9e1a51fa122a3b1f9846a03ccd58122d09927906917f",
+          "byteLength": 31,
+          "componentLedgerSha256": "8c1e73ccf622e7fcdcbfb876c6a8d780f1b2b85e64c9f2169565550955426e95",
+          "componentLedgerRef": "receipt/ledger/win32-x64",
+          "buildReceiptRef": "receipt/build/win32-x64/nsis",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "target": "linux-arm64",
+      "minimumOs": "glibc 2.35",
+      "preferredFormat": "appimage",
+      "artifacts": [
+        {
+          "target": "linux-arm64",
+          "format": "appimage",
+          "name": "OpenAgents-2.4.0-rc.3-rc-linux-arm64.AppImage",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/linux-arm64/OpenAgents-2.4.0-rc.3-rc-linux-arm64.AppImage",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/linux-arm64/OpenAgents-2.4.0-rc.3-rc-linux-arm64.AppImage",
+          "sha256": "3785482a318d1add19b445874ec32df5a4ad96db8a00952d2e8d7df58147d807",
+          "byteLength": 37,
+          "componentLedgerSha256": "143c76f76238b8e61197a224bd4729a748cae156b3329b3be2a702ddf6734cc3",
+          "componentLedgerRef": "receipt/ledger/linux-arm64",
+          "buildReceiptRef": "receipt/build/linux-arm64/appimage",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "target": "linux-arm64",
+          "format": "deb",
+          "name": "OpenAgents-2.4.0-rc.3-rc-linux-arm64.deb",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/linux-arm64/OpenAgents-2.4.0-rc.3-rc-linux-arm64.deb",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/linux-arm64/OpenAgents-2.4.0-rc.3-rc-linux-arm64.deb",
+          "sha256": "ed8d92409c9d4a0c0ed82c491df3c72985c2b3cdc80f712e9e5ac283d1160761",
+          "byteLength": 32,
+          "componentLedgerSha256": "143c76f76238b8e61197a224bd4729a748cae156b3329b3be2a702ddf6734cc3",
+          "componentLedgerRef": "receipt/ledger/linux-arm64",
+          "buildReceiptRef": "receipt/build/linux-arm64/deb",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "target": "linux-arm64",
+          "format": "rpm",
+          "name": "OpenAgents-2.4.0-rc.3-rc-linux-arm64.rpm",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/linux-arm64/OpenAgents-2.4.0-rc.3-rc-linux-arm64.rpm",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/linux-arm64/OpenAgents-2.4.0-rc.3-rc-linux-arm64.rpm",
+          "sha256": "4d6fa1ffbdd05c53221e909c18c704a54b9000b8f2056509325517a4fe89a697",
+          "byteLength": 32,
+          "componentLedgerSha256": "143c76f76238b8e61197a224bd4729a748cae156b3329b3be2a702ddf6734cc3",
+          "componentLedgerRef": "receipt/ledger/linux-arm64",
+          "buildReceiptRef": "receipt/build/linux-arm64/rpm",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "target": "linux-x64",
+      "minimumOs": "glibc 2.35",
+      "preferredFormat": "appimage",
+      "artifacts": [
+        {
+          "target": "linux-x64",
+          "format": "appimage",
+          "name": "OpenAgents-2.4.0-rc.3-rc-linux-x64.AppImage",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/linux-x64/OpenAgents-2.4.0-rc.3-rc-linux-x64.AppImage",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/linux-x64/OpenAgents-2.4.0-rc.3-rc-linux-x64.AppImage",
+          "sha256": "5359eb3b0a42cf83b6ae32c89f05990ae56d63f2a7695ae00095508ffe7f8f16",
+          "byteLength": 35,
+          "componentLedgerSha256": "6f94e19c806fa686c615c679ef87bd3ab201e42793b9cc8b7a06d561e885e537",
+          "componentLedgerRef": "receipt/ledger/linux-x64",
+          "buildReceiptRef": "receipt/build/linux-x64/appimage",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "target": "linux-x64",
+          "format": "deb",
+          "name": "OpenAgents-2.4.0-rc.3-rc-linux-x64.deb",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/linux-x64/OpenAgents-2.4.0-rc.3-rc-linux-x64.deb",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/linux-x64/OpenAgents-2.4.0-rc.3-rc-linux-x64.deb",
+          "sha256": "59b3a5645a28e2e0740f7bdccac759f5e286ae5b117e807ffe9d26dd33b96de0",
+          "byteLength": 30,
+          "componentLedgerSha256": "6f94e19c806fa686c615c679ef87bd3ab201e42793b9cc8b7a06d561e885e537",
+          "componentLedgerRef": "receipt/ledger/linux-x64",
+          "buildReceiptRef": "receipt/build/linux-x64/deb",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "target": "linux-x64",
+          "format": "rpm",
+          "name": "OpenAgents-2.4.0-rc.3-rc-linux-x64.rpm",
+          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/linux-x64/OpenAgents-2.4.0-rc.3-rc-linux-x64.rpm",
+          "objectIdentity": "desktop/rc/2.4.0-rc.3/linux-x64/OpenAgents-2.4.0-rc.3-rc-linux-x64.rpm",
+          "sha256": "db007ba70b46b2ba680b8e809418c7ccdc11d40ebf36d5add60e00b347cb791d",
+          "byteLength": 30,
+          "componentLedgerSha256": "6f94e19c806fa686c615c679ef87bd3ab201e42793b9cc8b7a06d561e885e537",
+          "componentLedgerRef": "receipt/ledger/linux-x64",
+          "buildReceiptRef": "receipt/build/linux-x64/rpm",
+          "signingPolicyId": "desktop-release-policy-v2",
+          "version": "2.4.0-rc.3",
+          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    }
+  ]
+}
