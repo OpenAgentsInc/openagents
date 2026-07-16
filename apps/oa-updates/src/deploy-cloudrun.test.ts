@@ -4,41 +4,69 @@ import { describe, expect, test } from "vite-plus/test"
 
 const script = new URL("../scripts/deploy-cloudrun.sh", import.meta.url).pathname
 
-const deployArgs = (environment: Record<string, string>): readonly string[] =>
-  execFileSync("bash", [script], {
+const immutableBase = `us-central1-docker.pkg.dev/openagents/updates/oa-updates@sha256:${"a".repeat(64)}`
+const immutableBuiltDigest = `sha256:${"b".repeat(64)}`
+
+const deployCommands = (environment: Record<string, string>): {
+  readonly build: readonly string[]
+  readonly deploy: readonly string[]
+} => {
+  const lines = execFileSync("bash", [script], {
     encoding: "utf8",
     env: {
       PATH: process.env.PATH ?? "/usr/bin:/bin",
       OA_UPDATES_DEPLOY_DRY_RUN: "1",
+      OA_UPDATES_BASE_IMAGE: immutableBase,
+      OA_UPDATES_BUILT_IMAGE_DIGEST: immutableBuiltDigest,
+      OA_UPDATES_SOURCE_REVISION: "c".repeat(40),
       OA_PUBLIC_URL: "https://updates.openagents.test",
       OA_SIGNING_SECRET: "fixture-signing-key:1",
       ...environment,
     },
   }).trim().split("\n")
+  return {
+    build: lines.filter((line) => line.startsWith("BUILD_ARG=")).map((line) => line.slice(10)),
+    deploy: lines.filter((line) => line.startsWith("DEPLOY_ARG=")).map((line) => line.slice(11)),
+  }
+}
 
 describe("oa-updates additive Cloud Run deploy command", () => {
   test("Desktop-only update preserves existing mobile env and secrets", () => {
-    const args = deployArgs({
+    const { build, deploy } = deployCommands({
       OA_RELEASE_SET_BUCKET: "openagents-release-fixture",
       OA_RELEASE_SET_PINS_PATH: "/app/openagents-desktop-dist/release-set-pins.json",
     })
-    expect(args).toContain("--update-env-vars")
-    expect(args).not.toContain("--set-env-vars")
-    expect(args).toContain("--update-secrets")
-    const env = args[args.indexOf("--update-env-vars") + 1]
+    expect(build).toContain("cloudbuild.incremental.yaml")
+    expect(build).toContain(`_BASE_IMAGE=${immutableBase},_IMAGE=${immutableBase.split("@")[0]}:source-${"c".repeat(40)}`)
+    expect(deploy).toContain(`${immutableBase.split("@")[0]}@${immutableBuiltDigest}`)
+    expect(deploy).not.toContain("--source")
+    expect(deploy).toContain("--update-env-vars")
+    expect(deploy).not.toContain("--set-env-vars")
+    expect(deploy).toContain("--update-secrets")
+    const env = deploy[deploy.indexOf("--update-env-vars") + 1]
     expect(env).toContain("OA_RELEASE_SET_BUCKET=openagents-release-fixture")
     expect(env).not.toContain("OA_SEED_DIST=")
   })
 
   test("mobile-only update preserves existing Desktop v2 env", () => {
-    const args = deployArgs({
+    const { build, deploy } = deployCommands({
       OA_SEED_DIST: "/app/dist",
       OA_SEED_RUNTIME: "fixture-runtime",
       OA_SEED_BRANCH: "openagents-production",
     })
-    expect(args).toContain("--update-env-vars")
-    const env = args[args.indexOf("--update-env-vars") + 1]
+    expect(build).toContain("Dockerfile.incremental")
+    expect(deploy).toContain("--update-env-vars")
+    expect(deploy).not.toContain("--source")
+    const env = deploy[deploy.indexOf("--update-env-vars") + 1]
     expect(env).toContain("OA_SEED_DIST=/app/dist")
     expect(env).not.toContain("OA_RELEASE_SET_BUCKET=")
+  })
+
+  test.each([
+    ["missing base", { OA_UPDATES_BASE_IMAGE: "" }],
+    ["mutable base tag", { OA_UPDATES_BASE_IMAGE: "registry.invalid/oa-updates:latest" }],
+    ["missing built digest", { OA_UPDATES_BUILT_IMAGE_DIGEST: "" }],
+  ])("refuses %s instead of risking baked release bytes", (_name, environment) => {
+    expect(() => deployCommands(environment)).toThrow()
   })
 })
