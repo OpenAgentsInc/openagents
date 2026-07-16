@@ -103,6 +103,27 @@ describe("bounded bidirectional agent stdio transport", () => {
     await transport.dispose();
   });
 
+  it("binds an extension reverse request without native sessionId before bounded cancellation", async () => {
+    const transport = await start("normal", {
+      methodKinds: [{ method: "cursor/create_plan", kind: "request" }],
+    });
+    let signal: AbortSignal | undefined;
+    transport.registerReverseHandler("cursor/create_plan", async (_params, context) => {
+      expect(context.bindSession?.("cursor-session")).toBe(true);
+      signal = context.signal;
+      await new Promise<void>((resolve) => context.signal.addEventListener("abort", () => resolve()));
+      return { accepted: false };
+    });
+    const reverse = transport.request("test/reverse-extension", {});
+    await waitFor(() => signal !== undefined);
+    expect(transport.cancelReverseRequests("other-session")).toBe(0);
+    expect(transport.cancelReverseRequests("cursor-session")).toBe(1);
+    expect(signal?.aborted).toBe(true);
+    expect(transport.getReceipt().counters.currentReverse).toBe(0);
+    await expect(reverse).resolves.toBeDefined();
+    await transport.dispose();
+  });
+
   it.each(["fragmented", "coalesced"])(
     "handles %s frames, CRLF, blank lines, and multiple messages per chunk",
     async (mode) => {

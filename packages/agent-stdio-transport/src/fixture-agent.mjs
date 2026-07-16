@@ -77,6 +77,10 @@ rl.on("line", (line) => {
       write({ jsonrpc: "2.0", id: reverseRootId, result: message.error ?? message.result });
       return;
     }
+    if (String(message.id) === "cursor-plan") {
+      write({ jsonrpc: "2.0", id: reverseRootId, result: message.error ?? message.result });
+      return;
+    }
     pendingReverse.set(String(message.id), message.error ?? message.result);
     finishReverse();
     return;
@@ -105,6 +109,16 @@ rl.on("line", (line) => {
       id: "terminal",
       method: "terminal/create",
       params: { sessionId: "s-1", command: "printf" },
+    });
+    return;
+  }
+  if (message.method === "test/reverse-extension") {
+    reverseRootId = message.id;
+    write({
+      jsonrpc: "2.0",
+      id: "cursor-plan",
+      method: "cursor/create_plan",
+      params: { toolCallId: "tool-plan", plan: "fixture" },
     });
     return;
   }

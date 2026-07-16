@@ -226,6 +226,24 @@ describe("ACP vendor interaction handlers", () => {
     expect(JSON.stringify(state.todos)).not.toContain("private todo");
   });
 
+  it("binds a Cursor reverse request without native sessionId to its admitted session", async () => {
+    const state = setup("cursor");
+    let boundSessionId: string | undefined;
+    await expect(
+      state.requests.get("cursor/create_plan")!(
+        { toolCallId: "tool-plan", plan: "Plan", todos: [] },
+        {
+          ...context(130),
+          bindSession(sessionId) {
+            boundSessionId = sessionId;
+            return true;
+          },
+        },
+      ),
+    ).resolves.toEqual({ accepted: true });
+    expect(boundSessionId).toBe("session.vendor.1");
+  });
+
   it("rejects stale generation/session bindings before opening an interaction", async () => {
     const state = setup("grok");
     await expect(

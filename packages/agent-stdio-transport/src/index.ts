@@ -163,6 +163,8 @@ export type AgentStdioReverseHandler = (
     requestId: string | number | null;
     signal: AbortSignal;
     generation: number;
+    /** Associates an extension request without native sessionId to its admitted session. */
+    bindSession?(sessionId: string): boolean;
   }>,
 ) => unknown | Promise<unknown>;
 
@@ -1011,6 +1013,13 @@ export class AgentStdioTransport {
           requestId: id,
           signal: controller.signal,
           generation: this.generation,
+          bindSession: (boundSessionId) => {
+            if (boundSessionId.length === 0) return false;
+            const active = this.reverseActive.get(key);
+            if (active === undefined || active.controller.signal.aborted) return false;
+            active.sessionId = boundSessionId;
+            return true;
+          },
         }),
       )
       .then((result) => {

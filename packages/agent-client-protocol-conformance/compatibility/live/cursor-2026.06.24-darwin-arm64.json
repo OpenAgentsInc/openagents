@@ -1,6 +1,6 @@
 {
   "proofClass": "diagnostic-live",
-  "claimAuthority": "initialize-only-final-release-gated-by-8897",
+  "claimAuthority": "candidate-only-final-release-gated-by-8897",
   "recordedAt": "2026-07-16T15:34:21Z",
   "openAgentsRevisionBase": "63cc0d073417d04bfa3146f7b92da1f385f9f420",
   "schemaRelease": "schema-v1.19.0",
@@ -40,6 +40,23 @@
       "session_info_update"
     ],
     "toolUse": "pass-3-tool-updates-disposable-file-created",
+    "streamCancel": "pass-cancelled",
+    "reverseCancel": "pass-create-plan-session-bound-and-aborted",
+    "concurrentSessions": "pass-2-independent-processes",
+    "modelDiscovery": "pass-33-models-26-with-config",
+    "vendorExtensions": {
+      "cursor/create_plan": "live-pass",
+      "cursor/ask_question": "live-not-observed",
+      "cursor/update_todos": "live-not-observed",
+      "cursor/list_available_models": "live-pass"
+    },
+    "brokeredMcp": {
+      "sessionNew": "pass",
+      "authorizedHeaderObserved": true,
+      "methods": ["initialize", "notifications/initialized", "tools/list"],
+      "toolCall": "not-observed",
+      "postRunPersistenceMatches": 0
+    },
     "observedModeIds": ["agent", "plan", "ask"],
     "observedConfigOptionIds": ["mode", "model"],
     "modeRoundTrip": "pass-agent-plan-agent",
@@ -59,9 +76,8 @@
     },
     "loadAndRestart": "pass",
     "reverseAuthority": "not-proven",
-    "cursorExtensions": "not-proven",
-    "modelDiscovery": "not-proven",
-    "cancel": "not-proven",
+    "cursorExtensions": "partial-live-proof",
+    "cancel": "pass-stream-and-reverse",
     "cleanShutdown": "pass"
   },
   "redaction": {

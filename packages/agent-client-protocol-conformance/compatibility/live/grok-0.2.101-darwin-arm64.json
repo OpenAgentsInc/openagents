@@ -30,6 +30,8 @@
     "versionAndDigestProbe": "pass",
     "initialize": "pass",
     "cachedTokenAuthenticate": "pass",
+    "invalidApiKeyPrompt": "pass-remote-error-observed",
+    "authFailureRecovery": "pass-invalid-api-key-then-cached-token",
     "sessionNew": "pass",
     "promptTextUpdate": "pass",
     "promptStopReasonExactlyOnce": "pass",
@@ -44,6 +46,20 @@
     "processRestart": "pass-orderly-shutdown-and-new-process",
     "sessionLoad": "pass",
     "postLoadPrompt": "pass",
+    "toolUse": "pass-3-tool-updates-disposable-file-created",
+    "streamCancel": "pass-cancelled-3-updates-observed",
+    "reverseCancel": "pass-underscore-question-aborted-by-session",
+    "concurrentSessions": "pass-2-independent-processes",
+    "questionExtensions": {
+      "_x.ai/ask_user_question": "live-pass",
+      "x.ai/ask_user_question": "fixture-pass-live-not-observed"
+    },
+    "brokeredMcp": {
+      "sessionNew": "pass",
+      "authorizedHeaderObserved": true,
+      "methods": ["initialize", "notifications/initialized", "tools/list", "tools/call"],
+      "postRunPersistenceScan": "not-completed-boundedly"
+    },
     "sigkillRepair": "pass-crash-new-process-load-post-load-prompt",
     "repetition": {
       "crashCycles": 5,

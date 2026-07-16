@@ -25,8 +25,8 @@ never changes Grok's gate.
 
 | Peer | Exact live identity | Basic live result | Code-owned requirements unresolved | Claim |
 |---|---|---:|---:|---|
-| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 14 live passes | 19 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 15 live passes | 17 | experimental |
+| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 18 live passes | 15 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 20 live passes | 12 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -69,6 +69,19 @@ updates were observed and the requested disposable file existed. No file or
 tool content was retained. The combined tool/plan/config/usage release row
 remains unpassed because plan and usage variants were not induced.
 
+Both peers then passed live stream cancellation, cancellation while a reverse
+interaction was outstanding, and two independent concurrent peer processes.
+The Cursor reverse-cancel proof exposed and fixed a transport binding gap:
+`cursor/create_plan` omits native `sessionId`, so the admitted handler now binds
+the request to its resolved session before cancellation can target it. Both
+peers also received broker-materialized MCP configuration scoped to the live
+session. Grok reached initialize/list/call; Cursor reached initialize/list and
+its post-run known-root scan found zero credential matches. Grok's bounded
+post-run persistence scan remains incomplete, so its no-durable-secret row is
+not promoted. Cursor model discovery returned 33 models (26 with configuration)
+and `cursor/create_plan` passed live; the other Cursor extension requests were
+not observed.
+
 The Cursor run authenticated through the advertised `cursor_login` method
 against an already signed-in local session. It does **not** prove pending login,
 cancellation, expiry, or clean re-authentication. The Grok run used its existing
@@ -95,21 +108,20 @@ named-peer live compatibility.
 
 ## Release blockers retained as data
 
-The largest shared gaps are live incompatible-version rejection; auth failure
-and recovery; every required permission outcome; enabled reverse filesystem and
-terminal behavior where claimed; broker-issued MCP on both real peers and a
-post-run persistence scan; stream/reverse cancellation; real process crash,
-restart, repair, and repeated start/stop pressure; sequential turns and multiple
-real sessions under concurrent pressure; and complete sanitized support bundles.
+The largest shared gaps are credential lifecycle paths, every required live
+permission outcome, Grok enabled reverse filesystem/terminal behavior, complete
+tool/plan/config/usage variants, the remaining MCP persistence proof, full
+secret/support export scans, packaged Desktop journeys, and non-Darwin-arm64
+platform evidence.
 
 Provider-specific gaps:
 
-- Grok: intentional `xai.api_key`, both ask-question method spellings, and rich
-  tool/plan/config/usage streaming. Orderly and SIGKILL restart/load are now
-  live-proven.
-- Cursor: pending/cancel/expiry/re-auth login, model listing, and all Cursor
-  reverse extensions. List, mode/config round trips, and orderly restart/load
-  and SIGKILL restart/load are live-proven.
+- Grok: intentional valid `xai.api_key`, auth cancel/expiry/logout, the
+  non-underscore ask-question spelling, session list, full permission/reverse
+  authority, rich plan/config/usage streaming, and bounded MCP persistence scan.
+- Cursor: pending/cancel/expiry/re-auth login, permission outcomes, and live
+  `cursor/ask_question`/`cursor/update_todos`. Model listing, create-plan,
+  list/load, mode/config round trips, cancellation, and restart/load are proven.
 - Both: packaged Desktop clean-machine happy/failure/recovery journeys. The
   shipped main-owned host, Settings projection, alternate-path admission, and
   closed support schema now pass hermetic Desktop tests. The matrix records

@@ -17,6 +17,7 @@ export type AcpVendorHandlerContext = Readonly<{
   generation: number;
   signal: AbortSignal;
   requestId?: string | number;
+  bindSession?(sessionId: string): boolean;
 }>;
 
 export type AcpVendorStdioHost = Readonly<{
@@ -273,6 +274,12 @@ const assertBinding = (
     !safeRefPattern.test(binding.turnId) ||
     !Number.isSafeInteger(binding.requestedSequence)
   ) {
+    throw new AgentStdioHandlerError(-32002, "Stale ACP vendor interaction binding.", {
+      reason: "stale_vendor_binding",
+      retryable: false,
+    });
+  }
+  if (context?.bindSession !== undefined && !context.bindSession(binding.sessionId)) {
     throw new AgentStdioHandlerError(-32002, "Stale ACP vendor interaction binding.", {
       reason: "stale_vendor_binding",
       retryable: false,
