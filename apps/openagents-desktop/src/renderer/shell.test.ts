@@ -949,7 +949,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(settled.fullAutoByThread[""]).toBeUndefined()
   })
 
-  test("FA-H1 (#8874): mount/selection hydration seeds the toggle from durable truth, and ONE click persists enabled:false (one-click stop)", async () => {
+  test("#8928: a control-API enable while no renderer is attached survives later window hydration; only an explicit click disables", async () => {
     // Simulated restart: main durably resumed thread X (registry enabled:true)
     // while the renderer starts from the hard-coded empty map.
     const setCalls: Array<{ threadRef: string; enabled: boolean }> = []
@@ -981,6 +981,9 @@ describe("desktopShellView (state -> component tree)", () => {
     const hydrated = await Effect.runPromise(SubscriptionRef.get(state))
     expect(hydrated.activeThreadId).toBe(testThread.id)
     expect(activeFullAutoEnabled(hydrated)).toBe(true)
+    // Attaching/hydrating the window is read-only. In particular it never
+    // writes the renderer's initial false default over main's API-enabled row.
+    expect(setCalls).toEqual([])
     // The one-click-stop guarantee: a SINGLE toggle persists enabled:false —
     // never a first click that re-persists true.
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))

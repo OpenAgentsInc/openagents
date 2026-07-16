@@ -12,7 +12,13 @@ import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import path from "node:path"
 
-export type ControlConnection = Readonly<{ url: string; token: string }>
+export type ControlConnection = Readonly<{
+  url: string
+  token: string
+  /** Additive #8928 ownership fields. Old v1 files legitimately omit them. */
+  pid?: number
+  serverInstanceId?: string
+}>
 
 /** Matches Electron's `app.getPath("userData")` for productName "OpenAgents". */
 const defaultUserDataDir = (): string => {
@@ -51,7 +57,16 @@ export const readControlConnection = (userDataDir: string): ControlConnection =>
       `Full Auto control connection file at ${filePath} is malformed; relaunch the app to rewrite it.`,
     )
   }
-  return { url: parsed.url, token: parsed.token }
+  return {
+    url: parsed.url,
+    token: parsed.token,
+    ...(typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0
+      ? { pid: parsed.pid }
+      : {}),
+    ...(typeof parsed.serverInstanceId === "string" && parsed.serverInstanceId.length >= 16
+      ? { serverInstanceId: parsed.serverInstanceId }
+      : {}),
+  }
 }
 
 export type ControlResult = Readonly<{ status: number; body: unknown }>
@@ -97,3 +112,36 @@ export const controlOperations = (connection: ControlConnection) => ({
   turns: (threadRef: string) =>
     call(connection, "GET", `/v1/full-auto/${encodeURIComponent(threadRef)}/turns`),
 })
+
+export type VerifiedControlProcessIdentity = Readonly<{
+  pid: number
+  serverInstanceId: string
+}>
+
+/**
+ * #8928: fail-closed ownership guard for any cleanup automation that is
+ * considering an OS signal. An old connection file remains usable for normal
+ * API discovery, but cannot authorize a signal. A current file authorizes no
+ * signal unless the bearer-gated live server echoes its exact opaque identity.
+ * Callers must still prefer the child handle they spawned and re-read the file
+ * immediately before acting, as documented in the shared-Mac runbook.
+ */
+export const verifyControlProcessIdentity = async (
+  connection: ControlConnection,
+): Promise<VerifiedControlProcessIdentity> => {
+  if (connection.pid === undefined || connection.serverInstanceId === undefined) {
+    throw new ControlUnavailableError(
+      "Full Auto control ownership is unverifiable: this connection file has no PID/instance identity; do not signal a process.",
+    )
+  }
+  const result = await controlOperations(connection).list()
+  const body = typeof result.body === "object" && result.body !== null
+    ? result.body as Record<string, unknown>
+    : null
+  if (result.status !== 200 || body?.serverInstanceId !== connection.serverInstanceId) {
+    throw new ControlUnavailableError(
+      "Full Auto control ownership is unverifiable: the authenticated server did not echo the connection file's instance identity; do not signal a process.",
+    )
+  }
+  return { pid: connection.pid, serverInstanceId: connection.serverInstanceId }
+}

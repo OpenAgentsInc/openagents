@@ -149,6 +149,9 @@ export type FullAutoControlServer = Readonly<{
   /** Loopback origin, e.g. `http://127.0.0.1:49321`. */
   url: string
   credential: FullAutoControlCredential
+  /** Opaque identity minted once for this server lifetime and echoed by
+   * authenticated list/status responses for exact process ownership checks. */
+  instanceId: string
   controlFilePath: string
   stop: () => Promise<void>
 }>
@@ -168,6 +171,8 @@ const projectRecord = (
   // Public-safe projection: never raw profile material beyond the accountRef.
   accountRef: record.profile?.accountRef ?? null,
   blockedReason: record.blockedReason ?? null,
+  disabledBy: record.disabledBy ?? null,
+  disabledAt: record.disabledAt ?? null,
   live: live ?? { state: "idle", turnRef: null },
 })
 
@@ -227,7 +232,7 @@ const readJsonBody = (request: IncomingMessage): Promise<unknown | null> =>
 
 const writeControlFile = (
   controlFilePath: string,
-  value: Readonly<{ url: string; credential: FullAutoControlCredential }>,
+  value: Readonly<{ url: string; credential: FullAutoControlCredential; instanceId: string }>,
 ): void => {
   const parent = path.dirname(controlFilePath)
   mkdirSync(parent, { recursive: true, mode: 0o700 })
@@ -240,6 +245,10 @@ const writeControlFile = (
       token: value.credential.token,
       scopes: value.credential.scopes,
       issuedAtIso: value.credential.issuedAtIso,
+      // #8928: cleanup may target only this exact PID after an authenticated
+      // response echoes the same opaque serverInstanceId.
+      pid: process.pid,
+      serverInstanceId: value.instanceId,
     })}\n`,
     { encoding: "utf8", mode: 0o600 },
   )
@@ -257,6 +266,7 @@ export const startFullAutoControlServer = (
   input: StartFullAutoControlServerInput,
 ): Promise<FullAutoControlServer> => {
   const credential = mintFullAutoControlCredential({ now: (input.now ?? (() => new Date()))() })
+  const instanceId = `oafa_instance_${randomBytes(24).toString("base64url")}`
   const capabilities = input.capabilities
 
   const handle = async (
@@ -304,6 +314,7 @@ export const startFullAutoControlServer = (
       }
       sendJson(response, 200, {
         schema: FULL_AUTO_CONTROL_SCHEMA,
+        serverInstanceId: instanceId,
         records: capabilities.registry.list().map(record =>
           projectRecord(record, capabilities.liveState(record.threadRef))),
       })
@@ -410,6 +421,7 @@ export const startFullAutoControlServer = (
       }
       sendJson(response, 200, {
         schema: FULL_AUTO_CONTROL_SCHEMA,
+        serverInstanceId: instanceId,
         record: projectRecord(record, capabilities.liveState(threadRef)),
       })
       return
@@ -474,7 +486,7 @@ export const startFullAutoControlServer = (
     }
 
     if (action === "disable") {
-      const record = capabilities.registry.set(threadRef, false)
+      const record = capabilities.registry.set(threadRef, false, { disabledBy: "control_api" })
       capabilities.appendSystemNote(
         threadRef,
         `Full Auto disabled programmatically via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
@@ -535,7 +547,7 @@ export const startFullAutoControlServer = (
       }
       const url = `http://127.0.0.1:${address.port}`
       try {
-        writeControlFile(input.controlFilePath, { url, credential })
+        writeControlFile(input.controlFilePath, { url, credential, instanceId })
       } catch (error) {
         server.close()
         reject(error instanceof Error ? error : new Error("control file write failed"))
@@ -544,6 +556,7 @@ export const startFullAutoControlServer = (
       resolve({
         url,
         credential,
+        instanceId,
         controlFilePath: input.controlFilePath,
         stop: () =>
           new Promise<void>(resolveStop => {

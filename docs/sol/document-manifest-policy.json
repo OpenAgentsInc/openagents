@@ -3,6 +3,12 @@
   "inventoryReviewDate": "2026-07-12",
   "defaultOwner": "Sol roadmap",
   "overrides": {
+    "docs/sol/2026-07-16-full-auto-shared-mac-dogfood-runbook.md": {
+      "class": "contract",
+      "owner": "OpenAgents Desktop Full Auto / issue #8928",
+      "disposition": "retain-operator-runbook",
+      "dispatch": false
+    },
     "docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md": {
       "class": "contract",
       "owner": "OpenAgents Desktop usage ingestion / issue #8911",

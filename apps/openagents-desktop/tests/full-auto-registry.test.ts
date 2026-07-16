@@ -35,7 +35,7 @@ describe("Full Auto registry cap semantics (FA-H7 #8880)", () => {
       expect(record(registry, "thread-cap-semantics")?.continuationCount).toBe(3)
 
       // Toggling off then on is the ONLY reset path.
-      registry.set("thread-cap-semantics", false)
+      registry.set("thread-cap-semantics", false, { disabledBy: "ui_toggle" })
       registry.set("thread-cap-semantics", true)
       expect(record(registry, "thread-cap-semantics")?.continuationCount).toBe(0)
     } finally {
@@ -165,10 +165,12 @@ describe("Full Auto durable record extensions (FA-H2 #8875, FA-H3 #8876, FA-H5 #
 
       // Disabling for a typed policy stop records the reason and releases
       // the lease, and keeps the workspace binding for diagnosis.
-      registry.set("thread-s", false, { blockedReason: "workspace_mismatch" })
+      registry.set("thread-s", false, { blockedReason: "workspace_mismatch", disabledBy: "workspace_guard" })
       const disabled = registry.record("thread-s")
       expect(disabled?.enabled).toBe(false)
       expect(disabled?.blockedReason).toBe("workspace_mismatch")
+      expect(disabled?.disabledBy).toBe("workspace_guard")
+      expect(disabled?.disabledAt).toBeDefined()
       expect(disabled?.pendingTurnRef ?? null).toBe(null)
       expect(disabled?.continuationCount).toBe(0)
       expect(disabled?.workspaceRef).toBe("/repo/a")
@@ -178,13 +180,20 @@ describe("Full Auto durable record extensions (FA-H2 #8875, FA-H3 #8876, FA-H5 #
       registry.set("thread-s", true, { workspaceRef: "/repo/b" })
       const reenabled = registry.record("thread-s")
       expect(reenabled?.blockedReason ?? null).toBe(null)
+      expect(reenabled?.disabledBy).toBeUndefined()
+      expect(reenabled?.disabledAt).toBeUndefined()
       expect(reenabled?.consecutiveFailures ?? 0).toBe(0)
       expect(reenabled?.lastFailureAt).toBeUndefined()
       expect(reenabled?.workspaceRef).toBe("/repo/b")
 
-      // An owner toggle-off (no options) clears any prior blockedReason.
-      registry.set("thread-s", false)
+      // An owner toggle-off carries provenance but no blockedReason.
+      registry.set("thread-s", false, { disabledBy: "ui_toggle" })
       expect(registry.record("thread-s")?.blockedReason ?? null).toBe(null)
+      expect(registry.record("thread-s")?.disabledBy).toBe("ui_toggle")
+
+      expect(() => registry.set("thread-s", false)).toThrow(
+        "refusing to disable Full Auto without durable disable attribution",
+      )
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -258,7 +267,7 @@ describe("Full Auto registry robustness (FA-H10 #8883)", () => {
       registry.set("old-enabled", true)
       const disabledTotal = FULL_AUTO_RECORD_LIMIT + 12
       for (let index = 0; index < disabledTotal; index += 1) {
-        registry.set(`disabled-${index}`, false)
+        registry.set(`disabled-${index}`, false, { disabledBy: "ui_toggle" })
       }
 
       // The enabled record survives even though 140 records were touched more

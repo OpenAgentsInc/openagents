@@ -3740,8 +3740,14 @@ ipcMain.handle(CodexLocalFullAutoSetChannel, async (_event, value: unknown) => {
     request.enabled,
     request.enabled
       ? { workspaceRef: resolveDesktopLocalWorkspaceRoot(), profile: { lane: FULL_AUTO_DEFAULT_LANE } }
-      : undefined,
+      : { disabledBy: "ui_toggle" },
   )
+  if (!request.enabled) {
+    appendFullAutoSystemNote(
+      request.threadRef,
+      "Full Auto disabled from the composer toggle (caller: ui-toggle).",
+    )
+  }
   return { ok: true }
 })
 ipcMain.handle(CodexLocalFullAutoGetChannel, async (_event, value: unknown) => {

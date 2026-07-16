@@ -69,9 +69,12 @@ Operational gotcha discovered (cost four relaunch attempts): a running dev
 instance retitles to `OpenAgents Dev` and holds Electron's per-userData
 `SingletonLock`; later launches lose `requestSingleInstanceLock()` and quit(0)
 silently ~1.6s in, AFTER logging "full-auto-control listening" — so the log
-looks healthy while control.json points at a dead port. Kill the retitled
-process and remove `Singleton*` from userData before relaunching; verify
-liveness with the CLI, never the log line.
+looks healthy while control.json points at a dead port. Do not kill by title,
+port, process group, `pkill`, or `killall`, and do not remove `Singleton*`
+while an owned process may still live. Follow the exact-PID and private-control
+endpoint procedure in
+[`docs/sol/2026-07-16-full-auto-shared-mac-dogfood-runbook.md`](../sol/2026-07-16-full-auto-shared-mac-dogfood-runbook.md);
+verify liveness with the CLI, never the log line.
 
 ## Coordination protocol (multi-lane)
 

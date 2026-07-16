@@ -57,6 +57,12 @@ This reconciliation does not claim distribution, release, owner acceptance,
 or public-promise satisfaction. The remainder of the document intentionally
 preserves what the audit found at its pinned snapshot.
 
+The later shared-Mac incident and its corrected operator timeline are recorded
+separately in
+[`2026-07-16-full-auto-shared-mac-dogfood-runbook.md`](./2026-07-16-full-auto-shared-mac-dogfood-runbook.md).
+In particular, its second disable and subsequent `SIGTERM` were intentional
+coordinator actions, not evidence of an unexplained renderer or runtime stop.
+
 ## Executive finding
 
 Full Auto now has a real restart-survival mechanism in source. The renderer no

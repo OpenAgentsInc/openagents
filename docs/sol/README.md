@@ -82,6 +82,9 @@ not current queues:
   — pinned revision-2 runtime/proof audit with a top-of-file reconciliation to
   the landed revision-9 hardening criteria and current residuals; the original
   findings remain historical evidence, not a current dispatch queue.
+- [`2026-07-16-full-auto-shared-mac-dogfood-runbook.md`](./2026-07-16-full-auto-shared-mac-dogfood-runbook.md)
+  — reconciles the #8928 stop timeline, pins durable disable attribution, and
+  defines exact-PID/shared-userData process ownership for safe Desktop dogfood.
 - [`2026-07-15-khala-ui-components-workbench-receipt.md`](./2026-07-15-khala-ui-components-workbench-receipt.md)
   — deterministic implementation proof for the complete 30-capability,
   non-audio Khala UI workbench at `/components/khala`, its seven-package Effect

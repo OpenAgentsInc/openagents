@@ -111,7 +111,10 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
     // visibly instead of silently redirecting high-trust work.
     const resolvedWorkspaceRef = input.resolveWorkspaceRef()
     if (record.workspaceRef === undefined) {
-      input.registry.set(threadRef, false, { blockedReason: "workspace_unbound" })
+      input.registry.set(threadRef, false, {
+        blockedReason: "workspace_unbound",
+        disabledBy: "workspace_guard",
+      })
       input.onWorkspaceBlocked?.(threadRef, {
         reason: "workspace_unbound",
         grantedWorkspaceRef: null,
@@ -120,7 +123,10 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
       continue
     }
     if (record.workspaceRef !== resolvedWorkspaceRef) {
-      input.registry.set(threadRef, false, { blockedReason: "workspace_mismatch" })
+      input.registry.set(threadRef, false, {
+        blockedReason: "workspace_mismatch",
+        disabledBy: "workspace_guard",
+      })
       input.onWorkspaceBlocked?.(threadRef, {
         reason: "workspace_mismatch",
         grantedWorkspaceRef: record.workspaceRef,
@@ -137,7 +143,10 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
     // Cap check BEFORE dispatch: counts increment only on successful dispatch
     // (FA-H5), so a record at the cap disables here without minting a turn.
     if (record.continuationCount >= FULL_AUTO_MAX_CONTINUATIONS) {
-      input.registry.set(threadRef, false, { blockedReason: "continuation_cap_reached" })
+      input.registry.set(threadRef, false, {
+        blockedReason: "continuation_cap_reached",
+        disabledBy: "continuation_cap",
+      })
       input.onCapReached?.(threadRef)
       continue
     }
@@ -158,7 +167,12 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
     const failThread = (reason: string): void => {
       const consecutiveFailures = input.registry.recordFailure(threadRef, reason)
       const disabled = consecutiveFailures >= FULL_AUTO_MAX_CONSECUTIVE_FAILURES
-      if (disabled) input.registry.set(threadRef, false, { blockedReason: reason })
+      if (disabled) {
+        input.registry.set(threadRef, false, {
+          blockedReason: reason,
+          disabledBy: "dispatch_failure_limit",
+        })
+      }
       input.onDispatchFailed?.(threadRef, { reason, consecutiveFailures, disabled })
     }
     try {

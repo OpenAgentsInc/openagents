@@ -111,7 +111,7 @@ describe("Full Auto process restart", () => {
       const registryFile = path.join(root, "full-auto", "registry.json")
       const registryA = openFullAutoRegistry(registryFile)
       registryA.set("thread-stopped", true, { workspaceRef: GRANTED_WORKSPACE })
-      registryA.set("thread-stopped", false)
+      registryA.set("thread-stopped", false, { disabledBy: "ui_toggle" })
 
       const registryB = openFullAutoRegistry(registryFile)
       let dispatchCount = 0
@@ -145,6 +145,7 @@ describe("Full Auto process restart", () => {
       expect(capReachedFor).toBe("thread-cap")
       expect(registry.get("thread-cap")).toBe(false)
       expect(registry.record("thread-cap")?.blockedReason).toBe("continuation_cap_reached")
+      expect(registry.record("thread-cap")?.disabledBy).toBe("continuation_cap")
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -169,6 +170,7 @@ describe("Full Auto workspace binding (FA-H2 #8875)", () => {
       expect(dispatchCount).toBe(0)
       expect(registry.get("thread-ws")).toBe(false)
       expect(registry.record("thread-ws")?.blockedReason).toBe("workspace_mismatch")
+      expect(registry.record("thread-ws")?.disabledBy).toBe("workspace_guard")
       expect(blocks).toEqual([{
         threadRef: "thread-ws",
         reason: "workspace_mismatch",
@@ -200,6 +202,7 @@ describe("Full Auto workspace binding (FA-H2 #8875)", () => {
       expect(dispatchCount).toBe(0)
       expect(registry.get("thread-unbound")).toBe(false)
       expect(registry.record("thread-unbound")?.blockedReason).toBe("workspace_unbound")
+      expect(registry.record("thread-unbound")?.disabledBy).toBe("workspace_guard")
       expect(blocks).toEqual([{ reason: "workspace_unbound", grantedWorkspaceRef: null }])
 
       // The next successful ENABLE rebinds (main passes the resolved
@@ -441,6 +444,7 @@ describe("Full Auto dispatch-failure policy (FA-H5 #8878)", () => {
       expect(outcomes.slice(0, -1).every(outcome => !outcome.disabled)).toBe(true)
       expect(registry.get("thread-limit")).toBe(false)
       expect(registry.record("thread-limit")?.blockedReason).toBe("runtime_unavailable")
+      expect(registry.record("thread-limit")?.disabledBy).toBe("dispatch_failure_limit")
 
       // Disabled means no further dispatch attempts at all.
       let dispatchCount = 0

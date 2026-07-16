@@ -4,7 +4,10 @@ import {
   CODEX_LOCAL_FULL_AUTO_DETAIL_LIMIT,
   CodexLocalFullAutoLiveStateSchema,
 } from "./codex-local-contract.ts"
-import { FULL_AUTO_BLOCKED_REASON_LIMIT } from "./full-auto-registry.ts"
+import {
+  FULL_AUTO_BLOCKED_REASON_LIMIT,
+  FullAutoDisabledBySchema,
+} from "./full-auto-registry.ts"
 import { LocalTurnDispositionSchema, LocalTurnPhaseSchema } from "./local-turn-journal.ts"
 
 /**
@@ -32,6 +35,10 @@ const ThreadRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(
 const TurnRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
 const WorkspaceRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024))
 const LaneRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))
+export const FullAutoControlInstanceIdSchema = Schema.String.check(
+  Schema.isMinLength(16),
+  Schema.isMaxLength(120),
+)
 const Count = Schema.Number.check(
   Schema.isInt(),
   Schema.isGreaterThanOrEqualTo(0),
@@ -103,18 +110,22 @@ export const FullAutoControlRecordSchema = Schema.Struct({
     Schema.isMinLength(1),
     Schema.isMaxLength(FULL_AUTO_BLOCKED_REASON_LIMIT),
   )),
+  disabledBy: Schema.NullOr(FullAutoDisabledBySchema),
+  disabledAt: Schema.NullOr(Schema.String),
   live: FullAutoControlLiveSchema,
 })
 export type FullAutoControlRecord = typeof FullAutoControlRecordSchema.Type
 
 export const FullAutoControlListResponseSchema = Schema.Struct({
   schema: Schema.Literal(FULL_AUTO_CONTROL_SCHEMA),
+  serverInstanceId: FullAutoControlInstanceIdSchema,
   records: Schema.Array(FullAutoControlRecordSchema),
 })
 export type FullAutoControlListResponse = typeof FullAutoControlListResponseSchema.Type
 
 export const FullAutoControlStatusResponseSchema = Schema.Struct({
   schema: Schema.Literal(FULL_AUTO_CONTROL_SCHEMA),
+  serverInstanceId: FullAutoControlInstanceIdSchema,
   record: FullAutoControlRecordSchema,
 })
 export type FullAutoControlStatusResponse = typeof FullAutoControlStatusResponseSchema.Type
@@ -202,6 +213,11 @@ export const FullAutoControlFileSchema = Schema.Struct({
   token: Schema.String.check(Schema.isMinLength(16), Schema.isMaxLength(200)),
   scopes: Schema.Array(Schema.String),
   issuedAtIso: Schema.String,
+  /** #8928: additive process-ownership guard. Optional so connection files
+   * written by the earlier v1 server remain decodable; cleanup must refuse to
+   * signal when either value is absent. Current writers always emit both. */
+  pid: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
+  serverInstanceId: Schema.optional(FullAutoControlInstanceIdSchema),
 })
 export type FullAutoControlFile = typeof FullAutoControlFileSchema.Type
 export const decodeFullAutoControlFile = (value: unknown): FullAutoControlFile | null => {

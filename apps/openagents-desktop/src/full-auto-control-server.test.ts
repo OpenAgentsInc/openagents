@@ -27,6 +27,10 @@ import {
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "./local-turn-journal.ts"
 import { readFileSync } from "node:fs"
+import {
+  readControlConnection,
+  verifyControlProcessIdentity,
+} from "../scripts/full-auto-control-client.ts"
 
 const GRANTED_WORKSPACE = "/granted/full-auto/workspace"
 
@@ -206,9 +210,52 @@ describe("Full Auto control surface (FA-H13 #8886)", () => {
       expect(decoded).not.toBeNull()
       expect(decoded!.url).toBe(harness.server.url)
       expect(decoded!.token).toBe(harness.server.credential.token)
+      expect(decoded!.pid).toBe(process.pid)
+      expect(decoded!.serverInstanceId).toBe(harness.server.instanceId)
+      const list = Schema.decodeUnknownSync(FullAutoControlListResponseSchema)(
+        (await harness.request("GET", "/v1/full-auto")).body,
+      )
+      expect(list.serverInstanceId).toBe(decoded!.serverInstanceId)
+      const verified = await verifyControlProcessIdentity(readControlConnection(harness.root))
+      expect(verified).toEqual({
+        pid: process.pid,
+        serverInstanceId: harness.server.instanceId,
+      })
       if (process.platform !== "win32") {
         expect(statSync(filePath).mode & 0o777).toBe(0o600)
       }
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("legacy v1 connection files without ownership fields still decode, but expose no signal authority", () => {
+    const decoded = decodeFullAutoControlFile({
+      schema: FULL_AUTO_CONTROL_SCHEMA,
+      url: "http://127.0.0.1:49999",
+      token: "oafa_legacy-token-long-enough",
+      scopes: ["operator_read"],
+      issuedAtIso: "2026-07-16T15:00:00.000Z",
+    })
+    expect(decoded).not.toBeNull()
+    expect(decoded?.pid).toBeUndefined()
+    expect(decoded?.serverInstanceId).toBeUndefined()
+  })
+
+  test("process-identity guard fails closed for legacy and mismatched instance evidence", async () => {
+    await expect(verifyControlProcessIdentity({
+      url: "http://127.0.0.1:49999",
+      token: "oafa_legacy-token-long-enough",
+    })).rejects.toThrow("do not signal a process")
+
+    const harness = await startHarness()
+    try {
+      await expect(verifyControlProcessIdentity({
+        url: harness.server.url,
+        token: harness.server.credential.token,
+        pid: process.pid,
+        serverInstanceId: "oafa_instance_intentionally_wrong",
+      })).rejects.toThrow("did not echo")
     } finally {
       await harness.dispose()
     }
@@ -344,9 +391,24 @@ describe("Full Auto control surface (FA-H13 #8886)", () => {
       expect(result.status).toBe(200)
       const decoded = Schema.decodeUnknownSync(FullAutoControlMutationResponseSchema)(result.body)
       expect(decoded.record.enabled).toBe(false)
+      expect(decoded.record.disabledBy).toBe("control_api")
+      expect(decoded.record.disabledAt).not.toBeNull()
       expect(harness.registry.record("thread.a")?.enabled).toBe(false)
       expect(harness.notes.at(-1)!.text).toContain("disabled programmatically")
       expect(harness.notes.at(-1)!.text).toContain("control-api")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("authenticated status echoes this exact server instance identity", async () => {
+    const harness = await startHarness()
+    try {
+      harness.registry.set("thread.identity", true, { workspaceRef: GRANTED_WORKSPACE })
+      const result = await harness.request("GET", "/v1/full-auto/thread.identity")
+      expect(result.status).toBe(200)
+      const decoded = Schema.decodeUnknownSync(FullAutoControlStatusResponseSchema)(result.body)
+      expect(decoded.serverInstanceId).toBe(harness.server.instanceId)
     } finally {
       await harness.dispose()
     }

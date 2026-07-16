@@ -30,6 +30,19 @@ export const FULL_AUTO_REGISTRY_SCHEMA = "openagents.desktop.full_auto_registry.
 export const FULL_AUTO_RECORD_LIMIT = 128
 export const FULL_AUTO_BLOCKED_REASON_LIMIT = 300
 
+/** #8928: durable provenance for every transition to disabled. Older rows
+ * legitimately omit this additive field; every current disable path supplies
+ * one so an operator never has to infer whether a stop came from UI, API, or
+ * a safety policy. */
+export const FullAutoDisabledBySchema = Schema.Literals([
+  "ui_toggle",
+  "control_api",
+  "workspace_guard",
+  "continuation_cap",
+  "dispatch_failure_limit",
+])
+export type FullAutoDisabledBy = typeof FullAutoDisabledBySchema.Type
+
 const Ref = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
 const Cursor = Schema.Number.check(
   Schema.isInt(),
@@ -91,6 +104,8 @@ export const FullAutoRecordSchema = Schema.Struct({
     Schema.isMinLength(1),
     Schema.isMaxLength(FULL_AUTO_BLOCKED_REASON_LIMIT),
   ))),
+  disabledBy: Schema.optional(FullAutoDisabledBySchema),
+  disabledAt: Schema.optional(Schema.String),
 })
 export type FullAutoRecord = typeof FullAutoRecordSchema.Type
 
@@ -113,6 +128,8 @@ export type FullAutoSetOptions = Readonly<{
   profile?: FullAutoProfile
   /** FA-H2/FA-H5: typed reason recorded when DISABLING a record. */
   blockedReason?: string
+  /** #8928: required by every current call that transitions to disabled. */
+  disabledBy?: FullAutoDisabledBy
 }>
 
 export type FullAutoRegistry = Readonly<{
@@ -146,7 +163,7 @@ export class FullAutoRegistryError extends Error {
   override readonly name = "FullAutoRegistryError"
 
   constructor(
-    readonly reason: "storage_unavailable",
+    readonly reason: "storage_unavailable" | "missing_disable_attribution",
     message: string,
   ) {
     super(message)
@@ -258,6 +275,12 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
     },
     enabledThreads: () => records.filter(record => record.enabled).map(record => record.threadRef),
     set: (threadRef, enabled, options) => {
+      if (!enabled && options?.disabledBy === undefined) {
+        throw new FullAutoRegistryError(
+          "missing_disable_attribution",
+          "refusing to disable Full Auto without durable disable attribution",
+        )
+      }
       const index = findIndex(threadRef)
       const existing = index === -1 ? null : records[index]!
       const timestamp = now().toISOString()
@@ -266,7 +289,7 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
       // Disabling zeroes the cap counter (FA-H7 pinned semantic), releases
       // any lease, and records the typed blockedReason when the disable was
       // a policy stop (workspace mismatch, failure limit, cap) rather than
-      // an owner toggle-off (which passes no reason and clears it).
+      // an owner toggle-off (which passes attribution but no blocked reason).
       const next = Schema.decodeUnknownSync(FullAutoRecordSchema)(compactRecordInput({
         threadRef,
         enabled,
@@ -279,6 +302,8 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
         lastFailureAt: enabled ? undefined : existing?.lastFailureAt,
         consecutiveFailures: enabled ? undefined : existing?.consecutiveFailures,
         blockedReason: enabled ? undefined : options?.blockedReason,
+        disabledBy: enabled ? undefined : options?.disabledBy,
+        disabledAt: enabled ? undefined : timestamp,
       }))
       if (index === -1) records.push(next)
       else records[index] = next
