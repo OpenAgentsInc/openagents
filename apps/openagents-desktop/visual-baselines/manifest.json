@@ -15,112 +15,112 @@
     {
       "name": "composer-idle",
       "file": "composer-idle.png",
-      "sha256": "6e7c6f59ff40d9a32e8b9f31fdffb6b665c3a6c7116392ebf4a29b3f12661295",
+      "sha256": "915156f9217d1336dae6517362a0db7a410a0b92b8e340e5271470338de705b3",
       "width": 1280,
       "height": 800
     },
     {
       "name": "thread-plan-card",
       "file": "thread-plan-card.png",
-      "sha256": "db65b88a5aeeee44fb01bda7c76420d13b4e19cceafb2dc011fb5d9700f547ce",
+      "sha256": "81c747014297e3178d8e65df0a56f82f901a13119247fd32273ec8083f941c68",
       "width": 1280,
       "height": 800
     },
     {
       "name": "approval-card",
       "file": "approval-card.png",
-      "sha256": "6803cc2fc1cbc225613c6d91b64708359180dc428f04f49ef360916aa1454331",
+      "sha256": "09fc2179f42a4c6e7d4713d84145175ee73782879cb740f258f53079db82437e",
       "width": 1280,
       "height": 800
     },
     {
       "name": "reasoning-disclosure",
       "file": "reasoning-disclosure.png",
-      "sha256": "91f8524430d26da384c2b5d7ffb017a825d5451bf6184026a2c9b6062e200a17",
+      "sha256": "857f00ad44c3f5e467eedb9e9f9c9cdae5494b8d665d1692cd2782a67fbbc4d6",
       "width": 1280,
       "height": 800
     },
     {
       "name": "full-auto-running",
       "file": "full-auto-running.png",
-      "sha256": "b4d017240ea3c077c50789d2fd68448fbab429da442a360b2a5914775cb5a974",
+      "sha256": "d89fbfaf4294b105c3b41eecf383c63fb76622d04f250e9d314feb1ca4c51921",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-messages-reasoning",
       "file": "workbench-messages-reasoning.png",
-      "sha256": "49e7218e57f4cae03c02c38034bda2c30ef6aee6baa8bbcca2c367b952c3d7eb",
+      "sha256": "a4713a325f1cbc8aa4204b326c235a503a22ba9474c6646414d49233f92d4992",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-commands",
       "file": "workbench-commands.png",
-      "sha256": "6ee36a565a3e5cbc1d1c23c4b76a7148ef898cf3f8562b761b3e410d0163ff39",
+      "sha256": "2df7d34ef50f3c43cc0713b71d6ffbd25bef42b2a8761effbbd343bef5b3932f",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-files",
       "file": "workbench-files.png",
-      "sha256": "e43b2bc9d2e43af073608361ff4ca46deff3d67ed1d06e418e563c9bb548ef21",
+      "sha256": "3c1568ff788d13c8600ff65ca3875c4ac19c9a902ccb379ab83adf5a273b87ac",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-tools-mcp-dynamic",
       "file": "workbench-tools-mcp-dynamic.png",
-      "sha256": "fca7ae528065001144c15c88d689c4b91e063d8713db101841f504a5e676c623",
+      "sha256": "0a6438547e8852bb677a89cd70b7518e9e5b27af8b26fcc0a3283bcf2f749e24",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-tools-web-image",
       "file": "workbench-tools-web-image.png",
-      "sha256": "8baec44e0a6df220b1bc70cac679689816bbd3aff84dbaedf44a4b45c640c0de",
+      "sha256": "ea26a592e8e03fa3a4ab398c83c3516b398c791dd7ac2428c805b767aca9396f",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-plans-approvals",
       "file": "workbench-plans-approvals.png",
-      "sha256": "d495580f040f44dcc37dfe19f310b5b4cd0fe0327689c410c93552875151c403",
+      "sha256": "3fce0778d069ed2a66b3af2f7a6f1979028983c8560733ff175e7b17030d732b",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-agents",
       "file": "workbench-agents.png",
-      "sha256": "c7f25bf4db75aecd8bcfd408d80304d371551eda5c683256a24635df0866c823",
+      "sha256": "973ae578f18f4c00d490d6f1a13378294015c5ffe829257bc875d836430dfb72",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-context",
       "file": "workbench-context.png",
-      "sha256": "4d586968e41c88628d144b19459bf8e075f6f086c5a15b9a393d51b801b182b5",
+      "sha256": "386d8537e6793f40976a3eb8d2627ae4fbbd696c4d8fba8445f2d7577848d34c",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-notices-long-tail",
       "file": "workbench-notices-long-tail.png",
-      "sha256": "3f2355146facd6f11b4f28b879b46f1b2134a861302147a6a829d22985a761ee",
+      "sha256": "907fbe925f73abd4df7c9628eead83f9e8eba378ebd95334a7acff088d0c7fc3",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-shell",
       "file": "workbench-shell.png",
-      "sha256": "6bbaa723c676594b6676e09430e15e37593fe4d89725965c391cc3bc29dc2db8",
+      "sha256": "041f25102375c8a3aa5ed1e5ef5f9d1aaf2f58011578950ea856973445318927",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-frame",
       "file": "workbench-frame.png",
-      "sha256": "ffc1e36ce04bff4f20abb6a1a4fc0d023947e309cb586a961d9984a56edc3fb6",
+      "sha256": "59d73db59bc9fd55c9f5eb5fe03aac866bba39ea18838512e72741143e2e0bee",
       "width": 1280,
       "height": 800
     }
