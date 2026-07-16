@@ -52,13 +52,17 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-30",
       "FA-AC-31",
       "FA-AC-32",
-      "FA-AC-33"
+      "FA-AC-33",
+      "FA-AC-34",
+      "FA-AC-35",
+      "FA-AC-36",
+      "FA-AC-37"
     ],
-    "document_digest": "sha256:60a5efeba64a4a83314c7e9fe8910b3505d795cdcf87915e8844762ffc4a9557",
+    "document_digest": "sha256:c5f7fa0b3c8814b5bbf523b72c79d392115317413634fe3a6dde9bcd7a5b1f18",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 8
+    "spec_revision": 9
   }
 }
 ```
@@ -3181,12 +3185,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "46ea6c28f04b0fc29df482227a2c8e87b16968c5",
-    "inventory_digest": "sha256:d19ef78318d107e718179e64fa76742b1fdccf769a5142d2438956407dfc001f",
-    "repository_label": "oa-l6-8901",
+    "head": "a38f449a61f1dec6de23eb338e077093484e1d02",
+    "inventory_digest": "sha256:98064bfd0b8e10190f807c5623619fe00281d60791eec9c7edf7c2a76a8a1c08",
+    "repository_label": "oa-l7-8902",
     "state": "dirty",
-    "tracked_file_count": 9149,
-    "tree": "6ed1d223f45c85922724c786081db1ba3d37ed14",
+    "tracked_file_count": 9169,
+    "tree": "54c4224c6a599a7db74144a6a6b8d735fa847a0a",
     "truncated": true
   }
 }
@@ -3560,6 +3564,50 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:d13b2fc55b4284f1e5b47327c615a43b87c98d3c71736701129b26fdd82c9b96",
     "source_claim_snapshot": "A real bounded Claude Code Full Auto run must be retained as a\nrelease receipt. ACP peer proof remains conditional on #8893/#8894 admission\nand must not be inferred from fixture coverage.\nProof: owner/dogfood receipt linked from #8901; until captured this criterion\nremains an explicit residual, not a release claim.",
     "title": "Assure FA-AC-33"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-34"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-34-01",
+    "source_claim_digest": "sha256:8050c77a9576607875b9d2a9af869a0ea159297be5f349a1d0697810424c6247",
+    "source_claim_snapshot": "Every ProviderLane dispatch receives the same main-owned spec\nprojection when the granted workspace contains `specs/**`. The projection is\nbounded to 32 files, 512,000 bytes per file, 64 snapshot criteria per\nProductSpec, 128 snapshot obligations, 12 prompt criteria per ProductSpec,\n12 prompt obligations, and 8,000 prompt characters; truncation is explicit.\nProof: `spec-lane-workflow.test.ts` projection-bound case plus the shared\n`makeProviderLaneDispatcher` seam.",
+    "title": "Assure FA-AC-34"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-35"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-35-01",
+    "source_claim_digest": "sha256:b8635e7309d8465621d38435efe0e9ec02511e2af8fbc92820c7605f70463776",
+    "source_claim_snapshot": "Full Auto's shared lane instruction explicitly names unmet\nProductSpec/AssuranceSpec obligations as candidate work while preserving the\none-concrete-step contract and denying provider-owned verdict authority.\nProof: `full-auto-lane.ts` shared instruction and focused Full Auto tests.",
+    "title": "Assure FA-AC-35"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-36"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-36-01",
+    "source_claim_digest": "sha256:482ee08b1bc9704f87e430c5c664700af0859e5a8bee1a4726d55abe1360688a",
+    "source_claim_snapshot": "After a dispatched turn, main re-reads the workspace through\nthe ProductSpec/AssuranceSpec packages and appends a bounded system note with\nchanged and remaining unmet obligation state. Missing, malformed, stale,\nflaky, inconclusive, unreviewed, or excepted evidence never rounds green.\nProof: `spec-lane-workflow.test.ts` malformed-index and axis-revalidation\ncases.",
+    "title": "Assure FA-AC-36"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-37"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-37-01",
+    "source_claim_digest": "sha256:9f6f83a0851f2e17620d86e15f1a71ff32e081b69c846d09f2022ddd79a287c5",
+    "source_claim_snapshot": "The identical bounded projection and revalidation path works\nthrough at least two distinct ProviderLane refs without importing a provider\ninto the spec module or moving admission, verification, release, or\npublic-claim authority into a lane.\nProof: the two-lane dispatcher fixture in `provider-lane.test.ts` and the\nCodex/Claude note assertions in `spec-lane-workflow.test.ts`.",
+    "title": "Assure FA-AC-37"
   }
 ]
 ```

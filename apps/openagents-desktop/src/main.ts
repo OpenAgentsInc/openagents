@@ -133,6 +133,10 @@ import {
 } from "./fable-local-contract.ts"
 import { makeProviderLaneDispatcher, type ProviderLane } from "./provider-lane.ts"
 import {
+  projectSpecLaneTurn,
+  specLaneRevalidationNote,
+} from "./spec-lane-workflow.ts"
+import {
   ProviderLaneCapabilitiesChannel,
   projectProviderLaneCapabilities,
 } from "./provider-lane-capabilities.ts"
@@ -2654,6 +2658,20 @@ const laneDispatcher = makeProviderLaneDispatcher({
   captureTurnCheckpoint,
   localTurnFlushers,
   isQuitting: () => desktopIsQuitting,
+  specWorkflow: {
+    beforeTurn: () => projectSpecLaneTurn(resolveDesktopLocalWorkspaceRoot()),
+    afterTurn: (laneRef, request, before) => {
+      const after = projectSpecLaneTurn(resolveDesktopLocalWorkspaceRoot())
+      const note = specLaneRevalidationNote(laneRef, before.snapshot, after.snapshot)
+      if (note === null) return
+      threads().append(request.threadRef, {
+        key: randomUUID(),
+        role: "system",
+        text: note,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      })
+    },
+  },
 })
 
 /**

@@ -18,7 +18,9 @@ export type FullAutoLanePolicy = Readonly<{
 
 const SHARED_INSTRUCTION =
   "Full Auto is on for this turn. Look at this repository's own README, docs " +
-  "folder (if any), and open issues. Pick ONE concrete, real, useful next " +
+  "folder (if any), open issues, and specs/** ProductSpec/AssuranceSpec " +
+  "obligations surfaced in the bounded spec context. Treat unmet obligations " +
+  "as candidate work, never as provider-owned verdicts. Pick ONE concrete, real, useful next " +
   "thing to do here, and do it now. Do not ask clarifying questions -- make " +
   "a reasonable judgment call and proceed. Stop once this one thing is done; " +
   "you will be asked to continue with the next one."

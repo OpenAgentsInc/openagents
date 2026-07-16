@@ -53,6 +53,7 @@ type FixtureHarness = Readonly<{
   graphBegins: Array<unknown>
   graphEvents: Array<unknown>
   checkpoints: Array<string>
+  runMessages: Array<string>
   interruptRequested: () => boolean
 }>
 
@@ -67,6 +68,7 @@ const makeFixtureHarness = (root: string, options?: Readonly<{
   const graphBegins: Array<unknown> = []
   const graphEvents: Array<unknown> = []
   const checkpoints: Array<string> = []
+  const runMessages: string[] = []
   let interrupted = false
   let releaseInterrupt: (() => void) | null = null
 
@@ -114,7 +116,8 @@ const makeFixtureHarness = (root: string, options?: Readonly<{
       ...(ctx.effectiveModel() === null ? {} : { model: "fixture-model-1" }),
     }),
     modelNoteText: model => `Fixture · ${model}`,
-    runTurn: async ({ request, emit }) => {
+    runTurn: async ({ request, message, emit }) => {
+      runMessages.push(message)
       if (options?.hangUntilInterrupt === true) {
         await new Promise<void>(resolve => {
           releaseInterrupt = resolve
@@ -197,6 +200,7 @@ const makeFixtureHarness = (root: string, options?: Readonly<{
     graphBegins,
     graphEvents,
     checkpoints,
+    runMessages,
     interruptRequested: () => interrupted,
   }
 }
@@ -213,6 +217,59 @@ const startRequest = (threadRef: string, turnRef = "turn-fixture-1"): FableLocal
 })
 
 describe("provider lane SPI with a never-hand-wired fixture lane", () => {
+  test("projects and revalidates the same bounded spec context across two lane refs", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-provider-spec-lanes-"))
+    try {
+      const harness = makeFixtureHarness(root)
+      const revalidated: string[] = []
+      const projection = {
+        snapshot: {
+          productSpecs: [],
+          assuranceSpecs: [{ path: "specs/work.assurance-spec.md", assuranceSpecId: "assurance.work", revision: 1, lifecycleState: "proposed" }],
+          obligations: [{
+            assuranceSpecPath: "specs/work.assurance-spec.md",
+            obligationId: "AO-1",
+            title: "Prove the failing case",
+            criterionRefs: ["AC-1"],
+            state: "unmet" as const,
+            reason: "no schema-valid evidence index",
+          }],
+          diagnostics: [],
+          truncated: false,
+        },
+        promptContext: "SPEC WORK CONTEXT (bounded)\nUNMET AO-1: Prove the failing case",
+      }
+      const dispatcher = makeProviderLaneDispatcher({
+        ...harness.deps,
+        specWorkflow: {
+          beforeTurn: () => projection,
+          afterTurn: laneRef => revalidated.push(laneRef),
+        },
+      })
+      for (const [index, laneRef] of ["codex-local", "fable-local"].entries()) {
+        const thread = harness.store.newThread()
+        const lane = {
+          ...harness.lane,
+          laneRef,
+          graphLaneRef: laneRef,
+        }
+        const result = await dispatcher.dispatchTurn(
+          lane,
+          startRequest(thread.id, `turn-spec-${index}`),
+          fakeSender(harness.forwarded),
+        )
+        expect(result.ok).toBe(true)
+      }
+      expect(harness.runMessages).toEqual([
+        "SPEC WORK CONTEXT (bounded)\nUNMET AO-1: Prove the failing case\n\nOWNER TURN INSTRUCTION:\nrun the fixture",
+        "SPEC WORK CONTEXT (bounded)\nUNMET AO-1: Prove the failing case\n\nOWNER TURN INSTRUCTION:\nrun the fixture",
+      ])
+      expect(revalidated).toEqual(["codex-local", "fable-local"])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("dispatches through the shared engine: journal lifecycle, frozen envelope, exact usage, capability report", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-"))
     try {

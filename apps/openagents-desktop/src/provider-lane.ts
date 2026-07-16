@@ -58,6 +58,10 @@ import {
 } from "./fable-local-contract.ts"
 import type { LocalTurnJournal } from "./local-turn-journal.ts"
 import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
+import {
+  appendSpecLaneContext,
+  type SpecLaneTurnProjection,
+} from "./spec-lane-workflow.ts"
 import type { makeThreadStore } from "./thread-store.ts"
 import {
   projectProviderLaneCapabilities,
@@ -237,6 +241,16 @@ export type ProviderLaneDispatcherDeps = Readonly<{
   /** True while the desktop host is quitting (an interrupted turn then stays
    * nonterminal in the journal so restart recovery owns its disposition). */
   isQuitting: () => boolean
+  /** L7: host-owned spec projection/revalidation. Providers receive bounded
+   * context only; they never parse specs or produce verdicts. */
+  specWorkflow?: Readonly<{
+    beforeTurn: (laneRef: string, request: FableLocalStartRequest) => SpecLaneTurnProjection
+    afterTurn: (
+      laneRef: string,
+      request: FableLocalStartRequest,
+      before: SpecLaneTurnProjection,
+    ) => void
+  }>
   now?: () => Date
 }>
 
@@ -342,6 +356,13 @@ export const makeProviderLaneDispatcher = (
       meta: () => lane.streamMeta(turnContext),
     })
     deps.localTurnFlushers.add(textPersistence.flush)
+    let specProjection: SpecLaneTurnProjection | undefined
+    try {
+      specProjection = deps.specWorkflow?.beforeTurn(lane.laneRef, request)
+    } catch {
+      // Spec context is additive. A projection failure cannot strand an
+      // already journal-accepted owner turn; revalidation remains fail-closed.
+    }
     const projectLaneEvent = lane.makeTurnProjector?.(turnContext)
     // CUT-11 (#8691): register the root turn on the canonical live agent
     // graph before its stream events arrive.
@@ -359,7 +380,9 @@ export const makeProviderLaneDispatcher = (
       model: requestedModel,
       context: admission.context,
       history,
-      message: turnPromptText(request.message, request.images),
+      message: specProjection === undefined
+        ? turnPromptText(request.message, request.images)
+        : appendSpecLaneContext(turnPromptText(request.message, request.images), specProjection),
       background: sender === null,
       emit: turnEvent => {
         // CUT-11 (#8691): fold the SAME typed envelope the renderer receives
@@ -432,6 +455,13 @@ export const makeProviderLaneDispatcher = (
         sender.send(lane.eventChannel, { turnRef: request.turnRef, event: forwarded })
       },
     })
+    if (specProjection !== undefined) {
+      try {
+        deps.specWorkflow?.afterTurn(lane.laneRef, request, specProjection)
+      } catch {
+        // Provider completion truth remains independent of the optional note.
+      }
+    }
     if (!result.ok) {
       textPersistence.flush()
       deps.localTurnFlushers.delete(textPersistence.flush)
