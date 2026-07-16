@@ -8,6 +8,7 @@ describe('documentation shell contract', () => {
     const docsCss = readFileSync(path.resolve(import.meta.dirname, 'docs.css'), 'utf8')
     const headerCss = readFileSync(path.resolve(import.meta.dirname, '../public-header.css'), 'utf8')
     const globalCss = readFileSync(path.resolve(import.meta.dirname, '../styles.css'), 'utf8')
+    const bodyRule = globalCss.match(/\n  body \{([\s\S]*?)\n  \}/)?.[1]
 
     expect(layout).toContain('<PublicHeader')
     expect(layout).toContain('docsActive')
@@ -24,6 +25,9 @@ describe('documentation shell contract', () => {
     expect(docsCss).toContain('width: 100%')
     expect(docsCss).toContain('left: 0')
     expect(docsCss).toContain('html:has(.docs-drawer[open])')
+    expect(docsCss).toContain('position: sticky')
+    expect(bodyRule).toContain('overflow-x: clip')
+    expect(bodyRule).not.toContain('overflow-x: hidden')
     expect(globalCss).toContain('overscroll-behavior: none')
     expect(globalCss).toContain('overscroll-behavior: auto')
     expect(globalCss).not.toContain('body > main {\n    overscroll-behavior: none')

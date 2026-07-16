@@ -174,7 +174,9 @@
   body {
     min-width: 320px;
     margin: 0;
-    overflow-x: hidden;
+    /* Clip horizontal paint without creating an overflow container that
+       breaks sticky descendants such as the docs table of contents. */
+    overflow-x: clip;
     /* The root owns bounce suppression. Body must allow wheel and trackpad
        gestures from page content to reach the viewport scroller. */
     overscroll-behavior: auto;
