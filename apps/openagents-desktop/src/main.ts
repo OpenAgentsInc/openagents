@@ -508,7 +508,19 @@ const localTurnRestartProbe = process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_
     process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE === "recover"
   ? process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE
   : null
-const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null
+// FA-H12 (#8885): the Full Auto two-process restart probe. Same fixture-mode
+// posture as the local-turn restart probe: seed phases write durable state
+// and quit; resume phases relaunch against the SAME userData directory and
+// observe startup reconciliation dispatch (or fail closed) for real.
+const FULL_AUTO_RESTART_PROBE_PHASES = ["seed", "resume", "seed-mismatch", "resume-mismatch"] as const
+const fullAutoRestartProbe: (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number] | null =
+  (FULL_AUTO_RESTART_PROBE_PHASES as ReadonlyArray<string>).includes(
+      process.env.OPENAGENTS_DESKTOP_FULL_AUTO_RESTART_PROBE ?? "",
+    )
+    ? process.env.OPENAGENTS_DESKTOP_FULL_AUTO_RESTART_PROBE as (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number]
+    : null
+const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null ||
+  fullAutoRestartProbe !== null
 const reactSmokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE_REACT === "1"
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
@@ -6016,6 +6028,134 @@ void app.whenReady().then(async () => {
       return
     } catch (error) {
       console.error("[openagents-desktop local-turn-restart] failed", error instanceof Error ? error.message : "unknown")
+      app.exit(1)
+      return
+    }
+  }
+  // FA-H12 (#8885): Full Auto two-process restart probe
+  // (scripts/full-auto-restart-smoke.ts). Mirrors the local-turn restart probe
+  // above: a seed process writes durable state (thread + COMPLETED fixture
+  // turn in the local-turn journal + enabled Full Auto registry record bound
+  // to the fixture workspace) and quits; a separate resume process relaunches
+  // against the same userData directory and observes the REAL startup
+  // reconciliation (localTurnRecovery -> runFullAutoReconciliation wiring
+  // below) dispatch a fixture continuation -- or fail closed on the
+  // deliberately mismatched workspace variant.
+  if (fullAutoRestartProbe !== null) {
+    // Windowless probe mode keeps the original fully-settled ordering.
+    openLocalSyncPersistence()
+    await recoverSessionVaultLocal()
+    await settleSessionRecovery()
+    runtimeGateway.start()
+    try {
+      await localTurnRecovery
+      const seedTurnRef = "turn.full-auto-restart-smoke.seed"
+      if (fullAutoRestartProbe === "seed" || fullAutoRestartProbe === "seed-mismatch") {
+        const store = threads()
+        const thread = store.newThread()
+        const key = { threadRef: thread.id, turnRef: seedTurnRef, lane: "codex-local" as const }
+        localTurnJournal.accept({
+          ...key,
+          userMessageKey: `${seedTurnRef}-user`,
+          assistantMessageKey: `${seedTurnRef}-assistant`,
+          accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
+          model: "gpt-5.6-sol",
+        })
+        store.upsert(thread.id, {
+          key: `${seedTurnRef}-user`, role: "user", text: "Seed a Full Auto loop that must survive a restart.", timestamp: "11:55 PM",
+        })
+        localTurnJournal.recordDispatch(key, FIXTURE_CODEX_LOCAL_ACCOUNT.ref)
+        localTurnJournal.recordProviderSession(key, {
+          accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
+          providerSessionRef: "thread-full-auto-restart-smoke",
+        })
+        localTurnJournal.appendAssistantText(key, "Seed turn complete. ")
+        store.upsert(thread.id, {
+          key: `${seedTurnRef}-assistant`, role: "assistant", text: "Seed turn complete. ", timestamp: "11:55 PM",
+        })
+        // COMPLETED terminal seed turn: nothing is in flight, so the resume
+        // phase's dispatch decision is purely the durable registry's.
+        localTurnJournal.terminal(key, "completed", "completed")
+        // Happy path binds the EXACT workspace the resume process will resolve
+        // (fixture-mode resolution is a pure function of the shared userData
+        // path). The mismatch variant binds a different absolute path so the
+        // resume phase must fail CLOSED (FA-H2) instead of dispatching.
+        const grantedWorkspaceRef = fullAutoRestartProbe === "seed"
+          ? resolveDesktopLocalWorkspaceRoot()
+          : path.join(app.getPath("userData"), "not-the-granted-workspace")
+        fullAutoRegistry.set(thread.id, true, { workspaceRef: grantedWorkspaceRef })
+        // Happy path: consume all but ONE cap slot so the resume phase
+        // dispatches exactly one continuation and then deterministically
+        // disables at the cap -- a bounded single-dispatch observation
+        // instead of a 20-turn loop.
+        if (fullAutoRestartProbe === "seed") {
+          for (let index = 0; index < FULL_AUTO_MAX_CONTINUATIONS - 1; index++) {
+            fullAutoRegistry.incrementContinuation(thread.id)
+          }
+        }
+        console.log(`[openagents-desktop full-auto-restart] phase-a seeded ${JSON.stringify({
+          variant: fullAutoRestartProbe,
+          enabled: fullAutoRegistry.get(thread.id),
+          continuationCount: fullAutoRegistry.record(thread.id)?.continuationCount ?? null,
+        })}`)
+        app.exit(0)
+        return
+      }
+      // Resume phases: the startup pass queued below (localTurnRecovery ->
+      // runFullAutoReconciliation({ startup: true })) plus the chained
+      // post-completion pass drive the registry to a deterministic terminal
+      // state; poll durable state (bounded) instead of racing the queue.
+      const expectMismatch = fullAutoRestartProbe === "resume-mismatch"
+      const seedRecord = localTurnJournal.list().find(value => value.turnRef === seedTurnRef) ?? null
+      const seeded = seedRecord !== null && seedRecord.phase === "completed"
+      const threadRef = seedRecord?.threadRef ?? ""
+      const deadline = Date.now() + 120_000
+      const settled = (): boolean => {
+        const current = fullAutoRegistry.record(threadRef)
+        if (current === null || current.enabled) return false
+        return current.blockedReason === (expectMismatch ? "workspace_mismatch" : "continuation_cap_reached")
+      }
+      while (!settled() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50))
+      const record = fullAutoRegistry.record(threadRef)
+      const continuationRecords = localTurnJournal.list().filter(value =>
+        value.threadRef === threadRef && value.turnRef.startsWith("turn.full-auto."))
+      const dispatchedTurnRef = continuationRecords[0]?.turnRef ?? null
+      const notes = threads().open(threadRef)?.notes ?? []
+      const continuationAssistantText = dispatchedTurnRef === null
+        ? ""
+        : notes.filter(note => note.role === "assistant" && note.key.startsWith(`${dispatchedTurnRef}-assistant`))
+          .map(note => note.text).join("")
+      // FA-H7 pinned semantic: DISABLING zeroes continuationCount, so the
+      // cap-disabled terminal record reads 0. The advancement 19 -> 20 is
+      // still durably proven twice over: the journal holds exactly one
+      // completed dispatched continuation, and the cap disable itself only
+      // fires when the registry count reached FULL_AUTO_MAX_CONTINUATIONS.
+      const advancedContinuationCount = (FULL_AUTO_MAX_CONTINUATIONS - 1) + continuationRecords.length
+      const ok = expectMismatch
+        ? seeded && record !== null && !record.enabled && record.blockedReason === "workspace_mismatch" &&
+          continuationRecords.length === 0 && record.continuationCount === 0 &&
+          notes.some(note => note.role === "system" && note.text.includes("no longer matches"))
+        : seeded && record !== null && !record.enabled && record.blockedReason === "continuation_cap_reached" &&
+          record.continuationCount === 0 &&
+          advancedContinuationCount === FULL_AUTO_MAX_CONTINUATIONS &&
+          typeof record.pendingTurnRef !== "string" &&
+          continuationRecords.length === 1 && continuationRecords[0]!.phase === "completed" &&
+          dispatchedTurnRef !== null &&
+          continuationAssistantText.includes("fixture") &&
+          notes.some(note => note.key === `${dispatchedTurnRef}-user`)
+      console.log(`[openagents-desktop full-auto-restart] phase-b ${JSON.stringify({
+        variant: fullAutoRestartProbe,
+        seeded,
+        resumed: continuationRecords.length > 0,
+        dispatchedTurnRefPresent: dispatchedTurnRef !== null,
+        continuationCount: expectMismatch ? record?.continuationCount ?? null : advancedContinuationCount,
+        blockedReason: record?.blockedReason ?? null,
+        ok,
+      })}`)
+      app.exit(ok ? 0 : 1)
+      return
+    } catch (error) {
+      console.error("[openagents-desktop full-auto-restart] failed", error instanceof Error ? error.message : "unknown")
       app.exit(1)
       return
     }
