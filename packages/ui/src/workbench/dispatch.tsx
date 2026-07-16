@@ -15,11 +15,14 @@
  * and can be passed straight through.
  *
  * Wiring status (component map, `docs/fable/autopilot-ui-component-audit.md`
- * §5):
+ * §5): every Wave-2 lane (T4-T12) has landed, so every `kind` now renders
+ * through its own dedicated presentation — none fall back to the generic
+ * `DesktopWorkEntry` shell any longer.
  *   - message / plan / agent / notice: real shared components (already
  *     wired upstream of this table).
  *   - command (T4 #8861) / fileChange (T5 #8862) / toolCall (T7 #8864):
  *     wired to their typed cards.
+ *   - reasoning (T6 #8863): `DesktopReasoningDisclosure`.
  *   - approval (T9 #8866): `DesktopApprovalCard`, read-only (no
  *     `onDecision`) — this branch only ever sees already-decided history
  *     records; the LIVE interactive tool_approval/plan_review flow renders
@@ -27,10 +30,9 @@
  *     react-composer.tsx`'s `DecisionSurface`, not this dispatch table (see
  *     that file for why: `WorkbenchDispatchItem` has no notion of a pending,
  *     still-answerable decision).
- *   - reasoning (T6 #8863) / meter (T11 #8868) / compaction, sleep, review,
- *     hook (T12 #8869): render through the existing generic
- *     `DesktopWorkEntry` shell for now. Each Wave-2 lane replaces its own
- *     branch with the polished, typed card — never another lane's branch.
+ *   - meter (T11 #8868): `ContextMeter` (historical/inspector mode).
+ *   - compaction, sleep, review, hook (T12 #8869): quiet single-line mono
+ *     ledger rows rendered inline below (not a card, not a disclosure shell).
  */
 import type { ReactElement } from "react"
 
@@ -45,7 +47,6 @@ import { DesktopReasoningDisclosure } from "./reasoning-disclosure.tsx"
 import { DesktopTimelineMessage } from "./message.tsx"
 import { DesktopTimelineNotice } from "./notice.tsx"
 import { DesktopToolCallCard, type DesktopToolKind } from "./tool-call-card.tsx"
-import { DesktopWorkEntry } from "./work-entry.tsx"
 
 /** Which harness observed the item — mirrors `WorkbenchItemSource`. */
 export type WorkbenchDispatchSource = "codex" | "claude" | "local"
@@ -301,10 +302,8 @@ const messageLabel = (role: WorkbenchMessageDispatchItem["role"]): string =>
 /**
  * Renders one `WorkbenchDispatchItem` through its shared component. Every
  * branch is handled — nothing silently drops (design-spec §8 rule 7 /
- * component-audit gap list) — but only message/plan/agent/notice/command/
- * fileChange/toolCall/approval render through their intended real card
- * today; the rest render the generic `DesktopWorkEntry` shell until their
- * Wave-2 lane lands (see the module-level status list above).
+ * component-audit gap list) — through its own dedicated presentation (see
+ * the module-level status list above); none fall back to a generic shell.
  */
 export const dispatchWorkbenchItem = (
   item: WorkbenchDispatchItem,
