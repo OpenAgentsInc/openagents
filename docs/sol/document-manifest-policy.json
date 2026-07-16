@@ -10,9 +10,9 @@
       "dispatch": false
     },
     "docs/sol/2026-07-16-openagents-desktop-full-auto-deep-dive.md": {
-      "class": "current-status",
+      "class": "historical-analysis",
       "owner": "OpenAgents Desktop Full Auto",
-      "disposition": "retain-execution-baseline",
+      "disposition": "retain-historical-baseline",
       "dispatch": false
     },
     "docs/sol/2026-07-15-effect-native-storybook-workbench-receipt.md": {

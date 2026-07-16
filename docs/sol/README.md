@@ -79,9 +79,9 @@ not current queues:
   — default-off privacy, admission, outbox, opt-out, and owner-gated live-proof
   contract for Desktop local-turn usage ingestion under issue #8911.
 - [`2026-07-16-openagents-desktop-full-auto-deep-dive.md`](./2026-07-16-openagents-desktop-full-auto-deep-dive.md)
-  — current source, runtime, test, release, and proof-rung audit of Desktop Full
-  Auto; distinguishes restart-persistent intent from exactly-once,
-  WorkContext-bound, distributed, live-proven unattended execution.
+  — pinned revision-2 runtime/proof audit with a top-of-file reconciliation to
+  the landed revision-9 hardening criteria and current residuals; the original
+  findings remain historical evidence, not a current dispatch queue.
 - [`2026-07-15-khala-ui-components-workbench-receipt.md`](./2026-07-15-khala-ui-components-workbench-receipt.md)
   — deterministic implementation proof for the complete 30-capability,
   non-audio Khala UI workbench at `/components/khala`, its seven-package Effect

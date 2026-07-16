@@ -1,8 +1,8 @@
 # OpenAgents Desktop Full Auto: implementation and proof deep dive
 
 - Date: 2026-07-16
-- Class: current-status
-- Status: code-landed and module-proven; not distributed, live-proven, or owner-accepted
+- Class: historical baseline with current reconciliation
+- Status: superseded as current implementation status; retained as the hardening baseline
 - Source snapshot: `8d4bc1d3fa393c124743c4ef77d07903b48bc9d8`
 - Implementation commit: `d480f779aa037516042b57ccd474a4d3fed6f04b`
 - Issues: [#8852](https://github.com/OpenAgentsInc/openagents/issues/8852),
@@ -10,6 +10,50 @@
 - Owner: OpenAgents Desktop Full Auto
 - Dispatch: no; this is a point-in-time analysis, not a work queue
 - Final disposition: retain-hardening-baseline; release/live/owner proof remains open
+
+## Current reconciliation at `df03cf2ef7` (2026-07-16)
+
+This document audited the revision-2 implementation at the source snapshot
+above. Its findings and adversarial probes remain useful historical evidence,
+but the unqualified present-tense status below is not the current dispatch or
+proof authority. Read the adopted
+[`full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md),
+current code and tests, and live issues before selecting work. The ProductSpec
+is now revision 9 with 37 criteria; its generated proposed AssuranceSpec still
+leaves its obligations unadmitted and does not turn provider output into a
+verdict.
+
+The hardening program closed the source/test gaps this audit found as follows:
+
+| Audit finding | Current source/test disposition |
+| --- | --- |
+| 1. Toggle hydration / truthful stop | Initial hydration, main-owned live state, background-turn Stop, and manual-send fencing landed under FA-AC-19 through FA-AC-21. Arbitrary in-session thread-switch resync remains explicitly cut, so this finding is only partly superseded. |
+| 2. Workspace authority | Durable main-resolved workspace binding and fail-closed mismatch/unbound handling landed under FA-AC-13 and FA-AC-14. |
+| 3. Overlapping dispatch | Serialized reconciliation plus a durable per-thread lease and retained overlap/stale-lease tests landed under FA-AC-15. |
+| 4. Invisible background work | Coarse typed per-thread running/completed/failed/capped/blocked projection landed under FA-AC-19. Token streaming remains out of scope. |
+| 5. Silent failure | Typed failure state, owner-visible notes, bounded backoff, and disable-after-five landed under FA-AC-16. |
+| 6. Profile drift | Durable account/model/effort continuity with deliberate attachment resets landed under FA-AC-17; the profile later gained an additive ProviderLane ref under FA-AC-29. |
+| 7. Contract contradiction | The ProductSpec and implementation receipts now describe the main-owned registry/reconcile path. Public promises remain a separate authority and were not changed. |
+| 8. Missing proof ladder | A real two-process Electron restart smoke landed under #8885 and is retained in the ProductSpec receipts. A packaged owner-observed restart remains an owner gate. |
+| 9. Unmeasurable metrics | The speculative metrics were removed rather than inferred. #8911 has since landed default-off, opt-in-only usage plumbing; owner-approved disclosure and sanctioned live proof remain open. |
+| 10. Corrupt registry startup | Fail-open app initialization, fail-closed feature behavior, quarantine, and recovery tests landed under FA-AC-11. |
+| 11. Unanswerable background question | Codex and Claude background question settlement landed under FA-AC-30 and FA-AC-31; ineligible lanes fail closed. |
+| 12. Enabled-record eviction | Enabled records are retained and only the disabled tail is bounded under FA-AC-12. |
+| 13. No programmatic control | The opt-in loopback bearer-gated API, OpenAPI parity, CLI, MCP server, and bootstrap start path landed under FA-AC-22 through FA-AC-28. |
+
+Two later extensions also landed without moving authority into providers:
+
+- #8902 closed after the bounded ProductSpec/AssuranceSpec projection,
+  candidate-obligation discovery, and post-turn authority-owned revalidation
+  path landed across two lane fixtures (FA-AC-34 through FA-AC-37).
+- #8901 remains open. A real authenticated bounded Claude Full Auto loop is
+  recorded in that issue; the required actual ACP Desktop Full Auto loop is
+  still pending a real Desktop ProviderLane adapter. Do not infer that proof
+  from registry/UI support or from a quarantined peer profile.
+
+This reconciliation does not claim distribution, release, owner acceptance,
+or public-promise satisfaction. The remainder of the document intentionally
+preserves what the audit found at its pinned snapshot.
 
 ## Executive finding
 
