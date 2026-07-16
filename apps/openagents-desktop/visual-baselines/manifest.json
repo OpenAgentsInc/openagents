@@ -15,35 +15,35 @@
     {
       "name": "composer-idle",
       "file": "composer-idle.png",
-      "sha256": "f4393c051efd09f608885b6d272e08d1c71f33ac36a5d51cb5f75c97b8d1c979",
+      "sha256": "40fda8490da6a94661206c2bc6735e85ab8f1fa797b5a8e4446b36a6083a1eae",
       "width": 1280,
       "height": 800
     },
     {
       "name": "thread-plan-card",
       "file": "thread-plan-card.png",
-      "sha256": "316f824fb3f58e14a2625e8a03079760d99e44f537c156bd0b1b4d8f99369437",
+      "sha256": "295caa56901e387493657e7897711c9975a06522fb35a2ff013805942fbece8a",
       "width": 1280,
       "height": 800
     },
     {
       "name": "approval-card",
       "file": "approval-card.png",
-      "sha256": "20bbf0d49d5c4d9e6682513d85033609bb31e1f4f18914f41c85b64f686bc8e7",
+      "sha256": "364b80327cf938a0f54fd57b870df0fbb9d53ff3db342ace9cb721f445099d1e",
       "width": 1280,
       "height": 800
     },
     {
       "name": "reasoning-disclosure",
       "file": "reasoning-disclosure.png",
-      "sha256": "70bcdbaf493b590eeec1734482eaef27c621a30ab4625619743f0c857fa06916",
+      "sha256": "2b061e0465e8047d0f4a3a7b4bb0b21462bc01427634f16abd4e9c044ef00b63",
       "width": 1280,
       "height": 800
     },
     {
       "name": "full-auto-running",
       "file": "full-auto-running.png",
-      "sha256": "23241d781109a5286939e57ffd34554249a75456f329552e0173ff05ee92c1c2",
+      "sha256": "666582316923470bb42a6d0ab77189f5618817f54c0ec41e9e24318e370997cb",
       "width": 1280,
       "height": 800
     },

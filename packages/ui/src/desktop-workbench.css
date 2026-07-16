@@ -1732,6 +1732,21 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   flex: 0 0 auto;
 }
 
+.oa-react-composer-button:is(
+  [data-en-key="shell-provider-select"],
+  [data-en-key="shell-model-select"],
+  [data-en-key="shell-reasoning-select"],
+  [data-en-key="shell-permission-mode"]
+) {
+  width: auto;
+  min-width: var(--en-control-sm-height);
+  max-width: 12rem;
+  padding: 0 var(--en-spacing-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .oa-react-composer-button[data-composer-button-kind="toggle"] {
   width: auto;
   min-width: var(--en-control-sm-height);
