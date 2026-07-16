@@ -387,6 +387,51 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     expect(await host.openThread(localThread.id)).toEqual(localThread)
   })
 
+  test("preserves local provider-lane authority through the converging facade", async () => {
+    const localThread: DesktopThread = {
+      id: "thread.local.claude",
+      title: "New chat",
+      updatedAt: now,
+      notes: [],
+    }
+    const createdLanes: Array<string | undefined> = []
+    const selectedLanes: Array<Readonly<{ threadRef: string; laneRef: string }>> = []
+    let durableLane = "codex-local"
+    const local: ChatHost = {
+      listThreads: async () => [localThread],
+      newThread: async laneRef => {
+        createdLanes.push(laneRef)
+        durableLane = laneRef ?? "codex-local"
+        return localThread
+      },
+      selectLane: async (threadRef, laneRef) => {
+        selectedLanes.push({ threadRef, laneRef })
+        durableLane = laneRef
+        return { ok: true }
+      },
+      laneForThread: async () => durableLane,
+      openThread: async id => id === localThread.id ? localThread : null,
+      sendMessage: async () => ({ ok: true, thread: localThread }),
+    }
+    const host = makeConvergingDesktopChatHost({
+      local,
+      request: async raw => ({
+        kind: "conversation_catalog",
+        requestId: (raw as { requestId: string }).requestId,
+        status,
+        threads: [],
+      }),
+    })
+
+    expect(await host.newThread("fable-local")).toEqual(localThread)
+    expect(createdLanes).toEqual(["fable-local"])
+    expect(await host.laneForThread?.(localThread.id)).toBe("fable-local")
+
+    expect(await host.selectLane?.(localThread.id, "codex-local")).toEqual({ ok: true })
+    expect(selectedLanes).toEqual([{ threadRef: localThread.id, laneRef: "codex-local" }])
+    expect(await host.laneForThread?.(localThread.id)).toBe("codex-local")
+  })
+
   test("maps confirmed threads/messages and waits for exact mutation refs", async () => {
     const threads = new Map<string, { title: string; messages: Array<{ ref: string; body: string }> }>([
       ["thread.synced.1", { title: "Synced", messages: [{ ref: "message.synced.1", body: "Confirmed" }] }],

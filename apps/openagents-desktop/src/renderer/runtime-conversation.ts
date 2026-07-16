@@ -716,15 +716,17 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
       return [...local, ...hosted.filter(thread => !localRefs.has(thread.id))]
         .sort(compareDesktopThreadsByRecency)
     },
-    newThread: async () => {
+    newThread: async laneRef => {
       // New Chat is local-first navigation. It must never wait behind live
       // Sync's unbounded pending-reconciliation path: create durably in the
       // app-owned store and pin the ref local before consulting the network.
-      const local = await input.local.newThread()
+      // Preserve the requested provider lane: dropping it binds the durable
+      // thread to Codex while the composer can already be showing Claude.
+      const local = await input.local.newThread(laneRef)
       if (local !== null) return remember(local, "local")
       // A missing/broken local bridge is the only reason to attempt the typed
       // runtime host. This is degradation, not the normal critical path.
-      return remember(await runtime.newThread(), "runtime")
+      return remember(await runtime.newThread(laneRef), "runtime")
     },
     openThread: async threadRef => {
       const selected = await hostForThread(threadRef)
@@ -754,6 +756,22 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
         active = null
       }
     },
+    ...(input.local.selectLane === undefined ? {} : {
+      selectLane: async (threadRef: string, laneRef: string) => {
+        const selected = await hostForThread(threadRef)
+        return selected.host.selectLane?.(threadRef, laneRef) ?? {
+          ok: false,
+          reason: "unknown_lane",
+          message: "Provider lane selection is unavailable for this thread.",
+        }
+      },
+    }),
+    ...(input.local.laneForThread === undefined ? {} : {
+      laneForThread: async (threadRef: string) => {
+        const selected = await hostForThread(threadRef)
+        return selected.host.laneForThread?.(threadRef) ?? null
+      },
+    }),
     interruptActive: async () => active?.interruptActive?.() ?? false,
     steerChild: async value => active?.steerChild?.(value) ?? { ok: false, outcome: "not_found" },
     queueFollowup: async value => active?.queueFollowup?.(value) ?? { ok: false, queued: false },
