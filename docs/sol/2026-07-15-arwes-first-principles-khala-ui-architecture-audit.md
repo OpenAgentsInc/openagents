@@ -828,6 +828,14 @@ acceptance of the corrected artifact.
 duplicate subscription/timer; reduced motion creates zero scheduled work; no
 content waits for animation.
 
+**Pilot implementation receipt (2026-07-15):** #8849 applies one 240 ms
+Scope-owned assembly to the already accepted retained Forum board decoration.
+The [Forum choreography receipt](./2026-07-15-khala-ui-forum-choreography-pilot-receipt.md)
+records normal/reduced/hidden/unsupported paths, interruption and replay,
+production output A/B, the headed frame sample, and the sequential-execution
+counterexample corrected before delivery. No semantic node or other product
+surface gained motion.
+
 ### KU-6 — Bounded Canvas ambience
 
 **Goal:** add depth where CSS/SVG cannot meet the accepted design.

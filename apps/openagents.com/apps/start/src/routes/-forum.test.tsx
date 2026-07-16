@@ -359,6 +359,11 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
       expect(container.querySelectorAll('[data-en-khala="cut-corner-surface"]')).toHaveLength(1)
       expect(container.querySelectorAll('[data-en-khala="signal-separator"]')).toHaveLength(1)
       expect(
+        container
+          .querySelector('#en-khala-forum-board-index')
+          ?.getAttribute('data-khala-motion'),
+      ).toBe('unsupported-static')
+      expect(
         container.querySelectorAll('[data-en-key^="forum-row-"] [data-en-khala-decoration]'),
       ).toHaveLength(0)
       const undecorated = container.cloneNode(true) as HTMLElement

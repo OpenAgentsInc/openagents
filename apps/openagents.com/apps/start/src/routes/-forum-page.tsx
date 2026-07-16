@@ -83,6 +83,10 @@ import {
   type ForumTopicPostSortDirection,
   type ForumTopicProjection,
 } from './-forum-data'
+import {
+  mountForumBoardAssembly,
+  type ForumKhalaAssemblyDependencies,
+} from './-forum-khala-motion'
 import { parseForumMarkdown } from './-forum-markdown'
 
 // ---------------------------------------------------------------------------
@@ -778,6 +782,7 @@ export type ForumSurfaceDependencies = Readonly<{
   copyToClipboard?: (value: string) => Promise<void>
   assignLocation?: (href: string) => void
   scrollToAnchor?: (anchor: string) => void
+  khalaAssembly?: ForumKhalaAssemblyDependencies | false
 }>
 
 const loadForumState = (
@@ -921,6 +926,17 @@ export const mountForumSurface = (
         })),
       ),
     )
+
+    // Motion is attached only after the committed renderer mount and the
+    // first data boundary have yielded. Semantic content never waits for it.
+    const loadedState = yield* SubscriptionRef.get(state)
+    if (
+      params.kind === 'index' &&
+      loadedState.phase === 'ready' &&
+      deps.khalaAssembly !== false
+    ) {
+      yield* mountForumBoardAssembly(container, deps.khalaAssembly)
+    }
 
     // Deep-link parity: `#post-<id>` / `#post-<n>` anchors scroll to the
     // rendered post once the ready view exists.
