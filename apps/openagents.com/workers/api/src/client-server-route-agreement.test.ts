@@ -28,6 +28,7 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
     '/install',
     '/login',
     '/promises',
+    '/splash',
     '/docs',
     '/docs/getting-started',
     '/docs/future/nostr',
