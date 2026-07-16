@@ -21,7 +21,7 @@ import {
   type AcpExecutableProbe,
 } from "./admission.ts";
 import { CURSOR_TRUSTED_PEER_PROFILE } from "./cursor.ts";
-import { GROK_TRUSTED_PEER_PROFILE } from "./grok.ts";
+import { grokAcpCompatibilityForVersion, GROK_TRUSTED_PEER_PROFILE } from "./grok.ts";
 import { createDefaultAcpTrustedPeerProfileRegistry, parseAcpTrustedPeerProfile } from "./index.ts";
 import {
   createAcpTrustedPeerProfileRegistry,
@@ -165,6 +165,16 @@ const expectRejected = (candidate: unknown, reason: string, pathFragment?: strin
 };
 
 describe("trusted peer-profile schema", () => {
+  it("keeps Grok unstable model and private completion compatibility exact-version gated", () => {
+    expect(grokAcpCompatibilityForVersion("0.2.101")).toEqual({
+      unstableSetModel: false,
+      privatePromptCompletionFallback: false,
+    });
+    expect(grokAcpCompatibilityForVersion("9.9.9")).toEqual({
+      unstableSetModel: false,
+      privatePromptCompletionFallback: false,
+    });
+  });
   it("parses the Grok and Cursor reference profiles through the same contract", () => {
     for (const candidate of [GROK_TRUSTED_PEER_PROFILE, CURSOR_TRUSTED_PEER_PROFILE]) {
       const parsed = parseAcpTrustedPeerProfile(candidate);
@@ -786,7 +796,7 @@ describe("peer admission", () => {
       probe: syntheticProbe({
         requestedExecutable: "grok",
         resolvedPath: "/opt/tools/bin/grok",
-        reportedVersion: "grok 0.4.2",
+        reportedVersion: "grok 0.2.102",
       }),
       evidence: [],
       now: NOW,

@@ -1485,6 +1485,9 @@ importers:
       '@openagentsinc/agent-client-runtime-bridge':
         specifier: workspace:*
         version: link:../agent-client-runtime-bridge
+      '@openagentsinc/agent-stdio-transport':
+        specifier: workspace:*
+        version: link:../agent-stdio-transport
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../runtime-platform

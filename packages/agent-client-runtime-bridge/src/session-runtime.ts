@@ -184,6 +184,8 @@ export type AcpSessionRuntimeOptions = Readonly<{
     terminal: boolean;
   }>;
   clientInfo?: Readonly<{ name: string; version: string; title?: string }>;
+  peerIdentityFallback?: Readonly<{ name: string; version: string }>;
+  expectedPeerIdentity?: Readonly<{ namePrefix: string; version: string }>;
   selectAuthMethod?: (
     advertised: ReadonlyArray<Readonly<{ id: string; name?: string; description?: string }>>,
   ) => Promise<string | undefined>;
@@ -229,8 +231,9 @@ export const createAdmittedAcpSessionTransport = async (
     cwd?: string;
     environment?: Readonly<Record<string, string | undefined>>;
     limits?: Partial<AgentStdioTransportLimits>;
+    methodKinds?: ReadonlyArray<Readonly<{ method: string; kind: "request" | "notification" }>>;
   }> = {},
-): Promise<AcpSessionTransportPort> => {
+): Promise<AgentStdioTransport> => {
   const environment = buildAdmittedLaunchEnvironment(admission.launchPlan, input.environment ?? {});
   if (environment._tag === "LaunchEnvironmentRejected") throw new Error(environment.detail);
   return AgentStdioTransport.start({
@@ -239,6 +242,7 @@ export const createAdmittedAcpSessionTransport = async (
     versionProbeArgs: admission.launchPlan.versionProbeArgs,
     env: environment.env,
     identityPin: admission.identityPin,
+    ...(input.methodKinds === undefined ? {} : { methodKinds: input.methodKinds }),
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(input.limits === undefined ? {} : { limits: input.limits }),
   });
@@ -456,6 +460,28 @@ export class AcpSessionRuntime {
       }
       const capabilities = this.#capabilities(value.agentCapabilities);
       const info = object(value.agentInfo);
+      const metadata = object(value._meta);
+      const peerName =
+        typeof info.name === "string"
+          ? info.name
+          : (this.#options.peerIdentityFallback?.name ?? "unknown-agent");
+      const peerVersion =
+        typeof info.version === "string"
+          ? info.version
+          : typeof metadata.agentVersion === "string"
+            ? metadata.agentVersion
+            : (this.#options.peerIdentityFallback?.version ?? "unknown");
+      const expected = this.#options.expectedPeerIdentity;
+      if (
+        expected !== undefined &&
+        (!peerName.toLowerCase().startsWith(expected.namePrefix.toLowerCase()) ||
+          peerVersion !== expected.version)
+      )
+        return await this.#startFailure(
+          "incompatible_version",
+          "peer initialize identity does not match executable admission",
+          started,
+        );
       const evidence: AcpRuntimeEvidence = Object.freeze({
         schemaRelease: "schema-v1.19.0",
         wireVersion: 1,
@@ -463,8 +489,8 @@ export class AcpSessionRuntime {
         connectionRef: this.#connectionRef,
         profile: this.#options.profile,
         peer: Object.freeze({
-          name: typeof info.name === "string" ? info.name : "unknown-agent",
-          version: typeof info.version === "string" ? info.version : "unknown",
+          name: peerName,
+          version: peerVersion,
         }),
         capabilities,
         authMethodIds: Object.freeze(authMethods.map((method) => method.id)),
@@ -957,16 +983,21 @@ export class AcpSessionRuntime {
   async cancel(
     peerSessionId: string,
     source: AcpCancelSource = "user",
+    options: Readonly<{ abortLocal?: boolean }> = {},
   ): Promise<AcpLifecycleOutcome<undefined>> {
     const session = this.#sessions.get(peerSessionId);
     if (session === undefined)
       return this.#failure("session/cancel", "missing_session", "session is unavailable");
     const turn = session.activeTurn ?? session.queuedTurns[0];
-    if (turn === undefined || turn.terminal !== undefined || turn.cancelSource !== undefined)
+    if (turn === undefined || turn.terminal !== undefined)
       return this.#success("session/cancel", undefined, 0, session, turn);
+    if (turn.cancelSource !== undefined) {
+      if (options.abortLocal !== false) turn.controller.abort();
+      return this.#success("session/cancel", undefined, 0, session, turn);
+    }
     if (turn !== undefined) {
       turn.cancelSource = source;
-      turn.controller.abort();
+      if (options.abortLocal !== false) turn.controller.abort();
     }
     try {
       if (session.activeTurn === turn) {

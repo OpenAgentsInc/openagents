@@ -1,0 +1,50 @@
+{
+  "proofClass": "diagnostic-live",
+  "claimAuthority": "candidate-only-final-release-gated-by-8897",
+  "recordedAt": "2026-07-16T14:36:25Z",
+  "openAgentsRevisionBase": "017b375e362c3adcfd9aeded52ecc45e7f8df3e5",
+  "schemaRelease": "schema-v1.19.0",
+  "profileId": "grok-cli",
+  "profileRevision": 1,
+  "peer": {
+    "command": ["grok", "agent", "stdio"],
+    "version": "0.2.101",
+    "build": "5bc4b5dfadcf",
+    "sha256": "8431538dbd99379240f558b48b779c651d668b06d793c87311ad532c4395a4e2",
+    "platform": "darwin-arm64"
+  },
+  "negotiation": {
+    "wireVersion": 1,
+    "authMethodIds": ["cached_token", "grok.com"],
+    "advertisedCapabilityKeys": [
+      "_meta",
+      "auth",
+      "loadSession",
+      "mcpCapabilities",
+      "promptCapabilities",
+      "sessionCapabilities"
+    ],
+    "loadSession": true
+  },
+  "scenarios": {
+    "versionAndDigestProbe": "pass",
+    "initialize": "pass",
+    "cachedTokenAuthenticate": "pass",
+    "sessionNew": "pass",
+    "promptTextUpdate": "pass",
+    "promptStopReasonExactlyOnce": "pass",
+    "cleanShutdown": "pass",
+    "apiKeyAuthenticate": "fixture-pass-live-not-configured",
+    "reverseAuthority": "fixture-pass-live-not-enabled",
+    "questionExtensions": "fixture-pass-live-not-observed",
+    "loadReplay": "fixture-pass-live-not-run"
+  },
+  "redaction": {
+    "promptTextRetained": false,
+    "responseTextRetained": false,
+    "authMaterialRetained": false,
+    "providerMetadataRetained": false,
+    "hostIdentityRetained": false
+  },
+  "result": "pass"
+}

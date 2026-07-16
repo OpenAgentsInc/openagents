@@ -59,7 +59,11 @@ export {
   type AcpUnknownPeerExperimentalResult,
 } from "./admission.ts";
 
-export { GROK_TRUSTED_PEER_PROFILE } from "./grok.ts";
+export {
+  GROK_ACP_VERSION_COMPATIBILITY,
+  GROK_TRUSTED_PEER_PROFILE,
+  grokAcpCompatibilityForVersion,
+} from "./grok.ts";
 export { CURSOR_TRUSTED_PEER_PROFILE } from "./cursor.ts";
 
 import { CURSOR_TRUSTED_PEER_PROFILE } from "./cursor.ts";

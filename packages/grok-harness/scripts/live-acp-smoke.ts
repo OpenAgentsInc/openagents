@@ -30,9 +30,8 @@ try {
       {
         ok: turn.text.toLowerCase().includes("pong") || turn.text.trim().length > 0,
         stopReason: turn.stopReason,
-        text: turn.text.slice(0, 200),
+        textBytes: Buffer.byteLength(turn.text),
         eventTypes: [...new Set(events)],
-        threadId: thread.threadId,
       },
       null,
       2,

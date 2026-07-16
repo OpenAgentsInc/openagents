@@ -127,6 +127,12 @@ and #8890 delivered the hermetic
 package. #8891 then delivered the native/canonical projection and reverse
 authority bridge, and #8892 delivered the shared race-safe
 [session runtime](../adr/2026-07-16-agent-client-session-runtime.md). The
+#8893 Grok edge now composes those layers behind admitted `grok agent stdio`,
+uses documented cached-token/API-key negotiation, and records an exact 0.2.101
+candidate probe in the
+[Grok peer ADR](../adr/2026-07-16-grok-agent-client-protocol-peer.md). Its
+production compatibility facade no longer uses the raw JSON-RPC fixture client.
+Final supported-language and cross-platform proof remains #8897. The
 conformance package's exact 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference
 custody cases, and opt-in probes are checked artifacts. The Grok and Cursor
@@ -831,8 +837,9 @@ and specified in the [runtime bridge ADR](../adr/2026-07-16-agent-client-runtime
 The provider-independent lifecycle now single-flights startup, capability-gates
 stable optional methods, serializes prompts, drains accepted inbound frames,
 fences replay from live work, separates cancellation sources, observes process
-exit, and performs bounded generation-safe recovery. Provider-specific
-real-binary admission remains #8893, #8894, and #8897.
+exit, and performs bounded generation-safe recovery. Grok real-binary
+admission is implemented by #8893; Cursor admission remains #8894, and final
+release claims remain #8897.
 
 1. Exercise every stable method and notification.
 2. Assert capability-gated call refusal.

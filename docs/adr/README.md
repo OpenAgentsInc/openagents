@@ -39,3 +39,4 @@ records. They provide a stable decision log that links those sources together.
 - [ADR-0014: Use Google Cloud as the sole production infrastructure](0014-use-google-cloud-as-the-sole-production-infrastructure.md)
 - [Agent Client Protocol runtime bridge](2026-07-16-agent-client-runtime-bridge.md)
 - [Agent Client Protocol session runtime](2026-07-16-agent-client-session-runtime.md)
+- [Grok CLI as an admitted Agent Client Protocol peer](2026-07-16-grok-agent-client-protocol-peer.md)

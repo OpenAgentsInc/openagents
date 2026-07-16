@@ -5,8 +5,6 @@ import { basename } from "node:path";
 
 import { AgentStdioTransport } from "@openagentsinc/agent-stdio-transport";
 
-import { sanitizeDurableValue } from "./transcript.ts";
-
 export type LiveProfile = "grok" | "cursor";
 export type AcpLiveProbeResult = Readonly<{
   proofClass: "diagnostic-live";
@@ -36,6 +34,39 @@ const profiles = {
     versionArgs: ["--version"],
   },
 } as const;
+
+const object = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+/** Deliberately excludes provider metadata, hostnames, IDs, paths, and model context details. */
+export const summarizeSafeInitialize = (value: unknown): unknown => {
+  const initialize = object(value);
+  const info = object(initialize.agentInfo);
+  const capabilities = object(initialize.agentCapabilities);
+  const sessionCapabilities = object(capabilities.sessionCapabilities);
+  return Object.freeze({
+    protocolVersion: initialize.protocolVersion,
+    ...(typeof info.name === "string" || typeof info.version === "string"
+      ? {
+          agentInfo: {
+            ...(typeof info.name === "string" ? { name: info.name.slice(0, 128) } : {}),
+            ...(typeof info.version === "string" ? { version: info.version.slice(0, 64) } : {}),
+          },
+        }
+      : {}),
+    advertisedCapabilityKeys: Object.keys(capabilities)
+      .filter((key) => key !== "_meta")
+      .toSorted(),
+    advertisedSessionCapabilityKeys: Object.keys(sessionCapabilities).toSorted(),
+    authMethodIds: Array.isArray(initialize.authMethods)
+      ? initialize.authMethods
+          .map(object)
+          .flatMap((method) => (typeof method.id === "string" ? [method.id.slice(0, 128)] : []))
+      : [],
+  });
+};
 
 export const runAcpLiveProbe = async (peer: LiveProfile): Promise<AcpLiveProbeResult> => {
   const profile = profiles[peer];
@@ -89,7 +120,7 @@ export const runAcpLiveProbe = async (peer: LiveProfile): Promise<AcpLiveProbeRe
       binaryVersion,
       ...executableIdentity(),
       result: "pass",
-      initialize: sanitizeDurableValue(initialize),
+      initialize: summarizeSafeInitialize(initialize),
     };
   } catch (error) {
     return {

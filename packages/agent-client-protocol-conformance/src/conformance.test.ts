@@ -22,6 +22,7 @@ import {
 import { STABLE_CONFORMANCE_CASES, assertStableManifestCoverage } from "./cases.ts";
 import { executeFaultCase } from "./faults.ts";
 import { definePeerScenario, runPeerScenario, startPeerScenarioTransport } from "./harness.ts";
+import { summarizeSafeInitialize } from "./live.ts";
 import { materializeMcpServers, McpReferenceError } from "./mcp.ts";
 import {
   ConformanceProjectionState,
@@ -40,6 +41,25 @@ import {
 } from "./variants.ts";
 
 describe("stable Agent Client Protocol conformance", () => {
+  it("reduces live initialize evidence to capability/auth IDs without provider or host metadata", () => {
+    const summary = summarizeSafeInitialize({
+      protocolVersion: 1,
+      agentCapabilities: {
+        loadSession: true,
+        sessionCapabilities: { resume: {} },
+        _meta: { hostname: "secret-host", agentInstanceId: "secret-id" },
+      },
+      authMethods: [{ id: "cached_token", description: "from /private/home" }],
+      _meta: { currentWorkingDirectory: "/private/workspace", agentId: "secret-id" },
+    });
+    expect(summary).toEqual({
+      protocolVersion: 1,
+      advertisedCapabilityKeys: ["loadSession", "sessionCapabilities"],
+      advertisedSessionCapabilityKeys: ["resume"],
+      authMethodIds: ["cached_token"],
+    });
+    expect(JSON.stringify(summary)).not.toMatch(/secret|private|hostname|agentInstanceId/);
+  });
   it("executes replay-before-response and response-before-next-read lifecycle barriers", async () => {
     const scenario = definePeerScenario({
       name: "session-runtime-race-matrix",

@@ -3,12 +3,25 @@
  * #8893). Launch pin: `grok agent stdio`. Extension identity comes only from
  * the Grok vendor-extension module — no Cursor code is shared here.
  *
- * Version pins are deliberately conservative: no version is marked
- * `supported` until the pinned live compatibility matrix (#8897) lands its
- * evidence, so admission derives at most `experimental` for current builds.
+ * Version 0.2.101 is the first exact release candidate. Admission still
+ * derives `experimental` unless fresh fixture and digest-bound live evidence
+ * is supplied; the final release claim remains gated by #8897.
  */
 
 import { GROK_ACP_PROFILE } from "../extensions/grok.ts";
+
+export const GROK_ACP_VERSION_COMPATIBILITY = Object.freeze({
+  "0.2.101": Object.freeze({
+    unstableSetModel: false,
+    privatePromptCompletionFallback: false,
+  }),
+});
+
+export const grokAcpCompatibilityForVersion = (
+  version: string,
+): Readonly<{ unstableSetModel: boolean; privatePromptCompletionFallback: boolean }> =>
+  GROK_ACP_VERSION_COMPATIBILITY[version as keyof typeof GROK_ACP_VERSION_COMPATIBILITY] ??
+  Object.freeze({ unstableSetModel: false, privatePromptCompletionFallback: false });
 
 export const GROK_TRUSTED_PEER_PROFILE = {
   contractVersion: 1,
@@ -28,8 +41,11 @@ export const GROK_TRUSTED_PEER_PROFILE = {
     auditRef: "docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md",
   },
   versions: {
-    supported: [],
-    experimental: [{ kind: "bounded", fromInclusive: "0.0.1", toExclusive: "2.0.0" }],
+    supported: [{ kind: "exact", version: "0.2.101" }],
+    experimental: [
+      { kind: "bounded", fromInclusive: "0.2.0", toExclusive: "0.2.101" },
+      { kind: "bounded", fromInclusive: "0.2.102", toExclusive: "0.3.0" },
+    ],
     denied: [],
   },
   launch: {
@@ -39,7 +55,7 @@ export const GROK_TRUSTED_PEER_PROFILE = {
     versionProbeArgs: ["version"],
   },
   environment: {
-    allowedKeys: ["XAI_API_KEY"],
+    allowedKeys: ["HOME", "XAI_API_KEY"],
     secretRefs: [
       {
         key: "XAI_API_KEY",
@@ -56,9 +72,9 @@ export const GROK_TRUSTED_PEER_PROFILE = {
   auth: {
     policy: "advertised-methods-only",
     methods: [
-      { id: "cached-token", kind: "cached-token", interaction: "none" },
+      { id: "cached_token", kind: "cached-token", interaction: "none" },
       {
-        id: "api-key",
+        id: "xai.api_key",
         kind: "api-key-secret",
         interaction: "none",
         secretRefKey: "XAI_API_KEY",
@@ -68,11 +84,11 @@ export const GROK_TRUSTED_PEER_PROFILE = {
   capabilities: [
     { capability: "prompt.text", state: "supported" },
     { capability: "sessionUpdates.streaming", state: "supported" },
-    { capability: "fs.readTextFile", state: "unsupported" },
-    { capability: "fs.writeTextFile", state: "unsupported" },
-    { capability: "terminal", state: "unsupported" },
+    { capability: "fs.readTextFile", state: "supported" },
+    { capability: "fs.writeTextFile", state: "supported" },
+    { capability: "terminal", state: "supported" },
     { capability: "network", state: "unsupported" },
-    { capability: "session.load", state: "experimental" },
+    { capability: "session.load", state: "supported" },
   ],
   deviations: [
     {
@@ -95,7 +111,7 @@ export const GROK_TRUSTED_PEER_PROFILE = {
   })),
   sessionPolicy: {
     ownership: "single-root-session",
-    restore: "unsupported",
+    restore: "session-load",
     cancellation: "session-cancel",
     shutdown: "dispose-process",
   },
