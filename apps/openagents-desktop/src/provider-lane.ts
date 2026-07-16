@@ -50,6 +50,7 @@ import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   fableLocalTraceNoteMeta,
   fableLocalTraceNoteText,
+  isTranscriptOrderingBoundary,
   startRequestHasContent,
   type FableChildUsage,
   type FableLocalEvent,
@@ -395,7 +396,7 @@ export const makeProviderLaneDispatcher = (
         })
         if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
         if (turnEvent.kind === "text_delta") textPersistence.append(turnEvent.text)
-        else textPersistence.boundary()
+        else if (isTranscriptOrderingBoundary(turnEvent)) textPersistence.boundary()
         // Session usage ledger (#8712 Lane C): exact usage from the typed
         // completion event, attributed to the lane's provider with the
         // owner-selected model as spawn-config truth. A split-less emitter
