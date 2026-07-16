@@ -26,7 +26,7 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     oracleRefs: ["apps/openagents-desktop/src/renderer/composer-focus.test.ts", "apps/openagents-desktop/src/main.ts"],
   },
   {
-    surfaceId: "workspace-chat",
+    surfaceId: "workspace-new-chat",
     interaction: "Search the full coding-history catalog by session title or workspace",
     criterionRefs: ["CW-AC-10"],
     assuranceItemRefs: ["AO-CW-AC-10-01"],
@@ -34,7 +34,7 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     oracleRefs: ["apps/openagents-desktop/src/renderer/shell.test.ts", "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx", "apps/openagents-desktop/tests/history-catalog-scale.test.ts"],
   },
   {
-    surfaceId: "workspace-chat",
+    surfaceId: "workspace-new-chat",
     interaction: "Restore sidebar collapse while search stays closed and composer focus stays owned",
     criterionRefs: ["CW-AC-10", "CW-AC-15"],
     assuranceItemRefs: ["AO-CW-AC-10-01", "AO-CW-AC-15-01"],
@@ -42,7 +42,7 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     oracleRefs: ["apps/openagents-desktop/tests/desktop-preferences.test.ts", "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx", "apps/openagents-desktop/src/main.ts"],
   },
   {
-    surfaceId: "workspace-chat",
+    surfaceId: "workspace-new-chat",
     interaction: "Disclose scanning, paged, and complete history scope truthfully",
     criterionRefs: ["CW-AC-10"],
     assuranceItemRefs: ["AO-CW-AC-10-01"],
@@ -50,7 +50,7 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     oracleRefs: ["apps/openagents-desktop/src/renderer/shell.test.ts", "apps/openagents-desktop/tests/history-catalog-scale.test.ts"],
   },
   {
-    surfaceId: "workspace-chat",
+    surfaceId: "workspace-new-chat",
     interaction: "Send, stop, steer, queue, approve, and resume on the typed causal timeline",
     criterionRefs: ["CW-AC-10", "CW-AC-11", "CW-AC-13"],
     assuranceItemRefs: ["AO-CW-AC-10-01", "AO-CW-AC-11-01", "AO-CW-AC-13-01"],

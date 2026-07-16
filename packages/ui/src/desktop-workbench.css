@@ -1124,7 +1124,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   display: grid;
   gap: var(--en-spacing-1);
   margin: var(--en-spacing-3) auto var(--en-spacing-4) !important;
-  width: min(768px, calc(100% - var(--en-spacing-6))) !important;
+  width: min(760px, calc(100% - var(--en-spacing-6))) !important;
   padding: 14px 12px 10px;
   border: 1px solid var(--en-color-borderSubtle);
   border-radius: 20px;
@@ -1241,7 +1241,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   overflow-y: auto;
   outline: none;
   color: var(--en-color-textPrimary);
-  font-family: inherit;
+  font-family: "Oxanium Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
