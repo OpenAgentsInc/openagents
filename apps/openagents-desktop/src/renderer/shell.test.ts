@@ -2635,7 +2635,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     }))
   })
 
-  test("a running Full Auto history row resumes its exact local thread so the composer and Stop stay reachable", async () => {
+  test("a locally owned history row resumes its exact chat so the composer stays reachable", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const resumed = {
         id: historyPageFixture.rootThreadRef,
@@ -2648,9 +2648,6 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         activeThreadId: null,
         threads: [],
         history: { ...baseState.history, page: null },
-        fullAutoLiveByThread: {
-          [resumed.id]: { state: "turn_running", turnRef: "turn.full-auto.resumed" },
-        },
       }
       const opened: string[] = []
       let historyReads = 0
@@ -2686,7 +2683,48 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
       expect(next.threads[0]).toEqual(resumed)
       expect(next.notes).toEqual(resumed.notes)
       expect(next.history.page).toBeNull()
-      expect(activeFullAutoTurnRunning(next)).toBe(true)
+      expect(nodeByKey(desktopShellView(next), "shell-composer")).toBeDefined()
+    }))
+  })
+
+  test("a provider-only history row remains read-only when local resume authority rejects it", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const opened: string[] = []
+      let historyReads = 0
+      const initial: DesktopShellState = {
+        ...baseState,
+        activeThreadId: null,
+        threads: [],
+        history: { ...baseState.history, page: null },
+      }
+      const state = yield* SubscriptionRef.make(initial)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(
+        state,
+        fixedNow,
+        undefined,
+        {
+          listThreads: async () => [],
+          newThread: async () => null,
+          openThread: async (threadRef) => { opened.push(threadRef); return null },
+          sendMessage: async () => ({ ok: false as const, error: "unused" }),
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          catalog: async () => null,
+          page: async () => { historyReads += 1; return historyPageFixture },
+        },
+      ))
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected", StaticPayload(historyPageFixture.rootThreadRef))))
+      const next = yield* SubscriptionRef.get(state)
+      expect(opened).toEqual([historyPageFixture.rootThreadRef])
+      expect(historyReads).toBe(2)
+      expect(next.activeThreadId).toBeNull()
+      expect(next.history.page).toEqual(historyPageFixture)
+      expect(nodeByKey(desktopShellView(next), "shell-composer")).toBeUndefined()
     }))
   })
 

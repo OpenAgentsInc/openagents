@@ -2910,24 +2910,21 @@ export const makeDesktopShellHandlers = (
   HistoryConversationSelected: (id) => Effect.gen(function* () {
     const revision = ++selectionRevision
     yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:id}}))
-    // A background Full Auto continuation is local mutable work, even when
-    // its row currently came from the provider-history catalog (for example
-    // after the bounded local row fell out of the recent-five projection).
-    // Prefer the exact local thread in that one proven-live case so the
-    // composer and thread-scoped Stop control remain reachable. If main can
-    // no longer open it, fall back to the ordinary read-only history page.
-    const before = yield* SubscriptionRef.get(state)
-    if (before.fullAutoLiveByThread[id]?.state === "turn_running") {
-      const resumed = yield* commitLocalSession(id, revision)
-      if (resumed && revision === selectionRevision) {
-        const current = yield* SubscriptionRef.get(state)
-        yield* recordNavigation({
-          kind: "local_session",
-          threadRef: id,
-          title: current.threads.find(thread => thread.id === id)?.title || "Local session",
-        })
-        return
-      }
+    // Catalog rows can outlive the bounded recent-five local projection. Ask
+    // the main-process authority whether this exact id is still a local,
+    // resumable thread before treating it as provider-only history. Local
+    // ownership keeps the ordinary chat transcript and composer reachable;
+    // a genuine provider-only row still falls back to the read-only history
+    // page below.
+    const resumed = yield* commitLocalSession(id, revision)
+    if (resumed && revision === selectionRevision) {
+      const current = yield* SubscriptionRef.get(state)
+      yield* recordNavigation({
+        kind: "local_session",
+        threadRef: id,
+        title: current.threads.find(thread => thread.id === id)?.title || "Local session",
+      })
+      return
     }
     const committed = yield* commitCodexHistory(id, revision)
     if (!committed || revision !== selectionRevision) {
