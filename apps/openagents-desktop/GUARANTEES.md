@@ -676,22 +676,40 @@ Contract: `openagents_desktop.chat.composer_image_input.v1`.
   approval — sandbox stays the existing `danger-full-access` default. Full
   Auto inherits this repo's normal full-trust Codex execution posture rather
   than adding a second, more cautious permission model next to it.
-- A clean turn completion on a still-toggled-on thread automatically
-  resubmits a continuation, reusing the exact same send/settle path as an
-  ordinary Send — no separate continuation plumbing exists. Turning Full Auto
-  off, switching threads, or losing lane availability stops the loop before
-  its next turn starts.
-- A bounded safety cap (20 consecutive continuations) turns Full Auto off and
-  leaves an explanatory system note if a loop runs that long unattended —
-  the only "autonomy policy" this first version has, deliberately, per the
-  owner direction that shipped it.
-- This is a renderer-owned loop: it does **not** survive an app restart
-  mid-loop. After a restart, Full Auto must be turned back on and a message
-  sent to resume. Durable, main-process-owned continuation across restarts
-  (per `docs/sol/MASTER_ROADMAP.md` invariant #24) is explicitly out of scope
-  for this bounded first version.
+- The continuation decision is main-owned and durable (#8853): a per-thread
+  registry (`src/full-auto-registry.ts`, persisted under Electron
+  `userData/full-auto/registry.json`) records enabled/disabled state and a
+  consecutive-continuation counter, and a shared reconciliation decision
+  (`src/full-auto-reconcile.ts`) runs at exactly two trigger points — right
+  after each completed Full-Auto-flagged turn, and once at app startup after
+  existing interrupted-turn recovery settles. The renderer sends
+  `fullAuto: true` exactly once per user submit and never loops; main decides
+  every continuation.
+- Toggling Full Auto persists to main immediately via
+  `CodexLocalFullAutoSetChannel`, independent of whether a turn is in flight,
+  so a toggle-off is a durable stop even if the app quits before the next
+  turn would have started.
+- Because the registry and reconciliation live in main and on disk, the loop
+  **does** survive a renderer reload and a full app restart at the durable
+  module level: a thread left enabled with nothing in flight resumes its next
+  continuation at the next launch with no re-toggle or re-send
+  (`full-auto-restart.e2e.test.ts`).
+- A bounded safety cap (20 consecutive continuations) turns Full Auto off
+  durably (registry, not renderer state) and leaves an explanatory system
+  note if a loop runs that long unattended — holding across restarts — the
+  only "autonomy policy" this version has, deliberately, per the owner
+  direction that shipped it.
+- Honest current limits (per the audit
+  `docs/sol/2026-07-16-openagents-desktop-full-auto-deep-dive.md`): a
+  main-originated background continuation is not yet shown as in-flight in
+  the UI — the renderer only sees the completed-thread refresh (#8877); the
+  composer toggle is not yet hydrated from the durable registry at mount, so
+  after a restart or thread switch the visible toggle can disagree with
+  durable execution (#8874); and continuation dispatch is not yet
+  exactly-once — reconciliation has no lock, idempotency key, or lease
+  (#8876).
 
-Contract: `openagents_desktop.chat.full_auto_composer_loop.v1`.
+Contract: `openagents_desktop.chat.full_auto_composer_loop.v2`.
 
 ### The MVP visible surface is mechanically enforced against the rendered shell
 

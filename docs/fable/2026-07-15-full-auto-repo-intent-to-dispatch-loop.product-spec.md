@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Full Auto: one-button autonomous Codex loop"
 artifact_type: "openspec_proposal"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-15T00:00:00Z"
-updated_at: "2026-07-15T23:00:00Z"
+updated_at: "2026-07-16T00:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 tool_metadata:
   openagents_lane: "docs/fable strategy proposal; historical design record, not the adopted spec"
@@ -13,9 +13,23 @@ tool_metadata:
   openagents_issue: "8852 (implemented)"
   openagents_adopted_spec: "specs/desktop/full-auto.product-spec.md"
   openagents_adopted_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
-  openagents_revision_note: "rev 3: implemented per rev 2's simplified design, with one further honest narrowing found during implementation -- auto-continuation is renderer-owned (shell.ts), not the main-process durable goal-state/idempotent-outbox rev 2 described; it does not survive an app restart mid-loop. The adopted ProductSpec (specs/desktop/full-auto.product-spec.md) is now the authoritative as-built record; this file remains the historical design/strategy trail per docs/fable convention."
+  openagents_revision_note: "rev 4 (#8853 supersession, per #8881): the rev-3 renderer-owned/restart-fragile narrowing recorded below was fixed by #8853 (commit d480f779aa) -- continuation is now main-owned and restart-persistent. The rev-3 note is retained as honest history. The adopted ProductSpec (specs/desktop/full-auto.product-spec.md) rev 2+ remains the authoritative as-built record; this file remains the historical design/strategy trail per docs/fable convention."
   openagents_supersedes_claim_for: "autopilot.desktop_full_auto_guidance.v1 (red, docs/promises/registry.md) -- still not claimed by this implementation; see Promise Links"
 ---
+
+## Implementation Note (rev 4, #8853 supersession)
+
+The renderer-owned limitation described in the rev-3 note below was fixed in
+issue #8853 (commit d480f779aa). Auto-continuation is now main-owned and
+restart-persistent: a durable per-thread registry
+(`apps/openagents-desktop/src/full-auto-registry.ts`) plus a shared
+reconciliation decision (`apps/openagents-desktop/src/full-auto-reconcile.ts`)
+runs after each completed Full-Auto turn and once at app startup after
+interrupted-turn recovery, per `specs/desktop/full-auto.product-spec.md`
+rev 2+ and the audit
+`docs/sol/2026-07-16-openagents-desktop-full-auto-deep-dive.md`. The rev-3
+note below is retained unchanged as honest history of what rev 3 actually
+shipped.
 
 ## Implementation Note (rev 3)
 

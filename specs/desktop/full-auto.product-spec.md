@@ -21,7 +21,7 @@ tool_metadata:
   openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8880 (FA-H7 cap semantics), 8883 (FA-H10 registry robustness)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
-  openagents_revision_note: "rev 2 (#8853) moves the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap: Full Auto now survives both a renderer reload and a full app restart, not just a live session. rev 3 (#8880, #8883) covers two changes: FA-H7 pins the continuation-cap reset semantics unambiguously (the counter resets ONLY when Full Auto is toggled off; a manual send while the toggle stays on does not reset it; the dead resetContinuation API is removed) and FA-H10 hardens the registry (a corrupt/invalid registry file is quarantined and the app starts with an empty registry instead of failing main initialization, and record eviction never drops enabled records -- only the disabled tail is bounded)."
+  openagents_revision_note: "rev 3 (#8880, #8882, #8883) covers three changes landed together. FA-H7 (#8880) pins the continuation-cap reset semantics unambiguously: the counter resets ONLY when Full Auto is toggled off; a manual send while the toggle stays on does not reset it; the dead resetContinuation API is removed. FA-H10 (#8883) hardens the registry: a corrupt/invalid registry file is quarantined and the app starts with an empty registry instead of failing main initialization, and record eviction never drops enabled records -- only the disabled tail is bounded. FA-H9 (#8882, audit Finding 9) removes the three unmeasurable automated success metrics (toggle adoption, observed continuation, restart survival): no consent surface or counter implementation exists, and the spec's telemetry posture keeps metrics absent (not inferred) without consent; they are replaced by one manual owner-receipt metric that is actually measurable today. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
 ---
 
 ## Problem
@@ -167,24 +167,12 @@ cut:
 ## Success Metrics
 
 ```productspec-success-metrics
-- id: full_auto_toggle_adoption
-  metric: opted_in_sessions_that_toggle_full_auto_on_at_least_once
+- id: full_auto_owner_observed_resume
+  metric: owner_observed_restart_resume_sessions_recorded_in_issue_or_needs_owner_receipts
   target: ">= 1"
-  window: first week after this ships to any dogfood build
-  segment: developers using an OpenAgents Desktop build with Full Auto
-  source: consented_public_safe_local_usage_counters
-- id: full_auto_observed_continuation
-  metric: full_auto_sessions_with_at_least_one_automatic_continuation_turn_observed
-  target: ">= 1"
-  window: first week after this ships to any dogfood build
-  segment: sessions that toggled Full Auto on
-  source: consented_public_safe_local_usage_counters
-- id: full_auto_restart_survival
-  metric: full_auto_enabled_threads_that_resumed_a_continuation_within_one_minute_of_the_next_app_launch_without_a_manual_retoggle
-  target: ">= 1"
-  window: first week after this ships to any dogfood build
-  segment: sessions where the app quit with Full Auto still enabled on a thread
-  source: consented_public_safe_local_usage_counters
+  window: before any release claim
+  segment: owner dogfood
+  source: manual owner receipt linked from issue #8885
 ```
 
 ## Owner Gates
@@ -201,6 +189,12 @@ cut:
 
 ## Receipts
 
+- Automated success-metric instrumentation was deliberately removed in rev 3
+  as unmeasurable (audit Finding 9, #8882): the app has no consent surface,
+  no counter implementation records the previously named metric identifiers,
+  and this spec's telemetry posture keeps metrics absent (not inferred)
+  without consent. Automated metrics may return only alongside a real
+  consent surface and an implementation that actually records them.
 - `pnpm --dir apps/openagents-desktop run typecheck` (`tsc -p tsconfig.json
   --noEmit`) — clean, zero errors.
 - `codex-local-runtime.test.ts`: two cases proving `approvalPolicy` and

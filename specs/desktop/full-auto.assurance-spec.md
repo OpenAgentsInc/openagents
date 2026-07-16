@@ -31,11 +31,11 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-09",
       "FA-AC-10"
     ],
-    "document_digest": "sha256:de5b1d6cd0e0f00a2d2c017ebeeb183e34a5138ed9b68e8640b44bb936decc3e",
+    "document_digest": "sha256:2434d9cfa593b052a3d9b99991251ebaa5849cbabe293f8d8c589f757ad45552",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 2
+    "spec_revision": 3
   }
 }
 ```
@@ -127,6 +127,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/codex-app-server-client.test.ts",
       "apps/openagents-desktop/src/codex-app-server-smoke-fixture.test.ts",
       "apps/openagents-desktop/src/codex-app-server-supervisor.test.ts",
+      "apps/openagents-desktop/src/codex-app-server-turn.test.ts",
       "apps/openagents-desktop/src/codex-child-runtime.test.ts",
       "apps/openagents-desktop/src/codex-config-health.test.ts",
       "apps/openagents-desktop/src/codex-conformance.test.ts",
@@ -231,6 +232,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/voice-host.test.ts",
       "apps/openagents-desktop/src/voice-native-helper.test.ts",
       "apps/openagents-desktop/src/voice-permission-policy.test.ts",
+      "apps/openagents-desktop/src/workbench-item-contract.test.ts",
       "apps/openagents-desktop/src/workspace-search-host.test.ts",
       "apps/openagents-desktop/src/workspace-search-registry.test.ts",
       "apps/openagents-desktop/tests/accessibility.test.ts",
@@ -262,6 +264,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/tests/fixtures/codex-smoke/sessions/2026/07/11/smoke-root.jsonl",
       "apps/openagents-desktop/tests/fixtures/provider-accounts/accounts-list.json",
       "apps/openagents-desktop/tests/fleet-control.test.ts",
+      "apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts",
       "apps/openagents-desktop/tests/git-fixture.ts",
       "apps/openagents-desktop/tests/harness-maintenance.test.ts",
       "apps/openagents-desktop/tests/history-catalog-scale.test.ts",
@@ -312,8 +315,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-mobile/tests/native-session-recovery.test.ts",
       "apps/openagents-mobile/tests/native-session-vault.test.ts",
       "apps/openagents-mobile/tests/ota-polling.test.ts",
-      "apps/openagents.com/apps/docs/infra-contract.test.mjs",
-      "apps/openagents.com/apps/docs/server.test.mjs",
+      "apps/openagents.com/apps/start/src/docs/docs-content.test.ts",
       "apps/openagents.com/apps/start/src/forum-entry.test.ts",
       "apps/openagents.com/apps/start/src/khala-sync-proxy.test.ts",
       "apps/openagents.com/apps/start/src/routes/-activity.test.tsx",
@@ -329,6 +331,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-code.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-components.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-download-effect-native.test.tsx",
+      "apps/openagents.com/apps/start/src/routes/-forum-khala-motion.test.ts",
       "apps/openagents.com/apps/start/src/routes/-forum-markdown.test.ts",
       "apps/openagents.com/apps/start/src/routes/-forum.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-funnel.test.tsx",
@@ -349,6 +352,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-run.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-sales-landing.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-share.test.tsx",
+      "apps/openagents.com/apps/start/src/routes/-splash.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-stage1-effect-native.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-stats.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-tassadar-effect-native.test.tsx",
@@ -360,6 +364,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/server-agent-surfaces.test.ts",
       "apps/openagents.com/apps/start/src/server.test.ts",
       "apps/openagents.com/apps/start/src/test/vitest-cwd-setup.ts",
+      "apps/openagents.com/apps/start/src/typography-contract.test.ts",
       "apps/openagents.com/apps/start/vitest.config.ts",
       "apps/openagents.com/packages/effect-native-render-dom/tests/index.test.ts",
       "apps/openagents.com/packages/effect-native-render-dom/tests/react.test.ts",
@@ -459,12 +464,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/workers/api/src/artanis-forum-reward-smoke.test.ts",
       "apps/openagents.com/workers/api/src/artanis-forum-reward-visibility.test.ts",
       "apps/openagents.com/workers/api/src/artanis-forum-verification.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-gepa-production-smoke.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-gepa-scheduled-runner-proof.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-health.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-green-readiness.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-receipt-feed-verify.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-receipt-routes.test.ts"
+      "apps/openagents.com/workers/api/src/artanis-gepa-production-smoke.test.ts"
     ],
     "declared_scripts": [
       {
@@ -863,44 +863,19 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "typecheck"
       },
       {
-        "command": "blume build --strict --analyze --budget-js 3800 --budget-css 120",
-        "manifest_path": "apps/openagents.com/apps/docs/package.json",
-        "name": "build"
-      },
-      {
-        "command": "blume dev --host 127.0.0.1 --port 4322",
-        "manifest_path": "apps/openagents.com/apps/docs/package.json",
-        "name": "dev"
-      },
-      {
-        "command": "node --test server.test.mjs infra-contract.test.mjs",
-        "manifest_path": "apps/openagents.com/apps/docs/package.json",
-        "name": "test"
-      },
-      {
-        "command": "blume check --strict",
-        "manifest_path": "apps/openagents.com/apps/docs/package.json",
-        "name": "typecheck"
-      },
-      {
-        "command": "blume validate --strict",
-        "manifest_path": "apps/openagents.com/apps/docs/package.json",
-        "name": "validate"
-      },
-      {
-        "command": "pnpm run typecheck && pnpm run validate && pnpm run test && pnpm run build",
-        "manifest_path": "apps/openagents.com/apps/docs/package.json",
-        "name": "verify"
-      },
-      {
         "command": "pnpm run build && node --import tsx src/routes/-funnel-budget.ts",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
         "name": "budget"
       },
       {
-        "command": "vp build --logLevel warn && vp pack cloudrun/server.mjs --out-dir dist/cloudrun --format esm --platform node --target node24 --minify",
+        "command": "pnpm run generate:docs && vp build --logLevel warn && vp pack cloudrun/server.mjs --out-dir dist/cloudrun --format esm --platform node --target node24 --minify",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
         "name": "build"
+      },
+      {
+        "command": "node --import tsx scripts/generate-docs.ts --check",
+        "manifest_path": "apps/openagents.com/apps/start/package.json",
+        "name": "check:docs"
       },
       {
         "command": "bash scripts/deploy-cloudrun.sh stage1",
@@ -913,9 +888,14 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "deploy:cloudrun"
       },
       {
-        "command": "vp dev",
+        "command": "pnpm run generate:docs && vp dev",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
         "name": "dev"
+      },
+      {
+        "command": "node --import tsx scripts/generate-docs.ts",
+        "manifest_path": "apps/openagents.com/apps/start/package.json",
+        "name": "generate:docs"
       },
       {
         "command": "vp preview",
@@ -923,12 +903,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "preview"
       },
       {
-        "command": "vp test --root ../../../.. --run --project @openagentsinc/openagents-com-start",
+        "command": "pnpm run generate:docs && vp test --root ../../../.. --run --project @openagentsinc/openagents-com-start",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
         "name": "test"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
+        "command": "pnpm run generate:docs && tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
         "name": "typecheck"
       },
@@ -946,11 +926,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "pnpm --dir workers/api run build",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "build:api"
-      },
-      {
-        "command": "pnpm --dir apps/docs run build",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "build:docs"
       },
       {
         "command": "node scripts/sync-live-agent-doc.mjs && pnpm --dir apps/start run build",
@@ -1021,11 +996,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "pnpm --dir workers/api run dev",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "dev:api"
-      },
-      {
-        "command": "pnpm --dir apps/docs run dev",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "dev:docs"
       },
       {
         "command": "pnpm --dir apps/start run dev",
@@ -1148,11 +1118,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "test:contract-drift-guard"
       },
       {
-        "command": "pnpm --dir apps/docs run test",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:docs"
-      },
-      {
         "command": "vitest run scripts/check-effect-native-vendor.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "test:effect-native-vendor-guard"
@@ -1193,11 +1158,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "typecheck:api-pylon-integration"
       },
       {
-        "command": "pnpm --dir apps/docs run typecheck",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "typecheck:docs"
-      },
-      {
         "command": "pnpm --dir packages/email-templates run typecheck && pnpm --dir packages/mullet-schema run typecheck && pnpm --dir packages/mullet-sim run typecheck && pnpm --dir packages/sync-schema run typecheck && pnpm --dir packages/sync-client run typecheck && pnpm --dir packages/sync-worker run typecheck",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "typecheck:packages"
@@ -1208,13 +1168,23 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "typecheck:start"
       },
       {
-        "command": "pnpm --dir apps/docs run verify",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "verify:docs"
-      },
-      {
         "command": "tsc -b",
         "manifest_path": "apps/openagents.com/packages/effect-native-core/package.json",
+        "name": "typecheck"
+      },
+      {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "manifest_path": "apps/openagents.com/packages/effect-native-gallery/package.json",
+        "name": "typecheck"
+      },
+      {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "manifest_path": "apps/openagents.com/packages/effect-native-khala-ui/package.json",
+        "name": "typecheck"
+      },
+      {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "manifest_path": "apps/openagents.com/packages/effect-native-render-canvas/package.json",
         "name": "typecheck"
       },
       {
@@ -2999,6 +2969,16 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       },
       {
         "command": "vp test --run",
+        "manifest_path": "packages/ui/package.json",
+        "name": "test"
+      },
+      {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "manifest_path": "packages/ui/package.json",
+        "name": "typecheck"
+      },
+      {
+        "command": "vp test --run",
         "manifest_path": "packages/world-client/package.json",
         "name": "test"
       },
@@ -3023,12 +3003,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "19b4f26737da00a881a05794d0f81069cac55fc3",
-    "inventory_digest": "sha256:6c0edbf03e4d1462fc188d6fddb4dc00eefd41a7988d6571bccf0c7582a0731b",
-    "repository_label": "openagents-full-auto-restart-8853",
+    "head": "a323f69fb65f05a2347667421e8dc216a7dd85ce",
+    "inventory_digest": "sha256:b11c69a4f2d8d10484cfa52cb4ca3fad00e1bdfb67456787d45aee84b8b74ae9",
+    "repository_label": "oa-fa-w1-docs",
     "state": "dirty",
-    "tracked_file_count": 8822,
-    "tree": "b146823ad79c4d8facac9f941022104bf4bcc2d7",
+    "tracked_file_count": 8916,
+    "tree": "7ea6e944b1af4365ec7a80f2b2ed99be48e7786b",
     "truncated": true
   }
 }
