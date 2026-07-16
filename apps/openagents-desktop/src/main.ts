@@ -4278,18 +4278,33 @@ const smokeReactTurn = `(async () => {
     document.querySelector('.oa-react-decision') === null
   while (Date.now() < deadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
     .some((item) => item.textContent?.includes("Codex local fixture proof."))) await wait(50)
-  const turnVisible = [...document.querySelectorAll('.oa-react-timeline-item')]
-    .some((item) => item.textContent?.includes("Codex local fixture proof."))
+  const assistant = [...document.querySelectorAll('.oa-react-timeline-item')]
+    .find((item) => item.textContent?.includes("Codex local fixture proof."))
+  const turnVisible = assistant !== undefined
+  const messageItem = assistant?.closest('[data-slot="message-scroller-item"]')
+  const messageContent = assistant?.closest('[data-slot="message-scroller-content"]')
+  const assistantWidth = assistant?.getBoundingClientRect().width ?? 0
+  const itemWidth = messageItem?.getBoundingClientRect().width ?? 0
+  const contentWidth = messageContent?.getBoundingClientRect().width ?? 0
+  // Real Chromium geometry falsifier for #8934: the shadcn primitive wrappers
+  // must establish a definite inline size before the 720px transcript row's
+  // percentage width resolves. A collapsed wrapper produced one-word lines.
+  const transcriptWidthStable = assistantWidth >= 600 && assistantWidth <= 721 &&
+    itemWidth >= assistantWidth && contentWidth >= itemWidth
   const reviewTrigger = buttons().find((button) => button.textContent?.trim() === "Review changes")
   const reviewSurface = document.querySelector('.oa-react-review-drawer, [data-slot="sheet-content"]')
   const forbidden = ["Stage", "Discard", "Commit", "Push", "Terminal"]
     .filter((label) => buttons().some((button) => button.textContent?.trim() === label))
   return {
-    ok: decisionOpened && decisionReconciled && turnVisible && reviewTrigger === undefined &&
+    ok: decisionOpened && decisionReconciled && turnVisible && transcriptWidthStable && reviewTrigger === undefined &&
       reviewSurface === null && forbidden.length === 0,
     decisionOpened,
     decisionReconciled,
     turnVisible,
+    transcriptWidthStable,
+    assistantWidth,
+    itemWidth,
+    contentWidth,
     reviewAbsent: reviewTrigger === undefined && reviewSurface === null,
     forbidden,
   }
