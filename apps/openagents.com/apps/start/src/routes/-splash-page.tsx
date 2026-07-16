@@ -3,7 +3,7 @@ import { khalaTheme } from '@effect-native/tokens'
 import { InternalLink } from '@/components/internal-link'
 import { PublicHeader } from '@/components/public-header'
 import GithubMark from '@/components/launch-ui/logos/github'
-import { DOCS_URL, GITHUB_REPOSITORY_URL, MAC_RELEASE } from '@/lib/public-site'
+import { DOCS_URL, DOWNLOAD_URL, GITHUB_REPOSITORY_URL, MAC_RELEASE } from '@/lib/public-site'
 import {
   DesktopAgentGroup,
   DesktopApprovalCard,
@@ -37,7 +37,7 @@ import {
   type DesktopToolKind,
 } from '@openagentsinc/ui/desktop-workbench'
 import { ArrowRight, ArrowUp, ArrowUpRight, Command, ImagePlus, Square, Zap } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type WheelEvent } from 'react'
 
 import { SplashHeroCanvas } from './-splash-khala-canvas'
 import '../splash.css'
@@ -613,6 +613,18 @@ export function SplashPage() {
 
   const visibleSessions = sessions.filter(session => session.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const active = phase === 'preparing' || phase === 'streaming'
+  const releaseDemoWheel = (event: WheelEvent<HTMLDivElement>): void => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const scroller = target.closest<HTMLElement>('.oa-react-timeline-scroll, .oa-react-session-scroll')
+    if (scroller === null) return
+    const atTop = scroller.scrollTop <= 1
+    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1
+    if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
+      event.preventDefault()
+      window.scrollBy({ behavior: 'auto', top: event.deltaY })
+    }
+  }
 
   return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(khalaTheme)}>
     <PublicHeader />
@@ -625,7 +637,7 @@ export function SplashPage() {
       </InternalLink>
       <h1 id="splash-heading">Your last agent IDE.</h1>
       <p>Plan, delegate, review, and steer coding work from one local-first desktop workroom.</p>
-      <InternalLink className="splash-primary-action" href="/install" preload="render">
+      <InternalLink className="splash-primary-action" href={DOWNLOAD_URL} preload="render">
         Download for Mac
         <ArrowRight aria-hidden="true" />
       </InternalLink>
@@ -642,7 +654,7 @@ export function SplashPage() {
         <span>OpenAgents Desktop</span>
         <span className="splash-window-status"><i />Codex connected</span>
       </div>
-      <div className="splash-demo-frame">
+      <div className="splash-demo-frame" onWheelCapture={releaseDemoWheel}>
         <DesktopWorkbench aria-label="OpenAgents Desktop live product preview">
           <DesktopSidebarExpand aria-expanded={railOpen} aria-label="Expand sidebar" onClick={() => setRailOpen(true)} title="Expand sidebar" />
           <DesktopSessionRail
@@ -729,7 +741,7 @@ export function SplashPage() {
           <strong>Product</strong>
           <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
           <InternalLink href="/blog" preload="render">Blog</InternalLink>
-          <InternalLink href="/install" preload="render">Download</InternalLink>
+          <InternalLink href={DOWNLOAD_URL} preload="render">Download</InternalLink>
         </nav>
         <nav aria-label="Project links">
           <strong>Project</strong>

@@ -8,6 +8,7 @@ export const docsNavigationDefinition: ReadonlyArray<DocsNavigationGroupDefiniti
       '',
       'getting-started',
       'workroom',
+      'full-auto',
       'review-and-recovery',
       'security-and-privacy',
       'troubleshooting',

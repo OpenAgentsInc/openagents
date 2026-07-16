@@ -23,7 +23,7 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/khala\/chat-sync$/,
   /^\/landing-en$/,
   /^\/login$/,
-  /^\/(?:astro|install)\/?$/,
+  /^\/(?:astro|download|install)\/?$/,
   /^\/mirrorcode$/,
   /^\/new$/,
   /^\/onboarding$/,

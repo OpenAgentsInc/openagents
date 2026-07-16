@@ -104,8 +104,8 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     ],
     "lastModified": "2026-07-15",
     "next": {
-      "path": "/docs/review-and-recovery",
-      "title": "Review and recovery"
+      "path": "/docs/full-auto",
+      "title": "Full Auto"
     },
     "path": "/docs/workroom",
     "previous": {
@@ -116,6 +116,47 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     "sidebarLabel": "Workroom",
     "slug": "workroom",
     "title": "Workroom"
+  },
+  {
+    "description": "Let Codex continue bounded local work, turn after turn.",
+    "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/full-auto.md",
+    "group": "Docs",
+    "headings": [
+      {
+        "depth": 2,
+        "id": "turn-it-on",
+        "text": "Turn it on"
+      },
+      {
+        "depth": 2,
+        "id": "stop-or-steer-the-loop",
+        "text": "Stop or steer the loop"
+      },
+      {
+        "depth": 2,
+        "id": "safety-boundary",
+        "text": "Safety boundary"
+      },
+      {
+        "depth": 2,
+        "id": "current-scope",
+        "text": "Current scope"
+      }
+    ],
+    "lastModified": "2026-07-16",
+    "next": {
+      "path": "/docs/review-and-recovery",
+      "title": "Review and recovery"
+    },
+    "path": "/docs/full-auto",
+    "previous": {
+      "path": "/docs/workroom",
+      "title": "Workroom"
+    },
+    "rawMarkdownUrl": "/docs/full-auto.md",
+    "sidebarLabel": "Full Auto",
+    "slug": "full-auto",
+    "title": "Full Auto"
   },
   {
     "description": "Review exact changes and understand restart behavior.",
@@ -145,8 +186,8 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     },
     "path": "/docs/review-and-recovery",
     "previous": {
-      "path": "/docs/workroom",
-      "title": "Workroom"
+      "path": "/docs/full-auto",
+      "title": "Full Auto"
     },
     "rawMarkdownUrl": "/docs/review-and-recovery.md",
     "sidebarLabel": "Review and recovery",
@@ -288,6 +329,7 @@ const docsPageLoaders: Readonly<Record<string, () => Promise<{ default: DocsPage
   "": () => import('./pages/index.generated'),
   "getting-started": () => import('./pages/getting-started.generated'),
   "workroom": () => import('./pages/workroom.generated'),
+  "full-auto": () => import('./pages/full-auto.generated'),
   "review-and-recovery": () => import('./pages/review-and-recovery.generated'),
   "security-and-privacy": () => import('./pages/security-and-privacy.generated'),
   "troubleshooting": () => import('./pages/troubleshooting.generated'),

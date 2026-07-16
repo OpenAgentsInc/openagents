@@ -1,5 +1,5 @@
 import { InternalLink } from '@/components/internal-link'
-import { DOCS_URL, GITHUB_REPOSITORY_URL } from '@/lib/public-site'
+import { DOCS_URL, DOWNLOAD_URL, GITHUB_REPOSITORY_URL } from '@/lib/public-site'
 import type { ReactNode } from 'react'
 
 import GithubMark from './launch-ui/logos/github'
@@ -35,7 +35,7 @@ export function PublicHeader({ docsActive = false, leading, utility }: PublicHea
             <a aria-label="OpenAgents on GitHub" className="oa-unified-github-link" href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">
               <GithubMark aria-hidden="true" />
             </a>
-            <InternalLink className="oa-unified-download-link" href="/install" preload="render">
+            <InternalLink className="oa-unified-download-link" href={DOWNLOAD_URL} preload="render">
               Download
             </InternalLink>
           </div>

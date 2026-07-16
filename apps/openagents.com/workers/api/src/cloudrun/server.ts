@@ -126,7 +126,7 @@ const main = async (): Promise<void> => {
       }
 
       // The public root is apex-only. Its document now comes from the same
-      // TanStack Start build as /astro and /install;
+      // TanStack Start build as /astro and /download;
       // auth.openagents.com/ must continue into the auth handler below.
       if (isPublicSiteRoot) {
         const rootResponse = await handleStartUiRequest(

@@ -1,3 +1,5 @@
+@import '@openagentsinc/ui/desktop-workbench.css';
+
 .splash-page {
   --splash-bg: #02040c;
   --splash-surface: #050b17;
@@ -35,6 +37,13 @@
 .splash-page :focus-visible {
   outline: 2px solid var(--en-color-focus);
   outline-offset: 3px;
+}
+
+/* Release wheel and touch gestures to the page at the demo's scroll edges. */
+.splash-demo-frame .oa-react-timeline-scroll,
+.splash-demo-frame .oa-react-session-scroll {
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
 }
 
 .splash-hero {

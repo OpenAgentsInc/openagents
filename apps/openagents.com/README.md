@@ -3,7 +3,7 @@
 A Node 24 and pnpm workspace for the OpenAgents application stack.
 
 - Public site, docs, and app: TanStack Start at `/`, `/docs`, `/astro`,
-  `/install`, and `/app`
+  `/download`, and `/app` (`/install` is a compatibility redirect)
 - API: Node service on Google Cloud Run
 - Auth: OpenAuth target
 - Data and sync: Cloud SQL Postgres, Cloud Run LiveHub, Cloud Storage

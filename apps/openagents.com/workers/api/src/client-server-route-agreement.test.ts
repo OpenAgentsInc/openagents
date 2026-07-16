@@ -25,6 +25,7 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
   test.each([
     '/app',
     '/astro',
+    '/download',
     '/install',
     '/login',
     '/promises',

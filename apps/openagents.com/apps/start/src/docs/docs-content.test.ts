@@ -19,9 +19,18 @@ describe('unified TanStack Start docs content', () => {
   test('publishes the complete curated navigation graph', async () => {
     const navigationSlugs = docsNavigationDefinition.flatMap(group => group.slugs)
 
-    expect(docsManifest).toHaveLength(7)
+    expect(docsManifest).toHaveLength(8)
     expect(docsManifest.map(page => page.slug)).toEqual(navigationSlugs)
     await expect(Promise.all(navigationSlugs.map(loadDocsPage))).resolves.not.toContain(undefined)
+  })
+
+  test('publishes the bounded Full Auto contract', async () => {
+    const page = await loadDocsPage('full-auto')
+
+    expect(page?.title).toBe('Full Auto')
+    expect(page?.html).toContain('20 automatic continuations')
+    expect(page?.html).toContain('does not cancel the turn already in progress')
+    expect(page?.html).toContain('approval policy to <code>never</code>')
   })
 
   test('preserves the corrected legacy redirects', () => {
