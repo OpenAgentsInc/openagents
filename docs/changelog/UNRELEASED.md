@@ -53,3 +53,14 @@ Every release now publishes two changelog artifacts: a human-centric changelog a
 - invariants: human changelog copy carries no commit hashes, internal codenames, or forbidden vocabulary (route test enforces)
 - evidence: scripts/changelog.test.ts (17), -changelog.test.tsx (6), pnpm changelog check green
 - lane: fable-dist14-changelog-20260716
+
+## Target-aware release staging with provenance (DIST-03, #8916)
+
+Desktop packaging now requires an explicit build target: staging happens in a clean per-target workspace with target-correct native components, and every build emits a public-safe native-component ledger and a build receipt binding source revision, versions, toolchain, and worker identity. Unsigned development output is structurally inadmissible to publication.
+
+- issues: #8916 (epic #8913)
+- commits: (integration commit on main)
+- contracts-specs: target_build_descriptor.v1, native_component_ledger.v1, build_receipt.v1 in apps/openagents-desktop/src/release-staging-contract.ts (integration point for ReleaseSet v2 refs)
+- invariants: INVARIANTS.md DIST-03 entry incl. signer/notary nondeterminism exception; packaging entrypoints require OA_DESKTOP_TARGET
+- evidence: tests/release-staging.test.ts (26) + release suite 99 green; live darwin-arm64 staging with identical ledgerRef across two runs; win32-arm64 typed missing_runtime_package refusal
+- lane: fable-dist03-staging-20260716

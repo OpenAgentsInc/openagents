@@ -1,68 +1,100 @@
-import type { ForgeConfig } from "@electron-forge/shared-types"
-import { MakerDMG } from "@electron-forge/maker-dmg"
-import { MakerZIP } from "@electron-forge/maker-zip"
-import { FusesPlugin } from "@electron-forge/plugin-fuses"
-import { FuseV1Options, FuseVersion } from "@electron/fuses"
-import { execFileSync } from "node:child_process"
-import { cp, mkdir, rm } from "node:fs/promises"
-import { chmodSync, copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
-import { createHash } from "node:crypto"
-import path from "node:path"
-import { createRequire } from "node:module"
+import type { ForgeConfig } from "@electron-forge/shared-types";
+import { MakerDMG } from "@electron-forge/maker-dmg";
+import { MakerZIP } from "@electron-forge/maker-zip";
+import { FusesPlugin } from "@electron-forge/plugin-fuses";
+import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { execFileSync } from "node:child_process";
+import { cp, mkdir, rm } from "node:fs/promises";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
+import path from "node:path";
+import { createRequire } from "node:module";
 import {
   assertGatekeeperGreen,
   gatekeeperAppChecks,
   gatekeeperImageChecks,
   notarizeAndStapleDmg,
   unsignedDevArtifactName,
-} from "./scripts/macos-gatekeeper.ts"
-import { desktopReleaseArtifactName } from "./scripts/release-artifact-name.ts"
-import { verifyPackagedCodexRuntime } from "./scripts/codex-runtime-artifact-smoke.ts"
+} from "./scripts/macos-gatekeeper.ts";
+import { desktopReleaseArtifactName } from "./scripts/release-artifact-name.ts";
+import { verifyPackagedCodexRuntime } from "./scripts/codex-runtime-artifact-smoke.ts";
+import {
+  type DesktopTargetKey,
+  desktopTargetKeys,
+  desktopTargets,
+} from "./src/release-staging-contract.ts";
 
+/**
+ * DIST-03 (#8916): packaging entrypoints require an EXPLICIT target
+ * descriptor. `OA_DESKTOP_TARGET` selects one of the six closed target keys;
+ * host inference (`process.arch`) never chooses a release target. The
+ * package.json make/package scripts pin `darwin-arm64` for the current macOS
+ * lane; remote workers export their own target key.
+ */
+const requireExplicitDesktopTarget = (): DesktopTargetKey => {
+  const targetKey = process.env.OA_DESKTOP_TARGET;
+  if (targetKey === undefined || !desktopTargetKeys.includes(targetKey as DesktopTargetKey)) {
+    throw new Error(
+      "packaging REFUSED: OA_DESKTOP_TARGET must name an explicit target " +
+        `(${desktopTargetKeys.join(", ")}); host architecture is never inferred (DIST-03 #8916)`,
+    );
+  }
+  return targetKey as DesktopTargetKey;
+};
 
-export const OPENAGENTS_DESKTOP_BUNDLE_ID = "com.openagents.desktop"
-export const OPENAGENTS_DESKTOP_PROTOCOL = "openagents"
+export const OPENAGENTS_DESKTOP_BUNDLE_ID = "com.openagents.desktop";
+export const OPENAGENTS_DESKTOP_PROTOCOL = "openagents";
 const desktopManifest = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
-) as { version: string }
+) as { version: string };
 
-const canonicalArtifactPath = (
-  artifact: string,
-  platform: string,
-  arch: string,
-): string => path.join(path.dirname(artifact), desktopReleaseArtifactName({
-  product: "OpenAgents",
-  version: desktopManifest.version,
-  platform,
-  arch,
-  extension: path.extname(artifact),
-}))
+const canonicalArtifactPath = (artifact: string, platform: string, arch: string): string =>
+  path.join(
+    path.dirname(artifact),
+    desktopReleaseArtifactName({
+      product: "OpenAgents",
+      version: desktopManifest.version,
+      platform,
+      arch,
+      extension: path.extname(artifact),
+    }),
+  );
 
 const renameArtifact = (artifact: string, destination: string): string => {
-  if (destination !== artifact) renameSync(artifact, destination)
-  return destination
-}
+  if (destination !== artifact) renameSync(artifact, destination);
+  return destination;
+};
 
-const ignoredCheckoutPath = /^\/(src|scripts|tests|docs|receipts|node_modules)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/
-const resolveFromApp = createRequire(path.join(process.cwd(), "package.json"))
+const ignoredCheckoutPath =
+  /^\/(src|scripts|tests|docs|receipts|node_modules)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/;
+const resolveFromApp = createRequire(path.join(process.cwd(), "package.json"));
 const resolveFromClaudeSdk = (): NodeRequire =>
-  createRequire(resolveFromApp.resolve("@anthropic-ai/claude-agent-sdk"))
-const developerIdApplication = process.env.OA_DEVELOPER_ID_APPLICATION
-const notarizeCredentials = process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &&
-  process.env.ASC_API_KEY_ID !== undefined && process.env.ASC_API_ISSUER_ID !== undefined
-  ? {
-      appleApiKey: process.env.ASC_API_PRIVATE_KEY_PATH,
-      appleApiKeyId: process.env.ASC_API_KEY_ID,
-      appleApiIssuer: process.env.ASC_API_ISSUER_ID,
-    }
-  : undefined
+  createRequire(resolveFromApp.resolve("@anthropic-ai/claude-agent-sdk"));
+const developerIdApplication = process.env.OA_DEVELOPER_ID_APPLICATION;
+const notarizeCredentials =
+  process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &&
+  process.env.ASC_API_KEY_ID !== undefined &&
+  process.env.ASC_API_ISSUER_ID !== undefined
+    ? {
+        appleApiKey: process.env.ASC_API_PRIVATE_KEY_PATH,
+        appleApiKeyId: process.env.ASC_API_KEY_ID,
+        appleApiIssuer: process.env.ASC_API_ISSUER_ID,
+      }
+    : undefined;
 /**
  * The ONLY escape valve for a make without signing/notary credentials
  * (#8786). It exists for local dev iteration; the artifact is renamed
  * `-UNSIGNED-DEV` so it can never be mistaken for — or published as — a
  * release (release preflight and publish-release both refuse the marker).
  */
-const allowUnsignedDev = process.env.OA_ALLOW_UNSIGNED_DEV === "1"
+const allowUnsignedDev = process.env.OA_ALLOW_UNSIGNED_DEV === "1";
 
 const macCodeSignableBasenames = new Set([
   "OpenAgents",
@@ -76,11 +108,11 @@ const macCodeSignableBasenames = new Set([
   "ShipIt",
   "zsh",
   "oa-desktop-audio",
-])
+]);
 
 const isMacCodeSignablePath = (file: string): boolean =>
   /\.(?:app|framework|dylib|node)$/u.test(file) ||
-  macCodeSignableBasenames.has(path.basename(file))
+  macCodeSignableBasenames.has(path.basename(file));
 
 const copyRuntimePackage = async (
   buildPath: string,
@@ -89,12 +121,12 @@ const copyRuntimePackage = async (
   ascend = 0,
   resolver: NodeRequire = resolveFromApp,
 ): Promise<void> => {
-  let source = path.dirname(resolver.resolve(resolveSpecifier))
-  for (let index = 0; index < ascend; index += 1) source = path.dirname(source)
-  const destination = path.join(buildPath, "node_modules", ...packageName.split("/"))
-  await mkdir(path.dirname(destination), { recursive: true })
-  await cp(source, destination, { recursive: true, dereference: true })
-}
+  let source = path.dirname(resolver.resolve(resolveSpecifier));
+  for (let index = 0; index < ascend; index += 1) source = path.dirname(source);
+  const destination = path.join(buildPath, "node_modules", ...packageName.split("/"));
+  await mkdir(path.dirname(destination), { recursive: true });
+  await cp(source, destination, { recursive: true, dereference: true });
+};
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -102,7 +134,10 @@ const config: ForgeConfig = {
     executableName: "OpenAgents",
     appBundleId: OPENAGENTS_DESKTOP_BUNDLE_ID,
     appCategoryType: "public.app-category.developer-tools",
-    extendInfo: { NSMicrophoneUsageDescription: "OpenAgents uses the microphone only while you explicitly run a voice session." },
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        "OpenAgents uses the microphone only while you explicitly run a voice session.",
+    },
     asar: {
       // Both provider packages resolve and spawn native executables relative
       // to their installed package. Executables cannot run inside app.asar.
@@ -133,54 +168,88 @@ const config: ForgeConfig = {
     // Electron's atom icon. The renderer still uses the shared PNG below.
     icon: "resources/openagents-icon.icns",
     extraResource: ["dist/native", "dist/builtin-skills"],
-    ignore: path => ignoredCheckoutPath.test(path),
+    ignore: (path) => ignoredCheckoutPath.test(path),
     protocols: [{ name: "OpenAgents", schemes: [OPENAGENTS_DESKTOP_PROTOCOL] }],
-    osxSign: developerIdApplication === undefined ? undefined : {
-      identity: developerIdApplication,
-      // Electron Framework/Versions/Current is a symlink to A. Walking and
-      // signing both views races the same resource tree and eventually asks
-      // codesign to reopen a path already rewritten through the other view.
-      ignore: file =>
-        file.includes("/Electron Framework.framework/Versions/Current/") ||
-        !isMacCodeSignablePath(file),
-      optionsForFile: () => ({
-        entitlements: "build/entitlements.mac.plist",
-        hardenedRuntime: true,
-      }),
-    },
+    osxSign:
+      developerIdApplication === undefined
+        ? undefined
+        : {
+            identity: developerIdApplication,
+            // Electron Framework/Versions/Current is a symlink to A. Walking and
+            // signing both views races the same resource tree and eventually asks
+            // codesign to reopen a path already rewritten through the other view.
+            ignore: (file) =>
+              file.includes("/Electron Framework.framework/Versions/Current/") ||
+              !isMacCodeSignablePath(file),
+            optionsForFile: () => ({
+              entitlements: "build/entitlements.mac.plist",
+              hardenedRuntime: true,
+            }),
+          },
     osxNotarize: notarizeCredentials,
   },
   hooks: {
     generateAssets: async () => {
+      const target = desktopTargets[requireExplicitDesktopTarget()];
       execFileSync("node", ["--import", "tsx", "scripts/build.ts"], {
         cwd: process.cwd(),
         stdio: "inherit",
-      })
-      execFileSync("cargo", ["build", "--release", "-p", "oa-desktop-audio"], { cwd: path.resolve(process.cwd(), "../.."), stdio: "inherit" })
-      const architecture = process.arch
-      const destinationDirectory = path.join(process.cwd(), "dist", "native", architecture)
-      const destination = path.join(destinationDirectory, "oa-desktop-audio")
-      mkdirSync(destinationDirectory, { recursive: true })
-      copyFileSync(path.resolve(process.cwd(), "../../target/release/oa-desktop-audio"), destination)
-      chmodSync(destination, 0o755)
-      const sha256 = createHash("sha256").update(readFileSync(destination)).digest("hex")
-      writeFileSync(path.join(destinationDirectory, "manifest.json"), JSON.stringify({ protocolVersion: 1, helperVersion: "0.1.0", architecture, sha256 }) + "\n", { mode: 0o644 })
+      });
+      // Owned native components build with the EXPLICIT Rust target triple —
+      // never `process.arch` inference (DIST-03 #8916, audit §10.2).
+      execFileSync(
+        "cargo",
+        ["build", "--release", "-p", "oa-desktop-audio", "--target", target.rustTargetTriple],
+        { cwd: path.resolve(process.cwd(), "../.."), stdio: "inherit" },
+      );
+      const architecture = target.arch;
+      const destinationDirectory = path.join(process.cwd(), "dist", "native", architecture);
+      const destination = path.join(destinationDirectory, "oa-desktop-audio");
+      mkdirSync(destinationDirectory, { recursive: true });
+      copyFileSync(
+        path.resolve(
+          process.cwd(),
+          "../..",
+          "target",
+          target.rustTargetTriple,
+          "release",
+          "oa-desktop-audio",
+        ),
+        destination,
+      );
+      chmodSync(destination, 0o755);
+      const sha256 = createHash("sha256").update(readFileSync(destination)).digest("hex");
+      writeFileSync(
+        path.join(destinationDirectory, "manifest.json"),
+        JSON.stringify({ protocolVersion: 1, helperVersion: "0.1.0", architecture, sha256 }) + "\n",
+        { mode: 0o644 },
+      );
     },
     packageAfterCopy: async (_forgeConfig, buildPath, _electronVersion, platform, arch) => {
+      const declaredTarget = requireExplicitDesktopTarget();
+      if (`${platform}-${arch}` !== declaredTarget) {
+        throw new Error(
+          `packaging REFUSED: maker invocation targets ${platform}-${arch} but OA_DESKTOP_TARGET declares ${declaredTarget}`,
+        );
+      }
       // The application build bundles every dependency except provider packages whose
       // native payloads must remain relative to their package. Replace the
       // copied workspace node_modules with that explicit runtime allowlist.
-      await rm(path.join(buildPath, "node_modules"), { recursive: true, force: true })
-      await copyRuntimePackage(buildPath, "@anthropic-ai/claude-agent-sdk")
+      await rm(path.join(buildPath, "node_modules"), { recursive: true, force: true });
+      await copyRuntimePackage(buildPath, "@anthropic-ai/claude-agent-sdk");
       await copyRuntimePackage(
         buildPath,
         `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`,
         `@anthropic-ai/claude-agent-sdk-${platform}-${arch}/package.json`,
         0,
         resolveFromClaudeSdk(),
-      )
-      await copyRuntimePackage(buildPath, "@openai/codex", "@openai/codex/bin/codex.js", 1)
-      await copyRuntimePackage(buildPath, `@openai/codex-${platform}-${arch}`, `@openai/codex-${platform}-${arch}/package.json`)
+      );
+      await copyRuntimePackage(buildPath, "@openai/codex", "@openai/codex/bin/codex.js", 1);
+      await copyRuntimePackage(
+        buildPath,
+        `@openai/codex-${platform}-${arch}`,
+        `@openai/codex-${platform}-${arch}/package.json`,
+      );
     },
     /**
      * Gatekeeper release gate (#8786) — mechanized from two 2026-07-13
@@ -196,8 +265,9 @@ const config: ForgeConfig = {
      * which renames every artifact `-UNSIGNED-DEV`.
      */
     postMake: async (_forgeConfig, makeResults) => {
-      if (process.platform !== "darwin") return makeResults
-      const signingReady = developerIdApplication !== undefined && notarizeCredentials !== undefined
+      if (process.platform !== "darwin") return makeResults;
+      const signingReady =
+        developerIdApplication !== undefined && notarizeCredentials !== undefined;
       if (!signingReady) {
         if (!allowUnsignedDev) {
           throw new Error(
@@ -207,16 +277,19 @@ const config: ForgeConfig = {
               "(docs/teardowns/2026-07-13-t3-code-teardown.md). " +
               "For a local dev artifact only, set OA_ALLOW_UNSIGNED_DEV=1; the output is renamed -UNSIGNED-DEV " +
               "and can never pass release preflight or publish.",
-          )
+          );
         }
         return makeResults.map((result) => ({
           ...result,
           artifacts: result.artifacts.map((artifact) => {
-            const canonical = canonicalArtifactPath(artifact, result.platform, result.arch)
-            const unsigned = path.join(path.dirname(canonical), unsignedDevArtifactName(path.basename(canonical)))
-            return renameArtifact(artifact, unsigned)
+            const canonical = canonicalArtifactPath(artifact, result.platform, result.arch);
+            const unsigned = path.join(
+              path.dirname(canonical),
+              unsignedDevArtifactName(path.basename(canonical)),
+            );
+            return renameArtifact(artifact, unsigned);
           }),
-        }))
+        }));
       }
       for (const result of makeResults) {
         const appPath = path.join(
@@ -224,10 +297,13 @@ const config: ForgeConfig = {
           "out",
           `OpenAgents-${result.platform}-${result.arch}`,
           "OpenAgents.app",
-        )
+        );
         for (const artifact of result.artifacts.filter((file) => file.endsWith(".dmg"))) {
-          notarizeAndStapleDmg(artifact, appPath, notarizeCredentials)
-          assertGatekeeperGreen([...gatekeeperImageChecks(artifact), ...gatekeeperAppChecks(appPath)])
+          notarizeAndStapleDmg(artifact, appPath, notarizeCredentials);
+          assertGatekeeperGreen([
+            ...gatekeeperImageChecks(artifact),
+            ...gatekeeperAppChecks(appPath),
+          ]);
           // A signed shell is insufficient: prove the exact unpacked native
           // runtime is signed, executable, target-correct, and version-pinned
           // with no global Codex/NVM resolution available.
@@ -236,29 +312,35 @@ const config: ForgeConfig = {
             platform: result.platform,
             arch: result.arch,
             requireSignature: true,
-          })
+          });
         }
       }
-      return makeResults.map(result => ({
+      return makeResults.map((result) => ({
         ...result,
-        artifacts: result.artifacts.map(artifact =>
-          renameArtifact(artifact, canonicalArtifactPath(artifact, result.platform, result.arch))),
-      }))
+        artifacts: result.artifacts.map((artifact) =>
+          renameArtifact(artifact, canonicalArtifactPath(artifact, result.platform, result.arch)),
+        ),
+      }));
     },
   },
   makers: [
-    new MakerDMG({
-      format: "ULFO",
-      overwrite: true,
-      ...(developerIdApplication === undefined ? {} : {
-        additionalDMGOptions: {
-          "code-sign": {
-            "signing-identity": developerIdApplication,
-            identifier: OPENAGENTS_DESKTOP_BUNDLE_ID,
-          },
-        },
-      }),
-    }, ["darwin"]),
+    new MakerDMG(
+      {
+        format: "ULFO",
+        overwrite: true,
+        ...(developerIdApplication === undefined
+          ? {}
+          : {
+              additionalDMGOptions: {
+                "code-sign": {
+                  "signing-identity": developerIdApplication,
+                  identifier: OPENAGENTS_DESKTOP_BUNDLE_ID,
+                },
+              },
+            }),
+      },
+      ["darwin"],
+    ),
     new MakerZIP({}, ["darwin"]),
   ],
   plugins: [
@@ -279,6 +361,6 @@ const config: ForgeConfig = {
       [FuseV1Options.WasmTrapHandlers]: true,
     }),
   ],
-}
+};
 
-export default config
+export default config;

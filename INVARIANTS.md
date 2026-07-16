@@ -481,6 +481,37 @@ More specific invariant ledgers apply inside imported apps and packages.
   idempotence, route state, and cross-artifact consistency tests are the
   intended automated boundary; the two indefinitely retained dated artifacts
   and signed ReleaseSet notes refs are the release boundary.
+- (DIST-03, #8916) Desktop packaging entrypoints require an EXPLICIT target
+  build descriptor (`openagents.desktop.target_build_descriptor.v1`; the six
+  closed target keys). Host inference (`process.arch`/`process.platform`)
+  never selects a release target, and owned native components
+  (`oa-desktop-audio`) build only with the descriptor's explicit Rust target
+  triple. Staging runs in a clean per-target temporary workspace — the
+  developer checkout and another architecture's dependency tree are never
+  packaged — and the exact provider runtime packages for the target must
+  resolve BEFORE any maker/signing work; unavailable runtimes are a typed
+  `missing_runtime_package` failure. The staged-tree oracle
+  (`apps/openagents-desktop/scripts/stage-target.ts`) fails closed on one
+  foreign-architecture or universal binary, unallowlisted executable,
+  source-checkout path, development file, or unexpected ASAR entry. Every
+  target build emits a public-safe native-component ledger
+  (`native_component_ledger.v1`: name, version, target, digest, provenance,
+  relative destination — never absolute paths) whose canonical-JSON sha256
+  identity is deterministic across repeat staging from the same inputs
+  (signer/notary bytes are the sole documented nondeterminism and never
+  enter the ledger), plus a build receipt (`build_receipt.v1`) binding the
+  descriptor (source revision, version, channel, lockfile identity),
+  Electron/Node/pnpm versions, the ledger reference, canonical version-first
+  artifact identities, and opaque worker identity. ReleaseSet v2 (#8915)
+  consumes only the `sha256:<hex>` ledger/receipt references exported by
+  `apps/openagents-desktop/src/release-staging-contract.ts`. Unsigned-dev
+  output is structurally inadmissible: an `unsigned-dev` descriptor can never
+  construct a receipt and `UNSIGNED-DEV`-marked artifact names fail the
+  receipt schema. Descriptor/ledger/receipt schema tests and the injected
+  single-defect negative oracles in
+  `apps/openagents-desktop/tests/release-staging.test.ts` are the automated
+  boundary; per-target ledgers and receipts inside the signed release set are
+  the release boundary.
 - OpenAgents Desktop macOS artifacts carry the product-owned
   `resources/openagents-icon.icns` bundle. Finder, Dock, ZIP, and DMG output
   must never fall back to Electron's atom icon; the packaging contract test

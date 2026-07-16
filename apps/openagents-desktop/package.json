@@ -13,8 +13,9 @@
   },
   "scripts": {
     "build": "node --import tsx scripts/build.ts",
-    "package:mac": "electron-forge package --platform=darwin --arch=arm64",
-    "make:mac": "node --import tsx scripts/prepare-macos-maker.ts && electron-forge make --platform=darwin --arch=arm64",
+    "package:mac": "OA_DESKTOP_TARGET=darwin-arm64 electron-forge package --platform=darwin --arch=arm64",
+    "make:mac": "node --import tsx scripts/prepare-macos-maker.ts && OA_DESKTOP_TARGET=darwin-arm64 electron-forge make --platform=darwin --arch=arm64",
+    "stage:target": "node --import tsx scripts/stage-target.ts",
     "dev": "node --import tsx scripts/dev.ts",
     "full-auto": "node --import tsx scripts/full-auto-cli.ts",
     "live-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-live-proof.ts",
