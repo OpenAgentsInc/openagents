@@ -1,12 +1,23 @@
-import type { ShareProjectionV1 } from '@openagentsinc/sync-schema'
+import { ShareProjectionV1 } from '@openagentsinc/sync-schema'
+import { Exit, Schema as S } from 'effect'
 
 // Live data for the `/share/{shareId}` route. Ported from the fetch logic in
 // `apps/web/src/page/loggedOut/update.ts` (`LoadShareProjection`) — same
 // endpoint, same request shape, same fail-soft posture. This app cannot
 // import from `apps/web` (separate package), so only the small amount of
 // fetch/decode logic is reproduced here; the wire type itself is the shared
-// canonical `ShareProjectionV1` from `@openagentsinc/sync-schema` (a
-// type-only import, so it adds no runtime bundle weight).
+// canonical `ShareProjectionV1` from `@openagentsinc/sync-schema`.
+//
+// T14 (#8871): this used to cast the fetched JSON straight to
+// `ShareProjectionV1` with a type-only import ("adds no runtime bundle
+// weight") — an unchecked cast, not a decode. A server response that drifted
+// from the schema (or was tampered with) would silently masquerade as a
+// valid projection all the way into the timeline renderer. Decoding with the
+// real schema below costs a small amount of bundle weight (the schema value
+// plus `effect`'s `Schema` module) in exchange for actually validating the
+// wire contract before it reaches the UI.
+
+const decodeShareProjection = S.decodeUnknownExit(ShareProjectionV1)
 
 export const shareProjectionUrl = (shareId: string): string =>
   `/api/share/${encodeURIComponent(shareId)}/v1/data`
@@ -49,9 +60,19 @@ export const fetchShareProjection = async (
       }
     }
 
+    const decoded = decodeShareProjection(payload.projection)
+
+    if (Exit.isFailure(decoded)) {
+      return {
+        tag: 'failed',
+        status: 0,
+        error: 'Share response was malformed.',
+      }
+    }
+
     return {
       tag: 'loaded',
-      projection: payload.projection as ShareProjectionV1,
+      projection: decoded.value,
     }
   } catch (cause) {
     return {

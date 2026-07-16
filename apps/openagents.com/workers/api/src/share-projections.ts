@@ -1,5 +1,21 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import {
+  SHARE_AGENT_PROMPT_LIMIT,
+  SHARE_ARG_KEY_LIMIT,
+  SHARE_ARG_LIMIT,
+  SHARE_ARG_VALUE_LIMIT,
+  SHARE_CHANGE_LIMIT,
+  SHARE_COMMAND_LIMIT,
+  SHARE_DIFF_LIMIT,
+  SHARE_ERROR_MESSAGE_LIMIT,
+  SHARE_NOTICE_TEXT_LIMIT,
+  SHARE_OUTPUT_TAIL_LIMIT,
+  SHARE_PATH_LIMIT,
+  SHARE_PLAN_ENTRY_LIMIT,
+  SHARE_PLAN_PROSE_LIMIT,
+  SHARE_PLAN_STEP_LIMIT,
+  SHARE_REASONING_SUMMARY_LIMIT,
+  SHARE_RESULT_SNIPPET_LIMIT,
   ShareAudience,
   type ShareAudienceRecipient as ShareAudienceRecipientType,
   type ShareAudience as ShareAudienceType,
@@ -11,7 +27,9 @@ import {
   ShareUpdateRequest,
   type ShareUpdateRequest as ShareUpdateRequestType,
   type WorkroomFileItem,
+  type WorkroomTimelineAgentChildStatus,
   type WorkroomTimelineMessage,
+  type WorkroomTimelinePart,
   type WorkroomTimelineToolPart,
 } from '@openagentsinc/sync-schema'
 import { Context, Effect, Layer, Match as M, Schema as S } from 'effect'
@@ -24,6 +42,7 @@ import {
   optionalString,
   parseJsonStringArray,
   parseJsonWithSchema,
+  recordFromUnknown,
   safeJsonRecord,
 } from './json-boundary'
 import {
@@ -906,6 +925,803 @@ const filesFromEvents = (
 const repositorySubtitle = (run: AgentRunRecord): string =>
   `${run.repository.owner}/${run.repository.repo}@${run.repository.ref} · ${run.status}`
 
+// ---------------------------------------------------------------------------
+// T14 (#8871, epic #8857 Wave 3): classify a raw agent/Codex event into the
+// widened `WorkroomTimelinePart` union instead of always collapsing to the
+// generic `tool` part.
+//
+// Ground truth for these raw event shapes is `OmniEventRecord.payloadJson`
+// (a free-form runner-callback envelope — `rawEventPayloadRecord` above
+// already unwraps the `dataJson`/`rawPayloadJson` nesting), which carries
+// EITHER Codex-style `ThreadItem`-shaped fields (`commandExecution`,
+// `fileChange`, `mcpToolCall`, ...; see
+// `apps/openagents-desktop/src/workbench-item-contract.ts`'s
+// `workbenchItemFromThreadItem`) OR Claude Agent SDK content-block shapes
+// (`tool_use`/`tool_result` with a tool `name` from the same vocabulary
+// `apps/openagents-desktop/src/renderer/tool-cards.ts`'s
+// `humanizeToolInvocation` names — `Bash`, `Write`, `Edit`, `Read`, `Grep`,
+// `Glob`, `Agent`, `mcp__*`), depending on which backend executed the run.
+// Reusing `workbenchItemFromThreadItem`/`humanizeToolInvocation` directly
+// isn't possible: both live in `apps/openagents-desktop`, an Electron
+// application package, and this Cloud Run API must not depend on another
+// app's package. This classifier is a deliberate, tolerant SERVER-SIDE
+// equivalent covering the same two vocabularies, with the same redaction/
+// bounding discipline `safePublicText` already applies here, so the
+// fallback below (unchanged from the pre-#8871 behavior) still runs for any
+// event shape neither vocabulary recognizes.
+// ---------------------------------------------------------------------------
+
+type BoundedTextResult = Readonly<{ text: string; capped: boolean }>
+
+/** Bounds text at `max` characters, preserving newlines (unlike
+ * `safePublicText`/`compactLine`, which flatten to one line) so multi-line
+ * command output, diffs, and args stay readable in the typed cards. Always
+ * runs the same secret-material check `safePublicText` uses; a match
+ * redacts the WHOLE value rather than partially masking it. */
+const safeBoundedText = (
+  value: string | undefined,
+  max: number,
+  mode: 'head' | 'tail' = 'head',
+): BoundedTextResult | undefined => {
+  if (value === undefined) {
+    return undefined
+  }
+
+  const trimmed = value.trim()
+
+  if (trimmed === '') {
+    return undefined
+  }
+
+  if (containsProviderSecretMaterial(trimmed)) {
+    return { text: '[redacted]', capped: false }
+  }
+
+  if (trimmed.length <= max) {
+    return { text: trimmed, capped: false }
+  }
+
+  return mode === 'tail'
+    ? { text: trimmed.slice(-max), capped: true }
+    : { text: trimmed.slice(0, max), capped: true }
+}
+
+const diffLineCounts = (
+  diff: string,
+): Readonly<{ adds: number; dels: number }> => {
+  let adds = 0
+  let dels = 0
+
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      adds++
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      dels++
+    }
+  }
+
+  return { adds, dels }
+}
+
+/** Bounded k/v projection of a JSON arguments payload (objects only),
+ * mirroring `workbenchArgEntries` in the desktop contract. */
+const workroomArgEntries = (
+  value: unknown,
+): ReadonlyArray<Readonly<{ key: string; value: string }>> => {
+  const record = recordFromUnknown(value)
+
+  if (record === undefined) {
+    return []
+  }
+
+  const entries: Array<Readonly<{ key: string; value: string }>> = []
+
+  for (const [key, raw] of Object.entries(record)) {
+    if (entries.length >= SHARE_ARG_LIMIT) {
+      break
+    }
+
+    const rendered =
+      typeof raw === 'string'
+        ? raw
+        : typeof raw === 'number' || typeof raw === 'boolean'
+          ? String(raw)
+          : raw === null || raw === undefined
+            ? ''
+            : (() => {
+                try {
+                  return JSON.stringify(raw) ?? ''
+                } catch {
+                  return ''
+                }
+              })()
+    const boundedKey = safeBoundedText(key, SHARE_ARG_KEY_LIMIT)
+    const boundedValue = safeBoundedText(rendered, SHARE_ARG_VALUE_LIMIT)
+
+    entries.push({
+      key: boundedKey?.text ?? key.slice(0, SHARE_ARG_KEY_LIMIT),
+      value: boundedValue?.text ?? '',
+    })
+  }
+
+  return entries
+}
+
+/** Bounded text extraction from an MCP-style result payload
+ * (`{content:[{text}...]}`), mirroring `mcpResultSnippet` in the desktop
+ * contract. */
+const mcpResultSnippetFromRaw = (value: unknown): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined
+  }
+
+  const record = recordFromUnknown(value)
+  const content = record?.content
+
+  if (Array.isArray(content)) {
+    const text = content
+      .map(part => optionalString(recordFromUnknown(part)?.text) ?? '')
+      .filter(part => part !== '')
+      .join('\n')
+
+    if (text !== '') {
+      return safeBoundedText(text, SHARE_RESULT_SNIPPET_LIMIT)?.text
+    }
+  }
+
+  if (typeof value === 'string') {
+    return safeBoundedText(value, SHARE_RESULT_SNIPPET_LIMIT)?.text
+  }
+
+  try {
+    const rendered = JSON.stringify(value)
+
+    return rendered === undefined
+      ? undefined
+      : safeBoundedText(rendered, SHARE_RESULT_SNIPPET_LIMIT)?.text
+  } catch {
+    return undefined
+  }
+}
+
+/** Prefers a nested `raw.part` content-block record when present (the
+ * shape `eventLooksLikeToolCall`/`eventDetail` above already special-case),
+ * falling back to the event's own raw payload record. */
+const rawItemRecord = (
+  raw: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined => {
+  if (raw === undefined) {
+    return undefined
+  }
+
+  const part = recordFromUnknown(raw.part)
+
+  return part ?? raw
+}
+
+const rawItemType = (
+  raw: Record<string, unknown> | undefined,
+  target: Record<string, unknown> | undefined,
+): string => optionalString(target?.type) ?? optionalString(raw?.type) ?? ''
+
+const normalizedApprovalDecision = (
+  raw: string | undefined,
+): 'approved' | 'denied' | undefined => {
+  if (raw === undefined) {
+    return undefined
+  }
+
+  const lowered = raw.toLowerCase()
+
+  if (
+    ['accept', 'acceptforsession', 'approve', 'approved', 'accepted', 'allow', 'allowed'].includes(
+      lowered,
+    )
+  ) {
+    return 'approved'
+  }
+
+  if (
+    ['decline', 'declined', 'deny', 'denied', 'reject', 'rejected'].includes(
+      lowered,
+    )
+  ) {
+    return 'denied'
+  }
+
+  return undefined
+}
+
+const reasoningPartFromRaw = (
+  target: Record<string, unknown>,
+): WorkroomTimelinePart | undefined => {
+  const summaryParts = arrayFromUnknown(target.summary)
+  const joinedSummary = summaryParts
+    ?.map(part => optionalString(part) ?? '')
+    .filter(part => part !== '')
+    .join('\n')
+  const summary =
+    joinedSummary !== undefined && joinedSummary !== ''
+      ? joinedSummary
+      : (optionalString(target.summary) ??
+        optionalString(target.thinking) ??
+        optionalString(target.text))
+  const bounded = safeBoundedText(summary, SHARE_REASONING_SUMMARY_LIMIT)
+
+  return bounded === undefined
+    ? undefined
+    : { kind: 'reasoning', summary: bounded.text }
+}
+
+const planPartFromRaw = (
+  target: Record<string, unknown>,
+): WorkroomTimelinePart | undefined => {
+  const prose = safeBoundedText(optionalString(target.text), SHARE_PLAN_PROSE_LIMIT)
+  const rawEntries = arrayFromUnknown(target.entries ?? target.steps) ?? []
+  const entries = rawEntries.slice(0, SHARE_PLAN_ENTRY_LIMIT).flatMap(rawEntry => {
+    const record = recordFromUnknown(rawEntry)
+    const step = safeBoundedText(
+      optionalString(record?.step) ?? optionalString(record?.text),
+      SHARE_PLAN_STEP_LIMIT,
+    )
+
+    if (step === undefined) {
+      return []
+    }
+
+    const rawStatus = optionalString(record?.status)
+    const status: 'pending' | 'in_progress' | 'completed' =
+      rawStatus === 'completed'
+        ? 'completed'
+        : rawStatus === 'in_progress' || rawStatus === 'running'
+          ? 'in_progress'
+          : 'pending'
+
+    return [{ step: step.text, status }]
+  })
+
+  if (entries.length === 0 && prose === undefined) {
+    return undefined
+  }
+
+  return {
+    kind: 'plan',
+    entries,
+    ...(prose === undefined ? {} : { prose: prose.text }),
+  }
+}
+
+const approvalPartFromRaw = (
+  target: Record<string, unknown>,
+): WorkroomTimelinePart => {
+  const decision = normalizedApprovalDecision(optionalString(target.decision))
+  const detail = safeBoundedText(
+    optionalString(target.reason) ?? optionalString(target.message),
+    SHARE_ERROR_MESSAGE_LIMIT,
+  )
+
+  return {
+    kind: 'approval',
+    ...(decision === undefined ? {} : { decision }),
+    ...(detail === undefined ? {} : { detail: detail.text }),
+  }
+}
+
+const commandPartFromRaw = (
+  target: Record<string, unknown>,
+  itemType: string,
+  status: WorkroomTimelineToolPart['status'],
+): WorkroomTimelinePart | undefined => {
+  const isCommandExecution =
+    itemType === 'commandExecution' || itemType === 'command_execution'
+  const isBashToolUse =
+    itemType === 'tool_use' && optionalString(target.name) === 'Bash'
+
+  if (!isCommandExecution && !isBashToolUse) {
+    return undefined
+  }
+
+  const commandText = isCommandExecution
+    ? optionalString(target.command)
+    : optionalNestedString(target, [['input', 'command']])
+  const bounded = safeBoundedText(commandText, SHARE_COMMAND_LIMIT)
+
+  if (bounded === undefined) {
+    return undefined
+  }
+
+  const cwd = safeBoundedText(
+    optionalString(target.cwd) ?? optionalNestedString(target, [['input', 'cwd']]),
+    SHARE_PATH_LIMIT,
+  )
+  const exitCode = optionalInteger(target.exitCode ?? target.exit_code)
+  const durationMs = optionalInteger(target.durationMs ?? target.duration_ms)
+  const outputRaw =
+    optionalString(
+      target.aggregatedOutput ?? target.aggregated_output ?? target.output,
+    ) ?? optionalNestedString(target, [['detail'], ['message']])
+  const outputBound = safeBoundedText(outputRaw, SHARE_OUTPUT_TAIL_LIMIT, 'tail')
+
+  return {
+    kind: 'command',
+    command: bounded.text,
+    status,
+    ...(cwd === undefined ? {} : { cwd: cwd.text }),
+    ...(exitCode === undefined ? {} : { exitCode }),
+    ...(durationMs === undefined ? {} : { durationMs }),
+    ...(outputBound === undefined ? {} : { outputTail: outputBound.text }),
+    ...(outputBound?.capped === true ? { outputCapReached: true } : {}),
+  }
+}
+
+const fileChangeEntriesFromRawChanges = (
+  target: Record<string, unknown>,
+): ReadonlyArray<
+  Readonly<{
+    path: string
+    kind: 'add' | 'delete' | 'update'
+    adds?: number
+    dels?: number
+    diff?: string
+    diffCapReached?: boolean
+  }>
+> => {
+  const rawChanges = arrayFromUnknown(target.changes)
+
+  if (rawChanges === undefined) {
+    return []
+  }
+
+  return rawChanges.slice(0, SHARE_CHANGE_LIMIT).flatMap(rawChange => {
+    const record = recordFromUnknown(rawChange)
+    const path = safeBoundedText(optionalString(record?.path), SHARE_PATH_LIMIT)
+
+    if (path === undefined) {
+      return []
+    }
+
+    const rawKind =
+      optionalString(record?.kind) ??
+      optionalString(recordFromUnknown(record?.type)?.type)
+    const kind: 'add' | 'delete' | 'update' =
+      rawKind === 'add' || rawKind === 'delete' ? rawKind : 'update'
+    const diffBound = safeBoundedText(optionalString(record?.diff), SHARE_DIFF_LIMIT)
+    const counts = diffBound === undefined ? undefined : diffLineCounts(diffBound.text)
+
+    return [
+      {
+        path: path.text,
+        kind,
+        ...(counts === undefined ? {} : { adds: counts.adds, dels: counts.dels }),
+        ...(diffBound === undefined ? {} : { diff: diffBound.text }),
+        ...(diffBound?.capped === true ? { diffCapReached: true } : {}),
+      },
+    ]
+  })
+}
+
+const fileChangePartFromRaw = (
+  target: Record<string, unknown>,
+  itemType: string,
+  status: WorkroomTimelineToolPart['status'],
+): WorkroomTimelinePart | undefined => {
+  const isFileChange =
+    itemType === 'fileChange' || itemType === 'file_change'
+  const isApplyPatch = itemType === 'apply_patch' || itemType === 'applyPatch'
+  const isWriteOrEditToolUse =
+    itemType === 'tool_use' &&
+    (optionalString(target.name) === 'Write' || optionalString(target.name) === 'Edit')
+
+  if (isFileChange) {
+    const changes = fileChangeEntriesFromRawChanges(target)
+
+    return changes.length === 0 ? undefined : { kind: 'fileChange', status, changes }
+  }
+
+  if (isApplyPatch) {
+    const rawPatch = target.patch ?? target.input ?? target.arguments ?? target.content
+    const patchRecord =
+      recordFromUnknown(rawPatch) ??
+      (typeof rawPatch === 'string' ? safeJsonRecord(rawPatch) : undefined)
+    const patchText =
+      optionalString(patchRecord?.patch) ??
+      optionalString(patchRecord?.input) ??
+      optionalString(rawPatch)
+    const bounded = safeBoundedText(patchText, SHARE_DIFF_LIMIT)
+
+    if (bounded === undefined) {
+      return undefined
+    }
+
+    const counts = diffLineCounts(bounded.text)
+
+    return {
+      kind: 'fileChange',
+      status,
+      changes: [
+        {
+          path: 'Turn diff',
+          kind: 'update',
+          adds: counts.adds,
+          dels: counts.dels,
+          diff: bounded.text,
+          ...(bounded.capped ? { diffCapReached: true } : {}),
+        },
+      ],
+    }
+  }
+
+  if (isWriteOrEditToolUse) {
+    const path = safeBoundedText(
+      optionalNestedString(target, [['input', 'file_path']]),
+      SHARE_PATH_LIMIT,
+    )
+
+    if (path === undefined) {
+      return undefined
+    }
+
+    const oldString = optionalNestedString(target, [['input', 'old_string']])
+    const newString = optionalNestedString(target, [['input', 'new_string']])
+    const content = optionalNestedString(target, [['input', 'content']])
+    const diffText =
+      oldString !== undefined || newString !== undefined
+        ? `-${oldString ?? ''}\n+${newString ?? ''}`
+        : content
+    const diffBound = safeBoundedText(diffText, SHARE_DIFF_LIMIT)
+    const counts = diffBound === undefined ? undefined : diffLineCounts(diffBound.text)
+    const changeKind: 'add' | 'update' =
+      oldString === undefined && content !== undefined ? 'add' : 'update'
+
+    return {
+      kind: 'fileChange',
+      status,
+      changes: [
+        {
+          path: path.text,
+          kind: changeKind,
+          ...(counts === undefined ? {} : { adds: counts.adds, dels: counts.dels }),
+          ...(diffBound === undefined ? {} : { diff: diffBound.text }),
+          ...(diffBound?.capped === true ? { diffCapReached: true } : {}),
+        },
+      ],
+    }
+  }
+
+  return undefined
+}
+
+const toolCallPartFromRaw = (
+  target: Record<string, unknown>,
+  itemType: string,
+  status: WorkroomTimelineToolPart['status'],
+): WorkroomTimelinePart | undefined => {
+  if (itemType === 'mcpToolCall' || itemType === 'mcp_tool_call') {
+    const tool = safeBoundedText(
+      optionalString(target.tool ?? target.tool_name ?? target.name) ?? 'tool',
+      120,
+    )
+    const server = safeBoundedText(
+      optionalString(target.server ?? target.server_name),
+      120,
+    )
+    const errorMessage = safeBoundedText(
+      optionalString(recordFromUnknown(target.error)?.message),
+      SHARE_ERROR_MESSAGE_LIMIT,
+    )
+    const durationMs = optionalInteger(target.durationMs ?? target.duration_ms)
+    const resultSnippet = mcpResultSnippetFromRaw(target.result)
+
+    return {
+      kind: 'toolCall',
+      callKind: 'mcp',
+      tool: tool?.text ?? 'tool',
+      args: workroomArgEntries(target.arguments ?? target.args),
+      status,
+      ...(server === undefined ? {} : { server: server.text }),
+      ...(resultSnippet === undefined ? {} : { resultSnippet }),
+      ...(errorMessage === undefined ? {} : { errorMessage: errorMessage.text }),
+      ...(durationMs === undefined ? {} : { durationMs }),
+    }
+  }
+
+  if (itemType === 'dynamicToolCall' || itemType === 'dynamic_tool_call' || itemType === 'custom_tool_call') {
+    const tool = safeBoundedText(optionalString(target.tool ?? target.name) ?? 'tool', 120)
+    const namespace = safeBoundedText(optionalString(target.namespace), 120)
+    const durationMs = optionalInteger(target.durationMs ?? target.duration_ms)
+
+    return {
+      kind: 'toolCall',
+      callKind: 'dynamic',
+      tool: tool?.text ?? 'tool',
+      args: workroomArgEntries(target.arguments ?? target.args ?? target.input),
+      status,
+      ...(namespace === undefined ? {} : { namespace: namespace.text }),
+      ...(durationMs === undefined ? {} : { durationMs }),
+    }
+  }
+
+  if (itemType === 'webSearch' || itemType === 'web_search') {
+    const query = safeBoundedText(optionalString(target.query), SHARE_ERROR_MESSAGE_LIMIT)
+    const results = arrayFromUnknown(target.results)
+
+    return {
+      kind: 'toolCall',
+      callKind: 'web',
+      tool: 'webSearch',
+      args: [],
+      status,
+      ...(query === undefined ? {} : { query: query.text }),
+      ...(results === undefined ? {} : { resultCount: results.length }),
+    }
+  }
+
+  if (
+    itemType === 'imageGeneration' ||
+    itemType === 'image_generation' ||
+    itemType === 'imageView' ||
+    itemType === 'image_view'
+  ) {
+    const path = safeBoundedText(
+      optionalString(target.savedPath ?? target.saved_path ?? target.path),
+      SHARE_PATH_LIMIT,
+    )
+    const revised = safeBoundedText(
+      optionalString(target.revisedPrompt ?? target.revised_prompt),
+      SHARE_RESULT_SNIPPET_LIMIT,
+    )
+
+    return {
+      kind: 'toolCall',
+      callKind: 'image',
+      tool: itemType.toLowerCase().includes('view') ? 'imageView' : 'imageGeneration',
+      args: [],
+      status,
+      ...(revised === undefined ? {} : { resultSnippet: revised.text }),
+      ...(path === undefined ? {} : { path: path.text }),
+    }
+  }
+
+  if (itemType === 'tool_result') {
+    const isError = target.is_error === true
+    const snippet = mcpResultSnippetFromRaw(target.content ?? target.result)
+
+    return {
+      kind: 'toolCall',
+      callKind: 'dynamic',
+      tool: safeBoundedText(optionalString(target.tool), 120)?.text ?? 'tool_result',
+      args: [],
+      status: isError ? 'failed' : status,
+      ...(snippet === undefined ? {} : { resultSnippet: snippet }),
+      ...(isError ? { errorMessage: 'Tool call failed.' } : {}),
+    }
+  }
+
+  if (itemType === 'tool_use') {
+    const name = optionalString(target.name) ?? 'tool'
+
+    // Bash/Write/Edit are classified as command/fileChange parts above.
+    if (name === 'Bash' || name === 'Write' || name === 'Edit') {
+      return undefined
+    }
+
+    // spawnAgent-style delegation reads as an `agent` part below.
+    if (name === 'Agent' || name === 'Task') {
+      return undefined
+    }
+
+    const isMcp = name.startsWith('mcp__')
+    const segments = isMcp ? name.split('__').filter(part => part !== '') : []
+    const server = isMcp && segments.length >= 2 ? segments[1] : undefined
+    const tool = isMcp && segments.length >= 3 ? segments.slice(2).join('__') : name
+
+    return {
+      kind: 'toolCall',
+      callKind: server === undefined ? 'dynamic' : 'mcp',
+      tool: safeBoundedText(tool, 120)?.text ?? tool,
+      args: workroomArgEntries(target.input),
+      status,
+      ...(server === undefined ? {} : { server: safeBoundedText(server, 120)?.text ?? server }),
+    }
+  }
+
+  return undefined
+}
+
+const agentChildStatusFromRaw = (
+  value: unknown,
+): WorkroomTimelineAgentChildStatus | undefined => {
+  const raw = optionalString(value)
+
+  if (raw === undefined) {
+    return undefined
+  }
+
+  const normalized = raw === 'pending_init' ? 'pendingInit' : raw === 'not_found' ? 'notFound' : raw
+
+  return normalized === 'pendingInit' ||
+    normalized === 'running' ||
+    normalized === 'interrupted' ||
+    normalized === 'completed' ||
+    normalized === 'errored' ||
+    normalized === 'shutdown' ||
+    normalized === 'notFound'
+    ? normalized
+    : undefined
+}
+
+const agentPartFromRaw = (
+  target: Record<string, unknown>,
+  itemType: string,
+  status: WorkroomTimelineToolPart['status'],
+): WorkroomTimelinePart | undefined => {
+  const isCollabAgent =
+    itemType === 'collabAgentToolCall' || itemType === 'collab_agent_tool_call'
+  const isAgentToolUse =
+    itemType === 'tool_use' &&
+    (optionalString(target.name) === 'Agent' || optionalString(target.name) === 'Task')
+
+  if (!isCollabAgent && !isAgentToolUse) {
+    return undefined
+  }
+
+  const tool = optionalString(target.tool)
+  const promptText = isAgentToolUse
+    ? optionalNestedString(target, [['input', 'prompt'], ['input', 'description']])
+    : optionalString(target.prompt)
+  const prompt = safeBoundedText(promptText, SHARE_AGENT_PROMPT_LIMIT)
+  const statesRecord = recordFromUnknown(target.agentsStates ?? target.agents_states)
+  const children = statesRecord === undefined
+    ? []
+    : Object.entries(statesRecord).flatMap(([threadRef, raw]) => {
+        const childStatus = agentChildStatusFromRaw(recordFromUnknown(raw)?.status)
+
+        return childStatus === undefined
+          ? []
+          : [{ threadRef: threadRef.slice(0, 120), status: childStatus }]
+      })
+
+  return {
+    kind: 'agent',
+    status,
+    ...(tool === undefined ? {} : { tool: tool.slice(0, 40) }),
+    ...(prompt === undefined ? {} : { prompt: prompt.text }),
+    ...(children.length === 0 ? {} : { children: children.slice(0, 16) }),
+  }
+}
+
+const noticePartFromEvent = (
+  event: OmniEventRecord,
+  target: Record<string, unknown>,
+): WorkroomTimelinePart | undefined => {
+  const looksLikeNotice =
+    event.type.includes('warning') ||
+    event.type.includes('notice') ||
+    event.type.includes('deprecation')
+
+  if (!looksLikeNotice) {
+    return undefined
+  }
+
+  const text = safeBoundedText(
+    optionalString(target.message) ?? event.summary,
+    SHARE_NOTICE_TEXT_LIMIT,
+  )
+
+  if (text === undefined) {
+    return undefined
+  }
+
+  return {
+    kind: 'notice',
+    severity: event.type.includes('error') ? 'error' : 'warning',
+    text: text.text,
+  }
+}
+
+const meterPartFromEvent = (
+  event: OmniEventRecord,
+  target: Record<string, unknown>,
+): WorkroomTimelinePart | undefined => {
+  const looksLikeUsage =
+    event.type.includes('tokenUsage') ||
+    event.type.includes('token_usage') ||
+    event.type.includes('rateLimit')
+
+  if (!looksLikeUsage) {
+    return undefined
+  }
+
+  const usage = recordFromUnknown(target.usage ?? target.tokenUsage) ?? target
+  const inputTokens = optionalInteger(
+    nestedUnknown(usage, ['inputTokens']) ?? nestedUnknown(usage, ['input_tokens']),
+  )
+  const cachedInputTokens = optionalInteger(
+    nestedUnknown(usage, ['cachedInputTokens']) ?? nestedUnknown(usage, ['cached_input_tokens']),
+  )
+  const outputTokens = optionalInteger(
+    nestedUnknown(usage, ['outputTokens']) ?? nestedUnknown(usage, ['output_tokens']),
+  )
+  const reasoningTokens = optionalInteger(
+    nestedUnknown(usage, ['reasoningTokens']) ?? nestedUnknown(usage, ['reasoning_tokens']),
+  )
+  const totalTokens = optionalInteger(
+    nestedUnknown(usage, ['totalTokens']) ?? nestedUnknown(usage, ['total_tokens']),
+  )
+
+  if (
+    inputTokens === undefined &&
+    outputTokens === undefined &&
+    totalTokens === undefined
+  ) {
+    return undefined
+  }
+
+  return {
+    kind: 'meter',
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+  }
+}
+
+/**
+ * Classifies one raw agent/Codex `OmniEventRecord` into the widened
+ * `WorkroomTimelinePart` union. Falls back to the pre-#8871 generic `tool`
+ * part — unchanged — for any event shape neither the Codex nor the Claude
+ * Agent SDK vocabulary above recognizes, so nothing regresses for event
+ * shapes this classifier does not (yet) know about.
+ */
+export const workroomPartFromEvent = (event: OmniEventRecord): WorkroomTimelinePart => {
+  const raw = rawEventPayloadRecord(event)
+  const target = rawItemRecord(raw) ?? {}
+  const itemType = rawItemType(raw, target)
+  const status = eventStatus(event)
+
+  const reasoning =
+    itemType === 'reasoning' || itemType === 'thinking'
+      ? reasoningPartFromRaw(target)
+      : undefined
+  if (reasoning !== undefined) return reasoning
+
+  const plan = itemType === 'plan' ? planPartFromRaw(target) : undefined
+  if (plan !== undefined) return plan
+
+  if (itemType.includes('approval')) return approvalPartFromRaw(target)
+
+  if (itemType === 'contextCompaction' || itemType === 'context_compaction') {
+    return { kind: 'compaction' }
+  }
+
+  const notice = noticePartFromEvent(event, target)
+  if (notice !== undefined) return notice
+
+  const meter = meterPartFromEvent(event, target)
+  if (meter !== undefined) return meter
+
+  const command = commandPartFromRaw(target, itemType, status)
+  if (command !== undefined) return command
+
+  const fileChange = fileChangePartFromRaw(target, itemType, status)
+  if (fileChange !== undefined) return fileChange
+
+  const agent = agentPartFromRaw(target, itemType, status)
+  if (agent !== undefined) return agent
+
+  const toolCall = toolCallPartFromRaw(target, itemType, status)
+  if (toolCall !== undefined) return toolCall
+
+  return {
+    kind: 'tool',
+    title: safePublicText(event.summary, event.type, 120),
+    subtitle: event.source,
+    status,
+    detail: eventDetail(event),
+  }
+}
+
 const eventMessages = (
   events: ReadonlyArray<OmniEventRecord>,
 ): ReadonlyArray<WorkroomTimelineMessage> =>
@@ -922,15 +1738,7 @@ const eventMessages = (
       label: 'Autopilot',
       time: event.createdAt,
       status: 'complete' as const,
-      parts: [
-        {
-          kind: 'tool' as const,
-          title: safePublicText(event.summary, event.type, 120),
-          subtitle: event.source,
-          status: eventStatus(event),
-          detail: eventDetail(event),
-        },
-      ],
+      parts: [workroomPartFromEvent(event)],
     }))
 
 const projectionFromAgentRun = (

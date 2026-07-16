@@ -1,12 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
-import { decodeChatThreadEntity } from '@openagentsinc/khala-sync'
+import { decodeChatMessageEntity, decodeChatThreadEntity } from '@openagentsinc/khala-sync'
+import { dispatchWorkbenchItem } from '@openagentsinc/ui/desktop-workbench'
 import {
   WEB_CHAT_THREAD_COLLECTION_ENTITY_TYPE,
   projectWebChatThreadSidebar,
 } from './-chat-sync-collection'
-import { WebChatSyncPanel } from './khala/chat-sync'
+import { chatMessageDispatchItem, WebChatSyncPanel } from './khala/chat-sync'
 
 const ownerUserId = 'web-start-test-owner'
 
@@ -59,5 +60,58 @@ describe('Start Khala chat sync route', () => {
 
   test('WEB_CHAT_THREAD_COLLECTION_ENTITY_TYPE still names the chat_thread entity used by the real bootstrap/live-tail collection', () => {
     expect(WEB_CHAT_THREAD_COLLECTION_ENTITY_TYPE).toBe('chat_thread')
+  })
+
+  // T14 (#8871): chat-sync message bodies now render through the shared
+  // @openagentsinc/ui/desktop-workbench message bubble instead of a bare
+  // `<p>{message.body}</p>`, matching the desktop and /share timelines.
+  test('projects a chat message from its own owner as a user-tone dispatch item', () => {
+    const message = decodeChatMessageEntity({
+      attachments: undefined,
+      authorUserId: ownerUserId,
+      body: 'Hello from the owner.',
+      createdAt: '2026-07-16T00:00:00.000Z',
+      deletedAt: null,
+      messageId: 'msg.owner',
+      threadId: 'thread.local',
+      updatedAt: '2026-07-16T00:00:00.000Z',
+    })
+
+    const item = chatMessageDispatchItem(message, ownerUserId)
+
+    expect(item).toEqual({
+      kind: 'message',
+      source: 'local',
+      role: 'user',
+      text: 'Hello from the owner.',
+    })
+
+    const html = renderToStaticMarkup(dispatchWorkbenchItem(item, { itemKey: message.messageId }))
+
+    expect(html).toContain('data-tone="user"')
+    expect(html).toContain('Hello from the owner.')
+  })
+
+  test('projects a chat message from another author as an assistant-tone dispatch item', () => {
+    const message = decodeChatMessageEntity({
+      attachments: undefined,
+      authorUserId: 'a-different-author',
+      body: 'A reply from someone else.',
+      createdAt: '2026-07-16T00:00:00.000Z',
+      deletedAt: null,
+      messageId: 'msg.other',
+      threadId: 'thread.local',
+      updatedAt: '2026-07-16T00:00:00.000Z',
+    })
+
+    const item = chatMessageDispatchItem(message, ownerUserId)
+
+    if (item.kind !== 'message') throw new Error('expected a message dispatch item')
+    expect(item.role).toBe('assistant')
+
+    const html = renderToStaticMarkup(dispatchWorkbenchItem(item, { itemKey: message.messageId }))
+
+    expect(html).toContain('data-tone="assistant"')
+    expect(html).toContain('A reply from someone else.')
   })
 })

@@ -2,37 +2,46 @@ import type {
   WorkroomTimelineMessage,
   WorkroomTimelinePart,
 } from '@openagentsinc/sync-schema'
+import {
+  dispatchWorkbenchItem,
+  type WorkbenchDispatchItem,
+  type WorkbenchDispatchStatus,
+} from '@openagentsinc/ui/desktop-workbench'
+import '@openagentsinc/ui/desktop-workbench.css'
+import './-share-workbench.css'
 
 import { userFacingCopy } from './-share-fetch'
 
 // Shared workroom-timeline rendering for the `/share/{shareId}` route.
-// Ported from the retired Foldkit workroom timeline implementation and from
-// `apps/web/src/page/loggedOut/page/share.ts`'s own inline
-// `shareUserTimelineMessage`. Neither of those exists as a React component
-// yet — this is the first port of that component set. Visual styling is
-// re-derived in Tailwind against the `khala-*` design tokens (same
-// hex -> token mapping already established for Terms/Privacy: `#ffb400` ->
-// `khala-warning`, `#00c853` -> `khala-success`, `#d32f2f` -> `khala-danger`,
-// `#2979ff`-ish info blue -> `khala-energy`), rather than reusing the old
-// `oa-ui-workroom-*` CSS-in-JS classes tied to the retired Foldkit stylesheet.
 //
-// Simplification (decorative, not a content change, same posture as the
-// digit-roll-animation skip on `/pylons`): the legacy tool-call "collapsible"
-// never actually toggles within this render tree (no client JS wires a
-// click handler in the ported source), so its detail is always shown when
-// present rather than reproducing an inert expand/collapse affordance.
+// T14 (#8871, epic #8857 Wave 3): this used to be a parallel, Foldkit-ported
+// card renderer (`ToolTimelinePart`/`DiffTimelinePart`/`FileTimelinePart`)
+// over the closed 4-kind `text|tool|diff|file` union, with its own hand-
+// rolled Tailwind card CSS. `workers/api/src/share-projections.ts` now emits
+// the widened `WorkroomTimelinePart` union (reasoning, command, fileChange,
+// toolCall, plan, approval, agent, notice, compaction, meter — mirroring the
+// desktop `WorkbenchItem` model) for every kind BUT plain inline text, so
+// this module now projects each non-text part into the same
+// `WorkbenchDispatchItem` shape `apps/openagents-desktop`'s timeline
+// dispatches, and renders it through `@openagentsinc/ui/desktop-workbench`'s
+// `dispatchWorkbenchItem` — the EXACT same typed components desktop uses.
+// The legacy `tool`/`diff`/`file` kinds keep working (older persisted shares
+// still decode and render), projected onto the nearest widened shape.
+//
+// Message-level chrome (author label/avatar, inline text prose, per-message
+// wrapper) stays exactly as before — only the per-part CARD rendering moved
+// to the shared components. `href`/`actionHref`/`actionLabel` on the legacy
+// `tool` part (used by team-thread "Open run" messages) have no equivalent
+// on `WorkbenchDispatchItem`, since the shared workbench cards never open
+// another surface; those affordances are preserved as a thin external link
+// wrapper around the dispatched card rather than dropped.
 
-function toolStatusDotClass(status: WorkroomToolPart['status']): string {
-  if (status === 'running') return 'border-khala-warning bg-khala-warning'
-  if (status === 'completed') return 'border-khala-success bg-khala-success'
-  if (status === 'failed') return 'border-khala-danger bg-khala-danger'
-  return 'border-khala-energy bg-khala-energy'
-}
-
-type WorkroomToolPart = Extract<WorkroomTimelinePart, { kind: 'tool' }>
-type WorkroomDiffPart = Extract<WorkroomTimelinePart, { kind: 'diff' }>
-type WorkroomFilePart = Extract<WorkroomTimelinePart, { kind: 'file' }>
 type WorkroomTextPart = Extract<WorkroomTimelinePart, { kind: 'text' }>
+type WorkroomToolPart = Extract<WorkroomTimelinePart, { kind: 'tool' }>
+type WorkroomStatus = WorkroomToolPart['status']
+
+const toDispatchStatus = (status: WorkroomStatus): WorkbenchDispatchStatus =>
+  status === 'completed' ? 'completed' : status === 'failed' ? 'failed' : 'in_progress'
 
 function TextTimelinePart({ part }: Readonly<{ part: WorkroomTextPart }>) {
   return (
@@ -49,141 +58,203 @@ function TextTimelinePart({ part }: Readonly<{ part: WorkroomTextPart }>) {
   )
 }
 
-function ToolTimelinePart({ part }: Readonly<{ part: WorkroomToolPart }>) {
-  const isShell = part.subtitle.toLowerCase().includes('shell')
-  const wrapperClass =
-    'block border border-khala-border bg-khala-surface p-3'
-  const content = (
-    <>
-      <div className="flex items-center gap-2.5">
-        <span
-          aria-hidden="true"
-          className={`size-2 flex-none border ${toolStatusDotClass(part.status)}`}
-        />
-        <div className="grid min-w-0 gap-0.5">
-          <span className="min-w-0 truncate text-sm font-medium text-khala-text">
-            {userFacingCopy(part.title)}
-          </span>
-          <span className="min-w-0 truncate text-xs text-khala-text-faint">
-            {userFacingCopy(part.subtitle)}
-          </span>
-        </div>
-      </div>
-      {part.detail.length === 0 ? null : (
-        <div
-          className="mt-2.5 max-h-56 overflow-auto border border-khala-border bg-khala-void p-2.5"
-          data-component={isShell ? 'bash-output' : 'tool-output'}
-        >
-          <pre className="m-0 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-khala-text-muted">
-            <code>
-              {part.detail.map(userFacingCopy).join('\n')}
-            </code>
-          </pre>
-        </div>
-      )}
-      {part.actionHref === undefined ? null : (
-        <div className="mt-3 flex justify-start">
-          <a
-            className="khala-focus inline-flex min-h-8 items-center border border-khala-border bg-khala-surface px-2.5 text-xs text-khala-text-muted hover:border-khala-border-strong hover:text-khala-text"
-            href={part.actionHref}
-          >
-            {part.actionLabel === undefined
-              ? 'Open'
-              : userFacingCopy(part.actionLabel)}
-          </a>
-        </div>
-      )}
-    </>
-  )
+function workroomPartToDispatchItem(
+  part: Exclude<WorkroomTimelinePart, WorkroomTextPart>,
+): WorkbenchDispatchItem {
+  switch (part.kind) {
+    case 'tool':
+      return {
+        kind: 'toolCall',
+        source: 'local',
+        callKind: 'dynamic',
+        tool: userFacingCopy(part.title),
+        args: [],
+        status: toDispatchStatus(part.status),
+        ...(part.detail.length === 0
+          ? {}
+          : { resultSnippet: part.detail.map(userFacingCopy).join('\n') }),
+      }
 
-  return part.href === undefined ? (
-    <div className={wrapperClass} data-component="tool-part-wrapper">
-      {content}
-    </div>
-  ) : (
-    <a
-      aria-label={`${part.title}: open full thread`}
-      className={`${wrapperClass} no-underline hover:border-khala-border-strong`}
-      data-component="tool-part-wrapper"
-      href={part.href}
-    >
-      {content}
-    </a>
-  )
-}
+    case 'diff':
+      return {
+        kind: 'fileChange',
+        source: 'local',
+        status: 'completed',
+        changes: part.files.map(file => ({
+          path: userFacingCopy(file.path),
+          kind: file.status === 'added' ? ('add' as const) : ('update' as const),
+          adds: file.added,
+          dels: file.removed,
+        })),
+      }
 
-function DiffTimelinePart({ part }: Readonly<{ part: WorkroomDiffPart }>) {
-  return (
-    <div
-      className="border border-khala-border bg-khala-surface"
-      data-component="session-turn-diffs-group"
-    >
-      <div className="flex items-center justify-between border-b border-khala-border px-3 py-2">
-        <span className="text-xs text-khala-text-faint">
-          {part.files.length === 1
-            ? '1 changed file'
-            : `${part.files.length} changed files`}
-        </span>
-      </div>
-      <div className="grid gap-0.5 p-2">
-        {part.files.map(file => (
-          <div
-            className="flex items-center justify-between gap-3 border border-transparent px-2 py-1.5 text-sm"
-            key={file.path}
-          >
-            <span className="min-w-0 truncate text-khala-text">
-              {file.path}
-            </span>
-            <span
-              className={
-                file.status === 'added'
-                  ? 'shrink-0 text-xs tabular-nums text-khala-success'
-                  : 'shrink-0 text-xs tabular-nums text-khala-text-muted'
-              }
-            >
-              +{file.added}
-              {file.removed > 0 ? ` -${file.removed}` : ''}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+    case 'file':
+      return {
+        kind: 'fileChange',
+        source: 'local',
+        status: 'completed',
+        changes: [
+          {
+            path: userFacingCopy(part.path),
+            kind: 'update',
+            diff: part.excerpt.map(userFacingCopy).join('\n'),
+          },
+        ],
+      }
 
-function FileTimelinePart({ part }: Readonly<{ part: WorkroomFilePart }>) {
-  return (
-    <div
-      className="border border-khala-border bg-khala-surface"
-      data-component="write-tool"
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-khala-border px-3 py-2">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="text-xs text-khala-text-faint">File</span>
-          <span className="min-w-0 truncate font-mono text-sm text-khala-text">
-            {part.path}
-          </span>
-        </div>
-        <span className="shrink-0 text-xs text-khala-text-faint">
-          {part.language}
-        </span>
-      </div>
-      <div className="max-h-56 overflow-auto p-2.5">
-        <pre className="m-0 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-khala-text-muted">
-          <code>{part.excerpt.map(userFacingCopy).join('\n')}</code>
-        </pre>
-      </div>
-    </div>
-  )
+    case 'reasoning':
+      return { kind: 'reasoning', source: 'local', summary: userFacingCopy(part.summary) }
+
+    case 'command':
+      return {
+        kind: 'command',
+        source: 'local',
+        command: userFacingCopy(part.command),
+        status: toDispatchStatus(part.status),
+        ...(part.cwd === undefined ? {} : { cwd: userFacingCopy(part.cwd) }),
+        ...(part.exitCode === undefined ? {} : { exitCode: part.exitCode }),
+        ...(part.durationMs === undefined ? {} : { durationMs: part.durationMs }),
+        ...(part.outputTail === undefined ? {} : { outputTail: userFacingCopy(part.outputTail) }),
+        ...(part.outputCapReached === undefined ? {} : { outputCapReached: part.outputCapReached }),
+      }
+
+    case 'fileChange':
+      return {
+        kind: 'fileChange',
+        source: 'local',
+        status: toDispatchStatus(part.status),
+        changes: part.changes.map(change => ({
+          path: userFacingCopy(change.path),
+          kind: change.kind,
+          ...(change.adds === undefined ? {} : { adds: change.adds }),
+          ...(change.dels === undefined ? {} : { dels: change.dels }),
+          ...(change.diff === undefined ? {} : { diff: userFacingCopy(change.diff) }),
+          ...(change.diffCapReached === undefined ? {} : { diffCapReached: change.diffCapReached }),
+        })),
+      }
+
+    case 'toolCall':
+      return {
+        kind: 'toolCall',
+        source: 'local',
+        callKind: part.callKind,
+        tool: userFacingCopy(part.tool),
+        status: toDispatchStatus(part.status),
+        args: part.args.map(arg => ({ key: arg.key, value: userFacingCopy(arg.value) })),
+        ...(part.server === undefined ? {} : { server: userFacingCopy(part.server) }),
+        ...(part.namespace === undefined ? {} : { namespace: userFacingCopy(part.namespace) }),
+        ...(part.resultSnippet === undefined
+          ? {}
+          : { resultSnippet: userFacingCopy(part.resultSnippet) }),
+        ...(part.errorMessage === undefined
+          ? {}
+          : { errorMessage: userFacingCopy(part.errorMessage) }),
+        ...(part.durationMs === undefined ? {} : { durationMs: part.durationMs }),
+        ...(part.query === undefined ? {} : { query: userFacingCopy(part.query) }),
+        ...(part.resultCount === undefined ? {} : { resultCount: part.resultCount }),
+        ...(part.path === undefined ? {} : { path: userFacingCopy(part.path) }),
+      }
+
+    case 'plan':
+      return {
+        kind: 'plan',
+        source: 'local',
+        entries: part.entries.map(entry => ({
+          step: userFacingCopy(entry.step),
+          status: entry.status,
+        })),
+        ...(part.prose === undefined ? {} : { prose: userFacingCopy(part.prose) }),
+      }
+
+    case 'approval':
+      return {
+        kind: 'approval',
+        source: 'local',
+        status: part.decision === 'denied' ? 'declined' : 'completed',
+        ...(part.decision === undefined ? {} : { decision: part.decision }),
+        ...(part.detail === undefined ? {} : { detail: userFacingCopy(part.detail) }),
+      }
+
+    case 'agent':
+      return {
+        kind: 'agent',
+        source: 'local',
+        status: toDispatchStatus(part.status),
+        ...(part.tool === undefined ? {} : { tool: part.tool }),
+        ...(part.prompt === undefined ? {} : { prompt: userFacingCopy(part.prompt) }),
+        ...(part.children === undefined
+          ? {}
+          : {
+              children: part.children.map(child => ({
+                threadRef: child.threadRef,
+                status: child.status,
+                ...(child.nickname === undefined ? {} : { nickname: userFacingCopy(child.nickname) }),
+              })),
+            }),
+      }
+
+    case 'notice':
+      return {
+        kind: 'notice',
+        source: 'local',
+        ...(part.severity === undefined ? {} : { severity: part.severity }),
+        text: userFacingCopy(part.text),
+      }
+
+    case 'compaction':
+      return { kind: 'compaction', source: 'local' }
+
+    case 'meter':
+      return {
+        kind: 'meter',
+        source: 'local',
+        ...(part.inputTokens === undefined ? {} : { inputTokens: part.inputTokens }),
+        ...(part.cachedInputTokens === undefined
+          ? {}
+          : { cachedInputTokens: part.cachedInputTokens }),
+        ...(part.outputTokens === undefined ? {} : { outputTokens: part.outputTokens }),
+        ...(part.reasoningTokens === undefined ? {} : { reasoningTokens: part.reasoningTokens }),
+        ...(part.totalTokens === undefined ? {} : { totalTokens: part.totalTokens }),
+      }
+  }
 }
 
 export function ShareTimelinePart({
   part,
-}: Readonly<{ part: WorkroomTimelinePart }>) {
-  if (part.kind === 'text') return <TextTimelinePart part={part} />
-  if (part.kind === 'tool') return <ToolTimelinePart part={part} />
-  if (part.kind === 'diff') return <DiffTimelinePart part={part} />
-  return <FileTimelinePart part={part} />
+  itemKey,
+}: Readonly<{ part: WorkroomTimelinePart; itemKey: string }>) {
+  if (part.kind === 'text') {
+    return <TextTimelinePart part={part} />
+  }
+
+  const rendered = dispatchWorkbenchItem(workroomPartToDispatchItem(part), { itemKey })
+
+  if (part.kind === 'tool' && part.href !== undefined) {
+    return (
+      <a
+        aria-label={`${userFacingCopy(part.title)}: open full thread`}
+        className="oa-share-tool-link"
+        href={part.href}
+      >
+        {rendered}
+      </a>
+    )
+  }
+
+  if (part.kind === 'tool' && part.actionHref !== undefined) {
+    return (
+      <div className="oa-share-tool-wrapper">
+        {rendered}
+        <div className="oa-share-tool-action-row">
+          <a className="oa-share-tool-action" href={part.actionHref}>
+            {part.actionLabel === undefined ? 'Open' : userFacingCopy(part.actionLabel)}
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  return rendered
 }
 
 export function AgentInitialsIcon({ label }: Readonly<{ label: string }>) {
@@ -241,7 +312,7 @@ export function ShareUserMessage({
           </div>
         </div>
         {nonTextParts.map((part, index) => (
-          <ShareTimelinePart key={index} part={part} />
+          <ShareTimelinePart itemKey={`${message.id}-part-${index}`} key={index} part={part} />
         ))}
       </div>
     </article>
@@ -265,7 +336,7 @@ export function ShareGenericMessage({
         data-component="session-turn"
       >
         {message.parts.map((part, index) => (
-          <ShareTimelinePart key={index} part={part} />
+          <ShareTimelinePart itemKey={`${message.id}-part-${index}`} key={index} part={part} />
         ))}
         {message.status !== 'streaming' ? null : (
           <span

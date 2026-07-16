@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { LogOut, MonitorSmartphone, Plus, Search, SendHorizontal } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 
+import { khalaTheme } from '@effect-native/tokens'
 import {
   decodeChatMessageEntity,
   decodeChatThreadEntity,
@@ -11,6 +12,12 @@ import {
   type ChatThreadEntity,
 } from '@openagentsinc/khala-sync'
 import { chatMessagesForTranscript } from '@openagentsinc/khala-sync-db-collection'
+import {
+  desktopThemeCssVariables,
+  dispatchWorkbenchItem,
+  type WorkbenchDispatchItem,
+} from '@openagentsinc/ui/desktop-workbench'
+import '@openagentsinc/ui/desktop-workbench.css'
 
 import { PageShell } from '../-funnel-components'
 import {
@@ -118,6 +125,26 @@ function KhalaSyncSignInForm({
 
 const messageLabel = (count: number): string =>
   count === 1 ? '1 message' : `${count} messages`
+
+/**
+ * T14 (#8871): projects a live Khala Sync `ChatMessageEntity` into the same
+ * `WorkbenchDispatchItem` shape the `/share` timeline and desktop use, so
+ * this feed renders through the shared `DesktopTimelineMessage` bubble
+ * instead of a bare `<p>`. `ChatMessageEntity` carries only a plain message
+ * body (no tool-call/event structure — see `packages/khala-sync/src/
+ * chat.ts`), so this is intentionally a lighter-weight projection than the
+ * full share pipeline's event classifier: just the `message` kind, with role
+ * derived from whether the message's author matches the signed-in owner.
+ */
+export const chatMessageDispatchItem = (
+  message: ChatMessageEntity,
+  ownerUserId: string,
+): WorkbenchDispatchItem => ({
+  kind: 'message',
+  source: 'local',
+  role: message.authorUserId === ownerUserId ? 'user' : 'assistant',
+  text: message.body,
+})
 
 function ThreadListPanel({
   ownerUserId,
@@ -321,7 +348,9 @@ function ThreadMessagesPanel({
             data-message-id={message.messageId}
             key={message.messageId}
           >
-            <p className="m-0 whitespace-pre-wrap text-sm text-khala-text">{message.body}</p>
+            {dispatchWorkbenchItem(chatMessageDispatchItem(message, ownerUserId), {
+              itemKey: message.messageId,
+            })}
             <p className="m-0 font-mono text-xs text-khala-text-faint">{message.createdAt}</p>
           </li>
         ))}
@@ -355,7 +384,10 @@ export function WebChatSyncPanel() {
 
   return (
     <PageShell dataRoute="khala-chat-sync">
-      <main className="mx-auto grid w-[min(100%,1120px)] gap-6 px-4 py-8 text-khala-text">
+      <main
+        className="mx-auto grid w-[min(100%,1120px)] gap-6 px-4 py-8 text-khala-text"
+        style={desktopThemeCssVariables(khalaTheme)}
+      >
         {session.status === 'loading' ? (
           <p className="m-0 font-mono text-sm text-khala-text-faint">Loading Khala Sync session…</p>
         ) : session.status === 'signed_out' ? (

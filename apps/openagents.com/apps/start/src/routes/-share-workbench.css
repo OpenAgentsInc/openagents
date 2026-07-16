@@ -1,0 +1,44 @@
+/* T14 (#8871): the `/share/{shareId}` timeline renders its typed parts
+   through @openagentsinc/ui/desktop-workbench (imported alongside this file
+   in -share-timeline.tsx). These rules cover only the thin navigation
+   affordances the shared workbench cards have no equivalent for — the
+   legacy `tool` part's `href` (open full thread) and `actionHref` (e.g. team-
+   thread "Open run" links) — wrapped around the dispatched card rather than
+   dropped. */
+
+.oa-share-tool-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.oa-share-tool-link:hover {
+  filter: brightness(1.08);
+}
+
+.oa-share-tool-wrapper {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.oa-share-tool-action-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.oa-share-tool-action {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  border: 1px solid var(--khala-border);
+  background: var(--khala-surface);
+  padding: 0 0.625rem;
+  color: var(--khala-text-muted);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.oa-share-tool-action:hover {
+  border-color: var(--khala-border-strong);
+  color: var(--khala-text);
+}

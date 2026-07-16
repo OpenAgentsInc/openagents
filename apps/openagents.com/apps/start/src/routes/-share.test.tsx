@@ -100,7 +100,9 @@ describe('Start /share/$shareId route', () => {
     expect(html).toContain('Run tests')
     expect(html).toContain('6 passed')
     expect(html).toContain('src/retry.ts')
-    expect(html).toContain('+4 -1')
+    expect(html).toContain('aria-label="MOD src/retry.ts"')
+    expect(html).toContain('<i>+4</i>')
+    expect(html).toContain('<b>−1</b>')
     expect(html).toContain('export const retry = () =&gt; {}')
     expect(html).toContain('Autopilot')
     expect(html).not.toContain('Adjutant')
@@ -188,5 +190,110 @@ describe('Start /share/$shareId route', () => {
     expect(html).toContain(
       'This share does not exist or is no longer available.',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T14 (#8871): the widened `WorkroomTimelinePart` kinds render through the
+// same shared @openagentsinc/ui/desktop-workbench components desktop uses.
+// ---------------------------------------------------------------------------
+
+const widenedProjection: ShareProjectionV1 = {
+  ...fixtureProjection,
+  id: 'share.public.widened',
+  messages: [
+    {
+      id: 'msg-widened',
+      author: 'assistant',
+      label: 'Adjutant',
+      time: '2026-07-01T12:01:00.000Z',
+      parts: [
+        { kind: 'reasoning', summary: 'Traced the flaky retry to a race.' },
+        {
+          kind: 'command',
+          command: 'pnpm run test:retry',
+          cwd: '/work/openagents',
+          status: 'completed',
+          exitCode: 0,
+          outputTail: 'retry.test.ts passed',
+        },
+        {
+          kind: 'fileChange',
+          status: 'completed',
+          changes: [
+            { path: 'src/retry.ts', kind: 'update', adds: 3, dels: 1, diff: '+await sleep(10)' },
+          ],
+        },
+        {
+          kind: 'toolCall',
+          callKind: 'mcp',
+          tool: 'search_issues',
+          server: 'github',
+          args: [{ key: 'query', value: 'is:open retry' }],
+          resultSnippet: '2 related issues',
+          status: 'completed',
+        },
+        {
+          kind: 'plan',
+          entries: [
+            { step: 'Reproduce the flake', status: 'completed' },
+            { step: 'Add a deterministic wait', status: 'in_progress' },
+          ],
+        },
+        { kind: 'approval', decision: 'approved', detail: 'Command looked safe.' },
+        {
+          kind: 'agent',
+          tool: 'spawnAgent',
+          prompt: 'Verify the fix under load.',
+          status: 'running' as const,
+          children: [{ threadRef: 'child_1', status: 'running' }],
+        },
+        { kind: 'notice', severity: 'warning', text: 'Model rerouted to a fallback.' },
+        { kind: 'compaction' },
+        { kind: 'meter', inputTokens: 120, outputTokens: 48, totalTokens: 168 },
+        {
+          kind: 'tool',
+          title: 'Autopilot run',
+          subtitle: 'openagents/autopilot-omega',
+          status: 'completed',
+          detail: ['completed · 4 events · 512 tokens'],
+          actionHref: '/t/run.fixture',
+          actionLabel: 'Open run',
+        },
+      ],
+    },
+  ],
+}
+
+describe('Start /share/$shareId widened timeline parts (T14 #8871)', () => {
+  test('renders every widened kind through the shared workbench components', () => {
+    const html = renderToStaticMarkup(
+      <ShareLoadedView projection={widenedProjection} />,
+    )
+
+    expect(html).toContain('Traced the flaky retry to a race.')
+    expect(html).toContain('pnpm run test:retry')
+    expect(html).toContain('retry.test.ts passed')
+    expect(html).toContain('src/retry.ts')
+    expect(html).toContain('+await sleep(10)')
+    expect(html).toContain('github')
+    expect(html).toContain('search_issues')
+    expect(html).toContain('2 related issues')
+    expect(html).toContain('Reproduce the flake')
+    expect(html).toContain('Add a deterministic wait')
+    expect(html).toContain('Command looked safe.')
+    expect(html).toContain('Verify the fix under load.')
+    expect(html).toContain('Model rerouted to a fallback.')
+    expect(html).toContain('CONTEXT COMPACTED')
+  })
+
+  test('preserves the legacy tool part actionHref/actionLabel as a link beside the shared card', () => {
+    const html = renderToStaticMarkup(
+      <ShareLoadedView projection={widenedProjection} />,
+    )
+
+    expect(html).toContain('oa-share-tool-wrapper')
+    expect(html).toContain('href="/t/run.fixture"')
+    expect(html).toContain('Open run')
   })
 })

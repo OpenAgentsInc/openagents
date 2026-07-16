@@ -2,6 +2,8 @@ import type {
   ShareProjectionV1,
   WorkroomFileItem,
 } from '@openagentsinc/sync-schema'
+import { khalaTheme } from '@effect-native/tokens'
+import { desktopThemeCssVariables } from '@openagentsinc/ui/desktop-workbench'
 import { Copy, ExternalLink, Terminal } from 'lucide-react'
 import type * as React from 'react'
 import { useEffect, useState } from 'react'
@@ -517,6 +519,7 @@ export function ShareLoadedView({
       className="isolate flex h-dvh min-h-[720px] w-full min-w-0 flex-col overflow-hidden bg-khala-void font-mono text-khala-text antialiased"
       data-component="share-page"
       data-route="share"
+      style={desktopThemeCssVariables(khalaTheme)}
     >
       <ShareHeader projection={projection} reviewItems={reviewItems} />
       <div
