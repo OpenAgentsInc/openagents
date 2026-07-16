@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@openagentsinc/agent-client-protocol": "workspace:*",
+    "@openagentsinc/agent-client-runtime-bridge": "workspace:*",
     "@openagentsinc/agent-stdio-transport": "workspace:*"
   },
   "devDependencies": {

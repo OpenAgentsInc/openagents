@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./reverse-handlers": "./src/reverse-handlers.ts",
     "./node-brokers": "./src/node-brokers.ts",
-    "./vendor-handlers": "./src/vendor-handlers.ts"
+    "./vendor-handlers": "./src/vendor-handlers.ts",
+    "./session-runtime": "./src/session-runtime.ts"
   },
   "scripts": {
     "test": "vp test --run packages/agent-client-runtime-bridge/src",

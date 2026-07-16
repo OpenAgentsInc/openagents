@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { decodeStableAcpMethodPayload } from "@openagentsinc/agent-client-protocol/stable";
+import { AcpSessionRuntime } from "@openagentsinc/agent-client-runtime-bridge/session-runtime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -20,7 +21,7 @@ import {
 } from "./capabilities.ts";
 import { STABLE_CONFORMANCE_CASES, assertStableManifestCoverage } from "./cases.ts";
 import { executeFaultCase } from "./faults.ts";
-import { definePeerScenario, runPeerScenario } from "./harness.ts";
+import { definePeerScenario, runPeerScenario, startPeerScenarioTransport } from "./harness.ts";
 import { materializeMcpServers, McpReferenceError } from "./mcp.ts";
 import {
   ConformanceProjectionState,
@@ -39,6 +40,132 @@ import {
 } from "./variants.ts";
 
 describe("stable Agent Client Protocol conformance", () => {
+  it("executes replay-before-response and response-before-next-read lifecycle barriers", async () => {
+    const scenario = definePeerScenario({
+      name: "session-runtime-race-matrix",
+      actions: [
+        {
+          method: "initialize",
+          result: {
+            protocolVersion: 1,
+            agentInfo: { name: "fixture", version: "1.0.0" },
+            agentCapabilities: { loadSession: true },
+            authMethods: [],
+          },
+        },
+        {
+          method: "session/load",
+          notifications: [
+            {
+              method: "session/update",
+              params: {
+                sessionId: "existing",
+                update: {
+                  sessionUpdate: "agent_message_chunk",
+                  content: { type: "text", text: "replay" },
+                },
+              },
+            },
+          ],
+          result: {},
+        },
+        {
+          method: "session/prompt",
+          result: { stopReason: "end_turn" },
+          afterResponseTurns: 1,
+          notificationsAfterResponse: [
+            {
+              method: "session/update",
+              params: {
+                sessionId: "existing",
+                update: {
+                  sessionUpdate: "agent_message_chunk",
+                  content: { type: "text", text: "tail" },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const transport = await startPeerScenarioTransport(scenario);
+    const updates: Array<{ phase: string; disposition: string }> = [];
+    const runtime = new AcpSessionRuntime({
+      profile: "standard",
+      createTransport: async () => transport,
+      clientCapabilities: {
+        fs: { readTextFile: false, writeTextFile: false },
+        terminal: false,
+      },
+      onUpdate(update) {
+        updates.push({ phase: update.phase, disposition: update.disposition });
+      },
+    });
+    expect((await runtime.start()).ok).toBe(true);
+    expect(
+      await runtime.loadSession({
+        cwd: "/workspace",
+        canonicalThreadSeed: "fixture",
+        peerSessionId: "existing",
+      }),
+    ).toMatchObject({ ok: true, value: { phase: "live" } });
+    expect(updates).toMatchObject([{ phase: "replay", disposition: "applied" }]);
+    expect(await runtime.prompt("existing", [{ type: "text", text: "hello" }])).toMatchObject({
+      ok: true,
+      value: { terminal: "completed" },
+    });
+    expect(updates).toMatchObject([
+      { phase: "replay", disposition: "applied" },
+      { phase: "live", disposition: "applied" },
+    ]);
+    await runtime.shutdown();
+  });
+  it("pins Grok replay-load and Cursor resume/config lifecycle fixtures", () => {
+    const fixtures = [
+      "fixtures/peers/grok/source-c68e39f/replay-load.json",
+      "fixtures/peers/cursor/t3-bde0a4c0/resume-config.json",
+    ].map(
+      (path) =>
+        JSON.parse(readFileSync(resolve(import.meta.dirname, "..", path), "utf8")) as Record<
+          string,
+          unknown
+        >,
+    );
+    expect(fixtures.map((fixture) => fixture.method)).toEqual(["session/load", "session/resume"]);
+    for (const fixture of fixtures) {
+      const method = String(fixture.method);
+      expect(
+        decodeStableAcpMethodPayload({
+          direction: "client-to-agent",
+          method,
+          phase: "params",
+          payload: fixture.request,
+        }),
+      ).toMatchObject({ _tag: "Decoded" });
+      expect(
+        decodeStableAcpMethodPayload({
+          direction: "client-to-agent",
+          method,
+          phase: "result",
+          payload: fixture.response,
+        }),
+      ).toMatchObject({ _tag: "Decoded" });
+      for (const update of fixture.updatesBeforeResponse as unknown[]) {
+        expect(
+          decodeStableAcpMethodPayload({
+            direction: "agent-to-client",
+            method: "session/update",
+            phase: "params",
+            payload: update,
+          }),
+        ).toMatchObject({ _tag: "Decoded" });
+      }
+      expect(fixture.expected).toMatchObject({
+        phaseBeforeBarrier: "replay",
+        phaseAfterBarrier: "live",
+      });
+    }
+  });
   it("has one explicit support case for every pinned stable manifest member", () => {
     expect(assertStableManifestCoverage()).toEqual({ covered: 23, manifest: 23 });
     for (const value of STABLE_CONFORMANCE_CASES) {

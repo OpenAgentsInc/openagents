@@ -215,6 +215,31 @@ export class AcpRuntimeProjector {
         ),
       );
     }
+    for (const [toolCallId, tool] of this.#tools) {
+      if (!tool.started || tool.emittedTerminal) continue;
+      tool.emittedTerminal = true;
+      events.push(
+        this.#event("tool.error", observedAt, {
+          toolCallId,
+          toolName: tool.name,
+          errorRef: ref("tool_interrupted", `${toolCallId}:${stopReason}`),
+          messageSafe:
+            stopReason === "cancelled"
+              ? "ACP tool interrupted by cancellation"
+              : "ACP tool ended without a terminal provider update",
+          authority: {
+            authorityRef: ref("authority", toolCallId),
+            policyRef: "policy.acp_bridge",
+            decisionRef: "decision.provider_reported_not_authority",
+            toolRef: ref("toolref", tool.name),
+            status: "denied",
+            allowed: false,
+            blockerRefs: ["blocker.provider_event_not_authority"],
+          },
+          providerExecuted: true,
+        }),
+      );
+    }
     const finishReason =
       stopReason === "end_turn"
         ? "stop"

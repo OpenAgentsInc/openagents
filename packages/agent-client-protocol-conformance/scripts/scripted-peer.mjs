@@ -3,7 +3,12 @@ import readline from "node:readline";
 
 const scenario = JSON.parse(process.env.OA_ACP_SCENARIO ?? '{"name":"empty","actions":[]}');
 if (typeof scenario.exitOnStart === "number") process.exit(scenario.exitOnStart);
-const actions = new Map(scenario.actions.map((action) => [action.method, action]));
+const actions = new Map();
+for (const action of scenario.actions) {
+  const queue = actions.get(action.method) ?? [];
+  queue.push(action);
+  actions.set(action.method, queue);
+}
 const pending = new Map();
 let nextReverseId = 10000;
 let writeChain = Promise.resolve();
@@ -45,7 +50,8 @@ const handle = async (message) => {
     else waiter.resolve(message.result);
     return;
   }
-  const action = actions.get(message.method);
+  const queue = actions.get(message.method);
+  const action = queue?.length === 1 ? queue[0] : queue?.shift();
   if (action === undefined) {
     if ("id" in message)
       await write({
@@ -88,6 +94,14 @@ const handle = async (message) => {
       ? { jsonrpc: "2.0", id: message.id, error: action.error }
       : { jsonrpc: "2.0", id: message.id, result: action.result ?? {} };
     await write(response, action.fragmentBytes);
+    for (let turn = 0; turn < (action.afterResponseTurns ?? 0); turn += 1)
+      await new Promise((resolve) => setImmediate(resolve));
+    for (const notification of action.notificationsAfterResponse ?? []) {
+      await write(
+        { jsonrpc: "2.0", method: notification.method, params: notification.params },
+        action.fragmentBytes,
+      );
+    }
     if (action.duplicateResponse) await write(response, action.fragmentBytes);
     if (action.lateDuplicateMs) {
       setTimeout(() => void write(response, action.fragmentBytes), action.lateDuplicateMs);

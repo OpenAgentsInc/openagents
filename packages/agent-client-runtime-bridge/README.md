@@ -6,6 +6,8 @@ The bridge retains each validated native payload in a bounded private evidence s
 
 Reverse requests are fail-closed. Filesystem, terminal, permission, and MCP capabilities are advertised only when a handler, scoped grant, tested broker, and current health are all present. Every effect is session/generation scoped and returns a refs-only receipt.
 
-`./reverse-handlers` binds validated stdio reverse requests and response schemas to native JSON-RPC request IDs. `./node-brokers` supplies hardened workspace and owned-process implementations with containment, symlink, byte/output, environment, cancellation, and lifecycle enforcement. MCP launch material is reference-based, expiring, and callback-scoped specifically to `session/new`.
+`./reverse-handlers` binds validated stdio reverse requests and response schemas to native JSON-RPC request IDs. `./node-brokers` supplies hardened workspace and owned-process implementations with containment, symlink, byte/output, environment, cancellation, and lifecycle enforcement. MCP launch material is bounded, scoped, expiring, and request-scoped to authorized `session/new`, load, or resume attachment.
 
-See [`docs/adr/2026-07-16-agent-client-runtime-bridge.md`](../../docs/adr/2026-07-16-agent-client-runtime-bridge.md) for the mapping and authority contract.
+`./session-runtime` owns the provider-independent process/session/turn state machine. Start is single-flight; stable optional methods are capability-gated; prompts serialize per session; accepted inbound frames drain through an explicit barrier; replay opens into live exactly once; cancellation and process exit settle once; and recovery is generation-fenced with bounded backoff. Unstable fork is available only through an exact peer-version opt-in. MCP refs are resolved just in time for new/load/resume and disposed after the request.
+
+See the [runtime bridge ADR](../../docs/adr/2026-07-16-agent-client-runtime-bridge.md) for mapping/authority and the [session runtime ADR](../../docs/adr/2026-07-16-agent-client-session-runtime.md) for lifecycle, ordering, cancellation, and recovery.

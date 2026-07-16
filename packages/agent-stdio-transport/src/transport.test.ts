@@ -1,4 +1,6 @@
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { readFileSync, realpathSync } from "node:fs";
 
 import { describe, expect, it } from "vite-plus/test";
 
@@ -29,6 +31,24 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1_000): Promise<voi
 };
 
 describe("bounded bidirectional agent stdio transport", () => {
+  it("re-verifies the admitted executable path and digest at spawn", async () => {
+    const realPath = realpathSync(process.execPath);
+    const sha256 = createHash("sha256").update(readFileSync(realPath)).digest("hex");
+    const admitted = await start("normal", { identityPin: { realPath, sha256 } });
+    await expect(admitted.request("test/echo", { trusted: true })).resolves.toEqual({
+      trusted: true,
+    });
+    await admitted.dispose();
+    await expect(
+      start("normal", { identityPin: { realPath, sha256: "0".repeat(64) } }),
+    ).rejects.toThrow("identity digest");
+  });
+
+  it("returns a typed missing-executable startup failure", async () => {
+    await expect(
+      AgentStdioTransport.start({ executable: "openagents-definitely-missing-acp-peer", args: [] }),
+    ).rejects.toMatchObject({ kind: "missing_executable" });
+  });
   it("correlates concurrent requests while reverse permission, fs, and terminal handlers run", async () => {
     const transport = await start();
     for (const method of ["session/request_permission", "fs/read_text_file", "terminal/create"]) {
@@ -53,6 +73,36 @@ describe("bounded bidirectional agent stdio transport", () => {
     await transport.dispose();
   });
 
+  it("aborts every in-flight reverse request owned by a cancelled session", async () => {
+    const transport = await start();
+    let aborted = 0;
+    for (const method of ["session/request_permission", "fs/read_text_file", "terminal/create"]) {
+      transport.registerReverseHandler(
+        method,
+        (_params, context) =>
+          new Promise((_resolve, reject) => {
+            context.signal.addEventListener(
+              "abort",
+              () => {
+                aborted += 1;
+                reject(new Error("cancelled"));
+              },
+              { once: true },
+            );
+          }),
+      );
+    }
+    const reverse = transport.request("test/reverse", {});
+    await waitFor(() => transport.getReceipt().counters.currentReverse === 3);
+    expect(transport.cancelReverseRequests("another-session")).toBe(0);
+    expect(transport.cancelReverseRequests("s-1")).toBe(3);
+    await expect(reverse).resolves.toBeDefined();
+    await waitFor(() => transport.getReceipt().counters.currentReverse === 0);
+    expect(aborted).toBe(3);
+    expect(transport.cancelReverseRequests("s-1")).toBe(0);
+    await transport.dispose();
+  });
+
   it.each(["fragmented", "coalesced"])(
     "handles %s frames, CRLF, blank lines, and multiple messages per chunk",
     async (mode) => {
@@ -69,6 +119,21 @@ describe("bounded bidirectional agent stdio transport", () => {
       await transport.dispose();
     },
   );
+
+  it("provides accepted-frame and owned-process completion barriers", async () => {
+    const transport = await start("response-then-update");
+    let updates = 0;
+    transport.onNotification("session/update", () => {
+      updates += 1;
+    });
+    await transport.request("test/echo", { barrier: true });
+    await transport.drainAcceptedInbound();
+    expect(updates).toBe(1);
+    const exited = transport.waitForExit();
+    await transport.shutdown();
+    await expect(exited).resolves.toMatchObject({ state: "exited", terminalOutcome: "clean_exit" });
+    await transport.dispose();
+  });
 
   it.each(["malformed", "binary"])("fails closed on %s protocol output", async (mode) => {
     const transport = await start(mode);

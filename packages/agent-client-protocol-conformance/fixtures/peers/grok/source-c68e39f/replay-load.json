@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.acp_lifecycle_fixture.v1",
+  "peer": "grok",
+  "sourceRef": "source-c68e39f",
+  "method": "session/load",
+  "request": {
+    "sessionId": "fixture-session-1",
+    "cwd": "/workspace",
+    "mcpServers": []
+  },
+  "updatesBeforeResponse": [
+    {
+      "sessionId": "fixture-session-1",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": { "type": "text", "text": "[REPLAY-REDACTED]" }
+      }
+    },
+    {
+      "sessionId": "fixture-session-1",
+      "update": {
+        "sessionUpdate": "tool_call",
+        "toolCallId": "replayed-tool",
+        "title": "Replayed tool",
+        "status": "completed"
+      }
+    }
+  ],
+  "response": {
+    "modes": null,
+    "configOptions": []
+  },
+  "expected": {
+    "phaseBeforeBarrier": "replay",
+    "phaseAfterBarrier": "live",
+    "liveGateOpens": 1
+  }
+}

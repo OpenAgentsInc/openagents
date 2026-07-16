@@ -17,6 +17,8 @@ It provides:
   report keyed by the current Git revision and platform;
 - broker-reference MCP fixtures proving invalid/expired refusal and immediate
   secret redaction; and
+- Grok replay-load and Cursor resume/mode/config fixtures that pin the
+  replay-to-live lifecycle barrier without claiming live-binary support; and
 - explicitly opt-in diagnostic probes for `grok agent stdio` and Cursor
   `agent acp`.
 
@@ -26,6 +28,9 @@ current checked fixtures are source-derived synthetic evidence, not captured
 binary transcripts and not release compatibility claims. Issue #8897 owns
 pinned real-binary admission. Stable, unstable, and vendor extension fixtures
 remain in separate namespaces.
+
+The product lifecycle consuming these fixtures is specified by the
+[Agent Client Protocol session runtime ADR](../../docs/adr/2026-07-16-agent-client-session-runtime.md).
 
 Run the hermetic gates:
 

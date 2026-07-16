@@ -1,0 +1,44 @@
+{
+  "schema": "openagents.acp_lifecycle_fixture.v1",
+  "peer": "cursor",
+  "sourceRef": "t3-bde0a4c0",
+  "method": "session/resume",
+  "request": {
+    "sessionId": "fixture-session-1",
+    "cwd": "/workspace",
+    "mcpServers": []
+  },
+  "updatesBeforeResponse": [
+    {
+      "sessionId": "fixture-session-1",
+      "update": { "sessionUpdate": "current_mode_update", "currentModeId": "agent" }
+    }
+  ],
+  "response": {
+    "modes": {
+      "currentModeId": "agent",
+      "availableModes": [
+        { "id": "ask", "name": "Ask" },
+        { "id": "agent", "name": "Agent" }
+      ]
+    },
+    "configOptions": [
+      {
+        "id": "model",
+        "name": "Model",
+        "type": "select",
+        "currentValue": "cursor-default",
+        "options": [
+          { "value": "cursor-default", "name": "Cursor default" },
+          { "value": "cursor-fast", "name": "Cursor fast" }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "phaseBeforeBarrier": "replay",
+    "phaseAfterBarrier": "live",
+    "mode": "agent",
+    "configId": "model"
+  }
+}

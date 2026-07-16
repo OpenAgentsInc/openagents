@@ -502,4 +502,22 @@ describe("ACP canonical projection", () => {
       { numRuns: 50 },
     );
   });
+
+  it("terminalizes an unfinished tool exactly once when the turn ends", async () => {
+    const p = projector();
+    await p.apply({
+      envelope: envelope("unfinished-tool", {
+        sessionUpdate: "tool_call",
+        toolCallId: "unfinished",
+        title: "Long operation",
+        status: "in_progress",
+      }),
+      sequence: 1,
+    });
+    const completed = p.complete("cancelled", now);
+    expect(completed.filter((event) => event.kind === "tool.error")).toMatchObject([
+      { messageSafe: "ACP tool interrupted by cancellation" },
+    ]);
+    expect(p.complete("cancelled", now)).toEqual([]);
+  });
 });

@@ -13,6 +13,8 @@ export type PeerAction = Readonly<{
   result?: unknown;
   error?: Readonly<{ code: number; message: string }>;
   notifications?: ReadonlyArray<Readonly<{ method: string; params: unknown }>>;
+  notificationsAfterResponse?: ReadonlyArray<Readonly<{ method: string; params: unknown }>>;
+  afterResponseTurns?: number;
   reverseRequests?: ReadonlyArray<Readonly<{ method: string; params: unknown }>>;
   delayMs?: number;
   fragmentBytes?: number;
@@ -51,6 +53,19 @@ export type PrivateNativeObservation = Readonly<{
 
 export const definePeerScenario = (scenario: AcpPeerScenario): AcpPeerScenario => scenario;
 
+export const startPeerScenarioTransport = (
+  scenario: AcpPeerScenario,
+  limits: Partial<Parameters<typeof AgentStdioTransport.start>[0]["limits"]> = {},
+): Promise<AgentStdioTransport> => {
+  const fixture = resolve(import.meta.dirname, "../scripts/scripted-peer.mjs");
+  return AgentStdioTransport.start({
+    executable: process.execPath,
+    args: [fixture],
+    env: { OA_ACP_SCENARIO: JSON.stringify(scenario) },
+    limits: { requestTimeoutMs: 2_000, reverseRequestTimeoutMs: 1_000, ...limits },
+  });
+};
+
 export const runPeerScenario = async (
   scenario: AcpPeerScenario,
   requests: ReadonlyArray<
@@ -69,16 +84,13 @@ export const runPeerScenario = async (
     settleMs?: number;
   }> = {},
 ): Promise<PeerScenarioResult> => {
-  const fixture = resolve(import.meta.dirname, "../scripts/scripted-peer.mjs");
-  const transport = await AgentStdioTransport.start({
-    executable: process.execPath,
-    args: [fixture],
-    env: { OA_ACP_SCENARIO: JSON.stringify(scenario) },
-    limits: { requestTimeoutMs: 2_000, reverseRequestTimeoutMs: 1_000, ...options.limits },
-  });
+  const transport = await startPeerScenarioTransport(scenario, options.limits);
   const notifications: Array<{ method: string; params: unknown }> = [];
   const methods = new Set(
-    scenario.actions.flatMap((action) => action.notifications?.map((value) => value.method) ?? []),
+    scenario.actions.flatMap((action) => [
+      ...(action.notifications?.map((value) => value.method) ?? []),
+      ...(action.notificationsAfterResponse?.map((value) => value.method) ?? []),
+    ]),
   );
   for (const method of methods)
     transport.onNotification(method, (params) => notifications.push({ method, params }));

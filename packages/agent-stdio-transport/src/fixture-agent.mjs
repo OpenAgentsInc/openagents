@@ -147,6 +147,23 @@ rl.on("line", (line) => {
     );
     return;
   }
+  if (mode === "response-then-update") {
+    write(response);
+    setImmediate(() =>
+      write({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "s-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "tail" },
+          },
+        },
+      }),
+    );
+    return;
+  }
   write(response);
 });
 

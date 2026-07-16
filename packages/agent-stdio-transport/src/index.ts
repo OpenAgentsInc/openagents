@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
-import { accessSync, constants, realpathSync } from "node:fs";
+import { accessSync, constants, createReadStream, realpathSync } from "node:fs";
 import { isAbsolute, delimiter, resolve } from "node:path";
 
 import {
@@ -135,6 +135,7 @@ export class AgentStdioTransportError extends Error {
       | "process_exit"
       | "protocol_violation"
       | "remote_error"
+      | "missing_executable"
       | "disposed",
     message: string,
     readonly code?: number,
@@ -173,6 +174,7 @@ export type AgentStdioTransportOptions = Readonly<{
   limits?: Partial<AgentStdioTransportLimits>;
   versionProbeArgs?: ReadonlyArray<string>;
   methodKinds?: ReadonlyArray<Readonly<{ method: string; kind: "request" | "notification" }>>;
+  identityPin?: Readonly<{ realPath: string; sha256: string }>;
 }>;
 
 type Pending = {
@@ -190,6 +192,8 @@ type ReverseActive = {
   timer: ReturnType<typeof setTimeout>;
   startedAt: number;
   method: string;
+  requestId: string | number | null;
+  sessionId?: string;
 };
 type Message = Record<string, unknown>;
 
@@ -241,7 +245,10 @@ const resolveExecutable = (
       // Continue through the trusted PATH candidates.
     }
   }
-  throw new TypeError(`executable not found or not executable: ${executable}`);
+  throw new AgentStdioTransportError(
+    "missing_executable",
+    `executable not found or not executable: ${executable}`,
+  );
 };
 
 const validId = (value: unknown): value is string | number | null =>
@@ -258,6 +265,17 @@ const jsonBytes = (value: unknown): { encoded: string; bytes: number; sha256: st
   if (encoded === undefined) throw new TypeError("JSON-RPC value is not serializable");
   const bytes = Buffer.byteLength(encoded);
   return { encoded, bytes, sha256: createHash("sha256").update(encoded).digest("hex") };
+};
+
+const sha256File = async (path: string): Promise<string> => {
+  const digest = createHash("sha256");
+  await new Promise<void>((resolveHash, rejectHash) => {
+    const stream = createReadStream(path);
+    stream.on("data", (chunk) => digest.update(chunk));
+    stream.once("end", resolveHash);
+    stream.once("error", rejectHash);
+  });
+  return digest.digest("hex");
 };
 
 export class AgentStdioTransport {
@@ -284,6 +302,7 @@ export class AgentStdioTransport {
   private stderrRaw = Buffer.alloc(0);
   private notificationWindowAt = Date.now();
   private notificationsInWindow = 0;
+  private inboundAcceptedSequence = 0;
   private terminalOutcome: AgentStdioTransportReceipt["terminalOutcome"] = null;
   private startedAt = new Date().toISOString();
   private endedAt: string | null = null;
@@ -522,6 +541,57 @@ export class AgentStdioTransport {
     this.enqueueEnvelope({ jsonrpc: "2.0", method, params });
   }
 
+  /**
+   * Wait until every frame already accepted from stdout has crossed the
+   * inbound router, including a coalesced follow-up stream read. This is a
+   * bounded frame-watermark barrier, not a timing-based "stable text" poll.
+   * Frames which arrive after it are late by definition.
+   */
+  async drainAcceptedInbound(maxTurns = 16): Promise<void> {
+    if (!Number.isSafeInteger(maxTurns) || maxTurns <= 0) {
+      throw new TypeError("maxTurns must be a positive safe integer");
+    }
+    let watermark = -1;
+    let stableTurns = 0;
+    for (let turn = 0; turn < maxTurns; turn += 1) {
+      await new Promise<void>((resolveDrain) => setImmediate(resolveDrain));
+      if (this.drainingInbound || this.inboundQueue.length > 0) {
+        stableTurns = 0;
+        continue;
+      }
+      if (watermark === this.inboundAcceptedSequence) stableTurns += 1;
+      else {
+        watermark = this.inboundAcceptedSequence;
+        stableTurns = 0;
+      }
+      if (stableTurns >= 1) return;
+    }
+    throw new AgentStdioTransportError("overload", "inbound drain barrier did not quiesce");
+  }
+
+  /** Resolves when the owned process closes; safe to register immediately after start. */
+  async waitForExit(): Promise<AgentStdioTransportReceipt> {
+    await this.closePromise;
+    return this.getReceipt();
+  }
+
+  /** Aborts reverse requests owned by one session, or every active request when omitted. */
+  cancelReverseRequests(sessionId?: string): number {
+    let cancelled = 0;
+    for (const [key, active] of this.reverseActive) {
+      if (sessionId !== undefined && active.sessionId !== sessionId) continue;
+      if (active.controller.signal.aborted) continue;
+      this.reverseActive.delete(key);
+      clearTimeout(active.timer);
+      active.controller.abort();
+      this.recordReverseLatency(active, "reverse_complete");
+      this.sendError(active.requestId, -32_800, "reverse request cancelled");
+      cancelled += 1;
+    }
+    if (cancelled > 0) this.syncPressure();
+    return cancelled;
+  }
+
   async shutdown(sessionIds: ReadonlyArray<string> = []): Promise<void> {
     if (["disposed", "exited"].includes(this.stateValue)) return;
     if (this.stateValue !== "failed") {
@@ -576,6 +646,14 @@ export class AgentStdioTransport {
       ),
     );
     this.resolvedExecutable = resolveExecutable(this.options.executable, this.options.cwd, env);
+    if (this.options.identityPin !== undefined) {
+      const pinnedRealPath = realpathSync(this.options.identityPin.realPath);
+      if (this.resolvedExecutable !== pinnedRealPath)
+        throw new TypeError("resolved executable does not match the admitted identity path");
+      const digest = await sha256File(this.resolvedExecutable);
+      if (digest !== this.options.identityPin.sha256)
+        throw new TypeError("resolved executable does not match the admitted identity digest");
+    }
     if (this.options.versionProbeArgs !== undefined) {
       const probe = spawnSync(this.resolvedExecutable, [...this.options.versionProbeArgs], {
         cwd: this.options.cwd,
@@ -728,6 +806,7 @@ export class AgentStdioTransport {
       return false;
     }
     this.recordEvidence("inbound", parsed, line.length);
+    this.inboundAcceptedSequence += 1;
     this.inboundQueue.push(parsed);
     this.syncPressure();
     this.scheduleInbound();
@@ -914,7 +993,16 @@ export class AgentStdioTransport {
       this.recordReverseLatency(active, "reverse_timeout");
       this.sendError(id, -32_001, "reverse request timed out");
     }, this.limits.reverseRequestTimeoutMs);
-    this.reverseActive.set(key, { controller, timer, startedAt: Date.now(), method });
+    const sessionId =
+      isMessage(params) && typeof params.sessionId === "string" ? params.sessionId : undefined;
+    this.reverseActive.set(key, {
+      controller,
+      timer,
+      startedAt: Date.now(),
+      method,
+      requestId: id,
+      ...(sessionId === undefined ? {} : { sessionId }),
+    });
     this.syncPressure();
     void Promise.resolve()
       .then(() =>
