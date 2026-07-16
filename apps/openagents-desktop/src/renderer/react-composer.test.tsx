@@ -340,25 +340,34 @@ describe("React Codex composer", () => {
     expect([...container.querySelectorAll('button[title="This turn is already dispatching"]')]).toHaveLength(2);
   });
 
-  test("Full Auto (#8852): renders as an off-by-default composer toggle and reports DesktopFullAutoToggled", async () => {
+  test("Full Auto (#8852, FA-H1 #8874): renders the ACTIVE thread's per-thread toggle state and reports DesktopFullAutoToggled", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
     const root = createTestRoot(container);
-    await render(root, <ReactComposer state={fixtureState({ fullAuto: false })} report={report} />);
+    await render(root, <ReactComposer state={fixtureState({ fullAutoByThread: {} })} report={report} />);
     const toggle = container.querySelector('[data-en-key="shell-full-auto-toggle"]');
     expect(toggle).not.toBeNull();
+    // An absent entry is honestly off.
     expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle?.getAttribute("aria-label")).toBe("Turn on Full Auto");
     await interact(() => {
       (toggle as HTMLButtonElement).click();
     });
     expect(received).toEqual(
       expect.arrayContaining([{ name: "DesktopFullAutoToggled", payload: null }]),
     );
-    await render(root, <ReactComposer state={fixtureState({ fullAuto: true })} report={report} />);
+    // The hydrated durable entry for the active thread drives the pressed
+    // state and the label — one click on this honestly means "turn it off".
+    await render(root, <ReactComposer state={fixtureState({ fullAutoByThread: { "thread-1": true } })} report={report} />);
+    const pressed = container.querySelector('[data-en-key="shell-full-auto-toggle"]');
+    expect(pressed?.getAttribute("aria-pressed")).toBe("true");
+    expect(pressed?.getAttribute("aria-label")).toBe("Turn off Full Auto");
+    // ANOTHER thread's enabled entry never leaks into this thread's toggle.
+    await render(root, <ReactComposer state={fixtureState({ fullAutoByThread: { "thread-2": true } })} report={report} />);
     expect(
       container.querySelector('[data-en-key="shell-full-auto-toggle"]')?.getAttribute("aria-pressed"),
-    ).toBe("true");
+    ).toBe("false");
   });
 });
 

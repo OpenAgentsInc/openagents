@@ -9,6 +9,7 @@ import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopVoiceState } from "../voice-host.ts"
 
 import {
+  activeFullAutoEnabled,
   chatMessageMetadataFields,
   desktopShellIntents,
   desktopShellView,
@@ -810,7 +811,7 @@ describe("desktopShellView (state -> component tree)", () => {
   test("Full Auto (#8853): a flagged turn sends fullAuto:true exactly once -- main, not the renderer, decides whether to continue", async () => {
     const completed = { ...testThread, notes: [{ key: "assistant.1", role: "assistant" as const, text: "Did the first thing.", timestamp: "18:05" }] }
     const calls: Array<{ message: string; fullAuto?: boolean }> = []
-    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: true }))
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAutoByThread: { [testThread.id]: true } }))
     const chatHost = {
       listThreads: async () => [testThread],
       newThread: async () => null,
@@ -835,7 +836,7 @@ describe("desktopShellView (state -> component tree)", () => {
   test("Full Auto (#8853): toggled off, an ordinary Codex turn sends fullAuto undefined and never resubmits", async () => {
     const completed = { ...testThread, notes: [{ key: "assistant.1", role: "assistant" as const, text: "Done.", timestamp: "18:05" }] }
     const calls: Array<{ message: string; fullAuto?: boolean }> = []
-    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: false }))
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAutoByThread: {} }))
     const chatHost = {
       listThreads: async () => [testThread],
       newThread: async () => null,
@@ -854,8 +855,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(calls[0]?.fullAuto).toBeUndefined()
   })
 
-  test("Full Auto (#8853): DesktopFullAutoToggled flips the flag and persists it to main immediately", async () => {
-    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: false }))
+  test("Full Auto (#8853): DesktopFullAutoToggled flips the active thread's entry and persists it to main immediately", async () => {
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAutoByThread: {} }))
     const setCalls: Array<{ threadRef: string; enabled: boolean }> = []
     const fullAutoHost = {
       set: async (input: { threadRef: string; enabled: boolean }) => { setCalls.push(input); return { ok: true } },
@@ -872,13 +873,13 @@ describe("desktopShellView (state -> component tree)", () => {
     ]
     const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))
-    expect((await Effect.runPromise(SubscriptionRef.get(state))).fullAuto).toBe(true)
+    expect(activeFullAutoEnabled(await Effect.runPromise(SubscriptionRef.get(state)))).toBe(true)
     // baseState already has an active thread, so the toggle persists to main
     // immediately -- there is no lazy-thread-creation deferral here (that
     // case is covered separately below).
     expect(setCalls).toEqual([{ threadRef: testThread.id, enabled: true }])
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))
-    expect((await Effect.runPromise(SubscriptionRef.get(state))).fullAuto).toBe(false)
+    expect(activeFullAutoEnabled(await Effect.runPromise(SubscriptionRef.get(state)))).toBe(false)
     expect(setCalls).toEqual([
       { threadRef: testThread.id, enabled: true },
       { threadRef: testThread.id, enabled: false },
@@ -896,7 +897,9 @@ describe("desktopShellView (state -> component tree)", () => {
     }
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
       ...baseState,
-      fullAuto: true,
+      // FA-H1 #8874: a toggle made before any thread exists is stored under
+      // the "" sentinel key until runNoteSubmission mints the real id.
+      fullAutoByThread: { "": true },
       activeThreadId: null,
       threads: [],
     }))
@@ -915,6 +918,126 @@ describe("desktopShellView (state -> component tree)", () => {
     const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Do the first thing")))))
     expect(setCalls).toEqual([{ threadRef: "new-thread", enabled: true }])
+    // The sentinel is promoted onto the real thread id and cleared, so the
+    // next fresh composer (no active thread) starts honestly off.
+    const settled = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(settled.fullAutoByThread["new-thread"]).toBe(true)
+    expect(settled.fullAutoByThread[""]).toBeUndefined()
+  })
+
+  test("FA-H1 (#8874): mount/selection hydration seeds the toggle from durable truth, and ONE click persists enabled:false (one-click stop)", async () => {
+    // Simulated restart: main durably resumed thread X (registry enabled:true)
+    // while the renderer starts from the hard-coded empty map.
+    const setCalls: Array<{ threadRef: string; enabled: boolean }> = []
+    const getCalls: Array<string> = []
+    const fullAutoHost = {
+      set: async (input: { threadRef: string; enabled: boolean }) => { setCalls.push(input); return { ok: true } },
+      get: async (input: { threadRef: string }) => { getCalls.push(input.threadRef); return { enabled: input.threadRef === testThread.id } },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      activeThreadId: null,
+      fullAutoByThread: {},
+    }))
+    const chatHost = {
+      listThreads: async () => [testThread],
+      newThread: async () => null,
+      openThread: async (id: string) => (id === testThread.id ? testThread : null),
+      sendMessage: async () => ({ ok: false as const, error: "unused" }),
+    }
+    const args: Parameters<typeof makeDesktopShellHandlers> = [
+      state, fixedNow, undefined, chatHost, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, fullAutoHost,
+    ]
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(testThread.id)))))
+    // Hydration read durable truth for X and the composer now shows ON.
+    expect(getCalls).toEqual([testThread.id])
+    const hydrated = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(hydrated.activeThreadId).toBe(testThread.id)
+    expect(activeFullAutoEnabled(hydrated)).toBe(true)
+    // The one-click-stop guarantee: a SINGLE toggle persists enabled:false —
+    // never a first click that re-persists true.
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))
+    expect(setCalls).toEqual([{ threadRef: testThread.id, enabled: false }])
+    expect(activeFullAutoEnabled(await Effect.runPromise(SubscriptionRef.get(state)))).toBe(false)
+  })
+
+  test("FA-H1 (#8874): switching threads re-hydrates the newly selected thread's toggle from its registry record", async () => {
+    const otherThread = { id: "other-thread", title: "Other", updatedAt: "2026-07-15T18:00:00.000Z", notes: [] } as const
+    const getCalls: Array<string> = []
+    const fullAutoHost = {
+      set: async () => ({ ok: true }),
+      get: async (input: { threadRef: string }) => { getCalls.push(input.threadRef); return { enabled: input.threadRef === otherThread.id } },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      threads: [testThread, otherThread],
+    }))
+    const chatHost = {
+      listThreads: async () => [testThread, otherThread],
+      newThread: async () => null,
+      openThread: async (id: string) => (id === otherThread.id ? otherThread : id === testThread.id ? testThread : null),
+      sendMessage: async () => ({ ok: false as const, error: "unused" }),
+    }
+    const args: Parameters<typeof makeDesktopShellHandlers> = [
+      state, fixedNow, undefined, chatHost, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, fullAutoHost,
+    ]
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(otherThread.id)))))
+    expect(getCalls).toEqual([otherThread.id])
+    const switched = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(switched.activeThreadId).toBe(otherThread.id)
+    expect(activeFullAutoEnabled(switched)).toBe(true)
+    // Switching back re-hydrates the first thread too (durably off).
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(testThread.id)))))
+    expect(getCalls).toEqual([otherThread.id, testThread.id])
+    const returned = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(activeFullAutoEnabled(returned)).toBe(false)
+    // The other thread's entry is retained per-thread, not a global boolean.
+    expect(returned.fullAutoByThread[otherThread.id]).toBe(true)
+  })
+
+  test("FA-H1 (#8874): a local toggle during an in-flight hydration get wins over the fetched snapshot", async () => {
+    // The design-note guard: hydration must never overwrite a NEWER local
+    // user toggle. The toggle already persisted itself via set, so keeping
+    // the local value never diverges from durable truth.
+    const setCalls: Array<{ threadRef: string; enabled: boolean }> = []
+    let releaseGet!: () => void
+    const gate = new Promise<void>(resolve => { releaseGet = resolve })
+    let markGetStarted!: () => void
+    const getStarted = new Promise<void>(resolve => { markGetStarted = resolve })
+    const fullAutoHost = {
+      set: async (input: { threadRef: string; enabled: boolean }) => { setCalls.push(input); return { ok: true } },
+      // Durable snapshot says OFF, but it resolves only after the user toggle.
+      get: async () => { markGetStarted(); await gate; return { enabled: false } },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAutoByThread: {} }))
+    const chatHost = {
+      listThreads: async () => [testThread],
+      newThread: async () => null,
+      openThread: async (id: string) => (id === testThread.id ? testThread : null),
+      sendMessage: async () => ({ ok: false as const, error: "unused" }),
+    }
+    const args: Parameters<typeof makeDesktopShellHandlers> = [
+      state, fixedNow, undefined, chatHost, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, fullAutoHost,
+    ]
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
+    const selection = Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(testThread.id)))))
+    // Deterministically WHILE the get is in flight, the user turns Full Auto ON.
+    await getStarted
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))
+    releaseGet()
+    await selection
+    // The stale fetched OFF is discarded; the local ON (already persisted
+    // via set) remains visible.
+    expect(activeFullAutoEnabled(await Effect.runPromise(SubscriptionRef.get(state)))).toBe(true)
+    expect(setCalls).toEqual([{ threadRef: testThread.id, enabled: true }])
   })
 
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {

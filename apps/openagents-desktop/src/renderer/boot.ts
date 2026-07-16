@@ -946,6 +946,22 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         return response.kind === "voice_state" ? response.state : null
       },
     }
+    // Full Auto (#8853, FA-H1 #8874): main-owned durable per-thread toggle.
+    // Absent preload/bridge degrades to a no-op set and an always-off get --
+    // the composer toggle still works locally, it just cannot survive a
+    // restart without this bridge. `get` is genuinely called: once below at
+    // mount to seed the active thread's toggle from durable truth, and again
+    // by the shell's thread-selection path on every switch.
+    const fullAutoHost = {
+      set: async (input: Readonly<{ threadRef: string; enabled: boolean }>) =>
+        (await readBridge()?.codexLocal?.fullAuto?.set?.(input)) ?? { ok: false },
+      get: async (input: Readonly<{ threadRef: string }>) => {
+        const raw = await readBridge()?.codexLocal?.fullAuto?.get?.(input)
+        return typeof raw === "object" && raw !== null && typeof (raw as { enabled?: unknown }).enabled === "boolean"
+          ? { enabled: (raw as { enabled: boolean }).enabled }
+          : { enabled: false }
+      },
+    }
     const registry = yield* makeIntentRegistry(
       desktopShellIntents,
       makeDesktopShellHandlers(state, undefined, async (input) => {
@@ -1025,19 +1041,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         setSidebarCollapsed: async (sidebarCollapsed) => {
           await readBridge()?.preferences?.update?.({ presentation: { sidebarCollapsed } })
         },
-      }, {
-        // Full Auto (#8853): main-owned durable per-thread toggle. Absent
-        // preload/bridge degrades to a no-op set and an always-off get --
-        // the composer toggle still works locally, it just cannot survive a
-        // restart without this bridge.
-        set: async input => (await readBridge()?.codexLocal?.fullAuto?.set?.(input)) ?? { ok: false },
-        get: async input => {
-          const raw = await readBridge()?.codexLocal?.fullAuto?.get?.(input)
-          return typeof raw === "object" && raw !== null && typeof (raw as { enabled?: unknown }).enabled === "boolean"
-            ? { enabled: (raw as { enabled: boolean }).enabled }
-            : { enabled: false }
-        },
-      }),
+      }, fullAutoHost),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({
@@ -1278,6 +1282,25 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // Snapshot/update delivery can precede the initial local-thread catalog;
     // replay retained newest post-images once those thread rows exist.
     for (const update of localGraphs.values()) applyLocalGraph(update)
+    // Full Auto mount hydration (FA-H1 #8874): now that the initial thread
+    // catalog is loaded, seed the ACTIVE thread's composer toggle from main's
+    // durable registry truth instead of the hard-coded off default — after a
+    // restart, a thread main is still auto-continuing must show ON so one
+    // click stops it. A user toggle that raced this fetch already wrote a map
+    // entry (and persisted itself via fullAutoHost.set), so an existing entry
+    // always wins here; threads selected later hydrate through the shell's
+    // selection path.
+    {
+      const mounted = yield* SubscriptionRef.get(state)
+      const activeThreadRef = mounted.activeThreadId
+      if (activeThreadRef !== null) {
+        const durable = yield* Effect.promise(() => fullAutoHost.get({ threadRef: activeThreadRef }))
+        yield* SubscriptionRef.update(state, current =>
+          current.fullAutoByThread[activeThreadRef] === undefined
+            ? { ...current, fullAutoByThread: { ...current.fullAutoByThread, [activeThreadRef]: durable.enabled } }
+            : current)
+      }
+    }
     const sessionView = decodeOpenAgentsSessionView(
       yield* Effect.promise(openAgentsSessionSettingsBridge.status),
     )

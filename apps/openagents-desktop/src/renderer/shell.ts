@@ -342,13 +342,17 @@ export type DesktopShellState = Readonly<{
   /** Requested Codex reasoning effort for subsequent turns. */
   codexReasoningEffort: CodexReasoningEffort
   /**
-   * Full Auto (#8852): while true, a completed Codex turn on the active
-   * thread automatically resubmits a continuation instead of waiting for the
-   * user to send the next message. Off by default; toggled from the
-   * composer. Renderer-owned preference only -- it does not survive an app
-   * restart mid-loop (see runNoteSubmission).
+   * Full Auto (#8852, FA-H1 #8874): per-thread renderer projection of main's
+   * durable full-auto registry. While a thread's entry is true, main keeps
+   * resubmitting continuations for it after each completed Codex turn. The
+   * map is hydrated from `fullAutoHost.get` at mount (boot.ts) and on thread
+   * selection, so the composer's stop control reflects durable truth — a
+   * thread main resumed after a restart shows ON, and one click turns it
+   * off. The sentinel key "" carries a toggle made before any thread exists;
+   * runNoteSubmission promotes it onto the real thread id (see
+   * activeFullAutoEnabled).
    */
-  fullAuto: boolean
+  fullAutoByThread: Readonly<Record<string, boolean>>
   /** Provider-scoped model choices persist while switching provider. */
   codexModel: CodexModel
   claudeModel: ClaudeModel
@@ -477,7 +481,7 @@ export const initialDesktopShellState = (
   composerQueue: [],
   composerQueueEditingRef: null,
   codexReasoningEffort: "medium",
-  fullAuto: false,
+  fullAutoByThread: {},
   codexModel: "gpt-5.6-sol",
   claudeModel: "claude-fable-5",
   providerTargetsByThread: {},
@@ -528,6 +532,17 @@ export const initialDesktopShellState = (
   git: emptyGitPanelState(),
   update: emptyDesktopUpdateProjection(),
 })
+
+/**
+ * Full Auto (FA-H1 #8874): the composer's single read path for the toggle.
+ * Reads the active thread's entry from the per-thread durable-truth map; the
+ * "" sentinel key holds a toggle made before the first thread exists
+ * (runNoteSubmission promotes it onto the real thread id at creation). An
+ * absent entry is honestly off — the same default main's registry uses for an
+ * unknown thread.
+ */
+export const activeFullAutoEnabled = (state: DesktopShellState): boolean =>
+  state.fullAutoByThread[state.activeThreadId ?? ""] ?? false
 
 // ---------------------------------------------------------------------------
 // Intents — typed end-to-end: DOM event -> IntentRef -> registry decode ->
@@ -1518,10 +1533,12 @@ export type DesktopPresentationRendererHost = Readonly<{
   setSidebarCollapsed: (collapsed: boolean) => Promise<void>
 }>
 /**
- * Full Auto (#8853): main-owned durable per-thread toggle. `set` persists
- * immediately (even mid-turn, even with no turn ever sent yet); `get` reads
- * the current durable truth so the renderer can seed the toggle from reality
- * on boot instead of defaulting to off.
+ * Full Auto (#8853, FA-H1 #8874): main-owned durable per-thread toggle. `set`
+ * persists immediately (even mid-turn, even with no turn ever sent yet).
+ * `get` reads the current durable truth and IS called: boot.ts seeds the
+ * active thread's toggle from it at mount, and the thread-selection path
+ * (commitLocalSession / resume) re-hydrates it on every switch, so the
+ * composer's stop control reflects reality instead of a hard-coded off.
  */
 export type DesktopFullAutoRendererHost = Readonly<{
   set: (input: Readonly<{ threadRef: string; enabled: boolean }>) => Promise<unknown>
@@ -1769,13 +1786,41 @@ export const makeDesktopShellHandlers = (
     }
   })
   /**
+   * Full Auto (FA-H1 #8874): per-thread monotonic local-edit counters, keyed
+   * like fullAutoByThread. Hydration must never overwrite a NEWER local user
+   * toggle, so each hydrate snapshots the counter before its fetch and only
+   * applies the fetched value if no toggle landed for that thread while the
+   * get was in flight. Chosen as the simplest honest guard for this
+   * single-user renderer: the toggle itself persists via fullAutoHost.set the
+   * moment it happens, so preferring the local value never leaves durable
+   * state behind. Closure-local bookkeeping, not presentation state.
+   */
+  const fullAutoLocalEdits = new Map<string, number>()
+  /**
+   * Fetch one thread's durable Full Auto truth and project it into the map.
+   * Callers commit the thread selection FIRST and hydrate after, so switching
+   * is never blocked on this IPC round trip; a failed get changes nothing.
+   */
+  const hydrateFullAuto = (threadRef: string) => Effect.gen(function* () {
+    if (threadRef === "") return
+    const editsBefore = fullAutoLocalEdits.get(threadRef) ?? 0
+    const fetched = yield* Effect.promise(() =>
+      fullAutoHost.get({ threadRef }).then(result => result.enabled === true).catch(() => null))
+    if (fetched === null) return
+    yield* SubscriptionRef.update(state, current =>
+      (fullAutoLocalEdits.get(threadRef) ?? 0) === editsBefore
+        ? { ...current, fullAutoByThread: { ...current.fullAutoByThread, [threadRef]: fetched } }
+        : current)
+  })
+  /**
    * The shared "submit a note" path for both a direct user Send and the
    * DesktopNoteSubmitted intent. Full Auto (#8853) continuation is no longer
    * decided here: main owns that durable loop (full-auto-reconcile.ts),
    * re-evaluating it at both turn completion and app startup, so it survives
    * a renderer reload or a full app restart. This function's only Full Auto
-   * responsibility is threading the current toggle state into the turn
-   * payload and, for a brand new thread, telling main that thread is enabled.
+   * responsibility is threading the active thread's toggle state into the
+   * turn payload and, for a brand new thread, promoting the pre-thread
+   * sentinel toggle onto the real thread id and telling main it is enabled.
    */
   const runNoteSubmission = (explicitMessage?: string) => Effect.gen(function* () {
     let current = yield* SubscriptionRef.get(state)
@@ -1820,11 +1865,20 @@ export const makeDesktopShellHandlers = (
         composerReviewContext: draftReviewContext,
         composerFileContext: draftFileContext,
       }
+      // Full Auto (#8853, FA-H1 #8874): a toggle made before any thread
+      // existed lives under the "" sentinel key. Promote it onto this brand
+      // new thread's real id and clear the sentinel, so the next fresh
+      // composer starts honestly off; main only learns about an enabled
+      // toggle now, once a real threadRef exists to persist against.
+      const sentinelFullAuto = current.fullAutoByThread[""]
+      if (sentinelFullAuto !== undefined) {
+        const { "": _sentinel, ...settled } = current.fullAutoByThread
+        current = { ...current, fullAutoByThread: { ...settled, [thread.id]: sentinelFullAuto } }
+      }
       yield* SubscriptionRef.set(state, current)
-      // Full Auto (#8853): the toggle was set before any thread existed to
-      // persist it against, so main only learns about it now, once this
-      // brand new thread has a real id.
-      if (current.fullAuto) yield* Effect.promise(() => fullAutoHost.set({ threadRef: thread.id, enabled: true }))
+      if (sentinelFullAuto === true) {
+        yield* Effect.promise(() => fullAutoHost.set({ threadRef: thread.id, enabled: true }))
+      }
     }
     // Capture the pending attachments BEFORE withNote clears them.
     const pendingImages = current.composerImages
@@ -1840,7 +1894,7 @@ export const makeDesktopShellHandlers = (
       current.composerFileContext,
     )
     const routedMessage = providerMessage
-    const fullAutoActive = current.fullAuto && current.selectedHarness === "codex"
+    const fullAutoActive = activeFullAutoEnabled(current) && current.selectedHarness === "codex"
     yield* SubscriptionRef.set(state, withNote(current, message, now()))
     const result = yield* Effect.promise(() => chat.sendMessage({
       id: current.activeThreadId!,
@@ -1897,6 +1951,10 @@ export const makeDesktopShellHandlers = (
         expandedThreadRefs: [],
       },
     }, thread))
+    // Full Auto (FA-H1 #8874): the selection is already committed above, so
+    // re-hydrating this thread's toggle from durable registry truth never
+    // blocks the switch — it only corrects a stale/missing map entry.
+    yield* hydrateFullAuto(threadRef)
     if (chat.hydrateThread !== undefined) {
       const hydrated = yield* Effect.promise(() => chat.hydrateThread!(threadRef))
       if (hydrated !== null) {
@@ -2177,8 +2235,16 @@ export const makeDesktopShellHandlers = (
     runNoteSubmission(typeof value === "string" ? value : undefined),
   DesktopFullAutoToggled: () => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
-    const enabled = !current.fullAuto
-    yield* SubscriptionRef.update(state, next => ({ ...next, fullAuto: enabled }))
+    // FA-H1 #8874: flip the ACTIVE thread's entry (or the "" sentinel while
+    // no thread exists yet), and record the local edit so an in-flight
+    // hydration get cannot overwrite this newer choice.
+    const key = current.activeThreadId ?? ""
+    const enabled = !(current.fullAutoByThread[key] ?? false)
+    fullAutoLocalEdits.set(key, (fullAutoLocalEdits.get(key) ?? 0) + 1)
+    yield* SubscriptionRef.update(state, next => ({
+      ...next,
+      fullAutoByThread: { ...next.fullAutoByThread, [key]: enabled },
+    }))
     // Full Auto (#8853): persist immediately so main's durable loop reflects
     // the toggle right away -- including a toggle-off actually stopping a
     // background continuation, and a toggle-on surviving this session even
@@ -2629,6 +2695,9 @@ export const makeDesktopShellHandlers = (
       return
     }
     yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
+    // Full Auto (FA-H1 #8874): resuming is a thread switch too — re-hydrate
+    // the resumed thread's toggle from durable truth after the commit.
+    yield* hydrateFullAuto(thread.id)
     yield* recordNavigation({ kind: "local_session", threadRef: thread.id, title: thread.title || "Local session" })
   }),
   // H2: payload contains refs/cutoff only. Main re-reads and bounds the source

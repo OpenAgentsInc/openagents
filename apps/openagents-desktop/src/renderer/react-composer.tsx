@@ -80,7 +80,7 @@ import {
 } from "./composer-images.ts";
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
-import { formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import { activeFullAutoEnabled, formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 import {
   LexicalComposerEditor,
   type LexicalComposerEditorHandle,
@@ -461,9 +461,12 @@ export const ReactComposer = ({
         <DesktopComposerButton
           data-en-key="shell-full-auto-toggle"
           kind="toggle"
-          aria-pressed={state.fullAuto}
+          // FA-H1 #8874: the pressed state and label read the ACTIVE thread's
+          // durable-truth entry, so a thread main resumed after a restart
+          // shows ON and a single click honestly means "turn it off".
+          aria-pressed={activeFullAutoEnabled(state)}
           onClick={() => dispatch(report, "DesktopFullAutoToggled")}
-          aria-label={state.fullAuto ? "Turn off Full Auto" : "Turn on Full Auto"}
+          aria-label={activeFullAutoEnabled(state) ? "Turn off Full Auto" : "Turn on Full Auto"}
           title="Full Auto: Codex looks at this repo and keeps working, turn after turn, until you turn it off"
         >
           <Zap data-icon-name={composerIconNames.fullAuto} aria-hidden="true" />
