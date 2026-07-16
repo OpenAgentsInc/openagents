@@ -1,7 +1,33 @@
 import type * as React from 'react'
+import { useEffect, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+
+import {
+  type ForumLaunchStatusSnapshot,
+  type HistoryMetric,
+  type Loadable,
+  type MixSnapshot,
+  type StatsPylonSnapshot,
+  type TokensServedHistorySnapshot,
+  type TokensServedSnapshot,
+  accountingPanelValues,
+  fetchPublicJson,
+  FORUM_LAUNCH_STATUS_URL,
+  forumPanelValues,
+  historyBars,
+  mixRows,
+  nostrPanelValues,
+  pylonPanelValues,
+  STATS_PYLON_STATS_URL,
+  toLoadable,
+  TOKENS_SERVED_CHANNEL_MIX_URL,
+  TOKENS_SERVED_HISTORY_URL,
+  TOKENS_SERVED_MODEL_MIX_URL,
+  TOKENS_SERVED_URL,
+  tokensServedDisplay,
+} from './-stats-data'
 
 type RowTone = 'good' | 'muted' | 'warn'
 
@@ -95,20 +121,19 @@ function EndpointRow({
 }
 
 // The chart shell reused by the tokens-history bar chart and both mix
-// panels — mirrors the Foldkit `historyChartShell` helper
-// (apps/web/src/page/loggedOut/page/home.ts) that every one of them
-// composes with. Every prior TS-6 Start route has stayed static/SSR-only, so
-// this renders exactly the Idle first-paint state each Foldkit chart shows
-// before its client fetch resolves — no fabricated bars or mix rows.
+// panels — mirrors the Foldkit `historyChartShell` helper the retired
+// `apps/web` page composed with.
 function ChartShell({
   body,
   caption,
+  chartId,
   live,
   metricToggle,
   title,
 }: Readonly<{
   body: React.ReactNode
   caption: string
+  chartId: string
   live: boolean
   metricToggle?: React.ReactNode
   title: string
@@ -116,7 +141,7 @@ function ChartShell({
   return (
     <section
       className="flex h-full flex-col gap-3 border border-khala-border bg-khala-surface px-4 py-5"
-      data-chart="khala-tokens-served-history"
+      data-chart={chartId}
     >
       <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs uppercase leading-none tracking-wide text-khala-text-faint">
         <div className="flex min-w-0 items-center gap-2">
@@ -142,7 +167,14 @@ function ChartPlaceholder({ label }: Readonly<{ label: string }>) {
   )
 }
 
-function HistoryMetricToggle() {
+function HistoryMetricToggle({
+  metric,
+  onSelect,
+}: Readonly<{ metric: HistoryMetric; onSelect: (metric: HistoryMetric) => void }>) {
+  const buttonClass = (active: boolean): string =>
+    active
+      ? 'cursor-pointer bg-khala-surface-raised px-2 py-1.5 text-khala-text'
+      : 'cursor-pointer px-2 py-1.5 text-khala-text-faint hover:bg-black/40 hover:text-khala-energy-soft'
   return (
     <div
       aria-label="Tokens served chart metric"
@@ -150,19 +182,74 @@ function HistoryMetricToggle() {
       role="group"
     >
       <button
-        aria-pressed="true"
-        className="cursor-pointer bg-khala-surface-raised px-2 py-1.5 text-khala-text"
+        aria-pressed={metric === 'daily'}
+        className={buttonClass(metric === 'daily')}
+        onClick={() => onSelect('daily')}
         type="button"
       >
         Daily
       </button>
       <button
-        aria-pressed="false"
-        className="cursor-pointer px-2 py-1.5 text-khala-text-faint hover:bg-black/40 hover:text-khala-energy-soft"
+        aria-pressed={metric === 'cumulative'}
+        className={buttonClass(metric === 'cumulative')}
+        onClick={() => onSelect('cumulative')}
         type="button"
       >
         Cumulative
       </button>
+    </div>
+  )
+}
+
+function HistoryChartBody({
+  metric,
+  snapshot,
+}: Readonly<{ metric: HistoryMetric; snapshot: TokensServedHistorySnapshot }>) {
+  const bars = historyBars(snapshot, metric)
+  if (bars.length === 0) {
+    return <ChartPlaceholder label="No history rows in the current window." />
+  }
+  return (
+    <div
+      aria-label={`Tokens served per day, ${bars.length} days`}
+      className="flex h-24 items-end gap-px"
+      data-history-metric={metric}
+      role="img"
+    >
+      {bars.map(bar => (
+        <div
+          className="min-w-0 flex-1 bg-khala-energy/70"
+          data-history-day={bar.day}
+          key={bar.day}
+          style={{ height: `${bar.heightPct}%`, minHeight: bar.tokens > 0 ? '1px' : '0' }}
+          title={`${bar.day}: ${bar.tokens.toLocaleString('en-US')} tokens`}
+        />
+      ))}
+    </div>
+  )
+}
+
+function MixBody({
+  emptyLabel,
+  snapshot,
+}: Readonly<{ emptyLabel: string; snapshot: MixSnapshot }>) {
+  const rows = mixRows(snapshot)
+  if (rows.length === 0) {
+    return <ChartPlaceholder label={emptyLabel} />
+  }
+  return (
+    <div className="grid content-start">
+      {rows.map(row => (
+        <div className={rowClass} key={row.label}>
+          <div className="min-w-0">
+            <div className={rowLabelClass}>{row.label}</div>
+            <div className={rowDetailClass}>{row.detail}</div>
+          </div>
+          <div className="text-right font-mono text-xs leading-4 tabular-nums text-khala-energy-soft">
+            {row.pct}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -205,27 +292,75 @@ const copyBoundaryRows = [
   { detail: 'Paid sats not yet settlement-backed.', label: 'Settlement gap' },
 ] as const
 
+const UNAVAILABLE = 'Unavailable'
+
+const loadableStatus = (state: Loadable<unknown>['state']): string =>
+  state === 'ok' ? 'Live' : state === 'loading' ? 'Idle' : 'Unavailable'
+
 // `openagents.com/stats` — public/anonymous variant only. The same URL also
-// has a distinct authenticated `loggedIn/page/stats.ts` view (real account
-// dashboards, private settlement detail); that view is out of scope here,
-// same "public-safe default until Start has real session auth" treatment as
-// `/artanis/accounts`.
+// had a distinct authenticated Foldkit view (real account dashboards, private
+// settlement detail); that view stays out of scope until Start has real
+// session auth, same treatment as `/artanis/accounts`.
 //
-// The Foldkit original (apps/web/src/page/loggedOut/page/stats.ts) composes
-// nine shared panel functions from home.ts, every one of them fed by a
-// client-fetched model union (Idle / Loading / Loaded / Failed against
-// /api/public/pylon-stats, /api/forum/tip-leaderboards,
-// /api/forum/launch-status, and the Khala-tokens-served counter/history/mix
-// endpoints). No prior TS-6 Start route has wired a live client fetch on a
-// standalone page, so this port renders exactly the Idle first-paint state
-// every one of those nine panels already shows before its fetch resolves —
-// the hero counter's `—` placeholder, the history chart's "Waiting for
-// data…" body, both mix panels' "Waiting for … mix…" bodies, and every
-// metric row's "Unavailable" value — rather than fabricating counters,
-// chart bars, or mix rows. The always-static panels (Claim Boundary,
-// Endpoint Manifest) are ported in full since none of their content is
-// behind a fetch in the Foldkit original.
+// Live-fetch wiring: on the client this route fetches the public no-auth
+// endpoints listed in `-stats-data.ts` (tokens-served counter/history/mixes,
+// pylon-stats, forum launch-status) and renders their real values. Server
+// render and the pre-fetch first paint keep the honest idle placeholders,
+// and any failed fetch degrades to the same Unavailable state — no
+// fabricated counters, bars, or mix rows. Forum tip totals and revshare stay
+// permanently Unavailable: `/api/forum/tip-leaderboards` is retired (HTTP 410
+// `money_surface_retired`, 2026-07-14) and no public revshare projection
+// endpoint exists.
 export function StatsPage() {
+  const [tokensServed, setTokensServed] = useState<Loadable<TokensServedSnapshot>>({
+    state: 'loading',
+  })
+  const [history, setHistory] = useState<Loadable<TokensServedHistorySnapshot>>({
+    state: 'loading',
+  })
+  const [modelMix, setModelMix] = useState<Loadable<MixSnapshot>>({ state: 'loading' })
+  const [channelMix, setChannelMix] = useState<Loadable<MixSnapshot>>({ state: 'loading' })
+  const [pylonStats, setPylonStats] = useState<Loadable<StatsPylonSnapshot>>({
+    state: 'loading',
+  })
+  const [forumLaunch, setForumLaunch] = useState<Loadable<ForumLaunchStatusSnapshot>>({
+    state: 'loading',
+  })
+  const [historyMetric, setHistoryMetric] = useState<HistoryMetric>('daily')
+
+  useEffect(() => {
+    let cancelled = false
+    const guard =
+      <T,>(set: (next: Loadable<T>) => void) =>
+      (data: T | null): void => {
+        if (!cancelled) set(toLoadable(data))
+      }
+    const pollCounter = async (): Promise<void> => {
+      guard(setTokensServed)(await fetchPublicJson<TokensServedSnapshot>(TOKENS_SERVED_URL))
+    }
+    void pollCounter()
+    void fetchPublicJson<TokensServedHistorySnapshot>(TOKENS_SERVED_HISTORY_URL).then(
+      guard(setHistory),
+    )
+    void fetchPublicJson<MixSnapshot>(TOKENS_SERVED_MODEL_MIX_URL).then(guard(setModelMix))
+    void fetchPublicJson<MixSnapshot>(TOKENS_SERVED_CHANNEL_MIX_URL).then(guard(setChannelMix))
+    void fetchPublicJson<StatsPylonSnapshot>(STATS_PYLON_STATS_URL).then(guard(setPylonStats))
+    void fetchPublicJson<ForumLaunchStatusSnapshot>(FORUM_LAUNCH_STATUS_URL).then(
+      guard(setForumLaunch),
+    )
+    const counterTimer = setInterval(() => void pollCounter(), 20000)
+    return () => {
+      cancelled = true
+      clearInterval(counterTimer)
+    }
+  }, [])
+
+  const counter = tokensServedDisplay(tokensServed)
+  const pylon = pylonStats.state === 'ok' ? pylonPanelValues(pylonStats.data) : null
+  const accounting = pylonStats.state === 'ok' ? accountingPanelValues(pylonStats.data) : null
+  const nostr = pylonStats.state === 'ok' ? nostrPanelValues(pylonStats.data) : null
+  const forum = forumLaunch.state === 'ok' ? forumPanelValues(forumLaunch.data) : null
+
   return (
     <main className="min-h-dvh bg-black text-khala-text" data-route="stats">
       <div className="mx-auto grid w-full max-w-7xl gap-3 px-3 py-4 font-mono sm:px-4 lg:px-6">
@@ -254,16 +389,17 @@ export function StatsPage() {
             data-counter="khala-tokens-served"
           >
             <div className="flex items-center gap-2 font-mono text-[0.62rem] uppercase leading-none tracking-wide text-khala-energy-soft sm:justify-end">
-              <StatusDot live={false} />
+              <StatusDot live={counter.live} />
               <span>Tokens Served</span>
             </div>
             <p className="m-0 w-full min-w-0 max-w-full text-[1.28rem] font-semibold leading-none tabular-nums text-khala-text sm:text-[1.42rem]">
               <span
                 className="block w-full max-w-full whitespace-nowrap"
                 data-counter-display="khala-tokens-served"
-                data-value="—"
+                data-status={counter.live ? 'ok' : tokensServed.state}
+                data-value={counter.value}
               >
-                —
+                {counter.value}
               </span>
             </p>
             <p className="m-0 text-[0.66rem] leading-4 text-khala-text-faint">
@@ -276,23 +412,66 @@ export function StatsPage() {
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1.75fr)_minmax(18rem,0.85fr)]">
           <ChartShell
-            body={<ChartPlaceholder label="Waiting for data…" />}
+            body={
+              history.state === 'ok' ? (
+                <HistoryChartBody metric={historyMetric} snapshot={history.data} />
+              ) : (
+                <ChartPlaceholder
+                  label={history.state === 'loading' ? 'Waiting for data…' : 'History unavailable.'}
+                />
+              )
+            }
             caption="Daily all-demand input + output tokens served across the network in America/Chicago."
-            live={false}
-            metricToggle={<HistoryMetricToggle />}
+            chartId="khala-tokens-served-history"
+            live={history.state === 'ok'}
+            metricToggle={
+              <HistoryMetricToggle metric={historyMetric} onSelect={setHistoryMetric} />
+            }
             title="Tokens Served / Day"
           />
           <section className="grid content-start gap-3">
             <ChartShell
-              body={<ChartPlaceholder label="Waiting for model mix…" />}
+              body={
+                modelMix.state === 'ok' ? (
+                  <MixBody
+                    emptyLabel="No model mix rows in the current window."
+                    snapshot={modelMix.data}
+                  />
+                ) : (
+                  <ChartPlaceholder
+                    label={
+                      modelMix.state === 'loading'
+                        ? 'Waiting for model mix…'
+                        : 'Model mix unavailable.'
+                    }
+                  />
+                )
+              }
               caption="Canonical model-family mix from all real aggregate token usage rows."
-              live={false}
+              chartId="khala-tokens-served-model-mix"
+              live={modelMix.state === 'ok'}
               title="Model Family Mix"
             />
             <ChartShell
-              body={<ChartPlaceholder label="Waiting for channel mix…" />}
+              body={
+                channelMix.state === 'ok' ? (
+                  <MixBody
+                    emptyLabel="No channel mix rows in the current window."
+                    snapshot={channelMix.data}
+                  />
+                ) : (
+                  <ChartPlaceholder
+                    label={
+                      channelMix.state === 'loading'
+                        ? 'Waiting for channel mix…'
+                        : 'Channel mix unavailable.'
+                    }
+                  />
+                )
+              }
               caption="Product-wide channel mix from the canonical token usage ledger."
-              live={false}
+              chartId="khala-tokens-served-channel-mix"
+              live={channelMix.state === 'ok'}
               title="Channel Mix"
             />
           </section>
@@ -300,72 +479,83 @@ export function StatsPage() {
 
         <div className="grid gap-3 xl:grid-cols-2">
           <section className="grid content-start gap-3">
-            <Card className={panelClass} data-stats-pylon-panel="">
-              <PanelHeader meta="Heartbeat freshness unavailable." status="Idle" title="Pylon Stats" />
+            <Card className={panelClass} data-stats-pylon-panel={pylonStats.state}>
+              <PanelHeader
+                meta={pylon?.meta ?? 'Heartbeat freshness unavailable.'}
+                status={loadableStatus(pylonStats.state)}
+                title="Pylon Stats"
+              />
               <MetricRow
                 detail="Heartbeat window. Not payment or earning evidence."
                 label="Online now"
-                tone="muted"
-                value="Unavailable"
+                tone={pylon === null ? 'muted' : 'good'}
+                value={pylon?.onlineNow ?? UNAVAILABLE}
               />
-              <MetricRow detail="Seen in the last 24 hours." label="Seen 24h" value="Unavailable" />
               <MetricRow
-                detail="Pylons idle and waiting for assignments."
+                detail="Seen in the last 24 hours."
+                label="Seen 24h"
+                value={pylon?.seen24h ?? UNAVAILABLE}
+              />
+              <MetricRow
+                detail="Pylons ready to accept assignments now."
                 label="Assigned now"
-                value="Unavailable"
+                value={pylon?.assignedNow ?? UNAVAILABLE}
               />
               <MetricRow
-                detail="Earning copy gate not loaded."
+                detail="Public earning copy gate from the pylon-stats projection."
                 label="Earning gate"
-                tone="muted"
-                value="Unavailable"
+                tone={pylon?.earningGateReady === true ? 'good' : 'muted'}
+                value={pylon?.earningGate ?? UNAVAILABLE}
               />
             </Card>
 
-            <Card className={panelClass} data-stats-forum-panel="">
+            <Card className={panelClass} data-stats-forum-panel={forumLaunch.state}>
               <PanelHeader
-                meta="Tip rows separate payer-side payment evidence from creator settlement."
-                status="Partial"
+                meta={
+                  forum?.meta ??
+                  'Tip rows separate payer-side payment evidence from creator settlement.'
+                }
+                status={loadableStatus(forumLaunch.state)}
                 title="Forum Stats"
               />
               <MetricRow
-                detail="Payer-side payment evidence only; shown top creator rows."
+                detail="Forum tip endpoints are retired (money_surface_retired); no public tip totals."
                 label="Tip sats paid"
                 tone="muted"
-                value="Unavailable"
+                value={UNAVAILABLE}
               />
               <MetricRow
-                detail="Creator settlement evidence only; not inferred from payment."
+                detail="Forum tip endpoints are retired; settlement evidence is not published."
                 label="Tip sats settled"
                 tone="muted"
-                value="Unavailable"
+                value={UNAVAILABLE}
               />
               <MetricRow
-                detail="Paid sats not yet settlement-backed in shown rows."
+                detail="No public tip rows exist to compute a settlement gap from."
                 label="Settlement gap"
                 tone="muted"
-                value="Unavailable"
+                value={UNAVAILABLE}
               />
               <MetricRow
-                detail="Forum tip gate not loaded."
+                detail="Public tipping launch gates from the forum launch-status projection."
                 label="Tip gate"
-                tone="warn"
-                value="Unavailable"
+                tone={forum?.tipGateReady === true ? 'good' : 'warn'}
+                value={forum?.tipGate ?? UNAVAILABLE}
               />
               <MetricRow
-                detail="Endpoint returned creator rows, not global forum totals."
+                detail="Retired tip endpoints publish no global tip count."
                 label="Tip count"
-                value="Unavailable"
+                value={UNAVAILABLE}
               />
               <MetricRow
-                detail="Active \ orange check badges bought by registered agents. Participation signal, not identity verification."
+                detail="Active orange check badges bought by registered agents. Participation signal, not identity verification."
                 label="Orange checks sold"
                 tone="muted"
-                value="Unavailable"
+                value={forum?.orangeChecksSold ?? UNAVAILABLE}
               />
             </Card>
 
-            <Card className={panelClass} data-stats-accounting-panel="">
+            <Card className={panelClass} data-stats-accounting-panel={pylonStats.state}>
               <PanelHeader
                 meta="No dummy money values. Missing public-safe evidence is marked unavailable."
                 status="Evidence"
@@ -374,29 +564,29 @@ export function StatsPage() {
               <MetricRow
                 detail="Receipt-backed Nexus/Treasury accepted-work payout evidence only."
                 label="Accepted-work sats paid"
-                tone="muted"
-                value="Unavailable"
+                tone={accounting === null ? 'muted' : 'good'}
+                value={accounting?.acceptedWorkSatsPaid ?? UNAVAILABLE}
               />
               <MetricRow
-                detail="Accepted-work gate unavailable."
+                detail="Accepted-work settlement gate from the pylon-stats projection."
                 label="Accepted-work gate"
-                tone="warn"
-                value="Unavailable"
+                tone={accounting?.acceptedWorkGateReady === true ? 'good' : 'warn'}
+                value={accounting?.acceptedWorkGate ?? UNAVAILABLE}
               />
               <MetricRow
                 detail="Settled receipt references, not a sats amount."
                 label="Settlement refs"
-                value="Unavailable"
+                value={accounting?.settlementRefs ?? UNAVAILABLE}
               />
               <MetricRow
-                detail="Asset-bound ledger projection. Not a withdrawal promise or settled payout."
+                detail="Asset-bound ledger projection. Not a withdrawal promise or settled payout. No public endpoint publishes it."
                 label="Revshare"
-                value="Unavailable"
+                value={UNAVAILABLE}
               />
               <MetricRow
-                detail="Forum paid minus settled sats in shown leaderboard rows."
+                detail="Forum tip endpoints are retired; no paid-versus-settled rows exist."
                 label="Forum paid vs settled"
-                value="Unavailable"
+                value={UNAVAILABLE}
               />
             </Card>
           </section>
@@ -420,21 +610,21 @@ export function StatsPage() {
               ))}
             </Card>
 
-            <Card className={panelClass} data-stats-nostr-relay-panel="">
+            <Card className={panelClass} data-stats-nostr-relay-panel={pylonStats.state}>
               <PanelHeader
                 meta="Pylon registrations may publish relay URLs and short public keys."
-                status="Idle"
+                status={loadableStatus(pylonStats.state)}
                 title="Nostr Relay Configuration"
               />
               <MetricRow
                 detail="Hosted relay plus registered Pylon relays."
                 label="Relay URLs"
-                value="Unavailable"
+                value={nostr?.relayUrls ?? UNAVAILABLE}
               />
               <MetricRow
                 detail="Short public-key labels from recent Pylon registrations."
                 label="Pubkeys"
-                value="Unavailable"
+                value={nostr?.pubkeys ?? UNAVAILABLE}
               />
               <div className="border-t border-khala-border/60 pt-2">
                 <p className={panelMetaClass}>
@@ -448,26 +638,30 @@ export function StatsPage() {
         <Card className="grid gap-3 border-khala-border bg-khala-surface p-4 sm:p-5">
           <p className={eyebrowClass}>Live surface</p>
           <p className="m-0 max-w-3xl text-sm/6 text-khala-text-muted">
-            Live counters, chart bars, mix rows, and evidence panels stay on
-            the existing Foldkit page until this route carries a real fetch
-            against the endpoints below.
+            This route fetches live public data on the client: the Tokens
+            Served counter, daily token history, model-family and channel
+            mixes, Pylon counters, accepted-work settlement evidence, and
+            Forum launch gates. Forum tip totals and revshare stay
+            unavailable — the public tip endpoints are retired and no public
+            revshare projection exists. Failed fetches degrade to the same
+            unavailable state, never a dummy value.
           </p>
           <div className="grid gap-3 border border-khala-border bg-black/25 p-3 text-sm/5 text-khala-text-muted sm:grid-cols-2">
+            <div>
+              <span className="block text-khala-text-faint">Tokens served</span>
+              <code className={codeClass}>/api/public/khala-tokens-served</code>
+            </div>
+            <div>
+              <span className="block text-khala-text-faint">History and mixes</span>
+              <code className={codeClass}>/api/public/khala-tokens-served/history</code>
+            </div>
             <div>
               <span className="block text-khala-text-faint">Pylon stats</span>
               <code className={codeClass}>/api/public/pylon-stats</code>
             </div>
             <div>
-              <span className="block text-khala-text-faint">Tip leaderboards</span>
-              <code className={codeClass}>/api/forum/tip-leaderboards</code>
-            </div>
-            <div>
               <span className="block text-khala-text-faint">Forum launch status</span>
               <code className={codeClass}>/api/forum/launch-status</code>
-            </div>
-            <div>
-              <span className="block text-khala-text-faint">Product promises</span>
-              <code className={codeClass}>/api/public/product-promises</code>
             </div>
           </div>
         </Card>
