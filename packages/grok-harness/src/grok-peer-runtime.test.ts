@@ -88,11 +88,12 @@ const evidence = [
     artifactRef: "fixtures/grok-0.2.101.json",
   },
   {
-    suiteId: "grok-live-profile",
+    suiteId: "acp-release-matrix-v1",
     kind: "live" as const,
     result: "pass" as const,
     peerVersion: "0.2.101",
     executableSha256: digest,
+    platform: { os: process.platform, arch: process.arch },
     recordedAt: "2026-07-16T12:00:00.000Z",
     artifactRef: "live/grok-0.2.101.json",
   },
