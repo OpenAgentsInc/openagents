@@ -384,6 +384,10 @@
   font-size: clamp(1.45rem, 3vw, 1.85rem);
 }
 
+.docs-prose h2:target {
+  border-top-color: transparent;
+}
+
 .docs-prose h3 {
   margin: 2.25rem 0 0.75rem;
   font-size: 1.25rem;
