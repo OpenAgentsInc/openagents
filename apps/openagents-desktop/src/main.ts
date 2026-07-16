@@ -454,6 +454,7 @@ import {
   decodeDesktopCommandBindingUpdateOrNull,
   desktopCanonicalCommandRegistry,
   type DesktopCommandBindingProjection,
+  type DesktopCommandDefinition,
 } from "./desktop-command-contract.ts"
 import {
   deferredDesktopCommand,
@@ -6328,24 +6329,27 @@ const nativeCommandAccelerator = (bindings: ReadonlyArray<string>): string | und
 }
 
 const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): void => {
-  const commandItems: MenuItemConstructorOptions[] = desktopCanonicalCommandRegistry
-    .filter(command => command.palette || command.defaultBindings.length > 0 ||
-      (bindings !== undefined && commandBindingForNativeMenu(bindings, command.id) !== undefined))
-    .map(command => ({
-    label: command.label,
-    ...(nativeCommandAccelerator(
+  const bindingForNativeMenu = (command: DesktopCommandDefinition): string | undefined =>
+    nativeCommandAccelerator(
       bindings === undefined
         ? command.defaultBindings
         : (commandBindingForNativeMenu(bindings, command.id) === undefined
             ? []
             : [commandBindingForNativeMenu(bindings, command.id)!]),
-    ) === undefined
+    )
+  const fullscreenCommand = desktopCanonicalCommandRegistry.find(command =>
+    command.id === "window.fullscreen_toggle")
+  const commandItems: MenuItemConstructorOptions[] = desktopCanonicalCommandRegistry
+    // Fullscreen is native window chrome, not a generic app command. Keeping
+    // it out of this list also prevents two menu items from claiming Cmd+F.
+    .filter(command => command.id !== "window.fullscreen_toggle")
+    .filter(command => command.palette || command.defaultBindings.length > 0 ||
+      (bindings !== undefined && commandBindingForNativeMenu(bindings, command.id) !== undefined))
+    .map(command => ({
+    label: command.label,
+    ...(bindingForNativeMenu(command) === undefined
       ? {}
-      : { accelerator: nativeCommandAccelerator(
-          bindings === undefined
-            ? command.defaultBindings
-            : [commandBindingForNativeMenu(bindings, command.id)!],
-        ) }),
+      : { accelerator: bindingForNativeMenu(command) }),
     click: () => {
       dispatchNativeDesktopCommand(command, {
         hasOpenWindow: () => BrowserWindow.getAllWindows().some(window => !window.isDestroyed()),
@@ -6360,7 +6364,21 @@ const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): 
       : []),
     { label: "Commands", submenu: commandItems },
     { label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] },
-    { label: "Window", submenu: [{ role: "minimize" }, { role: "close" }] },
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { type: "separator" },
+        {
+          role: "togglefullscreen",
+          ...(fullscreenCommand === undefined || bindingForNativeMenu(fullscreenCommand) === undefined
+            ? {}
+            : { accelerator: bindingForNativeMenu(fullscreenCommand) }),
+        },
+        { type: "separator" },
+        { role: "close" },
+      ],
+    },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }

@@ -2790,8 +2790,9 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
         statement: "add a hotkey for maximizing (command+something) to fullscreen like command f",
         authorityBoundary:
-          "Window presentation only. Cmd+F/Ctrl+F is the canonical window.fullscreen_toggle default binding dispatching DesktopFullscreenToggled through the closed command registry; the shell handler calls the window host seam, and main toggles the sender BrowserWindow's fullscreen state. Deliberately no editable-guard (no find-in-page exists yet; rebind review when find lands). No renderer window-handle authority.",
+          "Window presentation only. Cmd+F/Ctrl+F is the canonical window.fullscreen_toggle default binding. The native Window menu exposes Electron's togglefullscreen role with that effective accelerator, so visible menu activation and the shortcut operate directly on the focused BrowserWindow even before renderer readiness. The renderer command remains a command-palette and DOM-keyboard fallback: DesktopFullscreenToggled calls the window host seam and main toggles the sender BrowserWindow's fullscreen state. Deliberately no editable-guard (no find-in-page exists yet; rebind review when find lands). No renderer window-handle authority.",
         evidenceRefs: [
+          "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
           "apps/openagents-desktop/src/desktop-command-contract.ts",
           "apps/openagents-desktop/src/window-contract.ts",
@@ -2806,9 +2807,17 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             description:
               "The command contract carries window.fullscreen_toggle with Meta+F/Control+F defaults bound to DesktopFullscreenToggled, and dispatching the intent through the registry invokes the injected window host toggle exactly once.",
           },
+          {
+            id: "fullscreen_hotkey.native_window_menu",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/desktop-command-host.test.ts",
+            description:
+              "The production menu excludes fullscreen from generic Commands and exposes Electron's native togglefullscreen role under Window with the effective canonical binding.",
+          },
         ],
         verification:
-          "pnpm --dir apps/openagents-desktop run verify runs the shell registry dispatch assertion.",
+          "pnpm --dir apps/openagents-desktop run verify runs the native Window menu and shell registry fallback assertions.",
       },
       {
         contractId: "openagents_desktop.shell.no_sidebar_brand_row.v1",
