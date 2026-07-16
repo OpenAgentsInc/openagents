@@ -42,16 +42,27 @@ import {
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-import type { VisualBaselineWorkbenchStateName } from "../visual-baseline-contract.ts";
+import {
+  VISUAL_BASELINE_WINDOW,
+  type VisualBaselineWorkbenchStateName,
+} from "../visual-baseline-contract.ts";
 
 const noop = (): void => undefined;
+const catalogGap = "var(--en-spacing-2)";
+const catalogPadding = "var(--en-spacing-3)";
+const catalogStoryTitleMargin = "0 0 var(--en-spacing-2)";
+const catalogSubtitleMargin = "var(--en-spacing-1) 0 0";
+const catalogContentHeight = VISUAL_BASELINE_WINDOW.height - 90;
+const catalogHeaderHeight = 50;
+const scrimPreviewWidth = 120;
+const scrimPreviewHeight = 32;
 
 const storyStyle: CSSProperties = {
   minWidth: 0,
   overflow: "hidden",
   border: "1px solid var(--en-color-borderSubtle)",
   background: "var(--en-color-surface)",
-  padding: 10,
+  padding: catalogPadding,
 };
 
 const Story = ({
@@ -61,10 +72,10 @@ const Story = ({
   <section style={storyStyle}>
     <h2
       style={{
-        margin: "0 0 8px",
+        margin: catalogStoryTitleMargin,
         color: "var(--en-color-textFaint)",
         fontFamily: "var(--oa-font-mono)",
-        fontSize: 10,
+        fontSize: "var(--en-type-caption-fontSize)",
         letterSpacing: ".08em",
         textTransform: "uppercase",
       }}
@@ -83,7 +94,7 @@ const Grid = ({
     style={{
       display: "grid",
       gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-      gap: 10,
+      gap: catalogGap,
       alignContent: "start",
     }}
   >
@@ -244,14 +255,19 @@ const rail = (
 
 const shell = (): ReactElement => (
   <div
-    style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: 12, height: 710 }}
+    style={{
+      display: "grid",
+      gridTemplateColumns: "280px minmax(0, 1fr)",
+      gap: catalogGap,
+      height: catalogContentHeight,
+    }}
   >
     <Story title="session rail — populated">{rail}</Story>
     <div
       style={{
         display: "grid",
         gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        gap: 10,
+        gap: catalogGap,
         alignContent: "start",
       }}
     >
@@ -333,8 +349,8 @@ const shell = (): ReactElement => (
             style={{
               display: "block",
               position: "static",
-              width: 120,
-              height: 32,
+              width: scrimPreviewWidth,
+              height: scrimPreviewHeight,
               background: "var(--en-color-scrim)",
             }}
           />
@@ -345,7 +361,7 @@ const shell = (): ReactElement => (
 );
 
 const frame = (): ReactElement => (
-  <DesktopWorkbench style={{ height: 710 }}>
+  <DesktopWorkbench style={{ height: catalogContentHeight }}>
     {rail}
     <DesktopConversation
       header={
@@ -429,25 +445,31 @@ export const mountVisualBaselineWorkbench = (
       style={{
         ...desktopThemeCssVariables(theme),
         display: "block",
-        width: 1280,
-        height: 800,
+        width: VISUAL_BASELINE_WINDOW.width,
+        height: VISUAL_BASELINE_WINDOW.height,
         boxSizing: "border-box",
         overflow: "hidden",
-        padding: 16,
+        padding: catalogPadding,
       }}
     >
-      <header style={{ height: 50 }}>
+      <header style={{ height: catalogHeaderHeight }}>
         <strong
           style={{
             fontFamily: "var(--oa-font-mono)",
-            fontSize: 15,
+            fontSize: "var(--en-type-body-fontSize)",
             letterSpacing: ".08em",
             textTransform: "uppercase",
           }}
         >
           QA-3 · {state.replaceAll("-", " ")}
         </strong>
-        <p style={{ color: "var(--en-color-textFaint)", margin: "5px 0 0", fontSize: 11 }}>
+        <p
+          style={{
+            color: "var(--en-color-textFaint)",
+            margin: catalogSubtitleMargin,
+            fontSize: "var(--en-type-caption-fontSize)",
+          }}
+        >
           Shared #8870 fixture catalog · deterministic Desktop pixel proof
         </p>
       </header>

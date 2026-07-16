@@ -169,7 +169,7 @@ export const desktopToolCallCardFixtures: ReadonlyArray<DesktopToolCallCardFixtu
       toolKind: "image",
       status: "completed",
       tool: "imageView",
-      path: "/Users/dev/Desktop/workroom-geometry.png",
+      path: "/workspace/fixtures/workroom-geometry.png",
     },
   },
   {
@@ -180,7 +180,7 @@ export const desktopToolCallCardFixtures: ReadonlyArray<DesktopToolCallCardFixtu
       status: "completed",
       tool: "imageGeneration",
       resultSnippet: "A flat-lit instrument-panel dashboard, square corners, hairline borders.",
-      path: "/Users/dev/Library/Application Support/OpenAgents/generated/panel-01.png",
+      path: "/workspace/fixtures/generated/panel-01.png",
       durationMs: 3_150,
     },
   },

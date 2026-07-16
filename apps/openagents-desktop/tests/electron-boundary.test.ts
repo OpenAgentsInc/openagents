@@ -8,250 +8,276 @@
  * application architecture. React/shadcn/Base UI/Tailwind are permitted only
  * as the host implementation below Effect Native's state/intent boundary.
  */
-import { describe, expect, test } from "vite-plus/test"
-import { readFileSync, readdirSync } from "node:fs"
-import path from "node:path"
+import { describe, expect, test } from "vite-plus/test";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 
-const appRoot = path.resolve(import.meta.dirname, "..")
-const read = (relative: string): string => readFileSync(path.join(appRoot, relative), "utf8")
+const appRoot = path.resolve(import.meta.dirname, "..");
+const read = (relative: string): string => readFileSync(path.join(appRoot, relative), "utf8");
 
 /**
  * The negative oracles scan CODE, not prose: doc comments legitimately name
  * the banned APIs while explaining why they are banned.
  */
 const stripComments = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", () => {
-  const main = stripComments(read("src/main.ts"))
+  const main = stripComments(read("src/main.ts"));
 
   test("renderer window is sandboxed with node integration off", () => {
-    expect(main).toContain("contextIsolation: true")
-    expect(main).toContain("nodeIntegration: false")
-    expect(main).toContain("sandbox: true")
-    expect(main).toContain("webviewTag: false")
-    expect(main).toContain("webSecurity: true")
-  })
+    expect(main).toContain("contextIsolation: true");
+    expect(main).toContain("nodeIntegration: false");
+    expect(main).toContain("sandbox: true");
+    expect(main).toContain("webviewTag: false");
+    expect(main).toContain("webSecurity: true");
+  });
 
   test("uses the built mobile icon for the window and macOS Dock", () => {
-    expect(main).toContain('"assets", "openagents-icon.png"')
-    expect(main).toContain("icon: desktopIconPath")
-    expect(main).toContain("app.dock?.setIcon(desktopIconPath)")
-  })
+    expect(main).toContain('"assets", "openagents-icon.png"');
+    expect(main).toContain("icon: desktopIconPath");
+    expect(main).toContain("app.dock?.setIcon(desktopIconPath)");
+  });
 
   test("keeps production identity stable while isolating development safeStorage", () => {
-    const manifest=JSON.parse(read("package.json")) as {productName?:string}
-    const html=read("index.html")
-    expect(main).toContain('const desktopApplicationName = app.isPackaged ? "OpenAgents" : "OpenAgents Dev"')
-    expect(main).toContain("app.setName(desktopApplicationName)")
-    expect(main).toContain("process.title = desktopApplicationName")
-    expect(main).toContain('title: "OpenAgents"')
-    expect(manifest.productName).toBe("OpenAgents")
-    expect(html).toContain("<title>OpenAgents</title>")
-    expect(html).not.toContain("OpenAgents Desktop")
-  })
+    const manifest = JSON.parse(read("package.json")) as { productName?: string };
+    const html = read("index.html");
+    expect(main).toContain(
+      'const desktopApplicationName = app.isPackaged ? "OpenAgents" : "OpenAgents Dev"',
+    );
+    expect(main).toContain("app.setName(desktopApplicationName)");
+    expect(main).toContain("process.title = desktopApplicationName");
+    expect(main).toContain('title: "OpenAgents"');
+    expect(manifest.productName).toBe("OpenAgents");
+    expect(html).toContain("<title>OpenAgents</title>");
+    expect(html).not.toContain("OpenAgents Desktop");
+  });
 
   test("deny-by-default permission, navigation, window-open, and webview handlers", () => {
-    expect(main).toContain("setPermissionRequestHandler")
-    expect(main).toContain("will-navigate")
-    expect(main).toContain("will-attach-webview")
-    expect(main).toContain('setWindowOpenHandler(() => ({ action: "deny" }))')
-  })
+    expect(main).toContain("setPermissionRequestHandler");
+    expect(main).toContain("will-navigate");
+    expect(main).toContain("will-attach-webview");
+    expect(main).toContain('setWindowOpenHandler(() => ({ action: "deny" }))');
+  });
 
   test("no template updater, publisher target, or devtools installer survives", () => {
-    expect(main).not.toContain("updateElectronApp")
-    expect(main).not.toContain("electron-devtools-installer")
-    expect(main).not.toContain("REACT_DEVELOPER_TOOLS")
-  })
+    expect(main).not.toContain("updateElectronApp");
+    expect(main).not.toContain("electron-devtools-installer");
+    expect(main).not.toContain("REACT_DEVELOPER_TOOLS");
+  });
 
   test("no legacy Khala Code identity is reused", () => {
     for (const file of ["src/main.ts", "package.json", "index.html"]) {
-      const source = stripComments(read(file))
-      expect(source).not.toContain("com.openagents.khala.code.desktop")
-      expect(source).not.toContain("khala-code://")
+      const source = stripComments(read(file));
+      expect(source).not.toContain("com.openagents.khala.code.desktop");
+      expect(source).not.toContain("khala-code://");
     }
-  })
+  });
 
   test("preload exposes fixed typed capabilities and one decoded runtime event stream", () => {
-    const preload = stripComments(read("src/preload.cts"))
-    expect(preload).toContain("contextBridge.exposeInMainWorld")
-    expect(preload).toContain("ipcRenderer.invoke(FleetStageChannel, request)")
-    expect(preload).toContain("DesktopWorkspaceChooseChannel")
-    expect(preload).toContain("chooseWorkspace: async (): Promise<boolean>")
-    expect(preload).not.toContain("workspaceSummary:")
-    expect(preload).toContain("workingDirectory: async")
-    expect(preload).toContain("decodeWorkspaceWorkingDirectory")
-    expect(preload).not.toContain("listWorkspaceFiles:")
-    expect(preload).not.toContain("readWorkspaceFile:")
-    expect(preload).not.toContain("saveWorkspaceFile:")
-    expect(preload).not.toContain("workspaceGitStatus:")
-    expect(preload).not.toContain("workspaceGitDiff:")
-    expect(preload).toContain("decodeWorkspaceTreeRequest")
-    expect(preload).toContain("decodeWorkspaceTreePage(response)")
-    expect(preload).toContain("decodeWorkspaceSearchBridgeRequest(value)")
-    expect(preload).toContain("decodeWorkspaceSearchResponse(response)")
-    expect(preload).toContain("decodeWorkspaceSearchCancelRequest(value)")
-    expect(preload).toContain("decodeWorkspaceSearchCancelResult(response)")
-    expect(preload).toContain("decodeWorkspaceCreateRequest(value)")
-    expect(preload).toContain("decodeWorkspaceRenameRequest(value)")
-    expect(preload).toContain("decodeWorkspaceDeleteRequest(value)")
-    expect(preload).toContain("decodeWorkspaceRevealRequest(value)")
-    expect(preload).toContain("decodeWorkspaceOperationResult(response)")
-    expect(preload).toContain("decodeWorkspaceDocumentRequest(value)")
-    expect(preload).toContain("decodeWorkspaceDocumentSaveRequest(value)")
-    expect(preload).toContain("decodeWorkspaceDocumentSaveAsRequest(value)")
-    expect(preload).toContain("decodeWorkspaceDocumentResult(response)")
-    expect(preload).toContain("decodeWorkspaceChange(value)")
-    expect(preload).toContain("ipcRenderer.on(DesktopWorkspaceChangeChannel, workspaceChangeHandler)")
-    expect(preload).toContain("ipcRenderer.removeListener(DesktopWorkspaceChangeChannel, workspaceChangeHandler)")
-    expect(preload).toContain("workspaceChangeListeners.size !== 0")
-    expect(preload).toContain("decodeDesktopRuntimeGatewayRequest(value)")
-    expect(preload).toContain("decodeDesktopRuntimeGatewayResponse(response)")
-    expect(preload).toContain("decodeDesktopRuntimeGatewayEvent(value)")
-    expect(preload).toContain("ipcRenderer.on(DesktopRuntimeGatewayEventChannel, handler)")
-    expect(preload).toContain("ipcRenderer.removeListener(DesktopRuntimeGatewayEventChannel, handler)")
-    expect(preload).not.toContain("ipcRenderer.send")
-    expect(preload).not.toContain("MessagePort")
-    expect(preload).not.toContain('require("node:')
-  })
+    const preload = stripComments(read("src/preload.cts"));
+    expect(preload).toContain("contextBridge.exposeInMainWorld");
+    expect(preload).toContain("ipcRenderer.invoke(FleetStageChannel, request)");
+    expect(preload).toContain("DesktopWorkspaceChooseChannel");
+    expect(preload).toContain("chooseWorkspace: async (): Promise<boolean>");
+    expect(preload).not.toContain("workspaceSummary:");
+    expect(preload).toContain("workingDirectory: async");
+    expect(preload).toContain("decodeWorkspaceWorkingDirectory");
+    expect(preload).not.toContain("listWorkspaceFiles:");
+    expect(preload).not.toContain("readWorkspaceFile:");
+    expect(preload).not.toContain("saveWorkspaceFile:");
+    expect(preload).not.toContain("workspaceGitStatus:");
+    expect(preload).not.toContain("workspaceGitDiff:");
+    expect(preload).toContain("decodeWorkspaceTreeRequest");
+    expect(preload).toContain("decodeWorkspaceTreePage(response)");
+    expect(preload).toContain("decodeWorkspaceSearchBridgeRequest(value)");
+    expect(preload).toContain("decodeWorkspaceSearchResponse(response)");
+    expect(preload).toContain("decodeWorkspaceSearchCancelRequest(value)");
+    expect(preload).toContain("decodeWorkspaceSearchCancelResult(response)");
+    expect(preload).toContain("decodeWorkspaceCreateRequest(value)");
+    expect(preload).toContain("decodeWorkspaceRenameRequest(value)");
+    expect(preload).toContain("decodeWorkspaceDeleteRequest(value)");
+    expect(preload).toContain("decodeWorkspaceRevealRequest(value)");
+    expect(preload).toContain("decodeWorkspaceOperationResult(response)");
+    expect(preload).toContain("decodeWorkspaceDocumentRequest(value)");
+    expect(preload).toContain("decodeWorkspaceDocumentSaveRequest(value)");
+    expect(preload).toContain("decodeWorkspaceDocumentSaveAsRequest(value)");
+    expect(preload).toContain("decodeWorkspaceDocumentResult(response)");
+    expect(preload).toContain("decodeWorkspaceChange(value)");
+    expect(preload).toContain(
+      "ipcRenderer.on(DesktopWorkspaceChangeChannel, workspaceChangeHandler)",
+    );
+    expect(preload).toContain(
+      "ipcRenderer.removeListener(DesktopWorkspaceChangeChannel, workspaceChangeHandler)",
+    );
+    expect(preload).toContain("workspaceChangeListeners.size !== 0");
+    expect(preload).toContain("decodeDesktopRuntimeGatewayRequest(value)");
+    expect(preload).toContain("decodeDesktopRuntimeGatewayResponse(response)");
+    expect(preload).toContain("decodeDesktopRuntimeGatewayEvent(value)");
+    expect(preload).toContain("ipcRenderer.on(DesktopRuntimeGatewayEventChannel, handler)");
+    expect(preload).toContain(
+      "ipcRenderer.removeListener(DesktopRuntimeGatewayEventChannel, handler)",
+    );
+    expect(preload).not.toContain("ipcRenderer.send");
+    expect(preload).not.toContain("MessagePort");
+    expect(preload).not.toContain('require("node:');
+  });
 
   test("the dev launcher skips workspace lifecycle hooks and repairs Electron explicitly", () => {
-    const launcher = read("scripts/oa-dev-launch")
-    expect(launcher).toContain("pnpm install --frozen-lockfile --ignore-scripts")
-    expect(launcher).toContain('node "$electron_package/install.js"')
-  })
+    const launcher = read("scripts/oa-dev-launch");
+    expect(launcher).toContain("pnpm install --frozen-lockfile --ignore-scripts");
+    expect(launcher).toContain('node "$electron_package/install.js"');
+  });
 
   test("main exposes fixed validated channels rather than arbitrary command authority", () => {
-    expect(main).toContain("ipcMain.handle(FleetStageChannel")
-    expect(main).toContain("decodeFleetStageRequest(value)")
-    expect(main).toContain("decodeWorkspaceFileRequest(value)")
-    expect(main).toContain("decodeWorkspaceSaveRequest(value)")
-    expect(main).toContain("decodeWorkspaceGitDiffRequest(value)")
-    expect(main).toContain("decodeWorkspaceTreeRequest(value)")
-    expect(main).toContain("decodeWorkspaceSearchBridgeRequest(value)")
-    expect(main).toContain("decodeWorkspaceSearchCancelRequest(value)")
-    expect(main).toContain("workspaceSearchRegistry.start(workspaceSearchOwnerRef(event.sender.id), request)")
-    expect(main).toContain("workspaceSearchRegistry.cancel(workspaceSearchOwnerRef(event.sender.id), request.requestRef)")
-    expect(main).toContain("workspaceSearchRegistry.closeOwner(searchOwnerRef)")
-    expect(main).toContain("ipcMain.handle(DesktopWorkspaceCreateChannel")
-    expect(main).toContain("ipcMain.handle(DesktopWorkspaceRenameChannel")
-    expect(main).toContain("ipcMain.handle(DesktopWorkspaceDeleteChannel")
-    expect(main).toContain("ipcMain.handle(DesktopWorkspaceRevealChannel")
-    expect(main).toContain("ipcMain.handle(DesktopWorkspaceDocumentOpenChannel")
-    expect(main).toContain("ipcMain.handle(DesktopWorkspaceDocumentSaveChannel")
-    expect(main).toContain("ipcMain.handle(DesktopWorkspaceDocumentSaveAsChannel")
-    expect(main).toContain("workspace.createEntry(request)")
-    expect(main).toContain("workspace.renameEntry(request)")
-    expect(main).toContain("workspace.deleteEntry(request)")
-    expect(main).toContain("workspace.revealEntry(request)")
-    expect(main).toContain("workspace.openDocument(request)")
-    expect(main).toContain("workspace.saveDocument(request)")
-    expect(main).toContain("workspace.saveDocumentAs(request)")
-    expect(main).toContain("shell.showItemInFolder(absolutePath)")
-    expect(main).toContain("decodeWorkspaceWatchRequest(value)")
-    expect(main).toContain("isTrustedRuntimeGatewaySender(event)")
-    expect(main).toContain("rebindWorkspaceChangeSubscriptions()")
-    expect(main).toContain("disableWorkspaceChangeSubscription(window.id)")
-    expect(main).toContain("decodeDesktopRuntimeGatewayRequest(value)")
-    expect(main).toContain("isTrustedRuntimeGatewaySender(event)")
-    expect(main).not.toContain("ipcMain.on(")
-  })
+    expect(main).toContain("ipcMain.handle(FleetStageChannel");
+    expect(main).toContain("decodeFleetStageRequest(value)");
+    expect(main).toContain("decodeWorkspaceFileRequest(value)");
+    expect(main).toContain("decodeWorkspaceSaveRequest(value)");
+    expect(main).toContain("decodeWorkspaceGitDiffRequest(value)");
+    expect(main).toContain("decodeWorkspaceTreeRequest(value)");
+    expect(main).toContain("decodeWorkspaceSearchBridgeRequest(value)");
+    expect(main).toContain("decodeWorkspaceSearchCancelRequest(value)");
+    expect(main).toContain(
+      "workspaceSearchRegistry.start(workspaceSearchOwnerRef(event.sender.id), request)",
+    );
+    expect(main).toContain(
+      "workspaceSearchRegistry.cancel(workspaceSearchOwnerRef(event.sender.id), request.requestRef)",
+    );
+    expect(main).toContain("workspaceSearchRegistry.closeOwner(searchOwnerRef)");
+    expect(main).toContain("ipcMain.handle(DesktopWorkspaceCreateChannel");
+    expect(main).toContain("ipcMain.handle(DesktopWorkspaceRenameChannel");
+    expect(main).toContain("ipcMain.handle(DesktopWorkspaceDeleteChannel");
+    expect(main).toContain("ipcMain.handle(DesktopWorkspaceRevealChannel");
+    expect(main).toContain("ipcMain.handle(DesktopWorkspaceDocumentOpenChannel");
+    expect(main).toContain("ipcMain.handle(DesktopWorkspaceDocumentSaveChannel");
+    expect(main).toContain("ipcMain.handle(DesktopWorkspaceDocumentSaveAsChannel");
+    expect(main).toContain("workspace.createEntry(request)");
+    expect(main).toContain("workspace.renameEntry(request)");
+    expect(main).toContain("workspace.deleteEntry(request)");
+    expect(main).toContain("workspace.revealEntry(request)");
+    expect(main).toContain("workspace.openDocument(request)");
+    expect(main).toContain("workspace.saveDocument(request)");
+    expect(main).toContain("workspace.saveDocumentAs(request)");
+    expect(main).toContain("shell.showItemInFolder(absolutePath)");
+    expect(main).toContain("decodeWorkspaceWatchRequest(value)");
+    expect(main).toContain("isTrustedRuntimeGatewaySender(event)");
+    expect(main).toContain("rebindWorkspaceChangeSubscriptions()");
+    expect(main).toContain("disableWorkspaceChangeSubscription(window.id)");
+    expect(main).toContain("decodeDesktopRuntimeGatewayRequest(value)");
+    expect(main).toContain("isTrustedRuntimeGatewaySender(event)");
+    expect(main).not.toContain("ipcMain.on(");
+  });
 
   test("main composes and resets the bounded Runtime Gateway live registry", () => {
-    expect(main).toContain("createDesktopRuntimeLiveSubscriptions")
-    expect(main).toContain("await runtimeLiveSubscriptions.reset()")
-    expect(main).toContain("() => runtimeLiveSubscriptions")
-    expect(main).toContain("hostLifecycle.sync()?.interactions()")
-    expect(main).toContain("service.decide(command)")
-    expect(main).not.toContain("conversation.live.update")
-  })
+    expect(main).toContain("createDesktopRuntimeLiveSubscriptions");
+    expect(main).toContain("await runtimeLiveSubscriptions.reset()");
+    expect(main).toContain("() => runtimeLiveSubscriptions");
+    expect(main).toContain("hostLifecycle.sync()?.interactions()");
+    expect(main).toContain("service.decide(command)");
+    expect(main).not.toContain("conversation.live.update");
+  });
 
   test("Runtime Gateway contract cannot carry credentials, URLs, raw IPC, or process handles", () => {
-    const contract = stripComments(read("src/runtime-gateway-contract.ts"))
-    for (const banned of ["token", "credential", "ownerUserId", "authorUserId", "url", "MessagePort", "ipcRenderer", "processHandle", "argv"]) {
-      expect(contract.toLowerCase()).not.toContain(banned.toLowerCase())
+    const contract = stripComments(read("src/runtime-gateway-contract.ts"));
+    for (const banned of [
+      "token",
+      "credential",
+      "ownerUserId",
+      "authorUserId",
+      "url",
+      "MessagePort",
+      "ipcRenderer",
+      "processHandle",
+      "argv",
+    ]) {
+      expect(contract.toLowerCase()).not.toContain(banned.toLowerCase());
     }
-  })
+  });
 
   test("normal verification uses checked-in smoke history instead of ambient provider homes", () => {
-    expect(main).toContain('path.join(here, "..", "tests", "fixtures")')
-    expect(main).toContain('path.join(smokeFixtureRoot, "codex-smoke", "sessions")')
-    expect(main).toContain("smokeMode")
-  })
+    expect(main).toContain('path.join(here, "..", "tests", "fixtures")');
+    expect(main).toContain('path.join(smokeFixtureRoot, "codex-smoke", "sessions")');
+    expect(main).toContain("smokeMode");
+  });
 
   test("automated smoke stays hidden unless headed presentation is explicit", () => {
-    const manifest = JSON.parse(read("package.json")) as { scripts?: Record<string, string> }
-    expect(main).toContain("const hiddenAutomationMode = (")
-    expect(main).toContain('process.env.OPENAGENTS_DESKTOP_HEADED !== "1"')
-    expect(main).toContain("if (!hiddenAutomationMode) window.show()")
-    expect(main).toContain("if (hiddenAutomationMode) return")
-    expect(main).toContain("if (hiddenAutomationMode) app.dock?.hide()")
-    expect(main).toContain("headless smoke unexpectedly exposed the desktop window")
-    expect(manifest.scripts?.["smoke"]).not.toContain("DESKTOP_HEADED")
-    expect(manifest.scripts?.["smoke:headed"]).toContain("OPENAGENTS_DESKTOP_HEADED=1")
-  })
+    const manifest = JSON.parse(read("package.json")) as { scripts?: Record<string, string> };
+    expect(main).toContain("const hiddenAutomationMode = (");
+    expect(main).toContain('process.env.OPENAGENTS_DESKTOP_HEADED !== "1"');
+    expect(main).toContain("if (!hiddenAutomationMode) window.show()");
+    expect(main).toContain("if (hiddenAutomationMode) return");
+    expect(main).toContain("if (hiddenAutomationMode) app.dock?.hide()");
+    expect(main).toContain("headless smoke unexpectedly exposed the desktop window");
+    expect(manifest.scripts?.["smoke"]).not.toContain("DESKTOP_HEADED");
+    expect(manifest.scripts?.["smoke:headed"]).toContain("OPENAGENTS_DESKTOP_HEADED=1");
+  });
 
   test("Khala Sync database identity and path remain in Electron main", () => {
-    const preload = stripComments(read("src/preload.cts"))
-    const renderer = stripComments(read("src/renderer/boot.ts"))
+    const preload = stripComments(read("src/preload.cts"));
+    const renderer = stripComments(read("src/renderer/boot.ts"));
     for (const source of [preload, renderer]) {
-      expect(source).not.toContain("khala-sync.sqlite")
-      expect(source).not.toContain("openagents-desktop.")
-      expect(source).not.toContain("openKhalaSyncStore")
+      expect(source).not.toContain("khala-sync.sqlite");
+      expect(source).not.toContain("openagents-desktop.");
+      expect(source).not.toContain("openKhalaSyncStore");
     }
-    expect(main).toContain('"sync", "khala-sync.sqlite"')
-    expect(main).toContain("hostLifecycle.replaceSync(syncHost)")
-    expect(main).toContain("hostLifecycle.dispose()")
-  })
+    expect(main).toContain('"sync", "khala-sync.sqlite"');
+    expect(main).toContain("hostLifecycle.replaceSync(syncHost)");
+    expect(main).toContain("hostLifecycle.dispose()");
+  });
 
   test("native session custody remains behind Electron main safeStorage", () => {
-    const preload = stripComments(read("src/preload.cts"))
-    const renderer = stripComments(read("src/renderer/boot.ts"))
+    const preload = stripComments(read("src/preload.cts"));
+    const renderer = stripComments(read("src/renderer/boot.ts"));
     for (const source of [preload, renderer]) {
-      expect(source).not.toContain("safeStorage")
-      expect(source).not.toContain("native-session.enc")
-      expect(source).not.toContain("DesktopSessionCredential")
+      expect(source).not.toContain("safeStorage");
+      expect(source).not.toContain("native-session.enc");
+      expect(source).not.toContain("DesktopSessionCredential");
     }
-    expect(main).toContain("safeStorage")
-    expect(main).toContain('"session", "native-session.enc"')
-    expect(main).toContain("desktopSessionVault.recover().state")
-    expect(main).toContain("recoverVerifiedDesktopSession")
-    expect(main).toContain("signInDesktopSession")
-    expect(main).toContain("signOutDesktopSession")
-    expect(main).toContain("openExternal: url => shell.openExternal(url)")
-  })
+    expect(main).toContain("safeStorage");
+    expect(main).toContain('"session", "native-session.enc"');
+    expect(main).toContain("desktopSessionVault.recover().state");
+    expect(main).toContain("recoverVerifiedDesktopSession");
+    expect(main).toContain("signInDesktopSession");
+    expect(main).toContain("signOutDesktopSession");
+    expect(main).toContain("openExternal: url => shell.openExternal(url)");
+  });
 
   test("workspace filesystem authority starts only after an explicit directory choice", () => {
-    expect(main).toContain("makeDesktopHostLifecycle")
-    expect(main).toContain('properties: ["openDirectory", "createDirectory"]')
-    expect(main).toContain("defaultPath: currentRoot")
-    expect(main).toContain("const root = result.filePaths[0]")
-    expect(main).toContain("selectedRoot === null ? null : workspaceSnapshot()")
-    expect(main).toContain("hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))")
-    expect(main).toContain("const openSelectedWorkspace = (root: string) => openWorkspaceService(root")
-    expect(main).not.toContain("let workspaceRoot")
-    expect(main).not.toContain("OPENAGENTS_DESKTOP_WORKSPACE")
-  })
+    expect(main).toContain("makeDesktopHostLifecycle");
+    expect(main).toContain('properties: ["openDirectory", "createDirectory"]');
+    expect(main).toContain("defaultPath: currentRoot");
+    expect(main).toContain("const root = result.filePaths[0]");
+    expect(main).toContain("selectedRoot === null ? null : workspaceSnapshot()");
+    expect(main).toContain("hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))");
+    expect(main).toContain(
+      "const openSelectedWorkspace = (root: string) => openWorkspaceService(root",
+    );
+    expect(main).not.toContain("let workspaceRoot");
+    expect(main).not.toContain("OPENAGENTS_DESKTOP_WORKSPACE");
+  });
 
   test("renderer CSP is restrictive (no remote script/connect surface)", () => {
-    const html = read("index.html")
-    expect(html).toContain("Content-Security-Policy")
-    expect(html).toContain("default-src 'none'")
-    expect(html).toContain("script-src 'self'")
-    expect(html).toContain("connect-src 'none'")
-  })
+    const html = read("index.html");
+    expect(html).toContain("Content-Security-Policy");
+    expect(html).toContain("default-src 'none'");
+    expect(html).toContain("script-src 'self'");
+    expect(html).toContain("connect-src 'none'");
+  });
 
   test("recent-chat sidebar CSS is plain text and never restores card chrome", () => {
-    const css = read("src/renderer/app.css")
-    expect(css).not.toContain('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')
-    expect(css).toContain('[data-en-key^="sidebar-thread-"] > [data-en-role="meta"]')
-    expect(css).toContain("text-overflow: ellipsis")
-    expect(css).not.toMatch(/\[data-en-key\^="sidebar-thread-"\][^{]*\{[^}]*(?:background|border|border-radius|box-shadow)\s*:/s)
-  })
-})
+    const css = read("src/renderer/app.css");
+    expect(css).not.toContain('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]');
+    expect(css).toContain('[data-en-key^="sidebar-thread-"] > [data-en-role="meta"]');
+    expect(css).toContain("text-overflow: ellipsis");
+    expect(css).not.toMatch(
+      /\[data-en-key\^="sidebar-thread-"\][^{]*\{[^}]*(?:background|border|border-radius|box-shadow)\s*:/s,
+    );
+  });
+});
 
 describe("Effect Native renderer boundary (no parallel UI architecture)", () => {
-  const rendererDir = path.join(appRoot, "src/renderer")
+  const rendererDir = path.join(appRoot, "src/renderer");
   const reactHostFiles = new Set([
     "boot.ts",
     "lexical-composer-editor.tsx",
@@ -260,73 +286,79 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     "react-review.tsx",
     "react-sensitive-text.tsx",
     "react-timeline.tsx",
-  ])
+    "visual-baseline-workbench.tsx",
+  ]);
   const rendererSources = readdirSync(rendererDir)
     .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))
     .map((name) => ({
       name,
       source: stripComments(readFileSync(path.join(rendererDir, name), "utf8")),
-    }))
+    }));
 
   test("Desktop mounts the shared React-owned Effect Native surface", () => {
-    const boot = read("src/renderer/boot.ts")
-    expect(boot).toContain('from "@effect-native/render-dom/react"')
-    expect(boot).toContain("compatibilityRequested")
-    expect(boot).toContain('dataset.desktopRenderer = compatibilityRequested ? "compatibility" : "react"')
-    expect(boot).toContain("mountReactWorkbench(root, SubscriptionRef.changes(state), report, { theme })")
-    expect(boot).toContain("makeReactDomRenderer({")
-    expect(boot).toContain('backend: "compatibility"')
-    expect(boot).not.toContain("makeDomRenderer({")
-  })
+    const boot = read("src/renderer/boot.ts");
+    expect(boot).toContain('from "@effect-native/render-dom/react"');
+    expect(boot).toContain("compatibilityRequested");
+    expect(boot).toContain(
+      'dataset.desktopRenderer = compatibilityRequested ? "compatibility" : "react"',
+    );
+    expect(boot).toContain(
+      "mountReactWorkbench(root, SubscriptionRef.changes(state), report, { theme })",
+    );
+    expect(boot).toContain("makeReactDomRenderer({");
+    expect(boot).toContain('backend: "compatibility"');
+    expect(boot).not.toContain("makeDomRenderer({");
+  });
 
   test("renderer imports only EN, scoped React host libraries, and sibling modules", () => {
     const sharedOrSibling =
-      /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/
-    const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|@lexical\/react\/[A-Za-z]+|lexical|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/
-    const sharedReactWorkbenchImport = "@openagentsinc/ui/desktop-workbench"
+      /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/;
+    const reactHostImport =
+      /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|@lexical\/react\/[A-Za-z]+|lexical|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/;
+    const sharedReactWorkbenchImport = "@openagentsinc/ui/desktop-workbench";
     for (const { name, source } of rendererSources) {
-      const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!)
-      specifiers.push(...[...source.matchAll(/import\s+"([^"]+)"/g)].map((match) => match[1]!))
+      const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!);
+      specifiers.push(...[...source.matchAll(/import\s+"([^"]+)"/g)].map((match) => match[1]!));
       for (const specifier of specifiers) {
         expect(
           sharedOrSibling.test(specifier) ||
             (reactHostFiles.has(name) &&
               (reactHostImport.test(specifier) || specifier === sharedReactWorkbenchImport)),
           `${name} imports disallowed renderer dependency ${specifier}`,
-        ).toBe(true)
+        ).toBe(true);
       }
     }
-  })
+  });
 
   test("portable Effect Native state, recipes, projections, and intents stay React-free", () => {
     for (const { name, source } of rendererSources) {
-      if (reactHostFiles.has(name)) continue
-      expect(name).not.toMatch(/\.tsx$/)
-      expect(source).not.toMatch(/from\s+"(?:react|react-dom|@base-ui\/react)/)
-      expect(source).not.toContain("className=")
-      expect(source).not.toContain("ReactNode")
+      if (reactHostFiles.has(name)) continue;
+      expect(name).not.toMatch(/\.tsx$/);
+      expect(source).not.toMatch(/from\s+"(?:react|react-dom|@base-ui\/react)/);
+      expect(source).not.toContain("className=");
+      expect(source).not.toContain("ReactNode");
     }
-  })
+  });
 
   test("renderer never touches Electron or Node builtins", () => {
     for (const { name, source } of rendererSources) {
-      expect(source).not.toContain('from "electron"')
-      expect(source).not.toContain('from "node:')
-      expect(source).not.toContain("process.")
+      expect(source).not.toContain('from "electron"');
+      expect(source).not.toContain('from "node:');
+      expect(source).not.toContain("process.");
     }
-  })
+  });
 
   test("React stack is renderer-only; no parallel router, store, schema, or starter kit returns", () => {
     const manifest = JSON.parse(read("package.json")) as {
-      dependencies?: Record<string, string>
-      devDependencies?: Record<string, string>
-    }
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
     const dependencyNames = [
       ...Object.keys(manifest.dependencies ?? {}),
       ...Object.keys(manifest.devDependencies ?? {}),
-    ]
-    expect(manifest.dependencies?.react).toBe("19.2.7")
-    expect(manifest.dependencies?.["react-dom"]).toBe("19.2.7")
+    ];
+    expect(manifest.dependencies?.react).toBe("19.2.7");
+    expect(manifest.dependencies?.["react-dom"]).toBe("19.2.7");
     expect(dependencyNames).toEqual(
       expect.arrayContaining([
         "react",
@@ -336,63 +368,72 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
         "@vitejs/plugin-react",
         "vite",
       ]),
-    )
-    expect(manifest.dependencies?.shadcn).toBeUndefined()
-    expect(manifest.devDependencies?.shadcn).toMatch(/^\^4\./)
-    expect(manifest.dependencies?.["@base-ui/react"]).toMatch(/^\^1\./)
-    const banned = [/^zod$/, /@orpc\//, /@tanstack\//, /radix/, /^zustand$/, /^@effect\/atom-react$/]
+    );
+    expect(manifest.dependencies?.shadcn).toBeUndefined();
+    expect(manifest.devDependencies?.shadcn).toMatch(/^\^4\./);
+    expect(manifest.dependencies?.["@base-ui/react"]).toMatch(/^\^1\./);
+    const banned = [
+      /^zod$/,
+      /@orpc\//,
+      /@tanstack\//,
+      /radix/,
+      /^zustand$/,
+      /^@effect\/atom-react$/,
+    ];
     for (const name of dependencyNames) {
       for (const pattern of banned) {
-        expect(name).not.toMatch(pattern)
+        expect(name).not.toMatch(pattern);
       }
     }
-  })
+  });
 
   test("generated shadcn sources remain renderer-only components without host or domain authority", () => {
-    const componentDir = path.join(appRoot, "src/components/ui")
-    const allowedImport = /^(react|@base-ui\/react(?:\/[a-z-]+)?|@shadcn\/react\/message-scroller|class-variance-authority|cmdk|lucide-react|#lib\/utils|#components\/ui\/[a-z-]+)$/
-    for (const name of readdirSync(componentDir).filter(value => value.endsWith(".tsx"))) {
-      const source = stripComments(read(`src/components/ui/${name}`))
-      const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map(match => match[1]!)
-      for (const specifier of imports) expect(specifier, `${name}: ${specifier}`).toMatch(allowedImport)
-      expect(source).not.toContain("@effect-native")
-      expect(source).not.toContain("electron")
-      expect(source).not.toContain("node:")
-      expect(source).not.toContain("openagentsDesktop")
+    const componentDir = path.join(appRoot, "src/components/ui");
+    const allowedImport =
+      /^(react|@base-ui\/react(?:\/[a-z-]+)?|@shadcn\/react\/message-scroller|class-variance-authority|cmdk|lucide-react|#lib\/utils|#components\/ui\/[a-z-]+)$/;
+    for (const name of readdirSync(componentDir).filter((value) => value.endsWith(".tsx"))) {
+      const source = stripComments(read(`src/components/ui/${name}`));
+      const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!);
+      for (const specifier of imports)
+        expect(specifier, `${name}: ${specifier}`).toMatch(allowedImport);
+      expect(source).not.toContain("@effect-native");
+      expect(source).not.toContain("electron");
+      expect(source).not.toContain("node:");
+      expect(source).not.toContain("openagentsDesktop");
     }
-  })
+  });
 
   test("no legacy desktop app import (greenfield law: extract, not inherit)", () => {
     for (const { name, source } of rendererSources) {
-      expect(source).not.toContain("khala-code-desktop")
-      expect(source).not.toContain("electrobun")
+      expect(source).not.toContain("khala-code-desktop");
+      expect(source).not.toContain("electrobun");
     }
-  })
-})
+  });
+});
 
 describe("OpenAI Apps SDK icon catalog", () => {
   test("Effect Native DOM resolves its closed icon contract through the shared catalog", () => {
-    const domRenderer = read("../openagents.com/packages/effect-native-render-dom/src/index.ts")
-    const catalog = read("../openagents.com/packages/effect-native-core/src/index.ts")
+    const domRenderer = read("../openagents.com/packages/effect-native-render-dom/src/index.ts");
+    const catalog = read("../openagents.com/packages/effect-native-core/src/index.ts");
     // openagents#8813 Lane A: render-dom owns its icon SVG registry
     // (./icons.ts, iconAssetSvg) instead of depending on legacy
     // `@openagentsinc/ui/icon` — EN must never depend on legacy ui.
-    expect(domRenderer).toContain('from "./icons"')
-    expect(domRenderer).not.toContain("@openagentsinc/ui")
-    expect(domRenderer).toContain('name === "Compose" ? "ChatCompose" : name')
-    expect(domRenderer).toContain("iconAssetSvg[assetName]")
-    expect(catalog).toContain('"ChatCompose"')
-    expect(catalog).toContain('"Agent"')
-  })
-})
+    expect(domRenderer).toContain('from "./icons"');
+    expect(domRenderer).not.toContain("@openagentsinc/ui");
+    expect(domRenderer).toContain('name === "Compose" ? "ChatCompose" : name');
+    expect(domRenderer).toContain("iconAssetSvg[assetName]");
+    expect(catalog).toContain('"ChatCompose"');
+    expect(catalog).toContain('"Agent"');
+  });
+});
 
 describe("Effect Native Liquid Glass lowering", () => {
   test("desktop backdrop and glass surfaces are authored in the catalog, not CSS-only", () => {
-    const shell = read("src/renderer/shell.ts")
-    const domRenderer = read("../openagents.com/packages/effect-native-render-dom/src/index.ts")
-    expect(shell).toContain("BackgroundGradient(")
-    expect(shell).toContain('surface: "glass"')
-    expect(domRenderer).toContain("mobile SwiftUI")
-    expect(domRenderer).toContain("blur(28px) saturate(1.35)")
-  })
-})
+    const shell = read("src/renderer/shell.ts");
+    const domRenderer = read("../openagents.com/packages/effect-native-render-dom/src/index.ts");
+    expect(shell).toContain("BackgroundGradient(");
+    expect(shell).toContain('surface: "glass"');
+    expect(domRenderer).toContain("mobile SwiftUI");
+    expect(domRenderer).toContain("blur(28px) saturate(1.35)");
+  });
+});
