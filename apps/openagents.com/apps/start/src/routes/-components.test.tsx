@@ -84,7 +84,13 @@ describe("Start components workbench routes", () => {
     expect(html).toContain('data-storybook-story="command-completed"');
     expect(html).toContain('data-storybook-story="command-failed"');
     expect(html).toContain('data-storybook-story="command-capped"');
-    expect(html.match(/data-kind="commandExecution"/g)).toHaveLength(4);
+    // 4 direct DesktopCommandCard stories (T4 #8861) + 1 more rendered
+    // through dispatchWorkbenchItem's "command" branch for the "declined"
+    // status, which has no distinct DesktopActivityStatus of its own
+    // (issue 8870, epic 8857 T13 — see -components-workbench-page.tsx's
+    // "Notices and long-tail rows" section).
+    expect(html.match(/data-kind="commandExecution"/g)).toHaveLength(5);
+    expect(html).toContain('data-storybook-story="dispatch-command-declined"');
     expect(html).toContain("Earlier output omitted");
     expect(html).toContain('data-storybook-story="file-turn-running"');
     expect(html).toContain('data-storybook-story="file-completed"');
