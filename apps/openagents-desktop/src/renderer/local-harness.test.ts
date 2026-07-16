@@ -390,6 +390,19 @@ describe("makeLocalHarnessChatHost", () => {
     expect(result).toEqual({ ok: false, error: "The local Claude lane returned an invalid response.", failureKind: "failed" })
   })
 
+  test("an interrupted provider result remains interrupted at the renderer boundary", async () => {
+    const harness = makeHarness()
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "fable" })
+    await settle()
+    harness.resolveStart({ ok: false, reason: "interrupted", error: "Turn interrupted." })
+    expect(await pending).toEqual({
+      ok: false,
+      reason: "interrupted",
+      error: "Turn interrupted.",
+      failureKind: "interrupted",
+    })
+  })
+
   test("steerChild routes an interrupt to the active lane by exact ref (EP250 wave-2 G4)", async () => {
     const harness = makeHarness()
     const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "fable" })

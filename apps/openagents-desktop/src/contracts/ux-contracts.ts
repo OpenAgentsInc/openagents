@@ -1052,7 +1052,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "interrupt a running turn from the UI",
         authorityBoundary:
-          "While a turn streams (pending), the composer's trailing icon-only Send is replaced by an icon-only Stop that dispatches the DesktopTurnInterrupted intent; the handler signals the active local lane's already-plumbed interrupt IPC path (FableLocal/CodexLocal interrupt channel) by the exact active turnRef and invents no terminal state — the runtime's typed `interrupted` failure is what finalizes the turn and reverts the control to Send. Stop grants no new authority: it cannot start a turn, route to another lane, or fabricate a completion, and a host without a local streaming lane simply no-ops.",
+          "While a turn streams (pending), the composer's trailing icon-only Send is replaced by an icon-only Stop that dispatches the DesktopTurnInterrupted intent for the exact active thread. The handler signals that thread's already-plumbed local-lane interrupt IPC path and invents no terminal state — the runtime's typed `interrupted` result finalizes the turn and reverts the control to Send. An owner-requested Stop is neutral presentation: it creates neither a Turn failed banner nor an error timeline row, while the durable journal retains `owner_interrupted` truth. Stop grants no new authority: it cannot start a turn, route to another lane, or fabricate a completion, and a host without a matching local streaming lane simply no-ops.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/local-harness.ts",
@@ -1067,7 +1067,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Proves the composer renders the icon-only Stop (and no Send) while pending and Send (no Stop) while idle, and that dispatching DesktopTurnInterrupted through the real intent registry calls the chat host's interruptActive exactly once when pending and never when idle.",
+              "Proves the composer renders the icon-only Stop (and no Send) while pending and Send (no Stop) while idle, dispatches interruption only for the selected pending thread, and settles an owner interruption without an error row or failure banner state.",
           },
           {
             id: "composer_stop_button.interrupt_path",
@@ -2663,6 +2663,45 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "The normal Desktop test sweep runs the source-ordering falsifier, the typed handler first-submit test, and the React composer admission-race test.",
+      },
+      {
+        contractId: "openagents_desktop.chat.per_conversation_composer_ownership.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat selection and composer ownership",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-live-review", statedBy: "owner", statedOn: "2026-07-16" },
+        statement:
+          "Composer state and turn controls belong to the selected chat. Switching chats must not move a draft, Send to another thread, or make Stop control a different thread.",
+        authorityBoundary:
+          "Every local chat owns an in-memory draft keyed by its exact durable thread ref; switching restores only that chat's draft and pending/failure projection. A turn freezes its originating thread ref before dispatch, and late updates or completion may update that thread's catalog entry but may never replace a newer selection or draft. Provider-history pages are read-only and mount no composer; a synthetic submit while history is selected fails closed and never falls through to newThread. Async selection is latest-intent-wins, and interruption checks the exact selected pending thread.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/react-composer.tsx",
+          "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+        ],
+        oracles: [
+          {
+            id: "per_conversation_composer.draft_and_target_isolation",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves A/B draft restoration, blank New Chat isolation, quiet owner interruption, and that a selected provider-history page can never invoke newThread or sendMessage.",
+          },
+          {
+            id: "per_conversation_composer.typed_interrupt_boundary",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
+            description:
+              "Proves the provider-lane interrupted reason survives the dispatcher/renderer boundary as failureKind interrupted rather than generic failed.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, behavior-contract validation, and the focused shell, local-harness, provider-lane, React composer, and workbench suites.",
       },
       {
         contractId: "openagents_desktop.chat.new_chat_always_exits_history.v1",

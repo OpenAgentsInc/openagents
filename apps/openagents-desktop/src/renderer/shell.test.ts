@@ -1595,6 +1595,25 @@ describe("pure transitions", () => {
     expect(withNote(baseState, "   ", "18:05")).toBe(baseState)
   })
 
+  test("composer drafts are isolated by exact local thread selection", () => {
+    const other = { ...testThread, id: "thread-2", title: "Other chat", notes: [] }
+    const draftedFirst = withInput(baseState, "draft for the first chat")
+    const selectedOther = withChatSelected(draftedFirst, other)
+    expect(selectedOther.input).toBe("")
+
+    const draftedOther = withInput(selectedOther, "draft for the other chat")
+    expect(withChatSelected(draftedOther, testThread).input).toBe("draft for the first chat")
+    expect(withChatSelected(draftedOther, other).input).toBe("draft for the other chat")
+  })
+
+  test("new chat starts blank without erasing the previous chat draft", () => {
+    const drafted = withInput(baseState, "keep this draft")
+    const fresh = { ...testThread, id: "thread-fresh", title: "New chat", notes: [] }
+    const selectedFresh = withNewChat(drafted, fresh)
+    expect(selectedFresh.input).toBe("")
+    expect(withChatSelected(selectedFresh, testThread).input).toBe("keep this draft")
+  })
+
   test("withPending toggles the composer-disabling flag without touching notes", () => {
     const pending = withPending(baseState, true)
     expect(pending.pending).toBe(true)
@@ -1622,6 +1641,19 @@ describe("pure transitions", () => {
         timestamp: "18:06",
       },
     ])
+  })
+
+  test("an owner-interrupted turn settles quietly without an error row or banner state", () => {
+    const pending = withNote(baseState, "stop this", "18:05")
+    const next = withTurnResult(pending, {
+      ok: false,
+      error: "Local Codex turn was interrupted.",
+      failureKind: "interrupted",
+    }, "18:06")
+
+    expect(next.pending).toBe(false)
+    expect(next.runtimeFailure).toBeNull()
+    expect(next.notes).toEqual([])
   })
 
   test("legacy Project home state renders chat and no Project home surface", () => {
@@ -2281,13 +2313,13 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
   test("EP250 Stop button intent loop: DesktopTurnInterrupted calls chat.interruptActive once while pending, never while idle (openagents_desktop.chat.composer_stop_button.v1)", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        let interrupts = 0
+        const interruptedThreads: Array<string | undefined> = []
         const chatHost = {
           listThreads: async () => [],
           newThread: async () => null,
           openThread: async () => null,
           sendMessage: async () => ({ ok: false, error: "unused in this test" }),
-          interruptActive: async () => { interrupts += 1; return true },
+          interruptActive: async (threadRef?: string) => { interruptedThreads.push(threadRef); return true },
         }
         // Idle: the Stop control is not even rendered, but a stray dispatch must
         // still no-op (the handler is guarded on pending).
@@ -2297,7 +2329,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
         )
         yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted"), null))
-        expect(interrupts).toBe(0)
+        expect(interruptedThreads).toEqual([])
 
         // Streaming: the composer renders the real Stop control; its onPress
         // intent drives the interrupt seam exactly once.
@@ -2306,7 +2338,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           onPress: Parameters<typeof resolveIntentRef>[0]
         }
         yield* registry.dispatch(resolveIntentRef(stop.onPress, null))
-        expect(interrupts).toBe(1)
+        expect(interruptedThreads).toEqual([testThread.id])
       }),
     )
   })
@@ -2600,6 +2632,38 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
       expect(next.activeThreadId).toBe(resumable.id)
       expect(next.notes).toEqual(resumable.notes)
       expect(next.history.page).toBeNull()
+    }))
+  })
+
+  test("a selected provider-history chat can never fall through to new-thread submission", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      let created = 0
+      let sent = 0
+      const initial: DesktopShellState = {
+        ...baseState,
+        activeThreadId: null,
+        input: "Continue.",
+        composerDraftsByThread: { [historyPageFixture.selectedThreadRef]: "Continue." },
+        history: { ...baseState.history, page: historyPageFixture },
+      }
+      const state = yield* SubscriptionRef.make(initial)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(
+        state,
+        fixedNow,
+        undefined,
+        {
+          listThreads: async () => [],
+          newThread: async () => { created += 1; return testThread },
+          openThread: async () => null,
+          sendMessage: async () => { sent += 1; return { ok: true, thread: testThread } },
+        },
+      ))
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Continue."))))
+      expect(created).toBe(0)
+      expect(sent).toBe(0)
+      expect((yield* SubscriptionRef.get(state)).history.page?.selectedThreadRef)
+        .toBe(historyPageFixture.selectedThreadRef)
     }))
   })
 

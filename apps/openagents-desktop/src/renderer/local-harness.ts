@@ -141,7 +141,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
    * composer Stop button (EP250) can drive the lane's already-plumbed
    * interrupt IPC path by its exact turnRef. One local turn runs at a time.
    */
-  let activeTurn: { bridge: FableLocalRendererBridge; turnRef: string } | null = null
+  let activeTurn: { bridge: FableLocalRendererBridge; turnRef: string; threadRef: string } | null = null
 
   /** One shared streaming projection for both local lanes: trace lines
    * first, growing assistant bubble last — the same order the finalized
@@ -539,7 +539,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       // own; the invoke result finalizes the thread.
     })
     try {
-      activeTurn = { bridge, turnRef }
+      activeTurn = { bridge, turnRef, threadRef: send.id }
       const raw = await bridge.start({
         turnRef,
         threadRef: send.id,
@@ -586,9 +586,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
      * frozen interrupt channel by the exact active turnRef; the runtime aborts
      * and emits a typed `interrupted` failure that finalizes the turn.
      */
-    interruptActive: async () => {
+    interruptActive: async threadRef => {
       const active = activeTurn
-      if (active === null) return false
+      if (active === null || (threadRef !== undefined && active.threadRef !== threadRef)) return false
       const raw = await active.bridge.interrupt({ turnRef: active.turnRef })
       return raw === true
     },

@@ -1122,7 +1122,9 @@ describe("durable runtime turn controls (CUT-16)", () => {
     await until(() => fixture.commands.length >= 3)
     await new Promise(resolve => setTimeout(resolve, 5))
 
-    expect(await fixture.chat.interruptActive!()).toBe(true)
+    expect(await fixture.chat.interruptActive!("another-thread")).toBe(false)
+    expect(fixture.commands.some(command => command.id === "conversation.interrupt")).toBe(false)
+    expect(await fixture.chat.interruptActive!(fixture.threadRef)).toBe(true)
     const interrupt = fixture.commands.find(command => command.id === "conversation.interrupt")
     const runRef = fixture.startedRunRefs()[0]!
     expect(interrupt).toEqual({

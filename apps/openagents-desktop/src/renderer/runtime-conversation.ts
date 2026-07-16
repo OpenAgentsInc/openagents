@@ -566,12 +566,12 @@ export const makeRuntimeConversationChatHost = (
         await observer?.close()
       }
     },
-    interruptActive: async () => {
+    interruptActive: async threadRef => {
       // Stop acts only on the exact durable send this renderer has in flight.
       // Admission truth only: the confirmed canceled terminal (not this
       // acknowledgement) is what finalizes the turn and reverts the composer.
       const send = activeSend
-      if (send === null) return false
+      if (send === null || (threadRef !== undefined && send.threadRef !== threadRef)) return false
       const run = send.observer !== null
         ? send.observer.timeline()?.run ?? null
         : await (async () => {

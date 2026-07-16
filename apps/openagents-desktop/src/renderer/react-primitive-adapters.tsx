@@ -141,7 +141,7 @@ const selectedTitle = (state: DesktopShellState): string => {
 }
 
 const selectedLifecycle = (state: DesktopShellState): string => {
-  if (state.pending) return "Running"
+  if (state.activeThreadId !== null && state.pending) return "Running"
   if (state.history.pendingThreadRef !== null && state.history.pendingThreadRef !== undefined) return "Loading"
   const selected = state.history.page?.selectedThreadRef
   const status = state.history.catalog.agents.find(agent => agent.threadRef === selected)?.status
@@ -435,10 +435,10 @@ export const WorkbenchShell = ({ state, report }: {
     <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} />
     {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     {workspaceSurface ?? <DesktopConversation
-      composer={<ReactComposer state={state} report={report} />}
+      composer={state.history.page === null ? <ReactComposer state={state} report={report} /> : null}
       header={<ConversationHeader state={state} />}
       notices={<StatusNotices state={state} report={report} />}
-      timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.pending} workingDirectory={state.workingDirectory} report={report} />}
+      timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending} workingDirectory={state.workingDirectory} report={report} />}
     />}
     {codexUpdateAvailable && dismissedCodexVersion !== codex.latestVersion
       ? <Alert className="oa-react-codex-update-notice" role="status">

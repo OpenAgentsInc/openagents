@@ -450,7 +450,11 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
       await settle()
       expect(harness.lane.interrupt("turn-fixture-1")).toBe(true)
       const result = await pending
-      expect(result).toEqual({ ok: false, error: "The fixture lane turn failed (interrupted · turn interrupted)." })
+      expect(result).toEqual({
+        ok: false,
+        reason: "interrupted",
+        error: "The fixture lane turn failed (interrupted · turn interrupted).",
+      })
       const record = harness.journal.get({
         threadRef: thread.id,
         turnRef: "turn-fixture-1",

@@ -44,7 +44,7 @@ describe("revision 3 conversation-first assurance gates", () => {
   })
 
   test("binds active streaming state and the actual rail scroll viewport", () => {
-    expect(shell).toContain('working={state.pending}')
+    expect(shell).toContain('working={state.activeThreadId !== null && state.pending}')
     expect(styles).toContain('.oa-react-session-scroll')
     expect(styles).toContain('[data-slot="scroll-area-viewport"]')
     expect(styles).toContain('overscroll-behavior: contain')

@@ -211,6 +211,8 @@ export type ProviderLaneDispatchResult = Readonly<{
   ok: boolean
   thread?: DesktopThread | null
   error?: string
+  /** Preserve the provider's typed terminal reason across the IPC boundary. */
+  reason?: FableLocalFailureReason
 }>
 
 /** Host services the dispatcher folds every lane through — narrow structural
@@ -472,7 +474,11 @@ export const makeProviderLaneDispatcher = (
           result.reason === "interrupted" ? "owner_interrupted" : "failed",
         )
       }
-      return { ok: false, error: lane.failureMessage(result.reason, result.detail) }
+      return {
+        ok: false,
+        reason: result.reason,
+        error: lane.failureMessage(result.reason, result.detail),
+      }
     }
     textPersistence.complete(result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT))
     deps.localTurnFlushers.delete(textPersistence.flush)

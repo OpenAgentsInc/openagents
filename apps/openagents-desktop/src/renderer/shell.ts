@@ -317,10 +317,16 @@ export type DesktopShellState = Readonly<{
   /** Host identity decoded from the preload bridge ("electron/darwin" etc.). */
   host: string
   input: string
+  /** In-memory drafts keyed by the exact selected conversation ("" is the fresh composer). */
+  composerDraftsByThread: Readonly<Record<string, string>>
   /** True while a submission is in flight; the composer disables itself. */
   pending: boolean
+  /** Turn activity belongs to a thread, never to whichever chat is currently visible. */
+  pendingByThread: Readonly<Record<string, boolean>>
   /** Last typed turn/runtime failure; null after a new admitted turn or success. */
   runtimeFailure: DesktopRuntimeFailureKind | null
+  /** Runtime outcomes are scoped to their originating thread. */
+  runtimeFailureByThread: Readonly<Record<string, DesktopRuntimeFailureKind | null>>
   /**
    * Pending composer image attachments (capability I1): bounded base64 held in
    * the renderer, shown as thumbnails with remove, threaded into the next
@@ -494,8 +500,11 @@ export const initialDesktopShellState = (
 ): DesktopShellState => ({
   host,
   input: "",
+  composerDraftsByThread: {},
   pending: false,
+  pendingByThread: {},
   runtimeFailure: null,
+  runtimeFailureByThread: {},
   composerImages: [],
   composerImageNotice: null,
   composerReviewContext: null,
@@ -888,15 +897,25 @@ export type CodexHistoryHost = Readonly<{
 // Pure state transitions (unit-tested directly).
 // ---------------------------------------------------------------------------
 
-export const withInput = (state: DesktopShellState, input: string): DesktopShellState => ({
-  ...state,
-  input,
-  ...(input === state.input ? {} : { composerIntentIdentity: null }),
-})
+export const activeComposerThreadKey = (state: DesktopShellState): string =>
+  state.activeThreadId ?? state.history.page?.selectedThreadRef ?? ""
+
+export const withInput = (state: DesktopShellState, input: string): DesktopShellState => {
+  const key = activeComposerThreadKey(state)
+  return {
+    ...state,
+    input,
+    composerDraftsByThread: { ...state.composerDraftsByThread, [key]: input },
+    ...(input === state.input ? {} : { composerIntentIdentity: null }),
+  }
+}
 
 export const withPending = (state: DesktopShellState, pending: boolean): DesktopShellState => ({
   ...state,
   pending,
+  ...(state.activeThreadId === null ? {} : {
+    pendingByThread: { ...state.pendingByThread, [state.activeThreadId]: pending },
+  }),
 })
 
 export const withFleetDesk = (state: DesktopShellState): DesktopShellState => ({
@@ -911,8 +930,9 @@ export const withFleetObjective = (
 
 export const withNewChat = (state: DesktopShellState, thread: DesktopThread): DesktopShellState => ({
   ...state,
-  input: "",
-  pending: false,
+  input: state.composerDraftsByThread[thread.id] ?? "",
+  pending: state.pendingByThread[thread.id] ?? false,
+  runtimeFailure: state.runtimeFailureByThread[thread.id] ?? null,
   notes: thread.notes,
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
@@ -946,6 +966,7 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
 })
 
 export const withChatSelected = (state: DesktopShellState, thread: DesktopThread): DesktopShellState => {
+  const changedThread = state.activeThreadId !== thread.id
   // Streaming local-harness thread projections carry transcript notes only.
   // They race with the independent canonical live-graph push stream, so a
   // same-thread graphless projection must not erase the newer graph. A real
@@ -960,6 +981,9 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
     (state.activeThreadId === thread.id ? state.meter ?? undefined : undefined)
   return {
     ...state,
+    input: changedThread ? state.composerDraftsByThread[thread.id] ?? "" : state.input,
+    pending: changedThread ? state.pendingByThread[thread.id] ?? false : state.pending,
+    runtimeFailure: changedThread ? state.runtimeFailureByThread[thread.id] ?? null : state.runtimeFailure,
     notes: thread.notes,
     activeThreadId: thread.id,
     questionCards: state.activeThreadId === thread.id
@@ -1246,6 +1270,14 @@ export const withNote = (
     ...state,
     input: "",
     pending: true,
+    composerDraftsByThread: {
+      ...state.composerDraftsByThread,
+      [activeComposerThreadKey(state)]: "",
+    },
+    ...(state.activeThreadId === null ? {} : {
+      pendingByThread: { ...state.pendingByThread, [state.activeThreadId]: true },
+      runtimeFailureByThread: { ...state.runtimeFailureByThread, [state.activeThreadId]: null },
+    }),
     runtimeFailure: null,
     composerImages: [],
     composerImageNotice: null,
@@ -1340,7 +1372,7 @@ export type ChatHost = Readonly<{
    * without a local streaming lane (e.g. the read-only runtime adapter) omits
    * it and the Stop intent no-ops.
    */
-  interruptActive?: () => Promise<boolean>
+  interruptActive?: (threadRef?: string) => Promise<boolean>
   /**
    * Interrupt a running delegate child of the active turn (EP250 wave-2 G4).
    * Resolves the runtime's typed outcome; a host with no active local lane
@@ -1546,6 +1578,8 @@ export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnT
       ...selected,
       pending: false,
       runtimeFailure: null,
+      pendingByThread: { ...state.pendingByThread, [completedThread.id]: false },
+      runtimeFailureByThread: { ...state.runtimeFailureByThread, [completedThread.id]: null },
       threads: [completedThread, ...state.threads.filter((thread) => thread.id !== completedThread.id)].slice(0, 5),
       // A successful Fable turn just established/renewed this exact thread's
       // runtime continuity entry. Record it as an H1 picker candidate without
@@ -1559,10 +1593,27 @@ export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnT
     }
   }
   const confirmedNotes = state.notes.filter((note) => !note.key.startsWith("pending-"))
+  if (result.failureKind === "interrupted") {
+    return {
+      ...state,
+      pending: false,
+      runtimeFailure: null,
+      ...(state.activeThreadId === null ? {} : {
+        pendingByThread: { ...state.pendingByThread, [state.activeThreadId]: false },
+        runtimeFailureByThread: { ...state.runtimeFailureByThread, [state.activeThreadId]: null },
+      }),
+      notes: confirmedNotes,
+    }
+  }
+  const failure = result.failureKind ?? "failed"
   return {
     ...state,
     pending: false,
-    runtimeFailure: result.failureKind ?? "failed",
+    runtimeFailure: failure,
+    ...(state.activeThreadId === null ? {} : {
+      pendingByThread: { ...state.pendingByThread, [state.activeThreadId]: false },
+      runtimeFailureByThread: { ...state.runtimeFailureByThread, [state.activeThreadId]: failure },
+    }),
     notes: [...confirmedNotes, { key: `error-${state.notes.length}`, role: "system", text: result.error ?? "The model request failed.", timestamp }],
   }
 }
@@ -1714,6 +1765,9 @@ export const makeDesktopShellHandlers = (
   fullAutoHost: DesktopFullAutoRendererHost = { set: async () => ({}), get: async () => ({ enabled: false }) },
   acpProviderBridge: AcpProviderSettingsBridge = unavailableAcpProviderSettingsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
+  // Latest-selection-wins fence for async host reads. An older click may
+  // finish later, but it must never replace the newer visible conversation.
+  let selectionRevision = 0
   const initialNavigation = currentDesktopNavigationDestination(Effect.runSync(SubscriptionRef.get(state)))
   const navigationState = Effect.runSync(
     SubscriptionRef.make<DesktopNavigationHistory>(initialDesktopNavigationHistory(initialNavigation)),
@@ -1992,13 +2046,18 @@ export const makeDesktopShellHandlers = (
     // turn with no images is a no-op (withNote returns state unchanged).
     if (message.trim() === "" && current.composerImages.length === 0 &&
       current.composerReviewContext === null && current.composerFileContext === null) return
+    // Provider-history pages are read-only. The React surface intentionally
+    // mounts no composer there; a synthetic/programmatic submit must also
+    // fail closed instead of being reinterpreted as "start a new chat".
+    if (current.activeThreadId === null && current.history.page !== null) return
     // The startup composer is intentionally usable before its tiny local
     // thread-admission IPC round trip completes. If Send wins that race,
     // create the exact same durable local session here and continue the
     // submission instead of dropping the user's first message.
     if (current.activeThreadId === null) {
+      const admittedSelectionRevision = selectionRevision
       const thread = yield* Effect.promise(() => chat.newThread(current.selectedHarness === "codex" ? "codex-local" : "fable-local"))
-      if (thread === null) return
+      if (thread === null || admittedSelectionRevision !== selectionRevision) return
       const draft = current.input
       const draftImages = current.composerImages
       const draftImageNotice = current.composerImageNotice
@@ -2007,6 +2066,11 @@ export const makeDesktopShellHandlers = (
       current = {
         ...withNewChat(current, thread),
         input: draft,
+        composerDraftsByThread: {
+          ...current.composerDraftsByThread,
+          "": "",
+          [thread.id]: draft,
+        },
         composerImages: draftImages,
         composerImageNotice: draftImageNotice,
         composerReviewContext: draftReviewContext,
@@ -2043,9 +2107,10 @@ export const makeDesktopShellHandlers = (
     )
     const routedMessage = providerMessage
     const fullAutoActive = activeFullAutoEnabled(current) && current.selectedHarness === "codex"
+    const submissionThreadId = current.activeThreadId!
     yield* SubscriptionRef.set(state, withNote(current, message, now()))
     const result = yield* Effect.promise(() => chat.sendMessage({
-      id: current.activeThreadId!,
+      id: submissionThreadId,
       message: routedMessage,
       harness: current.selectedHarness,
       ...(providerTargetForSubmission(current) === null ? {} : { target: providerTargetForSubmission(current)! }),
@@ -2072,6 +2137,22 @@ export const makeDesktopShellHandlers = (
       },
     }))
     yield* SubscriptionRef.update(state, (next) => {
+      // A turn belongs to the thread it was admitted on. If the owner moved
+      // to another chat while it ran, settle only the originating thread's
+      // bookkeeping; never snap selection, transcript, or draft back.
+      if (next.activeThreadId !== submissionThreadId) {
+        const failure = result.ok || result.failureKind === "interrupted"
+          ? null
+          : result.failureKind ?? "failed"
+        return {
+          ...next,
+          pendingByThread: { ...next.pendingByThread, [submissionThreadId]: false },
+          runtimeFailureByThread: { ...next.runtimeFailureByThread, [submissionThreadId]: failure },
+          ...(result.thread === undefined || result.thread === null ? {} : {
+            threads: [result.thread, ...next.threads.filter(thread => thread.id !== submissionThreadId)].slice(0, 5),
+          }),
+        }
+      }
       const settled = withTurnResult(next, result, now())
       if (result.ok) return settled
       return {
@@ -2095,9 +2176,9 @@ export const makeDesktopShellHandlers = (
       }
     }
   })
-  const commitLocalSession = (threadRef: string) => Effect.gen(function* () {
+  const commitLocalSession = (threadRef: string, expectedRevision?: number) => Effect.gen(function* () {
     const thread = yield* Effect.promise(() => chat.openThread(threadRef))
-    if (thread === null) return false
+    if (thread === null || (expectedRevision !== undefined && expectedRevision !== selectionRevision)) return false
     yield* SubscriptionRef.update(state, current => withChatSelected({
       ...current,
       history: {
@@ -2130,12 +2211,12 @@ export const makeDesktopShellHandlers = (
     }
     return true
   })
-  const commitCodexHistory = (threadRef: string) => Effect.gen(function* () {
+  const commitCodexHistory = (threadRef: string, expectedRevision?: number) => Effect.gen(function* () {
     const probe = yield* Effect.promise(() => historyHost.page(threadRef, 0, 1))
     const page = probe === null
       ? null
       : yield* Effect.promise(() => historyHost.page(threadRef, historyTailOffset(probe.totalItems), historyItemPageSize))
-    if (page === null) return false
+    if (page === null || (expectedRevision !== undefined && expectedRevision !== selectionRevision)) return false
     yield* SubscriptionRef.update(state, current => {
       const expandedThreadRefs = page.agents.filter(agent => agent.descendantCount > 0).map(agent => agent.threadRef)
       const history = {
@@ -2155,7 +2236,16 @@ export const makeDesktopShellHandlers = (
         anchorItemRef: page.items[0]?.itemRef ?? null,
         expandedThreadRefs,
       })
-      return { ...current, workspace: "chat" as const, activeThreadId: null, notes: [], history }
+      return {
+        ...current,
+        workspace: "chat" as const,
+        activeThreadId: null,
+        input: current.composerDraftsByThread[page.selectedThreadRef] ?? "",
+        pending: false,
+        runtimeFailure: current.runtimeFailureByThread[page.selectedThreadRef] ?? null,
+        notes: [],
+        history,
+      }
     })
     return true
   })
@@ -2448,7 +2538,7 @@ export const makeDesktopShellHandlers = (
       // handler never fabricates that terminal state itself.
       const current = yield* SubscriptionRef.get(state)
       if (current.pending) {
-        yield* Effect.promise(() => chat.interruptActive?.() ?? Promise.resolve(false))
+        yield* Effect.promise(() => chat.interruptActive?.(current.activeThreadId ?? undefined) ?? Promise.resolve(false))
         return
       }
       // FA-H4 (#8877): non-pending but main reports a BACKGROUND Full Auto
@@ -2532,9 +2622,10 @@ export const makeDesktopShellHandlers = (
       yield* SubscriptionRef.update(state, (next) => withFleetDeploymentResult(next, result, now()))
     }),
   DesktopNewChat: () => Effect.gen(function* () {
+    const revision = ++selectionRevision
     const current = yield* SubscriptionRef.get(state)
     const thread = yield* Effect.promise(() => chat.newThread(current.selectedHarness === "codex" ? "codex-local" : "fable-local"))
-    if (thread === null) return
+    if (thread === null || revision !== selectionRevision) return
     yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
     yield* recordNavigation({ kind: "local_session", threadRef: thread.id, title: thread.title || "New session" })
   }),
@@ -2801,8 +2892,9 @@ export const makeDesktopShellHandlers = (
     yield* SubscriptionRef.update(state, current => ({ ...current, update }))
   }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
-    const committed = yield* commitLocalSession(id)
-    if (!committed) return
+    const revision = ++selectionRevision
+    const committed = yield* commitLocalSession(id, revision)
+    if (!committed || revision !== selectionRevision) return
     const current = yield* SubscriptionRef.get(state)
     yield* recordNavigation({
       kind: "local_session",
@@ -2811,9 +2903,10 @@ export const makeDesktopShellHandlers = (
     })
   }),
   HistoryConversationSelected: (id) => Effect.gen(function* () {
+    const revision = ++selectionRevision
     yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:id}}))
-    const committed = yield* commitCodexHistory(id)
-    if (!committed) {
+    const committed = yield* commitCodexHistory(id, revision)
+    if (!committed || revision !== selectionRevision) {
       yield* SubscriptionRef.update(state,current=>current.history.pendingThreadRef===id?({...current,history:{...current.history,pendingThreadRef:null}}):current)
       return
     }
