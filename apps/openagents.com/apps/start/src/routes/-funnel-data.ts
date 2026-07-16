@@ -377,6 +377,37 @@ export const docsPages: ReadonlyArray<DocPage> = [
 
 export const blogPosts: ReadonlyArray<BlogPost> = [
   {
+    slug: 'introducing-openagents-desktop',
+    listed: true,
+    title: 'Introducing OpenAgents Desktop',
+    excerpt:
+      'A local-first workroom that turns your ordinary Codex session into one legible place to plan, delegate, review, and steer.',
+    date: 'July 16, 2026',
+    readTime: '3 min read',
+    sections: [
+      {
+        title: 'One workroom for the whole turn',
+        paragraphs: [
+          'OpenAgents Desktop is a local-first workroom around the Codex session you already use. Conversations stay central while sessions, plans, tools, decisions, repository changes, and recovery remain close enough to understand without reconstructing the turn from separate panes.',
+          'The first release candidate is deliberately narrow: open a repository, work with Codex, follow what happened, review the result, and resume without losing the thread.',
+        ],
+      },
+      {
+        title: 'App-server events, not flattened logs',
+        paragraphs: [
+          'The workroom projects the Codex app-server protocol as typed interface events. Plans, commands, file changes, approvals, MCP tools, web search, context compaction, and delegated agents keep their own shape instead of collapsing into a generic transcript.',
+          'That distinction makes complex work inspectable. A parent turn can remain responsive while subagents report progress, a reviewer can see why an approval is needed, and the final result stays connected to the activity that produced it.',
+        ],
+      },
+      {
+        title: 'Download it or build it',
+        paragraphs: [
+          'The current macOS release candidate is available from the OpenAgents install page. The complete source is public on GitHub for anyone who wants to inspect the shared workbench components or run the application from the monorepo.',
+        ],
+      },
+    ],
+  },
+  {
     slug: 'introducing-khala-code',
     listed: true,
     title: 'Introducing Khala Code',

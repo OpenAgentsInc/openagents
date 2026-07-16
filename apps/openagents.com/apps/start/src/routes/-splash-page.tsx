@@ -1,6 +1,7 @@
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
 import { khalaTheme } from '@effect-native/tokens'
 import { InternalLink } from '@/components/internal-link'
+import GithubMark from '@/components/launch-ui/logos/github'
 import { DOCS_URL, GITHUB_REPOSITORY_URL } from '@/lib/public-site'
 import {
   DesktopAgentGroup,
@@ -603,32 +604,35 @@ export function SplashPage() {
     <header className="splash-site-header">
       <nav aria-label="Primary navigation" className="splash-nav">
         <InternalLink aria-label="OpenAgents home" className="splash-brand" href="/" preload="render">
-          <span aria-hidden="true" className="splash-brand-mark" />
           <span>OpenAgents</span>
         </InternalLink>
         <div className="splash-nav-links">
-          <a href="#product">Product</a>
           <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
-          <a href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">GitHub</a>
         </div>
         <div className="splash-nav-actions">
           <InternalLink className="splash-app-link" href="/app" preload="intent">Open app</InternalLink>
+          <a aria-label="OpenAgents on GitHub" className="splash-github-link" href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">
+            <GithubMark aria-hidden="true" />
+          </a>
           <InternalLink className="splash-nav-download" href="/install" preload="render">Download</InternalLink>
         </div>
       </nav>
     </header>
 
     <section aria-labelledby="splash-heading" className="splash-hero">
-      <InternalLink className="splash-release-link" href="/install" preload="render">
-        OpenAgents Desktop · v0.1.0 RC
+      <InternalLink className="splash-release-link" href="/blog/introducing-openagents-desktop" preload="render">
+        Introducing OpenAgents Desktop
         <ArrowRight aria-hidden="true" />
       </InternalLink>
-      <h1 id="splash-heading">A better way to build <span>with agents.</span></h1>
+      <h1 id="splash-heading">Your last agent IDE.</h1>
       <p>Plan, delegate, review, and steer coding work from one local-first desktop workroom.</p>
       <InternalLink className="splash-primary-action" href="/install" preload="render">
         Download for Mac
         <ArrowRight aria-hidden="true" />
       </InternalLink>
+      <a className="splash-source-link" href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">
+        Or build from source
+      </a>
     </section>
 
     <figure className="splash-product" id="product">
