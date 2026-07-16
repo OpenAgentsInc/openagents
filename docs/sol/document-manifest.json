@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "1d8e6737b5a24d2e87dd8d6caf9f23abb76722d2747f1761726907598bbfdf74",
+  "sourceTreeSha256": "ed880224e3eb9a93657e370768e7d4514f0f4393c72504fbbe70ef40f984c64e",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1631,7 +1631,7 @@
       "owner": "Sol proof / issue #8847",
       "disposition": "retain-evidence",
       "dispatch": false,
-      "sha256": "ab970e273f2f9bb26ee47ad98f3d7183a6d141d9ef7e25261ecf12b1315b6fc6",
+      "sha256": "30c9a10b630ca2860074a7d91355a97dc0a5f8fcecb1173043ae477fd09a2a7d",
       "status": "implementation and local visual proof complete",
       "snapshot": "`987d0b1c0f39b3d91b98515dbe12fcb91ffb219c`",
       "reviewedAt": "2026-07-12",
