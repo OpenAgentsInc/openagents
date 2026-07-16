@@ -80,7 +80,10 @@ const EditorHandlePlugin = ({
   const [editor] = useLexicalComposerContext();
   useImperativeHandle(editorRef, () => ({
     focus: () => editor.focus(),
-    focusAtEnd: () => editor.focus(() => $getRoot().selectEnd()),
+    focusAtEnd: () => {
+      editor.update(() => $getRoot().selectEnd());
+      editor.focus(undefined, { defaultSelection: "rootEnd" });
+    },
     readValue: () => readPlainText(editor.getEditorState()),
   }), [editor]);
   return null;
@@ -188,11 +191,11 @@ export const LexicalComposerEditor = ({
               aria-label={ariaLabel}
               aria-multiline="true"
               aria-placeholder={placeholder}
+              placeholder={<div className="oa-lexical-composer-placeholder">{placeholder}</div>}
               spellCheck
               data-lexical-composer="true"
             />
           }
-          placeholder={<div className="oa-lexical-composer-placeholder">{placeholder}</div>}
           ErrorBoundary={LexicalErrorBoundary}
         />
         <HistoryPlugin />

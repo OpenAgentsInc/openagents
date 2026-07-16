@@ -13,16 +13,34 @@ const restores: Array<() => void> = []
 const roots = new Set<Root>()
 const installDom = () => {
   const window = new Window({ url: "http://localhost/" })
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
   const values = {
     window,
     document: window.document,
     navigator: window.navigator,
     Node: window.Node,
+    Text: window.Text,
+    Document: window.Document,
+    Range: window.Range,
     Element: window.Element,
     HTMLElement: window.HTMLElement,
+    HTMLDivElement: window.HTMLDivElement,
+    HTMLInputElement: window.HTMLInputElement,
+    HTMLTextAreaElement: window.HTMLTextAreaElement,
     Event: window.Event,
+    InputEvent: window.InputEvent,
+    CompositionEvent: window.CompositionEvent,
     KeyboardEvent: window.KeyboardEvent,
     MouseEvent: window.MouseEvent,
+    MutationObserver: window.MutationObserver,
+    ResizeObserver: ResizeObserverStub,
+    getComputedStyle: window.getComputedStyle.bind(window),
+    requestAnimationFrame: window.requestAnimationFrame.bind(window),
+    cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
     IS_REACT_ACT_ENVIRONMENT: true,
   }
   const previous = new Map<string, PropertyDescriptor | undefined>()
@@ -349,7 +367,7 @@ describe("React workbench shell", () => {
     ]))
   })
 
-  test("keeps paging, archive, recovery, and confirmed delete on existing intents", async () => {
+  test("keeps conversation paging while workspace management stays out of the sidebar", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
@@ -398,20 +416,10 @@ describe("React workbench shell", () => {
       await interact(() => button?.click())
     }
     await click("Load more sessions")
-    await click("Load more workspaces")
-    await click("Archive")
-    await click("Recover")
-    await click("Delete")
-    await render(root, <WorkbenchShell state={{ ...state, codingSessionDeleteConfirmRef: session.sessionRef }} report={report} />)
-    await click("Confirm delete")
-    expect(received).toEqual(expect.arrayContaining([
-      { name: "HistoryCatalogMoreRequested", payload: null },
-      { name: "DesktopCodingCatalogMoreRequested", payload: null },
-      { name: "DesktopCodingSessionArchived", payload: "session-1" },
-      { name: "DesktopCodingSessionRecovered", payload: "session-2" },
-      { name: "DesktopCodingSessionDeleteRequested", payload: "session-1" },
-      { name: "DesktopCodingSessionDeleteConfirmed", payload: "session-1" },
-    ]))
+    expect(received).toEqual([{ name: "HistoryCatalogMoreRequested", payload: null }])
+    for (const removedLabel of ["Load more workspaces", "Archive", "Recover", "Delete", "Confirm delete"]) {
+      expect([...container.querySelectorAll("button")].some(value => value.textContent === removedLabel)).toBe(false)
+    }
   })
 
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {
