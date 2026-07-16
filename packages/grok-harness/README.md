@@ -10,6 +10,9 @@ reason once, and uses protocol cancellation before process shutdown.
 Cached-token remains preferred when advertised. Interactive `grok.com` and
 enterprise `oidc` methods require an explicit typed owner continuation; the
 default and cancellation paths stop before `authenticate`.
+An explicit `requestedInteractiveAuthMethod` can select an advertised
+interactive method ahead of an existing cached token, allowing a user-requested
+login or cancellation without deleting cached credentials.
 
 Capabilities are false unless supported admission evidence and an installed
 authority broker both authorize them. The raw `acp-client` and in-process mock

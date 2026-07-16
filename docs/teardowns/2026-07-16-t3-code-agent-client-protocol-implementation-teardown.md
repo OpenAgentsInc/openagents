@@ -167,6 +167,10 @@ The live qualification observed metadata on 63 updates and two completions,
 including 62 usage-bearing observations, while exporting counts only. Combined
 with the existing real-repository tool proof, this closes Grok's
 capability-aware tool/usage row; Grok does not advertise mode/config controls.
+Grok's typed interactive-auth preference also lets the owner explicitly choose
+advertised `grok.com` ahead of a cached token. The live owner-cancel path ran
+once against the pinned binary and stopped before `authenticate`, preserving
+ordinary HOME and all cached credentials.
 The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference

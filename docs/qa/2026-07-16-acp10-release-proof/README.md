@@ -25,7 +25,7 @@ never changes Grok's gate.
 
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
-| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    28 live passes |                                  3 | experimental |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    29 live passes |                                  2 | experimental |
 | Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    26 live passes |                                  4 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
@@ -161,6 +161,13 @@ credential expiry. Neither exact peer advertised ACP `auth.logout`;
 the matrix records logout as unsupported rather than demanding an unavailable
 method. Fresh-process primary authentication is covered independently.
 
+A later exact-binary Grok process used ordinary HOME with the cached login
+untouched, explicitly requested the advertised `grok.com` method, and invoked
+the typed owner decision once. Cancellation returned `auth_required` before
+any `authenticate` request, so no browser opened and no credential changed.
+The redacted receipt is
+[`release-run-grok-auth-cancel-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-auth-cancel-2026-07-16-darwin-arm64.json).
+
 ## Hermetic evidence
 
 The production bounded stdio transport executes the complete 23-member stable
@@ -189,8 +196,8 @@ approval and refusal now pass against both pinned live peers.
 
 Provider-specific gaps:
 
-- Grok: intentional valid `xai.api_key`, live interactive-auth cancellation,
-  and the non-underscore ask-question spelling.
+- Grok: intentional valid `xai.api_key` and the non-underscore ask-question
+  spelling.
   The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.

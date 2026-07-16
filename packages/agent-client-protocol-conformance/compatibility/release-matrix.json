@@ -106,9 +106,11 @@
         {
           "id": "auth-cancel",
           "requiredForSupported": true,
-          "result": "not-tested",
-          "evidenceRefs": [],
-          "safeDetail": "No live authentication cancellation was induced."
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-auth-cancel-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "With ordinary HOME and cached login intact, the client explicitly selected advertised grok.com, cancelled once before authenticate, and returned typed auth_required without opening a browser or changing credentials."
         },
         {
           "id": "auth-expiry-failure",
