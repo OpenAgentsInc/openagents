@@ -59,7 +59,9 @@ body {
   overflow: hidden;
   background: var(--en-color-background);
   color: var(--en-color-textPrimary);
-  font-family: "Oxanium Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-family: var(--oa-font-sans);
+  font-optical-sizing: auto;
+  font-variation-settings: "wdth" 100;
   font-feature-settings: "kern" 1, "liga" 1, "tnum" 1;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

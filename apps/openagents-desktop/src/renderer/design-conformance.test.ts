@@ -224,8 +224,8 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
       menuAccent: "subtle",
       menuColor: "default-translucent",
     })
-    expect(css).toContain('"Oxanium Variable"')
-    expect(css).toContain('"Geist Variable"')
+    expect(css).toContain('var(--oa-font-sans)')
+    expect(css).toContain('var(--oa-font-mono)')
     expect(css).toContain("--background: var(--en-color-background)")
     expect(css).toContain("--primary: var(--en-color-accent)")
     expect(css).not.toMatch(/oklch\(|#[0-9a-f]{3,8}\b/i)

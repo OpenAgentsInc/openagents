@@ -26,47 +26,6 @@
 
 .splash-workspace-footer .oa-react-workspace-row { padding-inline: 0; }
 
-.splash-composer-action,
-.splash-submit {
-  display: inline-flex;
-  width: var(--en-control-sm-height);
-  height: var(--en-control-sm-height);
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--en-radius-md);
-  background: transparent;
-  color: var(--en-color-textMuted);
-  cursor: pointer;
-}
-
-.splash-composer-action:hover,
-.splash-full-auto:hover { background: var(--en-color-stateHover); color: var(--en-color-textPrimary); }
-
-.splash-composer-action svg,
-.splash-submit svg { width: 16px; height: 16px; }
-
-.splash-full-auto {
-  display: inline-flex;
-  min-height: var(--en-control-sm-height);
-  align-items: center;
-  gap: var(--en-spacing-1);
-  padding: 0 var(--en-spacing-2);
-  border: 0;
-  border-radius: var(--en-radius-md);
-  background: transparent;
-  color: var(--en-color-textSecondary);
-  cursor: pointer;
-}
-
-.splash-full-auto[aria-pressed="true"] { background: var(--en-color-stateSelected); color: var(--en-color-textPrimary); }
-.splash-full-auto svg { width: 14px; height: 14px; }
-
-.splash-submit { border-radius: var(--en-radius-full); background: var(--en-color-accent); color: var(--en-color-background); }
-.splash-submit:disabled { opacity: .35; cursor: default; }
-.splash-page .oa-react-stop { background: var(--en-color-surface); color: var(--en-color-textPrimary); }
-
 .splash-empty {
   width: min(720px, 100%);
   margin: 18vh auto 0;

@@ -24,16 +24,6 @@ export const Route = createRootRouteWithContext<{
     links: [
       { rel: 'icon', href: '/favicon.ico', sizes: '32x32' },
       { rel: 'icon', type: 'image/svg+xml', sizes: 'any', href: '/icon.svg' },
-      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-      {
-        rel: 'preconnect',
-        href: 'https://fonts.gstatic.com',
-        crossOrigin: 'anonymous',
-      },
-      {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap',
-      },
     ],
   }),
   shellComponent: RootDocument,

@@ -9,7 +9,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./desktop-workbench": "./src/desktop-workbench.tsx",
-    "./desktop-workbench.css": "./src/desktop-workbench.css"
+    "./desktop-workbench.css": "./src/desktop-workbench.css",
+    "./typography.css": "./src/typography.css"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

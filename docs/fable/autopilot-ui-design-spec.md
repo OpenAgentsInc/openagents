@@ -1,0 +1,81 @@
+# Autopilot UI design specification
+
+Status: active design authority
+
+Updated: 2026-07-15
+
+## Scope
+
+This document records the visual-system choices shared by OpenAgents product
+surfaces descended from the Autopilot UI. It does not create a separate
+Autopilot application, renderer, or token authority. Web, docs, splash, and
+Desktop should consume the same owned UI primitives and typography tokens.
+
+## Typography
+
+### Primary sans: Zalando Sans
+
+Zalando Sans is the primary family for interface copy, prose, controls,
+headings, navigation, and conversation content. Use the owned variable font at
+its normal width axis unless a bounded component explicitly specifies another
+width:
+
+```css
+font-family: var(--oa-font-sans);
+font-optical-sizing: auto;
+font-variation-settings: "wdth" 100;
+```
+
+The canonical fallback order is Zalando Sans, Inter, the platform UI stack,
+and generic `sans-serif`. Inter is a backup, not the primary face.
+
+### Primary mono: Disket Mono
+
+Disket Mono is the primary family for code, commands, paths, shortcuts,
+machine-state labels, compact metadata, and agent/runtime event detail:
+
+```css
+font-family: var(--oa-font-mono);
+```
+
+The canonical fallback order is Disket Mono followed by the approved platform
+monospace stack. Disket Mono should not replace readable prose merely to make a
+surface feel technical.
+
+### Ownership and delivery
+
+- `@openagentsinc/ui/typography.css` is the single family and font-face
+  authority.
+- Font files are self-hosted. Product rendering must not depend on Google Fonts
+  or another third-party font CDN.
+- The normal and italic Zalando Sans variable faces cover weights 200–900 and
+  widths 75–125. The default UI width is 100.
+- Disket Mono is shipped in regular and bold web-font faces. Do not synthesize
+  a replacement family for missing weights.
+- `font-display: swap` preserves first paint while the branded faces load.
+- Web, docs, splash, and Desktop must use `--oa-font-sans` and
+  `--oa-font-mono`; a surface may not redefine competing primary stacks.
+
+### Licensing
+
+Zalando Sans is included under the SIL Open Font License 1.1. Disket Mono is
+included under the Rostype end-user license, which permits commercial use and
+generation of web-font formats for websites. Complete license copies ship
+beside the font assets in `packages/ui/src/fonts/licenses/`.
+
+### Verification
+
+The Desktop approved-font oracle scans Desktop and shared UI sources for
+unapproved families and CSS font-shorthand escapes. The web typography
+contract verifies that the website and integrated docs consume the shared
+tokens and do not request Google Fonts. Production acceptance must also verify
+that the compiled CSS and each emitted WOFF2 asset return successfully from
+`openagents.com`.
+
+## Visual relationship
+
+Typography should support the existing Khala visual system: precise,
+high-contrast, information-dense, and calm. Zalando Sans carries human-facing
+hierarchy and sustained reading. Disket Mono marks machine-facing detail. The
+contrast between those roles is structural; it should not be recreated with
+arbitrary display fonts, excessive letter spacing, or all-monospace layouts.

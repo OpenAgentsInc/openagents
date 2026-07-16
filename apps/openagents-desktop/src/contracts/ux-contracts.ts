@@ -3737,7 +3737,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "I want all that enforced in the assurance pieces. I want to be able to specify rules there. For example, I don't want to see certain things like strings where icons should be, certain fonts, and that must be specified",
         authorityBoundary:
-          "The app's approved rendered font truth is the owner-selected shadcn preset: Oxanium Variable for body/UI copy and Geist Variable for headings, with the host system stack (-apple-system, BlinkMacSystemFont, SF Pro Text, sans-serif) as the resilient body fallback and generic monospace for code surfaces (the shared @effect-native/render-dom CodeBlock lowering). The @effect-native/tokens type scale deliberately carries size/weight only — no family tokens — so no renderer module, stylesheet, or typed style object in this app may declare any other family, and the CSS font shorthand stays exactly the form-control 'font: inherit' reset so a family cannot ride past the family checks. This contract binds the desktop app's own sources; the shared renderer package's catalog-owned lowering is referenced truth, not a place this oracle scans.",
+          "The shared @openagentsinc/ui typography authority self-hosts Zalando Sans as the primary body, UI, and heading family, with Inter followed by the host system stack as resilient fallbacks. It self-hosts Disket Mono as the primary code and metadata family, followed by the approved system monospace stack. Web, docs, splash, and Desktop consume the same --oa-font-sans and --oa-font-mono tokens. The @effect-native/tokens type scale deliberately carries size/weight only — no competing family tokens — so no renderer module, stylesheet, or typed style object may declare an unapproved family, and the CSS font shorthand stays exactly the form-control 'font: inherit' reset so a family cannot ride past the family checks.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/app.css",
           "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
@@ -3750,7 +3750,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
             description:
-              "Scans every non-test .ts/.cts/.css file under apps/openagents-desktop/src and packages/ui/src recursively: every CSS font-family declaration and every TypeScript fontFamily value must resolve family-by-family to the approved allowlist, every CSS font shorthand must be exactly 'inherit', the Oxanium body stack must remain in app.css, and the Geist heading stack must remain in desktop-workbench.css. The falsifier test proves a rogue family (Comic Sans MS / Papyrus / a font shorthand smuggle) is rejected while both approved stacks pass.",
+              "Scans every non-test .ts/.cts/.css file under apps/openagents-desktop/src and packages/ui/src recursively: every CSS font-family declaration and every TypeScript fontFamily value must resolve to the shared Zalando Sans or Disket Mono tokens and approved fallback families, every CSS font shorthand must be exactly 'inherit', and the shared token declarations must remain consumed by app.css and desktop-workbench.css. The falsifier test proves a rogue family (Comic Sans MS / Papyrus / a font shorthand smuggle) is rejected while the approved stacks pass.",
           },
         ],
         verification:

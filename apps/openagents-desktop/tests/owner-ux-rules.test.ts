@@ -70,29 +70,42 @@ const sourceFiles = (dir: string): ReadonlyArray<string> => {
 // ---------------------------------------------------------------------------
 // openagents_desktop.typography.approved_fonts_only.v1
 //
-// The app's approved rendered type system is the owner-selected shadcn preset:
-// Oxanium for body/UI copy and Geist for headings, with the host system stack
-// as the resilient body fallback. The generic `monospace` family remains the
-// approved code-surface fallback (the shared @effect-native/render-dom
-// CodeBlock lowering uses it). Nothing else may be declared anywhere in the
-// desktop app's sources or styles.
+// The app's approved rendered type system is owned by packages/ui: Zalando Sans
+// for body/UI/headings, Inter and the host system stack as resilient fallbacks,
+// and Disket Mono for code surfaces. Nothing else may be declared anywhere in
+// the desktop app's sources or styles.
 // ---------------------------------------------------------------------------
 
 const approvedFontFamilies: ReadonlySet<string> = new Set([
-  "Oxanium Variable",
-  "Geist Variable",
+  "Zalando Sans",
+  "Disket Mono",
+  "Inter",
+  "ui-sans-serif",
+  "system-ui",
+  "Segoe UI",
+  "SFMono-Regular",
+  "Cascadia Code",
+  "Roboto Mono",
+  "Menlo",
+  "Monaco",
+  "Consolas",
+  "Liberation Mono",
   "-apple-system",
   "BlinkMacSystemFont",
-  "SF Pro Text",
   "sans-serif",
   "monospace",
+  "var(--oa-font-sans)",
+  "var(--oa-font-mono)",
 ])
 
 const approvedBaseStackDeclaration =
-  'font-family: "Oxanium Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;'
+  "font-family: var(--oa-font-sans);"
 
 const approvedHeadingStackDeclaration =
-  'font-family: "Geist Variable", "Oxanium Variable", sans-serif;'
+  "font-family: var(--oa-font-sans);"
+
+const approvedMonoStackDeclaration =
+  "font-family: var(--oa-font-mono);"
 
 const splitFamilies = (value: string): ReadonlyArray<string> =>
   value
@@ -136,11 +149,15 @@ describe("openagents_desktop.typography.approved_fonts_only.v1", () => {
     expect(offenders).toEqual([])
   })
 
-  test("the approved body and heading stacks remain declared on their host stylesheets", () => {
+  test("the shared typography tokens remain declared and consumed by body, headings, and code", () => {
     const css = readFileSync(path.join(srcDir, "renderer", "app.css"), "utf8")
     const workbenchCss = readFileSync(path.join(sharedUiSrcDir, "desktop-workbench.css"), "utf8")
+    const typographyCss = readFileSync(path.join(sharedUiSrcDir, "typography.css"), "utf8")
+    expect(typographyCss).toContain('--oa-font-sans: "Zalando Sans", Inter')
+    expect(typographyCss).toContain('--oa-font-mono: "Disket Mono"')
     expect(css).toContain(approvedBaseStackDeclaration)
     expect(workbenchCss).toContain(approvedHeadingStackDeclaration)
+    expect(workbenchCss).toContain(approvedMonoStackDeclaration)
   })
 
   test("falsifier: a rogue font-family declaration is rejected", () => {
@@ -160,6 +177,9 @@ describe("openagents_desktop.typography.approved_fonts_only.v1", () => {
     expect(fontDeclarationOffenders("app.css", `html { ${approvedBaseStackDeclaration} }`)).toEqual([])
     expect(
       fontDeclarationOffenders("react-workbench.css", `.heading { ${approvedHeadingStackDeclaration} }`),
+    ).toEqual([])
+    expect(
+      fontDeclarationOffenders("react-workbench.css", `.code { ${approvedMonoStackDeclaration} }`),
     ).toEqual([])
   })
 })

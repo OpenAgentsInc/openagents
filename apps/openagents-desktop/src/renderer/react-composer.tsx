@@ -32,6 +32,7 @@ import {
 import { Effect } from "@effect-native/core/effect";
 import {
   DesktopComposerBar,
+  DesktopComposerButton,
   DesktopComposerFrame,
   DesktopComposerInput,
 } from "@openagentsinc/ui/desktop-workbench";
@@ -445,33 +446,27 @@ export const ReactComposer = ({
           onKeyDown={onKeyDown}
         />
         <DesktopComposerBar>
-        <Button
+        <DesktopComposerButton
           data-en-key="shell-attach-image"
-          type="button"
-          variant="ghost"
-          size="icon-sm"
+          kind="action"
           disabled={attachmentDisabled}
           onClick={() => dispatch(report, "DesktopComposerImagePickRequested")}
           aria-label={attachmentLabel}
           title={attachmentLabel}
         >
           <ImagePlus data-icon-name={composerIconNames.attach} aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
+        </DesktopComposerButton>
+        <DesktopComposerButton
+          kind="action"
           onClick={() => dispatch(report, "DesktopCommandPaletteToggled")}
           aria-label="Open commands"
           title="Commands"
         >
           <CommandIcon data-icon-name={composerIconNames.commands} aria-hidden="true" />
-        </Button>
-        <Button
+        </DesktopComposerButton>
+        <DesktopComposerButton
           data-en-key="shell-full-auto-toggle"
-          type="button"
-          variant={state.fullAuto ? "secondary" : "ghost"}
-          size="sm"
+          kind="toggle"
           aria-pressed={state.fullAuto}
           onClick={() => dispatch(report, "DesktopFullAutoToggled")}
           aria-label={state.fullAuto ? "Turn off Full Auto" : "Turn on Full Auto"}
@@ -479,7 +474,7 @@ export const ReactComposer = ({
         >
           <Zap data-icon-name={composerIconNames.fullAuto} aria-hidden="true" />
           Full Auto
-        </Button>
+        </DesktopComposerButton>
         {state.pending ? (
           <div className="oa-react-submit-mode" role="radiogroup" aria-label="Pending message behavior">
             <Button
@@ -524,24 +519,21 @@ export const ReactComposer = ({
           </Badge>
         ) : null}
         {state.pending ? (
-          <Button
-            className="oa-react-stop"
-            type="button"
-            variant="ghost"
-            size="icon-sm"
+          <DesktopComposerButton
+            kind="stop"
             onClick={() => dispatch(report, "DesktopTurnInterrupted")}
             aria-label="Stop current turn"
             title="Stop"
           >
             <Square data-icon-name={composerIconNames.stop} aria-hidden="true" />
             <span className="sr-only">Stop</span>
-          </Button>
+          </DesktopComposerButton>
         ) : null}
-        <Button className="oa-react-submit" size="icon-sm" type="button" disabled={!canSubmit} onClick={submit}
+        <DesktopComposerButton kind="submit" disabled={!canSubmit} onClick={submit}
           aria-label={submitLabel} title={submitLabel}>
           <ArrowUp data-icon-name={composerIconNames.submit} aria-hidden="true" />
           <span className="sr-only">{submitLabel}</span>
-        </Button>
+        </DesktopComposerButton>
       </DesktopComposerBar>
       {state.pending ? (
         <p className="oa-react-composer-consequence" role="status" aria-live="polite">
