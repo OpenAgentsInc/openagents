@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "149382a40a35dbd184028f9a39657a34819a13495ed52815c0594caa0c34116b",
+  "sourceTreeSha256": "c411b0825200805c4caa7e99d49298438d8a81dfc4986ad8bc81389ca1e3ff66",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1857,7 +1857,7 @@
       "owner": "OpenAgents Desktop Full Auto",
       "disposition": "retain-historical-baseline",
       "dispatch": false,
-      "sha256": "29016970fcb4922ee3316aea4a1297e3b70e191756ef66bfb9b45104702fdae8",
+      "sha256": "d2c94a133715101c83b1bd4d358eb546726bedc4390e2d0e5c70b11fe80f0cfa",
       "status": "retain-hardening-baseline; release/live/owner proof remains open",
       "snapshot": "`8d4bc1d3fa393c124743c4ef77d07903b48bc9d8`",
       "reviewedAt": "2026-07-12",

@@ -46,10 +46,12 @@ Two later extensions also landed without moving authority into providers:
 - #8902 closed after the bounded ProductSpec/AssuranceSpec projection,
   candidate-obligation discovery, and post-turn authority-owned revalidation
   path landed across two lane fixtures (FA-AC-34 through FA-AC-37).
-- #8901 remains open. A real authenticated bounded Claude Full Auto loop is
-  recorded in that issue; the required actual ACP Desktop Full Auto loop is
-  still pending a real Desktop ProviderLane adapter. Do not infer that proof
-  from registry/UI support or from a quarantined peer profile.
+- #8901 closed after real authenticated bounded loops ran through both Claude
+  and the integrated Grok ACP ProviderLane. The retained ACP receipt records a
+  completed Grok 0.2.101 Desktop turn in an isolated repository, its harmless
+  commit, durable disable, and clean shutdown. This proves the generalized
+  loop; it does not promote either ACP peer beyond ACP-10's independent
+  experimental release matrix.
 
 This reconciliation does not claim distribution, release, owner acceptance,
 or public-promise satisfaction. The remainder of the document intentionally
