@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "11c7962ee4f5735e87475713921889088c237e9916cc7897eb6f619c4710c457",
+  "sourceTreeSha256": "43b1dc45ad43543f403599e80f9e7889f074fb3f22133b6b82453ba3d328e4ed",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1759,7 +1759,7 @@
       "owner": "OpenAgents Desktop usage ingestion / issue #8911",
       "disposition": "retain-verification-contract",
       "dispatch": false,
-      "sha256": "4a1b39fdd733e28ca168f28b0cc43904ba62b5efab98f1cfdb6f57599baad68c",
+      "sha256": "ce8819bce765df40a22b6738949fb390468c4fa190365911ba27dadc06388d3c",
       "status": "retain-verification-contract",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",

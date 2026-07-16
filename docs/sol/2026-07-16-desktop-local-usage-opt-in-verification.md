@@ -76,7 +76,7 @@ pnpm run check:fast
 The focused suite proves default-off zero traffic, server-verified session
 gating, pre-admission, owner/turn/model binding, exact safe payload shape,
 idempotency, credential-free persistence, restart retry, preference migration,
-hidden-until-review Settings UI, and consent dispatch.
+shipped default-off Settings UI, and consent dispatch.
 
 ## Owner-reviewed live proof
 
@@ -84,20 +84,22 @@ Perform only after approving the Settings copy and enabling the server rollout
 gate in the sanctioned Cloud Run deployment configuration.
 
 1. Record the current value from `GET /api/public/khala-tokens-served`.
-2. Launch the current Desktop build with
-   `OPENAGENTS_DESKTOP_USAGE_CONSENT_CONTROL=1` and use a normal signed-in
-   profile. Do not use isolated-app proof mode; it deliberately has no session.
-3. Open **Settings → Share local Codex usage**, read the disclosure, and turn
+2. Launch the current Desktop build with a normal profile. Do not use
+   isolated-app proof mode; it deliberately has no session.
+3. Open **Settings → OpenAgents account → Link OpenAgents account**, approve
+   GitHub authorization in the browser, complete the local PKCE callback, and
+   return to Desktop. Confirm the screen says **OpenAgents account linked**.
+4. Open **Settings → Share local Codex usage**, read the disclosure, and turn
    it on.
-4. Send one ordinary local Codex turn with a known non-zero exact SDK usage.
-5. Wait for completion, then confirm the public counter advances by that turn's
+5. Send one ordinary local Codex turn with a known non-zero exact SDK usage.
+6. Wait for completion, then confirm the public counter advances by that turn's
    `input + output + reasoning` total exactly once.
-6. Restart Desktop and confirm the consent setting persists. Induce a temporary
+7. Restart Desktop and confirm the consent setting persists. Induce a temporary
    API failure for one admitted turn, restore the API, and confirm the durable
    outbox retries it exactly once.
-7. Turn sharing off, complete another local turn, and confirm there is no
+8. Turn sharing off, complete another local turn, and confirm there is no
    admission request, no usage request, and no counter movement from that turn.
-8. Repeat steps 3–5 for one Full Auto continuation. It uses the same Codex lane
+9. Repeat steps 4–6 for one Full Auto continuation. It uses the same Codex lane
    admission and completion seam and must advance exactly once.
 
 Attach only public-safe counter deltas, response status/schema, and turn refs to
