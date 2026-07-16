@@ -9,7 +9,7 @@ import { makeCodexThreadLifecycle } from "./codex-thread-lifecycle.ts"
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 
-const fakeLease = (options: Readonly<{ experimentalPagination?: boolean }> = {}) => {
+const fakeLease = (options: Readonly<{ experimentalPagination?: boolean; extraItems?: ReadonlyArray<Record<string, unknown>> }> = {}) => {
   let generation = 1
   const requests: Array<{ method: string; params: unknown }> = []
   const listeners = new Set<(notification: CodexAppServerNotification) => void>()
@@ -17,7 +17,7 @@ const fakeLease = (options: Readonly<{ experimentalPagination?: boolean }> = {})
   const threads = new Map<string, Record<string, unknown>>([
     ["thread-1", { id: "thread-1", name: "One", status: { type: "idle" }, createdAt: 1_700_000_000, updatedAt: 1_700_000_001, ephemeral: false, parentThreadId: null, goal: { text: "ship" }, settings: { mode: "pair" }, memoryMode: "auto", metadata: { private: "memory-only" }, turns: [
       { id: "turn-1", status: "completed", items: [{ id: "item-1", turnId: "turn-1", type: "userMessage", status: "completed" }] },
-      { id: "turn-2", status: "inProgress", items: [{ id: "item-2", turnId: "turn-2", type: "agentMessage", status: "inProgress" }] },
+      { id: "turn-2", status: "inProgress", items: [{ id: "item-2", turnId: "turn-2", type: "agentMessage", status: "inProgress" }, ...(options.extraItems ?? [])] },
     ] }],
     ["thread-2", { id: "thread-2", name: "Ephemeral", status: { type: "idle" }, createdAt: 1_700_000_002, updatedAt: 1_700_000_003, ephemeral: true, parentThreadId: "thread-1", turns: [] }],
   ])
@@ -118,6 +118,26 @@ describe("Codex app-server thread lifecycle", () => {
     const disk = readFileSync(receiptPath, "utf8")
     expect(disk).not.toContain("thread-1")
     expect(disk).not.toContain("private")
+    lifecycle.close()
+  })
+
+  test("projects subagent activity through the typed delegated-agent component contract", async () => {
+    const fake = fakeLease({ extraItems: [{
+      id: "subagent-activity-1", turnId: "turn-2", type: "subAgentActivity",
+      agentPath: "reviewer", agentThreadId: "child-thread-1", kind: "interacted",
+    }] })
+    const lifecycle = makeCodexThreadLifecycle({ lease: fake.lease })
+    await lifecycle.initialize()
+    const page = await lifecycle.runHistory({
+      kind: "history_page", sessionsRoot: "/unused", threadRef: "thread-1", offset: 0, limit: 10,
+    }) as { items: Array<Record<string, unknown>> }
+    expect(page.items.find(item => item.itemRef === "subagent-activity-1")).toMatchObject({
+      kind: "collaboration",
+      item: {
+        kind: "agent", source: "codex", activityKind: "interacted", agentPath: "reviewer",
+        children: [{ threadRef: "child-thread-1", status: "running" }],
+      },
+    })
     lifecycle.close()
   })
 

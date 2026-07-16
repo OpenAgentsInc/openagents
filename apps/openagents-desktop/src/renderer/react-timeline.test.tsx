@@ -844,6 +844,35 @@ describe("delegated-agent collab states on the primary React timeline (#8867)", 
     expect(container.textContent).toContain("timeline-builder")
     root.unmount()
   })
+
+  test("renders typed subAgentActivity with its friendly path instead of the wire discriminant", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const activityRecord: ReactTimelineRecord = {
+      ...record("subagent-activity", 0),
+      kind: "collaboration",
+      label: "subAgentActivity",
+      body: "[subAgentActivity]",
+      status: null,
+      fields: [],
+      item: {
+        kind: "agent",
+        source: "codex",
+        status: "in_progress",
+        activityKind: "interacted",
+        agentPath: "reviewer",
+        children: [{ threadRef: "child-thread-1", status: "running" }],
+      },
+    }
+    root.render(<ReactTimeline sessionKey="thread-1" records={[activityRecord]}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    expect(container.querySelector('[data-kind="collabAgentToolCall"]')).not.toBeNull()
+    expect(container.textContent).toContain("reviewer")
+    expect(container.textContent).toContain("interacted")
+    expect(container.textContent).not.toContain("[subAgentActivity]")
+    root.unmount()
+  })
 })
 
 describe("streaming reasoning disclosure surfacing on timeline records (#8863 T6)", () => {

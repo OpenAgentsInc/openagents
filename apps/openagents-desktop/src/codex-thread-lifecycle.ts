@@ -12,6 +12,7 @@ import type { DesktopThread } from "./chat-contract.ts"
 import type { CodexHistoryRequest } from "./codex-history-host.ts"
 import type { CodexHistoryAgent, CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage, CodexHistorySearchResponse } from "./codex-history-contract.ts"
 import { redactCodexHistoryText } from "./codex-history.ts"
+import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
 
 type ObjectValue = Readonly<Record<string, unknown>>
 const object = (value: unknown): ObjectValue | null => typeof value === "object" && value !== null && !Array.isArray(value) ? value as ObjectValue : null
@@ -322,14 +323,26 @@ export const makeCodexThreadLifecycle = (options: Readonly<{ lease: CodexAppServ
   const historyItems = (threadId: string, values: ReadonlyArray<CodexLifecycleItem>): ReadonlyArray<CodexHistoryItem> => values.map((item, sequence) => {
     const text = itemText(item.payload)
     const normalized = item.type.toLowerCase()
-    const kind: CodexHistoryItem["kind"] = normalized.includes("user") ? "user_message"
-      : normalized.includes("agent") || normalized.includes("assistant") ? "assistant_message"
+    // Preserve the structured ThreadItem beside the bounded history strings.
+    // `subAgentActivity` contains no prose, so the old fallback leaked its
+    // wire discriminant into the transcript as `[subAgentActivity]`.
+    const payload = object(item.payload)
+    const typedItem = payload === null
+      ? null
+      : workbenchItemFromThreadItem(payload, "codex", value => redactCodexHistoryText(value).text)
+    const kind: CodexHistoryItem["kind"] = typedItem?.kind === "agent" ? "collaboration"
+      : normalized.includes("user") ? "user_message"
+        : normalized.includes("agent") || normalized.includes("assistant") ? "assistant_message"
         : normalized.includes("reason") ? "reasoning"
           : normalized.includes("plan") ? "plan"
             : normalized.includes("error") ? "error"
               : normalized.includes("tool") || normalized.includes("command") || normalized.includes("file") ? "tool_call"
                 : "lifecycle"
-    return { itemRef: item.id, threadRef: threadId, sequence, timestamp: iso(object(item.payload)?.createdAt), kind, label: item.type.slice(0, 160), summary: text.text, status: item.status, fields: [], redacted: text.redacted, sourceType: item.type.slice(0, 160) }
+    return {
+      itemRef: item.id, threadRef: threadId, sequence, timestamp: iso(object(item.payload)?.createdAt), kind,
+      label: item.type.slice(0, 160), summary: text.text, status: item.status, fields: [], redacted: text.redacted,
+      sourceType: item.type.slice(0, 160), ...(typedItem === null ? {} : { item: typedItem }),
+    }
   })
   const catalog = async (): Promise<CodexHistoryCatalog> => {
     const threads = await list()

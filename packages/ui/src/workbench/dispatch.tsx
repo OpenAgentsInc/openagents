@@ -331,7 +331,7 @@ export const dispatchWorkbenchItem = (
         ? agentItem.children.map(child => ({
             agentKey: child.threadRef,
             detail: agentItem.activityKind !== undefined ? "" : (agentItem.prompt ?? ""),
-            name: child.nickname ?? child.threadRef,
+            name: child.nickname ?? agentItem.agentPath ?? child.threadRef,
             role: agentItem.activityKind !== undefined ? "Subagent activity" : "Delegated agent",
             status: toDesktopAgentStatusFromCollab(child.status),
             statusLabel: collabStatusLabel(child.status),
