@@ -742,11 +742,6 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   [data-slot="sheet-overlay"] {
     transition: none !important;
   }
-
-  .oa-react-working i {
-    animation: none;
-    opacity: .65;
-  }
 }
 
 .oa-react-conversation-heading {
@@ -1252,11 +1247,26 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   height: 12px;
   border-radius: var(--en-radius-none);
   background: var(--en-color-borderStrong);
-  animation: oa-react-working-step 1.2s steps(1, jump-none) infinite;
+  /* `steps(1, jump-none)` is invalid CSS: jump-none removes both endpoint
+     jumps, leaving zero intervals when the step count is one. Chromium drops
+     the animation shorthand entirely in that case, which made the three bars
+     look permanently stalled. `jump-end` keeps the deliberately quantized
+     one-step motion while remaining a valid timing function. */
+  animation: oa-react-working-step 1.2s steps(1, jump-end) infinite;
 }
 .oa-react-working i:nth-of-type(2) { animation-delay: 150ms; }
 .oa-react-working i:nth-of-type(3) { animation-delay: 300ms; }
 @keyframes oa-react-working-step { 0%, 60%, 100% { background: var(--en-color-borderStrong); } 30% { background: var(--en-color-accent); } }
+
+/* This override must follow the base animation declaration. Keeping it in the
+   earlier global reduced-motion block allowed the later shorthand to win the
+   cascade, so Chromium still animated for users who requested less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .oa-react-working i {
+    animation: none;
+    opacity: .65;
+  }
+}
 
 @media (max-width: 700px) {
   .oa-react-protocol-card > summary { grid-template-columns: 24px minmax(0, 1fr) max-content; }

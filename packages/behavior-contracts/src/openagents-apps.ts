@@ -15,6 +15,40 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     ...audioBehaviorContracts,
     {
       authorityBoundary:
+        "This binds the visible activity indicator to the renderer's existing working phase and valid browser animation state. It does not redefine turn, queue, retry, or completion authority, and reduced-motion preference intentionally replaces motion with a stable visible indicator.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.working_indicator_continuous_motion.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/desktop-workbench.css",
+        "apps/openagents-desktop/tests/working-indicator-motion.e2e.test.ts",
+        "github:OpenAgentsInc/openagents#8930",
+      ],
+      oracles: [
+        {
+          description:
+            "Real Chromium DOM/WAAPI oracle: while the working indicator is mounted, all three bars have the named animation, remain in running play state, and advance between two samples; under prefers-reduced-motion they remain visibly mounted while animation is absent.",
+          id: "openagents_desktop.working_indicator.motion_runtime",
+          kind: "bun-test",
+          mode: "e2e",
+          ref: "apps/openagents-desktop/tests/working-indicator-motion.e2e.test.ts",
+        },
+      ],
+      productArea: "Desktop conversation activity",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-16",
+      },
+      state: "enforced",
+      statement: "[working] bars stopped animating — fix it, in ~/work/openagents",
+      surface: "openagents-desktop",
+      verification:
+        "The normal Desktop test sweep runs working-indicator-motion.e2e.test.ts against the production shared CSS in real Chromium, asserting accessible working state, three live advancing animations, and the explicit reduced-motion exception.",
+    },
+    {
+      authorityBoundary:
         "This selects the product shell and host; it does not authorize release before #8574's signing, security, migration, and clean-machine gates pass.",
       blockerRefs: ["github:OpenAgentsInc/openagents#8574"],
       contractId: "openagents_apps.greenfield_desktop_electron.v1",
@@ -852,5 +886,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-12.3",
+  version: "2026-07-16.1",
 }

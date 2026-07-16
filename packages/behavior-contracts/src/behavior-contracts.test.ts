@@ -142,7 +142,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(29)
+    expect(decoded.contracts).toHaveLength(30)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(9)
     expect(
@@ -163,6 +163,17 @@ describe("behavior contract registry", () => {
     )
     expect(desktopRuntime?.state).toBe("pending")
     expect(desktopRuntime?.statement).toContain("mobile sync working soon")
+    const workingIndicator = decoded.contracts.find(
+      contract => contract.contractId === "openagents_desktop.working_indicator_continuous_motion.v1",
+    )
+    expect(workingIndicator?.state).toBe("enforced")
+    expect(workingIndicator?.enforcementTier).toBe("test-sweep")
+    expect(workingIndicator?.statement).toBe(
+      "[working] bars stopped animating — fix it, in ~/work/openagents",
+    )
+    expect(workingIndicator?.oracles[0]?.ref).toBe(
+      "apps/openagents-desktop/tests/working-indicator-motion.e2e.test.ts",
+    )
     const portableSessions = decoded.contracts.find(
       contract =>
         contract.contractId === "openagents_apps.remote_first_portable_sessions.v1",
