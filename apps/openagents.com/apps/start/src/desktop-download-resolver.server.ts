@@ -64,11 +64,11 @@
  * or IP addresses. The default sink is one structured stdout line (Cloud Run
  * logging); tests inject a capture sink.
  */
+import { createHash } from 'node:crypto'
+
 import { Exit, Schema } from 'effect'
 
 import {
-  decodeReleaseSelection,
-  minimumOsByTarget,
   releaseFormats,
   releaseTargetKeys,
   verifySignedReleaseSet,
@@ -79,10 +79,8 @@ import {
 } from '../../../../../apps/openagents-desktop/src/release-set-contract.ts'
 import {
   PRODUCTION_RELEASE_KEY_PIN,
-  verifySignedUpdateManifest,
   type PinnedReleaseKey,
   type UpdateChannel,
-  type UpdateManifest,
 } from '../../../../../apps/openagents-desktop/src/update-contract.ts'
 
 // ---------------------------------------------------------------------------
@@ -94,6 +92,17 @@ export const DESKTOP_DOWNLOAD_RESOLUTION_PATH = '/api/public/desktop-download'
 export const DESKTOP_DOWNLOAD_ARTIFACT_PATH = '/api/public/desktop-download/artifact'
 
 // Feed pointer paths — the documented DIST-09 config contract (see header).
+export const releaseSetPointerPath = (channel: UpdateChannel): string =>
+  `/desktop/openagents/${channel}/v2/pointer.json`
+export const releaseSetCandidatePayloadPath = (
+  channel: UpdateChannel,
+  generation: string,
+): string => `/desktop/openagents/${channel}/candidates/${generation}/release-set.json`
+export const releaseSetCandidateSignaturePath = (
+  channel: UpdateChannel,
+  generation: string,
+): string => `/desktop/openagents/${channel}/candidates/${generation}/release-set.sig.json`
+/** Compatibility aliases exported for older tests/consumers; not resolver authorities. */
 export const releaseSetPayloadPath = (channel: UpdateChannel): string =>
   `/desktop/openagents/${channel}/release-set.json`
 export const releaseSetSignaturePath = (channel: UpdateChannel): string =>
@@ -185,6 +194,9 @@ const ChooseManuallyResolutionSchema = Schema.Struct({
 export const unavailableReasons = [
   'feed_unreachable',
   'feed_schema_invalid',
+  'release_pointer_invalid',
+  'release_pointer_replayed',
+  'release_candidate_mismatch',
   'release_set_verification_failed',
   'v1_manifest_verification_failed',
   'v1_selection_rejected',
@@ -377,23 +389,60 @@ const parseQueryOverrides = (url: URL): QueryOverrides | null => {
 // Verified feed snapshot (fetch + pinned verification + bounded cache)
 // ---------------------------------------------------------------------------
 
-type VerifiedSnapshot =
-  | { readonly source: 'release_set_v2'; readonly releaseSet: ReleaseSet }
-  | {
-      readonly source: 'v1_darwin_arm64_migration'
-      readonly manifest: UpdateManifest
-      readonly artifactUrl: string
-    }
+type VerifiedSnapshot = {
+  readonly source: 'release_set_v2'
+  readonly releaseSet: ReleaseSet
+  readonly pointer: ReleaseSetPointer
+}
+
+type ReleaseSetPointer = Readonly<{
+  schema: 'openagents.desktop.release_pointer.v2'
+  channel: UpdateChannel
+  revision: number
+  generation: string
+  previousGeneration: string | null
+  payloadSha256: string
+  signatureSha256: string
+  publishedAt: string
+}>
 
 type SnapshotResult =
   | { readonly ok: true; readonly snapshot: VerifiedSnapshot }
   | { readonly ok: false; readonly reason: DesktopDownloadUnavailableReason }
 
 const boundedBody = async (response: Response, maximum: number): Promise<Uint8Array | null> => {
-  const declared = Number(response.headers.get('content-length'))
-  if (Number.isFinite(declared) && declared > maximum) return null
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  return bytes.byteLength > maximum ? null : bytes
+  const contentLength = response.headers.get('content-length')
+  if (contentLength !== null) {
+    if (!/^\d+$/.test(contentLength)) return null
+    const declared = Number(contentLength)
+    if (!Number.isSafeInteger(declared) || declared > maximum) return null
+  }
+  if (response.body === null) return new Uint8Array()
+  const reader = response.body.getReader()
+  const chunks: Array<Uint8Array> = []
+  let total = 0
+  try {
+    while (true) {
+      const result = await reader.read()
+      if (result.done) break
+      total += result.value.byteLength
+      if (total > maximum) {
+        await reader.cancel('body_size_invalid').catch(() => undefined)
+        return null
+      }
+      chunks.push(result.value)
+    }
+  } catch {
+    await reader.cancel('body_read_failed').catch(() => undefined)
+    return null
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
 }
 
 const parseJson = (bytes: Uint8Array): unknown | undefined => {
@@ -403,6 +452,53 @@ const parseJson = (bytes: Uint8Array): unknown | undefined => {
     return undefined
   }
 }
+
+const sha256 = (bytes: Uint8Array): string =>
+  createHash('sha256').update(bytes).digest('hex')
+
+const sha256Pattern = /^[0-9a-f]{64}$/
+const instantPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/
+
+const decodeReleaseSetPointer = (
+  candidate: unknown,
+  channel: UpdateChannel,
+  now: number,
+): ReleaseSetPointer | null => {
+  if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return null
+  const row = candidate as Record<string, unknown>
+  if (
+    Object.keys(row).toSorted().join(',') !==
+      ['channel', 'generation', 'payloadSha256', 'previousGeneration', 'publishedAt', 'revision', 'schema', 'signatureSha256'].toSorted().join(',') ||
+    row['schema'] !== 'openagents.desktop.release_pointer.v2' ||
+    row['channel'] !== channel ||
+    !Number.isSafeInteger(row['revision']) ||
+    Number(row['revision']) <= 0 ||
+    typeof row['generation'] !== 'string' ||
+    !sha256Pattern.test(row['generation']) ||
+    (row['previousGeneration'] !== null &&
+      (typeof row['previousGeneration'] !== 'string' ||
+        !sha256Pattern.test(row['previousGeneration']))) ||
+    row['previousGeneration'] === row['generation'] ||
+    typeof row['payloadSha256'] !== 'string' ||
+    !sha256Pattern.test(row['payloadSha256']) ||
+    row['payloadSha256'] !== row['generation'] ||
+    typeof row['signatureSha256'] !== 'string' ||
+    !sha256Pattern.test(row['signatureSha256']) ||
+    typeof row['publishedAt'] !== 'string' ||
+    !instantPattern.test(row['publishedAt'])
+  ) return null
+  const publishedAt = Date.parse(row['publishedAt'])
+  if (!Number.isFinite(publishedAt) || publishedAt > now + 5 * 60_000) return null
+  return row as ReleaseSetPointer
+}
+
+const samePointer = (left: ReleaseSetPointer, right: ReleaseSetPointer): boolean =>
+  left.revision === right.revision &&
+  left.generation === right.generation &&
+  left.previousGeneration === right.previousGeneration &&
+  left.payloadSha256 === right.payloadSha256 &&
+  left.signatureSha256 === right.signatureSha256 &&
+  left.publishedAt === right.publishedAt
 
 export type DesktopDownloadResolverConfig = Readonly<{
   baseUrl: string
@@ -447,95 +543,49 @@ export const createDesktopDownloadResolver = (input?: Readonly<{
     })
 
   const cache = new Map<UpdateChannel, { fetchedAtMs: number; snapshot: VerifiedSnapshot }>()
+  const lastPointers = new Map<UpdateChannel, ReleaseSetPointer>()
+  const inFlight = new Map<UpdateChannel, Promise<SnapshotResult>>()
 
-  const fetchV1 = async (channel: UpdateChannel): Promise<SnapshotResult> => {
-    let responses: readonly [Response, Response, Response]
+  const fetchSnapshot = async (channel: UpdateChannel): Promise<SnapshotResult> => {
+    let pointerResponse: Response
     try {
-      responses = await Promise.all([
-        fetchFn(`${config.baseUrl}${v1ManifestPath(channel)}`),
-        fetchFn(`${config.baseUrl}${v1SignaturePath(channel)}`),
-        fetchFn(`${config.baseUrl}${v1PointerPath(channel)}`),
-      ])
+      pointerResponse = await fetchFn(`${config.baseUrl}${releaseSetPointerPath(channel)}`)
     } catch {
       return { ok: false, reason: 'feed_unreachable' }
     }
-    if (responses.some(response => !response.ok)) {
-      return { ok: false, reason: 'feed_unreachable' }
-    }
-    const [manifestBytes, signatureBytes, pointerBytes] = await Promise.all([
-      boundedBody(responses[0], MAX_PAYLOAD_BYTES),
-      boundedBody(responses[1], MAX_SIGNATURE_BYTES),
-      boundedBody(responses[2], MAX_POINTER_BYTES),
-    ])
-    if (manifestBytes === null || signatureBytes === null || pointerBytes === null) {
-      return { ok: false, reason: 'feed_schema_invalid' }
-    }
-    const signature = parseJson(signatureBytes)
-    const pointer = parseJson(pointerBytes)
-    if (signature === undefined || pointer === undefined) {
-      return { ok: false, reason: 'feed_schema_invalid' }
-    }
-    const verified = verifySignedUpdateManifest(manifestBytes, signature, config.pin, channel)
-    if (!verified.ok) return { ok: false, reason: 'v1_manifest_verification_failed' }
-    // Bounded migration-window + darwin-arm64 identity gate from the landed
-    // ReleaseSet contract; past `V1_MIGRATION_END` this rejects and the
-    // resolver honestly reports unavailable rather than reviving v1.
-    const selection = decodeReleaseSelection(
-      parseJson(manifestBytes),
-      new Date(nowMs()).toISOString(),
-    )
-    if (selection === null || selection.kind !== 'v1-darwin-arm64') {
-      return { ok: false, reason: 'v1_selection_rejected' }
-    }
-    // The v1 manifest signs name/hash/length but NOT the URL (fixed in v2):
-    // bind the unsigned transport pointer to the signed identity exactly.
-    const row =
-      typeof pointer === 'object' && pointer !== null && !Array.isArray(pointer)
-        ? (pointer as Record<string, unknown>)
-        : null
-    const url = row?.['artifactUrl']
-    if (
-      row === null ||
-      row['channel'] !== verified.manifest.channel ||
-      row['version'] !== verified.manifest.version ||
-      row['artifactName'] !== verified.manifest.artifactName ||
-      typeof url !== 'string' ||
-      url.length > 2_048 ||
-      !/^https:\/\/[^\s]+$/.test(url) ||
-      decodeURIComponent(new URL(url).pathname.split('/').at(-1) ?? '') !==
-        verified.manifest.artifactName
-    ) {
-      return { ok: false, reason: 'v1_pointer_mismatch' }
-    }
-    return {
-      ok: true,
-      snapshot: {
-        source: 'v1_darwin_arm64_migration',
-        manifest: verified.manifest,
-        artifactUrl: url,
-      },
-    }
-  }
+    if (!pointerResponse.ok) return { ok: false, reason: 'feed_unreachable' }
+    const pointerBytes = await boundedBody(pointerResponse, MAX_POINTER_BYTES)
+    if (pointerBytes === null) return { ok: false, reason: 'feed_schema_invalid' }
+    const pointer = decodeReleaseSetPointer(parseJson(pointerBytes), channel, nowMs())
+    if (pointer === null) return { ok: false, reason: 'release_pointer_invalid' }
 
-  const fetchSnapshot = async (channel: UpdateChannel): Promise<SnapshotResult> => {
+    const previous = lastPointers.get(channel)
+    if (
+      previous !== undefined &&
+      (pointer.revision < previous.revision ||
+        (pointer.revision === previous.revision && !samePointer(pointer, previous)) ||
+        Date.parse(pointer.publishedAt) < Date.parse(previous.publishedAt) ||
+        (pointer.revision === previous.revision + 1 &&
+          pointer.previousGeneration !== previous.generation))
+    ) return { ok: false, reason: 'release_pointer_replayed' }
+
     let payloadResponse: Response
     let signatureResponse: Response
     try {
       ;[payloadResponse, signatureResponse] = await Promise.all([
-        fetchFn(`${config.baseUrl}${releaseSetPayloadPath(channel)}`),
-        fetchFn(`${config.baseUrl}${releaseSetSignaturePath(channel)}`),
+        fetchFn(`${config.baseUrl}${releaseSetCandidatePayloadPath(channel, pointer.generation)}`),
+        fetchFn(`${config.baseUrl}${releaseSetCandidateSignaturePath(channel, pointer.generation)}`),
       ])
     } catch {
       return { ok: false, reason: 'feed_unreachable' }
     }
-    // v1 fallback ONLY on 404 (feed not yet published) — any other failure of
-    // an existing v2 feed fails closed without a downgrade path.
-    if (payloadResponse.status === 404 || signatureResponse.status === 404) {
-      return fetchV1(channel)
-    }
     if (!payloadResponse.ok || !signatureResponse.ok) {
       return { ok: false, reason: 'feed_unreachable' }
     }
+    if (
+      payloadResponse.headers.get('x-openagents-release-generation') !== pointer.generation ||
+      signatureResponse.headers.get('x-openagents-release-generation') !== pointer.generation
+    ) return { ok: false, reason: 'release_candidate_mismatch' }
     const [payloadBytes, signatureBytes] = await Promise.all([
       boundedBody(payloadResponse, MAX_PAYLOAD_BYTES),
       boundedBody(signatureResponse, MAX_SIGNATURE_BYTES),
@@ -543,11 +593,19 @@ export const createDesktopDownloadResolver = (input?: Readonly<{
     if (payloadBytes === null || signatureBytes === null) {
       return { ok: false, reason: 'feed_schema_invalid' }
     }
+    if (
+      sha256(payloadBytes) !== pointer.payloadSha256 ||
+      sha256(signatureBytes) !== pointer.signatureSha256
+    ) return { ok: false, reason: 'release_candidate_mismatch' }
     const signature = parseJson(signatureBytes)
     if (signature === undefined) return { ok: false, reason: 'feed_schema_invalid' }
     const verified = verifySignedReleaseSet(payloadBytes, signature, config.pin, channel)
     if (!verified.ok) return { ok: false, reason: 'release_set_verification_failed' }
-    return { ok: true, snapshot: { source: 'release_set_v2', releaseSet: verified.releaseSet } }
+    lastPointers.set(channel, pointer)
+    return {
+      ok: true,
+      snapshot: { source: 'release_set_v2', releaseSet: verified.releaseSet, pointer },
+    }
   }
 
   const loadSnapshot = async (channel: UpdateChannel): Promise<SnapshotResult> => {
@@ -555,14 +613,20 @@ export const createDesktopDownloadResolver = (input?: Readonly<{
     if (cached !== undefined && nowMs() - cached.fetchedAtMs < config.cacheTtlMs) {
       return { ok: true, snapshot: cached.snapshot }
     }
-    const result = await fetchSnapshot(channel)
-    if (result.ok) {
-      cache.set(channel, { fetchedAtMs: nowMs(), snapshot: result.snapshot })
-    } else {
-      // Fail closed: an expired snapshot is never served past the TTL.
-      cache.delete(channel)
-    }
-    return result
+    const pending = inFlight.get(channel)
+    if (pending !== undefined) return pending
+    const refresh = fetchSnapshot(channel).then(result => {
+      if (result.ok) {
+        cache.set(channel, { fetchedAtMs: nowMs(), snapshot: result.snapshot })
+      } else {
+        cache.delete(channel)
+      }
+      return result
+    }).finally(() => {
+      if (inFlight.get(channel) === refresh) inFlight.delete(channel)
+    })
+    inFlight.set(channel, refresh)
+    return refresh
   }
 
   // -- projection --------------------------------------------------------
