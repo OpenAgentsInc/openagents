@@ -1,0 +1,26 @@
+{
+  "fixtureFormat": "openagents-acp-peer-fixture-v1",
+  "profile": "grok",
+  "fixtureVersion": "source-c68e39f",
+  "proofClass": "source-audited-synthetic",
+  "notACompatibilityClaim": true,
+  "launch": ["grok", "agent", "stdio"],
+  "protocolVersion": 1,
+  "schemaRelease": "schema-v1.19.0",
+  "schemaSha256": "92c1dfcda10dd47e99127500a3763da2b471f9ac61e12b9bf0430c32cf953796",
+  "peerSource": {
+    "repository": "xai-org/grok-build",
+    "commit": "c68e39f60462f28d9be5e683d9cbe2c57b1a5027",
+    "rustAgentClientProtocol": "0.10.4",
+    "rustSchema": "0.11.4"
+  },
+  "captureProvenance": {
+    "kind": "source-and-public-doc-derived",
+    "capturedAt": "2026-07-16T00:00:00.000Z",
+    "platform": "synthetic-platform-neutral",
+    "binaryVersion": "not-captured; #8897 owns pinned real-binary proof",
+    "sanitizerVersion": 1
+  },
+  "authMethodIds": ["cached_token", "xai.api_key"],
+  "knownExtensions": ["x.ai/ask_user_question", "_x.ai/ask_user_question", "_x.ai/session/prompt_complete"]
+}

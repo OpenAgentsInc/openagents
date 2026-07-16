@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "rootDir": "../..",
+    "types": ["node", "vite-plus-matchers"]
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
+}

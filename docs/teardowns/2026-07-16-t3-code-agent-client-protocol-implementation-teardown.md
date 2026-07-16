@@ -120,6 +120,16 @@ Its child issues turn the phases below into dependency-ordered deliverables:
 | [#8896](https://github.com/OpenAgentsInc/openagents/issues/8896) | trusted peer-profile schema and registry/admission path                                |
 | [#8897](https://github.com/OpenAgentsInc/openagents/issues/8897) | pinned Grok and Cursor live compatibility and release-claim gate                       |
 
+Implementation status on 2026-07-16: #8888 delivered the pinned generated
+protocol authority, #8889 delivered the bounded bidirectional stdio transport,
+and #8890 delivered the hermetic
+[`agent-client-protocol-conformance`](../../packages/agent-client-protocol-conformance/README.md)
+package. Its exact 23-method coverage report, compatibility matrix, bounded
+fault inventory, independently versioned peer provenance, MCP reference
+custody cases, and opt-in probes are checked artifacts. The Grok and Cursor
+fixtures are deliberately labeled source-derived synthetic evidence; they do
+not substitute for #8897's independent pinned live-binary release proof.
+
 Grok and Cursor are independent required release peers. Passing the shared
 wire suite or one provider's live probe does not establish support for the
 other. The epic deliberately keeps their auth, extensions, version ranges,
@@ -807,6 +817,13 @@ behavior without an explicit namespaced codec and peer profile.
    registration.
 
 ### Phase ACP-2 — conformance fixtures
+
+**Implemented by #8890.** The checked package covers the exact stable manifest,
+known variant inventories, a production-transport-backed scripted peer,
+concurrent sessions and reverse requests, deterministic redacted transcripts,
+MCP reference refusal/redaction, fault and compatibility artifacts, and inert
+by default Grok/Cursor live probes. Product-native projection remains #8891;
+provider-specific real-binary admission remains #8893, #8894, and #8897.
 
 1. Exercise every stable method and notification.
 2. Assert capability-gated call refusal.

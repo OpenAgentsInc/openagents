@@ -1,0 +1,1 @@
+{"name":"brokered","type":"http","url":"https://mcp.invalid/rpc","credentialRef":{"id":"fixture-ref-invalid","expiresAt":"2030-01-01T00:00:00.000Z"}}

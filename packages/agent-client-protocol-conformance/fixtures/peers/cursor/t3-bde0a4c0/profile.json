@@ -1,0 +1,25 @@
+{
+  "fixtureFormat": "openagents-acp-peer-fixture-v1",
+  "profile": "cursor",
+  "fixtureVersion": "t3-bde0a4c0",
+  "proofClass": "secondary-adapter-audited-synthetic",
+  "notACompatibilityClaim": true,
+  "launch": ["agent", "acp"],
+  "protocolVersion": 1,
+  "schemaRelease": "schema-v1.19.0",
+  "schemaSha256": "92c1dfcda10dd47e99127500a3763da2b471f9ac61e12b9bf0430c32cf953796",
+  "secondaryEvidence": {
+    "repository": "pingdotgg/t3code",
+    "commit": "bde0a4c0dd2d420a5fd71f39448d5db1bab078da",
+    "warning": "T3 adapter evidence is not proof of Cursor binary behavior"
+  },
+  "captureProvenance": {
+    "kind": "adapter-source-derived",
+    "capturedAt": "2026-07-16T00:00:00.000Z",
+    "platform": "synthetic-platform-neutral",
+    "binaryVersion": "not-captured; #8897 owns pinned real-binary proof",
+    "sanitizerVersion": 1
+  },
+  "authMethodIds": ["cursor_login"],
+  "knownExtensions": ["cursor/ask_question", "cursor/create_plan", "cursor/update_todos", "cursor/list_available_models"]
+}

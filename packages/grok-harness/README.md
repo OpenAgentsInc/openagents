@@ -17,6 +17,12 @@ wire version 1 and `schema-v1.19.0`. See the
 [T3 Code Agent Client Protocol implementation teardown](../../docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md)
 for the compatibility verdict and ordered replacement plan.
 
+`mock-acp-server` is retained only for the existing RL-worker/chat-runtime
+contract. It is randomized, narrow, and is not wire conformance evidence. New
+wire cases belong in
+[`agent-client-protocol-conformance`](../agent-client-protocol-conformance/README.md),
+which uses the generated protocol authority and production stdio transport.
+
 ## Scope
 
 | Module             | Role                                                                      |

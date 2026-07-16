@@ -1,0 +1,179 @@
+{
+  "format": "openagents-acp-coverage-v1",
+  "openagentsRevision": "issue-8890-fixture-baseline",
+  "schemaRelease": "schema-v1.19.0",
+  "sourceSha256": "92c1dfcda10dd47e99127500a3763da2b471f9ac61e12b9bf0430c32cf953796",
+  "covered": 23,
+  "manifest": 23,
+  "methods": [
+    {
+      "key": "client-to-agent:initialize",
+      "kind": "request",
+      "supportState": "supported",
+      "capabilityState": "baseline"
+    },
+    {
+      "key": "client-to-agent:authenticate",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "client-to-agent:session/new",
+      "kind": "request",
+      "supportState": "supported",
+      "capabilityState": "baseline"
+    },
+    {
+      "key": "client-to-agent:session/load",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "client-to-agent:session/set_mode",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "client-to-agent:session/set_config_option",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "client-to-agent:session/prompt",
+      "kind": "request",
+      "supportState": "supported",
+      "capabilityState": "baseline"
+    },
+    {
+      "key": "client-to-agent:session/cancel",
+      "kind": "notification",
+      "supportState": "supported",
+      "capabilityState": "baseline"
+    },
+    {
+      "key": "client-to-agent:session/list",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "client-to-agent:session/delete",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "client-to-agent:session/resume",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "client-to-agent:session/close",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "client-to-agent:logout",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "agent-to-client:session/request_permission",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "agent-to-client:session/update",
+      "kind": "notification",
+      "supportState": "supported",
+      "capabilityState": "baseline"
+    },
+    {
+      "key": "agent-to-client:fs/write_text_file",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "agent-to-client:fs/read_text_file",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "agent-to-client:terminal/create",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "agent-to-client:terminal/output",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "agent-to-client:terminal/release",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "agent-to-client:terminal/wait_for_exit",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "agent-to-client:terminal/kill",
+      "kind": "request",
+      "supportState": "capability-gated",
+      "capabilityState": "present"
+    },
+    {
+      "key": "protocol:$/cancel_request",
+      "kind": "notification",
+      "supportState": "supported",
+      "capabilityState": "baseline"
+    }
+  ],
+  "variants": {
+    "contentBlocks": ["text", "image", "audio", "resource_link", "resource"],
+    "sessionUpdates": [
+      "user_message_chunk",
+      "agent_message_chunk",
+      "agent_thought_chunk",
+      "tool_call",
+      "tool_call_update",
+      "plan",
+      "available_commands_update",
+      "current_mode_update",
+      "config_option_update",
+      "session_info_update",
+      "usage_update"
+    ],
+    "stopReasons": ["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"],
+    "toolKinds": [
+      "read",
+      "edit",
+      "delete",
+      "move",
+      "search",
+      "execute",
+      "think",
+      "fetch",
+      "switch_mode",
+      "other"
+    ],
+    "toolStatuses": ["pending", "in_progress", "completed", "failed"],
+    "unknownFutureVariant": "explicit-private-native-failure"
+  }
+}

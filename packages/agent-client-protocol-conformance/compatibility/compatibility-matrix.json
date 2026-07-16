@@ -1,0 +1,254 @@
+{
+  "format": "openagents-acp-compatibility-matrix-v1",
+  "openagentsRevision": "issue-8890-fixture-baseline",
+  "protocol": "Agent Client Protocol",
+  "schemaRelease": "schema-v1.19.0",
+  "schemaSha256": "92c1dfcda10dd47e99127500a3763da2b471f9ac61e12b9bf0430c32cf953796",
+  "platform": "hermetic-node-subprocess",
+  "rows": [
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "baseline",
+      "method": "initialize",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "cached_token-fixture",
+      "capability": "initialize.authMethods contains methodId",
+      "method": "authenticate",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "baseline",
+      "method": "session/new",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "agentCapabilities.loadSession",
+      "method": "session/load",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "session advertises mode",
+      "method": "session/set_mode",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "session advertises config option",
+      "method": "session/set_config_option",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "baseline",
+      "method": "session/prompt",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "baseline",
+      "method": "session/cancel",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "agentCapabilities.sessionCapabilities.list",
+      "method": "session/list",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "agentCapabilities.sessionCapabilities.delete",
+      "method": "session/delete",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "agentCapabilities.sessionCapabilities.resume",
+      "method": "session/resume",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "agentCapabilities.sessionCapabilities.close",
+      "method": "session/close",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "agentCapabilities.auth.logout",
+      "method": "logout",
+      "direction": "client-to-agent",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "active session authority",
+      "method": "session/request_permission",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "baseline",
+      "method": "session/update",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "clientCapabilities.fs.writeTextFile",
+      "method": "fs/write_text_file",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "clientCapabilities.fs.readTextFile",
+      "method": "fs/read_text_file",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "clientCapabilities.terminal",
+      "method": "terminal/create",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "clientCapabilities.terminal",
+      "method": "terminal/output",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "clientCapabilities.terminal",
+      "method": "terminal/release",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "clientCapabilities.terminal",
+      "method": "terminal/wait_for_exit",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "clientCapabilities.terminal",
+      "method": "terminal/kill",
+      "direction": "agent-to-client",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    },
+    {
+      "peer": "scripted-peer",
+      "peerVersion": "1",
+      "authMode": "not-applicable",
+      "capability": "in-flight request ownership",
+      "method": "$/cancel_request",
+      "direction": "protocol",
+      "proof": "fixture",
+      "result": "declared-for-execution"
+    }
+  ],
+  "namedPeerProfiles": [
+    {
+      "peer": "grok",
+      "version": "source-c68e39f",
+      "proof": "source-audited-synthetic",
+      "result": "not-a-live-compatibility-claim"
+    },
+    {
+      "peer": "cursor",
+      "version": "t3-bde0a4c0",
+      "proof": "secondary-adapter-audited-synthetic",
+      "result": "not-a-live-compatibility-claim"
+    }
+  ]
+}

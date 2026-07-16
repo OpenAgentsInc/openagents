@@ -114,7 +114,11 @@ external coding agents is the requirement.
 
 The source audit and ordered implementation gates are in the
 [T3 Code Agent Client Protocol implementation teardown](docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md);
-execution is tracked in
+the pinned protocol authority, bounded stdio transport, and hermetic 23-method
+[conformance package](packages/agent-client-protocol-conformance/README.md) are
+now implemented. The checked Grok/Cursor source-derived fixtures remain
+explicitly non-release evidence until their independent provider profiles and
+pinned live-binary gate land. Execution is tracked in
 [#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887);
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).

@@ -1,0 +1,28 @@
+{
+  "name": "@openagentsinc/agent-client-protocol-conformance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check:artifacts": "node --import tsx scripts/generate-artifacts.ts --check",
+    "generate": "node --import tsx scripts/generate-artifacts.ts",
+    "live:grok": "node --import tsx scripts/live-probe.ts grok",
+    "live:cursor": "node --import tsx scripts/live-probe.ts cursor",
+    "report": "node --import tsx scripts/run-conformance-report.ts",
+    "test": "vp test --run packages/agent-client-protocol-conformance/src/conformance.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/agent-client-protocol": "workspace:*",
+    "@openagentsinc/agent-stdio-transport": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "4.20.6",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

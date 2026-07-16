@@ -1,0 +1,151 @@
+{
+  "format": "openagents-acp-fault-matrix-v1",
+  "bounded": true,
+  "timeoutMs": 2000,
+  "rows": [
+    {
+      "layer": "parser",
+      "fault": "malformed-frame",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "parser",
+      "fault": "oversized-frame",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "protocol",
+      "fault": "unknown-method",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "protocol",
+      "fault": "invalid-params",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "protocol",
+      "fault": "duplicate-response",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "protocol",
+      "fault": "late-response",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "authority",
+      "fault": "reverse-timeout",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "authority",
+      "fault": "reverse-refusal",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "authority",
+      "fault": "capability-lie",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "authority",
+      "fault": "auth-omission",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "authority",
+      "fault": "auth-failure",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "projection",
+      "fault": "partial-output",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "projection",
+      "fault": "update-after-completion",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "lifecycle",
+      "fault": "exit-startup",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "lifecycle",
+      "fault": "exit-initialize",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "lifecycle",
+      "fault": "exit-authenticate",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "lifecycle",
+      "fault": "exit-session",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "lifecycle",
+      "fault": "exit-prompt",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "lifecycle",
+      "fault": "exit-drain",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "transport",
+      "fault": "slow-consumer",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "transport",
+      "fault": "queue-overload",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "recovery",
+      "fault": "cancellation-race",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "recovery",
+      "fault": "replay-live-interleaving",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    },
+    {
+      "layer": "recovery",
+      "fault": "restart-generation-crossing",
+      "deterministicOracle": "executed-by-conformance-test-and-runtime-report",
+      "result": "declared-for-execution"
+    }
+  ]
+}
