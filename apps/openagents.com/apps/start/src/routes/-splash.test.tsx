@@ -4,10 +4,18 @@ import { describe, expect, test } from 'vitest'
 import { SplashPage } from './-splash-page'
 
 describe('Desktop splash', () => {
-  test('server-renders the live workroom reconstruction and its accessible controls', () => {
+  test('server-renders the landing hero around the live workroom and its accessible controls', () => {
     const html = renderToStaticMarkup(<SplashPage />)
 
     expect(html).toContain('data-route="splash"')
+    expect(html).toContain('Primary navigation')
+    expect(html).toContain('A better way to build')
+    expect(html).toContain('with agents.')
+    expect(html).toContain('Download for Mac')
+    expect(html).toContain('OpenAgents Desktop · v0.1.0 RC')
+    expect(html).toContain('href="#product"')
+    expect(html).toContain('splash-product')
+    expect(html).toContain('splash-window-bar')
     expect(html).toContain('OpenAgents Desktop live product preview')
     expect(html).toContain('APPSERVER')
     expect(html).toContain('T3CODE YOINK')

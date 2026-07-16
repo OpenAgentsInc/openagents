@@ -1,5 +1,7 @@
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
 import { khalaTheme } from '@effect-native/tokens'
+import { InternalLink } from '@/components/internal-link'
+import { DOCS_URL, GITHUB_REPOSITORY_URL } from '@/lib/public-site'
 import {
   DesktopAgentGroup,
   DesktopApprovalCard,
@@ -32,7 +34,7 @@ import {
   type DesktopRailDestination,
   type DesktopToolKind,
 } from '@openagentsinc/ui/desktop-workbench'
-import { ArrowUp, Command, Folder, ImagePlus, Square, Zap } from 'lucide-react'
+import { ArrowRight, ArrowUp, Command, Folder, ImagePlus, Square, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import '../splash.css'
@@ -597,65 +599,106 @@ export function SplashPage() {
   const visibleSessions = sessions.filter(session => session.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const active = phase === 'preparing' || phase === 'streaming'
 
-  return <main className="splash-page" data-route="splash" style={desktopThemeCssVariables(khalaTheme)}>
-    <DesktopWorkbench aria-label="OpenAgents Desktop live product preview">
-      <DesktopSidebarExpand aria-expanded={railOpen} aria-label="Expand sidebar" onClick={() => setRailOpen(true)} title="Expand sidebar" />
-      <DesktopSessionRail
-        canGoBack
-        canGoForward={false}
-        destinations={destinations}
-        footer={<section aria-label="Coding workspaces" className="oa-react-workspaces splash-workspace-footer">
-          <h2><Folder aria-hidden="true" /><span>Workspaces</span></h2>
-          <div className="oa-react-workspace-row"><button type="button"><span>openagents-desktop</span><small>Active</small></button></div>
-        </section>}
-        onBack={() => undefined}
-        onCollapse={() => setRailOpen(false)}
-        onDestinationSelect={destination => destination.id === 'new' ? newSession() : undefined}
-        onForward={() => undefined}
-        onSearchOpenChange={setSearchOpen}
-        onSearchQueryChange={setQuery}
-        onSessionSelect={session => selectSession(session.id)}
-        open={railOpen}
-        searchOpen={searchOpen}
-        searchQuery={query}
-        sessions={visibleSessions.map(session => ({ ...session, selected: session.id === activeId }))}
-        stageLabel="DEV"
-      />
-      {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
-      <DesktopConversation
-        composer={<DesktopComposerFrame aria-label="Message composer">
-          <DesktopComposerInput>
-            <textarea
-              aria-label={active ? 'Steer a Codex message' : 'Message Codex'}
-              id="splash-composer-input"
-              onChange={event => setDraft(event.currentTarget.value)}
-              onKeyDown={event => {
-                if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
-                event.preventDefault()
-                submitMessage()
-              }}
-              placeholder={active ? 'Steer the current turn…' : 'Message Codex…'}
-              rows={2}
-              value={draft}
-            />
-            <DesktopComposerBar>
-              <DesktopComposerButton aria-label="Attach image" kind="action"><ImagePlus aria-hidden="true" /></DesktopComposerButton>
-              <DesktopComposerButton aria-label="Open commands" kind="action"><Command aria-hidden="true" /></DesktopComposerButton>
-              <DesktopComposerButton aria-label={fullAuto ? 'Turn off Full Auto' : 'Turn on Full Auto'} aria-pressed={fullAuto} kind="toggle" onClick={() => setFullAuto(value => !value)}><Zap aria-hidden="true" />Full Auto</DesktopComposerButton>
-              <span className="oa-react-composer-spacer" />
-              {active ? <DesktopComposerButton aria-label="Stop current turn" kind="stop" onClick={stopPlayback}><Square aria-hidden="true" /></DesktopComposerButton> : null}
-              <DesktopComposerButton aria-label="Send" disabled={draft.trim() === ''} kind="submit" onClick={() => submitMessage()}><ArrowUp aria-hidden="true" /></DesktopComposerButton>
-            </DesktopComposerBar>
-          </DesktopComposerInput>
-        </DesktopComposerFrame>}
-        header={<DesktopConversationHeader lifecycle={active ? 'Running' : 'Ready'} secondary="openagents / main · gpt-5.6-sol" title={title} />}
-        timeline={<DesktopTimeline followKey={`${items.length}:${streamingText.length}:${phase}`} working={phase === 'preparing'}>
-          {items.length === 0 ? <div className="splash-empty"><h2>Start a conversation with Codex</h2><p>Choose a workspace, then send a message.</p></div> : items.map((item, index) => <DemoTimelineItem item={item} key={item.id} sequence={index} />)}
-          {playback === null || phase === 'preparing' ? null : <DesktopTimelineMessage itemKey={`playback-${playback.id}`} label="Assistant" sequence={items.length} tone="assistant">
-            <p aria-hidden="true">{streamingText}</p><span className="oa-react-sr-only">{playback.text}</span>
-          </DesktopTimelineMessage>}
-        </DesktopTimeline>}
-      />
-    </DesktopWorkbench>
-  </main>
+  return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(khalaTheme)}>
+    <header className="splash-site-header">
+      <nav aria-label="Primary navigation" className="splash-nav">
+        <InternalLink aria-label="OpenAgents home" className="splash-brand" href="/" preload="render">
+          <span aria-hidden="true" className="splash-brand-mark" />
+          <span>OpenAgents</span>
+        </InternalLink>
+        <div className="splash-nav-links">
+          <a href="#product">Product</a>
+          <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
+          <a href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">GitHub</a>
+        </div>
+        <div className="splash-nav-actions">
+          <InternalLink className="splash-app-link" href="/app" preload="intent">Open app</InternalLink>
+          <InternalLink className="splash-nav-download" href="/install" preload="render">Download</InternalLink>
+        </div>
+      </nav>
+    </header>
+
+    <section aria-labelledby="splash-heading" className="splash-hero">
+      <InternalLink className="splash-release-link" href="/install" preload="render">
+        OpenAgents Desktop · v0.1.0 RC
+        <ArrowRight aria-hidden="true" />
+      </InternalLink>
+      <h1 id="splash-heading">A better way to build <span>with agents.</span></h1>
+      <p>Plan, delegate, review, and steer coding work from one local-first desktop workroom.</p>
+      <InternalLink className="splash-primary-action" href="/install" preload="render">
+        Download for Mac
+        <ArrowRight aria-hidden="true" />
+      </InternalLink>
+    </section>
+
+    <figure className="splash-product" id="product">
+      <div aria-hidden="true" className="splash-window-bar">
+        <span className="splash-window-dots"><i /><i /><i /></span>
+        <span>OpenAgents Desktop</span>
+        <span className="splash-window-status"><i />Codex connected</span>
+      </div>
+      <div className="splash-demo-frame">
+        <DesktopWorkbench aria-label="OpenAgents Desktop live product preview">
+          <DesktopSidebarExpand aria-expanded={railOpen} aria-label="Expand sidebar" onClick={() => setRailOpen(true)} title="Expand sidebar" />
+          <DesktopSessionRail
+            canGoBack
+            canGoForward={false}
+            destinations={destinations}
+            footer={<section aria-label="Coding workspaces" className="oa-react-workspaces splash-workspace-footer">
+              <h2><Folder aria-hidden="true" /><span>Workspaces</span></h2>
+              <div className="oa-react-workspace-row"><button type="button"><span>openagents-desktop</span><small>Active</small></button></div>
+            </section>}
+            onBack={() => undefined}
+            onCollapse={() => setRailOpen(false)}
+            onDestinationSelect={destination => destination.id === 'new' ? newSession() : undefined}
+            onForward={() => undefined}
+            onSearchOpenChange={setSearchOpen}
+            onSearchQueryChange={setQuery}
+            onSessionSelect={session => selectSession(session.id)}
+            open={railOpen}
+            searchOpen={searchOpen}
+            searchQuery={query}
+            sessions={visibleSessions.map(session => ({ ...session, selected: session.id === activeId }))}
+            stageLabel="DEV"
+          />
+          {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
+          <DesktopConversation
+            composer={<DesktopComposerFrame aria-label="Message composer">
+              <DesktopComposerInput>
+                <textarea
+                  aria-label={active ? 'Steer a Codex message' : 'Message Codex'}
+                  id="splash-composer-input"
+                  onChange={event => setDraft(event.currentTarget.value)}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+                    event.preventDefault()
+                    submitMessage()
+                  }}
+                  placeholder={active ? 'Steer the current turn…' : 'Message Codex…'}
+                  rows={2}
+                  value={draft}
+                />
+                <DesktopComposerBar>
+                  <DesktopComposerButton aria-label="Attach image" kind="action"><ImagePlus aria-hidden="true" /></DesktopComposerButton>
+                  <DesktopComposerButton aria-label="Open commands" kind="action"><Command aria-hidden="true" /></DesktopComposerButton>
+                  <DesktopComposerButton aria-label={fullAuto ? 'Turn off Full Auto' : 'Turn on Full Auto'} aria-pressed={fullAuto} kind="toggle" onClick={() => setFullAuto(value => !value)}><Zap aria-hidden="true" />Full Auto</DesktopComposerButton>
+                  <span className="oa-react-composer-spacer" />
+                  {active ? <DesktopComposerButton aria-label="Stop current turn" kind="stop" onClick={stopPlayback}><Square aria-hidden="true" /></DesktopComposerButton> : null}
+                  <DesktopComposerButton aria-label="Send" disabled={draft.trim() === ''} kind="submit" onClick={() => submitMessage()}><ArrowUp aria-hidden="true" /></DesktopComposerButton>
+                </DesktopComposerBar>
+              </DesktopComposerInput>
+            </DesktopComposerFrame>}
+            header={<DesktopConversationHeader lifecycle={active ? 'Running' : 'Ready'} secondary="openagents / main · gpt-5.6-sol" title={title} />}
+            timeline={<DesktopTimeline followKey={`${items.length}:${streamingText.length}:${phase}`} working={phase === 'preparing'}>
+              {items.length === 0 ? <div className="splash-empty"><h2>Start a conversation with Codex</h2><p>Choose a workspace, then send a message.</p></div> : items.map((item, index) => <DemoTimelineItem item={item} key={item.id} sequence={index} />)}
+              {playback === null || phase === 'preparing' ? null : <DesktopTimelineMessage itemKey={`playback-${playback.id}`} label="Assistant" sequence={items.length} tone="assistant">
+                <p aria-hidden="true">{streamingText}</p><span className="oa-react-sr-only">{playback.text}</span>
+              </DesktopTimelineMessage>}
+            </DesktopTimeline>}
+          />
+        </DesktopWorkbench>
+      </div>
+      <figcaption className="oa-react-sr-only">A live, interactive OpenAgents Desktop workroom rendered with the shared production components.</figcaption>
+    </figure>
+  </div>
 }
