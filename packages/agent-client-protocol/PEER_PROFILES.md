@@ -101,13 +101,14 @@ basename plus sha-256, registry snapshot digest when provenance is
 registry-derived, and evidence artifact refs — no filesystem paths, secrets,
 or environment values.
 
-Profile changes live under `packages/agent-client-protocol/src/profiles/**`,
-which is inside the `acp-conformance.yml` path filters, so adding or changing
-a profile triggers the hermetic wire/fault matrix jobs (including these
-profile admission tests). The pinned **live** compatibility matrix required to
-mark a peer `supported` is owned by the release gate (#8897); its passing
-records enter admission as `kind: "live"` evidence bound to the exact binary
-digest.
+Profile changes live under `packages/agent-client-protocol/src/profiles/**`.
+Their required local or owned-runner gate runs this package's generated check,
+typecheck, and tests together with the conformance package's artifact check,
+typecheck, and tests. Repository policy forbids GitHub-hosted workflows; an
+agent or owned runner invokes those package commands and records their evidence.
+The pinned **live** compatibility matrix required to mark a peer `supported` is
+owned by the release gate (#8897); its passing records enter admission as
+`kind: "live"` evidence bound to the exact binary digest.
 
 ## Adding a peer
 
