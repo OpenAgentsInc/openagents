@@ -779,8 +779,11 @@ Retain the full decoded native ACP envelope before portable projection:
 
 Do not write raw wire bodies to ordinary logs. Do not smuggle raw prompts,
 files, terminal output, headers, or credentials into generic error `data` or a
-public receipt. Unknown stable variants should fail closed at the decoder;
-unknown extension metadata may be retained privately within configured bounds.
+public receipt. A stable variant unknown to the pinned codecs must produce a
+typed protocol-drift/degraded outcome and cannot mutate canonical state; retain
+only its bounded private raw envelope for diagnosis and upgrade work. Unknown
+extension metadata follows the same private retention bounds and cannot acquire
+behavior without an explicit namespaced codec and peer profile.
 
 ## 8. Ordered implementation packet
 
@@ -815,7 +818,10 @@ unknown extension metadata may be retained privately within configured bounds.
    response, restart, and teardown.
 7. Test redaction against prompts, file contents, terminal output, headers, and
    error data.
-8. Keep live Cursor/Grok/official-example probes opt-in and non-authoritative.
+8. Keep live Cursor/Grok/official-example probes opt-in and outside hermetic
+   ordinary CI. Ad hoc probe results are diagnostic, not release authority; the
+   pinned Grok/Cursor matrix required by the release gate is authoritative for
+   provider claims.
 
 ### Phase ACP-3 — ACP client adapter and Grok/Cursor proof
 
