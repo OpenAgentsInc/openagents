@@ -3696,10 +3696,6 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
       return `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`
     }
 
-    if (url.pathname === '/app') {
-      return url.search === '' ? '/app' : undefined
-    }
-
     const isAgentClaimReturn = isAgentClaimReturnPath(url.pathname)
 
     if (

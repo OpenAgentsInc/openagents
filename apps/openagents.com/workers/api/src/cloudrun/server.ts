@@ -17,8 +17,7 @@ import { Runtime } from '@openagentsinc/runtime-platform'
  * Run with `node --import tsx ./src/cloudrun/server.ts`.
  */
 
-import worker, { verifySession } from '../index'
-import { handleAppUiRequest } from './app-ui'
+import worker from '../index'
 import { assertAssetsDirExists } from './assets'
 import {
   isBindingUnavailableError,
@@ -127,7 +126,7 @@ const main = async (): Promise<void> => {
       }
 
       // The public root is apex-only. Its document now comes from the same
-      // TanStack Start build as /astro, /install, and the authenticated /app;
+      // TanStack Start build as /astro and /install;
       // auth.openagents.com/ must continue into the auth handler below.
       if (isPublicSiteRoot) {
         const rootResponse = await handleStartUiRequest(
@@ -137,14 +136,6 @@ const main = async (): Promise<void> => {
           true,
         )
         if (rootResponse !== undefined) return rootResponse
-      }
-
-      const appResponse = await handleAppUiRequest(request, runtime.env, ctx, {
-        renderStart: handleStartUiRequest,
-        verifySession,
-      })
-      if (appResponse !== undefined) {
-        return appResponse
       }
 
       // #8652 PORTAL-1: client portal page + bundle at openagents.com/portal.
@@ -167,8 +158,8 @@ const main = async (): Promise<void> => {
         }
       }
 
-      // #8813: apps/start owns retained documents after the authenticated app
-      // and EN mounts above. API/auth/unknown
+      // #8813: apps/start owns retained documents after the EN mounts above.
+      // API/auth/unknown
       // paths continue into the application handler unchanged.
       const startResponse = await handleStartUiRequest(
         request,
