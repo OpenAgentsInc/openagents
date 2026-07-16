@@ -26,6 +26,9 @@ export type AcpLiveReleasePeerReceipt = Readonly<{
     updateCount: number;
     updateKinds: ReadonlyArray<string>;
     promptCount: number;
+    updateMetadataCount?: number;
+    completionMetadataCount?: number;
+    usageMetadataCount?: number;
   }>;
 }>;
 
@@ -102,14 +105,17 @@ const secretOrPrivate = (value: unknown): boolean => {
 const safeToken = (value: string, max = 160): string =>
   /^[A-Za-z0-9][A-Za-z0-9._:+()[\],; /-]*$/.test(value) ? value.slice(0, max) : "withheld";
 
-const safeVersion = (value: string): string => safeToken(stripVTControlCharacters(value).trim(), 256);
+const safeVersion = (value: string): string =>
+  safeToken(stripVTControlCharacters(value).trim(), 256);
 
-export const buildAcpLiveReleaseArtifact = (input: Readonly<{
-  recordedAt: string;
-  openAgentsRevision: string;
-  platform: string;
-  peers: ReadonlyArray<AcpLiveReleasePeerReceipt>;
-}>): AcpLiveReleaseArtifact => ({
+export const buildAcpLiveReleaseArtifact = (
+  input: Readonly<{
+    recordedAt: string;
+    openAgentsRevision: string;
+    platform: string;
+    peers: ReadonlyArray<AcpLiveReleasePeerReceipt>;
+  }>,
+): AcpLiveReleaseArtifact => ({
   format: "openagents-acp-live-release-run-v1",
   protocol: "Agent Client Protocol",
   protocolExclusions: ["Agent Communication Protocol", "A2A"],
@@ -189,7 +195,8 @@ export const validateAcpLiveReleaseArtifact = (
     const ids = peer.scenarios.map((scenario) => scenario.id);
     if (ids.length === 0) errors.push(`${peer.peer}: at least one scenario receipt is required`);
     if (new Set(ids).size !== ids.length) errors.push(`${peer.peer}: duplicate scenario receipt`);
-    if (ids.some((id) => !scenarioIds.has(id))) errors.push(`${peer.peer}: unknown scenario receipt`);
+    if (ids.some((id) => !scenarioIds.has(id)))
+      errors.push(`${peer.peer}: unknown scenario receipt`);
     if (peer.result === "pass" && peer.scenarios.some((scenario) => scenario.result === "fail"))
       errors.push(`${peer.peer}: pass contains a failed scenario`);
     if (peer.result === "fail" && peer.scenarios.every((scenario) => scenario.result !== "fail"))
@@ -198,11 +205,17 @@ export const validateAcpLiveReleaseArtifact = (
       !Number.isSafeInteger(peer.counters.updateCount) ||
       peer.counters.updateCount < 0 ||
       !Number.isSafeInteger(peer.counters.promptCount) ||
-      peer.counters.promptCount < 0
+      peer.counters.promptCount < 0 ||
+      [
+        peer.counters.updateMetadataCount,
+        peer.counters.completionMetadataCount,
+        peer.counters.usageMetadataCount,
+      ].some((value) => value !== undefined && (!Number.isSafeInteger(value) || value < 0))
     )
       errors.push(`${peer.peer}: counters are invalid`);
   }
-  if (secretOrPrivate(artifact)) errors.push("artifact contains secret-shaped or host-private data");
+  if (secretOrPrivate(artifact))
+    errors.push("artifact contains secret-shaped or host-private data");
   return { valid: errors.length === 0, errors };
 };
 
@@ -210,8 +223,7 @@ export const validateAcpDesktopReleaseArtifact = (
   artifact: AcpDesktopReleaseArtifact,
 ): Readonly<{ valid: boolean; errors: ReadonlyArray<string> }> => {
   const errors: string[] = [];
-  if (artifact.format !== "openagents-acp-desktop-release-run-v1")
-    errors.push("format is invalid");
+  if (artifact.format !== "openagents-acp-desktop-release-run-v1") errors.push("format is invalid");
   if (artifact.protocol !== "Agent Client Protocol") errors.push("protocol is invalid");
   if (
     artifact.protocolExclusions.length !== 2 ||
@@ -241,11 +253,12 @@ export const validateAcpDesktopReleaseArtifact = (
     artifact.recovery.interruptedTurnSettled !== true ||
     artifact.recovery.durableCompletedTurn !== true ||
     artifact.recovery.disabled !== true ||
-    (artifact.recovery.recoveredSameThread === artifact.recovery.freshThreadRetryAfterFailure)
+    artifact.recovery.recoveredSameThread === artifact.recovery.freshThreadRetryAfterFailure
   )
     errors.push("recovery proof is incomplete or inconsistent");
   if (Object.values(artifact.redaction).some((retained) => retained !== false))
     errors.push("redaction declaration is invalid");
-  if (secretOrPrivate(artifact)) errors.push("artifact contains secret-shaped or host-private data");
+  if (secretOrPrivate(artifact))
+    errors.push("artifact contains secret-shaped or host-private data");
   return { valid: errors.length === 0, errors };
 };

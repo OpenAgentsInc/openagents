@@ -68,14 +68,17 @@ describe("ACP native envelope", () => {
       observedAt: now,
       discriminant: "cursor/ask_question",
       validatedPayload: { value: "kept" },
+      nativeMeta: { totalTokens: 7 },
       maxBytes: 100,
     });
     expect("kind" in value).toBe(false);
     if (!("kind" in value)) {
       expect(value.extensionNamespace).toBe("cursor");
       expect(value.validatedPayload).toEqual({ value: "kept" });
+      expect(value.nativeMeta).toEqual({ totalTokens: 7 });
       expect(value.retention).toBe("private-native");
       expect(() => ((value.validatedPayload as { value: string }).value = "mutated")).toThrow();
+      expect(() => ((value.nativeMeta as { totalTokens: number }).totalTokens = 9)).toThrow();
     }
     expect(
       createAcpRuntimeNativeEnvelope({

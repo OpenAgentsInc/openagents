@@ -234,13 +234,17 @@ const createSharedGrokAcpChatRuntime = async (
         for (const event of await active.projector.onUpdate(
           record.update as Record<string, unknown>,
           record.sessionId,
+          record.notificationMeta,
         ))
           active.onEvent?.(event);
       },
       settleTurn: async (settlement) => {
         const active = activeTurn;
         if (active === undefined || settlement.peerSessionId !== active.peerSessionId) return;
-        for (const event of await active.projector.finish({ stopReason: settlement.stopReason }))
+        for (const event of await active.projector.finish({
+          stopReason: settlement.stopReason,
+          ...(settlement.completionMeta === undefined ? {} : { _meta: settlement.completionMeta }),
+        }))
           active.onEvent?.(event);
       },
     };

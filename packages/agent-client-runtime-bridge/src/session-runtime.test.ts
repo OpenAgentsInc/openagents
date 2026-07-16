@@ -177,12 +177,13 @@ describe("AcpSessionRuntime startup and turn races", () => {
     transport.respond("session/prompt", async () => {
       transport.emit("session/update", {
         sessionId: "peer-1",
+        _meta: { totalTokens: 11, provider: "fixture" },
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "one" } },
       });
       await new Promise<void>((resolve) => {
         release = resolve;
       });
-      return { stopReason: "end_turn" };
+      return { stopReason: "end_turn", _meta: { totalTokens: 12, modelId: "fixture-model" } };
     });
     transport.respond("session/prompt", { stopReason: "end_turn" });
     const first = runtime.prompt("peer-1", [{ type: "text", text: "first" }]);
@@ -192,8 +193,17 @@ describe("AcpSessionRuntime startup and turn races", () => {
     await Promise.resolve();
     expect(transport.requests.filter((entry) => entry.method === "session/prompt")).toHaveLength(1);
     release();
-    expect((await Promise.all([first, second])).every((result) => result.ok)).toBe(true);
-    expect(updates[0]).toMatchObject({ disposition: "applied", turnGeneration: 1 });
+    const results = await Promise.all([first, second]);
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(updates[0]).toMatchObject({
+      disposition: "applied",
+      turnGeneration: 1,
+      notificationMeta: { totalTokens: 11, provider: "fixture" },
+    });
+    expect(results[0]).toMatchObject({
+      ok: true,
+      value: { completionMeta: { totalTokens: 12, modelId: "fixture-model" } },
+    });
   });
 
   it("accepts response-before-final-read updates and quarantines post-barrier updates", async () => {

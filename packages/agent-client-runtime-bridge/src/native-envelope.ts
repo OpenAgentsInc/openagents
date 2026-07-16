@@ -15,6 +15,7 @@ export type AcpRuntimeNativeEnvelope = Readonly<{
   discriminant: string;
   extensionNamespace?: string;
   validatedPayload: unknown;
+  nativeMeta?: unknown;
   validationStatus: "validated" | "decode-failure";
   nativeSha256: string;
   byteLength: number;
@@ -55,6 +56,7 @@ export const createAcpRuntimeNativeEnvelope = (
     nativeTimestamp?: string;
     discriminant: string;
     validatedPayload: unknown;
+    nativeMeta?: unknown;
     validationStatus?: "validated" | "decode-failure";
     maxBytes?: number;
   }>,
@@ -77,7 +79,11 @@ export const createAcpRuntimeNativeEnvelope = (
     };
   let encoded: string;
   try {
-    encoded = JSON.stringify(input.validatedPayload);
+    encoded = JSON.stringify(
+      input.nativeMeta === undefined
+        ? input.validatedPayload
+        : { payload: input.validatedPayload, meta: input.nativeMeta },
+    );
   } catch {
     return {
       kind: "native-envelope-rejected",
@@ -100,7 +106,14 @@ export const createAcpRuntimeNativeEnvelope = (
     };
   }
   const nativeSha256 = createHash("sha256").update(encoded).digest("hex");
-  const validatedPayload: unknown = deepFreeze(JSON.parse(encoded));
+  const decoded = JSON.parse(encoded) as unknown;
+  const validatedPayload: unknown = deepFreeze(
+    input.nativeMeta === undefined ? decoded : (decoded as { readonly payload: unknown }).payload,
+  );
+  const nativeMeta: unknown =
+    input.nativeMeta === undefined
+      ? undefined
+      : deepFreeze((decoded as { readonly meta: unknown }).meta);
   const extensionNamespace = namespaceOf(input.discriminant);
   const envelope: AcpRuntimeNativeEnvelope = {
     schema: "openagents.acp_native_event.v1",
@@ -119,6 +132,7 @@ export const createAcpRuntimeNativeEnvelope = (
     discriminant: input.discriminant,
     ...(extensionNamespace === undefined ? {} : { extensionNamespace }),
     validatedPayload,
+    ...(nativeMeta === undefined ? {} : { nativeMeta }),
     validationStatus: input.validationStatus ?? "validated",
     nativeSha256,
     byteLength,

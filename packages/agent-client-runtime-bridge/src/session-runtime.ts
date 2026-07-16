@@ -133,6 +133,13 @@ export type AcpSessionUpdateRecord = Readonly<{
   disposition: "applied" | "quarantined";
   safeReason?: "late-after-turn" | "stale-generation";
   update: unknown;
+  notificationMeta?: Readonly<Record<string, unknown>>;
+}>;
+
+export type AcpPromptSettlement = Readonly<{
+  stopReason: string;
+  terminal: AcpTurnTerminal;
+  completionMeta?: Readonly<Record<string, unknown>>;
 }>;
 
 export type AcpSessionSnapshot = Readonly<{
@@ -234,6 +241,7 @@ export type AcpSessionRuntimeOptions = Readonly<{
       turnGeneration: number;
       terminal: AcpTurnTerminal;
       stopReason: string;
+      completionMeta?: Readonly<Record<string, unknown>>;
     }>,
   ) => void | Promise<void>;
 }>;
@@ -302,7 +310,7 @@ type TurnRecord = {
   settlement?: Promise<TurnSettlement>;
 };
 
-type TurnSettlement = Readonly<{ terminal: AcpTurnTerminal; stopReason: string }>;
+type TurnSettlement = AcpPromptSettlement;
 
 type CapabilitySnapshot = AcpRuntimeEvidence["capabilities"];
 
@@ -869,7 +877,7 @@ export class AcpSessionRuntime {
   prompt(
     peerSessionId: string,
     prompt: ReadonlyArray<ContentBlock>,
-  ): Promise<AcpLifecycleOutcome<Readonly<{ stopReason: string; terminal: AcpTurnTerminal }>>> {
+  ): Promise<AcpLifecycleOutcome<AcpPromptSettlement>> {
     const session = this.#sessions.get(peerSessionId);
     if (session === undefined)
       return Promise.resolve(
@@ -892,7 +900,7 @@ export class AcpSessionRuntime {
     session: SessionRecord,
     prompt: ReadonlyArray<ContentBlock>,
     turn: TurnRecord,
-  ): Promise<AcpLifecycleOutcome<Readonly<{ stopReason: string; terminal: AcpTurnTerminal }>>> {
+  ): Promise<AcpLifecycleOutcome<AcpPromptSettlement>> {
     const started = Date.now();
     await session.liveGate;
     session.queuedTurns = session.queuedTurns.filter((candidate) => candidate !== turn);
@@ -950,13 +958,20 @@ export class AcpSessionRuntime {
       await transport.value.drainAcceptedInbound();
       await this.#drainUpdateTasks();
       const stopReason = typeof response.stopReason === "string" ? response.stopReason : "unknown";
+      const completionMeta = object(response._meta);
       const terminal: AcpTurnTerminal =
         turn.cancelSource !== undefined || stopReason === "cancelled"
           ? "cancelled"
           : stopReason === "refusal"
             ? "refused"
             : "completed";
-      const winner = await this.#settleTurn(session, turn, terminal, stopReason);
+      const winner = await this.#settleTurn(
+        session,
+        turn,
+        terminal,
+        stopReason,
+        Object.keys(completionMeta).length === 0 ? undefined : completionMeta,
+      );
       if (winner.terminal === "process_exit")
         return this.#failure(
           "session/prompt",
@@ -1209,6 +1224,9 @@ export class AcpSessionRuntime {
       disposition: lateAfterTurn ? "quarantined" : "applied",
       ...(lateAfterTurn ? { safeReason: "late-after-turn" as const } : {}),
       update: structuredClone(notification.update),
+      ...(Object.keys(object(notification._meta)).length === 0
+        ? {}
+        : { notificationMeta: structuredClone(object(notification._meta)) }),
     });
     await this.#options.onUpdate?.(record);
   }
@@ -1423,10 +1441,15 @@ export class AcpSessionRuntime {
     turn: TurnRecord,
     terminal: AcpTurnTerminal,
     stopReason: string,
+    completionMeta?: Readonly<Record<string, unknown>>,
   ): Promise<TurnSettlement> {
     if (turn.settlement !== undefined) return turn.settlement;
     turn.terminal = terminal;
-    const winner = Object.freeze({ terminal, stopReason });
+    const winner = Object.freeze({
+      terminal,
+      stopReason,
+      ...(completionMeta === undefined ? {} : { completionMeta: structuredClone(completionMeta) }),
+    });
     const settlement = Promise.resolve()
       .then(() =>
         this.#options.settleTurn?.({
@@ -1437,6 +1460,9 @@ export class AcpSessionRuntime {
           turnGeneration: turn.generation,
           terminal,
           stopReason,
+          ...(completionMeta === undefined
+            ? {}
+            : { completionMeta: structuredClone(completionMeta) }),
         }),
       )
       .then(() => winner)

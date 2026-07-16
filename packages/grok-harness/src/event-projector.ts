@@ -31,6 +31,7 @@ export function createGrokAcpEventProjector(input: {
   readonly onUpdate: (
     update: AcpSessionUpdate,
     nativeSessionId?: string,
+    nativeMeta?: Readonly<Record<string, unknown>>,
   ) => Promise<readonly NeutralChatTurnEvent[]>;
   readonly finish: (promptResult?: unknown) => Promise<readonly NeutralChatTurnEvent[]>;
   readonly text: () => string;
@@ -93,7 +94,7 @@ export function createGrokAcpEventProjector(input: {
 
   return {
     text: () => full,
-    async onUpdate(update, nativeSessionId = grokSessionId) {
+    async onUpdate(update, nativeSessionId = grokSessionId, nativeMeta) {
       const sequence = receiveSequence++;
       const discriminant =
         typeof update.sessionUpdate === "string" ? update.sessionUpdate : "unknown_session_update";
@@ -116,6 +117,7 @@ export function createGrokAcpEventProjector(input: {
         observedAt: new Date().toISOString(),
         discriminant,
         validatedPayload: validated.update,
+        ...(nativeMeta === undefined ? {} : { nativeMeta }),
         validationStatus: decoded._tag === "Decoded" ? "validated" : "decode-failure",
       });
       if ("kind" in admitted) return [];

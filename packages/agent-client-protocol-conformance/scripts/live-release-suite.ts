@@ -58,7 +58,14 @@ const failedPeer = (peer: "grok" | "cursor"): AcpLiveReleasePeerReceipt => ({
   scenarios: [
     scenario("initialize", "fail", "Live release runner failed before a complete receipt"),
   ],
-  counters: { updateCount: 0, updateKinds: [], promptCount: 0 },
+  counters: {
+    updateCount: 0,
+    updateKinds: [],
+    promptCount: 0,
+    updateMetadataCount: 0,
+    completionMetadataCount: 0,
+    usageMetadataCount: 0,
+  },
 });
 
 const capabilityKeys = (value: Readonly<Record<string, boolean>>): string[] =>
@@ -501,6 +508,9 @@ const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
   const markerDigest = createHash("sha256").update(canary).digest("hex");
   const updates = new Set<string>();
   let updateCount = 0;
+  let updateMetadataCount = 0;
+  let completionMetadataCount = 0;
+  let usageMetadataCount = 0;
   let assistantText = "";
   let promptCount = 0;
   let peer: Awaited<ReturnType<typeof createGrokAcpPeerRuntime>> | undefined;
@@ -528,6 +538,14 @@ const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
       }),
       onUpdate: (record) => {
         updateCount += 1;
+        if (record.notificationMeta !== undefined) {
+          updateMetadataCount += 1;
+          if (
+            typeof record.notificationMeta.totalTokens === "number" ||
+            record.notificationMeta.usage !== undefined
+          )
+            usageMetadataCount += 1;
+        }
         const update = record.update as {
           sessionUpdate?: unknown;
           content?: { text?: unknown };
@@ -570,6 +588,14 @@ const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
       promptCount += 1;
       if (!prompted.ok || prompted.value.terminal !== "completed")
         throw new Error(`prompt:${prompted.ok ? prompted.value.terminal : prompted.reason}`);
+      if (prompted.value.completionMeta !== undefined) {
+        completionMetadataCount += 1;
+        if (
+          typeof prompted.value.completionMeta.totalTokens === "number" ||
+          prompted.value.completionMeta.usage !== undefined
+        )
+          usageMetadataCount += 1;
+      }
     }
     scenarios.push(
       scenario(
@@ -699,7 +725,14 @@ const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
         capabilityKeys: capabilityKeys(started.value.capabilities),
       },
       scenarios,
-      counters: { updateCount, updateKinds: [...updates].toSorted(), promptCount },
+      counters: {
+        updateCount,
+        updateKinds: [...updates].toSorted(),
+        promptCount,
+        updateMetadataCount,
+        completionMetadataCount,
+        usageMetadataCount,
+      },
     };
   } finally {
     await peer?.shutdown().catch(() => undefined);
@@ -711,6 +744,9 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
   const root = await workspace("cursor");
   const updates = new Set<string>();
   let updateCount = 0;
+  let updateMetadataCount = 0;
+  let completionMetadataCount = 0;
+  let usageMetadataCount = 0;
   let assistantText = "";
   let promptCount = 0;
   let peer: Awaited<ReturnType<typeof createCursorAcpPeerRuntime>> | undefined;
@@ -741,6 +777,14 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
       requestTimeoutMs: 60_000,
       onUpdate: (record) => {
         updateCount += 1;
+        if (record.notificationMeta !== undefined) {
+          updateMetadataCount += 1;
+          if (
+            typeof record.notificationMeta.totalTokens === "number" ||
+            record.notificationMeta.usage !== undefined
+          )
+            usageMetadataCount += 1;
+        }
         const update = record.update as {
           sessionUpdate?: unknown;
           content?: { text?: unknown };
@@ -784,6 +828,14 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
       promptCount += 1;
       if (!prompted.ok || prompted.value.terminal !== "completed")
         throw new Error(`prompt:${prompted.ok ? prompted.value.terminal : prompted.reason}`);
+      if (prompted.value.completionMeta !== undefined) {
+        completionMetadataCount += 1;
+        if (
+          typeof prompted.value.completionMeta.totalTokens === "number" ||
+          prompted.value.completionMeta.usage !== undefined
+        )
+          usageMetadataCount += 1;
+      }
     }
     scenarios.push(
       scenario(
@@ -890,7 +942,14 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
         capabilityKeys: capabilityKeys(started.value.capabilities),
       },
       scenarios,
-      counters: { updateCount, updateKinds: [...updates].toSorted(), promptCount },
+      counters: {
+        updateCount,
+        updateKinds: [...updates].toSorted(),
+        promptCount,
+        updateMetadataCount,
+        completionMetadataCount,
+        usageMetadataCount,
+      },
     };
   } finally {
     await authCancelPeer?.shutdown().catch(() => undefined);
