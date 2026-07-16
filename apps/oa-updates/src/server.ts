@@ -30,6 +30,13 @@ import {
   legacyDesktopLockoutResponse,
   type LegacyDesktopLockoutMode,
 } from "./legacy-desktop-lockout.ts"
+import type {
+  AdmitReleaseSetCandidateInput,
+  ReleaseSetCandidate,
+  ReleaseSetChannel,
+  ReleaseSetFeed,
+  ReleaseSetPointer,
+} from "./release-set-feed.ts"
 
 type CreateUpdatesServerOptions = {
   port?: number
@@ -42,6 +49,7 @@ type CreateUpdatesServerOptions = {
    * "disarmed_historical_read_only" only for archival inspection.
    */
   legacyDesktopLockout?: LegacyDesktopLockoutMode
+  releaseSetFeed?: ReleaseSetFeed
 }
 
 export type UpdatesServer = {
@@ -64,6 +72,18 @@ export type UpdatesServer = {
     bytes: Uint8Array,
     contentType?: string,
   ) => Promise<{ hash: string; url: string }>
+  admitReleaseSetCandidate: (
+    input: AdmitReleaseSetCandidateInput,
+  ) => Promise<ReleaseSetCandidate>
+  promoteReleaseSet: (
+    channel: ReleaseSetChannel,
+    generation: string,
+    expectedRevision: number | null,
+  ) => Promise<ReleaseSetPointer>
+  rollbackReleaseSet: (
+    channel: ReleaseSetChannel,
+    expectedRevision: number,
+  ) => Promise<ReleaseSetPointer>
 }
 
 const defaultPort = 3000
@@ -164,6 +184,11 @@ export function createUpdatesServer(
   return {
     async fetch(request) {
       const url = new URL(request.url)
+
+      const releaseSetResponse = await options.releaseSetFeed?.fetch(request)
+      if (releaseSetResponse !== undefined && releaseSetResponse !== null) {
+        return releaseSetResponse
+      }
 
       if (request.method === "GET") {
         const openAgentsDesktopMatch = url.pathname.match(
@@ -452,6 +477,27 @@ export function createUpdatesServer(
       }
 
       return stored
+    },
+
+    async admitReleaseSetCandidate(input) {
+      if (options.releaseSetFeed === undefined) {
+        throw new Error("ReleaseSet v2 feed is not configured")
+      }
+      return options.releaseSetFeed.admitCandidate(input)
+    },
+
+    async promoteReleaseSet(channel, generation, expectedRevision) {
+      if (options.releaseSetFeed === undefined) {
+        throw new Error("ReleaseSet v2 feed is not configured")
+      }
+      return options.releaseSetFeed.promote(channel, generation, expectedRevision)
+    },
+
+    async rollbackReleaseSet(channel, expectedRevision) {
+      if (options.releaseSetFeed === undefined) {
+        throw new Error("ReleaseSet v2 feed is not configured")
+      }
+      return options.releaseSetFeed.rollback(channel, expectedRevision)
     },
   }
 }

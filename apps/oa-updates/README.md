@@ -1,5 +1,9 @@
 # OpenAgents Updates
 
+Desktop ReleaseSet v2 candidate publication, atomic promotion, retention, key
+rotation, and recovery are documented in
+[`docs/release-set-v2-feed-runbook.md`](docs/release-set-v2-feed-runbook.md).
+
 `oa-updates` is the owned Expo Updates-compatible OTA and signed-release
 service behind `updates.openagents.com`. OpenAgents Mobile consumes its manifest
 endpoint and publish script; OpenAgents Desktop and Pylon consume its separate

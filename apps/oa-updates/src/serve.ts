@@ -14,6 +14,10 @@ import {
   createUpdatesServer,
   type UpdatesServer,
 } from "./server.ts"
+import { createPublicReleaseSetArtifactVerifier } from "./release-set-artifact-verifier.ts"
+import { createReleaseSetFeed, type ReleaseSetFeed } from "./release-set-feed.ts"
+import { createGoogleCloudReleaseSetFeedStore } from "./release-set-gcs-store.ts"
+import type { PinnedReleaseKey } from "../../openagents-desktop/src/update-contract.ts"
 
 type SeedFromDistInput = {
   readonly server: UpdatesServer
@@ -57,6 +61,43 @@ export async function seedFromDist(
 
 if (Runtime.isMain(import.meta.url)) {
   const port = Number(process.env.PORT ?? 8080)
+  let releaseSetFeed: ReleaseSetFeed | undefined
+  if (process.env.OA_RELEASE_SET_BUCKET) {
+    if (!process.env.OA_RELEASE_SET_PINS_PATH) {
+      throw new Error("OA_RELEASE_SET_PINS_PATH is required with OA_RELEASE_SET_BUCKET")
+    }
+    const { readFile } = await import("node:fs/promises")
+    const rawPins = JSON.parse(
+      await readFile(process.env.OA_RELEASE_SET_PINS_PATH, "utf8"),
+    ) as unknown
+    if (!Array.isArray(rawPins) || rawPins.length === 0 || rawPins.length > 8) {
+      throw new Error("ReleaseSet pin set rejected")
+    }
+    const pins = new Map<string, PinnedReleaseKey>()
+    for (const value of rawPins) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        throw new Error("ReleaseSet pin rejected")
+      }
+      const row = value as Record<string, unknown>
+      if (
+        row.alg !== "ed25519" || typeof row.kid !== "string" ||
+        row.kid === "" || row.kid.length > 64 || typeof row.x !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(row.x) ||
+        Buffer.from(row.x, "base64url").byteLength !== 32
+      ) throw new Error("ReleaseSet pin rejected")
+      const pin: PinnedReleaseKey = { alg: "ed25519", kid: row.kid, x: row.x }
+      if (pins.has(pin.kid)) throw new Error("ReleaseSet duplicate key id rejected")
+      pins.set(pin.kid, pin)
+    }
+    releaseSetFeed = createReleaseSetFeed({
+      store: createGoogleCloudReleaseSetFeedStore({
+        bucket: process.env.OA_RELEASE_SET_BUCKET,
+      }),
+      pins,
+      verifyArtifact: createPublicReleaseSetArtifactVerifier(),
+      log: (entry) => console.log(JSON.stringify({ component: "release_set_feed", ...entry })),
+    })
+  }
   const server = createUpdatesServer({
     port,
     signingKeyPem: process.env.OA_SIGNING_KEY,
@@ -65,6 +106,7 @@ if (Runtime.isMain(import.meta.url)) {
     legacyDesktopLockout: resolveLegacyDesktopLockoutMode(
       process.env[LEGACY_DESKTOP_LOCKOUT_ENV],
     ),
+    ...(releaseSetFeed === undefined ? {} : { releaseSetFeed }),
   })
 
   if (process.env.OA_SEED_DIST) {

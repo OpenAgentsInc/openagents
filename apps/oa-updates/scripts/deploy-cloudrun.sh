@@ -21,6 +21,8 @@ repo_dir="$(cd "$app_dir/../.." && pwd)"
 #   export OA_SEED_EXPO_CLIENT_PATH=/app/dist/expo-client.json
 #   export OA_DESKTOP_RELEASES_DIST=/app/desktop-dist
 #   export OA_OPENAGENTS_DESKTOP_RELEASE_DIST=/app/openagents-desktop-dist
+#   export OA_RELEASE_SET_BUCKET=<dedicated-gcs-bucket>
+#   export OA_RELEASE_SET_PINS_PATH=/app/openagents-desktop-dist/release-set-pins.json
 #
 # Code signing (#8530 / CFG-14): the OTA manifest signing key reaches the
 # service as the OA_SIGNING_KEY env var mounted from GCP Secret Manager
@@ -56,6 +58,13 @@ fi
 
 if [[ -n "${OA_OPENAGENTS_DESKTOP_RELEASE_DIST:-}" ]]; then
   env_vars+=("OA_OPENAGENTS_DESKTOP_RELEASE_DIST=${OA_OPENAGENTS_DESKTOP_RELEASE_DIST}")
+fi
+
+if [[ -n "${OA_RELEASE_SET_BUCKET:-}" || -n "${OA_RELEASE_SET_PINS_PATH:-}" ]]; then
+  env_vars+=(
+    "OA_RELEASE_SET_BUCKET=${OA_RELEASE_SET_BUCKET:?set OA_RELEASE_SET_BUCKET}"
+    "OA_RELEASE_SET_PINS_PATH=${OA_RELEASE_SET_PINS_PATH:?set OA_RELEASE_SET_PINS_PATH}"
+  )
 fi
 
 env_csv="$(IFS=,; echo "${env_vars[*]}")"
