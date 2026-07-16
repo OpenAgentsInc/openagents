@@ -20,7 +20,7 @@
  * first.
  */
 import { spawn } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import {
@@ -42,11 +42,12 @@ import { createHash } from "node:crypto"
 const appRoot = path.resolve(import.meta.dirname, "..")
 const baselinesDir = path.join(appRoot, "visual-baselines")
 const manifestPath = path.join(baselinesDir, "manifest.json")
-const packagedBinary = path.join(appRoot, "out", "OpenAgents-darwin-arm64", "OpenAgents.app", "Contents", "MacOS", "OpenAgents")
 const electronBinary = path.join(appRoot, "node_modules", ".bin", "electron")
-const command = process.platform === "darwin" && existsSync(packagedBinary)
-  ? [packagedBinary]
-  : [electronBinary, "."]
+// `qa:visual` builds `dist/` immediately before this script runs. Always boot
+// that just-built app through Electron: an older Forge artifact may still be
+// present under `out/`, and preferring it would let the gate compare stale
+// renderer pixels while silently ignoring the current source/build.
+const command = [electronBinary, "."]
 const PROBE_TIMEOUT_MS = 180_000
 const updateBaselines = process.argv.includes("--update-baselines")
 

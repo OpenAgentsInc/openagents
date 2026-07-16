@@ -56,8 +56,9 @@ across platforms.
   frozen `DesktopShellState` built with the production state constructors —
   no preload bridge, no providers, no clocks (Date is frozen to
   `2026-07-15T09:45:00.000Z`).
-- **Gate** (`scripts/visual-baseline-smoke.ts`): spawns the probe as a second
-  OS process (mirroring `full-auto-restart-smoke.ts`), decodes PNGs in pure
+- **Gate** (`scripts/visual-baseline-smoke.ts`): builds the current Desktop,
+  then spawns that just-built app through Electron as a second OS process
+  (never a possibly stale packaged artifact under `out/`), decodes PNGs in pure
   TS (`src/visual-baseline-diff.ts`, node:zlib only — zero new dependencies),
   and compares pixel-wise with the bounded thresholds recorded in the
   manifest (per-channel tolerance 3, max differing-pixel ratio 0.1%).
