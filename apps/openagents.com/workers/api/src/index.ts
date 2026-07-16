@@ -957,6 +957,10 @@ import {
   makeD1PrivateProjectWorkspaceStore,
   makePrivateProjectWorkspaceRoutes,
 } from './private-project-workspace-routes'
+import {
+  PublicProductPromisesEndpoint,
+  publicProductPromisesDocument,
+} from './product-promises'
 import { handlePublicPromiseAuditApi } from './promise-transition-audit-routes'
 import {
   handleOperatorPromiseTransitionApi,
@@ -10257,6 +10261,13 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/home',
     handler: request => handlePublicHomeApi(request),
+  },
+  {
+    path: PublicProductPromisesEndpoint,
+    handler: request =>
+      request.method !== 'GET'
+        ? Effect.succeed(methodNotAllowed(['GET']))
+        : Effect.succeed(noStoreJsonResponse(publicProductPromisesDocument())),
   },
   {
     path: '/api/khala/feedback',
