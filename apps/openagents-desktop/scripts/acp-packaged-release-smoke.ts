@@ -1,11 +1,11 @@
 /**
- * ACP-10 (#8897): opt-in packaged Cursor failure/recovery proof.
+ * ACP-10 (#8897): opt-in packaged Grok/Cursor failure/recovery proof.
  *
- * The first packaged process starts a real Cursor Full Auto turn, then exits
+ * The first packaged process starts a real ACP Full Auto turn, then exits
  * while it is running. A second packaged process reuses the isolated Desktop
  * userData and workspace: startup recovery must durably interrupt the old
- * non-replayable Cursor turn and the same enabled thread must complete a new
- * real Cursor continuation before being disabled. Only a closed, redacted
+ * non-replayable turn and the same enabled thread must complete a new real
+ * continuation before being disabled. Only a closed, redacted
  * receipt is retained. The runner never changes HOME or login/keychain state.
  */
 import { execFile } from "node:child_process"
@@ -24,10 +24,18 @@ const execFileAsync = promisify(execFile)
 const armed = process.env.ACP_DESKTOP_RELEASE_LIVE === "1"
 if (!armed) {
   process.stderr.write(
-    "Set ACP_DESKTOP_RELEASE_LIVE=1 to run the packaged Cursor failure/recovery proof.\n",
+    "Set ACP_DESKTOP_RELEASE_LIVE=1 to run the packaged ACP failure/recovery proof.\n",
   )
   process.exit(2)
 }
+
+const provider = process.env.ACP_DESKTOP_RELEASE_PEER ?? "cursor"
+if (provider !== "grok" && provider !== "cursor") {
+  process.stderr.write("ACP_DESKTOP_RELEASE_PEER must be grok or cursor.\n")
+  process.exit(2)
+}
+const laneRef = provider === "grok" ? "acp:grok-cli" : "acp:cursor-agent"
+const providerLabel = provider === "grok" ? "Grok" : "Cursor"
 
 if (process.platform !== "darwin" || process.arch !== "arm64") {
   process.stderr.write("The checked packaged ACP release proof currently targets darwin-arm64.\n")
@@ -164,40 +172,41 @@ const launch = async (home: string): Promise<RunningApp> => {
 }
 
 const operations = () => controlOperations(readControlConnection(userData))
-const cursorLane = async (): Promise<Lane> => {
+const selectedLane = async (): Promise<Lane> => {
   const response = await operations().lanes()
   const body = response.body as { lanes?: ReadonlyArray<Lane> }
-  const lane = body.lanes?.find(candidate => candidate.laneRef === "acp:cursor-agent")
-  if (response.status !== 200 || lane === undefined) throw new Error("Cursor lane was not listed")
+  const lane = body.lanes?.find(candidate => candidate.laneRef === laneRef)
+  if (response.status !== 200 || lane === undefined) throw new Error(`${providerLabel} lane was not listed`)
   return lane
 }
 const status = async (threadRef: string): Promise<Status> => {
   const response = await operations().status(threadRef)
-  if (response.status !== 200) throw new Error("Cursor proof thread status failed")
+  if (response.status !== 200) throw new Error(`${providerLabel} proof thread status failed`)
   return response.body as Status
 }
 const turns = async (threadRef: string): Promise<Turns> => {
   const response = await operations().turns(threadRef)
-  if (response.status !== 200) throw new Error("Cursor proof turns query failed")
+  if (response.status !== 200) throw new Error(`${providerLabel} proof turns query failed`)
   return response.body as Turns
 }
 
 let first: RunningApp | undefined
 let second: RunningApp | undefined
+let third: RunningApp | undefined
 try {
   const ordinaryHome = process.env.HOME
   if (ordinaryHome === undefined || ordinaryHome.length === 0)
     throw new Error("Ordinary HOME is required for the authenticated packaged proof")
   first = await launch(ordinaryHome)
-  const initialLane = await cursorLane()
+  const initialLane = await selectedLane()
   if (initialLane.configuration !== "configured" || initialLane.admission !== "admitted")
     throw new Error(
-      `Pinned Cursor lane was not admitted in packaged Desktop (${initialLane.configuration}/${initialLane.admission}/${initialLane.authentication}/${initialLane.reason ?? "no-reason"})`,
+      `Pinned ${providerLabel} lane was not admitted in packaged Desktop (${initialLane.configuration}/${initialLane.admission}/${initialLane.authentication}/${initialLane.reason ?? "no-reason"})`,
     )
   const refused = await operations().start(
     `${workspace}-not-granted`,
     "ACP packaged restart recovery",
-    "acp:cursor-agent",
+    laneRef,
   )
   const refusedBody = refused.body as { error?: unknown; resolvedWorkspaceRef?: unknown }
   if (refused.status !== 409 || refusedBody.error !== "workspace_mismatch")
@@ -212,13 +221,13 @@ try {
   const started = await operations().start(
     controlWorkspace,
     "ACP packaged restart recovery",
-    "acp:cursor-agent",
+    laneRef,
   )
   const startedBody = started.body as { record?: { threadRef?: string } }
   const threadRef = startedBody.record?.threadRef
   if (started.status !== 200 || typeof threadRef !== "string")
     throw new Error(
-      `Packaged Cursor proof did not start (${started.status}/${String((started.body as { error?: unknown }).error ?? "no-error")})`,
+      `Packaged ${providerLabel} proof did not start (${started.status}/${String((started.body as { error?: unknown }).error ?? "no-error")})`,
     )
   await deadline(120_000, async () => {
     const current = await status(threadRef)
@@ -228,18 +237,18 @@ try {
   first = undefined
 
   second = await launch(ordinaryHome)
-  const recoveredLane = await cursorLane()
+  const recoveredLane = await selectedLane()
   await deadline(60_000, async () => {
     const current = await turns(threadRef)
     return current.turns?.some(
       turn => turn.phase === "interrupted_by_restart" && turn.disposition === "interrupted_by_restart",
     ) ? true : undefined
   })
-  const reenabled = await operations().enable(threadRef, controlWorkspace, "acp:cursor-agent")
-  if (reenabled.status !== 200) throw new Error("Packaged Cursor recovery could not re-enable the thread")
+  const reenabled = await operations().enable(threadRef, controlWorkspace, laneRef)
+  if (reenabled.status !== 200) throw new Error(`Packaged ${providerLabel} recovery could not re-enable the thread`)
   const continued = await operations().continueNow(threadRef)
-  if (continued.status !== 200) throw new Error("Packaged Cursor recovery was not scheduled")
-  const sameThreadTerminal = await deadline(180_000, async () => {
+  if (continued.status !== 200) throw new Error(`Packaged ${providerLabel} recovery was not scheduled`)
+  await deadline(180_000, async () => {
     const current = await status(threadRef)
     return current.record?.live?.state === "turn_completed" ||
       current.record?.live?.state === "turn_failed" ||
@@ -247,7 +256,6 @@ try {
       ? current
       : undefined
   })
-  let successfulThreadRef = threadRef
   let recoveredTurns = await turns(threadRef)
   const interruptedTurnObserved = recoveredTurns.turns?.some(
     turn => turn.phase === "interrupted_by_restart" && turn.disposition === "interrupted_by_restart",
@@ -255,53 +263,54 @@ try {
   let recoveredSameThread = recoveredTurns.turns?.some(
     turn => turn.phase === "completed" && turn.disposition === "completed",
   ) ?? false
+  let additionalProcessRestartAfterFailedRetry = false
   if (!recoveredSameThread) {
     const stoppedFailedThread = await operations().disable(threadRef)
     if (stoppedFailedThread.status !== 200)
-      throw new Error("Packaged Cursor failed thread could not be disabled")
-    const retry = await operations().start(
-      controlWorkspace,
-      "ACP packaged post-restart retry",
-      "acp:cursor-agent",
-    )
-    const retryThreadRef = (retry.body as { record?: { threadRef?: unknown } }).record?.threadRef
-    if (retry.status !== 200 || typeof retryThreadRef !== "string")
-      throw new Error(
-        `Packaged Cursor retry did not start (${sameThreadTerminal.record?.live?.state ?? "none"})`,
-      )
-    successfulThreadRef = retryThreadRef
+      throw new Error(`Packaged ${providerLabel} failed thread could not be disabled`)
+    await second.stop()
+    second = undefined
+    third = await launch(ordinaryHome)
+    additionalProcessRestartAfterFailedRetry = true
+    const retryEnabled = await operations().enable(threadRef, controlWorkspace, laneRef)
+    if (retryEnabled.status !== 200)
+      throw new Error(`Packaged ${providerLabel} retry could not re-enable the original thread`)
+    const retryScheduled = await operations().continueNow(threadRef)
+    if (retryScheduled.status !== 200)
+      throw new Error(`Packaged ${providerLabel} retry was not scheduled`)
     const retryTerminal = await deadline(180_000, async () => {
-      const current = await status(successfulThreadRef)
+      const current = await status(threadRef)
       return current.record?.live?.state === "turn_completed" ||
         current.record?.live?.state === "turn_failed" ||
         current.record?.live?.state === "blocked"
         ? current
         : undefined
     })
-    recoveredTurns = await turns(successfulThreadRef)
+    recoveredTurns = await turns(threadRef)
     if (!recoveredTurns.turns?.some(
       turn => turn.phase === "completed" && turn.disposition === "completed",
     )) {
       const [currentTurns, currentLane] = await Promise.all([
-        turns(successfulThreadRef),
-        cursorLane(),
+        turns(threadRef),
+        selectedLane(),
       ])
       const states = currentTurns.turns?.map(
         turn => `${turn.phase ?? "none"}/${turn.disposition ?? "none"}`,
       ) ?? []
       throw new Error(
-        `Packaged Cursor retry did not complete (${retryTerminal.record?.live?.state ?? "none"}/${retryTerminal.record?.live?.detail ?? "no-detail"};${currentLane.authentication};${states.join(",")})`,
+        `Packaged ${providerLabel} retry did not complete (${retryTerminal.record?.live?.state ?? "none"}/${retryTerminal.record?.live?.detail ?? "no-detail"};${currentLane.authentication};${states.join(",")})`,
       )
     }
+    recoveredSameThread = true
   }
   const completedTurnObserved = recoveredTurns.turns?.some(
     turn => turn.phase === "completed" && turn.disposition === "completed",
   ) ?? false
-  if (!completedTurnObserved) throw new Error("Packaged Cursor recovery did not settle durably")
-  const disabled = await operations().disable(successfulThreadRef)
+  if (!completedTurnObserved) throw new Error(`Packaged ${providerLabel} recovery did not settle durably`)
+  const disabled = await operations().disable(threadRef)
   const disabledBody = disabled.body as Status
   if (disabled.status !== 200 || disabledBody.record?.enabled !== false)
-    throw new Error("Packaged Cursor proof did not disable durably")
+    throw new Error(`Packaged ${providerLabel} proof did not disable durably`)
 
   const revision = (
     await execFileAsync("git", ["-C", repositoryRoot, "rev-parse", "HEAD"], { maxBuffer: 4_096 })
@@ -315,8 +324,8 @@ try {
     recordedAt: new Date().toISOString(),
     openAgentsRevision: revision,
     platform: `${process.platform}-${process.arch}-node-${process.versions.node}`,
-    provider: "cursor",
-    lane: "acp:cursor-agent",
+    provider,
+    lane: laneRef,
     packaged: true,
     interruption: {
       mismatchedWorkspaceRefused: true,
@@ -328,7 +337,8 @@ try {
       reusedDesktopState: true,
       explicitlyReenabledSameThread: true,
       recoveredSameThread,
-      freshThreadRetryAfterFailure: !recoveredSameThread,
+      freshThreadRetryAfterFailure: false,
+      additionalProcessRestartAfterFailedRetry,
       laneConfigured: recoveredLane.configuration === "configured",
       interruptedTurnSettled: interruptedTurnObserved,
       durableCompletedTurn: completedTurnObserved,
@@ -347,5 +357,6 @@ try {
 } finally {
   await first?.stop().catch(() => undefined)
   await second?.stop().catch(() => undefined)
+  await third?.stop().catch(() => undefined)
   await rm(root, { recursive: true, force: true })
 }

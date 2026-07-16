@@ -58,8 +58,8 @@ export type AcpDesktopReleaseArtifact = Readonly<{
   recordedAt: string;
   openAgentsRevision: string;
   platform: string;
-  provider: "cursor";
-  lane: "acp:cursor-agent";
+  provider: "grok" | "cursor";
+  lane: "acp:grok-cli" | "acp:cursor-agent";
   packaged: true;
   interruption: Readonly<{
     mismatchedWorkspaceRefused: true;
@@ -72,6 +72,7 @@ export type AcpDesktopReleaseArtifact = Readonly<{
     explicitlyReenabledSameThread: true;
     recoveredSameThread: boolean;
     freshThreadRetryAfterFailure: boolean;
+    additionalProcessRestartAfterFailedRetry?: boolean;
     laneConfigured: true;
     interruptedTurnSettled: true;
     durableCompletedTurn: true;
@@ -225,7 +226,10 @@ export const validateAcpDesktopReleaseArtifact = (
   if (!Number.isFinite(Date.parse(artifact.recordedAt))) errors.push("recordedAt is invalid");
   if (!/^[a-f0-9]{40}$/.test(artifact.openAgentsRevision))
     errors.push("OpenAgents revision must be a full Git SHA");
-  if (artifact.provider !== "cursor" || artifact.lane !== "acp:cursor-agent")
+  if (
+    (artifact.provider !== "cursor" || artifact.lane !== "acp:cursor-agent") &&
+    (artifact.provider !== "grok" || artifact.lane !== "acp:grok-cli")
+  )
     errors.push("provider lane identity is invalid");
   if (artifact.packaged !== true) errors.push("packaged execution is required");
   if (Object.values(artifact.interruption).some((value) => value !== true))

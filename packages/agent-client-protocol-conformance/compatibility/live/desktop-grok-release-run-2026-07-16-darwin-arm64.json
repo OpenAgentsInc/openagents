@@ -1,0 +1,40 @@
+{
+  "format": "openagents-acp-desktop-release-run-v1",
+  "protocol": "Agent Client Protocol",
+  "protocolExclusions": [
+    "Agent Communication Protocol",
+    "A2A"
+  ],
+  "proofClass": "candidate-packaged-desktop-live",
+  "claimAuthority": "none-release-matrix-only",
+  "recordedAt": "2026-07-16T16:56:36.589Z",
+  "openAgentsRevision": "4bb214739f4bd41732e96a12514223f9cc57982e",
+  "platform": "darwin-arm64-node-24.13.1",
+  "provider": "grok",
+  "lane": "acp:grok-cli",
+  "packaged": true,
+  "interruption": {
+    "mismatchedWorkspaceRefused": true,
+    "laneConfigured": true,
+    "laneAdmitted": true,
+    "exitedDuringRunningTurn": true
+  },
+  "recovery": {
+    "reusedDesktopState": true,
+    "explicitlyReenabledSameThread": true,
+    "recoveredSameThread": true,
+    "freshThreadRetryAfterFailure": false,
+    "additionalProcessRestartAfterFailedRetry": true,
+    "laneConfigured": true,
+    "interruptedTurnSettled": true,
+    "durableCompletedTurn": true,
+    "disabled": true
+  },
+  "redaction": {
+    "promptTextRetained": false,
+    "responseTextRetained": false,
+    "threadIdentifiersRetained": false,
+    "authMaterialRetained": false,
+    "absolutePathsRetained": false
+  }
+}

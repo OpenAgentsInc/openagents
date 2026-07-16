@@ -25,7 +25,7 @@ never changes Grok's gate.
 
 | Peer | Exact live identity | Basic live result | Code-owned requirements unresolved | Claim |
 |---|---|---:|---:|---|
-| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 21 live passes | 12 | experimental |
+| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 22 live passes | 11 | experimental |
 | Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 23 live passes | 9 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
@@ -52,14 +52,17 @@ claim shutdown leak proof because it does not retain process leak counters.
 The artifact is a candidate input only; it cannot mutate or promote the release
 matrix.
 
-The checked packaged Desktop receipt
-[`desktop-cursor-release-run-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/desktop-cursor-release-run-2026-07-16-darwin-arm64.json)
-uses the production macOS app and exact Cursor lane. It proves workspace
+The checked packaged Desktop receipts for
+[Cursor](../../../packages/agent-client-protocol-conformance/compatibility/live/desktop-cursor-release-run-2026-07-16-darwin-arm64.json)
+and [Grok](../../../packages/agent-client-protocol-conformance/compatibility/live/desktop-grok-release-run-2026-07-16-darwin-arm64.json)
+use the production macOS app and exact admitted lanes. Both prove workspace
 mismatch refusal, a real turn interrupted by app exit, durable
-`interrupted_by_restart` settlement, explicit re-enable of the same thread, a
-completed post-restart Cursor continuation, durable disable, and clean
-shutdown. The runner preserves the ordinary authenticated HOME and never
-changes login or keychain state.
+`interrupted_by_restart` settlement, explicit re-enable of the original
+thread, a completed post-restart continuation, durable disable, and clean
+shutdown. Grok additionally proved that a failed retry does not bypass its
+one-session-per-process admission rule: the app restarted cleanly before the
+original thread completed. The runner preserves the ordinary authenticated
+HOME and never changes login or keychain state.
 
 ```text
 GROK_ACP_LIVE=1 node --import tsx packages/grok-harness/scripts/live-acp-smoke.ts
@@ -155,10 +158,11 @@ Provider-specific gaps:
 - Desktop: the isolated production build completed a real Grok Full Auto turn,
   durable journal settlement, disposable-repository commit, disable, and clean
   shutdown. The packaged Cursor journey now additionally proves workspace
-  refusal plus interruption/restart recovery on the same durable thread. Grok
-  packaged failure/recovery remains incomplete. The production main-owned host
-  ran both pinned drivers, and its sanitized closed support bundle is
-  live-proven for both peers.
+  refusal plus interruption/restart recovery on the same durable thread. The
+  equivalent packaged Grok journey also passes while preserving its
+  one-session-per-process rule. The production main-owned host ran both pinned
+  drivers, and its sanitized closed support bundle is live-proven for both
+  peers.
 
 The ACP-10 validator now publishes the proof, derives the claim independently
 for each peer, and fails closed. Its current verdict is a release denial for
