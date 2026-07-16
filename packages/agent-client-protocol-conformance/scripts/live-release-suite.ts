@@ -514,8 +514,26 @@ const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
   let assistantText = "";
   let promptCount = 0;
   let peer: Awaited<ReturnType<typeof createGrokAcpPeerRuntime>> | undefined;
+  let authCancelPeer: Awaited<ReturnType<typeof createGrokAcpPeerRuntime>> | undefined;
   try {
     const probe = await probeGrokAcpExecutable();
+    let authDecisionCount = 0;
+    authCancelPeer = await createGrokAcpPeerRuntime({
+      cwd: root,
+      probe,
+      environment: { HOME: process.env.HOME },
+      requestedInteractiveAuthMethod: "grok.com",
+      authorizeLogin: async () => {
+        authDecisionCount += 1;
+        return "cancel";
+      },
+      requestTimeoutMs: 30_000,
+    });
+    const authCancelled = await authCancelPeer.start();
+    const authCancelPassed =
+      authDecisionCount === 1 && !authCancelled.ok && authCancelled.reason === "auth_required";
+    await authCancelPeer.shutdown();
+    authCancelPeer = undefined;
     peer = await createGrokAcpPeerRuntime({
       cwd: root,
       probe,
@@ -564,6 +582,13 @@ const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
       scenario("identity-version", "live-pass", "Exact Grok version and executable digest probed"),
       scenario("initialize", "live-pass", "Wire version 1 initialize completed"),
       scenario("auth-primary", "live-pass", "Advertised cached authentication completed"),
+      scenario(
+        "auth-cancel",
+        authCancelPassed ? "live-pass" : "fail",
+        authCancelPassed
+          ? "Client cancelled explicitly requested Grok login before authenticate"
+          : "Client-side Grok login cancellation did not return auth required",
+      ),
     ];
     const attached = await peer.newSession({
       cwd: root,
@@ -735,6 +760,7 @@ const runGrok = async (): Promise<AcpLiveReleasePeerReceipt> => {
       },
     };
   } finally {
+    await authCancelPeer?.shutdown().catch(() => undefined);
     await peer?.shutdown().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }

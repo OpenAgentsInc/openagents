@@ -52,6 +52,7 @@ export type CreateGrokAcpPeerRuntimeOptions = Readonly<{
   apiKeyConfigured?: boolean;
   evidence?: ReadonlyArray<AcpConformanceEvidenceRecord>;
   now?: Date;
+  requestedInteractiveAuthMethod?: "grok.com" | "oidc";
   authorizeLogin?: (interaction: GrokAuthInteraction) => Promise<"continue" | "cancel">;
   authority?: GrokAcpAuthorityInstallation;
   installVendorHandlers?: (transport: GrokAcpTransport) => void | (() => void);
@@ -117,8 +118,13 @@ export const probeGrokAcpExecutable = async (
   environment: Readonly<Record<string, string | undefined>> = process.env,
   candidatePath?: string,
 ): Promise<AcpExecutableProbe> => {
-  if (candidatePath !== undefined && (!isAbsolute(candidatePath) || basename(candidatePath) !== "grok")) {
-    throw Object.assign(new Error("Alternate Grok executable must be an absolute path to grok"), { kind: "identity_mismatch" });
+  if (
+    candidatePath !== undefined &&
+    (!isAbsolute(candidatePath) || basename(candidatePath) !== "grok")
+  ) {
+    throw Object.assign(new Error("Alternate Grok executable must be an absolute path to grok"), {
+      kind: "identity_mismatch",
+    });
   }
   const resolvedPath = candidatePath ?? (await findOnPath("grok", environment.PATH));
   const realPath = await realpath(resolvedPath);
@@ -240,6 +246,19 @@ export const createGrokAcpPeerRuntime = async (
     expectedPeerIdentity: { namePrefix: "grok", version: admission.peerVersion },
     selectAuthMethod: async (advertised) => {
       const ids = new Set(advertised.map((method) => method.id));
+      const requestedInteractive = options.requestedInteractiveAuthMethod;
+      if (requestedInteractive !== undefined) {
+        const method = advertised.find((candidate) => candidate.id === requestedInteractive);
+        if (method === undefined) return undefined;
+        const decision =
+          (await options.authorizeLogin?.({
+            methodId: requestedInteractive,
+            kind: "external-browser",
+            state: "login-required",
+            ...(method.name === undefined ? {} : { label: method.name }),
+          })) ?? "cancel";
+        return decision === "continue" ? requestedInteractive : undefined;
+      }
       if (apiKeyEnabled && ids.has("xai.api_key")) return "xai.api_key";
       if (ids.has("cached_token")) return "cached_token";
       const interactive = advertised.find(
