@@ -706,11 +706,14 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
         input.local.listThreads(),
       ])
       for (const thread of hosted) threadModes.set(thread.id, "runtime")
-      for (const thread of local) {
-        if (!threadModes.has(thread.id)) threadModes.set(thread.id, "local")
-      }
-      const hostedRefs = new Set(hosted.map(thread => thread.id))
-      return [...hosted, ...local.filter(thread => !hostedRefs.has(thread.id))]
+      // Sync can mirror an app-local draft under the exact same stable ref.
+      // The local store remains the creation/open authority for that ref;
+      // allowing the hosted catalog to win makes the row inert while the
+      // hosted detail projection is still catching up. Re-apply local modes
+      // after hosted discovery and render the local post-image for duplicates.
+      for (const thread of local) threadModes.set(thread.id, "local")
+      const localRefs = new Set(local.map(thread => thread.id))
+      return [...local, ...hosted.filter(thread => !localRefs.has(thread.id))]
         .sort(compareDesktopThreadsByRecency)
     },
     newThread: async () => {

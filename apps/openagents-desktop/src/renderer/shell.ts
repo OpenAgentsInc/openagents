@@ -2181,6 +2181,11 @@ export const makeDesktopShellHandlers = (
     if (thread === null || (expectedRevision !== undefined && expectedRevision !== selectionRevision)) return false
     yield* SubscriptionRef.update(state, current => withChatSelected({
       ...current,
+      // A resumed thread can have fallen outside the bounded five-row local
+      // catalog while its main-owned Full Auto loop kept running. Re-admit
+      // the exact opened thread before selecting it so the header/sidebar and
+      // composer all share one local-session identity again.
+      threads: [thread, ...current.threads.filter(value => value.id !== thread.id)].slice(0, 5),
       history: {
         ...current.history,
         page: null,
@@ -2905,6 +2910,25 @@ export const makeDesktopShellHandlers = (
   HistoryConversationSelected: (id) => Effect.gen(function* () {
     const revision = ++selectionRevision
     yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:id}}))
+    // A background Full Auto continuation is local mutable work, even when
+    // its row currently came from the provider-history catalog (for example
+    // after the bounded local row fell out of the recent-five projection).
+    // Prefer the exact local thread in that one proven-live case so the
+    // composer and thread-scoped Stop control remain reachable. If main can
+    // no longer open it, fall back to the ordinary read-only history page.
+    const before = yield* SubscriptionRef.get(state)
+    if (before.fullAutoLiveByThread[id]?.state === "turn_running") {
+      const resumed = yield* commitLocalSession(id, revision)
+      if (resumed && revision === selectionRevision) {
+        const current = yield* SubscriptionRef.get(state)
+        yield* recordNavigation({
+          kind: "local_session",
+          threadRef: id,
+          title: current.threads.find(thread => thread.id === id)?.title || "Local session",
+        })
+        return
+      }
+    }
     const committed = yield* commitCodexHistory(id, revision)
     if (!committed || revision !== selectionRevision) {
       yield* SubscriptionRef.update(state,current=>current.history.pendingThreadRef===id?({...current,history:{...current.history,pendingThreadRef:null}}):current)

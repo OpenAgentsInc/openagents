@@ -128,6 +128,9 @@ const makeFixtureHarness = (root: string, options?: Readonly<{
         { kind: "turn_started" },
         { kind: "model_effective", model: "fixture-model-1" },
         { kind: "text_delta", text: "Hello from " },
+        // Header-only accounting may arrive between arbitrary text deltas. It
+        // must not split one assistant sentence into multiple transcript rows.
+        { kind: "meter_updated", inputTokens: 12, outputTokens: 3, totalTokens: 15 },
         { kind: "text_delta", text: "the fixture lane." },
         { kind: "tool_use", toolName: "Read", summary: "notes.md", itemRef: "item-1" },
         { kind: "tool_result", toolName: "Read", ok: true, summary: "12 lines", itemRef: "item-1" },
@@ -343,7 +346,7 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
       expect(harness.graphBegins).toEqual([
         { turnRef: "turn-fixture-1", threadRef: thread.id, lane: "fixture_lane" },
       ])
-      expect(harness.graphEvents.length).toBe(8)
+      expect(harness.graphEvents.length).toBe(9)
       expect(harness.checkpoints).toEqual(["turn_start", "turn_completed"])
 
       // Capability report: honest feature truth (input to L2).

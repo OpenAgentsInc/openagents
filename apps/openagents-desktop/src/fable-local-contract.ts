@@ -501,6 +501,42 @@ export const FableLocalEventSchema = Schema.Union([
 ])
 export type FableLocalEvent = typeof FableLocalEventSchema.Type
 
+/**
+ * Whether an event occupies or updates a visible position in the conversation
+ * timeline. Only these semantic boundaries may split a streamed assistant
+ * response. Header/accounting/lifecycle events must not create invisible
+ * assistant rows (and therefore phantom paragraph gaps) around their updates.
+ */
+export const isTranscriptOrderingBoundary = (event: FableLocalEvent): boolean => {
+  switch (event.kind) {
+    case "model_effective":
+    case "tool_use":
+    case "tool_progress":
+    case "tool_result":
+    case "reasoning":
+    case "lane_notice":
+    case "question_pending":
+    case "question_resolved":
+    case "plan_updated":
+    case "child_started":
+    case "child_activity":
+    case "child_completed":
+    case "child_failed":
+    case "child_steered":
+    case "followup_queued":
+      return true
+    case "turn_started":
+    case "composer_admission":
+    case "text_delta":
+    case "followup_promoted":
+    case "mcp_server_unavailable":
+    case "meter_updated":
+    case "turn_completed":
+    case "turn_failed":
+      return false
+  }
+}
+
 export const FableLocalEventEnvelopeSchema = Schema.Struct({
   turnRef: Schema.String,
   event: FableLocalEventSchema,

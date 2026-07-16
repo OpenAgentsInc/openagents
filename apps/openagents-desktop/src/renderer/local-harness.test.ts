@@ -507,15 +507,21 @@ describe("makeLocalHarnessChatHost", () => {
     await settle()
     harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
     await settle()
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "One continuous " } })
     harness.emit({
       turnRef: "turn.fable.fixed",
       event: { kind: "meter_updated", inputTokens: 100, outputTokens: 20, totalTokens: 120 },
     })
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "sentence." } })
     await settle()
     const afterFirst = updates.at(-1)!
     expect(afterFirst.meter).toEqual({ inputTokens: 100, outputTokens: 20, totalTokens: 120 })
-    // A meter update is not a chat message — the note count is unaffected.
-    expect(afterFirst.notes).toEqual(threadWithUserNote.notes)
+    // A meter update is not a chat message or semantic boundary: deltas on
+    // either side remain one assistant row, with no phantom vertical gap.
+    expect(afterFirst.notes).toEqual([
+      ...threadWithUserNote.notes,
+      expect.objectContaining({ role: "assistant", text: "One continuous sentence." }),
+    ])
 
     harness.emit({
       turnRef: "turn.fable.fixed",

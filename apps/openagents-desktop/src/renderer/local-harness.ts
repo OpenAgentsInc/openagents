@@ -24,6 +24,7 @@ import {
   fableLocalModelNoteText,
   fableLocalTraceNoteMeta,
   fableLocalTraceNoteText,
+  isTranscriptOrderingBoundary,
   type FableLocalAvailability,
   type FableLocalEvent,
   type FableLocalEventEnvelope,
@@ -327,10 +328,11 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
           : codexLocalModelNoteText(event.model))
         return
       }
-      // Every non-text event is an ordering boundary. A later text delta
-      // starts a new assistant segment after this event instead of mutating an
-      // earlier bubble and teleporting it to the end of the transcript.
-      closeAssistantSegment()
+      // Only display-bearing events are ordering boundaries. Header/accounting
+      // updates such as meter_updated do not occupy a timeline position, so
+      // splitting here would turn invisible meter ticks into random prose gaps.
+      // A later text delta starts a new segment only after a visible event.
+      if (isTranscriptOrderingBoundary(event)) closeAssistantSegment()
       if (event.kind === "tool_use" || event.kind === "tool_progress" || event.kind === "tool_result") {
         const key = event.itemRef === undefined
           ? `${turnRef}-trace-${orderedNotes.length}`
