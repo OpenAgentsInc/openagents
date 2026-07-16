@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Check, Clipboard, ExternalLink, RotateCcw } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Clipboard, RotateCcw } from 'lucide-react'
 import { useState, type MouseEvent as ReactMouseEvent } from 'react'
 
 import { InternalLink } from '@/components/internal-link'
@@ -54,10 +54,6 @@ export function DocsPage({ page }: Readonly<{ page: DocsPageModel }>) {
           <h1>{page.title}</h1>
           <p className="docs-description">{page.description}</p>
           <div className="docs-page-actions">
-            <a className="docs-action-link" href={page.editUrl} rel="noreferrer" target="_blank">
-              <ExternalLink aria-hidden="true" size={15} />
-              Edit on GitHub
-            </a>
             <button className="docs-action-button" onClick={copyMarkdown} type="button">
               {markdownCopyStatus === 'copied'
                 ? <Check aria-hidden="true" size={15} />
@@ -70,7 +66,6 @@ export function DocsPage({ page }: Readonly<{ page: DocsPageModel }>) {
                   ? 'Try copy again'
                   : 'Copy Markdown'}
             </button>
-            <a className="docs-action-link" href="#docs-content">Back to top</a>
           </div>
         </header>
         <section
