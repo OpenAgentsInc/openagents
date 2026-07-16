@@ -325,11 +325,9 @@ export const ReactComposer = ({
   // the running badge and the Stop control; the send handler fences manual
   // submits while this holds.
   const fullAutoRunning = activeFullAutoTurnRunning(state);
-  const pendingAction = composerActionPresentation(state.composerAdmission, state.pendingSubmitMode);
   const hasText = state.input.trim() !== "";
-  const canSubmit = state.pending
-    ? state.activeThreadId !== null && hasText && pendingAction.enabled
-    : lane.available && capabilityAdmitted && (hasText || state.composerImages.length > 0);
+  const canSubmit = !state.pending && lane.available && capabilityAdmitted &&
+    (hasText || state.composerImages.length > 0);
   const atImageLimit = !canAttachMoreImages(state.composerImages);
   const imageSupported = capabilities?.images ?? true;
   const attachmentDisabled = state.pending || atImageLimit || !imageSupported;
@@ -343,8 +341,8 @@ export const ReactComposer = ({
   useEffect(() => {
     if (attachmentDisabled) setDragActive(false);
   }, [attachmentDisabled]);
-  const submitIntent = state.pending
-    ? state.pendingSubmitMode === "steer"
+  const submitIntentFor = (pendingMode: "steer" | "queue") => state.pending
+    ? pendingMode === "steer"
       ? "DesktopSteerCurrentRequested"
       : "DesktopQueueNextRequested"
     : "DesktopNoteSubmitted";
@@ -353,8 +351,9 @@ export const ReactComposer = ({
       ? "Steer"
       : "Queue"
     : "Send";
-  const submit = (editorValue = state.input): void => {
+  const submit = (editorValue = state.input, pendingMode = state.pendingSubmitMode): void => {
     const nextHasText = editorValue.trim() !== "";
+    const submitIntent = submitIntentFor(pendingMode);
     const submissionKey = nextHasText ? editorValue : `images:${state.composerImages.length}`;
     const now = Date.now();
     if (lastSubmitRef.current?.value === submissionKey && now - lastSubmitRef.current.at < 350)
@@ -545,30 +544,24 @@ export const ReactComposer = ({
           Full Auto
         </DesktopComposerButton> : null}
         {state.pending ? (
-          <div className="oa-react-submit-mode" role="radiogroup" aria-label="Pending message behavior">
+          <div className="oa-react-submit-mode" role="group" aria-label="Send pending message">
             {(capabilities?.steerTurn ?? true) ? <Button
               type="button"
-              variant={state.pendingSubmitMode === "steer" ? "secondary" : "ghost"}
+              variant="secondary"
               size="sm"
-              role="radio"
               aria-label="Steer now"
-              aria-pressed={state.pendingSubmitMode === "steer"}
-              aria-checked={state.pendingSubmitMode === "steer"}
-              disabled={!composerActionPresentation(state.composerAdmission, "steer").enabled}
-              onClick={() => dispatch(report, "DesktopPendingSubmitModeSelected", "steer")}
+              disabled={state.activeThreadId === null || !hasText || !composerActionPresentation(state.composerAdmission, "steer").enabled}
+              onClick={() => submit(editorRef.current?.readValue() ?? state.input, "steer")}
             >
               Steer now
             </Button> : null}
             {(capabilities?.queueFollowup ?? true) ? <Button
               type="button"
-              variant={state.pendingSubmitMode === "queue" ? "secondary" : "ghost"}
+              variant="ghost"
               size="sm"
-              role="radio"
               aria-label="Queue next"
-              aria-pressed={state.pendingSubmitMode === "queue"}
-              aria-checked={state.pendingSubmitMode === "queue"}
-              disabled={!composerActionPresentation(state.composerAdmission, "queue").enabled}
-              onClick={() => dispatch(report, "DesktopPendingSubmitModeSelected", "queue")}
+              disabled={state.activeThreadId === null || !hasText || !composerActionPresentation(state.composerAdmission, "queue").enabled}
+              onClick={() => submit(editorRef.current?.readValue() ?? state.input, "queue")}
             >
               Queue next
             </Button> : null}
@@ -610,7 +603,7 @@ export const ReactComposer = ({
             <span className="sr-only">Stop</span>
           </DesktopComposerButton>
         ) : null}
-        <DesktopComposerButton
+        {!state.pending ? <DesktopComposerButton
           kind="submit"
           type="button"
           disabled={!canSubmit}
@@ -618,12 +611,14 @@ export const ReactComposer = ({
           aria-label={submitLabel} title={submitLabel}>
           <ArrowUp data-icon-name={composerIconNames.submit} aria-hidden="true" />
           <span className="sr-only">{submitLabel}</span>
-        </DesktopComposerButton>
+        </DesktopComposerButton> : null}
       </DesktopComposerBar>
       {state.pending ? (
         <p className="oa-react-composer-consequence" role="status" aria-live="polite">
-          <strong>{pendingAction.label}</strong>
-          <span>{state.composerQueueEditingRef === null ? pendingAction.consequence : "Editing a durable queued turn; its position is preserved."}</span>
+          <strong>While this turn runs</strong>
+          <span>{state.composerQueueEditingRef === null
+            ? `Steer now sends into active turn ${state.composerAdmission.activeTurnId ?? "when available"}; Queue next starts after it settles.`
+            : "Queue next updates the durable queued turn and preserves its position."}</span>
         </p>
       ) : null}
       </DesktopComposerInput>

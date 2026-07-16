@@ -314,7 +314,10 @@ describe("React Codex composer", () => {
     expect(received.filter((value) => value.name === "DesktopInputChanged")).toHaveLength(changeCount);
   });
 
-  test("maps streaming controls to stop, steer, queue, and mode intents", async () => {
+  test.each([
+    ["Steer now", "DesktopSteerCurrentRequested"],
+    ["Queue next", "DesktopQueueNextRequested"],
+  ] as const)("clicking %s immediately submits the draft", async (buttonLabel, intentName) => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
@@ -335,18 +338,17 @@ describe("React Codex composer", () => {
     };
     await interact(() => {
       click("Stop");
-      click("Queue next");
-      click("Steer now", true);
-      click("Steer", true);
+      click(buttonLabel);
     });
     expect(received).toEqual(
       expect.arrayContaining([
         { name: "DesktopTurnInterrupted", payload: null },
-        { name: "DesktopPendingSubmitModeSelected", payload: "queue" },
-        { name: "DesktopSteerCurrentRequested", payload: "Continue" },
+        { name: intentName, payload: "Continue" },
       ]),
     );
-    expect(container.textContent).toContain("Sends into active turn turn-provider-7")
+    expect(received).not.toContainEqual(expect.objectContaining({ name: "DesktopPendingSubmitModeSelected" }));
+    expect(container.querySelector('button[aria-label="Steer"]')).toBeNull();
+    expect(container.textContent).toContain("Steer now sends into active turn turn-provider-7")
   });
 
   test("projects durable queue order and disables mutation after dispatch ownership transfers", async () => {
