@@ -78,3 +78,12 @@ issues migrate its callers. New shared protocol code must import this package;
 it must not add more hand-written ACP declarations to the fixture. Advertised
 filesystem and terminal capabilities remain false until their authority
 brokers and reverse handlers land.
+
+## Trusted peer profiles and admission
+
+`./profiles` carries the declarative trusted peer-profile contract, the
+trusted registry (the only launch authority), bounded official-registry
+discovery ingestion, and the fail-closed admission path. Grok CLI
+(`grok agent stdio`) and Cursor Agent CLI (`agent acp`) are the two reference
+profiles. See `PEER_PROFILES.md` for the contract, threat model, and the
+add-a-peer procedure.

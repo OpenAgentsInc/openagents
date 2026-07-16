@@ -34,6 +34,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir packages/agent-client-protocol run check:generated
+      - run: pnpm --dir packages/agent-client-protocol run typecheck
+      - run: pnpm --dir packages/agent-client-protocol run test
       - run: pnpm --dir packages/agent-client-protocol-conformance run typecheck
       - run: pnpm --dir packages/agent-client-protocol-conformance run test
       - run: pnpm --dir packages/agent-client-protocol-conformance run check:artifacts

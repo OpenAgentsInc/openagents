@@ -8,13 +8,14 @@
     "./stable": "./src/stable.ts",
     "./unstable": "./src/unstable.ts",
     "./extensions/grok": "./src/extensions/grok.ts",
-    "./extensions/cursor": "./src/extensions/cursor.ts"
+    "./extensions/cursor": "./src/extensions/cursor.ts",
+    "./profiles": "./src/profiles/index.ts"
   },
   "scripts": {
     "update:upstream": "node scripts/update-upstream.ts",
     "generate": "node scripts/generate.ts",
     "check:generated": "node scripts/check-generated.ts",
-    "test": "vp test --run packages/agent-client-protocol/src/protocol.test.ts",
+    "test": "vp test --run packages/agent-client-protocol/src/protocol.test.ts packages/agent-client-protocol/src/profiles/profiles.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
