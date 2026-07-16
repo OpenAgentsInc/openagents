@@ -12,7 +12,10 @@ import {
 import { CURSOR_ACP_PROFILE } from "@openagentsinc/agent-client-protocol/extensions/cursor";
 import { GROK_ACP_PROFILE } from "@openagentsinc/agent-client-protocol/extensions/grok";
 import { createGrokAcpPeerRuntime, probeGrokAcpExecutable } from "@openagentsinc/grok-harness";
-import { AgentStdioTransport } from "@openagentsinc/agent-stdio-transport";
+import {
+  AgentStdioTransport,
+  AgentStdioTransportError,
+} from "@openagentsinc/agent-stdio-transport";
 
 import {
   buildAcpLiveReleaseArtifact,
@@ -319,6 +322,59 @@ const qualifyCursorPermission = async (
       })
       .catch(() => undefined);
     return selections;
+  } finally {
+    await transport?.dispose();
+  }
+};
+
+const qualifyCursorAuthFailure = async (
+  root: string,
+  probe: Awaited<ReturnType<typeof probeCursorAcpExecutable>>,
+): Promise<boolean> => {
+  let transport: AgentStdioTransport | undefined;
+  try {
+    transport = await AgentStdioTransport.start({
+      executable: probe.realPath,
+      args: ["acp"],
+      cwd: root,
+      env: {
+        HOME: process.env.HOME,
+        PATH: "/usr/bin:/bin",
+        CURSOR_API_KEY: "invalid-openagents-release-proof",
+      },
+      identityPin: { realPath: probe.realPath, sha256: probe.sha256 },
+      methodKinds: [],
+      limits: { requestTimeoutMs: 60_000 },
+    });
+    const initialized = object(
+      await transport.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+        },
+        clientInfo: { name: "openagents-release-qualification", version: "0.1.0" },
+      }),
+    );
+    const authMethods = Array.isArray(initialized.authMethods)
+      ? initialized.authMethods.map(object)
+      : [];
+    if (!authMethods.some((method) => method.id === "cursor_login"))
+      throw new Error("Cursor did not advertise cursor_login");
+    await transport.request("authenticate", {
+      methodId: "cursor_login",
+      _meta: { headless: true },
+    });
+    const attached = object(await transport.request("session/new", { cwd: root, mcpServers: [] }));
+    if (typeof attached.sessionId !== "string") throw new Error("Cursor returned no session id");
+    await transport.request("session/prompt", {
+      sessionId: attached.sessionId,
+      prompt: [{ type: "text", text: "Reply with exactly CURSOR_AUTH_FAILURE_PROBE." }],
+    });
+    return false;
+  } catch (error) {
+    if (error instanceof AgentStdioTransportError && error.kind === "remote_error") return true;
+    throw error;
   } finally {
     await transport?.dispose();
   }
@@ -779,6 +835,7 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
   let authCancelPeer: Awaited<ReturnType<typeof createCursorAcpPeerRuntime>> | undefined;
   try {
     const probe = await probeCursorAcpExecutable();
+    const authFailureObserved = await qualifyCursorAuthFailure(root, probe);
     let authDecisionCount = 0;
     authCancelPeer = await createCursorAcpPeerRuntime({
       cwd: root,
@@ -839,6 +896,13 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
         authCancelPassed
           ? "Client cancelled advertised login before authenticate and received auth required"
           : "Client-side login cancellation did not return the typed auth-required outcome",
+      ),
+      scenario(
+        "auth-expiry-failure",
+        authFailureObserved ? "live-pass" : "not-observed",
+        authFailureObserved
+          ? "Ephemeral invalid API-key process failed before a fresh local-login process recovered"
+          : "Ephemeral invalid API key did not induce a distinct failure",
       ),
     ];
     const attached = await peer.newSession({ cwd: root, canonicalThreadSeed: "release-cursor" });
