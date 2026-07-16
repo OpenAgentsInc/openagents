@@ -23,6 +23,11 @@ const REQUIRED_DOCS_CLIENT_ARTIFACTS = [
   'docs/sitemap.xml',
 ] as const
 
+// Server-owned Start endpoints must cross the same Cloud Run adapter as Start
+// documents. Keep this list exact: the Worker remains authoritative for every
+// other /api path.
+const START_SERVER_REQUEST_PATHS = new Set(['/api/public/qa-board'])
+
 type StartWorker = Readonly<{
   fetch: (
     request: Request,
@@ -119,6 +124,13 @@ export const isStartDocumentRequestPath = (
 ): boolean =>
   isKnownStartDocumentPath(pathname) || (allowPublicRoot && pathname === '/')
 
+export const isStartServerRequestPath = (
+  pathname: string,
+  allowPublicRoot = false,
+): boolean =>
+  isStartDocumentRequestPath(pathname, allowPublicRoot) ||
+  START_SERVER_REQUEST_PATHS.has(pathname)
+
 export const handleStartUiRequest = async (
   request: Request,
   env: Readonly<Record<string, unknown>>,
@@ -131,7 +143,7 @@ export const handleStartUiRequest = async (
   const pathname = new URL(request.url).pathname
   if (
     (request.method !== 'GET' && request.method !== 'HEAD') ||
-    !isStartDocumentRequestPath(pathname, allowPublicRoot)
+    !isStartServerRequestPath(pathname, allowPublicRoot)
   ) return undefined
 
   return (await loadStartWorker()).fetch(request, env, ctx)

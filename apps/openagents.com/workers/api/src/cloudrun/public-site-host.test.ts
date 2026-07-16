@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
 import { isPublicSiteRootRequest } from './public-site-host'
-import { isStartDocumentRequestPath } from './start-ui'
+import {
+  isStartDocumentRequestPath,
+  isStartServerRequestPath,
+} from './start-ui'
 
 describe('public Start homepage host boundary', () => {
   test.each([
@@ -22,5 +25,12 @@ describe('public Start homepage host boundary', () => {
   test('admits root only through the explicit apex dispatch', () => {
     expect(isStartDocumentRequestPath('/', true)).toBe(true)
     expect(isStartDocumentRequestPath('/')).toBe(false)
+  })
+
+  test('routes only the QA board API through the Start server seam', () => {
+    expect(isStartServerRequestPath('/api/public/qa-board')).toBe(true)
+    expect(isStartServerRequestPath('/api/public/qa-board/')).toBe(false)
+    expect(isStartServerRequestPath('/api/auth/session')).toBe(false)
+    expect(isStartServerRequestPath('/api/portal/session')).toBe(false)
   })
 })
