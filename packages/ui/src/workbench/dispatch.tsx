@@ -34,7 +34,7 @@
  *   - compaction, sleep, review, hook (T12 #8869): quiet single-line mono
  *     ledger rows rendered inline below (not a card, not a disclosure shell).
  */
-import type { ReactElement } from "react"
+import type { ReactElement, ReactNode } from "react"
 
 import { DesktopAgentGroup, type DesktopAgentActivity, type DesktopAgentStatus } from "./agent-group.tsx"
 import { DesktopApprovalCard, type DesktopApprovalDecision } from "./approval-card.tsx"
@@ -239,6 +239,8 @@ export type WorkbenchDispatchContext = Readonly<{
   itemKey: string
   /** Position in the timeline, used for the message aria-label only. */
   sequence?: number
+  /** Host-owned safe Markdown projection for bounded reasoning content. */
+  renderMarkdown?: (value: string) => ReactNode
 }>
 
 const toActivityStatus = (status: WorkbenchDispatchStatus): DesktopActivityStatus => {
@@ -374,7 +376,9 @@ export const dispatchWorkbenchItem = (
         itemKey={context.itemKey}
         status={reasoningItem.status === "in_progress" ? "in_progress" : "completed"}
         summary={reasoningItem.summary}
-      />
+      >
+        {context.renderMarkdown?.(reasoningItem.summary)}
+      </DesktopReasoningDisclosure>
     }
 
     case "command": {

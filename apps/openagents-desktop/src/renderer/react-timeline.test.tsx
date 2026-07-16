@@ -879,7 +879,7 @@ describe("streaming reasoning disclosure surfacing on timeline records (#8863 T6
   const streamingItem = {
     kind: "reasoning",
     source: "codex",
-    summary: "Checking the cache",
+    summary: "**Checking** the cache\n\n- session token\n- expiry",
     status: "in_progress",
   } as const
   const completedItem = {
@@ -924,7 +924,35 @@ describe("streaming reasoning disclosure surfacing on timeline records (#8863 T6
     expect(records[0]!.item).toEqual(completedItem)
   })
 
-  test("renders an in-progress card open with streaming ghost text", async () => {
+  test("adapts a persisted pre-typed reasoning note into the unlabelled Markdown presentation", async () => {
+    const records = projectLocalTimelineRecords([{
+      key: "legacy-reasoning",
+      role: "system",
+      text: "Reasoning · **Checking** the cache\n\n- token\n- expiry",
+      timestamp: "05:41",
+    }])
+    expect(records).toHaveLength(1)
+    expect(records[0]!.item).toMatchObject({
+      kind: "reasoning",
+      source: "local",
+      summary: "**Checking** the cache\n\n- token\n- expiry",
+      status: "completed",
+    })
+
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline sessionKey="legacy-reasoning" records={records}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const card = container.querySelector<HTMLElement>(".oa-react-reasoning-disclosure")
+    expect(card?.querySelector("strong")?.textContent).toBe("Checking")
+    expect(card?.querySelectorAll("li")).toHaveLength(2)
+    expect(card?.textContent).not.toContain("Reasoning")
+    expect(card?.querySelector("summary")).toBeNull()
+    root.unmount()
+  })
+
+  test("renders in-progress reasoning as only its safe Markdown body", async () => {
     const { container } = installDom()
     const root = createRoot(container)
     // A lone work-kind record renders directly (no work-group fold); the
@@ -942,14 +970,17 @@ describe("streaming reasoning disclosure surfacing on timeline records (#8863 T6
       report={report}
     />)
     await settle()
-    const card = container.querySelector<HTMLDetailsElement>(".oa-react-reasoning-disclosure")
+    const card = container.querySelector<HTMLElement>(".oa-react-reasoning-disclosure")
     expect(card?.dataset.status).toBe("running")
-    expect(card?.open).toBe(true)
     expect(card?.textContent).toContain("Checking the cache")
+    expect(card?.querySelector("strong")?.textContent).toBe("Checking")
+    expect(card?.querySelectorAll("li")).toHaveLength(2)
+    expect(card?.querySelector("summary")).toBeNull()
+    expect(card?.textContent).not.toContain("Reasoning")
     root.unmount()
   })
 
-  test("renders a completed card collapsed to the bounded summary line", async () => {
+  test("renders completed reasoning as the same unlabelled Markdown body", async () => {
     const { container } = installDom()
     const root = createRoot(container)
     root.render(<ReactTimeline
@@ -962,33 +993,12 @@ describe("streaming reasoning disclosure surfacing on timeline records (#8863 T6
       report={report}
     />)
     await settle()
-    const card = container.querySelector<HTMLDetailsElement>(".oa-react-reasoning-disclosure")
+    const card = container.querySelector<HTMLElement>(".oa-react-reasoning-disclosure")
     expect(card?.dataset.status).toBe("completed")
-    expect(card?.open).toBe(false)
     expect(card?.textContent).toContain("Checked the cache and it was stale.")
-    root.unmount()
-  })
-
-  test("a completed card re-expands on click to reveal the full summary text", async () => {
-    const { container } = installDom()
-    const root = createRoot(container)
-    root.render(<ReactTimeline
-      sessionKey="thread-reasoning-toggle"
-      records={[{ ...record("reasoning-toggle", 0), kind: "reasoning", item: completedItem }]}
-      loadedItemCount={1}
-      offset={0}
-      totalItems={1}
-      loadingEdge={null}
-      report={report}
-    />)
-    await settle()
-    const card = container.querySelector<HTMLDetailsElement>(".oa-react-reasoning-disclosure")
-    expect(card?.open).toBe(false)
-    const doc = container.ownerDocument
-    const view = doc.defaultView as unknown as typeof window
-    card?.querySelector("summary")?.dispatchEvent(new view.MouseEvent("click", { bubbles: true }))
-    await settle()
-    expect(card?.open).toBe(true)
+    expect(card?.querySelector(".oa-react-markdown")).not.toBeNull()
+    expect(card?.querySelector("summary")).toBeNull()
+    expect(card?.textContent).not.toContain("Reasoning")
     root.unmount()
   })
 })

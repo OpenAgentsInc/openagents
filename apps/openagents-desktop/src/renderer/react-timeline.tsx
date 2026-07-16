@@ -265,13 +265,14 @@ export const projectLocalTimelineRecords = (
         : kind === "tool_call" ? note.text.split(" · ")[0] || "Tool"
           : kind === "reasoning" ? "Reasoning"
             : "System"
+  const body = note.question?.questions[0]?.question ?? note.text.replace(/^(Reasoning|Approval)\s*·\s*/i, "")
   return [{
     key: note.key,
     itemRef: note.key,
     sequence: index,
     kind,
     label,
-    body: note.question?.questions[0]?.question ?? note.text.replace(/^(Reasoning|Approval)\s*·\s*/i, ""),
+    body,
     timestamp: note.timestamp,
     status: note.question?.status ?? note.runtime?.kind ?? null,
     redacted: false,
@@ -279,6 +280,11 @@ export const projectLocalTimelineRecords = (
     resultRef: null,
     resultBody: null,
     resultStatus: null,
+    // Older persisted local/Fable notes predate the typed reasoning payload.
+    // The existing bounded legacy classifier above has already selected the
+    // semantic route; adapt that body into the same typed presentation used by
+    // current live and history records so restarts do not restore old chrome.
+    ...(kind === "reasoning" ? { item: { kind: "reasoning" as const, source: "local" as const, summary: body, status: "completed" as const } } : {}),
   }]
 })
 
@@ -421,6 +427,7 @@ export const TimelineItem = ({ record, report }: {
   if (record.item !== undefined && dispatchableWorkbenchKinds.has(record.item.kind)) {
     return dispatchWorkbenchItem(record.item as WorkbenchDispatchItem, {
       itemKey: record.key,
+      renderMarkdown: value => <SafeReactMarkdown value={value} />,
       sequence: record.sequence,
     })
   }

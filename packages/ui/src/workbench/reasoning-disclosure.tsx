@@ -1,6 +1,6 @@
 /**
  * `DesktopReasoningDisclosure` (#8863, epic #8857 Wave 2 / T6: streaming
- * reasoning disclosure).
+ * reasoning presentation).
  *
  * Renders a `reasoning` `WorkbenchItem` at the Autopilot ghost-text luminance
  * level (design spec `docs/fable/autopilot-ui-design-spec.md` §2.2
@@ -10,17 +10,10 @@
  * component never imports the raw `autopilotTheme` palette or hardcodes an
  * Autopilot hex value).
  *
- * Two presentation states:
- *   - `status: "in_progress"` — the model is still thinking. The card stays
- *     OPEN and the growing summary streams in as dim ghost text, chunk by
- *     chunk, with a small pulsing indicator. There is nothing bounded to
- *     collapse to yet.
- *   - anything else (`"completed"`/`"failed"`/`"declined"`, i.e. the item
- *     finished) — the card COLLAPSES to a single bounded summary line, the
- *     same fold every other "work" entry in the timeline uses
- *     (`DesktopWorkEntry`, `DesktopProtocolCard`). The full text stays
- *     reachable behind the disclosure triangle; it is never left permanently
- *     expanded as a wall of streamed reasoning.
+ * The bounded summary is the entire visible presentation. The host may pass
+ * its safe Markdown projection as `children`; component-gallery callers fall
+ * back to literal summary text. There is deliberately no title, preview,
+ * disclosure control, pulse, or status commentary around that content.
  *
  * Honest-absence rule (design spec + component audit §5): redacted reasoning
  * NEVER reaches this component. The upstream typed projection
@@ -32,55 +25,29 @@
  * component never renders a false "reasoning unavailable" card — for a
  * redacted item, it simply never mounts.
  */
-import type { ReactElement } from "react"
-import { useEffect, useState } from "react"
+import type { ReactElement, ReactNode } from "react"
 
 export type DesktopReasoningStatus = "in_progress" | "completed" | "failed" | "declined"
 
-const firstNonEmptyLine = (value: string): string =>
-  value.split("\n").find(line => line.trim() !== "")?.trim() ?? ""
-
 export const DesktopReasoningDisclosure = ({
+  children,
   itemKey,
   status,
   summary,
 }: Readonly<{
+  children?: ReactNode
   itemKey: string
   status: DesktopReasoningStatus
   summary: string
-}>): ReactElement => {
-  const running = status === "in_progress"
-  const [open, setOpen] = useState(running)
-  // Collapse-on-complete: the moment the item stops running, fold it down to
-  // the bounded summary line regardless of whatever the user last toggled —
-  // "streams while thinking, then collapses" is unconditional on completion.
-  useEffect(() => {
-    if (!running) setOpen(false)
-  }, [running])
-  const preview = running
-    ? (firstNonEmptyLine(summary) || "Thinking…")
-    : (firstNonEmptyLine(summary) || "No summary")
-  const paragraphs = summary.split("\n").filter(line => line.trim() !== "")
-  return <details
+}>): ReactElement =>
+  <div
     className="oa-react-reasoning-disclosure"
-    data-status={running ? "running" : "completed"}
+    data-status={status === "in_progress" ? "running" : "completed"}
     data-timeline-key={itemKey}
-    onToggle={event => setOpen(event.currentTarget.open)}
-    open={open}
     role="listitem"
   >
-    <summary>
-      <span className="oa-react-reasoning-label">Reasoning</span>
-      <span className="oa-react-reasoning-preview">{preview}</span>
-      {running ? <span aria-hidden="true" className="oa-react-reasoning-pulse" /> : null}
-    </summary>
-    <div className="oa-react-reasoning-body">
-      {paragraphs.length === 0
-        ? null
-        : paragraphs.map((line, index) => <p key={index}>{line}</p>)}
-    </div>
-  </details>
-}
+    {children ?? summary}
+  </div>
 
 /**
  * Representative fixture data for every reasoning presentation state — the

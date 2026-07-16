@@ -139,10 +139,10 @@ export const WorkbenchReasoningItemSchema = Schema.Struct({
   summary: BoundedString(WORKBENCH_REASONING_SUMMARY_LIMIT),
   /**
    * Streaming lifecycle (#8863, T6): "in_progress" while reasoning
-   * text/summary deltas are still arriving (the ghost-text disclosure stays
-   * open), "completed" once the item finalizes (the disclosure collapses to
-   * the bounded summary line). Absent defaults to "completed" so pre-#8863
-   * emitters (history, the Claude/Fable lane) keep decoding unchanged.
+   * text/summary deltas are still arriving, "completed" once the item
+   * finalizes. Both states use the same quiet Markdown-body presentation.
+   * Absent defaults to "completed" so pre-#8863 emitters (history, the
+   * Claude/Fable lane) keep decoding unchanged.
    */
   status: Schema.optional(WorkbenchItemStatusSchema),
 })
