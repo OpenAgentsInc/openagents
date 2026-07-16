@@ -96,6 +96,26 @@ point is institutional rather than model-specific: intelligence should be
 plural, execution inspectable, history portable, and private knowledge under
 the user's control.
 
+## Protocol interoperability
+
+Agent Client Protocol (ACP) client support is an explicit, bounded architecture
+direction, not a claim about the currently shipped Desktop surface. It lets
+OpenAgents control `grok agent stdio` and other compatible coding agents over
+bidirectional JSON-RPC/stdio at the typed runtime boundary.
+
+The adapter starts from current stable wire version 1 and the current schema
+artifact, then capability-gates optional methods and keeps provider-specific
+authentication, launch, and extensions in thin profiles. ACP does not replace
+OpenAgents Thread/Turn/Item/Work Unit, Runtime Interaction, authority,
+evidence, or Receipt models, and protocol support alone does not make every
+registry agent a shipped provider. This direction is client-only: controlling
+external coding agents is the requirement.
+
+The source audit and ordered implementation gates are in the
+[T3 Code Agent Client Protocol implementation teardown](docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md);
+the wider reference set remains indexed in
+[Product Teardowns](docs/teardowns/README.md).
+
 ## The front door to an open agent network
 
 The long-term OpenAgents thesis is not one better assistant. It is an open,
