@@ -72,13 +72,14 @@ const sourceFiles = (dir: string): ReadonlyArray<string> => {
 // ---------------------------------------------------------------------------
 // openagents_desktop.typography.approved_fonts_only.v1
 //
-// The app's approved rendered type system is owned by packages/ui: Zalando Sans
-// for body/UI/headings, Inter and the host system stack as resilient fallbacks,
+// The app's approved rendered type system is owned by packages/ui: Inter for
+// body/UI/headings, Zalando Sans only through the opt-in marketing accent token,
 // and Disket Mono for code surfaces. Nothing else may be declared anywhere in
 // the desktop app's sources or styles.
 // ---------------------------------------------------------------------------
 
 const approvedFontFamilies: ReadonlySet<string> = new Set([
+  "Inter Variable",
   "Zalando Sans",
   "Disket Mono",
   "Inter",
@@ -97,6 +98,7 @@ const approvedFontFamilies: ReadonlySet<string> = new Set([
   "sans-serif",
   "monospace",
   "var(--oa-font-sans)",
+  "var(--oa-font-sans-accent)",
   "var(--oa-font-mono)",
 ])
 
@@ -155,7 +157,8 @@ describe("openagents_desktop.typography.approved_fonts_only.v1", () => {
     const css = readFileSync(path.join(srcDir, "renderer", "app.css"), "utf8")
     const workbenchCss = readFileSync(path.join(sharedUiSrcDir, "desktop-workbench.css"), "utf8")
     const typographyCss = readFileSync(path.join(sharedUiSrcDir, "typography.css"), "utf8")
-    expect(typographyCss).toContain('--oa-font-sans: "Zalando Sans", Inter')
+    expect(typographyCss).toContain('--oa-font-sans: "Inter Variable", Inter')
+    expect(typographyCss).toContain('--oa-font-sans-accent: "Zalando Sans", "Inter Variable", Inter')
     expect(typographyCss).toContain('--oa-font-mono: "Disket Mono"')
     expect(css).toContain(approvedBaseStackDeclaration)
     expect(workbenchCss).toContain(approvedHeadingStackDeclaration)

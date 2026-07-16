@@ -1,5 +1,11 @@
 # Third-party notices
 
+## Inter
+
+Inter is distributed under the SIL Open Font License 1.1 through the
+`@fontsource-variable/inter` package. The complete license is included with
+that dependency.
+
 ## Zalando Sans
 
 Zalando Sans is distributed under the SIL Open Font License 1.1. The complete

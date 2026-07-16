@@ -24,9 +24,9 @@ relationships. They are adapted through Khala semantic roles rather than
 copied as raw literals or mounted as `autopilotTheme`:
 
 - Disket Mono carries machine state, commands, paths, shortcuts, and compact
-  metadata. Zalando Sans may use a modestly condensed width only for bounded
-  labels and dense controls; prose and primary headings remain readable at the
-  normal width.
+  metadata. Inter carries all product UI and sustained reading. Zalando Sans
+  is reserved for explicit, occasional marketing accents and may not enter
+  product controls, navigation, conversation content, or ordinary prose.
 - Autopilot indigo, cool-neutral, muted-danger, and rare-success ideas may
   inform the corresponding Khala ramps, but the result must stay visibly in
   the Khala blue family and resolve through `--en-color-*` / `--khala-*`
@@ -71,21 +71,32 @@ tool or metadata row.
 
 ## Typography
 
-### Primary sans: Zalando Sans
+### Primary sans: Inter
 
-Zalando Sans is the primary family for interface copy, prose, controls,
-headings, navigation, and conversation content. Use the owned variable font at
-its normal width axis unless a bounded component explicitly specifies another
-width:
+Inter is the primary family for interface copy, prose, controls, headings,
+navigation, conversation content, docs, and marketing body copy:
 
 ```css
 font-family: var(--oa-font-sans);
 font-optical-sizing: auto;
-font-variation-settings: "wdth" 100;
 ```
 
-The canonical fallback order is Zalando Sans, Inter, the platform UI stack,
-and generic `sans-serif`. Inter is a backup, not the primary face.
+The canonical fallback order is Inter Variable, Inter, the platform UI stack,
+and generic `sans-serif`.
+
+### Opt-in sans accent: Zalando Sans
+
+Zalando Sans is not a product-UI family. It may appear occasionally in
+deliberately selected marketing copy through the explicit accent token or
+utility class:
+
+```css
+font-family: var(--oa-font-sans-accent);
+```
+
+No global element, application shell, docs surface, control, navigation item,
+or conversation component may inherit that accent token. The `.zalando-sans`
+and `.oa-font-accent` utilities are opt-in signals, never defaults.
 
 ### Primary mono: Disket Mono
 
@@ -106,8 +117,10 @@ surface feel technical.
   authority.
 - Font files are self-hosted. Product rendering must not depend on Google Fonts
   or another third-party font CDN.
-- The normal and italic Zalando Sans variable faces cover weights 200–900 and
-  widths 75–125. The default UI width is 100.
+- The normal and italic Inter variable faces cover weights 100–900 and optical
+  sizing for readable product and marketing rendering.
+- The normal and italic Zalando Sans variable faces remain available only for
+  explicit marketing accents and cover weights 200–900 and widths 75–125.
 - Disket Mono is shipped in regular and bold web-font faces. Do not synthesize
   a replacement family for missing weights.
 - `font-display: swap` preserves first paint while the branded faces load.
@@ -116,10 +129,10 @@ surface feel technical.
 
 ### Licensing
 
-Zalando Sans is included under the SIL Open Font License 1.1. Disket Mono is
-included under the Rostype end-user license, which permits commercial use and
-generation of web-font formats for websites. Complete license copies ship
-beside the font assets in `packages/ui/src/fonts/licenses/`.
+Inter and Zalando Sans are included under the SIL Open Font License 1.1.
+Disket Mono is included under the Rostype end-user license, which permits
+commercial use and generation of web-font formats for websites. License
+notices ship with `@openagentsinc/ui` and its font dependencies.
 
 ### Verification
 
@@ -133,7 +146,8 @@ that the compiled CSS and each emitted WOFF2 asset return successfully from
 ## Visual relationship
 
 Typography should support the existing Khala visual system: precise,
-high-contrast, information-dense, and calm. Zalando Sans carries human-facing
-hierarchy and sustained reading. Disket Mono marks machine-facing detail. The
-contrast between those roles is structural; it should not be recreated with
-arbitrary display fonts, excessive letter spacing, or all-monospace layouts.
+high-contrast, information-dense, and calm. Inter carries human-facing
+hierarchy and sustained reading. Disket Mono marks machine-facing detail.
+Zalando Sans contributes only rare marketing emphasis. The contrast between
+those roles is structural; it should not be recreated with arbitrary display
+fonts, excessive letter spacing, or all-monospace layouts.

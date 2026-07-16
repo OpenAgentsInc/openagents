@@ -10,12 +10,15 @@ const sharedTypographyPath = path.resolve(
 )
 
 describe('shared typography authority', () => {
-  test('self-hosts the owner-selected sans and mono faces', () => {
+  test('self-hosts Inter as the default, Zalando as an opt-in accent, and Disket Mono', () => {
     const typography = readFileSync(sharedTypographyPath, 'utf8')
 
+    expect(typography).toContain('@fontsource-variable/inter/opsz.css')
     expect(typography).toContain('font-family: "Zalando Sans"')
     expect(typography).toContain('font-family: "Disket Mono"')
-    expect(typography).toContain('--oa-font-sans: "Zalando Sans", Inter')
+    expect(typography).toContain('--oa-font-sans: "Inter Variable", Inter')
+    expect(typography).toContain('--oa-font-sans-accent: "Zalando Sans", "Inter Variable", Inter')
+    expect(typography).toContain('font-family: var(--oa-font-sans-accent)')
     expect(typography).toContain('--oa-font-mono: "Disket Mono"')
     expect(typography).toContain('font-variation-settings: "wdth" 100')
   })
