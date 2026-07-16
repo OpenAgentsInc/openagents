@@ -1,0 +1,15 @@
+
+ RUN  v4.1.10 /Users/christopherdavid/work/oa-qa1-8906
+
+(node:40473) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:40474) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:40476) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ Test Files  22 passed (22)
+      Tests  126 passed (126)
+   Start at  10:00:55
+   Duration  2.25s (transform 9.62s, setup 723ms, import 20.95s, tests 1.88s, environment 1ms)
+

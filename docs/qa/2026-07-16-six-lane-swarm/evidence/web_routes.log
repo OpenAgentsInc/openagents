@@ -1,0 +1,12 @@
+$ pnpm run generate:docs && vp test --root ../../../.. --run --project @openagentsinc/openagents-com-start -- src/routes/-public-site.test.tsx src/routes/-forum.test.tsx src/routes/-promises.test.tsx
+$ node --import tsx scripts/generate-docs.ts
+[docs] generated 8 pages and agent artifacts
+
+ RUN  v4.1.10 /Users/christopherdavid/work/oa-qa1-8906
+
+
+ Test Files  51 passed (51)
+      Tests  232 passed (232)
+   Start at  10:00:57
+   Duration  3.31s (transform 10.13s, setup 4.64s, import 16.55s, tests 2.15s, environment 20.35s)
+

@@ -1,0 +1,9 @@
+
+ RUN  v4.1.10 /Users/christopherdavid/work/oa-qa1-8906
+
+
+ Test Files  3 passed (3)
+      Tests  31 passed (31)
+   Start at  10:00:55
+   Duration  8.52s (transform 10.75s, setup 504ms, import 13.42s, tests 94ms, environment 0ms)
+

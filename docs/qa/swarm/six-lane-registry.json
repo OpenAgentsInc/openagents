@@ -1,0 +1,94 @@
+{
+  "schema": "openagents.qa.six-lane-registry.v1",
+  "lanes": [
+    {
+      "id": "web_routes",
+      "surface": "openagents.com public web routes",
+      "command": "pnpm --dir apps/openagents.com/apps/start run test -- src/routes/-public-site.test.tsx src/routes/-forum.test.tsx src/routes/-promises.test.tsx",
+      "probes": [
+        {
+          "url": "https://openagents.com/",
+          "status": 200,
+          "contentType": "text/html",
+          "bodyIncludes": "OpenAgents"
+        },
+        {
+          "url": "https://openagents.com/forum",
+          "status": 200,
+          "contentType": "text/html",
+          "bodyIncludes": "Forum"
+        },
+        {
+          "url": "https://openagents.com/promises",
+          "status": 200,
+          "contentType": "text/html",
+          "bodyIncludes": "/assets/promises-"
+        }
+      ]
+    },
+    {
+      "id": "desktop_shell",
+      "surface": "OpenAgents Desktop shell and shared workbench components",
+      "command": "pnpm run qa:swarm:desktop",
+      "receiptPrefix": "[openagents-desktop visual-baseline] gate OK ",
+      "probes": []
+    },
+    {
+      "id": "mobile",
+      "surface": "OpenAgents Mobile state, navigation, and execution-target contracts",
+      "command": "pnpm exec vp test --run apps/openagents-mobile/tests",
+      "probes": []
+    },
+    {
+      "id": "api_openapi",
+      "surface": "public API and OpenAPI conformance",
+      "command": "pnpm exec vp test --run apps/openagents.com/workers/api/src/openagents-openapi-routes.test.ts apps/openagents.com/workers/api/src/worker-exact-routes.test.ts apps/openagents.com/workers/api/src/client-server-route-agreement.test.ts",
+      "probes": [
+        {
+          "url": "https://openagents.com/api/openapi.json",
+          "status": 200,
+          "contentType": "application/json",
+          "jsonAssertions": [
+            { "path": "openapi", "equals": "3.1.0" },
+            { "path": "paths./api/public/product-promises.get", "present": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "payments_promises",
+      "surface": "product promises and retired payment-authority boundary",
+      "command": "pnpm exec vp test --run apps/openagents.com/workers/api/src/product-promises.test.ts apps/openagents.com/workers/api/src/openagents-agent-onboarding-routes.test.ts",
+      "probes": [
+        {
+          "url": "https://openagents.com/api/public/product-promises",
+          "status": 200,
+          "contentType": "application/json"
+        }
+      ]
+    },
+    {
+      "id": "sync",
+      "surface": "Khala Sync client/server protocol seam",
+      "command": "pnpm --dir packages/khala-sync-client run test && pnpm exec vp test --run apps/openagents.com/workers/api/src/khala-sync-bootstrap-routes.test.ts apps/openagents.com/workers/api/src/khala-sync-route-wiring.test.ts",
+      "probes": [
+        {
+          "url": "https://openagents.com/api/sync/bootstrap",
+          "method": "GET",
+          "status": 405,
+          "contentType": "application/json",
+          "bodyIncludes": "method_not_allowed"
+        },
+        {
+          "url": "https://openagents.com/api/sync/bootstrap",
+          "method": "POST",
+          "headers": { "content-type": "application/json" },
+          "body": "{}",
+          "status": 400,
+          "contentType": "application/json",
+          "bodyIncludes": "protocol_version_unsupported"
+        }
+      ]
+    }
+  ]
+}

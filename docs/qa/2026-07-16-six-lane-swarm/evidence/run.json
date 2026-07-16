@@ -1,0 +1,298 @@
+{
+  "schema": "openagents.qa.six-lane-run.v1",
+  "runRef": "qa.six-lane.20260716T150054760Z",
+  "baseSha": "46ea6c28f04b0fc29df482227a2c8e87b16968c5",
+  "productionBaseUrl": "https://openagents.com",
+  "startedAt": "2026-07-16T15:00:54.760Z",
+  "completedAt": "2026-07-16T15:01:08.866Z",
+  "verdict": "findings",
+  "lanes": [
+    {
+      "id": "web_routes",
+      "surface": "openagents.com public web routes",
+      "verdict": "pass",
+      "command": {
+        "command": "pnpm --dir apps/openagents.com/apps/start run test -- src/routes/-public-site.test.tsx src/routes/-forum.test.tsx src/routes/-promises.test.tsx",
+        "startedAt": "2026-07-16T15:00:54.761Z",
+        "completedAt": "2026-07-16T15:01:01.110Z",
+        "exitCode": 0,
+        "outputSha256": "a9e6db52a9c8e5252c2d78f2acd6bc273ccb8bb852da4585871543c1d11bc380",
+        "log": "web_routes.log"
+      },
+      "probes": [
+        {
+          "url": "https://openagents.com/",
+          "method": "GET",
+          "startedAt": "2026-07-16T15:00:54.763Z",
+          "completedAt": "2026-07-16T15:00:55.217Z",
+          "status": 200,
+          "contentType": "text/html; charset=utf-8",
+          "bodyBytes": 3862,
+          "bodySha256": "663b41b19c64b9fe55717af33938e102e7bda2bcf92701548d0f7bf84a54967e",
+          "failures": []
+        },
+        {
+          "url": "https://openagents.com/forum",
+          "method": "GET",
+          "startedAt": "2026-07-16T15:00:54.778Z",
+          "completedAt": "2026-07-16T15:00:55.218Z",
+          "status": 200,
+          "contentType": "text/html; charset=utf-8",
+          "bodyBytes": 645,
+          "bodySha256": "c62f0bdcfd8e1409bc2bc302577dc2b8313d23c2f13774f352067bf7deae832a",
+          "failures": []
+        },
+        {
+          "url": "https://openagents.com/promises",
+          "method": "GET",
+          "startedAt": "2026-07-16T15:00:54.779Z",
+          "completedAt": "2026-07-16T15:00:55.281Z",
+          "status": 200,
+          "contentType": "text/html; charset=utf-8",
+          "bodyBytes": 21988,
+          "bodySha256": "0d850cbc72eba6d1042fb5f750df6ab587f1335b4bb823edb185cf32dde06069",
+          "failures": []
+        }
+      ],
+      "receipt": null,
+      "failures": []
+    },
+    {
+      "id": "desktop_shell",
+      "surface": "OpenAgents Desktop shell and shared workbench components",
+      "verdict": "pass",
+      "command": {
+        "command": "pnpm run qa:swarm:desktop",
+        "startedAt": "2026-07-16T15:00:54.779Z",
+        "completedAt": "2026-07-16T15:01:05.742Z",
+        "exitCode": 0,
+        "outputSha256": "2350f5fb8fd79bea4ad55e3d3eecf1ba3d8c0313a72d97bb57d1dea65bd34346",
+        "log": "desktop_shell.log"
+      },
+      "probes": [],
+      "receipt": {
+        "schema": "openagents.qa.desktop-visual-lane.v1",
+        "lane": "desktop",
+        "ok": true,
+        "states": [
+          {
+            "state": "composer-idle",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "thread-plan-card",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "approval-card",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "reasoning-disclosure",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "full-auto-running",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-messages-reasoning",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-commands",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-files",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-tools-mcp-dynamic",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-tools-web-image",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-plans-approvals",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-agents",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-context",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-notices-long-tail",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-shell",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          },
+          {
+            "state": "workbench-frame",
+            "ok": true,
+            "differentPixels": 0,
+            "differentRatio": 0
+          }
+        ],
+        "thresholds": {
+          "perChannelTolerance": 3,
+          "maxDifferentPixelRatio": 0.001
+        }
+      },
+      "failures": []
+    },
+    {
+      "id": "mobile",
+      "surface": "OpenAgents Mobile state, navigation, and execution-target contracts",
+      "verdict": "pass",
+      "command": {
+        "command": "pnpm exec vp test --run apps/openagents-mobile/tests",
+        "startedAt": "2026-07-16T15:00:54.780Z",
+        "completedAt": "2026-07-16T15:00:58.112Z",
+        "exitCode": 0,
+        "outputSha256": "0386c6a5e88137e8227a6c927d633b45febdf369f482507b44c177051321f698",
+        "log": "mobile.log"
+      },
+      "probes": [],
+      "receipt": null,
+      "failures": []
+    },
+    {
+      "id": "api_openapi",
+      "surface": "public API and OpenAPI conformance",
+      "verdict": "pass",
+      "command": {
+        "command": "pnpm exec vp test --run apps/openagents.com/workers/api/src/openagents-openapi-routes.test.ts apps/openagents.com/workers/api/src/worker-exact-routes.test.ts apps/openagents.com/workers/api/src/client-server-route-agreement.test.ts",
+        "startedAt": "2026-07-16T15:00:54.780Z",
+        "completedAt": "2026-07-16T15:01:04.555Z",
+        "exitCode": 0,
+        "outputSha256": "0a4618f421cf4103f353eadfbc04442901580aab537e0c30ef95c2f1ccd22ab3",
+        "log": "api_openapi.log"
+      },
+      "probes": [
+        {
+          "url": "https://openagents.com/api/openapi.json",
+          "method": "GET",
+          "startedAt": "2026-07-16T15:00:54.780Z",
+          "completedAt": "2026-07-16T15:00:56.546Z",
+          "status": 200,
+          "contentType": "application/json",
+          "bodyBytes": 769579,
+          "bodySha256": "1c25d456d5f9a5bb8c1a84cad10542576ba6dcf33e7918a1ba8e686084592271",
+          "failures": []
+        }
+      ],
+      "receipt": null,
+      "failures": []
+    },
+    {
+      "id": "payments_promises",
+      "surface": "product promises and retired payment-authority boundary",
+      "verdict": "finding",
+      "command": {
+        "command": "pnpm exec vp test --run apps/openagents.com/workers/api/src/product-promises.test.ts apps/openagents.com/workers/api/src/openagents-agent-onboarding-routes.test.ts",
+        "startedAt": "2026-07-16T15:00:54.781Z",
+        "completedAt": "2026-07-16T15:00:57.034Z",
+        "exitCode": 0,
+        "outputSha256": "8599f561d7cc9fdde3df77d3c39f933092f0ce4245460f0d0e1352c371226296",
+        "log": "payments_promises.log"
+      },
+      "probes": [
+        {
+          "url": "https://openagents.com/api/public/product-promises",
+          "method": "GET",
+          "startedAt": "2026-07-16T15:00:54.782Z",
+          "completedAt": "2026-07-16T15:00:55.217Z",
+          "status": 404,
+          "contentType": "application/json",
+          "bodyBytes": 21,
+          "bodySha256": "d2dfdc9511fbeaa0701d1f8730f4989313b062ca1b61a2bd8bed8f4f5d654b5d",
+          "failures": [
+            "expected status 200, got 404"
+          ]
+        }
+      ],
+      "receipt": null,
+      "failures": [
+        "GET https://openagents.com/api/public/product-promises: expected status 200, got 404"
+      ]
+    },
+    {
+      "id": "sync",
+      "surface": "Khala Sync client/server protocol seam",
+      "verdict": "pass",
+      "command": {
+        "command": "pnpm --dir packages/khala-sync-client run test && pnpm exec vp test --run apps/openagents.com/workers/api/src/khala-sync-bootstrap-routes.test.ts apps/openagents.com/workers/api/src/khala-sync-route-wiring.test.ts",
+        "startedAt": "2026-07-16T15:00:54.783Z",
+        "completedAt": "2026-07-16T15:01:08.866Z",
+        "exitCode": 0,
+        "outputSha256": "4468906f841b2be97630d46c304d0901245c91c3461e0be6791e5626b2a8941e",
+        "log": "sync.log"
+      },
+      "probes": [
+        {
+          "url": "https://openagents.com/api/sync/bootstrap",
+          "method": "GET",
+          "startedAt": "2026-07-16T15:00:54.783Z",
+          "completedAt": "2026-07-16T15:00:55.219Z",
+          "status": 405,
+          "contentType": "application/json",
+          "bodyBytes": 30,
+          "bodySha256": "48ceae43089b9c26f0b2e5e53afe122639812aaa791c84f311d6b992f2332fef",
+          "failures": []
+        },
+        {
+          "url": "https://openagents.com/api/sync/bootstrap",
+          "method": "POST",
+          "startedAt": "2026-07-16T15:00:54.784Z",
+          "completedAt": "2026-07-16T15:00:55.219Z",
+          "status": 400,
+          "contentType": "application/json",
+          "bodyBytes": 142,
+          "bodySha256": "f2208843c3a16dc37a931b108c5c7ecb5d3c3c1078c448d8f8c74461b797f88d",
+          "failures": []
+        }
+      ],
+      "receipt": null,
+      "failures": []
+    }
+  ]
+}
