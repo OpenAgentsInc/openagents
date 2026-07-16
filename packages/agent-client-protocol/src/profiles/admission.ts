@@ -42,9 +42,12 @@ export type AcpConformanceEvidenceRecord = Readonly<{
   peerVersion: string;
   executableSha256?: string;
   installationClosureSha256?: string;
+  platform?: Readonly<{ os: string; arch: string }>;
   recordedAt: string;
   artifactRef: string;
 }>;
+
+export const ACP_FULL_RELEASE_SUITE_ID = "acp-release-matrix-v1" as const;
 
 export type AcpPeerSupportState = "supported" | "experimental" | "incompatible";
 
@@ -327,11 +330,21 @@ export const deriveAcpSupportState = (
     profile: AcpTrustedPeerProfile;
     peerVersion: string;
     executableSha256: string;
+    installationClosureSha256?: string;
+    platform: Readonly<{ os: string; arch: string }>;
     evidence: ReadonlyArray<AcpConformanceEvidenceRecord>;
     now: Date;
   }>,
 ): AcpPeerSupportState => {
-  const { profile, peerVersion, executableSha256, evidence, now } = input;
+  const {
+    profile,
+    peerVersion,
+    executableSha256,
+    installationClosureSha256,
+    platform,
+    evidence,
+    now,
+  } = input;
   if (versionInRanges(peerVersion, profile.versions.denied)) return "incompatible";
   const relevant = evidence.filter((record) => record.peerVersion === peerVersion);
   if (relevant.some((record) => record.result === "fail")) return "incompatible";
@@ -348,7 +361,16 @@ export const deriveAcpSupportState = (
   );
   const liveSatisfied =
     !profile.evidence.liveMatrixRequired ||
-    fresh.some((record) => record.kind === "live" && record.executableSha256 === executableSha256);
+    fresh.some(
+      (record) =>
+        record.kind === "live" &&
+        record.suiteId === ACP_FULL_RELEASE_SUITE_ID &&
+        record.executableSha256 === executableSha256 &&
+        record.platform?.os === platform.os &&
+        record.platform.arch === platform.arch &&
+        (installationClosureSha256 === undefined ||
+          record.installationClosureSha256 === installationClosureSha256),
+    );
   return fixturesSatisfied && liveSatisfied ? "supported" : "experimental";
 };
 
@@ -454,6 +476,10 @@ export const admitAcpPeerProfile = (
     profile,
     peerVersion: trust.peerVersion,
     executableSha256: input.probe.sha256,
+    ...(input.probe.closureSha256 === undefined
+      ? {}
+      : { installationClosureSha256: input.probe.closureSha256 }),
+    platform: input.probe.platform,
     evidence: input.evidence,
     now: input.now,
   });

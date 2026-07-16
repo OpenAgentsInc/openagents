@@ -26,6 +26,12 @@ an executed production-transport fixture may satisfy only the explicitly
 hermetic class. Grok passing never changes Cursor's gate, and Cursor passing
 never changes Grok's gate.
 
+Peer admission likewise cannot promote a supported-range binary from an
+arbitrary passing live receipt. It requires the named full-release suite,
+the exact executable digest, the tested OS/architecture, freshness, and (for
+Cursor) the installation-closure digest. A smoke test from another platform or
+a partial live probe therefore remains experimental.
+
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
 | Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    30 live passes |                                  0 | experimental |

@@ -139,8 +139,10 @@ const syntheticEvidence = (
 const fullEvidence: ReadonlyArray<AcpConformanceEvidenceRecord> = [
   syntheticEvidence(),
   syntheticEvidence({
+    suiteId: "acp-release-matrix-v1",
     kind: "live",
     executableSha256: SYNTHETIC_SHA,
+    platform: { os: "darwin", arch: "arm64" },
     artifactRef: "compatibility/synthetic-live.json",
   }),
 ];
@@ -620,6 +622,7 @@ describe("executable trust and support-state derivation", () => {
       profile,
       peerVersion: "1.2.3",
       executableSha256: SYNTHETIC_SHA,
+      platform: { os: "darwin", arch: "arm64" },
       now: NOW,
     };
     expect(deriveAcpSupportState({ ...base, evidence: fullEvidence })).toBe("supported");
@@ -631,8 +634,38 @@ describe("executable trust and support-state derivation", () => {
         ...base,
         evidence: [
           syntheticEvidence(),
-          syntheticEvidence({ kind: "live", executableSha256: "c".repeat(64) }),
+          syntheticEvidence({
+            suiteId: "acp-release-matrix-v1",
+            kind: "live",
+            executableSha256: "c".repeat(64),
+            platform: { os: "darwin", arch: "arm64" },
+          }),
         ],
+      }),
+    ).toBe("experimental");
+    // A passing live receipt is not a release gate unless it represents the
+    // complete code-owned matrix on this exact platform.
+    expect(
+      deriveAcpSupportState({
+        ...base,
+        evidence: [
+          syntheticEvidence(),
+          syntheticEvidence({
+            kind: "live",
+            executableSha256: SYNTHETIC_SHA,
+            platform: { os: "darwin", arch: "arm64" },
+          }),
+        ],
+      }),
+    ).toBe("experimental");
+    expect(
+      deriveAcpSupportState({
+        ...base,
+        evidence: fullEvidence.map((record) =>
+          record.kind === "live"
+            ? { ...record, platform: { os: "linux", arch: "arm64" } }
+            : record,
+        ),
       }),
     ).toBe("experimental");
     // Stale evidence does not count.
@@ -642,8 +675,10 @@ describe("executable trust and support-state derivation", () => {
         evidence: [
           syntheticEvidence({ recordedAt: "2026-05-01T00:00:00.000Z" }),
           syntheticEvidence({
+            suiteId: "acp-release-matrix-v1",
             kind: "live",
             executableSha256: SYNTHETIC_SHA,
+            platform: { os: "darwin", arch: "arm64" },
             recordedAt: "2026-05-01T00:00:00.000Z",
           }),
         ],
