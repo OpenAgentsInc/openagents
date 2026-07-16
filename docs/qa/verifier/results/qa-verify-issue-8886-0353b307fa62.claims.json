@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "openagents.qa_verifier_claims.v1",
+  "issue": 8886,
+  "commit": "0353b307fa627bb66f1c20e6f8a6a83e6caa3790",
+  "source": "issue #8886 closing comment by AtlantisPleb at 2026-07-16T13:02:26Z (\"Done — merged to main in 0353b307fa\"); no CLAIM comment names an implementer session, so the independence gate rests on the verifier's attestation (see verdict report)",
+  "setup": [
+    {
+      "title": "macOS codesign workaround for the Vite Plus native binary in the scratch checkout",
+      "command": [
+        "sh",
+        "-c",
+        "codesign --force --sign - node_modules/.pnpm/@voidzero-dev+vite-plus-darwin-arm64@*/node_modules/@voidzero-dev/vite-plus-darwin-arm64/vite-plus.darwin-arm64.node"
+      ]
+    },
+    {
+      "title": "desktop build prerequisite named in full-auto-control-smoke.ts (\"Requires a prior build\")",
+      "command": ["node", "--import", "tsx", "scripts/build.ts"],
+      "cwd": "apps/openagents-desktop",
+      "timeoutMs": 600000
+    }
+  ],
+  "claims": [
+    {
+      "kind": "command",
+      "id": "tests.control-server",
+      "title": "Claim: \"14 new tests in full-auto-control-server.test.ts (auth 401s, 409 workspace_mismatch, attribution notes, continue-now exactly-once spy, no profile leak, turns bounding, 400/404/405 discipline, OpenAPI parity): all pass\"",
+      "command": [
+        "pnpm",
+        "vp",
+        "test",
+        "--run",
+        "--root",
+        ".",
+        "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      ]
+    },
+    {
+      "kind": "command",
+      "id": "smoke.full-auto-control",
+      "title": "Claim: \"Live proof (pnpm run smoke:full-auto-control) drives the real CLI as a second OS process against real Electron main\"",
+      "command": ["pnpm", "run", "smoke:full-auto-control"],
+      "cwd": "apps/openagents-desktop",
+      "timeoutMs": 600000
+    },
+    {
+      "kind": "file_exists",
+      "id": "artifact.openapi-module",
+      "title": "Claim: shipped src/full-auto-control-openapi.ts (OpenAPI 3.1 document served at GET /v1/openapi.json)",
+      "path": "apps/openagents-desktop/src/full-auto-control-openapi.ts"
+    },
+    {
+      "kind": "attested",
+      "id": "suite.full-desktop",
+      "title": "Claim: \"Full desktop suite: 168 files / 1606 passed | 39 skipped. tsc --noEmit clean.\"",
+      "reason": "not re-run here: the bounded verifier re-runs the named control-server test file (see tests.control-server) instead of the full multi-file desktop suite; re-run it where a full-suite budget exists"
+    },
+    {
+      "kind": "adversarial",
+      "id": "adversarial.bearer-auth-bypass",
+      "title": "Adversarial probe: claim \"sha256 + timingSafeEqual verification on every request / auth 401s\" — make missing bearers verify in full-auto-control-server.ts and confirm the cited tests catch it",
+      "probes": "tests.control-server",
+      "mutation": {
+        "file": "apps/openagents-desktop/src/full-auto-control-server.ts",
+        "find": "if (presented.length === 0) return false",
+        "replace": "if (presented.length === 0) return true"
+      },
+      "command": [
+        "pnpm",
+        "vp",
+        "test",
+        "--run",
+        "--root",
+        ".",
+        "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      ]
+    }
+  ]
+}

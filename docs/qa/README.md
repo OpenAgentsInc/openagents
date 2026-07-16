@@ -15,6 +15,8 @@ one honest navigation/status index, not link-breaking file churn.
 
 ## Current entry points
 
+- [QA Observer execution loop (QA-2, #8907)](./observer/README.md)
+- [Independent verifier — no agent accepts its own work (QA-5, #8910)](./verifier/README.md)
 - [AssuranceSpec and the MVP dogfood plan](../assurance/README.md)
 - [ProductSpec Evidence Loop boundary](../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md)
 - [Current MVP definition](../mvp/README.md)

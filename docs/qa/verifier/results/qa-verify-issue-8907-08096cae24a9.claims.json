@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "openagents.qa_verifier_claims.v1",
+  "issue": 8907,
+  "commit": "08096cae24a914d9b299dcab9327ae586efb21f1",
+  "source": "issue #8907 closing comment by AtlantisPleb at 2026-07-16T13:52:33Z (\"Done — merged to main in 08096cae24\")",
+  "implementer": "fable-qa-observer-20260716",
+  "setup": [
+    {
+      "title": "macOS codesign workaround for the Vite Plus native binary in the scratch checkout",
+      "command": [
+        "sh",
+        "-c",
+        "codesign --force --sign - node_modules/.pnpm/@voidzero-dev+vite-plus-darwin-arm64@*/node_modules/@voidzero-dev/vite-plus-darwin-arm64/vite-plus.darwin-arm64.node"
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "kind": "command",
+      "id": "tests.observer",
+      "title": "Claim: \"24/24 tests\" — scripts/qa-observer.test.ts passes at the claimed commit",
+      "command": ["pnpm", "vp", "test", "--run", "--root", ".", "scripts/qa-observer.test.ts"]
+    },
+    {
+      "kind": "file_exists",
+      "id": "artifact.first-production-run",
+      "title": "Claim: \"First real production run (committed artifact qa-observer-run-2026-07-16T13-49-02Z.json)\"",
+      "path": "docs/qa/observer/results/qa-observer-run-2026-07-16T13-49-02Z.json"
+    },
+    {
+      "kind": "command",
+      "id": "run.observer-degraded",
+      "title": "Claim: \"Coordinator re-ran post-integration without the token: 6 pass + 1 unrunnable(reason), exit 0 — exactly the designed degradation\" (re-run against live production, no admin token)",
+      "command": ["pnpm", "run", "qa:observer", "--", "--all"],
+      "timeoutMs": 300000
+    },
+    {
+      "kind": "command",
+      "id": "run.observer-admin-token",
+      "title": "Claim: \"7/7 pass including capture-health with the admin token\" — runnable only where OPENAGENTS_ADMIN_API_TOKEN is present",
+      "command": ["pnpm", "run", "qa:observer", "--", "--all"],
+      "requiredEnv": ["OPENAGENTS_ADMIN_API_TOKEN"],
+      "timeoutMs": 300000
+    },
+    {
+      "kind": "adversarial",
+      "id": "adversarial.high-severity-exit-gate",
+      "title": "Adversarial probe: claim \"exits nonzero on high/critical drift\" — deliberately disable the exit gate in scripts/qa-observer.ts and confirm the cited tests catch it",
+      "probes": "tests.observer",
+      "mutation": {
+        "file": "scripts/qa-observer.ts",
+        "find": "exitCode: highSeverityDrift > 0 ? 1 : 0,",
+        "replace": "exitCode: 0,"
+      },
+      "command": ["pnpm", "vp", "test", "--run", "--root", ".", "scripts/qa-observer.test.ts"]
+    }
+  ]
+}

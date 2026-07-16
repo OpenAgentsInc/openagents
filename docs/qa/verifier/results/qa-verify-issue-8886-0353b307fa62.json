@@ -1,0 +1,89 @@
+{
+  "claims": [
+    {
+      "id": "tests.control-server",
+      "kind": "command",
+      "title": "Claim: \"14 new tests in full-auto-control-server.test.ts (auth 401s, 409 workspace_mismatch, attribution notes, continue-now exactly-once spy, no profile leak, turns bounding, 400/404/405 discipline, OpenAPI parity): all pass\"",
+      "command": "pnpm vp test --run --root . apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "durationMs": 722,
+      "exitCode": 0,
+      "outputTail": "\n RUN  v4.1.10 /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/qa-verify-8886-RSbcfp\n\n\n Test Files  1 passed (1)\n      Tests  14 passed (14)\n   Start at  09:07:53\n   Duration  287ms (transform 69ms, setup 13ms, import 145ms, tests 65ms, environment 0ms)",
+      "reason": "re-ran clean (exit 0) from the claimed commit",
+      "status": "verified"
+    },
+    {
+      "id": "smoke.full-auto-control",
+      "kind": "command",
+      "title": "Claim: \"Live proof (pnpm run smoke:full-auto-control) drives the real CLI as a second OS process against real Electron main\"",
+      "command": "pnpm run smoke:full-auto-control",
+      "durationMs": 19943,
+      "exitCode": 0,
+      "outputTail": "…esktop] fable-local running in SMOKE FIXTURE mode (no real Claude SDK session)\n[openagents-desktop] codex-child running in SMOKE FIXTURE mode (scripted codex exec, no real spawn)\n[openagents-desktop] codex-preflight running in SMOKE FIXTURE mode (scripted probes, no real spawn)\n[openagents-desktop] codex-local running in SMOKE FIXTURE mode (scripted codex exec, no real spawn)\n[openagents-desktop full-auto-control] listening http://127.0.0.1:52225 (connection info: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/openagents-desktop-full-auto-control-nlxeR6/full-auto/control.json)\n[openagents-desktop full-auto-control] probe ready {\"threadRef\":\"65ac8042-d8cc-4bb0-a8a0-0b39fe1e04b8\"}\n[openagents-desktop full-auto-control] CLI list output:\n{\n  \"schema\": \"openagents.desktop.full_auto_control.v1\",\n  \"records\": [\n    {\n      \"threadRef\": \"65ac8042-d8cc-4bb0-a8a0-0b39fe1e04b8\",\n      \"enabled\": true,\n      \"continuationCount\": 0,\n      \"updatedAt\": \"2026-07-16T14:07:58.040Z\",\n      \"workspaceRef\": \"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/openagents-desktop-full-auto-control-nlxeR6/fable-local/fixture-workspace\",\n      \"accountRef\": null,\n      \"blockedReason\": null,\n      \"live\": {\n        \"state\": \"idle\",\n        \"turnRef\": null\n      }\n    }\n  ]\n}\n\n[openagents-desktop full-auto-control] CLI status output:\n{\n  \"schema\": \"openagents.desktop.full_auto_control.v1\",\n  \"record\": {\n    \"threadRef\": \"65ac8042-d8cc-4bb0-a8a0-0b39fe1e04b8\",\n    \"enabled\": true,\n    \"continuationCount\": 0,\n    \"updatedAt\": \"2026-07-16T14:07:58.040Z\",\n    \"workspaceRef\": \"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/openagents-desktop-full-auto-control-nlxeR6/fable-local/fixture-workspace\",\n    \"accountRef\": null,\n    \"blockedReason\": null,\n    \"live\": {\n      \"state\": \"idle\",\n      \"turnRef\": null\n    }\n  }\n}\n\n[openagents-desktop full-auto-control] live smoke OK {\"threadRef\":\"65ac8042-d8cc-4bb0-a8a0-0b39fe1e04b8\",\"listedRecords\":1,\"enabled\":true,\"workspaceBound\":true,\"liveState\":\"idle\"}",
+      "reason": "re-ran clean (exit 0) from the claimed commit",
+      "status": "verified"
+    },
+    {
+      "id": "artifact.openapi-module",
+      "kind": "file_exists",
+      "title": "Claim: shipped src/full-auto-control-openapi.ts (OpenAPI 3.1 document served at GET /v1/openapi.json)",
+      "durationMs": 0,
+      "reason": "apps/openagents-desktop/src/full-auto-control-openapi.ts exists at the claimed commit",
+      "status": "verified"
+    },
+    {
+      "id": "suite.full-desktop",
+      "kind": "attested",
+      "title": "Claim: \"Full desktop suite: 168 files / 1606 passed | 39 skipped. tsc --noEmit clean.\"",
+      "durationMs": 0,
+      "reason": "not re-run here: the bounded verifier re-runs the named control-server test file (see tests.control-server) instead of the full multi-file desktop suite; re-run it where a full-suite budget exists",
+      "status": "unverifiable_here"
+    },
+    {
+      "id": "adversarial.bearer-auth-bypass",
+      "kind": "adversarial",
+      "title": "Adversarial probe: claim \"sha256 + timingSafeEqual verification on every request / auth 401s\" — make missing bearers verify in full-auto-control-server.ts and confirm the cited tests catch it",
+      "command": "pnpm vp test --run --root . apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "durationMs": 691,
+      "exitCode": 1,
+      "outputTail": "\n RUN  v4.1.10 /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/qa-verify-8886-RSbcfp\n\n ❯ |node| apps/openagents-desktop/src/full-auto-control-server.test.ts (14 tests | 1 failed) 48ms\n     × auth: no bearer and a wrong bearer are 401 on every route; the minted bearer is accepted 12ms\n\n Test Files  1 failed (1)\n      Tests  1 failed | 13 passed (14)\n   Start at  09:08:13\n   Duration  251ms (transform 66ms, setup 12ms, import 138ms, tests 48ms, environment 0ms)\n\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |node| apps/openagents-desktop/src/full-auto-control-server.test.ts > Full Auto control surface (FA-H13 #8886) > auth: no bearer and a wrong bearer are 401 on every route; the minted bearer is accepted\nAssertionError: expected 200 to be 401 // Object.is equality\n\n- Expected\n+ Received\n\n- 401\n+ 200\n\n ❯ apps/openagents-desktop/src/full-auto-control-server.test.ts:147:32\n    145|       for (const pathname of [\"/v1/openapi.json\", \"/v1/full-auto\", \"/v…\n    146|         const missing = await harness.request(\"GET\", pathname, { token…\n    147|         expect(missing.status).toBe(401)\n       |                                ^\n    148|         expect(missing.body.error).toBe(\"unauthorized\")\n    149|         const wrong = await harness.request(\"GET\", pathname, { token: …\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯",
+      "reason": "cited proof caught the deliberately broken behavior (exit 1) — guarded behavior: apps/openagents-desktop/src/full-auto-control-server.ts",
+      "status": "verified"
+    }
+  ],
+  "runAt": "2026-07-16T14:07:30.130Z",
+  "schemaVersion": "openagents.qa_verifier_verdict.v1",
+  "scratch": {
+    "installOk": true,
+    "installTail": "…e .tsbuildinfo files and perform a full build.\napps/openagents.com prepare: [09:07:40.145] INFO (#1): /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/qa-verify-8886-RSbcfp/apps/openagents.com/node_modules/typescript/lib/_tsc.js patched successfully.\napps/openagents.com prepare: [09:07:40.146] INFO (#1): If your project uses incremental builds, delete the .tsbuildinfo files and perform a full build.\napps/openagents.com prepare: Done\n. prepare: core.hooksPath is already set to \"/Users/christopherdavid/work/openagents/.githooks\", skipping\n. prepare: Done\nDone in 10.4s using pnpm v11.10.0"
+  },
+  "setup": [
+    {
+      "command": "sh -c 'codesign --force --sign - node_modules/.pnpm/@voidzero-dev+vite-plus-darwin-arm64@*/node_modules/@voidzero-dev/vite-plus-darwin-arm64/vite-plus.darwin-arm64.node'",
+      "durationMs": 44,
+      "exitCode": 0,
+      "outputTail": "",
+      "title": "macOS codesign workaround for the Vite Plus native binary in the scratch checkout"
+    },
+    {
+      "command": "node --import tsx scripts/build.ts",
+      "durationMs": 11245,
+      "exitCode": 0,
+      "outputTail": "vite v8.1.3 building client environment for production...\n\u001b[2K\rtransforming...✓ 2387 modules transformed.\nrendering chunks...\ndist/renderer/app.css    445.25 kB\ndist/renderer/boot.js  1,318.40 kB\n\n✓ built in 236ms\n[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer, built-in skills, native voice helper)",
+      "title": "desktop build prerequisite named in full-auto-control-smoke.ts (\"Requires a prior build\")"
+    }
+  ],
+  "verdict": "accept",
+  "verdictReasons": [
+    "all re-run claims verified from a clean checkout of the claimed commit",
+    "at least one adversarial probe confirmed the cited proof catches the deliberately broken behavior",
+    "1 claim(s) unverifiable here (never auto-accepted): suite.full-desktop"
+  ],
+  "verifier": "fable-qa-verifier-20260716",
+  "verifierIssue": "OpenAgentsInc/openagents#8910",
+  "workUnit": {
+    "claimedCommit": "0353b307fa627bb66f1c20e6f8a6a83e6caa3790",
+    "issue": 8886,
+    "resolvedCommit": "0353b307fa627bb66f1c20e6f8a6a83e6caa3790",
+    "source": "issue #8886 closing comment by AtlantisPleb at 2026-07-16T13:02:26Z (\"Done — merged to main in 0353b307fa\"); no CLAIM comment names an implementer session, so the independence gate rests on the verifier's attestation (see verdict report)"
+  }
+}
