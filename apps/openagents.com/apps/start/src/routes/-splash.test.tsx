@@ -68,10 +68,15 @@ describe('Desktop splash', () => {
 
   test('loads the shared workbench CSS and releases scroll gestures at demo boundaries', () => {
     const css = readFileSync(path.resolve(import.meta.dirname, '../splash.css'), 'utf8')
+    const releaseLinkRule = css.match(/\.splash-release-link \{([\s\S]*?)\n\}/)?.[1]
+    const heroHeadingRule = css.match(/\.splash-hero h1 \{([\s\S]*?)\n\}/)?.[1]
 
     expect(css).toContain("@import '@openagentsinc/ui/desktop-workbench.css'")
     expect(css).toContain('.splash-demo-frame .oa-react-timeline-scroll')
     expect(css).toContain('overscroll-behavior-y: auto')
     expect(css).toContain('touch-action: pan-y')
+    expect(releaseLinkRule).toContain('font-family: var(--font-sans)')
+    expect(releaseLinkRule).not.toContain('font-family: var(--font-mono)')
+    expect(heroHeadingRule).toContain('font-size: clamp(3.15rem, 6.1vw, 5.25rem)')
   })
 })

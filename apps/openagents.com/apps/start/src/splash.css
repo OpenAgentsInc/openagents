@@ -83,8 +83,9 @@
   border-radius: 999px;
   color: var(--splash-muted) !important;
   background: rgb(8 17 35 / 0.72);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .splash-release-link:hover {
@@ -108,7 +109,7 @@
   max-width: 14ch;
   margin: 1.55rem 0 0;
   color: var(--splash-text);
-  font-size: clamp(3.25rem, 6.7vw, 5.7rem);
+  font-size: clamp(3.15rem, 6.1vw, 5.25rem);
   font-weight: 540;
   letter-spacing: -0.038em;
   line-height: 0.98;
@@ -468,7 +469,7 @@
   }
 
   .splash-hero h1 {
-    font-size: clamp(3rem, 14vw, 4.4rem);
+    font-size: clamp(2.9rem, 13vw, 4.1rem);
   }
 
   .splash-product {
