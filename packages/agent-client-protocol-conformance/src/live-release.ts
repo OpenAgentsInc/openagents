@@ -49,6 +49,43 @@ export type AcpLiveReleaseArtifact = Readonly<{
   }>;
 }>;
 
+export type AcpDesktopReleaseArtifact = Readonly<{
+  format: "openagents-acp-desktop-release-run-v1";
+  protocol: "Agent Client Protocol";
+  protocolExclusions: ReadonlyArray<"Agent Communication Protocol" | "A2A">;
+  proofClass: "candidate-packaged-desktop-live";
+  claimAuthority: "none-release-matrix-only";
+  recordedAt: string;
+  openAgentsRevision: string;
+  platform: string;
+  provider: "cursor";
+  lane: "acp:cursor-agent";
+  packaged: true;
+  interruption: Readonly<{
+    mismatchedWorkspaceRefused: true;
+    laneConfigured: true;
+    laneAdmitted: true;
+    exitedDuringRunningTurn: true;
+  }>;
+  recovery: Readonly<{
+    reusedDesktopState: true;
+    explicitlyReenabledSameThread: true;
+    recoveredSameThread: boolean;
+    freshThreadRetryAfterFailure: boolean;
+    laneConfigured: true;
+    interruptedTurnSettled: true;
+    durableCompletedTurn: true;
+    disabled: true;
+  }>;
+  redaction: Readonly<{
+    promptTextRetained: false;
+    responseTextRetained: false;
+    threadIdentifiersRetained: false;
+    authMaterialRetained: false;
+    absolutePathsRetained: false;
+  }>;
+}>;
+
 const secretOrPrivate = (value: unknown): boolean => {
   const encoded = JSON.stringify(value);
   return [
@@ -164,6 +201,47 @@ export const validateAcpLiveReleaseArtifact = (
     )
       errors.push(`${peer.peer}: counters are invalid`);
   }
+  if (secretOrPrivate(artifact)) errors.push("artifact contains secret-shaped or host-private data");
+  return { valid: errors.length === 0, errors };
+};
+
+export const validateAcpDesktopReleaseArtifact = (
+  artifact: AcpDesktopReleaseArtifact,
+): Readonly<{ valid: boolean; errors: ReadonlyArray<string> }> => {
+  const errors: string[] = [];
+  if (artifact.format !== "openagents-acp-desktop-release-run-v1")
+    errors.push("format is invalid");
+  if (artifact.protocol !== "Agent Client Protocol") errors.push("protocol is invalid");
+  if (
+    artifact.protocolExclusions.length !== 2 ||
+    !artifact.protocolExclusions.includes("Agent Communication Protocol") ||
+    !artifact.protocolExclusions.includes("A2A")
+  )
+    errors.push("protocol exclusions are invalid");
+  if (artifact.proofClass !== "candidate-packaged-desktop-live")
+    errors.push("proof class is invalid");
+  if (artifact.claimAuthority !== "none-release-matrix-only")
+    errors.push("claim authority is invalid");
+  if (!Number.isFinite(Date.parse(artifact.recordedAt))) errors.push("recordedAt is invalid");
+  if (!/^[a-f0-9]{40}$/.test(artifact.openAgentsRevision))
+    errors.push("OpenAgents revision must be a full Git SHA");
+  if (artifact.provider !== "cursor" || artifact.lane !== "acp:cursor-agent")
+    errors.push("provider lane identity is invalid");
+  if (artifact.packaged !== true) errors.push("packaged execution is required");
+  if (Object.values(artifact.interruption).some((value) => value !== true))
+    errors.push("interruption proof is incomplete");
+  if (
+    artifact.recovery.reusedDesktopState !== true ||
+    artifact.recovery.explicitlyReenabledSameThread !== true ||
+    artifact.recovery.laneConfigured !== true ||
+    artifact.recovery.interruptedTurnSettled !== true ||
+    artifact.recovery.durableCompletedTurn !== true ||
+    artifact.recovery.disabled !== true ||
+    (artifact.recovery.recoveredSameThread === artifact.recovery.freshThreadRetryAfterFailure)
+  )
+    errors.push("recovery proof is incomplete or inconsistent");
+  if (Object.values(artifact.redaction).some((retained) => retained !== false))
+    errors.push("redaction declaration is invalid");
   if (secretOrPrivate(artifact)) errors.push("artifact contains secret-shaped or host-private data");
   return { valid: errors.length === 0, errors };
 };

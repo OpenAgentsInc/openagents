@@ -43,17 +43,23 @@ workspace path.
 The checked
 [`release-run-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-2026-07-16-darwin-arm64.json)
 is now reproducible with the opt-in production runner. On revision
-`6a3dd4632811bc272ad4b82b9f4dbf54aae72324`, it launched both pinned peers in
+`661c1b3c7f74ac396026ec6aa1a0c6ea8845dcd1`, it launched both pinned peers in
 separate disposable repositories and completed initialize, advertised local
 authentication, session creation, two sequential real model turns, and stream
 cancellation. Cursor additionally completed advertised session listing and a
 mode change. Grok did not advertise session listing, and the runner does not
 claim shutdown leak proof because it does not retain process leak counters.
-An additional Cursor process used an isolated empty home, cancelled the
-advertised external-browser login interaction, and returned `auth_required`;
-the existing signed-in profile was neither read nor changed.
 The artifact is a candidate input only; it cannot mutate or promote the release
 matrix.
+
+The checked packaged Desktop receipt
+[`desktop-cursor-release-run-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/desktop-cursor-release-run-2026-07-16-darwin-arm64.json)
+uses the production macOS app and exact Cursor lane. It proves workspace
+mismatch refusal, a real turn interrupted by app exit, durable
+`interrupted_by_restart` settlement, explicit re-enable of the same thread, a
+completed post-restart Cursor continuation, durable disable, and clean
+shutdown. The runner preserves the ordinary authenticated HOME and never
+changes login or keychain state.
 
 ```text
 GROK_ACP_LIVE=1 node --import tsx packages/grok-harness/scripts/live-acp-smoke.ts
@@ -142,17 +148,17 @@ Provider-specific gaps:
   plan/config/usage streaming, and bounded MCP persistence scan. The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.
-- Cursor: pending/expiry/re-auth login, permission outcomes, and live
+- Cursor: login cancellation/pending/expiry/re-auth, permission outcomes, and live
   `cursor/ask_question`/`cursor/update_todos`. Model listing, create-plan,
-  list/load, mode/config round trips, login cancellation, stream/reverse
-  cancellation, and restart/load are proven.
+  list/load, mode/config round trips, stream/reverse cancellation, and
+  restart/load are proven.
 - Desktop: the isolated production build completed a real Grok Full Auto turn,
   durable journal settlement, disposable-repository commit, disable, and clean
-  shutdown. Grok failure/recovery journeys, the corresponding packaged Cursor
-  journey remain incomplete. The production main-owned host ran both pinned
-  drivers, and its sanitized closed support bundle is live-proven for both
-  peers. The combined Desktop journey row therefore stays `fixture-pass`, not
-  `live-pass`.
+  shutdown. The packaged Cursor journey now additionally proves workspace
+  refusal plus interruption/restart recovery on the same durable thread. Grok
+  packaged failure/recovery remains incomplete. The production main-owned host
+  ran both pinned drivers, and its sanitized closed support bundle is
+  live-proven for both peers.
 
 The ACP-10 validator now publishes the proof, derives the claim independently
 for each peer, and fails closed. Its current verdict is a release denial for

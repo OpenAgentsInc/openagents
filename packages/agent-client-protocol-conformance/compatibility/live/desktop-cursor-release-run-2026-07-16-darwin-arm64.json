@@ -1,0 +1,39 @@
+{
+  "format": "openagents-acp-desktop-release-run-v1",
+  "protocol": "Agent Client Protocol",
+  "protocolExclusions": [
+    "Agent Communication Protocol",
+    "A2A"
+  ],
+  "proofClass": "candidate-packaged-desktop-live",
+  "claimAuthority": "none-release-matrix-only",
+  "recordedAt": "2026-07-16T16:46:36.674Z",
+  "openAgentsRevision": "661c1b3c7f74ac396026ec6aa1a0c6ea8845dcd1",
+  "platform": "darwin-arm64-node-24.13.1",
+  "provider": "cursor",
+  "lane": "acp:cursor-agent",
+  "packaged": true,
+  "interruption": {
+    "mismatchedWorkspaceRefused": true,
+    "laneConfigured": true,
+    "laneAdmitted": true,
+    "exitedDuringRunningTurn": true
+  },
+  "recovery": {
+    "reusedDesktopState": true,
+    "explicitlyReenabledSameThread": true,
+    "recoveredSameThread": true,
+    "freshThreadRetryAfterFailure": false,
+    "laneConfigured": true,
+    "interruptedTurnSettled": true,
+    "durableCompletedTurn": true,
+    "disabled": true
+  },
+  "redaction": {
+    "promptTextRetained": false,
+    "responseTextRetained": false,
+    "threadIdentifiersRetained": false,
+    "authMaterialRetained": false,
+    "absolutePathsRetained": false
+  }
+}

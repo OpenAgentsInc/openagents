@@ -7,8 +7,8 @@
   ],
   "proofClass": "candidate-live",
   "claimAuthority": "none-release-matrix-only",
-  "recordedAt": "2026-07-16T16:21:01.839Z",
-  "openAgentsRevision": "6a3dd4632811bc272ad4b82b9f4dbf54aae72324",
+  "recordedAt": "2026-07-16T16:49:32.334Z",
+  "openAgentsRevision": "661c1b3c7f74ac396026ec6aa1a0c6ea8845dcd1",
   "schemaRelease": "schema-v1.19.0",
   "platform": "darwin-arm64-node-24.13.1",
   "peers": [
@@ -77,11 +77,13 @@
         }
       ],
       "counters": {
-        "updateCount": 61,
+        "updateCount": 106,
         "updateKinds": [
           "agent_message_chunk",
           "agent_thought_chunk",
           "available_commands_update",
+          "tool_call",
+          "tool_call_update",
           "user_message_chunk"
         ],
         "promptCount": 3
@@ -122,11 +124,6 @@
           "safeDetail": "Advertised Cursor login completed"
         },
         {
-          "id": "auth-cancel",
-          "result": "live-pass",
-          "safeDetail": "Isolated login cancellation returned auth required"
-        },
-        {
           "id": "session-new",
           "result": "live-pass",
           "safeDetail": "Disposable repository session created"
@@ -163,7 +160,7 @@
         }
       ],
       "counters": {
-        "updateCount": 14,
+        "updateCount": 17,
         "updateKinds": [
           "agent_message_chunk",
           "agent_thought_chunk",

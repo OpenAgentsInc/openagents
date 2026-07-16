@@ -558,6 +558,10 @@ const fullAutoRestartProbe: (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number] | nu
 // control API against the REAL running Electron main. Only meaningful in
 // combination with OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1.
 const fullAutoControlProbe = process.env.OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL_PROBE === "1"
+// ACP-10 (#8897): the packaged release-proof runner owns its lifecycle from a
+// second process. This flag only hides the window; it does not substitute
+// fixtures, seed state, change provider admission, or drive a turn in main.
+const acpReleaseProofMode = process.env.OPENAGENTS_DESKTOP_ACP_RELEASE_PROOF === "1"
 // QA-3 (#8908): the visual-baseline capture probe (scripts/
 // visual-baseline-smoke.ts). Windowless fixture-mode posture like the probes
 // above: an OFFSCREEN window renders each frozen fixture shell state
@@ -582,7 +586,7 @@ const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
 // screen. Headed presentation is one explicit, manual-only opt-in for the
 // narrow cases that genuinely need a visible native-window observation.
 const hiddenAutomationMode = (
-  smokeMode || startupTraceMode || liveProofDriverMode || mvpProofDriverMode
+  smokeMode || startupTraceMode || liveProofDriverMode || mvpProofDriverMode || acpReleaseProofMode
 ) && process.env.OPENAGENTS_DESKTOP_HEADED !== "1"
 // Capture before any host lifecycle can change process state. Launchers that
 // need to enter their own managed source tree first preserve the user's

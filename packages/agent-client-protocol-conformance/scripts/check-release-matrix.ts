@@ -3,7 +3,9 @@ import { resolve } from "node:path";
 
 import { validateAcpReleaseMatrix } from "../src/release.ts";
 import {
+  validateAcpDesktopReleaseArtifact,
   validateAcpLiveReleaseArtifact,
+  type AcpDesktopReleaseArtifact,
   type AcpLiveReleaseArtifact,
 } from "../src/live-release.ts";
 
@@ -17,6 +19,18 @@ const liveArtifactErrors = readdirSync(liveDirectory)
     try {
       const artifact = JSON.parse(readFileSync(resolve(liveDirectory, name), "utf8")) as AcpLiveReleaseArtifact;
       return validateAcpLiveReleaseArtifact(artifact).errors.map((error) => `${name}: ${error}`);
+    } catch {
+      return [`${name}: artifact is not valid JSON or does not match the closed schema`];
+    }
+  });
+const desktopArtifactErrors = readdirSync(liveDirectory)
+  .filter((name) => name.startsWith("desktop-") && name.includes("-release-run-") && name.endsWith(".json"))
+  .flatMap((name) => {
+    try {
+      const artifact = JSON.parse(readFileSync(resolve(liveDirectory, name), "utf8")) as AcpDesktopReleaseArtifact;
+      return validateAcpDesktopReleaseArtifact(artifact).errors.map(
+        (error) => `${name}: ${error}`,
+      );
     } catch {
       return [`${name}: artifact is not valid JSON or does not match the closed schema`];
     }
@@ -41,11 +55,16 @@ const missingEvidence =
       )
     : [];
 const result = {
-  valid: validation.valid && missingEvidence.length === 0 && liveArtifactErrors.length === 0,
+  valid:
+    validation.valid &&
+    missingEvidence.length === 0 &&
+    liveArtifactErrors.length === 0 &&
+    desktopArtifactErrors.length === 0,
   errors: [
     ...validation.errors,
     ...missingEvidence.map((ref) => `missing evidence ref: ${ref}`),
     ...liveArtifactErrors,
+    ...desktopArtifactErrors,
   ],
 };
 process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

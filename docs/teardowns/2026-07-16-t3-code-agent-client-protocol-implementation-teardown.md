@@ -141,8 +141,9 @@ fixture coverage into supported language. Grok and Cursor are now registered
 main-owned provider lanes, and an isolated production Desktop build completed a
 real Grok Full Auto turn. A checked, opt-in production runner now reproduces a
 redacted two-peer candidate receipt without claim authority. #8897 remains open
-for the unobserved credential, permission, extension, platform, and packaged
-failure/recovery proof. The conformance package's exact
+for the unobserved credential, permission, extension, platform, and Grok
+packaged failure/recovery proof; Cursor's packaged interruption/restart journey
+is now checked. The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference
 custody cases, and opt-in probes are checked artifacts. The Grok and Cursor

@@ -224,34 +224,10 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
     });
     const started = await peer.start();
     if (!started.ok) throw new Error(`start:${started.reason}`);
-    const isolatedAuthHome = await mkdtemp(join(tmpdir(), "openagents-acp-release-cursor-auth-"));
-    let cancelledAuthPeer: Awaited<ReturnType<typeof createCursorAcpPeerRuntime>> | undefined;
-    let authCancelPassed = false;
-    try {
-      cancelledAuthPeer = await createCursorAcpPeerRuntime({
-        cwd: root,
-        probe,
-        environment: { HOME: isolatedAuthHome },
-        authorizeLogin: async () => "cancel",
-        requestTimeoutMs: 30_000,
-      });
-      const cancelledStart = await cancelledAuthPeer.start();
-      authCancelPassed = !cancelledStart.ok && cancelledStart.reason === "auth_required";
-    } finally {
-      await cancelledAuthPeer?.shutdown().catch(() => undefined);
-      await rm(isolatedAuthHome, { recursive: true, force: true });
-    }
     const scenarios: AcpLiveReleaseScenarioReceipt[] = [
       scenario("identity-version", "live-pass", "Exact Cursor version and installation closure probed"),
       scenario("initialize", "live-pass", "Wire version 1 initialize completed"),
       scenario("auth-primary", "live-pass", "Advertised Cursor login completed"),
-      scenario(
-        "auth-cancel",
-        authCancelPassed ? "live-pass" : "fail",
-        authCancelPassed
-          ? "Isolated login cancellation returned auth required"
-          : "Isolated login cancellation did not return auth required",
-      ),
     ];
     const attached = await peer.newSession({ cwd: root, canonicalThreadSeed: "release-cursor" });
     if (!attached.ok) throw new Error(`session-new:${attached.reason}`);

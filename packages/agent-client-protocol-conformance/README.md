@@ -79,6 +79,15 @@ paths. Its artifact is deliberately marked `candidate-live` and has no power to
 change the release matrix or promote either peer; a human-reviewed matrix edit
 and the fail-closed `check:release` gate remain mandatory.
 
+After packaging Desktop, the separately armed Cursor journey proves real app
+workspace refusal, interruption, restart settlement, re-enable, completion,
+disable, and shutdown without changing HOME or credential/keychain state:
+
+```bash
+ACP_DESKTOP_RELEASE_LIVE=1 ACP_DESKTOP_RELEASE_OUTPUT=<absolute compatibility/live JSON path> \
+  pnpm --dir apps/openagents-desktop run smoke:acp-release
+```
+
 The checked live records beneath `compatibility/live/` pin the installed
 commands, full reported builds, executable/installation-closure digests, wire
 version, advertised auth methods, and capability keys. The release matrix adds

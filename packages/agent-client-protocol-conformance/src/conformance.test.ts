@@ -25,6 +25,7 @@ import { definePeerScenario, runPeerScenario, startPeerScenarioTransport } from 
 import { summarizeSafeInitialize } from "./live.ts";
 import {
   buildAcpLiveReleaseArtifact,
+  validateAcpDesktopReleaseArtifact,
   validateAcpLiveReleaseArtifact,
 } from "./live-release.ts";
 import { materializeMcpServers, McpReferenceError } from "./mcp.ts";
@@ -87,6 +88,51 @@ describe("stable Agent Client Protocol conformance", () => {
     };
     invented.peers[0]!.scenarios[0]!.id = "invented-release-proof";
     expect(validateAcpLiveReleaseArtifact(invented as never)).toMatchObject({ valid: false });
+  });
+
+  it("validates packaged Desktop interruption and recovery without accepting retained data", () => {
+    const artifact = {
+      format: "openagents-acp-desktop-release-run-v1",
+      protocol: "Agent Client Protocol",
+      protocolExclusions: ["Agent Communication Protocol", "A2A"],
+      proofClass: "candidate-packaged-desktop-live",
+      claimAuthority: "none-release-matrix-only",
+      recordedAt: "2026-07-16T16:46:36.674Z",
+      openAgentsRevision: "a".repeat(40),
+      platform: "darwin-arm64-node-24.13.1",
+      provider: "cursor",
+      lane: "acp:cursor-agent",
+      packaged: true,
+      interruption: {
+        mismatchedWorkspaceRefused: true,
+        laneConfigured: true,
+        laneAdmitted: true,
+        exitedDuringRunningTurn: true,
+      },
+      recovery: {
+        reusedDesktopState: true,
+        explicitlyReenabledSameThread: true,
+        recoveredSameThread: true,
+        freshThreadRetryAfterFailure: false,
+        laneConfigured: true,
+        interruptedTurnSettled: true,
+        durableCompletedTurn: true,
+        disabled: true,
+      },
+      redaction: {
+        promptTextRetained: false,
+        responseTextRetained: false,
+        threadIdentifiersRetained: false,
+        authMaterialRetained: false,
+        absolutePathsRetained: false,
+      },
+    } as const;
+    expect(validateAcpDesktopReleaseArtifact(artifact)).toEqual({ valid: true, errors: [] });
+    const leaking = structuredClone(artifact) as unknown as {
+      redaction: { promptTextRetained: boolean };
+    };
+    leaking.redaction.promptTextRetained = true;
+    expect(validateAcpDesktopReleaseArtifact(leaking as never)).toMatchObject({ valid: false });
   });
 
   it("reduces live initialize evidence to capability/auth IDs without provider or host metadata", () => {
