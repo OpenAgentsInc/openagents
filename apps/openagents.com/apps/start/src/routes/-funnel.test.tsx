@@ -59,7 +59,7 @@ describe('Start funnel routes', () => {
     expect(indexHtml).toContain('Notes from the workroom.')
     expect(indexHtml).toContain('Introducing OpenAgents Desktop')
     expect(indexHtml).toContain('OpenAgents on GitHub')
-    expect(indexHtml).toContain('Open app')
+    expect(indexHtml).not.toContain('Open app')
     expect(indexHtml).not.toContain('Introducing Khala Code')
     expect(indexHtml).not.toContain('>Business<')
 

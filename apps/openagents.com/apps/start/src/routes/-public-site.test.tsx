@@ -18,7 +18,7 @@ describe('TanStack Start public site', () => {
     expect(html).toContain('0.1.0-rc.17')
     expect(html).toContain('href="/docs"')
     expect(html).toContain('OpenAgents on GitHub')
-    expect(html).toContain('Open app')
+    expect(html).not.toContain('Open app')
     expect(html).not.toContain('data-astro')
     expect(html).not.toContain('Launch UI')
   })
@@ -34,6 +34,13 @@ describe('TanStack Start public site', () => {
     expect(html).toContain('<p>be right back</p>')
     expect(css).toContain("url('/holding-bg.jpg')")
     expect(css).toContain('--oa-void: #05070d')
+
+    const headerCss = readFileSync(
+      path.resolve(import.meta.dirname, '../public-header.css'),
+      'utf8',
+    )
+    expect(headerCss).toContain('position: fixed')
+    expect(headerCss).toContain('.oa-unified-header-spacer')
   })
 
   test('links the exact published Mac release candidate', () => {

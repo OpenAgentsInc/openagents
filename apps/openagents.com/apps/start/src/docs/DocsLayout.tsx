@@ -173,9 +173,9 @@ export function DocsLayout() {
   return (
     <div className="docs-root" onClick={handleDocsNavigation}>
       <a className="docs-skip-link" href="#docs-content">Skip to documentation</a>
-      <PublicHeader />
-      <div className="docs-toolbar">
-        <div className="docs-toolbar-inner">
+      <PublicHeader
+        docsActive
+        leading={
           <button
             aria-haspopup="dialog"
             aria-label="Open documentation navigation"
@@ -186,11 +186,9 @@ export function DocsLayout() {
           >
             <Menu aria-hidden="true" size={20} />
           </button>
-          <Link aria-current="page" className="docs-toolbar-title" preload="render" to="/docs">Documentation</Link>
-          <div className="docs-header-spacer" />
-          <DocsSearch />
-        </div>
-      </div>
+        }
+        utility={<DocsSearch />}
+      />
 
       <div className="docs-shell">
         <aside className="docs-sidebar">

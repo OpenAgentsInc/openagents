@@ -3,7 +3,7 @@ import { khalaTheme } from '@effect-native/tokens'
 import { InternalLink } from '@/components/internal-link'
 import { PublicHeader } from '@/components/public-header'
 import GithubMark from '@/components/launch-ui/logos/github'
-import { GITHUB_REPOSITORY_URL } from '@/lib/public-site'
+import { DOCS_URL, GITHUB_REPOSITORY_URL, MAC_RELEASE } from '@/lib/public-site'
 import {
   DesktopAgentGroup,
   DesktopApprovalCard,
@@ -464,6 +464,14 @@ const followupReplies = [
   'The event stays capability-truthful: app-server owns lifecycle and identity, while the shared workbench only projects typed state into plan, tool, approval, patch, and agent components.',
 ] as const
 
+const splashQuestions = [
+  ['Does OpenAgents replace Codex?', 'No. Codex remains the engine and source of truth. OpenAgents Desktop adds a durable workroom around the session you already use.'],
+  ['Do I need an OpenAgents account?', 'Not for the Desktop MVP. It uses your ordinary logged-in Codex session and keeps the core workroom local-first.'],
+  ['Can the review UI change my files?', 'No. Repository status and diff views are deliberately read-only. Changes still happen through the active agent turn, where cause and result remain visible.'],
+  ['What happens after a restart or interrupted turn?', 'OpenAgents restores stable session identity, then reconciles the latest known turn state. It does not silently replay tools or pretend interrupted work completed.'],
+  ['What is available today?', `The current ${MAC_RELEASE.version} release candidate is available for Apple silicon Macs. OpenAgents Desktop is still an MVP, so the download and documentation describe the supported boundary precisely.`],
+] as const
+
 const cleanStreamingText = (value: string): string => value.replace(/▌$/u, '')
 
 const DemoTimelineItem = ({ item, sequence }: Readonly<{ item: DemoItem; sequence: number }>) => {
@@ -694,5 +702,50 @@ export function SplashPage() {
       </div>
       <figcaption className="oa-react-sr-only">A live, interactive OpenAgents Desktop workroom rendered with the shared production components.</figcaption>
     </figure>
+
+    <section aria-labelledby="splash-faq-title" className="splash-faq">
+      <div className="splash-faq-intro">
+        <p>Questions and answers</p>
+        <h2 id="splash-faq-title">The important boundaries, plainly.</h2>
+        <InternalLink href={DOCS_URL} preload="render">Read the full documentation <ArrowRight aria-hidden="true" /></InternalLink>
+      </div>
+      <div className="splash-question-list">
+        {splashQuestions.map(([question, answer], index) => (
+          <details key={question} open={index === 0}>
+            <summary>{question}<span aria-hidden="true">＋</span></summary>
+            <p>{answer}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+
+    <footer className="splash-footer">
+      <div className="splash-footer-main">
+        <div className="splash-footer-brand">
+          <InternalLink href="/" preload="render">OpenAgents</InternalLink>
+          <p>A local-first workroom for durable, reviewable Codex work.</p>
+        </div>
+        <nav aria-label="Product links">
+          <strong>Product</strong>
+          <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
+          <InternalLink href="/blog" preload="render">Blog</InternalLink>
+          <InternalLink href="/install" preload="render">Download</InternalLink>
+        </nav>
+        <nav aria-label="Project links">
+          <strong>Project</strong>
+          <a href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">GitHub</a>
+          <a href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">Build from source</a>
+        </nav>
+        <nav aria-label="Legal links">
+          <strong>Legal</strong>
+          <InternalLink href="/privacy" preload="render">Privacy</InternalLink>
+          <InternalLink href="/terms" preload="render">Terms</InternalLink>
+        </nav>
+      </div>
+      <div className="splash-footer-bottom">
+        <span>© 2026 OpenAgents</span>
+        <span>Open source · local first · evidence backed</span>
+      </div>
+    </footer>
   </div>
 }
