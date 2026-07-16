@@ -309,6 +309,52 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     ])
   })
 
+  test("keeps mirrored local drafts selectable through their local authority", async () => {
+    const localThreads: DesktopThread[] = [
+      { id: "thread.local.latest", title: "New chat", updatedAt: "2026-07-16T19:59:40.571Z", notes: [] },
+      { id: "thread.local.earlier", title: "New chat", updatedAt: "2026-07-16T19:49:42.546Z", notes: [] },
+    ]
+    const openedLocally: string[] = []
+    const openedByRuntime: string[] = []
+    const local: ChatHost = {
+      listThreads: async () => localThreads,
+      newThread: async () => localThreads[0]!,
+      openThread: async id => {
+        openedLocally.push(id)
+        return localThreads.find(thread => thread.id === id) ?? null
+      },
+      sendMessage: async () => ({ ok: true, thread: localThreads[0] }),
+    }
+    const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
+      const value = raw as { requestId: string; query?: { id: string; threadRef?: string } }
+      if (value.query?.id === "conversation.catalog") {
+        return {
+          kind: "conversation_catalog",
+          requestId: value.requestId,
+          status,
+          threads: localThreads.map((thread, index) => ({
+            threadRef: thread.id,
+            title: thread.title,
+            messageCount: 0,
+            lastMessageAt: thread.updatedAt,
+            updatedAt: thread.updatedAt,
+            version: index + 1,
+          })),
+        }
+      }
+      if (value.query?.id === "conversation.thread") openedByRuntime.push(value.query.threadRef ?? "")
+      return { kind: "request_rejected", reason: "invalid_request" }
+    }
+    const host = makeConvergingDesktopChatHost({ local, request })
+
+    const rows = await host.listThreads()
+    expect(rows).toEqual(localThreads)
+    expect(await host.openThread("thread.local.earlier")).toEqual(localThreads[1])
+    expect(await host.openThread("thread.local.latest")).toEqual(localThreads[0])
+    expect(openedLocally).toEqual(["thread.local.earlier", "thread.local.latest"])
+    expect(openedByRuntime).toEqual([])
+  })
+
   test("New Chat creates locally without entering live Sync reconciliation", async () => {
     const localThread: DesktopThread = {
       id: "thread.local.new-chat-fallback",
