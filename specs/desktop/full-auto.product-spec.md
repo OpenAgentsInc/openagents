@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Full Auto Codex Composer Loop"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
-updated_at: "2026-07-15T22:15:41.850Z"
+updated_at: "2026-07-15T23:59:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -18,9 +18,10 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_issue: "8852"
+  openagents_issue: "8852 (initial), 8853 (restart-durable continuation)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
+  openagents_revision_note: "rev 2 (#8853) moves the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap: Full Auto now survives both a renderer reload and a full app restart, not just a live session."
 ---
 
 ## Problem
@@ -30,42 +31,51 @@ turn. A developer who wants Codex to keep making real, repo-grounded progress
 on a granted repository unattended has no way to say "just keep working" —
 they must manually resend after each completion, and there is no toggle that
 tells Codex what to look at (README, docs, open issues) when the user has not
-spelled out a task. This spec covers the first shipped version of that
-capability: a single composer toggle, not a new permission system or a new
-review UI, per explicit owner direction that the feature stay this small
-until the basic loop is proven.
+spelled out a task. Rev 1 (#8852) shipped a single composer toggle whose
+continuation loop lived in the renderer (`shell.ts`): a clean turn completion
+resubmitted the next turn from an in-memory `while` loop. That loop could not
+survive a renderer reload or an app restart — its state was destroyed the
+instant the renderer's JS context reset, silently leaving the owner to
+discover Full Auto had stopped without their toggling it off. Rev 2 (#8853)
+closes that gap: the continuation decision now lives in the main process,
+persisted to disk exactly the way interrupted-turn recovery already is, and
+re-evaluated at both turn completion and app startup.
 
 ## Hypothesis
 
-If a single `Full Auto` toggle in the existing chat composer hands Codex an
-instruction to look at the repo and pick one concrete next thing to do, runs
-that turn with `approvalPolicy: "never"` (no mid-turn approval stalls) on the
-same full-access sandbox every Codex turn already uses, and automatically
-resubmits a continuation after each clean completion until the user turns it
-off, then a developer can press one button and get real, observable,
-repo-grounded forward progress without hand-authoring a task every turn —
-and we can find out, from actually watching it run, whether it is worth
-extending further.
+If the decision "should this thread's Full Auto loop continue" is owned by
+main and persisted per-thread to disk — re-checked immediately after every
+completed turn and again once at app startup, after existing interrupted-turn
+recovery settles — then toggling Full Auto on, sending one message, and
+quitting the app entirely will still result in the loop resuming on its own
+at the next launch, with no renderer-side state to lose and no user action
+required beyond the original toggle. A toggle-off must remain an immediate,
+durable stop regardless of whether a turn is in flight when it happens.
 
 ## Scope
 
 ```productspec-scope
 in:
-  - one `Full Auto` toggle in the React composer's action bar (`shell-full-auto-toggle`), off by default, no new screens
-  - a Full Auto instruction prefixed onto the turn prompt telling Codex to look at the repo's README/docs/issues and do one concrete next thing (packages/../codex-local-runtime.ts FULL_AUTO_INSTRUCTION)
+  - one `Full Auto` toggle in the React composer's action bar (`shell-full-auto-toggle`), off by default, no new screens (unchanged from rev 1)
+  - a Full Auto instruction prefixed onto the turn prompt telling Codex to look at the repo's README/docs/issues and do one concrete next thing (codex-local-runtime.ts FULL_AUTO_INSTRUCTION, unchanged)
   - `approvalPolicy: "never"` forced on a Full Auto turn's app-server thread/turn-start requests; sandbox stays the existing danger-full-access default unchanged
-  - automatic resubmission of a continuation turn after a clean (result.ok) completion on the same thread, reusing the exact send/settle path used for an ordinary Send (renderer shell.ts runNoteSubmission)
-  - a bounded safety cap (20 consecutive continuations) that turns Full Auto off and leaves an explanatory note if hit
-  - a plain toggle-off stop control; the loop rechecks fresh state before every continuation and stops immediately if Full Auto was turned off, the thread changed, or the lane is unavailable
+  - a durable, main-owned per-thread registry (full-auto-registry.ts) recording enabled/disabled and a consecutive-continuation counter, persisted the same way local-turn-journal.ts already persists interrupted-turn state
+  - a shared reconciliation decision (full-auto-reconcile.ts) called from two trigger points -- immediately after any Full-Auto-flagged turn completes, and once at app startup after existing turn-recovery settles -- so a background continuation and a post-restart resume are the same durable decision, not two
+  - two new IPC channels: a set channel the composer toggle calls immediately (independent of whether a turn is in flight, so a toggle-off durably stops even a not-yet-sent thread) and a get channel for reading current durable state
+  - reuse of the existing `DesktopLocalTurnRecoveryUpdateChannel` broadcast (already wired end to end for turn-recovery) to reflect a background continuation's result in any open window, rather than inventing a new channel
+  - a bounded safety cap (20 consecutive continuations) that turns Full Auto off and leaves an explanatory note if hit, now enforced durably by main rather than an in-memory renderer counter
+  - a plain toggle-off stop control, now backed by the durable registry so it stops the loop even across a restart, not just within a live session
 out:
   - any dedicated ProductSpec/AssuranceSpec review UI, criterion board, or admission-gate screen for Full Auto
   - a separate permission/envelope/policy system; Full Auto inherits the same full-trust execution profile every other Codex turn in this app already uses
-  - durable, main-process-owned continuation that survives an app restart mid-loop (see Risks — this is a known, explicitly flagged gap in this first version)
   - multi-repo, multi-thread, or fleet-wide Full Auto
+  - live, token-by-token streaming of a background (main-initiated) continuation into an open window; a background continuation surfaces as a completed-thread refresh once it finishes, not live text deltas -- a coarser but simpler and fully durable signal
+  - the composer toggle re-syncing to a different thread's persisted enabled state on every in-session thread switch; the toggle reflects the truth for the thread you send from, but switching to another previously Full-Auto-enabled thread does not auto-flip the visible toggle in this revision
   - any change to release or public-claim authority
 cut:
   - CUT-FA-01: fine-grained autonomy policy beyond the plain stop control and the 20-turn safety cap
-  - CUT-FA-02: main-process durable goal state / idempotent outbox for restart-survivable continuation (MASTER_ROADMAP invariant #24) — deferred to a follow-up issue if the basic loop proves worth extending
+  - CUT-FA-02 (rev 1): main-process durable goal state for restart-survivable continuation -- CLOSED by this revision
+  - CUT-FA-03: per-thread toggle-state resync on arbitrary in-session thread switch (open question below)
 ```
 
 ## Acceptance Criteria
@@ -82,27 +92,53 @@ cut:
   Proof: `codex-local-runtime.test.ts` "Full Auto (#8852) forces
   approvalPolicy never and prefixes the turn prompt..." and "an ordinary
   (non-Full-Auto) app-server turn keeps approvalPolicy on-request...".
-- **FA-AC-03:** After a Full-Auto turn completes with `result.ok`, the same
-  thread automatically resubmits a continuation without the user clicking
-  continue, using the same `chat.sendMessage` path as an ordinary Send.
-  Proof: `shell.test.ts` "Full Auto (#8852): a clean Codex turn resubmits
-  automatically, and toggling off mid-loop stops it".
-- **FA-AC-04:** Toggling Full Auto off (including mid-loop, between two
-  continuations) stops the next turn from starting; the loop rechecks fresh
-  state before each continuation rather than a stale snapshot.
-  Proof: same `shell.test.ts` case above (the mock flips `fullAuto` off
-  between the first and second turn and only two calls are observed) and
-  "Full Auto (#8852): DesktopFullAutoToggled flips the flag".
+- **FA-AC-03:** A completed Full-Auto turn sends `fullAuto: true`
+  exactly once from the renderer; the renderer never loops. Continuation is
+  decided in main by `reconcileFullAutoThreads`, called both right after that
+  turn completes and once at app startup.
+  Proof: `shell.test.ts` "a flagged turn sends fullAuto:true exactly once --
+  main, not the renderer, decides whether to continue"; `main.ts`'s
+  `dispatchCodexLocalTurn` calling `runFullAutoReconciliation()` after a
+  successful Full-Auto turn (code-reviewed; main.ts has no direct unit-test
+  harness, see Receipts for the isolated-module proof used instead).
+- **FA-AC-04:** Toggling Full Auto off persists to main immediately
+  (`CodexLocalFullAutoSetChannel`), independent of whether a turn is in
+  flight, so a toggle-off durably stops the loop even if the app quits before
+  the next turn would have started.
+  Proof: `shell.test.ts` "DesktopFullAutoToggled flips the flag and persists
+  it to main immediately"; `full-auto-restart.e2e.test.ts` "toggling off
+  before restart durably stops it -- Runtime B never dispatches".
 - **FA-AC-05:** When Full Auto is off, an ordinary turn sends `fullAuto`
   undefined (not `false`) and never resubmits automatically.
-  Proof: `shell.test.ts` "Full Auto (#8852): toggled off, an ordinary Codex
-  turn sends fullAuto undefined and never resubmits".
+  Proof: `shell.test.ts` "toggled off, an ordinary Codex turn sends fullAuto
+  undefined and never resubmits".
 - **FA-AC-06:** A run of 20 consecutive automatic continuations without an
-  intervening manual stop turns Full Auto off and appends an explanatory
-  system note, rather than continuing unbounded.
-  (Design-level; not covered by an automated test in this revision — see
-  Receipts.)
-- **FA-AC-07:** No Full Auto packet performs a direct commit, merge, or push;
+  intervening manual stop turns Full Auto off durably (registry, not
+  renderer state) and appends an explanatory system note, rather than
+  continuing unbounded -- and this holds even if a restart happens partway
+  through the count.
+  Proof: `full-auto-restart.e2e.test.ts` "a genuinely stuck loop self-disables
+  at the continuation cap across restarts, rather than continuing unbounded".
+- **FA-AC-07:** A thread left enabled with no turn in flight when
+  the app quits resumes its next continuation on its own at the next launch,
+  with no user action beyond the original toggle.
+  Proof: `full-auto-restart.e2e.test.ts` "a thread left enabled by Runtime A
+  resumes on Runtime B with no manual re-toggle or re-send".
+- **FA-AC-08:** A thread whose turn was still in flight when the
+  app quit is left alone by Full Auto reconciliation until existing
+  interrupted-turn recovery resolves it -- Full Auto never races or
+  duplicates that recovery.
+  Proof: `full-auto-restart.e2e.test.ts` "a thread with a turn still in
+  flight at restart is left alone until that turn resolves"; the real
+  wiring sequences `runFullAutoReconciliation()` after `localTurnRecovery`
+  resolves, and computes `nonterminalThreadRefs` from the same
+  `localTurnJournal.nonterminal()` that recovery itself owns.
+- **FA-AC-09:** A brand new thread (no id yet when the user
+  toggles Full Auto on) persists its enabled state to main once it actually
+  gets a real thread id, rather than silently dropping the toggle's intent.
+  Proof: `shell.test.ts` "a brand new thread persists its enabled state to
+  main once it has a real id".
+- **FA-AC-10:** No Full Auto packet performs a direct commit, merge, or push;
   Codex proposes changes exactly as every other Desktop Codex turn already
   does. (Unchanged existing boundary; no new authority was added.)
 
@@ -121,31 +157,60 @@ cut:
   window: first week after this ships to any dogfood build
   segment: sessions that toggled Full Auto on
   source: consented_public_safe_local_usage_counters
+- id: full_auto_restart_survival
+  metric: full_auto_enabled_threads_that_resumed_a_continuation_within_one_minute_of_the_next_app_launch_without_a_manual_retoggle
+  target: ">= 1"
+  window: first week after this ships to any dogfood build
+  segment: sessions where the app quit with Full Auto still enabled on a thread
+  source: consented_public_safe_local_usage_counters
 ```
 
 ## Owner Gates
 
-- Owner review of the shipped basic loop (press toggle, watch Codex read the
-  repo and act, watch it continue, watch stop actually stop) before any
-  further Full Auto scope — additional auto-admit categories, multi-repo,
-  restart-durable continuation — is proposed.
-- Owner sign-off before pursuing MASTER_ROADMAP invariant #24 (durable
-  main-owned autonomous next-turn state) specifically for Full Auto, since
-  that is shared, not-yet-built infrastructure with its own review bar.
+- Owner review of the restart-survival behavior itself (toggle on, send,
+  quit the app, relaunch, watch it resume) before any further Full Auto
+  scope -- additional auto-admit categories, multi-repo, per-thread toggle
+  resync on switch -- is proposed.
+- Owner sign-off on the deliberate scoping choice that a background
+  continuation surfaces as a coarse completed-thread refresh rather than
+  live streaming, and that the toggle does not resync on every in-session
+  thread switch (see Open Questions) -- both are cheap to revisit later, not
+  free to build now.
 
 ## Receipts
 
-- `pnpm --dir apps/openagents-desktop run typecheck` — clean.
-- `codex-local-runtime.test.ts`: two new cases proving `approvalPolicy` and
-  prompt-prefix behavior for Full Auto vs. an ordinary turn.
-- `react-composer.test.tsx`: one new case proving the toggle renders and
-  reports `DesktopFullAutoToggled`.
-- `shell.test.ts`: three new cases proving auto-continuation, its stop
-  behavior on a mid-loop toggle-off, and that an ordinary (non-Full-Auto)
-  turn never resubmits.
-- Manual bounded smoke: toggle on in a running Desktop build, confirm one
-  real continuation and a working stop, recorded in the closing comment on
-  issue #8852.
+- `pnpm --dir apps/openagents-desktop run typecheck` (`tsc -p tsconfig.json
+  --noEmit`) — clean, zero errors.
+- `codex-local-runtime.test.ts`: two cases proving `approvalPolicy` and
+  prompt-prefix behavior for Full Auto vs. an ordinary turn (rev 1,
+  unchanged).
+- `react-composer.test.tsx`: one case proving the toggle renders and reports
+  `DesktopFullAutoToggled` (rev 1, unchanged).
+- `shell.test.ts`: cases proving a flagged turn sends `fullAuto: true`
+  exactly once with no renderer-side loop; toggle persists to main
+  immediately for the active thread; a brand-new thread's enabled state
+  reaches main once it has a real id; an ordinary turn never resubmits.
+- `full-auto-restart.e2e.test.ts` (new, #8853): the "Runtime A seeds durable
+  state, Runtime B reconciles" proof pattern already used by
+  `local-turn-restart.e2e.test.ts` for interrupted-turn recovery, applied
+  here to Full Auto: resuming after a clean quit with nothing in flight, not
+  racing a thread whose turn is still being recovered, a toggle-off holding
+  across restart, and the continuation cap self-disabling across restart.
+  Exercises the real `full-auto-registry.ts` and `full-auto-reconcile.ts`
+  modules directly against the same on-disk file across two independent
+  opens -- no Electron process, no mock of the durable layer.
+- Full run: `vp test --run --max-concurrency 1 --root ../..
+  apps/openagents-desktop` — 1521 passed, 39 skipped, 1 failed. The one
+  failure (`codex-turn-state.test.ts`, a Codex app-server protocol
+  notification/item fixture replay test) is pre-existing and unrelated to
+  Full Auto -- a relative-path fixture lookup this change never touches;
+  confirmed by running it in isolation with the same result.
+- Not yet done, recommended as an owner follow-up: an actual packaged-app
+  smoke (toggle on, send one message, quit the running Desktop app, relaunch,
+  observe it resume) -- the automated e2e proof above exercises the exact
+  same durable modules the real app calls, but a live app run is the only
+  thing that also proves the Electron boot-sequence wiring (window creation,
+  IPC registration order) end to end.
 
 ## Promise Links
 

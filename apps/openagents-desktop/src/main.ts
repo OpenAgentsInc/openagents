@@ -15,7 +15,7 @@ import { homedir } from "node:os"
 import { createHash, randomUUID } from "node:crypto"
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFile, execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, screen as electronScreen, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, screen as electronScreen, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session, type WebContents } from "electron"
 import { Effect } from "effect"
 import {
   fetchFleetRunClientProjection,
@@ -86,6 +86,7 @@ import {
   type DesktopForkHistoryThreadRequest,
   type DesktopMessage,
   type DesktopResumeLocalThreadRequest,
+  type DesktopThread,
 } from "./chat-contract.ts"
 import { historyForkFetchPlan, historyForkSeed } from "./history-thread-actions.ts"
 import {
@@ -198,6 +199,10 @@ import {
   codexLocalRequestedModelLabel,
   CODEX_LOCAL_MODEL,
   CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF,
+  CodexLocalFullAutoGetChannel,
+  CodexLocalFullAutoSetChannel,
+  decodeCodexLocalFullAutoGetRequest,
+  decodeCodexLocalFullAutoSetRequest,
 } from "./codex-local-contract.ts"
 import {
   FIXTURE_CODEX_LOCAL_ACCOUNT,
@@ -242,6 +247,8 @@ import { makeThreadStore } from "./thread-store.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { reconcileLocalTurns } from "./local-turn-recovery.ts"
+import { openFullAutoRegistry } from "./full-auto-registry.ts"
+import { FULL_AUTO_MAX_CONTINUATIONS, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
@@ -983,6 +990,19 @@ const threads = () => makeThreadStore(path.join(app.getPath("userData"), "thread
 const localTurnJournal = openLocalTurnJournal(
   path.join(app.getPath("userData"), "local-turns", "journal.json"),
 )
+const fullAutoRegistry = openFullAutoRegistry(
+  path.join(app.getPath("userData"), "full-auto", "registry.json"),
+)
+/** Full Auto (#8853): broadcasts an updated thread the same way local turn
+ * recovery already does, so any open window's existing localTurnRecovery
+ * subscription picks up a background continuation without new renderer wiring. */
+const broadcastFullAutoThreadUpdate = (threadRef: string): void => {
+  const thread = threads().open(threadRef)
+  if (thread === null) return
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(DesktopLocalTurnRecoveryUpdateChannel, thread)
+  }
+}
 const codexDurableQueue = openCodexDurableQueue(
   path.join(app.getPath("userData"), "codex-turn-queue", "queue.json"),
 )
@@ -2939,9 +2959,18 @@ ipcMain.handle(CodexExperimentalRequestChannel, async (event, value: unknown) =>
     return { ok: true, result, snapshot: runtime.snapshot() }
   } catch (error) { return { ok: false, reason: typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string" ? error.reason : "experimental_request_failed" } }
 })
-ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
-  const request = decodeFableLocalStartRequest(value)
-  if (request === null || !startRequestHasContent(request)) {
+/**
+ * Full Auto (#8853): extracted so both a renderer-initiated send (via the IPC
+ * handler below, sender = event.sender) and a main-initiated continuation
+ * (sender = null; see reconcileFullAutoThreads wiring) share the exact same
+ * turn-dispatch path -- no second, divergent execution route for background
+ * continuations.
+ */
+const dispatchCodexLocalTurn = async (
+  request: import("./fable-local-contract.ts").FableLocalStartRequest,
+  sender: WebContents | null,
+): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> => {
+  if (!startRequestHasContent(request)) {
     return { ok: false, error: "That message could not be sent." }
   }
   const requestedModel = request.model ?? request.target?.model ?? CODEX_LOCAL_MODEL
@@ -2983,7 +3012,6 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const saved = store.upsert(request.threadRef, user)
   if (saved === null) return { ok: false, error: "That conversation no longer exists." }
   const history = saved.notes.filter(note => note.key !== user.key).map(note => ({ role: note.role, text: note.text }))
-  const sender = event.sender
   // Message metadata (#8712 pattern): lane, spawn-config-truth model,
   // account ref, turn ref, exact usage total, duration — plus the codex
   // thread id (session-receipt continuity) in requestId.
@@ -3076,7 +3104,7 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
       })
       if (runtimeOperation.kind === "upsert") store.upsert(request.threadRef, runtimeOperation.note)
       if (runtimeOperation.kind === "remove") store.remove(request.threadRef, runtimeOperation.key)
-      if (sender.isDestroyed()) return
+      if (sender === null || sender.isDestroyed()) return
       const forwarded = turnEvent.kind === "turn_started" ? { ...turnEvent, thread: saved } : turnEvent
       sender.send(CodexLocalEventChannel, { turnRef: request.turnRef, event: forwarded })
     },
@@ -3112,9 +3140,80 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   localTurnJournal.terminal(turnKey, "completed", "completed")
   // GIT-1 (#8781): completed-turn hidden-ref checkpoint, same as fable lane.
   await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")
+  // Full Auto (#8853): fire-and-forget -- do not make the caller (a real
+  // renderer send, or a prior continuation in this same chain) wait on the
+  // NEXT turn. runFullAutoReconciliation re-checks the durable registry
+  // fresh, so a toggle-off that lands right after this line still stops it.
+  if (request.fullAuto === true) void runFullAutoReconciliation()
   return thread === null
     ? { ok: false, error: "That conversation no longer exists." }
     : { ok: true, thread }
+}
+
+/**
+ * Full Auto (#8853): the one place "should the next turn start" is decided,
+ * called from two trigger points -- right after a Full-Auto turn completes
+ * (above) and once at startup after existing turn-recovery settles (below).
+ * Both share this exact wiring so a background continuation and a
+ * post-restart resume are the same durable decision, not two.
+ */
+const runFullAutoReconciliation = (): Promise<void> => reconcileFullAutoThreads({
+  registry: fullAutoRegistry,
+  nonterminalThreadRefs: () => new Set(localTurnJournal.nonterminal().map(record => record.threadRef)),
+  dispatch: async ({ threadRef, message }) => {
+    const result = await dispatchCodexLocalTurn({
+      turnRef: `turn.full-auto.${randomUUID()}`,
+      threadRef,
+      message,
+      fullAuto: true,
+    }, null)
+    return { ok: result.ok }
+  },
+  onCapReached: capThreadRef => {
+    threads().append(capThreadRef, {
+      key: randomUUID(),
+      role: "system",
+      text: `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    })
+    broadcastFullAutoThreadUpdate(capThreadRef)
+  },
+  onDispatchFailed: (failedThreadRef, error) => {
+    console.error(
+      "[openagents-desktop] full auto reconciliation failed",
+      failedThreadRef,
+      error instanceof Error ? error.name : "unknown",
+    )
+  },
+}).then(dispatched => {
+  for (const dispatchedThreadRef of dispatched) broadcastFullAutoThreadUpdate(dispatchedThreadRef)
+})
+// Startup resume: once existing interrupted-turn recovery settles, any
+// thread still marked enabled with nothing in flight gets its next
+// continuation dispatched here -- this is what survives a full app
+// quit+relaunch, not just a renderer reload.
+void localTurnRecovery.then(() => runFullAutoReconciliation()).catch(() => {})
+
+ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
+  const request = decodeFableLocalStartRequest(value)
+  if (request === null) return { ok: false, error: "That message could not be sent." }
+  return dispatchCodexLocalTurn(request, event.sender)
+})
+
+// Full Auto (#8853): the composer toggle persists here immediately, whether
+// or not a turn is in flight, so quitting the app right after a toggle-off
+// still stops the loop durably (no window round trip required to make the
+// stop real).
+ipcMain.handle(CodexLocalFullAutoSetChannel, async (_event, value: unknown) => {
+  const request = decodeCodexLocalFullAutoSetRequest(value)
+  if (request === null) return { ok: false }
+  fullAutoRegistry.set(request.threadRef, request.enabled)
+  return { ok: true }
+})
+ipcMain.handle(CodexLocalFullAutoGetChannel, async (_event, value: unknown) => {
+  const request = decodeCodexLocalFullAutoGetRequest(value)
+  if (request === null) return { enabled: false }
+  return { enabled: fullAutoRegistry.get(request.threadRef) }
 })
 
 // Codex account connect + reconnect (#8640 unblock; EP250 owner mandate:

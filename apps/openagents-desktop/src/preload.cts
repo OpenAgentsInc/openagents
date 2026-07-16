@@ -187,6 +187,10 @@ import {
   decodeCodexQueueMutation,
   CodexLocalStartChannel,
   CodexLocalSteerTurnChannel,
+  CodexLocalFullAutoSetChannel,
+  CodexLocalFullAutoGetChannel,
+  decodeCodexLocalFullAutoSetRequest,
+  decodeCodexLocalFullAutoGetRequest,
 } from "./codex-local-contract.ts"
 import {
   CodexEcosystemMutationChannel,
@@ -773,6 +777,26 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(CodexLocalEventChannel, handler)
       return () => ipcRenderer.removeListener(CodexLocalEventChannel, handler)
+    },
+    /**
+     * Full Auto (#8853): main-owned durable per-thread toggle. `set` persists
+     * immediately regardless of whether a turn is in flight; `get` reads the
+     * current durable truth so the renderer can reflect reality on boot
+     * instead of defaulting to off.
+     */
+    fullAuto: {
+      set: (value: unknown) => {
+        const request = decodeCodexLocalFullAutoSetRequest(value)
+        return request === null
+          ? Promise.resolve({ ok: false })
+          : ipcRenderer.invoke(CodexLocalFullAutoSetChannel, request)
+      },
+      get: (value: unknown) => {
+        const request = decodeCodexLocalFullAutoGetRequest(value)
+        return request === null
+          ? Promise.resolve({ enabled: false })
+          : ipcRenderer.invoke(CodexLocalFullAutoGetChannel, request)
+      },
     },
   },
   codexEcosystem: {
