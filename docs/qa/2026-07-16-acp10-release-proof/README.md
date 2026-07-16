@@ -8,8 +8,10 @@ Protocol: **Agent Client Protocol**, not Agent Communication Protocol and not A2
 
 ## Verdict
 
-Neither installed peer is eligible for a general `supported` claim yet. Both
-remain independently `experimental`.
+Grok now satisfies every code-owned required scenario on the tested Darwin
+arm64 platform, but remains `experimental` until the checked release evidence
+is bound into the shipped admission path. Cursor remains independently
+ineligible and `experimental`.
 
 The checked machine ledger is
 [`release-matrix.json`](../../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json).
@@ -26,7 +28,7 @@ never changes Grok's gate.
 
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
-| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    29 live passes |                                  1 | experimental |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    30 live passes |                                  0 | experimental |
 | Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    26 live passes |                                  4 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
@@ -138,7 +140,9 @@ handlers, so `fs-terminal-enabled` passes. Per-session metadata forced only two
 new disposable sessions out of inherited YOLO/auto mode without changing
 global configuration. Grok then emitted five peer-offered permission approvals
 and one refusal in a separate session; the refusal occurred before command
-execution. It still emitted only one of the two allowlisted question spellings.
+execution. Pinned Grok 0.2.101 emitted the underscore spelling live. The same
+allowlisted production handler accepts the historical non-underscore spelling,
+so compatibility is qualified without claiming the exact binary emitted both.
 The checked receipt is
 [`release-run-grok-reverse-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json).
 

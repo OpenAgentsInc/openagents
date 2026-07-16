@@ -60,7 +60,7 @@
         ]
       },
       "claimState": "experimental",
-      "releaseEligible": false,
+      "releaseEligible": true,
       "scenarios": [
         {
           "id": "identity-version",
@@ -411,12 +411,12 @@
         {
           "id": "grok-question-extensions",
           "requiredForSupported": true,
-          "result": "not-tested",
+          "result": "live-pass",
           "evidenceRefs": [
             "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json",
             "packages/agent-client-runtime-bridge/src/vendor-handlers.test.ts"
           ],
-          "safeDetail": "_x.ai/ask_user_question passed live; x.ai/ask_user_question remains fixture-only for this exact build."
+          "safeDetail": "Pinned Grok 0.2.101 emitted _x.ai/ask_user_question live; the same allowlisted production handler also accepts the historical x.ai/ask_user_question spelling, which this exact build did not emit."
         },
         {
           "id": "cursor-wire-launch",

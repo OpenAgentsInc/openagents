@@ -158,8 +158,10 @@ Grok's exact-binary qualification now live-proves enabled filesystem and
 terminal reverse calls through bounded disposable handlers. A per-session
 metadata override disables inherited YOLO/auto mode only for disposable proof
 sessions, yielding five live approval selections and one live refusal without
-changing global Grok configuration; only one question-extension spelling was
-emitted.
+changing global Grok configuration. Pinned Grok 0.2.101 emitted only
+`_x.ai/ask_user_question`; the same allowlisted production handler also accepts
+the historical `x.ai/ask_user_question` spelling, so compatibility is covered
+without claiming that the exact binary emitted both.
 The production bridge now also retains both metadata rails used by pinned Grok
 0.2.101: notification `_meta` (including cumulative token state) and
 `session/prompt` completion `_meta` (including turn usage/completion fields).
