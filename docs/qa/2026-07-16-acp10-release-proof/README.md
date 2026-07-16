@@ -25,8 +25,8 @@ never changes Grok's gate.
 
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
-| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    24 live passes |                                  8 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    24 live passes |                                  7 | experimental |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    26 live passes |                                  5 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    24 live passes |                                  6 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -120,11 +120,14 @@ operations, but Cursor emitted zero `session/request_permission` calls; approval
 and refusal therefore remain unobserved rather than promoted.
 
 Grok's exact-binary reverse qualification enabled the stable client filesystem
-and terminal capabilities against the disposable repository. The peer made
-seven filesystem and sixteen terminal reverse calls through bounded handlers,
-so `fs-terminal-enabled` now passes. It again emitted only one of the two
-allowlisted question spellings and emitted no permission request; those rows
-remain blocked. The checked receipt is
+and terminal capabilities against the disposable repository. The latest peer
+run made four filesystem and sixteen terminal reverse calls through bounded
+handlers, so `fs-terminal-enabled` passes. Per-session metadata forced only two
+new disposable sessions out of inherited YOLO/auto mode without changing
+global configuration. Grok then emitted five peer-offered permission approvals
+and one refusal in a separate session; the refusal occurred before command
+execution. It still emitted only one of the two allowlisted question spellings.
+The checked receipt is
 [`release-run-grok-reverse-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json).
 
 The production main-owned Desktop host then ran both pinned drivers and
@@ -164,15 +167,18 @@ named-peer live compatibility.
 
 ## Release blockers retained as data
 
-The largest shared gaps are credential lifecycle paths, every required live
-permission outcome, Grok enabled reverse filesystem/terminal behavior, complete
-tool/plan/config/usage variants, and non-Darwin-arm64 platform evidence.
+The largest shared gaps are credential lifecycle paths, Cursor live permission
+outcomes, complete tool/plan/config/usage variants, and non-Darwin-arm64
+platform evidence. Permission timeout, stale-response fencing, and policy
+denial are production host authority semantics and pass through the hermetic
+production transport; Grok approval and refusal now pass against the pinned
+live peer.
 
 Provider-specific gaps:
 
 - Grok: intentional valid `xai.api_key`, auth cancel/expiry, the
-  non-underscore ask-question spelling, live permission outcomes, and
-  rich plan/config/usage streaming. The pinned
+  non-underscore ask-question spelling, and rich plan/config/usage streaming.
+  The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.
 - Cursor: pending-device login/expiry, permission outcomes, and live

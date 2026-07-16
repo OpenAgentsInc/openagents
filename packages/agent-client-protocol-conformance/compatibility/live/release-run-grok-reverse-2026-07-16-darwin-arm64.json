@@ -1,11 +1,14 @@
 {
   "format": "openagents-acp-live-release-run-v1",
   "protocol": "Agent Client Protocol",
-  "protocolExclusions": ["Agent Communication Protocol", "A2A"],
+  "protocolExclusions": [
+    "Agent Communication Protocol",
+    "A2A"
+  ],
   "proofClass": "candidate-live",
   "claimAuthority": "none-release-matrix-only",
-  "recordedAt": "2026-07-16T17:29:37.080Z",
-  "openAgentsRevision": "fdd0026283fe5f005c18f8e029341f210cfdccd6",
+  "recordedAt": "2026-07-16T17:40:55.849Z",
+  "openAgentsRevision": "b20fe2427629fe9233fcfb7b3abc407e87c921d5",
   "schemaRelease": "schema-v1.19.0",
   "platform": "darwin-arm64-node-24.13.1",
   "peers": [
@@ -18,8 +21,13 @@
       },
       "negotiation": {
         "wireVersion": 1,
-        "authMethodIds": ["cached_token", "grok.com"],
-        "capabilityKeys": ["load"]
+        "authMethodIds": [
+          "cached_token",
+          "grok.com"
+        ],
+        "capabilityKeys": [
+          "load"
+        ]
       },
       "scenarios": [
         {
@@ -84,18 +92,18 @@
         },
         {
           "id": "permission-approval",
-          "result": "not-observed",
-          "safeDetail": "Pinned permission approval selections: 0"
+          "result": "live-pass",
+          "safeDetail": "Pinned permission approval selections: 5"
         },
         {
           "id": "permission-refusal",
-          "result": "not-observed",
-          "safeDetail": "Pinned permission refusal selections: 0"
+          "result": "live-pass",
+          "safeDetail": "Pinned permission refusal selections: 1"
         },
         {
           "id": "fs-terminal-enabled",
           "result": "live-pass",
-          "safeDetail": "Pinned reverse calls: filesystem 7, terminal 16"
+          "safeDetail": "Pinned reverse calls: filesystem 4, terminal 16"
         }
       ],
       "counters": {

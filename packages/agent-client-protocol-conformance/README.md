@@ -95,8 +95,10 @@ unobserved extension remains blocked rather than inferred from a prompt. The
 same rule applies to permission qualification: only an option actually offered
 by the peer may be selected, and zero reverse calls remain zero live evidence.
 The Grok qualification additionally enables bounded filesystem and simulated
-terminal handlers only inside the disposable repository and retains method
-counts rather than file, command, terminal, or response content.
+terminal handlers only inside the disposable repository, forces only its new
+disposable sessions out of inherited YOLO/auto mode through session metadata,
+and retains method counts rather than file, command, terminal, or response
+content. It never changes global Grok configuration.
 
 After packaging Desktop, the separately armed peer journey proves real app
 workspace refusal, interruption, restart settlement, re-enable, completion,

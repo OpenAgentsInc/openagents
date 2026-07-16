@@ -141,7 +141,7 @@ fixture coverage into supported language. Grok and Cursor are now registered
 main-owned provider lanes, and an isolated production Desktop build completed a
 real Grok Full Auto turn. A checked, opt-in production runner now reproduces a
 redacted two-peer candidate receipt without claim authority. #8897 remains open
-for the unobserved credential, permission, extension, and platform proof;
+for the unobserved credential, Cursor permission, extension, and platform proof;
 packaged interruption/restart journeys for both pinned peers are now checked,
 and Grok now has live broker-only MCP custody evidence with a complete bounded
 post-shutdown scan of its exact session/configuration persistence surfaces.
@@ -153,8 +153,11 @@ Cursor's current exact-binary qualification reproducibly observes model listing
 and create-plan but not ask-question or todo notifications, so the combined
 extension row remains unpromoted.
 Grok's exact-binary qualification now live-proves enabled filesystem and
-terminal reverse calls through bounded disposable handlers; permission calls
-remain unobserved and only one question-extension spelling was emitted.
+terminal reverse calls through bounded disposable handlers. A per-session
+metadata override disables inherited YOLO/auto mode only for disposable proof
+sessions, yielding five live approval selections and one live refusal without
+changing global Grok configuration; only one question-extension spelling was
+emitted.
 The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference
