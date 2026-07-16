@@ -1,11 +1,15 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  DESKTOP_CODEX_USAGE_ADMISSION_SCHEMA,
   DESKTOP_CODEX_USAGE_INGEST_PATH,
   DESKTOP_CODEX_USAGE_RESPONSE_SCHEMA,
   DESKTOP_CODEX_USAGE_SCHEMA,
+  handleDesktopCodexUsageAdmissionRequest,
   handleDesktopCodexUsageRequest,
 } from "./desktop-codex-usage-routes";
+import { sha256Hex } from "./agent-registration";
+import { makeMemoryAuthKvStore } from "./auth/auth-kv";
 import { makeD1TokenUsageLedger, type TokenUsageEventRow } from "./token-usage-ledger";
 import { makeSqliteD1, TOKEN_LEDGER_D1_SCHEMA } from "./test/sqlite-d1";
 
@@ -13,6 +17,7 @@ const context = {} as ExecutionContext;
 const nowIso = "2026-07-16T14:00:00.000Z";
 const validBody = {
   schemaVersion: DESKTOP_CODEX_USAGE_SCHEMA,
+  admissionRef: "admission.desktop.codex.fixture",
   turnRef: "desktop.turn.0001",
   model: "gpt-5.2-codex",
   observedAt: "2026-07-16T13:59:00.000Z",
@@ -70,6 +75,21 @@ const setup = () => {
         ? { user: { userId: ownerUserId } }
         : undefined,
     userIdFromSession: (session: Readonly<{ user: { userId: string } }>) => session.user.userId,
+    admissionStore: () => ({
+      get: (async (_key: string, type?: "text" | "json") => {
+        const value = {
+          ownerDigest: (await sha256Hex(ownerUserId)).slice(0, 32),
+          turnRef: validBody.turnRef,
+          model: validBody.model,
+          expiresAt: "2026-07-17T14:00:00.000Z",
+        };
+        return type === "json" ? value : JSON.stringify(value);
+      }) as import("./auth/auth-kv").AuthKvGet,
+      put: async () => {},
+      delete: async () => {},
+      listPrefix: async () => [],
+    }),
+    now: () => new Date(nowIso),
   });
 
   const rows = async (): Promise<Array<TokenUsageEventRow>> => {
@@ -83,6 +103,83 @@ const setup = () => {
 };
 
 describe("Desktop Codex exact usage ingest", () => {
+  test("issues a durable signed-in admission before accepting completion", async () => {
+    const state = setup();
+    const store = makeMemoryAuthKvStore();
+    const dependencies = { ...state.dependencies(), admissionStore: () => store };
+    const admissionRequest = new Request("https://openagents.com/api/desktop/codex/turn-admission", {
+      method: "POST",
+      headers: { authorization: "Bearer desktop-session", "content-type": "application/json" },
+      body: JSON.stringify({
+        schemaVersion: DESKTOP_CODEX_USAGE_ADMISSION_SCHEMA,
+        turnRef: validBody.turnRef,
+        model: validBody.model,
+      }),
+    });
+
+    const response = await handleDesktopCodexUsageAdmissionRequest(
+      dependencies,
+      admissionRequest,
+      {},
+      context,
+    );
+    const body = await response.json() as Record<string, unknown>;
+
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({
+      schemaVersion: DESKTOP_CODEX_USAGE_ADMISSION_SCHEMA,
+      admissionRef: expect.stringMatching(/^admission\.desktop\.codex\./),
+    });
+    expect(await store.listPrefix("desktop:codex:usage:admission:")).toHaveLength(1);
+    state.sqlite.close();
+  });
+
+  test("refuses a completion without a matching owner-bound admission", async () => {
+    const state = setup();
+    const dependencies = {
+      ...state.dependencies(),
+      admissionStore: () => makeMemoryAuthKvStore(),
+    };
+    const response = await handleDesktopCodexUsageRequest(dependencies, request(), {}, context);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "desktop_codex_usage_admission_required" });
+    expect(await state.rows()).toEqual([]);
+    state.sqlite.close();
+  });
+
+  test("an admission cannot be replayed by a different signed-in owner", async () => {
+    const state = setup();
+    const store = makeMemoryAuthKvStore();
+    const ownerOne = { ...state.dependencies("github:owner-1"), admissionStore: () => store };
+    const ownerTwo = { ...state.dependencies("github:owner-2"), admissionStore: () => store };
+    const admitted = await handleDesktopCodexUsageAdmissionRequest(
+      ownerOne,
+      new Request("https://openagents.com/api/desktop/codex/turn-admission", {
+        method: "POST",
+        headers: { authorization: "Bearer desktop-session", "content-type": "application/json" },
+        body: JSON.stringify({
+          schemaVersion: DESKTOP_CODEX_USAGE_ADMISSION_SCHEMA,
+          turnRef: validBody.turnRef,
+          model: validBody.model,
+        }),
+      }),
+      {},
+      context,
+    );
+    const admission = await admitted.json() as { admissionRef: string };
+
+    const response = await handleDesktopCodexUsageRequest(
+      ownerTwo,
+      request({ ...validBody, admissionRef: admission.admissionRef }),
+      {},
+      context,
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "desktop_codex_usage_admission_invalid" });
+    expect(await state.rows()).toEqual([]);
+    state.sqlite.close();
+  });
+
   test("is server-disabled before authentication or ledger access", async () => {
     const state = setup();
     let authenticationCalls = 0;

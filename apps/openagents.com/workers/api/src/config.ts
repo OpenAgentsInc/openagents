@@ -2,6 +2,9 @@ import { Effect, Layer, Redacted, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
+  // Default-off rollout gate for authenticated, pre-admitted Desktop Codex
+  // exact-token usage. Consent remains independently default-off in Desktop.
+  DESKTOP_CODEX_USAGE_INGEST_ENABLED?: string | undefined
   // Shared HMAC secret for host-only AUDIO-2 grants. This is a Worker secret,
   // never a public var or response field, and must match the private audio
   // gateway's OPENAGENTS_AUDIO_TOKEN_SECRET. Missing/weak values fail closed.

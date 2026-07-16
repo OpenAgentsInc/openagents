@@ -1600,6 +1600,7 @@ export type CodexHandoffRendererHost = Readonly<{
 }>
 export type DesktopPresentationRendererHost = Readonly<{
   setSidebarCollapsed: (collapsed: boolean) => Promise<void>
+  setLocalCodexUsageSharing?: (enabled: boolean) => Promise<void>
 }>
 /**
  * Full Auto (#8853, FA-H1 #8874): main-owned durable per-thread toggle. `set`
@@ -2206,6 +2207,17 @@ export const makeDesktopShellHandlers = (
       presentation: { ...current.presentation, sidebarCollapsed },
     }))
     yield* Effect.promise(() => presentationHost.setSidebarCollapsed(sidebarCollapsed))
+  }),
+  DesktopLocalCodexUsageSharingToggled: (enabled) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (!current.settings.localCodexUsageControlAvailable) return
+    yield* Effect.promise(() =>
+      presentationHost.setLocalCodexUsageSharing?.(enabled) ?? Promise.resolve(),
+    )
+    yield* SubscriptionRef.update(state, next => ({
+      ...next,
+      settings: { ...next.settings, shareLocalCodexUsage: enabled },
+    }))
   }),
   DesktopSessionSearchDisclosureChanged: (sessionSearchOpen) =>
     SubscriptionRef.update(state, current => ({

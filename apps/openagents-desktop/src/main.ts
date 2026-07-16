@@ -268,6 +268,7 @@ import {
 } from "./usage-ledger-contract.ts"
 import { makeUsageLedger } from "./usage-ledger.ts"
 import { makeDesktopCodexUsageReporter } from "./desktop-codex-usage-reporter.ts"
+import { openDesktopCodexUsageOutbox } from "./desktop-codex-usage-outbox.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
@@ -1987,10 +1988,24 @@ if (smokeMode) {
 // for local Fable turns and Codex delegate children. Main-owned; the
 // renderer sees only the typed snapshot ("session ledger" evidence label).
 const usageLedger = makeUsageLedger()
+// The owner-review gate keeps the control and all network activity absent in
+// ordinary builds until the consent copy is approved. The durable preference
+// remains independently default-off and revocable once that gate is enabled.
+const desktopUsageConsentControlAvailable =
+  process.env.OPENAGENTS_DESKTOP_USAGE_CONSENT_CONTROL === "1"
+const preferencesStore = openDesktopPreferencesStore(
+  path.join(app.getPath("userData"), "preferences.json"),
+)
+const desktopCodexUsageOutbox = openDesktopCodexUsageOutbox(
+  path.join(app.getPath("userData"), "usage", "codex-outbox.json"),
+)
 const desktopCodexUsageReporter = makeDesktopCodexUsageReporter({
-  consentEnabled: () => false,
+  consentEnabled: () =>
+    desktopUsageConsentControlAvailable &&
+    preferencesStore.snapshot().privacy.shareLocalCodexUsage,
   sessionReady: () => desktopSessionState === "session_ready",
   credential: () => desktopSessionVault?.load() ?? null,
+  outbox: desktopCodexUsageOutbox,
   baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
 })
 // CUT-11 (#8691): canonical desktop-local live agent graph. The host folds
@@ -2487,13 +2502,35 @@ ipcMain.handle(McpConfigToggleChannel, (_event, value: unknown) => {
 // Typed durable preferences (CUT-24 #8704). The store owns the private JSON
 // file under userData (mode 0600), migrating on read. Every mutation crosses
 // through the migrator so a hostile patch is field-normalized, never trusted.
-const preferencesStore = openDesktopPreferencesStore(
-  path.join(app.getPath("userData"), "preferences.json"),
-)
-ipcMain.handle(DesktopPreferencesGetChannel, () => preferencesStore.snapshot())
+const projectedDesktopPreferences = () => {
+  const preferences = preferencesStore.snapshot()
+  return {
+    ...preferences,
+    privacy: {
+      ...preferences.privacy,
+      localCodexUsageControlAvailable: desktopUsageConsentControlAvailable,
+    },
+  }
+}
+ipcMain.handle(DesktopPreferencesGetChannel, projectedDesktopPreferences)
 ipcMain.handle(DesktopPreferencesUpdateChannel, (_event, value: unknown) =>
-  preferencesStore.update(decodeDesktopPreferencesPatch(value)))
-ipcMain.handle(DesktopPreferencesResetChannel, () => preferencesStore.reset())
+  {
+    const preferences = preferencesStore.update(decodeDesktopPreferencesPatch(value))
+    if (!preferences.privacy.shareLocalCodexUsage) desktopCodexUsageOutbox.clear()
+    else Effect.runFork(desktopCodexUsageReporter.flush())
+    return {
+      ...preferences,
+      privacy: {
+        ...preferences.privacy,
+        localCodexUsageControlAvailable: desktopUsageConsentControlAvailable,
+      },
+    }
+  })
+ipcMain.handle(DesktopPreferencesResetChannel, () => {
+  const preferences = preferencesStore.reset()
+  desktopCodexUsageOutbox.clear()
+  return preferences
+})
 
 // Diagnostics / watchdog (CUT-24 #8704). Collect live health from the existing
 // operability surfaces into the PUBLIC-SAFE report; the export is always
@@ -3166,6 +3203,13 @@ const codexLocalLane: ProviderLane<null> = {
     if (!isCodexModel(model)) {
       return { ok: false, reason: "session_failed", detail: "non-Codex model admitted to the Codex lane" }
     }
+    // Admission happens before local execution and is fail-soft: telemetry can
+    // never block a turn, while completion can never invent server authority
+    // after the fact. Full Auto uses this same lane seam.
+    await desktopCodexUsageReporter.admit({
+      turnRef: request.turnRef,
+      model,
+    })
     const result = await codexLocal.runTurn({
       turnRef: request.turnRef,
       threadRef: request.threadRef,
@@ -6209,6 +6253,9 @@ void app.whenReady().then(async () => {
         ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
         : recovery.state
       if(recovery.state==="denied")hostLifecycle.sync()?.unlinkAccount()
+      if (desktopSessionState === "session_ready") {
+        Effect.runFork(desktopCodexUsageReporter.flush())
+      }
     } catch {
       desktopSessionState = "unavailable"
     }

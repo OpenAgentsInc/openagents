@@ -2,14 +2,28 @@
 
 ## Desktop local-usage telemetry consent copy (#8911)
 
-The exact-token reporter and authenticated ingest plumbing are present but
-hard-disabled at both the Desktop caller and server route. Before any Settings
-toggle or collection is enabled, approve the short disclosure that explains the
-aggregate public counter, the exact token fields sent, the absence of
-prompts/files/paths, and how to withdraw consent. Server enablement also requires
-an authoritative Desktop-turn admission boundary plus durable retry/outbox
-semantics; a user bearer and caller-authored turn reference are not sufficient.
-Metrics remain absent while consent is off.
+The authenticated pre-admission boundary, rate limit, credential-free durable
+outbox/retry, and review-gated Settings control are implemented. Both rollout
+gates and the user preference remain off by default; no production metric
+movement is claimed.
+
+Approve or revise this exact Settings disclosure before the control becomes
+visible in an ordinary release:
+
+> **Share local Codex usage**
+>
+> When on, OpenAgents sends exact input, cached-input, output, reasoning, and
+> total token counts, the model, and a one-time turn reference. Prompts,
+> responses, files, paths, account names, and credentials are never sent. This
+> updates the aggregate public tokens-served counter. Turn it off any time;
+> queued reports are deleted.
+
+UI review path: launch the current Desktop build in review mode, open
+**Settings → Share local Codex usage**, and approve/revise the disclosure and
+toggle. After approval, follow
+`docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md` for the real
+opted-in ordinary-turn and Full Auto counter proof. Until those receipts exist,
+the issue must not claim `/stats` movement.
 
 Archive of older content:
 `docs/ops/2026-07-09-needs-owner-archive.md`. Full backlog

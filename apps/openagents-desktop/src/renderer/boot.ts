@@ -1105,6 +1105,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         setSidebarCollapsed: async (sidebarCollapsed) => {
           await readBridge()?.preferences?.update?.({ presentation: { sidebarCollapsed } })
         },
+        setLocalCodexUsageSharing: async (enabled) => {
+          await readBridge()?.preferences?.update?.({ privacy: { shareLocalCodexUsage: enabled } })
+        },
       }, fullAutoHost),
     )
     if (typeof bridge?.runtimeRequest === "function") {
@@ -1760,6 +1763,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         // Disclosure is intentionally launch-ephemeral. The authoritative
         // query remains in history state and is never duplicated in prefs.
         sessionSearchOpen: false,
+      },
+      settings: {
+        ...current.settings,
+        localCodexUsageControlAvailable:
+          preferences.privacy.localCodexUsageControlAvailable,
+        shareLocalCodexUsage: preferences.privacy.shareLocalCodexUsage,
       },
     }))
     for (const [name, value] of Object.entries(preferencesRootAttributes(preferences))) {

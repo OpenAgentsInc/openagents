@@ -362,6 +362,22 @@ export const WorkbenchShell = ({ state, report }: {
                 </article>)}
             {state.settings.harnessMaintenance.lastOutcome === null ? null : <p role="status">{state.settings.harnessMaintenance.lastOutcome}</p>}
           </section>
+          {state.settings.localCodexUsageControlAvailable
+            ? <section className="oa-react-settings-section" aria-labelledby="react-local-usage-title">
+                <h2 id="react-local-usage-title">Share local Codex usage</h2>
+                <p>When on, OpenAgents sends exact input, cached-input, output, reasoning, and total token counts, the model, and a one-time turn reference. Prompts, responses, files, paths, account names, and credentials are never sent. This updates the aggregate public tokens-served counter. Turn it off any time; queued reports are deleted.</p>
+                <Button
+                  type="button"
+                  variant={state.settings.shareLocalCodexUsage ? "default" : "outline"}
+                  aria-pressed={state.settings.shareLocalCodexUsage}
+                  onClick={() => dispatch(
+                    report,
+                    "DesktopLocalCodexUsageSharingToggled",
+                    !state.settings.shareLocalCodexUsage,
+                  )}
+                >{state.settings.shareLocalCodexUsage ? "Sharing on" : "Sharing off"}</Button>
+              </section>
+            : null}
           <section className="oa-react-settings-section" aria-labelledby="react-provider-accounts-title">
             <h2 id="react-provider-accounts-title">Codex account</h2>
             <p>Your Codex account identity is blurred until you explicitly reveal it.</p>

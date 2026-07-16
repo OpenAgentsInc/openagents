@@ -194,7 +194,9 @@ import {
   handleAudioGrantIssueRequest,
 } from './audio-grant-routes'
 import {
+  DESKTOP_CODEX_USAGE_ADMISSION_PATH,
   DESKTOP_CODEX_USAGE_INGEST_PATH,
+  makeDesktopCodexUsageAdmissionRouteHandler,
   makeDesktopCodexUsageRouteHandler,
 } from './desktop-codex-usage-routes'
 import {
@@ -7048,7 +7050,19 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
 const handleDesktopCodexUsage = makeDesktopCodexUsageRouteHandler({
   // #8911 rollout gate: keep server ingest closed until authenticated Desktop
   // turn admission and owner-approved consent copy are both implemented.
-  ingestEnabled: () => false,
+  ingestEnabled: (env: Env) => env.DESKTOP_CODEX_USAGE_INGEST_ENABLED === '1',
+  admissionStore: (env: Env) => authKvStoreForEnv(env),
+  ledger: (env: Env) =>
+    makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
+      onIngestedEvent: makeTokensServedProjectionObserver(env),
+      ...tokenLedgerWriteStoreOptionForEnv(env),
+    }),
+  requireUserBearerSession,
+  userIdFromSession: session => session.user.userId,
+})
+const handleDesktopCodexUsageAdmission = makeDesktopCodexUsageAdmissionRouteHandler({
+  ingestEnabled: (env: Env) => env.DESKTOP_CODEX_USAGE_INGEST_ENABLED === '1',
+  admissionStore: (env: Env) => authKvStoreForEnv(env),
   ledger: (env: Env) =>
     makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
       onIngestedEvent: makeTokensServedProjectionObserver(env),
@@ -11351,6 +11365,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           ctx,
         ),
       ),
+  },
+  {
+    path: DESKTOP_CODEX_USAGE_ADMISSION_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() => handleDesktopCodexUsageAdmission(request, env, ctx)),
   },
   {
     path: DESKTOP_CODEX_USAGE_INGEST_PATH,

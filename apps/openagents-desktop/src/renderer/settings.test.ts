@@ -211,6 +211,22 @@ describe("settingsView (state -> component tree)", () => {
     expect(nodeByKey(view, "settings-mcp-title")).toBeUndefined()
     expect(nodeByKey(view, "settings-plugins-title")).toBeUndefined()
     expect(nodeByKey(view, "settings-lifecycle-title")).toBeUndefined()
+    expect(nodeByKey(view, "settings-local-usage-toggle")).toBeUndefined()
+  })
+
+  test("owner-review mode shows explicit default-off local-usage consent copy", () => {
+    const view = settingsView({
+      ...initialSettingsState(),
+      localCodexUsageControlAvailable: true,
+    })
+    expect(nodeByKey(view, "settings-local-usage-title")?.content).toBe("Share local Codex usage")
+    expect(nodeByKey(view, "settings-local-usage-copy")?.content).toContain(
+      "Prompts, responses, files, paths, account names, and credentials are never sent",
+    )
+    expect(nodeByKey(view, "settings-local-usage-toggle")).toMatchObject({
+      value: false,
+      label: "Off",
+    })
   })
 
   test.skip("retired Pylon account placeholders", () => {

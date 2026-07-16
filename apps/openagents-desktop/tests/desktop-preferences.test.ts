@@ -92,10 +92,11 @@ describe("preferences migration", () => {
     }
     const result = migrateDesktopPreferences(v1)
     expect(result).toMatchObject({ origin: "legacy_v1", changed: true, fromVersion: 1 })
-    expect(result.preferences.version).toBe(2)
+    expect(result.preferences.version).toBe(3)
     expect(result.preferences.appearance).toEqual(v1.appearance)
     expect(result.preferences.providerDefaults).toEqual(v1.providerDefaults)
     expect(result.preferences.presentation).toEqual({ sidebarCollapsed: false })
+    expect(result.preferences.privacy.shareLocalCodexUsage).toBe(false)
   })
 
   test("a dirty v2 document is field-normalized (bad enum → default) and marked changed", () => {

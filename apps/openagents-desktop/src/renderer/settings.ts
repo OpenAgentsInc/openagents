@@ -133,6 +133,8 @@ export type SettingsState = Readonly<{
   plugins: PluginSettingsState
   /** Per-harness maintenance (MAINT-1, #8785). */
   harnessMaintenance: HarnessMaintenanceState
+  localCodexUsageControlAvailable: boolean
+  shareLocalCodexUsage: boolean
 }>
 
 export type PluginSettingsState = Readonly<{
@@ -216,6 +218,8 @@ export const initialSettingsState = (): SettingsState => ({
   mcp: initialMcpSettingsState(),
   plugins: { state: "loading", plugins: [], dropped: 0, message: null },
   harnessMaintenance: initialHarnessMaintenanceState(),
+  localCodexUsageControlAvailable: false,
+  shareLocalCodexUsage: false,
 })
 
 const accountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
@@ -693,6 +697,10 @@ export const DesktopOpenAgentsSignOutRequested = defineIntent(
   "DesktopOpenAgentsSignOutRequested",
   Schema.Null,
 )
+export const DesktopLocalCodexUsageSharingToggled = defineIntent(
+  "DesktopLocalCodexUsageSharingToggled",
+  Schema.Boolean,
+)
 /**
  * One-click harness update (MAINT-1, #8785). Payload is the harness name;
  * the handler re-validates it against the loaded maintenance list and the
@@ -731,6 +739,7 @@ export const settingsIntents = [
   DesktopCodexVerificationOpened,
   DesktopOpenAgentsSignInRequested,
   DesktopOpenAgentsSignOutRequested,
+  DesktopLocalCodexUsageSharingToggled,
   DesktopHarnessUpdateRequested,
   DesktopHarnessMaintenanceRefreshRequested,
   DesktopMcpNameChanged,
@@ -1649,6 +1658,45 @@ export const settingsView = (settings: SettingsState): View => {
           variant: "body",
           color: "textMuted",
         }),
+        ...(settings.localCodexUsageControlAvailable
+          ? [
+              Divider({ key: "settings-local-usage-divider" }),
+              Stack(
+                { key: "settings-local-usage-row", direction: "row", gap: "3", align: "center" },
+                [
+                  Stack(
+                    { key: "settings-local-usage-copy-stack", direction: "column", gap: "1" },
+                    [
+                      Text({
+                        key: "settings-local-usage-title",
+                        content: "Share local Codex usage",
+                        variant: "label",
+                        color: "textPrimary",
+                      }),
+                      Text({
+                        key: "settings-local-usage-copy",
+                        content: "When on, OpenAgents sends exact input, cached-input, output, reasoning, and total token counts, the model, and a one-time turn reference. Prompts, responses, files, paths, account names, and credentials are never sent. This updates the aggregate public tokens-served counter. Turn it off any time; queued reports are deleted.",
+                        variant: "body",
+                        color: "textMuted",
+                      }),
+                    ],
+                  ),
+                  Spacer({ key: "settings-local-usage-fill", flex: true }),
+                  Toggle({
+                    key: "settings-local-usage-toggle",
+                    value: settings.shareLocalCodexUsage,
+                    label: settings.shareLocalCodexUsage ? "On" : "Off",
+                    onChange: IntentRef("DesktopLocalCodexUsageSharingToggled", ComponentValueBinding()),
+                    a11y: {
+                      label: settings.shareLocalCodexUsage
+                        ? "Stop sharing local Codex token usage"
+                        : "Share local Codex token usage",
+                    },
+                  }),
+                ],
+              ),
+            ]
+          : []),
         Divider({ key: "settings-harness-maintenance-divider" }),
         ...harnessMaintenanceSection(settings.harnessMaintenance),
       ]),

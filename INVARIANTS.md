@@ -194,6 +194,15 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 ## Authority Boundaries
 
+- Desktop local Codex usage collection is triple-gated: the review-only
+  Desktop control gate, an explicit default-off user preference, and the
+  server ingest rollout gate. An authenticated bearer alone is insufficient:
+  the API must durably pre-admit the exact owner/turn/model within its bounded
+  rate window before a completion can enter `token_usage_events`. The durable
+  Desktop retry outbox contains no credentials, owner identity, prompts,
+  responses, files, paths, or account names, and disabling consent deletes it.
+  Telemetry failure never blocks an ordinary or Full Auto local turn.
+
 - Public UI does not own settlement, payout, runtime promotion, or accepted
   outcome authority.
 - Desktop Codex host services accept only canonical WorkContext-relative

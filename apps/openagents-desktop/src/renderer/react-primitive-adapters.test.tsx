@@ -224,6 +224,34 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-sensitive-text")?.getAttribute("data-revealed")).toBe("false")
   })
 
+  test("owner-review settings renders and dispatches the default-off usage consent", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) =>
+      Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    await render(root, <WorkbenchShell state={{
+      ...base,
+      workspace: "settings",
+      settings: {
+        ...base.settings,
+        localCodexUsageControlAvailable: true,
+        shareLocalCodexUsage: false,
+      },
+    }} report={report} />)
+
+    const button = [...container.querySelectorAll("button")]
+      .find(node => node.textContent === "Sharing off")
+    expect(container.textContent).toContain("Prompts, responses, files, paths, account names, and credentials are never sent")
+    expect(button?.getAttribute("aria-pressed")).toBe("false")
+    await interact(() => button?.click())
+    expect(received.at(-1)).toEqual({
+      name: "DesktopLocalCodexUsageSharingToggled",
+      payload: true,
+    })
+  })
+
   test("shows the Codex-only update advisory and dispatches the typed update intent", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []

@@ -30,7 +30,7 @@
 import { Schema } from "effect"
 
 export const DESKTOP_PREFERENCES_SCHEMA_ID =
-  "openagents.desktop.preferences.store.v2" as const
+  "openagents.desktop.preferences.store.v3" as const
 
 /** Additive IPC channels (main ↔ renderer). Public-safe payloads only. */
 export const DesktopPreferencesGetChannel = "openagents-desktop/preferences-get" as const
@@ -38,7 +38,7 @@ export const DesktopPreferencesUpdateChannel = "openagents-desktop/preferences-u
 export const DesktopPreferencesResetChannel = "openagents-desktop/preferences-reset" as const
 
 /** Current on-disk document version. Bump + add a migration when the shape changes. */
-export const DESKTOP_PREFERENCES_VERSION = 2 as const
+export const DESKTOP_PREFERENCES_VERSION = 3 as const
 
 // ---------------------------------------------------------------------------
 // Field vocabularies (bounded enums — never free text).
@@ -95,6 +95,8 @@ export const DesktopProviderDefaultsSchema = Schema.Struct({
 export type DesktopProviderDefaults = typeof DesktopProviderDefaultsSchema.Type
 
 export const DesktopPrivacyPreferencesSchema = Schema.Struct({
+  /** Host-projected rollout capability; persisted false and never an authority. */
+  localCodexUsageControlAvailable: Schema.Boolean,
   /**
    * Always redact diagnostics exports. Defaults ON and, for the current build,
    * is effectively pinned: the diagnostics export path only ever emits the
@@ -103,6 +105,12 @@ export const DesktopPrivacyPreferencesSchema = Schema.Struct({
   redactDiagnosticsExport: Schema.Boolean,
   /** Off by default. Analytics expansion is an explicit non-goal for CUT-24. */
   shareCrashDiagnostics: Schema.Boolean,
+  /**
+   * Explicit, revocable consent to send exact local Codex turn token counts.
+   * Defaults OFF. Prompts, responses, files, paths, account refs, and provider
+   * credentials are never part of this report.
+   */
+  shareLocalCodexUsage: Schema.Boolean,
 })
 export type DesktopPrivacyPreferences = typeof DesktopPrivacyPreferencesSchema.Type
 
@@ -162,8 +170,10 @@ export const defaultDesktopPreferences = (): DesktopPreferences => ({
     defaultClaudeAccountRef: null,
   },
   privacy: {
+    localCodexUsageControlAvailable: false,
     redactDiagnosticsExport: true,
     shareCrashDiagnostics: false,
+    shareLocalCodexUsage: false,
   },
   notifications: {
     attentionBadge: true,
@@ -203,6 +213,7 @@ export type DesktopPreferencesMigrationOrigin =
   | "merged" // partial/dirty current-version input → per-field defaults filled
   | "legacy_v0" // pre-versioned flat blob lifted into the current shape
   | "legacy_v1" // nested v1 document lifted into v2 with presentation defaults
+  | "legacy_v2" // nested v2 document lifted into v3 with usage consent off
   | "downgraded" // future version → unknown fields dropped, known ones kept
 
 export type DesktopPreferencesMigrationResult = Readonly<{
@@ -260,8 +271,13 @@ const normalize = (
       defaultClaudeAccountRef: ref(providerDefaults.defaultClaudeAccountRef),
     },
     privacy: {
+      localCodexUsageControlAvailable: bool(
+        privacy.localCodexUsageControlAvailable,
+        d.privacy.localCodexUsageControlAvailable,
+      ),
       redactDiagnosticsExport: bool(privacy.redactDiagnosticsExport, d.privacy.redactDiagnosticsExport),
       shareCrashDiagnostics: bool(privacy.shareCrashDiagnostics, d.privacy.shareCrashDiagnostics),
+      shareLocalCodexUsage: bool(privacy.shareLocalCodexUsage, d.privacy.shareLocalCodexUsage),
     },
     notifications: {
       attentionBadge: bool(notifications.attentionBadge, d.notifications.attentionBadge),
@@ -347,18 +363,24 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
     return { preferences: normalized, origin: "downgraded", changed: true, fromVersion: rawVersion }
   }
 
-  // Version 1 used the same nested sections but had no presentation section.
-  // Preserve every valid v1 value and seed the new bounded presentation state.
-  if (rawVersion === 1) {
+  // Versions 1 and 2 used the same nested sections; v1 had no presentation
+  // section and neither had local-usage consent. Preserve every known value
+  // while the new consent field is seeded false by normalize().
+  if (rawVersion === 1 || rawVersion === 2) {
     const normalized = normalize(
       asRecord(record.appearance) ?? {},
       asRecord(record.providerDefaults) ?? {},
       asRecord(record.privacy) ?? {},
       asRecord(record.notifications) ?? {},
       asRecord(record.updates) ?? {},
-      {},
+      rawVersion === 1 ? {} : asRecord(record.presentation) ?? {},
     )
-    return { preferences: normalized, origin: "legacy_v1", changed: true, fromVersion: rawVersion }
+    return {
+      preferences: normalized,
+      origin: rawVersion === 1 ? "legacy_v1" : "legacy_v2",
+      changed: true,
+      fromVersion: rawVersion,
+    }
   }
 
   // Legacy pre-versioned (v0 or no version): a flat blob where appearance keys
