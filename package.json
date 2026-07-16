@@ -87,6 +87,7 @@
     "test:sqlite-runtime": "pnpm --dir packages/sqlite-runtime run test",
     "test:sol-docs": "vp test --run scripts/check-sol-docs.test.ts",
     "qa:nightly": "node --import tsx scripts/qa-nightly-matrix.ts",
+    "changelog": "node --import tsx scripts/changelog.ts",
     "qa:observer": "node --import tsx scripts/qa-observer.ts",
     "qa:swarm:desktop": "pnpm --dir apps/openagents-desktop run qa:visual",
     "qa:verify": "node --import tsx scripts/qa-verify.ts",

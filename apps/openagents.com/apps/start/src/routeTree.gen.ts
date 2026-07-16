@@ -31,6 +31,7 @@ import { Route as GymRouteImport } from './routes/gym'
 import { Route as DownloadRouteImport } from './routes/download'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
+import { Route as ChangelogRouteImport } from './routes/changelog'
 import { Route as AstroRouteImport } from './routes/astro'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AdjutantRouteImport } from './routes/adjutant'
@@ -174,6 +175,11 @@ const DocsRoute = DocsRouteImport.update({
 const ClientsPreviewRoute = ClientsPreviewRouteImport.update({
   id: '/clients-preview',
   path: '/clients-preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangelogRoute = ChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AstroRoute = AstroRouteImport.update({
@@ -355,6 +361,7 @@ export interface FileRoutesByFullPath {
   '/adjutant': typeof AdjutantRoute
   '/app': typeof AppRoute
   '/astro': typeof AstroRoute
+  '/changelog': typeof ChangelogRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/docs': typeof DocsRouteWithChildren
   '/download': typeof DownloadRoute
@@ -413,6 +420,7 @@ export interface FileRoutesByTo {
   '/adjutant': typeof AdjutantRoute
   '/app': typeof AppRoute
   '/astro': typeof AstroRoute
+  '/changelog': typeof ChangelogRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
@@ -471,6 +479,7 @@ export interface FileRoutesById {
   '/adjutant': typeof AdjutantRoute
   '/app': typeof AppRoute
   '/astro': typeof AstroRoute
+  '/changelog': typeof ChangelogRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/docs': typeof DocsRouteWithChildren
   '/download': typeof DownloadRoute
@@ -531,6 +540,7 @@ export interface FileRouteTypes {
     | '/adjutant'
     | '/app'
     | '/astro'
+    | '/changelog'
     | '/clients-preview'
     | '/docs'
     | '/download'
@@ -589,6 +599,7 @@ export interface FileRouteTypes {
     | '/adjutant'
     | '/app'
     | '/astro'
+    | '/changelog'
     | '/clients-preview'
     | '/download'
     | '/gym'
@@ -646,6 +657,7 @@ export interface FileRouteTypes {
     | '/adjutant'
     | '/app'
     | '/astro'
+    | '/changelog'
     | '/clients-preview'
     | '/docs'
     | '/download'
@@ -705,6 +717,7 @@ export interface RootRouteChildren {
   AdjutantRoute: typeof AdjutantRoute
   AppRoute: typeof AppRoute
   AstroRoute: typeof AstroRoute
+  ChangelogRoute: typeof ChangelogRoute
   ClientsPreviewRoute: typeof ClientsPreviewRoute
   DocsRoute: typeof DocsRouteWithChildren
   DownloadRoute: typeof DownloadRoute
@@ -910,6 +923,13 @@ declare module '@tanstack/react-router' {
       path: '/clients-preview'
       fullPath: '/clients-preview'
       preLoaderRoute: typeof ClientsPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/changelog': {
+      id: '/changelog'
+      path: '/changelog'
+      fullPath: '/changelog'
+      preLoaderRoute: typeof ChangelogRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/astro': {
@@ -1171,6 +1191,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdjutantRoute: AdjutantRoute,
   AppRoute: AppRoute,
   AstroRoute: AstroRoute,
+  ChangelogRoute: ChangelogRoute,
   ClientsPreviewRoute: ClientsPreviewRoute,
   DocsRoute: DocsRouteWithChildren,
   DownloadRoute: DownloadRoute,

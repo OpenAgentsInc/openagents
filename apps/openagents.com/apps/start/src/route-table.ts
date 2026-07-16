@@ -11,6 +11,7 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/blog(?:\/[^/]+)?\/?$/,
   /^\/business\/?$/,
   /^\/business\/kpi\/[^/]+$/,
+  /^\/changelog$/,
   /^\/clients-preview$/,
   /^\/code\/?$/,
   /^\/code\/download$/,
