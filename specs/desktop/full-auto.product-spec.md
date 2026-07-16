@@ -332,6 +332,21 @@ cut:
 
 ## Receipts
 
+- FA-H12 (#8885): two-process Electron restart smoke
+  `apps/openagents-desktop/scripts/full-auto-restart-smoke.ts`
+  (`pnpm run smoke:full-auto-restart`; build first). Spawns the real app
+  twice against one temporary user-data directory: the seed process writes
+  an enabled, workspace-bound registry record plus a completed terminal
+  fixture turn and quits; the resume process is observed to run startup
+  reconciliation and dispatch exactly one fixture continuation, hitting the
+  durable cap deterministically; a second seed/resume pair proves the
+  workspace-mismatch fail-closed path across processes. Passing receipt
+  line: `[openagents-desktop full-auto-restart] two-process smoke OK
+  {"seeded":true,"resumed":true,"dispatchedTurnRefPresent":true,
+  "continuationCount":20,"mismatchFailedClosed":true}`. This smoke is the
+  merge gate for any renewed "survives restart" claim; the packaged
+  real-repository owner observation remains the gate for live/owner-accepted
+  claims.
 - Rev 5 (FA-H4 #8877): contract additions in `codex-local-contract.ts`
   (`CodexLocalFullAutoStateChannel`, `CodexLocalFullAutoStateSchema` with its
   decode helper, `CodexLocalFullAutoInterruptChannel` + request schema);
