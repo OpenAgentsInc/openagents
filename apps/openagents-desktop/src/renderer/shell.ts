@@ -1813,7 +1813,18 @@ export const makeDesktopShellHandlers = (
       const thread = yield* Effect.promise(chat.newThread)
       if (thread === null) return
       const draft = current.input
-      current = { ...withNewChat(current, thread), input: draft }
+      const draftImages = current.composerImages
+      const draftImageNotice = current.composerImageNotice
+      const draftReviewContext = current.composerReviewContext
+      const draftFileContext = current.composerFileContext
+      current = {
+        ...withNewChat(current, thread),
+        input: draft,
+        composerImages: draftImages,
+        composerImageNotice: draftImageNotice,
+        composerReviewContext: draftReviewContext,
+        composerFileContext: draftFileContext,
+      }
       yield* SubscriptionRef.set(state, current)
       // Full Auto (#8853): the toggle was set before any thread existed to
       // persist it against, so main only learns about it now, once this

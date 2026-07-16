@@ -156,7 +156,7 @@ describe("React Codex composer", () => {
     expect(received).toEqual(expect.arrayContaining([
       { name: "DesktopComposerImagePickRequested", payload: null },
       { name: "DesktopComposerImageRemoved", payload: "image-1" },
-      { name: "DesktopNoteSubmitted", payload: "" },
+      { name: "DesktopNoteSubmitted", payload: null },
     ]));
   });
 

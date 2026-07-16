@@ -1241,7 +1241,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   overflow-y: auto;
   outline: none;
   color: var(--en-color-textPrimary);
-  font-family: "Oxanium Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-family: var(--oa-font-sans);
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;

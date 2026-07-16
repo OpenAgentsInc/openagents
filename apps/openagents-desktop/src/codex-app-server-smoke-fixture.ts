@@ -53,15 +53,47 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
       stdout.write(`${JSON.stringify(message)}\n`);
     };
     const notify = (method: string, params: unknown): void => write({ method, params });
+    const cwd = process.cwd();
+    const thread = {
+      cliVersion: "0.144.1",
+      createdAt: 0,
+      cwd,
+      ephemeral: false,
+      id: THREAD_ID,
+      modelProvider: "openai",
+      preview: "OpenAgents desktop smoke fixture",
+      sessionId: THREAD_ID,
+      source: "appServer" as const,
+      status: { type: "idle" as const },
+      turns: [],
+      updatedAt: 0,
+    };
+    const threadResponse = {
+      approvalPolicy: "on-request" as const,
+      approvalsReviewer: "user" as const,
+      cwd,
+      model: "gpt-5.6-sol",
+      modelProvider: "openai",
+      sandbox: { type: "dangerFullAccess" as const },
+      thread,
+    };
+    let turnSequence = 0;
+    let activeTurnId = TURN_ID;
+    let activeApprovalId = APPROVAL_ID;
+    let activeCommandItemId = "item-command-smoke";
+    let activeAgentItemId = "item-agent-smoke";
     const completeApprovedTurn = (): void => {
       completionEmitted = true;
       notify("item/completed", {
         threadId: THREAD_ID,
-        turnId: TURN_ID,
+        turnId: activeTurnId,
+        completedAtMs: 1,
         item: {
-          id: "item-command-smoke",
+          id: activeCommandItemId,
           type: "commandExecution",
           command: "echo fixture",
+          commandActions: [],
+          cwd,
           aggregatedOutput: "fixture",
           exitCode: 0,
           status: "completed",
@@ -69,14 +101,32 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
       });
       notify("item/agentMessage/delta", {
         threadId: THREAD_ID,
-        turnId: TURN_ID,
+        turnId: activeTurnId,
+        itemId: activeAgentItemId,
         delta: FIXTURE_CODEX_LOCAL_TEXT,
+      });
+      notify("item/completed", {
+        threadId: THREAD_ID,
+        turnId: activeTurnId,
+        completedAtMs: 2,
+        item: {
+          id: activeAgentItemId,
+          type: "agentMessage",
+          text: FIXTURE_CODEX_LOCAL_TEXT,
+        },
       });
       notify("thread/tokenUsage/updated", {
         threadId: THREAD_ID,
-        turnId: TURN_ID,
+        turnId: activeTurnId,
         tokenUsage: {
           last: {
+            inputTokens: 900,
+            cachedInputTokens: 600,
+            outputTokens: 40,
+            reasoningOutputTokens: 12,
+            totalTokens: 952,
+          },
+          total: {
             inputTokens: 900,
             cachedInputTokens: 600,
             outputTokens: 40,
@@ -87,7 +137,7 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
       });
       notify("turn/completed", {
         threadId: THREAD_ID,
-        turn: { id: TURN_ID, status: "completed", error: null },
+        turn: { id: activeTurnId, items: [], status: "completed", error: null },
       });
     };
 
@@ -101,13 +151,26 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
         if (line === "") continue;
         const message = JSON.parse(line) as Record<string, unknown>;
         if (message.method === "initialize" && typeof message.id === "number") {
-          write({ id: message.id, result: {} });
+          write({
+            id: message.id,
+            result: {
+              codexHome: process.env.CODEX_HOME ?? `${process.env.HOME ?? "/tmp"}/.codex`,
+              platformFamily: process.platform === "win32" ? "windows" : "unix",
+              platformOs: process.platform === "darwin" ? "macos" : process.platform,
+              userAgent: "openagents-desktop-smoke-fixture",
+            },
+          });
         } else if (
           (message.method === "thread/start" || message.method === "thread/resume") &&
           typeof message.id === "number"
         ) {
-          write({ id: message.id, result: { thread: { id: THREAD_ID } } });
+          write({ id: message.id, result: threadResponse });
         } else if (message.method === "turn/start" && typeof message.id === "number") {
+          turnSequence += 1;
+          activeTurnId = turnSequence === 1 ? TURN_ID : `${TURN_ID}-${turnSequence}`;
+          activeApprovalId = APPROVAL_ID + turnSequence - 1;
+          activeCommandItemId = `item-command-smoke-${turnSequence}`;
+          activeAgentItemId = `item-agent-smoke-${turnSequence}`;
           const params = message.params as { input?: unknown } | undefined;
           const entries = Array.isArray(params?.input) ? params.input : [];
           const localImageCount = entries.filter(entry =>
@@ -115,10 +178,14 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
           ).length;
           if (localImageCount > 0) localImageTurns += 1;
           maxLocalImageCount = Math.max(maxLocalImageCount, localImageCount);
-          write({ id: message.id, result: { turn: { id: TURN_ID } } });
+          write({
+            id: message.id,
+            result: { turn: { id: activeTurnId, items: [], status: "inProgress" } },
+          });
           notify("item/completed", {
             threadId: THREAD_ID,
-            turnId: TURN_ID,
+            turnId: activeTurnId,
+            completedAtMs: 0,
             item: {
               id: "item-reasoning-smoke",
               type: "reasoning",
@@ -127,28 +194,31 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
           });
           notify("item/started", {
             threadId: THREAD_ID,
-            turnId: TURN_ID,
+            turnId: activeTurnId,
+            startedAtMs: 0,
             item: {
-              id: "item-command-smoke",
+              id: activeCommandItemId,
               type: "commandExecution",
               command: "echo fixture",
+              commandActions: [],
+              cwd,
               status: "inProgress",
             },
           });
           write({
-            id: APPROVAL_ID,
+            id: activeApprovalId,
             method: "item/commandExecution/requestApproval",
             params: {
               threadId: THREAD_ID,
-              turnId: TURN_ID,
-              itemId: "item-command-smoke",
+              turnId: activeTurnId,
+              itemId: activeCommandItemId,
               command: "echo fixture",
               reason: "Run the fixture command",
               startedAtMs: 0,
             },
           });
-          requestId = APPROVAL_ID;
-        } else if (message.id === APPROVAL_ID) {
+          requestId = activeApprovalId;
+        } else if (message.id === activeApprovalId) {
           const result = message.result as { decision?: unknown } | undefined;
           if (result?.decision === "accept") {
             decision = "accept";
@@ -156,7 +226,7 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
           } else {
             notify("error", {
               threadId: THREAD_ID,
-              turnId: TURN_ID,
+              turnId: activeTurnId,
               willRetry: false,
               error: { message: "The fixture approval was not accepted" },
             });

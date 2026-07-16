@@ -99,7 +99,13 @@ const composerIconNames = {
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(
     report(payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload) as Effect.Effect<void, IntentError>,
-  ).catch(() => {});
+  ).catch((error: unknown) => {
+    console.error(
+      "[openagents-desktop] React composer intent failed",
+      name,
+      error instanceof Error ? error.message : "unknown intent error",
+    );
+  });
 };
 
 const activeQuestionNote = (state: DesktopShellState): DesktopNoteEntry | null =>
@@ -329,15 +335,17 @@ export const ReactComposer = ({
     : "Send";
   const submit = (editorValue = state.input): void => {
     const nextHasText = editorValue.trim() !== "";
-    const nextCanSubmit = state.pending
-      ? state.activeThreadId !== null && nextHasText
-      : lane.available && (nextHasText || state.composerImages.length > 0);
-    if (!nextCanSubmit) return;
+    const submissionKey = nextHasText ? editorValue : `images:${state.composerImages.length}`;
     const now = Date.now();
-    if (lastSubmitRef.current?.value === editorValue && now - lastSubmitRef.current.at < 350)
+    if (lastSubmitRef.current?.value === submissionKey && now - lastSubmitRef.current.at < 350)
       return;
-    lastSubmitRef.current = { value: editorValue, at: now };
-    dispatch(report, submitIntent, editorValue);
+    lastSubmitRef.current = { value: submissionKey, at: now };
+    // Image-only turns use the intent's explicit null branch so the Effect
+    // handler falls back to its attachment-bearing state. An empty component
+    // value is not a meaningful message payload. The Effect handler remains
+    // the authoritative admission check for text, attachments, lane state,
+    // and pending-turn behavior; the button's disabled state is presentation.
+    dispatch(report, submitIntent, nextHasText ? editorValue : null);
   };
   useLayoutEffect(() => {
     // A session transition is an explicit keyboard-flow reset. Focus may
@@ -357,6 +365,10 @@ export const ReactComposer = ({
     <DesktopComposerFrame
       data-drag-active={dragActive ? "true" : "false"}
       aria-label="Message composer"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit(editorRef.current?.readValue() ?? state.input);
+      }}
       onDragEnter={showDragTarget}
       onDragOver={showDragTarget}
       onDragLeave={hideDragTarget}
@@ -513,7 +525,11 @@ export const ReactComposer = ({
             <span className="sr-only">Stop</span>
           </DesktopComposerButton>
         ) : null}
-        <DesktopComposerButton kind="submit" disabled={!canSubmit} onClick={submit}
+        <DesktopComposerButton
+          kind="submit"
+          type="button"
+          disabled={!canSubmit}
+          onClick={() => submit(editorRef.current?.readValue() ?? state.input)}
           aria-label={submitLabel} title={submitLabel}>
           <ArrowUp data-icon-name={composerIconNames.submit} aria-hidden="true" />
           <span className="sr-only">{submitLabel}</span>

@@ -121,7 +121,13 @@ export const projectReactSessionRows = (
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
     payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload,
-  ) as Effect.Effect<void, IntentError>).catch(() => {})
+  ) as Effect.Effect<void, IntentError>).catch((error: unknown) => {
+    console.error(
+      "[openagents-desktop] React intent failed",
+      name,
+      error instanceof Error ? error.message : "unknown intent error",
+    )
+  })
 }
 
 const selectedTitle = (state: DesktopShellState): string => {

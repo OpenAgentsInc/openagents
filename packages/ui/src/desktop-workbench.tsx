@@ -648,17 +648,21 @@ export const DesktopQueuedFollowup = ({ itemKey, position, text }: Readonly<{
   <Pause aria-hidden="true" /><strong>Queued follow-up (#{position})</strong><span>{text}</span><small>Runs when this turn completes</small>
 </article>
 
-export const DesktopComposerFrame = forwardRef<HTMLElement, ComponentPropsWithoutRef<"section">>(({
+export const DesktopComposerFrame = forwardRef<
+  HTMLFormElement,
+  ComponentPropsWithoutRef<"form">
+>(({
   children,
   className,
   ...props
-}, ref): ReactElement => <section
+}, ref): ReactElement => <form
   {...props}
   className={cx("oa-react-composer", className)}
   data-chat-composer="true"
+  data-chat-composer-form="true"
   data-en-key="shell-composer"
   ref={ref}
->{children}</section>)
+>{children}</form>)
 DesktopComposerFrame.displayName = "DesktopComposerFrame"
 
 export const DesktopComposerInput = ({ children }: Readonly<{ children: ReactNode }>): ReactElement =>

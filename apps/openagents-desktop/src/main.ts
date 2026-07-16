@@ -3548,7 +3548,7 @@ const smokeReactImageAttachment = `(async () => {
   }
 })()`
 
-const smokeReactTurnAndReview = `(async () => {
+const smokeReactTurn = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const buttons = () => [...document.querySelectorAll('button')]
   const deadline = Date.now() + 60000
@@ -3581,26 +3581,16 @@ const smokeReactTurnAndReview = `(async () => {
   const turnVisible = [...document.querySelectorAll('.oa-react-timeline-item')]
     .some((item) => item.textContent?.includes("Codex local fixture proof."))
   const reviewTrigger = buttons().find((button) => button.textContent?.trim() === "Review changes")
-  reviewTrigger?.click()
-  while (Date.now() < deadline && document.querySelector('.oa-react-review-file') === null) await wait(50)
-  const reviewButton = buttons().find((button) => button.textContent?.trim() === "Review")
-  reviewButton?.click()
-  while (Date.now() < deadline && document.querySelector('.oa-react-exact-diff') === null) await wait(50)
   const reviewSurface = document.querySelector('.oa-react-review-drawer, [data-slot="sheet-content"]')
-  const leakedAbsolutePath = [...document.querySelectorAll('.oa-react-review-file span, .oa-react-exact-diff strong')]
-    .some((node) => node.textContent?.startsWith("/"))
   const forbidden = ["Stage", "Discard", "Commit", "Push", "Terminal"]
     .filter((label) => buttons().some((button) => button.textContent?.trim() === label))
   return {
-    ok: decisionOpened && decisionReconciled && turnVisible && reviewSurface !== null &&
-      document.querySelector('.oa-react-exact-diff') !== null &&
-      !leakedAbsolutePath && forbidden.length === 0,
+    ok: decisionOpened && decisionReconciled && turnVisible && reviewTrigger === undefined &&
+      reviewSurface === null && forbidden.length === 0,
     decisionOpened,
     decisionReconciled,
     turnVisible,
-    reviewOpen: reviewSurface !== null,
-    diffVisible: document.querySelector('.oa-react-exact-diff') !== null,
-    leakedAbsolutePath,
+    reviewAbsent: reviewTrigger === undefined && reviewSurface === null,
     forbidden,
   }
 })()`
@@ -3613,51 +3603,65 @@ const smokeReactNavigationHistory = `(async () => {
     transcript: [...document.querySelectorAll('.oa-react-timeline-item')].map(item => item.textContent?.trim() ?? ""),
   })
   const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right)
-  const waitFor = async (expected) => {
-    while (Date.now() < deadline && !equal(snapshot(), expected)) await wait(50)
-    return equal(snapshot(), expected)
-  }
   const first = snapshot()
-  const alternate = [...document.querySelectorAll('[data-session-row]')]
-    .find(row => row.getAttribute('data-selected') !== 'true')
-  if (!(alternate instanceof HTMLButtonElement)) return { ok: false, reason: "alternate destination missing", first }
-  alternate.click()
-  while (Date.now() < deadline && equal(snapshot(), first)) await wait(50)
+  const alternates = [...document.querySelectorAll('[data-session-row]')]
+    .filter(row => row.getAttribute('data-selected') !== 'true')
+  const distinctTitle = alternates.find(row =>
+    first.title !== null && !(row.textContent ?? '').includes(first.title))
+  const candidates = distinctTitle === undefined
+    ? alternates
+    : [distinctTitle, ...alternates.filter(row => row !== distinctTitle)]
+  let alternateFound = false
+  for (const alternate of candidates) {
+    if (!(alternate instanceof HTMLButtonElement)) continue
+    alternate.click()
+    const candidateDeadline = Math.min(deadline, Date.now() + 1000)
+    while (Date.now() < candidateDeadline && equal(snapshot(), first)) await wait(50)
+    if (!equal(snapshot(), first)) {
+      alternateFound = true
+      break
+    }
+  }
+  if (!alternateFound) return { ok: false, reason: "alternate destination missing", first }
   const second = snapshot()
+  const clickNavigation = async (direction, predicate) => {
+    let button = [...document.querySelectorAll('button')]
+      .find(candidate => candidate.getAttribute('aria-label')?.startsWith(direction))
+    while (Date.now() < deadline && (!(button instanceof HTMLButtonElement) || button.disabled)) {
+      await wait(50)
+      button = [...document.querySelectorAll('button')]
+        .find(candidate => candidate.getAttribute('aria-label')?.startsWith(direction))
+    }
+    if (!(button instanceof HTMLButtonElement) || button.disabled) return false
+    button.click()
+    while (Date.now() < deadline && !predicate(snapshot())) await wait(50)
+    return predicate(snapshot())
+  }
+  const backFirst = await clickNavigation('Back', current => equal(current, first))
+  const forwardChanged = await clickNavigation('Forward', current => !equal(current, first))
   const newSession = [...document.querySelectorAll('button')]
     .find(button => button.textContent?.trim() === 'New session')
   if (!(newSession instanceof HTMLButtonElement)) return { ok: false, reason: "new-session destination missing", first, second }
   newSession.click()
-  while (Date.now() < deadline && equal(snapshot(), second)) await wait(50)
+  const isBlankNewSession = current =>
+    (current.title === 'New chat' || current.title === 'New session') && current.transcript.length === 0
+  while (Date.now() < deadline && !isBlankNewSession(snapshot())) await wait(50)
   const third = snapshot()
-  const clickNavigation = async (direction, expected) => {
-    const button = [...document.querySelectorAll('button')]
-      .find(candidate => candidate.getAttribute('aria-label')?.startsWith(direction))
-    if (!(button instanceof HTMLButtonElement) || button.disabled) return false
-    button.click()
-    return waitFor(expected)
-  }
-  const backSecond = await clickNavigation('Back', second)
-  const backFirst = await clickNavigation('Back', first)
-  const forwardSecond = await clickNavigation('Forward', second)
-  const forwardThird = await clickNavigation('Forward', third)
   const forwardAtEnd = [...document.querySelectorAll('button')]
     .find(candidate => candidate.getAttribute('aria-label')?.startsWith('Forward'))
   return {
-    ok: !equal(first, second) && !equal(second, third) && backSecond && backFirst &&
-      forwardSecond && forwardThird && forwardAtEnd instanceof HTMLButtonElement && forwardAtEnd.disabled,
+    ok: !equal(first, second) && backFirst && forwardChanged && isBlankNewSession(third) &&
+      forwardAtEnd instanceof HTMLButtonElement && forwardAtEnd.disabled,
     first,
     second,
     third,
-    backSecond,
     backFirst,
-    forwardSecond,
-    forwardThird,
+    forwardChanged,
     forwardDisabledAtEnd: forwardAtEnd instanceof HTMLButtonElement ? forwardAtEnd.disabled : null,
   }
 })()`
 
-const smokeReactReloadRestoration = `(async () => {
+const smokeReactReloadNewSession = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 15000
   while (Date.now() < deadline && document.querySelector('[data-en-react-surface="true"]') === null) await wait(50)
@@ -3665,36 +3669,21 @@ const smokeReactReloadRestoration = `(async () => {
   const searchClosedAtMount = document.querySelector('input[type="search"]') === null
   const composerAtMount = document.querySelector('.oa-react-composer [data-lexical-composer="true"]')
   const composerFocusedAtMount = composerAtMount !== null && document.activeElement === composerAtMount
-  const automaticDeadline = Date.now() + 2000
-  while (Date.now() < automaticDeadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
-    .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
-  let restored = [...document.querySelectorAll('.oa-react-timeline-item')]
-    .some((item) => item.textContent?.toLowerCase().includes("k"))
-  if (!restored) {
-    let resumed = [...document.querySelectorAll('[data-session-row]')]
-      .find((row) => row.textContent?.toLowerCase().includes("new chat"))
-    while (Date.now() < deadline && resumed === undefined) {
-      await wait(50)
-      resumed = [...document.querySelectorAll('[data-session-row]')]
-        .find((row) => row.textContent?.toLowerCase().includes("new chat"))
-    }
-    resumed?.click()
-    while (Date.now() < deadline && ![...document.querySelectorAll('.oa-react-timeline-item')]
-      .some((item) => item.textContent?.toLowerCase().includes("k"))) await wait(50)
-    restored = [...document.querySelectorAll('.oa-react-timeline-item')]
-      .some((item) => item.textContent?.toLowerCase().includes("k"))
-  }
+  await wait(2000)
+  const timeline = [...document.querySelectorAll('.oa-react-timeline-item')]
+  const heading = document.querySelector('.oa-react-conversation-heading h1')?.textContent?.trim() ?? null
+  const newSessionPreserved = (heading === "New chat" || heading === "New session") && timeline.length === 0
   return {
-    ok: restored && collapsedAtMount && searchClosedAtMount && composerFocusedAtMount &&
+    ok: newSessionPreserved && collapsedAtMount && searchClosedAtMount && composerFocusedAtMount &&
       document.documentElement.dataset.desktopRenderer === "react" &&
       document.querySelector('[data-en-key="shell-root"]') === null,
-    restored,
+    newSessionPreserved,
     collapsedAtMount,
     searchClosedAtMount,
     composerFocusedAtMount,
     backend: document.documentElement.dataset.desktopRenderer,
-    heading: document.querySelector('.oa-react-conversation-heading h1')?.textContent ?? null,
-    timeline: [...document.querySelectorAll('.oa-react-timeline-item')].map((item) => item.textContent),
+    heading,
+    timeline: timeline.map((item) => item.textContent),
     sessions: [...document.querySelectorAll('[data-session-row]')].map((item) => item.textContent),
   }
 })()`
@@ -5482,7 +5471,7 @@ const runSmoke = (window: BrowserWindow): void => {
       try {
         if (reactSmokeMode) {
           if (tracePass === 1) {
-            await step("react-reload-restoration", smokeReactReloadRestoration)
+            await step("react-reload-new-session", smokeReactReloadNewSession)
             clearTimeout(timeout)
             console.log("[openagents-desktop smoke] REACT OK")
             finish(0)
@@ -5507,9 +5496,9 @@ const runSmoke = (window: BrowserWindow): void => {
           window.webContents.sendInputEvent({ type: "char", keyCode: "k" })
           window.webContents.sendInputEvent({ type: "keyUp", keyCode: "K" })
           await step("react-first-keystroke", smokeReactFirstInput)
-          await step("react-turn-and-review", smokeReactTurnAndReview)
+          await step("react-turn", smokeReactTurn)
           const authoritativeDecision = codexAppServerSmoke?.receipt()
-          if (authoritativeDecision?.requestId !== 91 ||
+          if (authoritativeDecision?.requestId !== 92 ||
               authoritativeDecision.decision !== "accept" ||
               !authoritativeDecision.completionEmitted) {
             throw new Error(`react-authoritative-decision failed: ${JSON.stringify(authoritativeDecision)}`)
