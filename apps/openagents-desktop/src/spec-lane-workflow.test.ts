@@ -15,6 +15,7 @@ import {
 import { describe, expect, test } from "vite-plus/test"
 
 import {
+  SPEC_LANE_MAX_FILE_BYTES,
   SPEC_LANE_MAX_PROMPT_CHARS,
   appendSpecLaneContext,
   projectSpecLaneTurn,
@@ -99,6 +100,33 @@ describe("lane-independent spec workflow", () => {
     expect(projection.promptContext.length).toBeLessThanOrEqual(SPEC_LANE_MAX_PROMPT_CHARS)
     expect(projection.promptContext).toMatch(/not permission to alter acceptance, admission, verification, release, or public claims\.$/)
     expect(appendSpecLaneContext("Do one thing", projection)).toContain("OWNER TURN INSTRUCTION")
+  })
+
+  test("reports an oversized specs artifact as explicit projection truncation", () => {
+    const root = mkdtempSync(join(tmpdir(), "spec-lane-oversized-"))
+    const specs = join(root, "specs")
+    mkdirSync(specs, { recursive: true })
+    const product = readFileSync(fileURLToPath(new URL(
+      "../../../docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+      import.meta.url,
+    )), "utf8")
+    const paddingBytes = SPEC_LANE_MAX_FILE_BYTES - Buffer.byteLength(product)
+    writeFileSync(join(specs, "exact.product-spec.md"), `${product}${" ".repeat(paddingBytes)}`)
+    writeFileSync(
+      join(specs, "oversized.product-spec.md"),
+      Buffer.alloc(SPEC_LANE_MAX_FILE_BYTES + 1, "x"),
+    )
+
+    const projection = projectSpecLaneTurn(root)
+
+    expect(projection.snapshot.productSpecs.map(spec => spec.path)).toEqual(["specs/exact.product-spec.md"])
+    expect(projection.snapshot.truncated).toBe(true)
+    expect(projection.snapshot.diagnostics).toContain(
+      `specs/oversized.product-spec.md: exceeds ${SPEC_LANE_MAX_FILE_BYTES} bytes`,
+    )
+    expect(projection.promptContext).toContain(
+      "The spec projection was truncated; inspect authoritative files before acting.",
+    )
   })
 
   test("revalidates a failing obligation into a bounded owner-visible note on two lane refs", () => {

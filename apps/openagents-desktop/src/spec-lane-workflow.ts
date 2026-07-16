@@ -96,12 +96,18 @@ const inventory = (workspaceRoot: string): Readonly<{ paths: ReadonlyArray<strin
   return { paths, truncated }
 }
 
-const readBounded = (path: string): string | null => {
+type BoundedRead =
+  | Readonly<{ ok: true; source: string }>
+  | Readonly<{ ok: false; reason: "oversized" | "unreadable" }>
+
+const readBounded = (path: string): BoundedRead => {
   try {
     const bytes = readFileSync(path)
-    return bytes.length <= SPEC_LANE_MAX_FILE_BYTES ? bytes.toString("utf8") : null
+    return bytes.length <= SPEC_LANE_MAX_FILE_BYTES
+      ? { ok: true, source: bytes.toString("utf8") }
+      : { ok: false, reason: "oversized" }
   } catch {
-    return null
+    return { ok: false, reason: "unreadable" }
   }
 }
 
@@ -136,6 +142,7 @@ export const projectSpecLaneTurn = (workspaceRoot: string): SpecLaneTurnProjecti
   const diagnostics: string[] = []
   const productSpecs: SpecLaneSnapshot["productSpecs"][number][] = []
   let criteriaTruncated = false
+  let oversizedFileTruncated = false
   const assuranceSources: Array<Readonly<{ path: string; relativePath: string; source: string }>> = []
   const evidenceByDigest = new Map<string, Readonly<{
     evidence: AssuranceEvidenceIndex
@@ -145,11 +152,17 @@ export const projectSpecLaneTurn = (workspaceRoot: string): SpecLaneTurnProjecti
   for (const path of discovered.paths) {
     const relativePath = normalizedRelative(root, path)
     if (relativePath === null) continue
-    const source = readBounded(path)
-    if (source === null) {
-      diagnostics.push(`${relativePath}: unreadable or exceeds ${SPEC_LANE_MAX_FILE_BYTES} bytes`)
+    const read = readBounded(path)
+    if (!read.ok) {
+      if (read.reason === "oversized") {
+        oversizedFileTruncated = true
+        diagnostics.push(`${relativePath}: exceeds ${SPEC_LANE_MAX_FILE_BYTES} bytes`)
+      } else {
+        diagnostics.push(`${relativePath}: unreadable`)
+      }
       continue
     }
+    const source = read.source
     if (path.endsWith(".product-spec.md")) {
       const result = validateExecutableProductSpec(source)
       if (!result.executable) {
@@ -229,7 +242,7 @@ export const projectSpecLaneTurn = (workspaceRoot: string): SpecLaneTurnProjecti
     assuranceSpecs,
     obligations,
     diagnostics: diagnostics.slice(0, 24).map(value => clipped(value, 300)),
-    truncated: discovered.truncated || obligationTruncated || criteriaTruncated,
+    truncated: discovered.truncated || oversizedFileTruncated || obligationTruncated || criteriaTruncated,
   }
   const unmet = obligations.filter(obligation => obligation.state === "unmet")
   if (productSpecs.length === 0 && assuranceSpecs.length === 0 && diagnostics.length === 0) {
