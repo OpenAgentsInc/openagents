@@ -314,6 +314,25 @@ component needs go to `docs/effect-native/DEMAND_REGISTER.md` (row
 D-DESK-01 tracks the reusable Electron host, upstream
 OpenAgentsInc/effect-native#69) — never app-local primitives.
 
+### Local Agent Client Protocol providers
+
+Settings has distinct Grok CLI (`grok agent stdio`) and Cursor Agent CLI
+(`agent acp`) entries backed by one shared, schema-decoded Agent Client
+Protocol boundary. Main—not the renderer—owns executable identity/version
+probing, trusted-profile admission, validated alternate executable persistence,
+advertised authentication, workspace binding, process/session lifecycle,
+cancellation escalation, recovery, receipts, and support export. Cursor login
+and Grok cached-token/API-key choices come only from peer-advertised methods;
+file or environment presence is never rendered as successful authentication.
+
+The support bundle's closed schema contains profile/schema/version/capability
+and refs-only receipt/evidence facts. It cannot contain executable paths,
+credentials or auth responses, environment values, prompts, file/terminal
+content, or native events. Provider labels are derived from the pinned release
+matrix: an experimental peer stays visibly experimental, and evidence for one
+peer never implies support for every ACP registry agent. ACP here always means
+Agent Client Protocol.
+
 ## What this exit is NOT yet
 
 Honest residue, tracked on #8574:

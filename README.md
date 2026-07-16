@@ -99,7 +99,7 @@ the user's control.
 ## Protocol interoperability
 
 Agent Client Protocol (ACP) client support is an explicit, bounded architecture
-direction, not a claim about the currently shipped Desktop surface. It lets
+with a peer-specific Desktop control surface. It lets
 OpenAgents control Grok through `grok agent stdio`, Cursor through `agent acp`,
 and other compatible coding agents over bidirectional JSON-RPC/stdio at the
 typed runtime boundary.
@@ -132,6 +132,18 @@ the pinned live-binary matrix lands. Execution is tracked in
 [#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887);
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).
+
+Desktop Settings now schema-decodes a main-owned Grok/Cursor projection with
+probe-verified executable identity, validated alternate executable selection,
+advertised authentication state, session/cancellation/recovery state, and
+stable-versus-extension configuration provenance. Grok cached-token and
+intentionally supplied `XAI_API_KEY` auth remain peer-advertised and
+evidence-gated; Cursor exposes only its advertised `cursor_login` flow. The
+support artifact is constructed in main from a closed refs-only schema and
+omits executable paths, environment, auth payloads, prompts, files, terminal
+content, and native events. “Supported” still comes only from #8897's pinned
+release matrix; Cursor's observed build and Grok without qualifying live
+evidence remain visibly experimental.
 
 ## The front door to an open agent network
 

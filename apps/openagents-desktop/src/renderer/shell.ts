@@ -22,6 +22,8 @@ import {
   Button,
   Card,
   ComponentValueBinding,
+  FieldBinding,
+  FormFieldValueBinding,
   Divider,
   IconButton,
   Image,
@@ -184,6 +186,10 @@ import {
   type ProviderAccountsSettingsBridge,
   type SettingsState,
 } from "./settings.ts"
+import {
+  unavailableAcpProviderSettingsBridge,
+  type AcpProviderSettingsBridge,
+} from "../acp-provider-contract.ts"
 
 import {
   diagnosticsIntents,
@@ -236,12 +242,14 @@ export type DesktopNoteEntry = Readonly<{
 export type QuestionAnswer = Readonly<{
   question: string
   labels: ReadonlyArray<string>
+  text?: string
 }>
 
 /** Local (renderer-only) interaction state for one pending question card. */
 export type QuestionCardInteraction = Readonly<{
   /** Selected option labels per question index. */
   selections: ReadonlyArray<ReadonlyArray<string>>
+  texts?: ReadonlyArray<string>
   /** True once the answer was handed to the typed bridge. */
   answered: boolean
   /** True only while the exact typed bridge call is in flight. */
@@ -717,6 +725,10 @@ export const DesktopQuestionOptionSelected = defineIntent(
     label: Schema.String,
   }),
 )
+export const DesktopQuestionTextChanged = defineIntent(
+  "DesktopQuestionTextChanged",
+  Schema.Struct({ form: Schema.String, field: Schema.String, value: Schema.String }),
+)
 export const DesktopQuestionSubmitted = defineIntent("DesktopQuestionSubmitted", Schema.NullOr(Schema.String))
 export const DesktopApprovalApproved = defineIntent("DesktopApprovalApproved", Schema.NullOr(Schema.String))
 export const DesktopApprovalDenied = defineIntent("DesktopApprovalDenied", Schema.NullOr(Schema.String))
@@ -810,6 +822,7 @@ export const desktopShellIntents = [
   DesktopToolDiffReviewRequested,
   DesktopFullscreenToggled,
   DesktopQuestionOptionSelected,
+  DesktopQuestionTextChanged,
   DesktopQuestionSubmitted,
   DesktopApprovalApproved,
   DesktopApprovalDenied,
@@ -1036,6 +1049,7 @@ export const withQuestionSelection = (
   }
   const interaction = state.questionCards[questionRef] ?? {
     selections: card.questions.map(() => []),
+    texts: card.questions.map(() => ""),
     answered: false,
     answers: null,
   }
@@ -1055,12 +1069,31 @@ export const withQuestionSelection = (
   }
 }
 
+export const withQuestionText = (
+  state: DesktopShellState,
+  questionRef: string,
+  questionIndex: number,
+  value: string,
+): DesktopShellState => {
+  const card = questionNoteFor(state, questionRef)?.question
+  const question = card?.questions[questionIndex]
+  if (card === undefined || card.status !== "pending" || question === undefined || question.options.length !== 0) return state
+  const interaction = state.questionCards[questionRef] ?? {
+    selections: card.questions.map(() => []), texts: card.questions.map(() => ""), answered: false, answers: null,
+  }
+  if (interaction.answered || interaction.submitting === true) return state
+  const texts = card.questions.map((_, index) => index === questionIndex ? value.slice(0, 4_000) : interaction.texts?.[index] ?? "")
+  return { ...state, questionCards: { ...state.questionCards, [questionRef]: { ...interaction, texts } } }
+}
+
 /** True once every question in the card has at least one selected option. */
 export const questionAnswersReady = (
   card: DesktopQuestionCard,
   interaction: QuestionCardInteraction,
 ): boolean =>
-  card.questions.every((_, index) => (interaction.selections[index]?.length ?? 0) >= 1)
+  card.questions.every((question, index) =>
+    (interaction.selections[index]?.length ?? 0) >= 1 ||
+    (question.options.length === 0 && (interaction.texts?.[index]?.trim().length ?? 0) > 0))
 
 /**
  * Answers in the FROZEN bridge shape: one `{ question, labels }` entry per
@@ -1075,6 +1108,9 @@ export const questionAnswersFor = (
   card.questions.map((question, index) => ({
     question: question.question,
     labels: interaction.selections[index] ?? [],
+    ...(question.options.length === 0 && (interaction.texts?.[index]?.trim().length ?? 0) > 0
+      ? { text: interaction.texts![index]!.trim() }
+      : {}),
   }))
 
 export const withQuestionAnswered = (
@@ -1676,6 +1712,7 @@ export const makeDesktopShellHandlers = (
   harnessMaintenanceBridge: HarnessMaintenanceSettingsBridge = unavailableHarnessMaintenanceSettingsBridge,
   presentationHost: DesktopPresentationRendererHost = { setSidebarCollapsed: async () => {} },
   fullAutoHost: DesktopFullAutoRendererHost = { set: async () => ({}), get: async () => ({ enabled: false }) },
+  acpProviderBridge: AcpProviderSettingsBridge = unavailableAcpProviderSettingsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
   const initialNavigation = currentDesktopNavigationDestination(Effect.runSync(SubscriptionRef.get(state)))
   const navigationState = Effect.runSync(
@@ -1690,7 +1727,7 @@ export const makeDesktopShellHandlers = (
     yield* SubscriptionRef.set(navigationState, next)
     yield* publishNavigation(next)
   })
-  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge, harnessMaintenanceBridge)
+  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge, harnessMaintenanceBridge, acpProviderBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
     state,
@@ -2619,6 +2656,12 @@ export const makeDesktopShellHandlers = (
         yield* submitQuestion(card, interaction)
       }
     }),
+  DesktopQuestionTextChanged: ({ form, field, value }) =>
+    SubscriptionRef.update(state, current => {
+      if (!current.questionAnswerHostAvailable || questionHost.answer === null) return current
+      if (!/^(0|[1-9][0-9]{0,2})$/.test(field)) return current
+      return withQuestionText(current, form, Number(field), value)
+    }),
   DesktopQuestionSubmitted: (requested) =>
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
@@ -3308,6 +3351,7 @@ export const questionCardMessage = (
     }
   }
   const anyMulti = card.questions.some((question) => question.multiSelect)
+  const anyFreeForm = card.questions.some((question) => question.options.length === 0)
   return {
     key: base,
     role: "tool",
@@ -3330,6 +3374,18 @@ export const questionCardMessage = (
             variant: "body",
             color: "textPrimary",
           }),
+          ...(question.options.length === 0
+            ? [TextField({
+                key: `${base}-q${questionIndex}-freeform`,
+                value: interaction?.texts?.[questionIndex] ?? "",
+                multiline: true,
+                placeholder: "Type your answer",
+                disabled: !answerAvailable,
+                onChange: IntentRef("DesktopQuestionTextChanged", FormFieldValueBinding(FieldBinding(card.questionRef, String(questionIndex)))),
+                a11y: { label: `Answer ${question.question}` },
+                style: { width: "full" },
+              })]
+            : []),
           ...question.options.flatMap((option, optionIndex) => [
             Stack(
               {
@@ -3376,13 +3432,13 @@ export const questionCardMessage = (
           ]),
         ]
       }),
-      ...(anyMulti ? [Button({
+      ...(anyMulti || anyFreeForm ? [Button({
         key: `${base}-confirm`,
         label: "Confirm",
         variant: "primary",
         disabled: !answerAvailable ||
           interaction === undefined ||
-          !card.questions.every((_, index) => (interaction.selections[index]?.length ?? 0) >= 1),
+          !questionAnswersReady(card, interaction),
         onPress: IntentRef("DesktopQuestionSubmitted", StaticPayload(card.questionRef)),
         a11y: { label: "Confirm selected answers" },
       })] : []),

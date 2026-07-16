@@ -36,6 +36,10 @@ import {
   type OpenAgentsSessionSettingsBridge,
   type ProviderAccountsSettingsBridge,
 } from "./settings.ts"
+import {
+  unavailableAcpProviderSettingsBridge,
+  type AcpProviderSettingsBridge,
+} from "../acp-provider-contract.ts"
 import type { FableLocalMcpServerConfig } from "../fable-local-contract.ts"
 import {
   unavailableFleetAccountsBridge,
@@ -321,6 +325,11 @@ type DesktopBridge = Readonly<{
     gather?: () => Promise<unknown>
     exportRedacted?: () => Promise<unknown>
     runAction?: (value: unknown) => Promise<unknown>
+  }>
+  acpProviders?: Readonly<{
+    status?: () => Promise<unknown>
+    action?: (value: unknown) => Promise<unknown>
+    supportBundle?: () => Promise<unknown>
   }>
 }>
 
@@ -1108,7 +1117,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         setLocalCodexUsageSharing: async (enabled) => {
           await readBridge()?.preferences?.update?.({ privacy: { shareLocalCodexUsage: enabled } })
         },
-      }, fullAutoHost),
+      }, fullAutoHost, {
+        status: () => readBridge()?.acpProviders?.status?.() ?? unavailableAcpProviderSettingsBridge.status(),
+        action: (provider, action) => readBridge()?.acpProviders?.action?.({ provider, action }) ?? unavailableAcpProviderSettingsBridge.action(provider, action),
+        supportExport: () => readBridge()?.acpProviders?.supportBundle?.() ?? unavailableAcpProviderSettingsBridge.supportExport(),
+      } satisfies AcpProviderSettingsBridge),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

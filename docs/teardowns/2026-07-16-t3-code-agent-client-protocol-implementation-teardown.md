@@ -144,6 +144,18 @@ wire suite or one provider's live probe does not establish support for the
 other. The epic deliberately keeps their auth, extensions, version ranges,
 and recovery behavior in separate peer profiles.
 
+#8895 now supplies the Desktop/service control boundary over those profiles.
+Main owns probing, admission, validated alternate-path persistence, runtime
+startup/auth, workspace-bound session creation, cancellation, repair, receipts,
+and sanitized support export. Preload exposes only schema-checked status and a
+closed provider/action pair. Settings renders distinct Grok and Cursor entries,
+advertised auth methods and terminal auth states, exact session/process state,
+stable versus peer-extension configuration provenance, broker-backed authority
+truth, and non-color accessible status labels. Zero-option Grok/Cursor questions
+now accept bounded free-form text through the same canonical durable interaction
+decision envelope as option answers. No token-file or environment presence is
+presented as authentication proof, and release labels remain gated by #8897.
+
 ## 1. Snapshot identity and protocol drift
 
 | Field                                    | T3 Code observation                                            |
@@ -841,6 +853,11 @@ exit, and performs bounded generation-safe recovery. Grok real-binary
 admission is implemented by #8893. Cursor's separate `agent acp` composer,
 `cursor_login` negotiation, modes/configuration surface, and four directional
 extension gates are implemented by #8894. Final release claims remain #8897.
+#8895 adds the main-owned provider control host, shared main/preload/renderer
+contract, Desktop Settings state/actions, validated alternate executable path,
+canonical free-form question path, and refs-only support artifact. The host
+still derives “supported” exclusively from admission evidence; this UI work
+does not promote a peer or generalize proof to another registry agent.
 
 1. Exercise every stable method and notification.
 2. Assert capability-gated call refusal.

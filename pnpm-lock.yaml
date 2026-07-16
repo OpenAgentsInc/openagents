@@ -328,6 +328,9 @@ importers:
       '@lexical/react':
         specifier: ^0.41.0
         version: 0.41.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.31)
+      '@openagentsinc/agent-client-protocol':
+        specifier: workspace:*
+        version: link:../../packages/agent-client-protocol
       '@openagentsinc/agent-client-runtime-bridge':
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge
@@ -343,9 +346,15 @@ importers:
       '@openagentsinc/codex-app-server-protocol':
         specifier: workspace:*
         version: link:../../packages/codex-app-server-protocol
+      '@openagentsinc/cursor-agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/cursor-agent-runtime
       '@openagentsinc/environment-auth':
         specifier: workspace:*
         version: link:../../packages/environment-auth
+      '@openagentsinc/grok-harness':
+        specifier: workspace:*
+        version: link:../../packages/grok-harness
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync

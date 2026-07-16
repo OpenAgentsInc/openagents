@@ -175,6 +175,14 @@ import {
 import { makeDiagnosticsHost } from "./diagnostics-host.ts"
 import type { DiagnosticsInputs } from "./diagnostics-report.ts"
 import {
+  AcpProviderActionChannel,
+  AcpProviderStatusChannel,
+  AcpProviderSupportExportChannel,
+  decodeAcpProviderHostAction,
+} from "./acp-provider-contract.ts"
+import { createAcpProviderHost } from "./acp-provider-host.ts"
+import { openAcpProviderPathStore } from "./acp-provider-path-store.ts"
+import {
   DesktopPreferencesGetChannel,
   DesktopPreferencesResetChannel,
   DesktopPreferencesUpdateChannel,
@@ -2578,6 +2586,54 @@ const collectDiagnosticsInputs = async (): Promise<DiagnosticsInputs> => {
         : { state: "unavailable", message: mcp.message },
   }
 }
+const acpProviderPathStore = openAcpProviderPathStore(path.join(app.getPath("userData"), "acp", "provider-paths.json"))
+const acpProviderHost = createAcpProviderHost({
+  cwd: async () => resolveDesktopLocalWorkspaceRoot(),
+  loadAlternatePaths: async () => {
+    await acpProviderPathStore.load()
+    const grok = acpProviderPathStore.get("grok")
+    const cursor = acpProviderPathStore.get("cursor")
+    return { ...(grok === undefined ? {} : { grok }), ...(cursor === undefined ? {} : { cursor }) }
+  },
+  saveAlternatePath: (provider, candidate) => acpProviderPathStore.save(provider, candidate),
+  chooseExecutable: async provider => {
+    if (smokeMode || liveProofDriverMode) return null
+    const result = await dialog.showOpenDialog({
+      title: `Choose ${provider === "grok" ? "Grok CLI" : "Cursor Agent CLI"} executable`,
+      properties: ["openFile"],
+      buttonLabel: "Probe executable",
+    })
+    return result.canceled ? null : result.filePaths[0] ?? null
+  },
+})
+let acpProviderInitialization: Promise<unknown> | null = null
+const ensureAcpProviders = (): Promise<unknown> => {
+  acpProviderInitialization ??= acpProviderHost.initialize()
+  return acpProviderInitialization
+}
+ipcMain.handle(AcpProviderStatusChannel, async () => {
+  await ensureAcpProviders()
+  return acpProviderHost.status()
+})
+ipcMain.handle(AcpProviderActionChannel, async (_event, value: unknown) => {
+  const request = decodeAcpProviderHostAction(value)
+  if (request === null) return { state: "unavailable", message: "Invalid ACP provider action." }
+  await ensureAcpProviders()
+  return acpProviderHost.action(request.provider, request.action)
+})
+ipcMain.handle(AcpProviderSupportExportChannel, async () => {
+  await ensureAcpProviders()
+  try {
+    const directory = path.join(app.getPath("userData"), "diagnostics")
+    mkdirSync(directory, { recursive: true, mode: 0o700 })
+    const destination = path.join(directory, "openagents-acp-support.json")
+    writeFileSync(destination, `${JSON.stringify(acpProviderHost.supportBundle(), null, 2)}\n`, { mode: 0o600 })
+    return { ok: true, notice: "Redacted ACP support bundle exported." }
+  } catch {
+    return { ok: false, notice: "ACP support bundle export failed." }
+  }
+})
+
 const diagnosticsHost = makeDiagnosticsHost({
   collectInputs: collectDiagnosticsInputs,
   exportDir: path.join(app.getPath("userData"), "diagnostics"),
@@ -2586,7 +2642,7 @@ const diagnosticsHost = makeDiagnosticsHost({
     // the renderer re-gathers so readiness flips without a restart.
     reprobe_providers: async () => {
       try {
-        await codexPreflight.probeAll("diagnostics_recovery")
+        await Promise.all([codexPreflight.probeAll("diagnostics_recovery"), acpProviderHost.initialize()])
         return { ok: true, notice: "Providers re-checked" }
       } catch {
         return { ok: false, notice: "Provider re-check failed" }
@@ -6708,6 +6764,7 @@ app.on("before-quit", () => {
   codexAppServerSupervisor.close()
   usageLedger.dispose()
   desktopCorrelationJournal.dispose()
+  void acpProviderHost.shutdown()
 })
 
 app.on("activate", () => {

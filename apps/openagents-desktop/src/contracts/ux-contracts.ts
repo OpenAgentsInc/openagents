@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-16.3",
+    version: "2026-07-16.4",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -1973,6 +1973,47 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Settings view/intent, Runtime Gateway, and Electron-boundary suites plus Desktop typecheck/build enforce the visible tokenless path without GUI automation.",
+      },
+      {
+        contractId: "openagents_desktop.settings.acp_peer_truth_and_recovery.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Grok and Cursor local Agent Client Protocol settings",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-16" },
+        statement:
+          "Desktop presents Grok CLI and Cursor Agent CLI as distinct Agent Client Protocol peers, derives controls from probe/profile/advertised capability truth, distinguishes authentication and session recovery outcomes, and never generalizes either peer's evidence to every ACP agent.",
+        authorityBoundary:
+          "Trusted peer runtimes retain executable identity, version/conformance admission, secret custody, authentication, workspace/process/session lifecycle, reverse authority, cancellation escalation, and recovery. The renderer accepts only a bounded schema-decoded projection and a closed provider/action pair, re-checks every action against the currently rendered state, and cannot infer authentication from files or environment variables. Filesystem and terminal are shown active only when their session brokers are active. The support projection structurally excludes executable paths, auth method payloads, environment, prompts, file/terminal content, and native events; release language remains matrix-gated by #8897.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/acp-provider-contract.ts",
+          "apps/openagents-desktop/src/acp-provider-host.ts",
+          "apps/openagents-desktop/src/renderer/acp-provider-settings.ts",
+          "packages/agent-client-protocol/src/profiles/grok.ts",
+          "packages/agent-client-protocol/src/profiles/cursor.ts",
+          "github:OpenAgentsInc/openagents#8895",
+        ],
+        oracles: [
+          {
+            id: "acp_settings.peer_specific_state_and_controls",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/acp-provider-settings.test.ts",
+            description:
+              "Proves exact Grok/Cursor identity, Agent Client Protocol copy, advertised-auth-derived actions, Cursor login terminal states, Grok cached/API-key method representation, stable versus extension configuration provenance, authority withholding, cancellation escalation, recovery, accessibility labels, and no universal-agent claim.",
+          },
+          {
+            id: "acp_settings.structural_support_bundle_redaction",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/acp-provider-host.test.ts",
+            description:
+              "Proves the main-owned support bundle carries only profile/version/state/capability/conformance and bounded receipt/evidence refs and excludes executable paths, auth methods and responses, configuration values, prompts, environment, and native content.",
+          },
+        ],
+        verification:
+          "Desktop typecheck and focused ACP provider host/settings, Settings intent-loop, UX contract, and design-conformance suites. Supported release labels remain blocked on the live compatibility matrix in #8897.",
       },
       {
         contractId: "openagents_desktop.chat.same_components_across_provider_lanes.v1",

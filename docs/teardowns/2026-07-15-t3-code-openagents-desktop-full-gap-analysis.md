@@ -47,6 +47,16 @@ capability-gated peer profiles. The scope is client-only.
 The canonical event/evidence and reverse-request authority boundary is in the
 [Agent Client Protocol runtime bridge ADR](../adr/2026-07-16-agent-client-runtime-bridge.md).
 
+**2026-07-16 ACP-8 update:** the former provider-control UX gap is now closed
+for the two trusted peers without reopening generic provider parity. Desktop
+has a shared schema contract and main-owned Grok/Cursor host for executable
+probe/admission, advertised auth state, workspace-bound sessions, stop/repair,
+validated alternate executable persistence, and refs-only support export.
+Settings presents the two peers separately and labels matrix-unproven states
+experimental. Canonical questions now support both option and bounded free-form
+answers. The remaining ACP closure item is #8897's independent pinned live
+compatibility and release-claim gate.
+
 ## Scope, snapshots, and method
 
 This document compares implementation, not marketing claims. It reconciles:
@@ -619,7 +629,9 @@ OpenAgents already has several stronger contracts:
 1. Prove signed install/update/rollback on macOS x64, Windows, and Linux.
 2. Add automatic delivery channels without weakening fail-closed release gates.
 3. Land the generated, bounded, bidirectional Agent Client Protocol client and
-   prove `grok agent stdio` without claiming visible provider parity.
+   prove `grok agent stdio` without claiming universal provider parity. The
+   Grok/Cursor-specific main/preload/Settings control path is implemented;
+   supported release language remains matrix-gated by #8897.
 4. Decide whether individual ACP or non-ACP providers serve the product;
    implement them one at a time against the same native-plus-portable event
    architecture.

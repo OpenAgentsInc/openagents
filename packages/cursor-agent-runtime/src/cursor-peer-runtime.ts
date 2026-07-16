@@ -140,8 +140,15 @@ const sha256InstallationClosure = async (root: string): Promise<string> => {
 
 export const probeCursorAcpExecutable = async (
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  candidatePath?: string,
 ): Promise<AcpExecutableProbe> => {
-  const realPath = await findCursorOnPath(environment.PATH);
+  if (candidatePath !== undefined && !isAbsolute(candidatePath)) {
+    throw Object.assign(new Error("Alternate Cursor executable path must be absolute"), { kind: "identity_mismatch" });
+  }
+  const realPath = candidatePath === undefined ? await findCursorOnPath(environment.PATH) : await realpath(candidatePath);
+  if (basename(realPath) !== "cursor-agent") {
+    throw Object.assign(new Error("Alternate Cursor executable must resolve to cursor-agent"), { kind: "identity_mismatch" });
+  }
   const resolvedPath = realPath;
   const [{ stdout, stderr }, sha256, closureSha256] = await Promise.all([
     execFileAsync(realPath, ["--version"], { timeout: 5_000, maxBuffer: 16_384 }),

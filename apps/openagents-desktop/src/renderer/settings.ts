@@ -40,6 +40,18 @@ import {
   type ExtensionLifecycleAudit,
   type ExtensionLifecycleEntry,
 } from "../extension-lifecycle-contract.ts"
+import {
+  DesktopAcpProviderActionRequested,
+  DesktopAcpSupportExportRequested,
+  availableAcpProviderActions,
+  decodeAcpProviderActionPayload,
+  decodeAcpProviderSettings,
+  initialAcpProviderSettingsState,
+  unavailableAcpProviderSettingsBridge,
+  type AcpProviderSettingsBridge,
+  type AcpProviderSettingsState,
+} from "../acp-provider-contract.ts"
+import { acpProviderSettingsView } from "./acp-provider-settings.ts"
 
 // ---------------------------------------------------------------------------
 // Renderer-side bridge decoding (Effect Schema; mirrors the main-process
@@ -135,6 +147,8 @@ export type SettingsState = Readonly<{
   harnessMaintenance: HarnessMaintenanceState
   localCodexUsageControlAvailable: boolean
   shareLocalCodexUsage: boolean
+  acpProviders: AcpProviderSettingsState
+  acpSupportNotice: string | null
 }>
 
 export type PluginSettingsState = Readonly<{
@@ -220,6 +234,8 @@ export const initialSettingsState = (): SettingsState => ({
   harnessMaintenance: initialHarnessMaintenanceState(),
   localCodexUsageControlAvailable: false,
   shareLocalCodexUsage: false,
+  acpProviders: initialAcpProviderSettingsState(),
+  acpSupportNotice: null,
 })
 
 const accountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
@@ -742,6 +758,8 @@ export const settingsIntents = [
   DesktopLocalCodexUsageSharingToggled,
   DesktopHarnessUpdateRequested,
   DesktopHarnessMaintenanceRefreshRequested,
+  DesktopAcpProviderActionRequested,
+  DesktopAcpSupportExportRequested,
   DesktopMcpNameChanged,
   DesktopMcpTransportChanged,
   DesktopMcpCommandChanged,
@@ -778,6 +796,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
   mcpBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
   pluginBridge: PluginConfigSettingsBridge = unavailablePluginConfigSettingsBridge,
   maintenanceBridge: HarnessMaintenanceSettingsBridge = unavailableHarnessMaintenanceSettingsBridge,
+  acpBridge: AcpProviderSettingsBridge = unavailableAcpProviderSettingsBridge,
 ) => {
   const update = (transform: (current: S) => S) => SubscriptionRef.update(state, transform)
 
@@ -797,6 +816,13 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         },
       },
     }))
+  })
+
+  const refreshAcpProviders = Effect.gen(function* () {
+    const acpProviders = decodeAcpProviderSettings(
+      yield* Effect.promise(() => acpBridge.status().catch(() => null)),
+    )
+    yield* update((next) => ({ ...next, settings: { ...next.settings, acpProviders } }))
   })
 
   /** Re-read the MCP server list through the bridge into state. */
@@ -923,6 +949,8 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
               ...next.settings.harnessMaintenance,
               view: { state: "loading" },
             },
+            acpProviders: { state: "loading" },
+            acpSupportNotice: null,
           },
         } as S))
         const openAgentsSession = decodeOpenAgentsSessionView(
@@ -938,6 +966,29 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         yield* refreshMcpServers
         yield* refreshPlugins
         yield* refreshHarnessMaintenance
+        yield* refreshAcpProviders
+      }),
+    DesktopAcpProviderActionRequested: (raw: string) =>
+      Effect.gen(function* () {
+        const requested = decodeAcpProviderActionPayload(raw)
+        if (requested === null) return
+        const current = yield* SubscriptionRef.get(state)
+        const projection = current.settings.acpProviders.state === "loaded"
+          ? current.settings.acpProviders.providers.find((provider) => provider.provider === requested.provider)
+          : undefined
+        if (projection === undefined || !availableAcpProviderActions(projection).includes(requested.action)) return
+        const acpProviders = decodeAcpProviderSettings(
+          yield* Effect.promise(() => acpBridge.action(requested.provider, requested.action).catch(() => null)),
+        )
+        yield* update((next) => ({ ...next, settings: { ...next.settings, acpProviders } }))
+      }),
+    DesktopAcpSupportExportRequested: () =>
+      Effect.gen(function* () {
+        const result = yield* Effect.promise(() => acpBridge.supportExport().catch(() => null))
+        const notice = typeof result === "object" && result !== null && "notice" in result && typeof result.notice === "string"
+          ? result.notice.slice(0, 200)
+          : "ACP support export failed."
+        yield* update((next) => ({ ...next, settings: { ...next.settings, acpSupportNotice: notice } }))
       }),
     DesktopCodexConnectRequested: () => runConnectFlow(null, () => bridge.connectStart()),
     DesktopCodexReconnectRequested: (ref: string) =>
@@ -1699,6 +1750,7 @@ export const settingsView = (settings: SettingsState): View => {
           : []),
         Divider({ key: "settings-harness-maintenance-divider" }),
         ...harnessMaintenanceSection(settings.harnessMaintenance),
+        ...acpProviderSettingsView(settings.acpProviders, settings.acpSupportNotice),
       ]),
     ],
   )

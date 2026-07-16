@@ -70,6 +70,27 @@ describe("Desktop canonical runtime interaction host", () => {
     })
   })
 
+  test("maps a bounded free-form answer for a zero-option ACP question", async () => {
+    const decisions: Array<any> = []
+    const host = {
+      list: async () => [{
+        ...interaction("pending"), interactionRef: "interaction.question.free", kind: "provider_question" as const,
+        questions: [{ questionRef: "question.runtime.free", displayText: "What should change?", multiSelect: false, options: [] }],
+      }],
+      decide: async (input: any) => {
+        decisions.push(input)
+        return { status: "confirmed_resolved" as const, interaction: interaction("resolved", input.envelope.decisionRef) }
+      },
+    }
+    expect(await answerDesktopRuntimeInteraction(host, {
+      threadRef: "thread.runtime.1", turnRef: "turn.runtime.1", questionRef: "interaction.question.free",
+      answers: [{ question: "What should change?", labels: [], text: "Keep the public API stable." }],
+    }, { randomId: () => "free-id" })).toBe(true)
+    expect(decisions[0].envelope.decision.answers).toEqual([
+      { questionRef: "question.runtime.free", optionRefs: [], text: "Keep the public API stable." },
+    ])
+  })
+
   test("rejects missing thread identity and ambiguous display labels before mutation", async () => {
     let decisions = 0
     const host = {

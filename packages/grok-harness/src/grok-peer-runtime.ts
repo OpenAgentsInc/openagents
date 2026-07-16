@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants, createReadStream } from "node:fs";
 import { access, realpath } from "node:fs/promises";
-import { delimiter, isAbsolute, resolve } from "node:path";
+import { basename, delimiter, isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import {
@@ -107,8 +107,12 @@ const sha256File = (path: string): Promise<string> =>
 
 export const probeGrokAcpExecutable = async (
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  candidatePath?: string,
 ): Promise<AcpExecutableProbe> => {
-  const resolvedPath = await findOnPath("grok", environment.PATH);
+  if (candidatePath !== undefined && (!isAbsolute(candidatePath) || basename(candidatePath) !== "grok")) {
+    throw Object.assign(new Error("Alternate Grok executable must be an absolute path to grok"), { kind: "identity_mismatch" });
+  }
+  const resolvedPath = candidatePath ?? (await findOnPath("grok", environment.PATH));
   const realPath = await realpath(resolvedPath);
   const [{ stdout, stderr }, sha256] = await Promise.all([
     execFileAsync(realPath, ["version"], { timeout: 5_000, maxBuffer: 16_384 }),

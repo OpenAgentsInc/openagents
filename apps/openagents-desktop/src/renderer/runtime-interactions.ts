@@ -31,6 +31,7 @@ export type DesktopRuntimeInteractionAnswer = Readonly<{
   answers: ReadonlyArray<Readonly<{
     question: string
     labels: ReadonlyArray<string>
+    text?: string
   }>>
 }>
 
@@ -164,22 +165,29 @@ export const answerDesktopRuntimeInteraction = async (
   if (interaction.kind === "provider_question") {
     if (input.answers.length !== interaction.questions.length) return false
     const answers = interaction.questions.map((question, index) => {
-      const labels = input.answers[index]?.labels ?? []
+      const inputAnswer = input.answers[index]
+      const labels = inputAnswer?.labels ?? []
+      const text = inputAnswer?.text?.trim()
       const optionRefs = labels.map(label => {
         const matches = question.options.filter(option => option.label === label)
         return matches.length === 1 ? matches[0]!.optionRef : null
       })
       if (
         optionRefs.some(ref => ref === null) ||
-        optionRefs.length === 0 ||
+        (optionRefs.length === 0 && (text === undefined || text === "")) ||
         (!question.multiSelect && optionRefs.length !== 1)
-      ) return null
-      return { questionRef: question.questionRef, optionRefs: optionRefs as Array<string> }
+      ) {
+        if (question.options.length === 0 && text !== undefined && text !== "") {
+          return { questionRef: question.questionRef, optionRefs: [] as Array<string>, text: text.slice(0, 4_000) }
+        }
+        return null
+      }
+      return { questionRef: question.questionRef, optionRefs: optionRefs as Array<string>, ...(text === undefined || text === "" ? {} : { text: text.slice(0, 4_000) }) }
     })
     if (answers.some(answer => answer === null)) return false
     decision = {
       kind: "provider_question",
-      answers: answers as Array<{ questionRef: string; optionRefs: Array<string> }>,
+      answers: answers as Array<{ questionRef: string; optionRefs: Array<string>; text?: string }>,
     }
   } else {
     const selected = input.answers[0]?.labels[0]

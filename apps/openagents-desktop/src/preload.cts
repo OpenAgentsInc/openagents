@@ -244,6 +244,12 @@ import {
   decodeDiagnosticsAction,
 } from "./diagnostics-contract.ts"
 import {
+  AcpProviderActionChannel,
+  AcpProviderStatusChannel,
+  AcpProviderSupportExportChannel,
+  decodeAcpProviderHostAction,
+} from "./acp-provider-contract.ts"
+import {
   DesktopPreferencesGetChannel,
   DesktopPreferencesResetChannel,
   DesktopPreferencesUpdateChannel,
@@ -1053,6 +1059,16 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         ? Promise.resolve({ ok: false, notice: "Unknown action" })
         : ipcRenderer.invoke(DiagnosticsActionChannel, action)
     },
+  },
+  acpProviders: {
+    status: () => ipcRenderer.invoke(AcpProviderStatusChannel),
+    action: (value: unknown) => {
+      const request = decodeAcpProviderHostAction(value)
+      return request === null
+        ? Promise.resolve({ state: "unavailable", message: "Invalid ACP provider action." })
+        : ipcRenderer.invoke(AcpProviderActionChannel, request)
+    },
+    supportBundle: () => ipcRenderer.invoke(AcpProviderSupportExportChannel),
   },
   commands: {
     bindings: async () => decodeDesktopCommandBindingProjectionOrNull(
