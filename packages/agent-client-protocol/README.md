@@ -73,11 +73,12 @@ an explicit peer/version gate.
 
 ## Migration boundary
 
-`packages/grok-harness` remains a fixture until the transport and Grok profile
-issues migrate its callers. New shared protocol code must import this package;
-it must not add more hand-written ACP declarations to the fixture. Advertised
-filesystem and terminal capabilities remain false until their authority
-brokers and reverse handlers land.
+`packages/grok-harness` and `packages/cursor-agent-runtime` compose peer-specific
+behavior over this shared package. New shared protocol code must import this
+package; it must not add hand-written stable ACP declarations to either peer.
+Advertised filesystem and terminal capabilities remain false until authority
+brokers install the complete reverse-handler set and fresh peer evidence enables
+the corresponding grant.
 
 ## Trusted peer profiles and admission
 

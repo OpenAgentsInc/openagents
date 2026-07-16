@@ -1,4 +1,5 @@
 import { type AcpVendorExtensionProfile, decodeAcpVendorExtensionEnvelope } from "./vendor.ts";
+import { decodeStableAcpDefinition, type SessionConfigOption } from "../stable.ts";
 
 export const CURSOR_ACP_PROFILE = {
   protocol: "Agent Client Protocol",
@@ -45,6 +46,69 @@ export type CursorAcpInboundRequest = (typeof CURSOR_ACP_EXTENSIONS.inboundReque
 export type CursorAcpInboundNotification =
   (typeof CURSOR_ACP_EXTENSIONS.inboundNotifications)[number];
 export type CursorAcpOutboundRequest = (typeof CURSOR_ACP_EXTENSIONS.outboundRequests)[number];
+
+export type CursorAvailableModel = Readonly<{
+  value: string;
+  name: string;
+  configOptions?: ReadonlyArray<SessionConfigOption>;
+}>;
+
+export type CursorListAvailableModelsResponse = Readonly<{
+  models: ReadonlyArray<CursorAvailableModel>;
+}>;
+
+const object = (value: unknown): Record<string, unknown> | undefined =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+const boundedString = (value: unknown, max: number): string | undefined =>
+  typeof value === "string" && value.length > 0 && value.length <= max ? value : undefined;
+
+/** Versioned, bounded decoder for Cursor's client-to-agent model extension. */
+export const decodeCursorListAvailableModelsResponse = (
+  input: unknown,
+): CursorListAvailableModelsResponse | undefined => {
+  const value = object(input);
+  if (value === undefined || !Array.isArray(value.models) || value.models.length > 512)
+    return undefined;
+  const models: CursorAvailableModel[] = [];
+  const seen = new Set<string>();
+  for (const candidate of value.models) {
+    const model = object(candidate);
+    const id = boundedString(model?.value, 512);
+    const name = boundedString(model?.name, 512);
+    if (model === undefined || id === undefined || name === undefined || seen.has(id))
+      return undefined;
+    if (model.configOptions !== undefined && !Array.isArray(model.configOptions)) return undefined;
+    if (Array.isArray(model.configOptions) && model.configOptions.length > 128) return undefined;
+    const configOptions = Array.isArray(model.configOptions)
+      ? model.configOptions.map((option) =>
+          decodeStableAcpDefinition("SessionConfigOption", option),
+        )
+      : [];
+    if (configOptions.some((option) => option._tag === "DecodeFailure")) return undefined;
+    seen.add(id);
+    models.push(
+      Object.freeze({
+        value: id,
+        name,
+        ...(Array.isArray(model.configOptions)
+          ? {
+              configOptions: Object.freeze(
+                configOptions.map((option) =>
+                  structuredClone(
+                    (option as { _tag: "Decoded"; value: SessionConfigOption }).value,
+                  ),
+                ),
+              ),
+            }
+          : {}),
+      }),
+    );
+  }
+  return Object.freeze({ models: Object.freeze(models) });
+};
 
 export const decodeCursorAcpExtensionEnvelope = (input: {
   message: unknown;

@@ -1517,6 +1517,17 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   min-width: 0;
 }
 
+/* The composer owns the visible focus treatment through :focus-within.
+   Keep native host inputs visually quiet so web and Desktop never draw a
+   second ring inside the shared frame. */
+.oa-react-composer-input textarea:focus,
+.oa-react-composer-input textarea:focus-visible,
+.oa-react-composer-input input:focus,
+.oa-react-composer-input input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .oa-react-composer-images {
   display: flex;
   gap: var(--en-spacing-2);

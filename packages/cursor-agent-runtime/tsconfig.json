@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "noEmit": true,
+    "types": ["node", "vite-plus-matchers"]
+  },
+  "include": ["src/**/*", "scripts/**/*"]
+}

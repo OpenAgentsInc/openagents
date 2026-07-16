@@ -189,6 +189,16 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(source).toContain('import "./desktop-workbench.css"')
   })
 
+  test("the shared composer owns one outer focus frame without a nested input ring", () => {
+    const css = readFileSync(sharedWorkbenchCssPath, "utf8")
+    const appCss = readFileSync(path.join(rendererDir, "app.css"), "utf8")
+
+    expect(css).toContain(".oa-react-composer:focus-within")
+    expect(css).toContain(".oa-react-composer-input textarea:focus-visible")
+    expect(css).toContain("outline: none !important")
+    expect(appCss).not.toContain('[data-en-key="shell-input"] textarea:focus-visible')
+  })
+
   test("the stylesheet stays within the bounded token-bridge/host-physics payload budget", () => {
     // Bytes are formatting-invariant enough to prevent blank-line/minification
     // games while expressing the issue's approximate 300-line target. The old
