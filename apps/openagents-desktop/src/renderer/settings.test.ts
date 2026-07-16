@@ -221,7 +221,7 @@ describe("settingsView (state -> component tree)", () => {
     })
     expect(nodeByKey(view, "settings-local-usage-title")?.content).toBe("Share local Codex usage")
     expect(nodeByKey(view, "settings-local-usage-copy")?.content).toContain(
-      "Prompts, responses, files, paths, account names, and credentials are never sent",
+      "never your prompts, responses, files, paths, account names, or credentials",
     )
     expect(nodeByKey(view, "settings-local-usage-toggle")).toMatchObject({
       value: false,

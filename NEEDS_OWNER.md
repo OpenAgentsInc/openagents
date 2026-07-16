@@ -1,33 +1,27 @@
 # NEEDS-OWNER — nothing immediate. All decisions taken 2026-07-09.
 
-## Desktop local-usage telemetry consent copy (#8911)
+## RESOLVED — Desktop local-usage telemetry consent copy (#8911, 2026-07-16)
 
-The authenticated pre-admission boundary, rate limit, credential-free durable
-outbox/retry, and review-gated Settings control are implemented. Both rollout
-gates and the user preference remain off by default; no production metric
-movement is claimed.
+The owner reviewed the disclosure and approved it with one required rewording:
+the original phrasing "sends exact input, cached-input, output, reasoning, and
+total token counts" read as if the input text itself were sent. Owner statement
+(2026-07-16): "sounds like i send exact input - fix that, reword then yes
+approved."
 
-Approve or revise this exact Settings disclosure before the control becomes
-visible in an ordinary release:
+The approved copy now shipped in Settings:
 
 > **Share local Codex usage**
 >
-> When on, OpenAgents sends exact input, cached-input, output, reasoning, and
-> total token counts, the model, and a one-time turn reference. Prompts,
-> responses, files, paths, account names, and credentials are never sent. This
+> When on, OpenAgents reports how many tokens each turn used — the input,
+> cached-input, output, reasoning, and total token counts — plus the model
+> name and a one-time turn reference. Only those numbers are sent: never your
+> prompts, responses, files, paths, account names, or credentials. This
 > updates the aggregate public tokens-served counter. Turn it off any time;
 > queued reports are deleted.
 
-UI review path: launch the current Desktop build in review mode, open
-**Settings → Share local Codex usage**, and approve/revise the disclosure and
-toggle. After approval, follow
-`docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md` for the real
-opted-in ordinary-turn and Full Auto counter proof. Until those receipts exist,
-the issue must not claim `/stats` movement.
-
-Archive of older content:
-`docs/ops/2026-07-09-needs-owner-archive.md`. Full backlog
-context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.
+Consent-copy approval is COMPLETE. Remaining #8911 work is agent-side: enable
+the rollout gates, run the opted-in live counter proof per
+`docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md`, then close.
 
 ## Decisions taken this session (all in execution, agents working)
 

@@ -1726,7 +1726,7 @@ export const settingsView = (settings: SettingsState): View => {
                       }),
                       Text({
                         key: "settings-local-usage-copy",
-                        content: "When on, OpenAgents sends exact input, cached-input, output, reasoning, and total token counts, the model, and a one-time turn reference. Prompts, responses, files, paths, account names, and credentials are never sent. This updates the aggregate public tokens-served counter. Turn it off any time; queued reports are deleted.",
+                        content: "When on, OpenAgents reports how many tokens each turn used — the input, cached-input, output, reasoning, and total token counts — plus the model name and a one-time turn reference. Only those numbers are sent: never your prompts, responses, files, paths, account names, or credentials. This updates the aggregate public tokens-served counter. Turn it off any time; queued reports are deleted.",
                         variant: "body",
                         color: "textMuted",
                       }),

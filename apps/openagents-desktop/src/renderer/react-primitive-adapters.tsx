@@ -365,7 +365,7 @@ export const WorkbenchShell = ({ state, report }: {
           {state.settings.localCodexUsageControlAvailable
             ? <section className="oa-react-settings-section" aria-labelledby="react-local-usage-title">
                 <h2 id="react-local-usage-title">Share local Codex usage</h2>
-                <p>When on, OpenAgents sends exact input, cached-input, output, reasoning, and total token counts, the model, and a one-time turn reference. Prompts, responses, files, paths, account names, and credentials are never sent. This updates the aggregate public tokens-served counter. Turn it off any time; queued reports are deleted.</p>
+                <p>When on, OpenAgents reports how many tokens each turn used — the input, cached-input, output, reasoning, and total token counts — plus the model name and a one-time turn reference. Only those numbers are sent: never your prompts, responses, files, paths, account names, or credentials. This updates the aggregate public tokens-served counter. Turn it off any time; queued reports are deleted.</p>
                 <Button
                   type="button"
                   variant={state.settings.shareLocalCodexUsage ? "default" : "outline"}
