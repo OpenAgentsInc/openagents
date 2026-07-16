@@ -26,6 +26,8 @@ describe('documentation shell contract', () => {
     expect(docsCss).toContain('left: 0')
     expect(docsCss).toContain('html:has(.docs-drawer[open])')
     expect(docsCss).toContain('position: sticky')
+    expect(docsCss).toContain('.docs-prose > h2:first-child')
+    expect(docsCss).toMatch(/\.docs-prose > h2:first-child \{[\s\S]*?border-top: 0/)
     expect(bodyRule).toContain('overflow-x: clip')
     expect(bodyRule).not.toContain('overflow-x: hidden')
     expect(globalCss).toContain('overscroll-behavior: none')

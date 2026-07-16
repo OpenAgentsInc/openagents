@@ -305,6 +305,11 @@ html:has(.docs-search-dialog[open]) {
   font-size: clamp(1.45rem, 3vw, 1.85rem);
 }
 
+.docs-prose > h2:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
 .docs-prose h2:target {
   border-top-color: transparent;
 }

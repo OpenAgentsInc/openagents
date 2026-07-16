@@ -57,14 +57,16 @@ public documentation graph.
 ## 2026-07-15 TanStack Start documentation destination
 
 `apps/start/content/docs` is the owner-selected public documentation tree.
-The Start build validates and compiles those Markdown files into lazy-loaded
-reader modules plus raw Markdown, local-search, `llms.txt`, full-text,
+The Start build validates and compiles those Markdown files into reader modules
+bundled with the docs route plus raw Markdown, local-search, `llms.txt`, full-text,
 readability, and sitemap artifacts. `/docs` and `/docs/*` are Start-owned routes
 served by the same `openagents-monolith` Cloud Run service as the website.
 
 Keep page-to-page reading client-routed and prefetched, with no decorative
-document transition delay. Search may load Orama lazily on first use; it must
-not inflate the initial reader route.
+document transition delay. Reader pages must not use per-page dynamic imports:
+an open client must remain able to navigate after a deployment replaces hashed
+assets. Search may load Orama lazily on first use; it must not inflate the
+initial reader route.
 
 The docs compiler may read only its owned `apps/start/content/docs` tree; never
 point it at the repository-wide `docs/` directory. Ask AI, hosted MCP, remote

@@ -14,6 +14,10 @@ import {
 } from './generated/docs-manifest.generated'
 
 const publicDocsDirectory = path.resolve(import.meta.dirname, '../../public/docs')
+const generatedManifestPath = path.resolve(
+  import.meta.dirname,
+  'generated/docs-manifest.generated.ts',
+)
 
 describe('unified TanStack Start docs content', () => {
   test('publishes the complete curated navigation graph', async () => {
@@ -22,6 +26,15 @@ describe('unified TanStack Start docs content', () => {
     expect(docsManifest).toHaveLength(8)
     expect(docsManifest.map(page => page.slug)).toEqual(navigationSlugs)
     await expect(Promise.all(navigationSlugs.map(loadDocsPage))).resolves.not.toContain(undefined)
+  })
+
+  test('bundles reader pages without deploy-fragile dynamic imports', () => {
+    const generatedManifest = readFileSync(generatedManifestPath, 'utf8')
+
+    expect(generatedManifest).toContain("import docsPage0 from './pages/index.generated'")
+    expect(generatedManifest).toContain('const docsPages: Readonly<Record<string, DocsPage>>')
+    expect(generatedManifest).not.toContain('() => import(')
+    expect(generatedManifest).not.toContain('docsPageLoaders')
   })
 
   test('publishes the bounded Full Auto contract', async () => {

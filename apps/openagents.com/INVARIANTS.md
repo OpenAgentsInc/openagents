@@ -82,6 +82,9 @@ This is the invariant ledger for `openagents`.
   product application UI remains Effect Native, and docs prose grants no auth,
   tool, API, payment, deployment, acceptance, release, or public-claim
   authority.
+- Docs reader content is bundled with the docs route rather than split into
+  per-page dynamic imports, so a client opened before a Cloud Run revision
+  change does not request page chunks deleted by the next deployment.
 - Regression coverage lives in the Start docs compiler/content tests, strict
   generation check, shared route-ownership tests, Terraform validation/plan,
   and public document plus concrete-asset smokes.
