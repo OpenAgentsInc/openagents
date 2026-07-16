@@ -94,6 +94,9 @@ four allowlisted Cursor methods and retains aggregate observation counts; an
 unobserved extension remains blocked rather than inferred from a prompt. The
 same rule applies to permission qualification: only an option actually offered
 by the peer may be selected, and zero reverse calls remain zero live evidence.
+Cursor approval and refusal run in separate pinned processes with an empty
+allow/deny policy stored only in the disposable repository's `.cursor/cli.json`;
+the runner never changes the user's global Cursor configuration.
 The Grok qualification additionally enables bounded filesystem and simulated
 terminal handlers only inside the disposable repository, forces only its new
 disposable sessions out of inherited YOLO/auto mode through session metadata,

@@ -26,7 +26,7 @@ never changes Grok's gate.
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
 | Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    26 live passes |                                  5 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    24 live passes |                                  6 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    26 live passes |                                  4 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -114,10 +114,12 @@ confirmed the same boundary—33 models and one create-plan request, but zero
 question or todo calls—even after mode- and tool-qualified prompts. Its checked
 partial receipt is
 [`release-run-cursor-extensions-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json);
-the combined extension row remains blocked. The same exact-binary pass selected
-only offered allow/reject permission options and attempted two disposable file
-operations, but Cursor emitted zero `session/request_permission` calls; approval
-and refusal therefore remain unobserved rather than promoted.
+the combined extension row remains blocked. A later exact-binary pass installed
+an empty allow/deny policy only in the disposable repository's
+`.cursor/cli.json`. Separate pinned processes then emitted one
+`session/request_permission` each: OpenAgents selected one offered approval and
+one offered refusal, with refusal occurring before command execution. No global
+Cursor configuration changed.
 
 Grok's exact-binary reverse qualification enabled the stable client filesystem
 and terminal capabilities against the disposable repository. The latest peer
@@ -167,12 +169,11 @@ named-peer live compatibility.
 
 ## Release blockers retained as data
 
-The largest shared gaps are credential lifecycle paths, Cursor live permission
-outcomes, complete tool/plan/config/usage variants, and non-Darwin-arm64
-platform evidence. Permission timeout, stale-response fencing, and policy
-denial are production host authority semantics and pass through the hermetic
-production transport; Grok approval and refusal now pass against the pinned
-live peer.
+The largest shared gaps are credential lifecycle paths, complete
+tool/plan/config/usage variants, and non-Darwin-arm64 platform evidence.
+Permission timeout, stale-response fencing, and policy denial are production
+host authority semantics and pass through the hermetic production transport;
+approval and refusal now pass against both pinned live peers.
 
 Provider-specific gaps:
 
@@ -181,8 +182,8 @@ Provider-specific gaps:
   The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.
-- Cursor: pending-device login/expiry, permission outcomes, and live
-  `cursor/ask_question`/`cursor/update_todos`. Model listing, create-plan,
+- Cursor: pending-device login/expiry and live
+  `cursor/ask_question`/`cursor/update_todos`. Permission outcomes, model listing, create-plan,
   list/load, mode/config round trips, stream/reverse cancellation, and
   restart/load are proven.
 - Desktop: the isolated production build completed a real Grok Full Auto turn,

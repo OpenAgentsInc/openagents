@@ -1,11 +1,14 @@
 {
   "format": "openagents-acp-live-release-run-v1",
   "protocol": "Agent Client Protocol",
-  "protocolExclusions": ["Agent Communication Protocol", "A2A"],
+  "protocolExclusions": [
+    "Agent Communication Protocol",
+    "A2A"
+  ],
   "proofClass": "candidate-live",
   "claimAuthority": "none-release-matrix-only",
-  "recordedAt": "2026-07-16T17:25:59.905Z",
-  "openAgentsRevision": "785978985d62eb20c95cab1a8396b96cdbbfa9c0",
+  "recordedAt": "2026-07-16T17:57:59.006Z",
+  "openAgentsRevision": "8677fec5a5c4267cdfb8181fd649e140f82300d0",
   "schemaRelease": "schema-v1.19.0",
   "platform": "darwin-arm64-node-24.13.1",
   "peers": [
@@ -19,8 +22,13 @@
       },
       "negotiation": {
         "wireVersion": 1,
-        "authMethodIds": ["cursor_login"],
-        "capabilityKeys": ["list", "load"]
+        "authMethodIds": [
+          "cursor_login"
+        ],
+        "capabilityKeys": [
+          "list",
+          "load"
+        ]
       },
       "scenarios": [
         {
@@ -85,13 +93,13 @@
         },
         {
           "id": "permission-approval",
-          "result": "not-observed",
-          "safeDetail": "Pinned permission approval selections: 0"
+          "result": "live-pass",
+          "safeDetail": "Pinned permission approval selections: 1"
         },
         {
           "id": "permission-refusal",
-          "result": "not-observed",
-          "safeDetail": "Pinned permission refusal selections: 0"
+          "result": "live-pass",
+          "safeDetail": "Pinned permission refusal selections: 1"
         }
       ],
       "counters": {
