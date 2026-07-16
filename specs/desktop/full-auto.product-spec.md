@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Full Auto Codex Composer Loop"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
-updated_at: "2026-07-16T00:00:00.000Z"
+updated_at: "2026-07-16T12:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -18,10 +18,10 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness)"
+  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8875 (FA-H2 workspace binding), 8876 (FA-H3 exactly-once dispatch), 8878 (FA-H5 failure policy), 8879 (FA-H6 profile continuity), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
-  openagents_revision_note: "rev 3 (#8880, #8882, #8883) covers three changes landed together. FA-H7 (#8880) pins the continuation-cap reset semantics unambiguously: the counter resets ONLY when Full Auto is toggled off; a manual send while the toggle stays on does not reset it; the dead resetContinuation API is removed. FA-H10 (#8883) hardens the registry: a corrupt/invalid registry file is quarantined and the app starts with an empty registry instead of failing main initialization, and record eviction never drops enabled records -- only the disabled tail is bounded. FA-H9 (#8882, audit Finding 9) removes the three unmeasurable automated success metrics (toggle adoption, observed continuation, restart survival): no consent surface or counter implementation exists, and the spec's telemetry posture keeps metrics absent (not inferred) without consent; they are replaced by one manual owner-receipt metric that is actually measurable today. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
+  openagents_revision_note: "rev 4 (#8875, #8876, #8878, #8879) hardens dispatch authority and delivery semantics on the durable record. FA-H2 (#8875): enabling binds the currently resolved workspace (resolved by main, never renderer-supplied) onto the record; a continuation whose resolved workspace no longer matches refuses to dispatch and disables the record with blockedReason workspace_mismatch and an owner-visible note; an enabled record with NO binding (pre-upgrade row) fails CLOSED (workspace_unbound) and rebinds only on its next enable. FA-H3 (#8876): reconciliation is serialized through a promise-chain mutex in main, and each continuation claims a durable per-thread lease carrying the exact dispatched turn ref before dispatch, so overlapping passes dispatch a thread at most once; only the startup pass clears a stale lease whose turn ref never reached the local-turn journal; main's dispatch adapter additionally refuses when the journal already holds a nonterminal turn on the thread. FA-H5 (#8878): thrown errors AND ok:false dispatch results are typed failures -- failure state (consecutiveFailures, lastFailureAt, blockedReason) persists on the record with an owner-visible note, retries respect bounded exponential backoff min(2^failures*30s, 30min), and the 5th consecutive failure disables the record; a successful dispatch clears failure state. Cap-counting decision: continuationCount increments ONLY on successful dispatch -- a failed dispatch consumes failure budget, never a cap slot (rev 3 incremented before dispatch). FA-H6 (#8879): the initiating renderer-sent flagged turn binds its execution profile (account target, model, reasoning effort) onto the record and continuations replay it (revalidated against live contract enums); images, attachments, and extension selection deliberately reset -- a continuation is a fresh instruction, not a replay. All new record fields are optional so v1 registry files still decode. Rev 3 (#8880, #8882, #8883) pinned cap-reset semantics, registry quarantine/eviction hardening, and measurable-metrics cleanup. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
 ---
 
 ## Problem
@@ -59,7 +59,11 @@ in:
   - one `Full Auto` toggle in the React composer's action bar (`shell-full-auto-toggle`), off by default, no new screens (unchanged from rev 1)
   - a Full Auto instruction prefixed onto the turn prompt telling Codex to look at the repo's README/docs/issues and do one concrete next thing (codex-local-runtime.ts FULL_AUTO_INSTRUCTION, unchanged)
   - `approvalPolicy: "never"` forced on a Full Auto turn's app-server thread/turn-start requests; sandbox stays the existing danger-full-access default unchanged
-  - a durable, main-owned per-thread registry (full-auto-registry.ts) recording enabled/disabled and a consecutive-continuation counter, persisted the same way local-turn-journal.ts already persists interrupted-turn state
+  - a durable, main-owned per-thread registry (full-auto-registry.ts) recording enabled/disabled, a consecutive-continuation counter, the granted workspace identity, the bound execution profile, a per-thread dispatch lease, and typed failure/backoff state, persisted the same way local-turn-journal.ts already persists interrupted-turn state (every post-v1 field optional so existing files keep decoding)
+  - workspace authority binding (FA-H2): enabling binds the currently resolved workspace (resolved by main from the same source of truth codex-local turns execute against); reconciliation refuses to dispatch -- disabling the record visibly rather than silently redirecting -- when the resolution no longer matches, and fails closed on an unbound record
+  - exactly-once continuation dispatch (FA-H3): a promise-chain mutex serializing every reconciliation trigger in main, plus a durable per-thread lease claimed with the exact continuation turn ref before dispatch; the startup pass alone clears stale (crashed mid-dispatch) leases
+  - a typed dispatch-failure policy (FA-H5): thrown and ok:false outcomes both persist failure state with an owner-visible note, retry under bounded exponential backoff, and disable the record after 5 consecutive failures
+  - execution-profile continuity (FA-H6): the initiating flagged turn's account target, model, and reasoning effort are bound onto the record and replayed by every continuation, including post-restart resumes
   - a shared reconciliation decision (full-auto-reconcile.ts) called from two trigger points -- immediately after any Full-Auto-flagged turn completes, and once at app startup after existing turn-recovery settles -- so a background continuation and a post-restart resume are the same durable decision, not two
   - two new IPC channels: a set channel the composer toggle calls immediately (independent of whether a turn is in flight, so a toggle-off durably stops even a not-yet-sent thread) and a get channel for reading current durable state
   - reuse of the existing `DesktopLocalTurnRecoveryUpdateChannel` broadcast (already wired end to end for turn-recovery) to reflect a background continuation's result in any open window, rather than inventing a new channel
@@ -118,11 +122,15 @@ cut:
   restart happens partway through the count. The consecutive-continuation
   counter resets only when Full Auto is toggled off for that thread; a manual
   send while the toggle stays on does NOT reset it, and re-enabling an
-  already-enabled thread preserves the count.
+  already-enabled thread preserves the count. Since rev 4 the counter
+  increments only on a SUCCESSFUL dispatch: a failed dispatch consumes
+  failure/backoff budget (FA-AC-16), never a cap slot.
   Proof: `full-auto-restart.e2e.test.ts` "a genuinely stuck loop self-disables
-  at the continuation cap across restarts, rather than continuing unbounded";
-  `full-auto-registry.test.ts` "continuationCount resets ONLY on toggle-off: a
-  manual send leaves it unchanged; off-then-on zeroes it".
+  at the continuation cap across restarts, rather than continuing unbounded"
+  and "failed dispatches never consume cap slots: fail once then succeed ->
+  continuationCount is exactly 1"; `full-auto-registry.test.ts`
+  "continuationCount resets ONLY on toggle-off: a manual send leaves it
+  unchanged; off-then-on zeroes it".
 - **FA-AC-07:** A thread left enabled with no turn in flight when
   the app quits resumes its next continuation on its own at the next launch,
   with no user action beyond the original toggle.
@@ -163,6 +171,89 @@ cut:
   touched more recently.
   Proof: `full-auto-registry.test.ts` "eviction never drops an enabled record:
   the oldest enabled thread survives while old disabled records are evicted".
+- **FA-AC-13:** Enabling Full Auto binds the currently resolved workspace onto
+  the durable record -- resolved by main from the exact same source of truth
+  codex-local turns execute against, never a renderer-supplied path. A
+  continuation whose currently-resolved workspace differs from the recorded
+  binding does NOT dispatch: the record is disabled with
+  `blockedReason: "workspace_mismatch"` and an owner-visible system note
+  explains that Full Auto was turned off because the granted workspace no
+  longer matches.
+  Proof: `full-auto-restart.e2e.test.ts` "enable on workspace A, resolve
+  workspace B at reconcile -> no dispatch, record disabled with
+  workspace_mismatch, block reported"; `main.ts` binds via
+  `resolveDesktopLocalWorkspaceRoot()` in the `CodexLocalFullAutoSetChannel`
+  handler and passes the same resolver into reconciliation (code-reviewed;
+  main.ts has no direct unit-test harness).
+- **FA-AC-14:** An enabled record with NO recorded workspace (a pre-upgrade v1
+  row) fails CLOSED at dispatch: it is never silently adopted onto the current
+  workspace -- the record is disabled with
+  `blockedReason: "workspace_unbound"` and an owner-visible note. The binding
+  is (re)established only by a successful ENABLE, which always records the
+  then-current workspace.
+  Proof: `full-auto-restart.e2e.test.ts` "an enabled record with NO workspace
+  binding (pre-upgrade v1 row) fails CLOSED: no dispatch, disabled with
+  workspace_unbound".
+- **FA-AC-15:** Continuation dispatch is exactly-once. All reconciliation
+  triggers in main serialize through a promise-chain mutex, and before
+  dispatching a thread the reconciler durably claims a per-thread lease
+  carrying the exact continuation turn ref (the lease identity and the
+  dispatched turn identity are the same value). Two overlapping reconcile
+  passes dispatch an enabled thread at most once. The lease releases on
+  dispatch completion (success or failure). Only the STARTUP pass clears a
+  stale lease -- one whose turn ref has no nonterminal local-turn journal row
+  (a dispatch that crashed before its turn was accepted); a mid-session pass
+  treats a held lease as in-flight and skips. As defense in depth, main's
+  dispatch adapter refuses to start a continuation when the local-turn
+  journal already holds a nonterminal turn on that thread.
+  Proof: `full-auto-restart.e2e.test.ts` "audit probe (a): two overlapping
+  reconcile passes against one enabled thread dispatch it exactly ONCE
+  (durable lease), and continuationCount increments by exactly 1", "the
+  serial task queue serializes overlapping reconciliation triggers...", "a
+  stale lease (crashed mid-dispatch: no journal row for its turn ref) is
+  cleared ONLY by the startup pass...", and "a lease whose turn IS still
+  nonterminal in the journal is NOT cleared at startup...";
+  `full-auto-registry.test.ts` "claimPending holds the lease exactly once
+  until cleared; a missing record can never be claimed".
+- **FA-AC-16:** A failed continuation dispatch -- thrown OR `{ ok: false }` --
+  is a typed, owner-visible outcome, never a silently dormant enabled record.
+  Failure persists `consecutiveFailures`, `lastFailureAt`, and a bounded
+  `blockedReason` on the record, releases the lease, and appends an
+  owner-visible system note. Retries respect bounded exponential backoff:
+  dispatch is skipped while the record is within
+  `min(2^consecutiveFailures * 30s, 30min)` of `lastFailureAt`. The 5th
+  consecutive failure disables the record durably (with the failure reason as
+  `blockedReason`) and a final note says so. A successful dispatch clears all
+  failure state.
+  Proof: `full-auto-restart.e2e.test.ts` "audit probe (b): an { ok: false }
+  dispatch is a typed, visible failure...", "a thrown dispatch is the same
+  typed failure outcome as ok:false", "the bounded backoff window skips
+  dispatch after a failure, then allows it once the window has passed", and
+  "the 5th consecutive failure disables the record with a blockedReason and
+  reports disabled: true"; `full-auto-registry.test.ts` "recordFailure
+  increments and stamps typed failure state (releasing the lease);
+  recordSuccess clears all of it".
+- **FA-AC-17:** Automatic continuations preserve the initiating turn's
+  execution profile. When a renderer-initiated turn carries
+  `fullAuto: true`, main binds its effective account target, model, and
+  reasoning effort onto the durable record; every continuation (including a
+  post-restart resume) replays that bound profile, revalidated against the
+  live contract enums (a field that no longer decodes falls back to lane
+  defaults instead of failing the loop). Fields that deliberately RESET on a
+  continuation: images, explicit context attachments, and extension
+  selection -- a continuation is a fresh instruction, not a replay of the
+  initiating turn's payload.
+  Proof: `full-auto-restart.e2e.test.ts` "a continuation dispatch carries the
+  profile bound by the initiating flagged turn (account, model, effort) --
+  including across a restart" and "decodeCodexLocalContinuationProfile
+  revalidates stored strings against the live contract...".
+- **FA-AC-18:** The wave-2 registry schema upgrade is strictly additive: every
+  new record field (workspace binding, profile, lease, failure state) is
+  optional, and an existing v1 registry file decodes without quarantine so no
+  user's enabled state is lost by upgrading.
+  Proof: `full-auto-registry.test.ts` "an existing v1 registry file (no
+  wave-2 fields) still decodes -- the schema upgrade never quarantines a
+  user's state".
 
 ## Success Metrics
 
@@ -189,6 +280,23 @@ cut:
 
 ## Receipts
 
+- Rev 4 (FA-H2 #8875, FA-H3 #8876, FA-H5 #8878, FA-H6 #8879):
+  `full-auto-restart.e2e.test.ts` extended with the workspace-binding
+  refuse/disable and fail-closed cases, the audit's two adversarial probes
+  converted into retained regression tests (overlapping reconciles dispatch
+  once; ok:false is a typed visible failure), the serial-queue mutex proof,
+  stale-lease startup recovery, backoff/disable-after-5 failure policy, the
+  cap-counting decision (failures never consume cap slots), and profile
+  continuity across a restart. `full-auto-registry.test.ts` extended with
+  v1-file backward-compatibility decode, lease claim/clear semantics,
+  failure/success state transitions, workspace/profile binding durability,
+  and the enable/disable option semantics. Focused verification:
+  `vp test --run --max-concurrency 1 --root . apps/openagents-desktop/tests/
+  full-auto-restart.e2e.test.ts apps/openagents-desktop/tests/
+  full-auto-registry.test.ts apps/openagents-desktop/src/renderer/
+  shell.test.ts apps/openagents-desktop/src/codex-local-runtime.test.ts`
+  -- 4 files passed, 169 tests passed, 11 skipped; plus a clean
+  `tsc -p tsconfig.json --noEmit`.
 - Automated success-metric instrumentation was deliberately removed in rev 3
   as unmeasurable (audit Finding 9, #8882): the app has no consent surface,
   no counter implementation records the previously named metric identifiers,

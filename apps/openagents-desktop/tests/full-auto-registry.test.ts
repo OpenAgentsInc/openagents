@@ -1,9 +1,14 @@
 import { describe, expect, test } from "vite-plus/test"
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { FULL_AUTO_RECORD_LIMIT, openFullAutoRegistry } from "../src/full-auto-registry.ts"
+import {
+  FULL_AUTO_BLOCKED_REASON_LIMIT,
+  FULL_AUTO_RECORD_LIMIT,
+  FULL_AUTO_REGISTRY_SCHEMA,
+  openFullAutoRegistry,
+} from "../src/full-auto-registry.ts"
 
 const record = (registry: ReturnType<typeof openFullAutoRegistry>, threadRef: string) =>
   registry.list().find(entry => entry.threadRef === threadRef)
@@ -33,6 +38,153 @@ describe("Full Auto registry cap semantics (FA-H7 #8880)", () => {
       registry.set("thread-cap-semantics", false)
       registry.set("thread-cap-semantics", true)
       expect(record(registry, "thread-cap-semantics")?.continuationCount).toBe(0)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("Full Auto durable record extensions (FA-H2 #8875, FA-H3 #8876, FA-H5 #8878, FA-H6 #8879)", () => {
+  test("an existing v1 registry file (no wave-2 fields) still decodes -- the schema upgrade never quarantines a user's state", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-v1-compat-"))
+    try {
+      const registryDir = path.join(root, "full-auto")
+      const registryFile = path.join(registryDir, "registry.json")
+      mkdirSync(registryDir, { recursive: true })
+      // The exact pre-wave-2 on-disk shape: enabled-only records.
+      writeFileSync(registryFile, JSON.stringify({
+        schema: FULL_AUTO_REGISTRY_SCHEMA,
+        records: [
+          { threadRef: "thread-v1-enabled", enabled: true, continuationCount: 7, updatedAt: "2026-07-10T00:00:00.000Z" },
+          { threadRef: "thread-v1-disabled", enabled: false, continuationCount: 0, updatedAt: "2026-07-09T00:00:00.000Z" },
+        ],
+      }), "utf8")
+
+      const registry = openFullAutoRegistry(registryFile)
+      expect(readdirSync(registryDir).filter(name => name.includes("quarantined"))).toEqual([])
+      expect(registry.get("thread-v1-enabled")).toBe(true)
+      const record = registry.record("thread-v1-enabled")
+      expect(record?.continuationCount).toBe(7)
+      expect(record?.workspaceRef).toBeUndefined()
+      expect(record?.profile).toBeUndefined()
+      expect(record?.pendingTurnRef ?? null).toBe(null)
+      expect(record?.consecutiveFailures ?? 0).toBe(0)
+      expect(record?.blockedReason ?? null).toBe(null)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("claimPending holds the lease exactly once until cleared; a missing record can never be claimed", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-lease-"))
+    try {
+      const registryFile = path.join(root, "full-auto", "registry.json")
+      const registry = openFullAutoRegistry(registryFile)
+      registry.set("thread-lease", true)
+
+      expect(registry.claimPending("thread-lease", "turn.full-auto.one")).toBe(true)
+      expect(registry.claimPending("thread-lease", "turn.full-auto.two")).toBe(false)
+      const held = registry.record("thread-lease")
+      expect(held?.pendingTurnRef).toBe("turn.full-auto.one")
+      expect(held?.pendingStartedAt).toBeDefined()
+
+      // The lease is durable: a fresh open of the same file still holds it.
+      expect(openFullAutoRegistry(registryFile).record("thread-lease")?.pendingTurnRef).toBe("turn.full-auto.one")
+
+      registry.clearPending("thread-lease")
+      const cleared = registry.record("thread-lease")
+      expect(cleared?.pendingTurnRef ?? null).toBe(null)
+      expect(cleared?.pendingStartedAt).toBeUndefined()
+      expect(registry.claimPending("thread-lease", "turn.full-auto.two")).toBe(true)
+
+      expect(registry.claimPending("thread-missing", "turn.full-auto.x")).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("recordFailure increments and stamps typed failure state (releasing the lease); recordSuccess clears all of it", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-failure-state-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      registry.set("thread-f", true)
+      registry.claimPending("thread-f", "turn.full-auto.pending")
+
+      expect(registry.recordFailure("thread-f", "account_exhausted")).toBe(1)
+      expect(registry.recordFailure("thread-f", "x".repeat(FULL_AUTO_BLOCKED_REASON_LIMIT + 50))).toBe(2)
+      const failed = registry.record("thread-f")
+      expect(failed?.consecutiveFailures).toBe(2)
+      expect(failed?.lastFailureAt).toBeDefined()
+      expect(failed?.blockedReason).toHaveLength(FULL_AUTO_BLOCKED_REASON_LIMIT)
+      expect(failed?.pendingTurnRef ?? null).toBe(null)
+      expect(failed?.enabled).toBe(true)
+
+      registry.recordSuccess("thread-f")
+      const cleared = registry.record("thread-f")
+      expect(cleared?.consecutiveFailures ?? 0).toBe(0)
+      expect(cleared?.lastFailureAt).toBeUndefined()
+      expect(cleared?.blockedReason ?? null).toBe(null)
+
+      expect(registry.recordFailure("thread-missing", "whatever")).toBe(0)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("bindWorkspace and bindProfile persist durably across a fresh open; binding a missing record is a null no-op", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-bind-"))
+    try {
+      const registryFile = path.join(root, "full-auto", "registry.json")
+      const registry = openFullAutoRegistry(registryFile)
+      registry.set("thread-bind", true)
+      expect(registry.bindWorkspace("thread-bind", "/repo/granted")?.workspaceRef).toBe("/repo/granted")
+      expect(registry.bindProfile("thread-bind", { accountRef: "codex-2", model: "gpt-5.5", reasoningEffort: "high" })?.profile)
+        .toEqual({ accountRef: "codex-2", model: "gpt-5.5", reasoningEffort: "high" })
+
+      const reopened = openFullAutoRegistry(registryFile).record("thread-bind")
+      expect(reopened?.workspaceRef).toBe("/repo/granted")
+      expect(reopened?.profile).toEqual({ accountRef: "codex-2", model: "gpt-5.5", reasoningEffort: "high" })
+
+      expect(registry.bindWorkspace("thread-missing", "/repo/x")).toBe(null)
+      expect(registry.bindProfile("thread-missing", { model: "gpt-5.5" })).toBe(null)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("set semantics with the wave-2 fields: enable binds workspace and clears failure state; disable records blockedReason, releases the lease, and preserves bindings", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-set-options-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      // Enable with a workspace binding (the FA-H2 handler path).
+      registry.set("thread-s", true, { workspaceRef: "/repo/a" })
+      expect(registry.record("thread-s")?.workspaceRef).toBe("/repo/a")
+
+      registry.recordFailure("thread-s", "transient")
+      registry.claimPending("thread-s", "turn.full-auto.claimed")
+
+      // Disabling for a typed policy stop records the reason and releases
+      // the lease, and keeps the workspace binding for diagnosis.
+      registry.set("thread-s", false, { blockedReason: "workspace_mismatch" })
+      const disabled = registry.record("thread-s")
+      expect(disabled?.enabled).toBe(false)
+      expect(disabled?.blockedReason).toBe("workspace_mismatch")
+      expect(disabled?.pendingTurnRef ?? null).toBe(null)
+      expect(disabled?.continuationCount).toBe(0)
+      expect(disabled?.workspaceRef).toBe("/repo/a")
+
+      // Re-enabling is a fresh grant: failure/blocked state clears, and the
+      // enable-time options rebind the (possibly different) workspace.
+      registry.set("thread-s", true, { workspaceRef: "/repo/b" })
+      const reenabled = registry.record("thread-s")
+      expect(reenabled?.blockedReason ?? null).toBe(null)
+      expect(reenabled?.consecutiveFailures ?? 0).toBe(0)
+      expect(reenabled?.lastFailureAt).toBeUndefined()
+      expect(reenabled?.workspaceRef).toBe("/repo/b")
+
+      // An owner toggle-off (no options) clears any prior blockedReason.
+      registry.set("thread-s", false)
+      expect(registry.record("thread-s")?.blockedReason ?? null).toBe(null)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

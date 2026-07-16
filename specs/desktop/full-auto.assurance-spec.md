@@ -31,13 +31,19 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-09",
       "FA-AC-10",
       "FA-AC-11",
-      "FA-AC-12"
+      "FA-AC-12",
+      "FA-AC-13",
+      "FA-AC-14",
+      "FA-AC-15",
+      "FA-AC-16",
+      "FA-AC-17",
+      "FA-AC-18"
     ],
-    "document_digest": "sha256:aae6173d4c12d63045f328f0b63bfeaf6104b59ad938fab0b05319db8bfd7558",
+    "document_digest": "sha256:ea7914fe29c36cb1a1c3691e2eb5efe7b67ae2b274fd3c3fb4a6f13ff047af88",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 3
+    "spec_revision": 4
   }
 }
 ```
@@ -3005,12 +3011,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "64e4f69c8c37099246c653aa91b7a3d8203bbb60",
-    "inventory_digest": "sha256:64b87ac67ea138290df0374caa8bf78636f94618062a8d4f439deaa167f62a02",
-    "repository_label": "oa-fa-integrate",
+    "head": "3cc4e50ff92f688b283756b24f42acc2ed708385",
+    "inventory_digest": "sha256:e77bffe0ae7ad61f8b69e700f84ae3f2ec19dbe8fa2b26cb9b31cb7215786c32",
+    "repository_label": "oa-fa-w2-core",
     "state": "dirty",
-    "tracked_file_count": 8924,
-    "tree": "069fd8e23f2478a7c633ea6288feade94f74d45e",
+    "tracked_file_count": 8944,
+    "tree": "333d13a856c1b12ff4c493ba10e4ed12e8d8e349",
     "truncated": true
   }
 }
@@ -3084,8 +3090,8 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     ],
     "disposition": "required",
     "id": "AO-FA-AC-06-01",
-    "source_claim_digest": "sha256:55fc7cedaab5b2dd8fe703766572e6c9c31307ae9159967201ac53109494af89",
-    "source_claim_snapshot": "A run of 20 consecutive automatic continuations turns Full\nAuto off durably (registry, not renderer state) and appends an explanatory\nsystem note, rather than continuing unbounded -- and this holds even if a\nrestart happens partway through the count. The consecutive-continuation\ncounter resets only when Full Auto is toggled off for that thread; a manual\nsend while the toggle stays on does NOT reset it, and re-enabling an\nalready-enabled thread preserves the count.\nProof: `full-auto-restart.e2e.test.ts` \"a genuinely stuck loop self-disables\nat the continuation cap across restarts, rather than continuing unbounded\";\n`full-auto-registry.test.ts` \"continuationCount resets ONLY on toggle-off: a\nmanual send leaves it unchanged; off-then-on zeroes it\".",
+    "source_claim_digest": "sha256:d170e89e8e52dee7023aa1809393d65ee48fcc60d556617a98328578342286ec",
+    "source_claim_snapshot": "A run of 20 consecutive automatic continuations turns Full\nAuto off durably (registry, not renderer state) and appends an explanatory\nsystem note, rather than continuing unbounded -- and this holds even if a\nrestart happens partway through the count. The consecutive-continuation\ncounter resets only when Full Auto is toggled off for that thread; a manual\nsend while the toggle stays on does NOT reset it, and re-enabling an\nalready-enabled thread preserves the count. Since rev 4 the counter\nincrements only on a SUCCESSFUL dispatch: a failed dispatch consumes\nfailure/backoff budget (FA-AC-16), never a cap slot.\nProof: `full-auto-restart.e2e.test.ts` \"a genuinely stuck loop self-disables\nat the continuation cap across restarts, rather than continuing unbounded\"\nand \"failed dispatches never consume cap slots: fail once then succeed ->\ncontinuationCount is exactly 1\"; `full-auto-registry.test.ts`\n\"continuationCount resets ONLY on toggle-off: a manual send leaves it\nunchanged; off-then-on zeroes it\".",
     "title": "Assure FA-AC-06"
   },
   {
@@ -3153,6 +3159,72 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:27450f70ca5382f43098d7df09b20a74f7ecd2370302593d44cce1f89f8a9564",
     "source_claim_snapshot": "Registry record eviction never drops an\n`enabled: true` record. All enabled records are kept; only the disabled tail\nis bounded, filling remaining capacity (up to 128 total) with the\nmost-recently-updated disabled records. An owner-enabled thread therefore\nalways survives to the next restart, no matter how many other records were\ntouched more recently.\nProof: `full-auto-registry.test.ts` \"eviction never drops an enabled record:\nthe oldest enabled thread survives while old disabled records are evicted\".",
     "title": "Assure FA-AC-12"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-13"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-13-01",
+    "source_claim_digest": "sha256:0c0fc5b541489fe29a468ba48824663fad47343b2d0e61639f918b8e0d80915a",
+    "source_claim_snapshot": "Enabling Full Auto binds the currently resolved workspace onto\nthe durable record -- resolved by main from the exact same source of truth\ncodex-local turns execute against, never a renderer-supplied path. A\ncontinuation whose currently-resolved workspace differs from the recorded\nbinding does NOT dispatch: the record is disabled with\n`blockedReason: \"workspace_mismatch\"` and an owner-visible system note\nexplains that Full Auto was turned off because the granted workspace no\nlonger matches.\nProof: `full-auto-restart.e2e.test.ts` \"enable on workspace A, resolve\nworkspace B at reconcile -> no dispatch, record disabled with\nworkspace_mismatch, block reported\"; `main.ts` binds via\n`resolveDesktopLocalWorkspaceRoot()` in the `CodexLocalFullAutoSetChannel`\nhandler and passes the same resolver into reconciliation (code-reviewed;\nmain.ts has no direct unit-test harness).",
+    "title": "Assure FA-AC-13"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-14"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-14-01",
+    "source_claim_digest": "sha256:d2d82d33d573b2bc82414f00aaa1866434b3f2c15b624f36da6cdc1eb9bfcb36",
+    "source_claim_snapshot": "An enabled record with NO recorded workspace (a pre-upgrade v1\nrow) fails CLOSED at dispatch: it is never silently adopted onto the current\nworkspace -- the record is disabled with\n`blockedReason: \"workspace_unbound\"` and an owner-visible note. The binding\nis (re)established only by a successful ENABLE, which always records the\nthen-current workspace.\nProof: `full-auto-restart.e2e.test.ts` \"an enabled record with NO workspace\nbinding (pre-upgrade v1 row) fails CLOSED: no dispatch, disabled with\nworkspace_unbound\".",
+    "title": "Assure FA-AC-14"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-15"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-15-01",
+    "source_claim_digest": "sha256:fa5c6e534d0a1fed8ff7e5ef7b6b9970b28b6442bfedbc401f5691fe09a115ff",
+    "source_claim_snapshot": "Continuation dispatch is exactly-once. All reconciliation\ntriggers in main serialize through a promise-chain mutex, and before\ndispatching a thread the reconciler durably claims a per-thread lease\ncarrying the exact continuation turn ref (the lease identity and the\ndispatched turn identity are the same value). Two overlapping reconcile\npasses dispatch an enabled thread at most once. The lease releases on\ndispatch completion (success or failure). Only the STARTUP pass clears a\nstale lease -- one whose turn ref has no nonterminal local-turn journal row\n(a dispatch that crashed before its turn was accepted); a mid-session pass\ntreats a held lease as in-flight and skips. As defense in depth, main's\ndispatch adapter refuses to start a continuation when the local-turn\njournal already holds a nonterminal turn on that thread.\nProof: `full-auto-restart.e2e.test.ts` \"audit probe (a): two overlapping\nreconcile passes against one enabled thread dispatch it exactly ONCE\n(durable lease), and continuationCount increments by exactly 1\", \"the\nserial task queue serializes overlapping reconciliation triggers...\", \"a\nstale lease (crashed mid-dispatch: no journal row for its turn ref) is\ncleared ONLY by the startup pass...\", and \"a lease whose turn IS still\nnonterminal in the journal is NOT cleared at startup...\";\n`full-auto-registry.test.ts` \"claimPending holds the lease exactly once\nuntil cleared; a missing record can never be claimed\".",
+    "title": "Assure FA-AC-15"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-16"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-16-01",
+    "source_claim_digest": "sha256:12427f5bc832f0d4b1a77615435d03c066a911354893db08f228bec1aeccaa3e",
+    "source_claim_snapshot": "A failed continuation dispatch -- thrown OR `{ ok: false }` --\nis a typed, owner-visible outcome, never a silently dormant enabled record.\nFailure persists `consecutiveFailures`, `lastFailureAt`, and a bounded\n`blockedReason` on the record, releases the lease, and appends an\nowner-visible system note. Retries respect bounded exponential backoff:\ndispatch is skipped while the record is within\n`min(2^consecutiveFailures * 30s, 30min)` of `lastFailureAt`. The 5th\nconsecutive failure disables the record durably (with the failure reason as\n`blockedReason`) and a final note says so. A successful dispatch clears all\nfailure state.\nProof: `full-auto-restart.e2e.test.ts` \"audit probe (b): an { ok: false }\ndispatch is a typed, visible failure...\", \"a thrown dispatch is the same\ntyped failure outcome as ok:false\", \"the bounded backoff window skips\ndispatch after a failure, then allows it once the window has passed\", and\n\"the 5th consecutive failure disables the record with a blockedReason and\nreports disabled: true\"; `full-auto-registry.test.ts` \"recordFailure\nincrements and stamps typed failure state (releasing the lease);\nrecordSuccess clears all of it\".",
+    "title": "Assure FA-AC-16"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-17"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-17-01",
+    "source_claim_digest": "sha256:fad71b282b1060216a6e6d231714dcc37bc290b15534152555660bd5450db41c",
+    "source_claim_snapshot": "Automatic continuations preserve the initiating turn's\nexecution profile. When a renderer-initiated turn carries\n`fullAuto: true`, main binds its effective account target, model, and\nreasoning effort onto the durable record; every continuation (including a\npost-restart resume) replays that bound profile, revalidated against the\nlive contract enums (a field that no longer decodes falls back to lane\ndefaults instead of failing the loop). Fields that deliberately RESET on a\ncontinuation: images, explicit context attachments, and extension\nselection -- a continuation is a fresh instruction, not a replay of the\ninitiating turn's payload.\nProof: `full-auto-restart.e2e.test.ts` \"a continuation dispatch carries the\nprofile bound by the initiating flagged turn (account, model, effort) --\nincluding across a restart\" and \"decodeCodexLocalContinuationProfile\nrevalidates stored strings against the live contract...\".",
+    "title": "Assure FA-AC-17"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-18"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-18-01",
+    "source_claim_digest": "sha256:1a81b9e9b1821120f34aa3c4ddcbf11bbc2992e916e3718b2f4e9898a9d05ed8",
+    "source_claim_snapshot": "The wave-2 registry schema upgrade is strictly additive: every\nnew record field (workspace binding, profile, lease, failure state) is\noptional, and an existing v1 registry file decodes without quarantine so no\nuser's enabled state is lost by upgrading.\nProof: `full-auto-registry.test.ts` \"an existing v1 registry file (no\nwave-2 fields) still decodes -- the schema upgrade never quarantines a\nuser's state\".",
+    "title": "Assure FA-AC-18"
   }
 ]
 ```

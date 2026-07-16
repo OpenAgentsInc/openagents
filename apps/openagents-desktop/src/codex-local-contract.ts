@@ -29,8 +29,13 @@ import { Exit, Schema } from "@effect-native/core/effect"
 
 import { CODEX_CHILD_MODEL, CODEX_CHILD_REASONING_EFFORT } from "./codex-child-contract.ts"
 import {
+  CodexReasoningEffortSchema,
   FableLocalInterruptRequestSchema,
   FableLocalStartRequestSchema,
+  LocalModelSchema,
+  isCodexModel,
+  type CodexModel,
+  type CodexReasoningEffort,
   type FableLocalFailureReason,
 } from "./fable-local-contract.ts"
 
@@ -122,6 +127,29 @@ export const decodeCodexLocalFullAutoSetRequest = (value: unknown): CodexLocalFu
   const decoded = Schema.decodeUnknownExit(CodexLocalFullAutoSetRequestSchema)(value)
   return Exit.isSuccess(decoded) ? decoded.value : null
 }
+/**
+ * FA-H6 (#8879): revalidate a durably-stored Full Auto execution profile
+ * against the LIVE contract enums before a continuation replays it. The
+ * registry stores plain bounded strings (so an enum change can never
+ * corrupt-fail the whole registry file); this narrows each field back to the
+ * typed value a `FableLocalStartRequest` accepts, dropping any field that no
+ * longer decodes (that field then falls back to lane defaults, exactly the
+ * pre-binding behavior).
+ */
+export const decodeCodexLocalContinuationProfile = (
+  profile: Readonly<{ accountRef?: string; model?: string; reasoningEffort?: string }> | undefined,
+): Readonly<{ accountRef: string | null; model: CodexModel | null; reasoningEffort: CodexReasoningEffort | null }> => {
+  const decodedModel = Schema.decodeUnknownExit(LocalModelSchema)(profile?.model)
+  const decodedEffort = Schema.decodeUnknownExit(CodexReasoningEffortSchema)(profile?.reasoningEffort)
+  return {
+    accountRef: profile?.accountRef !== undefined && profile.accountRef.length >= 1 && profile.accountRef.length <= 80
+      ? profile.accountRef
+      : null,
+    model: Exit.isSuccess(decodedModel) && isCodexModel(decodedModel.value) ? decodedModel.value : null,
+    reasoningEffort: Exit.isSuccess(decodedEffort) ? decodedEffort.value : null,
+  }
+}
+
 export const CodexLocalFullAutoGetRequestSchema = Schema.Struct({
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
 })

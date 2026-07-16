@@ -201,6 +201,7 @@ import {
   CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF,
   CodexLocalFullAutoGetChannel,
   CodexLocalFullAutoSetChannel,
+  decodeCodexLocalContinuationProfile,
   decodeCodexLocalFullAutoGetRequest,
   decodeCodexLocalFullAutoSetRequest,
 } from "./codex-local-contract.ts"
@@ -248,7 +249,7 @@ import { localRuntimePersistenceOperation } from "./local-runtime-event-persiste
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { reconcileLocalTurns } from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
-import { FULL_AUTO_MAX_CONTINUATIONS, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
+import { FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
@@ -2098,18 +2099,26 @@ const selectedDesktopWorkspaceRoot = (): string | null => {
     return null
   }
 }
+/**
+ * FA-H2 (#8875): the ONE workspace resolution both local runtimes execute
+ * against. Full Auto binds this exact value onto the durable record at enable
+ * time (main resolves it itself -- a renderer-supplied path is never trusted)
+ * and reconciliation refuses to dispatch a continuation when the current
+ * resolution no longer matches what was granted.
+ */
+const resolveDesktopLocalWorkspaceRoot = (): string => desktopRuntimeWorkspaceRoot({
+  fixtureMode: smokeMode || liveProofDriverMode,
+  userDataPath: app.getPath("userData"),
+  selectedWorkspaceRoot: selectedDesktopWorkspaceRoot(),
+  launchFallbackRoot: desktopLaunchWorkingDirectory,
+})
 // Codex local chat lane: the composer's Codex chip uses the pinned app-server
 // against the user's ordinary logged-in Codex session with durable
 // thread-resume continuity. Pylon accounts are fleet-only, not MVP fallback.
 // Smoke alone keeps the legacy scripted JSON fixture parser.
 const codexLocal = makeCodexLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
-  workspaceRoot: () => desktopRuntimeWorkspaceRoot({
-    fixtureMode: smokeMode || liveProofDriverMode,
-    userDataPath: app.getPath("userData"),
-    selectedWorkspaceRoot: selectedDesktopWorkspaceRoot(),
-    launchFallbackRoot: desktopLaunchWorkingDirectory,
-  }),
+  workspaceRoot: resolveDesktopLocalWorkspaceRoot,
   preflight: codexPreflight,
   durableQueue: codexDurableQueue,
   initialSessions: localTurnJournal.list().flatMap(record =>
@@ -2172,12 +2181,7 @@ const pluginConfigStore = openPluginConfigStore(
 )
 const fableLocal = makeFableLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
-  workspaceRoot: () => desktopRuntimeWorkspaceRoot({
-    fixtureMode: smokeMode || liveProofDriverMode,
-    userDataPath: app.getPath("userData"),
-    selectedWorkspaceRoot: selectedDesktopWorkspaceRoot(),
-    launchFallbackRoot: desktopLaunchWorkingDirectory,
-  }),
+  workspaceRoot: resolveDesktopLocalWorkspaceRoot,
   delegate: codexChildren,
   userMcpServers: () => mcpConfigStore.servers(),
   userPlugins: () => pluginConfigStore.enabledPaths(),
@@ -2992,6 +2996,19 @@ const dispatchCodexLocalTurn = async (
   }
   const store = threads()
   if (store.open(request.threadRef) === null) return { ok: false, error: "That conversation no longer exists." }
+  // FA-H6 (#8879): a renderer-initiated flagged turn defines the loop's
+  // execution profile -- bind account/model/effort onto the durable record so
+  // continuations (including post-restart resumes) replay the same profile
+  // instead of falling back to lane defaults and account rotation. A
+  // main-initiated continuation (sender === null) never rebinds: its profile
+  // CAME from the record.
+  if (request.fullAuto === true && sender !== null) {
+    fullAutoRegistry.bindProfile(request.threadRef, {
+      ...(request.target?.accountRef === undefined ? {} : { accountRef: request.target.accountRef }),
+      model: requestedModel,
+      ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+    })
+  }
   const turnKey = { threadRef: request.threadRef, turnRef: request.turnRef, lane: "codex-local" as const }
   const user: DesktopMessage = {
     key: `${request.turnRef}-user`,
@@ -3165,49 +3182,105 @@ const dispatchCodexLocalTurn = async (
     : { ok: true, thread }
 }
 
+/** Owner-visible Full Auto outcome notes reuse the same system-note +
+ * recovery-broadcast shape the cap note already shipped with. */
+const appendFullAutoSystemNote = (threadRef: string, text: string): void => {
+  threads().append(threadRef, {
+    key: randomUUID(),
+    role: "system",
+    text,
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  })
+  broadcastFullAutoThreadUpdate(threadRef)
+}
 /**
  * Full Auto (#8853): the one place "should the next turn start" is decided,
  * called from two trigger points -- right after a Full-Auto turn completes
  * (above) and once at startup after existing turn-recovery settles (below).
  * Both share this exact wiring so a background continuation and a
  * post-restart resume are the same durable decision, not two.
+ *
+ * FA-H3 (#8876): every invocation runs through a promise-chain mutex, so
+ * overlapping triggers (turn completion + startup + any future continue-now)
+ * serialize instead of interleaving the snapshot/dispatch sequence. The
+ * durable per-thread lease inside reconcileFullAutoThreads is the second,
+ * restart-surviving half of the same exactly-once guarantee.
  */
-const runFullAutoReconciliation = (): Promise<void> => reconcileFullAutoThreads({
-  registry: fullAutoRegistry,
-  nonterminalThreadRefs: () => new Set(localTurnJournal.nonterminal().map(record => record.threadRef)),
-  dispatch: async ({ threadRef, message }) => {
-    const result = await dispatchCodexLocalTurn({
-      turnRef: `turn.full-auto.${randomUUID()}`,
-      threadRef,
-      message,
-      fullAuto: true,
-    }, null)
-    return { ok: result.ok }
-  },
-  onCapReached: capThreadRef => {
-    threads().append(capThreadRef, {
-      key: randomUUID(),
-      role: "system",
-      text: `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    })
-    broadcastFullAutoThreadUpdate(capThreadRef)
-  },
-  onDispatchFailed: (failedThreadRef, error) => {
-    console.error(
-      "[openagents-desktop] full auto reconciliation failed",
-      failedThreadRef,
-      error instanceof Error ? error.name : "unknown",
-    )
-  },
-}).then(dispatched => {
-  for (const dispatchedThreadRef of dispatched) broadcastFullAutoThreadUpdate(dispatchedThreadRef)
-})
+const fullAutoReconcileQueue = makeSerialTaskQueue()
+const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): Promise<void> =>
+  fullAutoReconcileQueue(() => reconcileFullAutoThreads({
+    registry: fullAutoRegistry,
+    nonterminalThreadRefs: () => new Set(localTurnJournal.nonterminal().map(record => record.threadRef)),
+    // FA-H2 (#8875): the exact same workspace resolution the codex-local
+    // runtime executes against -- never a renderer-supplied path.
+    resolveWorkspaceRef: resolveDesktopLocalWorkspaceRoot,
+    journalHasNonterminalTurn: turnRef =>
+      localTurnJournal.nonterminal().some(record => record.turnRef === turnRef),
+    // FA-H3: only the startup pass may clear a stale (crashed mid-dispatch)
+    // lease; a mid-session pass treats a held lease as in-flight and skips.
+    ...(options?.startup === true ? { clearStaleLeases: true } : {}),
+    dispatch: async ({ threadRef, turnRef, message, profile }) => {
+      // FA-H3 defense in depth: even if a lease were somehow bypassed, never
+      // start a Full Auto continuation on a thread that already has a
+      // nonterminal turn in the local-turn journal.
+      if (localTurnJournal.nonterminal().some(record => record.threadRef === threadRef)) {
+        return { ok: false, reason: "turn_already_in_flight" }
+      }
+      // FA-H6 (#8879): replay the bound execution profile, revalidated
+      // against the live contract enums (a field that no longer decodes
+      // falls back to lane defaults instead of failing the loop).
+      const bound = decodeCodexLocalContinuationProfile(profile)
+      const result = await dispatchCodexLocalTurn({
+        turnRef,
+        threadRef,
+        message,
+        fullAuto: true,
+        ...(bound.model === null ? {} : { model: bound.model }),
+        ...(bound.reasoningEffort === null ? {} : { reasoningEffort: bound.reasoningEffort }),
+        ...(bound.model !== null && bound.accountRef !== null
+          ? { target: { provider: "codex" as const, accountRef: bound.accountRef, model: bound.model } }
+          : {}),
+      }, null)
+      return result.ok ? { ok: true } : { ok: false, reason: result.error ?? "dispatch_failed" }
+    },
+    onCapReached: capThreadRef => appendFullAutoSystemNote(
+      capThreadRef,
+      `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
+    ),
+    // FA-H2 (#8875): a continuation whose granted workspace no longer matches
+    // (or was never bound) does not dispatch -- the record is disabled with a
+    // typed blockedReason and the owner sees why, on the thread itself.
+    onWorkspaceBlocked: (blockedThreadRef, block) => appendFullAutoSystemNote(
+      blockedThreadRef,
+      block.reason === "workspace_unbound"
+        ? "Full Auto was turned off for this thread: it has no recorded granted workspace, so a continuation cannot be dispatched safely. Turn Full Auto back on from the workspace you want it to work in."
+        : "Full Auto was turned off for this thread: the selected workspace no longer matches the workspace that was granted when Full Auto was enabled. Turn Full Auto back on from the workspace you want it to work in.",
+    ),
+    // FA-H5 (#8878): a failed dispatch (thrown OR ok:false) is a typed,
+    // owner-visible outcome -- never a silently dormant enabled record.
+    onDispatchFailed: (failedThreadRef, failure) => {
+      console.error(
+        "[openagents-desktop] full auto continuation dispatch failed",
+        failedThreadRef,
+        failure.reason,
+      )
+      appendFullAutoSystemNote(
+        failedThreadRef,
+        failure.disabled
+          ? `Full Auto continuation failed ${failure.consecutiveFailures} times in a row (${failure.reason}). Full Auto was turned off for this thread.`
+          : `Full Auto continuation failed: ${failure.reason}. It will retry with backoff.`,
+      )
+    },
+  }).then(dispatched => {
+    for (const dispatchedThreadRef of dispatched) broadcastFullAutoThreadUpdate(dispatchedThreadRef)
+  }))
 // Startup resume: once existing interrupted-turn recovery settles, any
 // thread still marked enabled with nothing in flight gets its next
 // continuation dispatched here -- this is what survives a full app
-// quit+relaunch, not just a renderer reload.
-void localTurnRecovery.then(() => runFullAutoReconciliation()).catch(() => {})
+// quit+relaunch, not just a renderer reload. Only this pass clears stale
+// dispatch leases (FA-H3): a lease whose turn ref never reached the journal
+// belongs to a dispatch that crashed before its turn was accepted.
+void localTurnRecovery.then(() => runFullAutoReconciliation({ startup: true })).catch(() => {})
 
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
@@ -3222,7 +3295,17 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
 ipcMain.handle(CodexLocalFullAutoSetChannel, async (_event, value: unknown) => {
   const request = decodeCodexLocalFullAutoSetRequest(value)
   if (request === null) return { ok: false }
-  fullAutoRegistry.set(request.threadRef, request.enabled)
+  // FA-H2 (#8875): enabling binds the CURRENTLY resolved workspace onto the
+  // durable record -- resolved by main from the same source of truth the
+  // codex-local runtime executes against, never a renderer-supplied path.
+  // Reconciliation later refuses to dispatch when this binding no longer
+  // matches. A pre-upgrade record with no binding is rebound here on its
+  // next enable; until then it fails closed at dispatch.
+  fullAutoRegistry.set(
+    request.threadRef,
+    request.enabled,
+    request.enabled ? { workspaceRef: resolveDesktopLocalWorkspaceRoot() } : undefined,
+  )
   return { ok: true }
 })
 ipcMain.handle(CodexLocalFullAutoGetChannel, async (_event, value: unknown) => {
