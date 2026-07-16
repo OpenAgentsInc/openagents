@@ -10,6 +10,7 @@ const fixture = () => {
   const reverseHandlers = new Set<(request: CodexAppServerRequest) => Promise<unknown> | unknown>()
   let installed = false
   let skillEnabled = true
+  let rejectedMethod: string | null = null
   const respond = (method: string): unknown => {
     if (method === "skills/list") return { data: [{ cwd: "/private/project", errors: [], skills: [{ name: "ship", description: "Ship safely", enabled: skillEnabled, path: "/private/project/.agents/ship/SKILL.md", scope: "repo", dependencies: { tools: [{ type: "mcp", value: "safe-tool", url: "https://token@example.test" }] } }] }] }
     if (method === "hooks/list") return { data: [{ cwd: "/private/project", errors: [], warnings: [], hooks: [{ key: "verify", eventName: "postToolUse", handlerType: "command", enabled: true, trustStatus: "trusted", source: "project", sourcePath: "/private/project/hook", currentHash: "secret", displayOrder: 1, isManaged: false, timeoutSec: 10 }] }] }
@@ -26,7 +27,11 @@ const fixture = () => {
   }
   const lease = {
     state: () => ({ status: "ready" as const, generation: 1 }),
-    request: async (method: string, params: unknown) => { requests.push({ method, params }); return respond(method) },
+    request: async (method: string, params: unknown) => {
+      requests.push({ method, params })
+      if (method === rejectedMethod) throw new Error("app-server closed during refresh")
+      return respond(method)
+    },
     subscribe: (listener: (value: CodexAppServerNotification) => void) => { notifications.add(listener); return () => notifications.delete(listener) },
     registerReverseHandler: (handler: (request: CodexAppServerRequest) => Promise<unknown> | unknown) => { reverseHandlers.add(handler); return () => reverseHandlers.delete(handler) },
     release: () => undefined,
@@ -34,6 +39,7 @@ const fixture = () => {
   return {
     lease,
     requests,
+    reject: (method: string) => { rejectedMethod = method },
     notify: (method: string, params: unknown) => { for (const listener of notifications) listener({ generation: 1, message: { method, params } }) },
     reverse: async (request: CodexAppServerRequest) => {
       const handler = [...reverseHandlers][0]
@@ -117,6 +123,24 @@ describe("Codex ecosystem authority", () => {
     await expect(ecosystem.callMcpTool("files", "unknown", "thread-1", {})).rejects.toMatchObject({ reason: "unknown_extension" })
     await expect(ecosystem.callMcpTool("files", "search", "thread-1", { q: "x" })).resolves.toMatchObject({ content: expect.any(Array) })
     ecosystem.close()
+  })
+
+  test("notification refresh rejection is owned when the ecosystem is closing", async () => {
+    const h = fixture(); const ecosystem = makeCodexEcosystem({ lease: h.lease, authorizeWorkContext: () => true })
+    await ecosystem.initialize(["/private/project"])
+    const unhandled: unknown[] = []
+    const onUnhandled = (error: unknown): void => { unhandled.push(error) }
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      h.reject("skills/list")
+      h.notify("skills/changed", {})
+      ecosystem.close()
+      await new Promise<void>(resolve => setImmediate(resolve))
+      await new Promise<void>(resolve => setImmediate(resolve))
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
   })
 
   test("dynamic tools require declared namespace grants and elicitations retain causal identity", async () => {

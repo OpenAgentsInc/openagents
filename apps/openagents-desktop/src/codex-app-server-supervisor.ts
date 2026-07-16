@@ -348,7 +348,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
       reverseMethodRegistry: reverseRegistry,
       onClose: error => {
         if (generation !== connection.generation || connection.client !== client) return
-        void beginRepair(connection, error)
+        repairInBackground(connection, error)
       },
       onProtocolMessage: message => {
         if (generation !== connection.generation) return
@@ -426,6 +426,11 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     return repair
   }
 
+  const repairInBackground = (connection: Connection, cause: unknown): void => {
+    if (closed || connection.closed) return
+    void beginRepair(connection, cause).catch(() => undefined)
+  }
+
   const request = async (
     connection: Connection,
     method: string,
@@ -447,7 +452,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
       return await client.request(method, params, options)
     } catch (error) {
       // The failed operation is deliberately not retained or replayed.
-      if (client.isClosed()) void beginRepair(connection, error)
+      if (client.isClosed()) repairInBackground(connection, error)
       throw error
     }
   }
@@ -557,7 +562,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
         try {
           await client.notify(method, params)
         } catch (error) {
-          if (client.isClosed()) void beginRepair(ownedConnection, error)
+          if (client.isClosed()) repairInBackground(ownedConnection, error)
           throw error
         }
       },

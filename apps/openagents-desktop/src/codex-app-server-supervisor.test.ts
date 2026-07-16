@@ -34,6 +34,8 @@ class FakeClient {
   closed = false
   failInitialize: Error | null = null
   failClosedMethod: string | null = null
+  deferUntilCloseMethod: string | null = null
+  private rejectDeferred: ((error: Error) => void) | null = null
   reverseBeforeInitialize: unknown = null
   private readonly notificationListeners = new Set<(message: CodexAppServerMessage) => void>()
 
@@ -52,6 +54,9 @@ class FakeClient {
   async request(method: string, params: unknown, options: Readonly<{ signal?: AbortSignal }> = {}): Promise<unknown> {
     if (options.signal?.aborted === true) throw new CodexAppServerError("cancelled", `${method} cancelled`)
     this.requests.push({ method, params })
+    if (method === this.deferUntilCloseMethod) {
+      return await new Promise<never>((_resolve, reject) => { this.rejectDeferred = reject })
+    }
     if (method === this.failClosedMethod) {
       const error = new CodexAppServerError("closed", "fake app-server crashed")
       this.closed = true
@@ -65,6 +70,9 @@ class FakeClient {
   async notify(method: string, params: unknown): Promise<void> {
     if (this.closed) throw new CodexAppServerError("closed", "fake app-server is closed")
     this.notifications.push({ method, params })
+    if (method === this.deferUntilCloseMethod) {
+      await new Promise<never>((_resolve, reject) => { this.rejectDeferred = reject })
+    }
   }
 
   onNotification(listener: (message: CodexAppServerMessage) => void): () => void {
@@ -89,11 +97,15 @@ class FakeClient {
 
   isClosed(): boolean { return this.closed }
 
+  deferredRequestReady(): boolean { return this.rejectDeferred !== null }
+
   close(): void {
     if (this.closed) return
     this.closed = true
     this.closeCount += 1
     this.input.onClose(new CodexAppServerError("closed", "fake app-server closed"))
+    this.rejectDeferred?.(new CodexAppServerError("closed", "fake app-server closed"))
+    this.rejectDeferred = null
   }
 }
 
@@ -315,5 +327,32 @@ describe("CAP-01 Codex app-server supervisor", () => {
     expect(states.at(-1)).toBe("closed")
     await expect(first.request("thread/read", {})).rejects.toMatchObject({ reason: "closed" })
     await expect(second.notify("thread/compact", {})).rejects.toMatchObject({ reason: "closed" })
+  })
+
+  test("closing with an in-flight request or notification never leaks a background repair rejection", async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (error: unknown): void => { unhandled.push(error) }
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      for (const operation of ["request", "notify"] as const) {
+        const fake = fakeFactory()
+        const supervisor = createCodexAppServerSupervisor({ clientFactory: fake.factory })
+        const lease = await supervisor.acquire(target())
+        fake.clients[0]!.deferUntilCloseMethod = "skills/list"
+        const pending = (operation === "request"
+          ? lease.request("skills/list", {})
+          : lease.notify("skills/list", {}))
+          .then(() => null, error => error)
+        await waitFor(() => fake.clients[0]!.deferredRequestReady())
+
+        supervisor.close()
+        await expect(pending).resolves.toMatchObject({ reason: "closed" })
+        await new Promise<void>(resolve => setImmediate(resolve))
+        await new Promise<void>(resolve => setImmediate(resolve))
+      }
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
   })
 })

@@ -178,7 +178,7 @@ export const makeCodexEcosystem = (options: Readonly<{
   const reconcileInstall = async () => { await refreshPlugins(); await refreshApps(true); await refreshMcp() }
   const onNotification = ({ generation, message }: CodexAppServerNotification) => {
     const params = object(message.params) ?? {}
-    if (message.method === "skills/changed") { void refreshSkills(true); return }
+    if (message.method === "skills/changed") { void refreshSkills(true).catch(() => undefined); return }
     if (message.method === "app/list/updated") { publish({ apps: projectApps(params) }, generation); return }
     if (message.method === "mcpServer/startupStatus/updated") {
       const name = string(params.name); if (name === null) return
@@ -186,7 +186,7 @@ export const makeCodexEcosystem = (options: Readonly<{
     }
     if (message.method === "mcpServer/oauthLogin/completed") {
       const name = string(params.name); const threadId = string(params.threadId)
-      publish({ oauth: state.oauth.map(flow => flow.name === name && flow.threadId === threadId && flow.state === "pending" ? { ...flow, state: params.success === true ? "completed" as const : "failed" as const, error: params.success === true ? null : "Connector authentication failed" } : flow) }, generation); void refreshMcp(); return
+      publish({ oauth: state.oauth.map(flow => flow.name === name && flow.threadId === threadId && flow.state === "pending" ? { ...flow, state: params.success === true ? "completed" as const : "failed" as const, error: params.success === true ? null : "Connector authentication failed" } : flow) }, generation); void refreshMcp().catch(() => undefined); return
     }
     if (message.method === "hook/started" || message.method === "hook/completed") {
       const run = object(params.run); const runRef = string(run?.id) ?? hash(JSON.stringify(params)).slice(0, 24); const hookKey = string(run?.hookName) ?? string(run?.hookKey) ?? "unknown"
