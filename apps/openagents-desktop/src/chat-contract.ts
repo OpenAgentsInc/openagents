@@ -1,5 +1,6 @@
 import { Exit, Schema } from "@effect-native/core/effect"
 import type { LiveAgentGraphPresentation } from "./agent-graph-presentation.ts"
+import { WorkbenchItemSchema } from "./workbench-item-contract.ts"
 
 /**
  * Canonical conversation ordering: newest activity first across every host.
@@ -42,6 +43,13 @@ export const DesktopToolTraceSchema = Schema.Struct({
   toolName: Schema.String.check(Schema.isMaxLength(120)),
   phase: DesktopToolTracePhaseSchema,
   summary: Schema.String.check(Schema.isMaxLength(400)),
+  /**
+   * Typed item payload (#8859): the structured fields the string summary
+   * flattens (command cwd/exit/duration/output tail, per-file diffs, tool
+   * args/results). Additive — absent on every pre-#8859 note, and the
+   * summary stays populated so existing renderers keep working.
+   */
+  item: Schema.optional(WorkbenchItemSchema),
 })
 export type DesktopToolTrace = typeof DesktopToolTraceSchema.Type
 

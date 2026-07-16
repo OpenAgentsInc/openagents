@@ -28,6 +28,7 @@ import {
   type DesktopToolTrace,
 } from "./chat-contract.ts"
 import { LocalSkillInvocationSchema } from "./plugin-config-contract.ts"
+import { WorkbenchItemSchema } from "./workbench-item-contract.ts"
 
 export const FableLocalAvailabilityChannel = "openagents:fable-local:availability" as const
 export const FableLocalStartChannel = "openagents:fable-local:start" as const
@@ -226,12 +227,18 @@ export const FableLocalEventSchema = Schema.Union([
     kind: Schema.Literal("tool_use"),
     toolName: Schema.String.check(Schema.isMaxLength(120)),
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    /** Typed item payload (#8859, additive): structured tool fields the
+     * bounded summary string flattens. Absent on pre-#8859 emitters. */
+    item: Schema.optional(WorkbenchItemSchema),
   }),
   Schema.Struct({
     kind: Schema.Literal("tool_result"),
     toolName: Schema.String.check(Schema.isMaxLength(120)),
     ok: Schema.Boolean,
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    /** Typed item payload (#8859, additive): completion-side structured
+     * fields (exit code, duration, output tail, diffs, results). */
+    item: Schema.optional(WorkbenchItemSchema),
   }),
   /**
    * Effective-model visibility: the model the SDK init actually reported for
@@ -772,6 +779,9 @@ export const fableLocalTraceNoteMeta = (
   toolName: event.toolName,
   phase: event.kind === "tool_use" ? "started" : event.ok ? "ok" : "failed",
   summary: event.summary.trim(),
+  // The typed item (#8859) rides the same note so persisted transcripts
+  // rebuild the same typed cards the live stream showed.
+  ...(event.item === undefined ? {} : { item: event.item }),
 })
 
 /**

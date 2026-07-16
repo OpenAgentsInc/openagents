@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { readRecentCodexHistory } from "../src/codex-history.ts"
+import { readCodexHistoryPage, readRecentCodexHistory } from "../src/codex-history.ts"
 import { openAgentsDesktopUxContractRegistry } from "../src/contracts/ux-contracts.ts"
 
 const now = new Date("2026-07-10T18:00:00.000Z")
@@ -57,5 +57,77 @@ describe("openagents_desktop.seam.codex_loss_accounted_history.v2 legacy compati
     const literal = root()
     write(literal, "literal.jsonl", [meta("literal", "2026-07-10T17:00:00.000Z"), message("2026-07-10T17:01:00.000Z", "user", "Show the literal <environment_context> tag")])
     expect(readRecentCodexHistory({ sessionsRoot: literal, now })[0]?.title).toBe("Show the literal <environment_context> tag")
+  })
+})
+
+describe("typed WorkbenchItem history sidecar (#8859)", () => {
+  test("tool-class rollout rows carry the structured item a renderer rebuilds typed cards from", () => {
+    const sessions = root()
+    write(sessions, "typed.jsonl", [
+      meta("typed", "2026-07-10T17:00:00.000Z"),
+      {
+        timestamp: "2026-07-10T17:01:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "item_completed",
+          item: {
+            id: "cmd-1",
+            type: "command_execution",
+            command: "pnpm test --filter desktop",
+            cwd: "/safe/repo",
+            exit_code: 0,
+            duration_ms: 950,
+            aggregated_output: "42 tests passed",
+            status: "completed",
+          },
+        },
+      },
+      {
+        timestamp: "2026-07-10T17:02:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "item_completed",
+          item: {
+            id: "mcp-1",
+            type: "mcp_tool_call",
+            server: "stripe",
+            tool: "createCharge",
+            arguments: { amount: 42, token: "sk-abcdefghijklmnop" },
+            duration_ms: 88,
+            status: "completed",
+          },
+        },
+      },
+      message("2026-07-10T17:03:00.000Z", "assistant", "All green."),
+    ])
+    const page = readCodexHistoryPage({ sessionsRoot: sessions, threadRef: "typed", offset: 0, limit: 200 })!
+    const command = page.items.find(item => item.item?.kind === "command")
+    expect(command?.kind).toBe("tool_call")
+    expect(command?.item).toEqual({
+      kind: "command",
+      source: "codex",
+      command: "pnpm test --filter desktop",
+      cwd: "/safe/repo",
+      status: "completed",
+      exitCode: 0,
+      durationMs: 950,
+      outputTail: "42 tests passed",
+    })
+    const mcp = page.items.find(item => item.item?.kind === "toolCall")
+    expect(mcp?.item).toMatchObject({
+      kind: "toolCall",
+      callKind: "mcp",
+      server: "stripe",
+      tool: "createCharge",
+      durationMs: 88,
+      status: "completed",
+    })
+    // History redaction discipline applies to the typed sidecar too.
+    const args = mcp?.item?.kind === "toolCall" ? mcp.item.args : []
+    expect(args.find(entry => entry.key === "token")?.value).toBe("[REDACTED]")
+    expect(args.find(entry => entry.key === "amount")?.value).toBe("42")
+    // Non-tool rows stay sidecar-free.
+    const assistant = page.items.find(item => item.kind === "assistant_message")
+    expect(assistant?.item).toBeUndefined()
   })
 })

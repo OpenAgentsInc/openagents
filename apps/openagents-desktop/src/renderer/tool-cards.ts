@@ -27,6 +27,7 @@ import type { IconName } from "@effect-native/core"
 
 import type { DesktopToolTrace } from "../chat-contract.ts"
 import { parseFableLocalTraceNoteText } from "../fable-local-contract.ts"
+import type { WorkbenchItem } from "../workbench-item-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
 
 export type ToolCardStatus = "running" | "ok" | "failed"
@@ -41,6 +42,12 @@ export type ToolCardModel = Readonly<{
   argsSummary: string
   /** Bounded raw result / failure text; null while running. */
   resultSummary: string | null
+  /**
+   * Typed item payload (#8859) when the trace note carried one: the
+   * structured command/fileChange/toolCall fields wave-2 cards render.
+   * Completion payloads supersede started payloads for the same card.
+   */
+  item?: WorkbenchItem
 }>
 
 /**
@@ -166,6 +173,7 @@ export const projectToolCardEntries = (
           status: "running",
           argsSummary: trace.summary,
           resultSummary: null,
+          ...(trace.item === undefined ? {} : { item: trace.item }),
         },
       })
       const queue = openByTool.get(trace.toolName) ?? []
@@ -188,18 +196,21 @@ export const projectToolCardEntries = (
           status,
           argsSummary: "",
           resultSummary: trace.summary === "" ? null : trace.summary,
+          ...(trace.item === undefined ? {} : { item: trace.item }),
         },
       })
       continue
     }
     const open = entries[openIndex]
     if (open !== undefined && open.kind === "tool") {
+      const item = trace.item ?? open.card.item
       entries[openIndex] = {
         kind: "tool",
         card: {
           ...open.card,
           status,
           resultSummary: trace.summary === "" ? null : trace.summary,
+          ...(item === undefined ? {} : { item }),
         },
       }
     }

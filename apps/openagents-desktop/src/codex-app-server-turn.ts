@@ -13,6 +13,7 @@ import {
 } from "./codex-app-server-supervisor.ts"
 import type { FableLocalEvent } from "./fable-local-contract.ts"
 import { makeCodexTurnState } from "./codex-turn-state.ts"
+import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
 
 export type CodexAppServerTurnOutcome = Readonly<{
   outcome: "success" | "reconnect_required" | "incompatible_workflow" | "failed" | "timeout" | "interrupted"
@@ -423,16 +424,24 @@ export const runCodexAppServerTurn = async (
       }
       const facts = toolFacts(item)
       if (facts === null) return
+      // Typed payload (#8859): the structured fields toolFacts() flattens
+      // (command cwd/exit/duration/output tail, per-file diffs, MCP args/
+      // results, web queries) ride the same events additively. The string
+      // summary stays populated for pre-wave-2 renderers and older notes.
+      const typedItem = workbenchItemFromThreadItem(item, "codex")
+      const typed = typedItem === null ? {} : { item: typedItem }
       if (message.method === "item/started") {
         pendingTools.add(id)
-        input.emit({ kind: "tool_use", toolName: facts.name, summary: facts.summary })
+        input.emit({ kind: "tool_use", toolName: facts.name, summary: facts.summary, ...typed })
       } else {
-        if (!pendingTools.has(id)) input.emit({ kind: "tool_use", toolName: facts.name, summary: facts.summary })
+        if (!pendingTools.has(id)) {
+          input.emit({ kind: "tool_use", toolName: facts.name, summary: facts.summary, ...typed })
+        }
         pendingTools.delete(id)
         const output = item.type === "commandExecution" && typeof item.aggregatedOutput === "string"
           ? item.aggregatedOutput.slice(0, 400)
           : facts.summary
-        input.emit({ kind: "tool_result", toolName: facts.name, ok: facts.ok, summary: output })
+        input.emit({ kind: "tool_result", toolName: facts.name, ok: facts.ok, summary: output, ...typed })
       }
       return
     }

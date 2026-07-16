@@ -577,6 +577,22 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       Extract<FableLocalEvent, { kind: "tool_result" }>
     expect(toolResult.ok).toBe(true)
     expect(toolResult.summary).toBe("fixture")
+    // Typed item payloads (#8859): the exec lane emits the same structured
+    // command fields the app-server lane does, additively to the summaries.
+    expect(toolUse.item).toMatchObject({
+      kind: "command",
+      source: "codex",
+      command: "echo fixture",
+      status: "in_progress",
+    })
+    expect(toolResult.item).toMatchObject({
+      kind: "command",
+      source: "codex",
+      command: "echo fixture",
+      status: "completed",
+      exitCode: 0,
+      outputTail: "fixture",
+    })
     const deltas = sink.events.filter(event => event.kind === "text_delta") as
       Array<Extract<FableLocalEvent, { kind: "text_delta" }>>
     expect(deltas.map(delta => delta.text).join("")).toBe(FIXTURE_CODEX_LOCAL_TEXT)

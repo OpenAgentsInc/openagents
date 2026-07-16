@@ -10,6 +10,7 @@ import path from "node:path"
 
 import type { DesktopMessage, DesktopThread } from "./chat-contract.ts"
 import type { CodexHistoryAgent, CodexHistoryAgentPreview, CodexHistoryCatalog, CodexHistoryItem, CodexHistoryItemKind, CodexHistoryPage } from "./codex-history-contract.ts"
+import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
 
 const windowMs = 24 * 60 * 60 * 1000
 const recentMessageLimit = 5
@@ -422,7 +423,14 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   else if (itemType.includes("error")) { kind = "error"; label = "Error"; summary = safeText(item.message ?? item.error); status = "error" }
   else if (envelopeType === "event_msg") { kind = itemType.includes("error") ? "error" : "lifecycle"; label = itemType; summary = safeText(item.message ?? item.text ?? item.status); push("event", itemType) }
   const redactedSummary = redactCodexHistoryText(summary || label); const redacted = redactedSummary.redacted || fields.some(item => item.redacted) || summary.startsWith("[REDACTED:")
-  return { itemRef: `${threadRef}:${sequence}`, threadRef, sequence, timestamp, kind, label: label.slice(0,160), summary: redactedSummary.text, status, fields: fields.map(({label,value}) => ({label,value})), redacted, sourceType: `${envelopeType}/${itemType}`.slice(0,160) }
+  // Typed sidecar (#8859): tool-class rows carry the structured WorkbenchItem
+  // (command cwd/exit/duration/output tail, per-file diffs, args/results) so
+  // renderers rebuild the same typed card the live turn showed. The reader is
+  // tolerant — rows whose source shape has no typed projection stay string-only.
+  const typedItem = kind === "tool_call" || kind === "tool_result"
+    ? workbenchItemFromThreadItem(item, "codex", value => redactCodexHistoryText(value).text)
+    : null
+  return { itemRef: `${threadRef}:${sequence}`, threadRef, sequence, timestamp, kind, label: label.slice(0,160), summary: redactedSummary.text, status, fields: fields.map(({label,value}) => ({label,value})), redacted, sourceType: `${envelopeType}/${itemType}`.slice(0,160), ...(typedItem === null ? {} : { item: typedItem }) }
 }
 
 const projectionAccounting = (row: unknown): Readonly<{ gap: boolean; redaction: boolean }> => {
