@@ -2,7 +2,7 @@
 
 - Class: receipt
 - Date: 2026-07-15
-- Status: implementation and deterministic preview proof complete; production deployment proof follows in the issue closure receipt
+- Status: deployed and live-proven; issue closed
 - Dispatch: no; use [#8855](https://github.com/OpenAgentsInc/openagents/issues/8855)
 - Owner: OpenAgents UI architecture
 - Effect Native source: `f7f7fe6ed8e4245126d7149b3f3060d3d8d8c0e9` (`effect-native/v43`)
@@ -47,6 +47,10 @@ React Native polygon lowering, and absence of Arwes/audio runtime dependencies.
 - Focused SSR and vendor-guard suites: 11/11 pass.
 - Production Start build: pass; `/components/khala` emits 73,226 bytes of SSR
   HTML in the local production preview plus the concrete Start JS asset.
+- Production Cloud Run revision: `openagents-monolith-00141-b6m`, serving 100%
+  of traffic.
+- Live route: `https://openagents.com/components/khala` returned HTTP 200.
+- Concrete live asset: `/assets/index-C6KMvN47.js` returned HTTP 200.
 - SSR markers: `data-khala-workbench="complete"`,
   `data-khala-capability-count="30"`, and `data-khala-audio="excluded"`.
 - Architecture scan: this lane adds no raw JSON parse outside the named
@@ -60,6 +64,5 @@ React Native polygon lowering, and absence of Arwes/audio runtime dependencies.
 
 ## Final disposition
 
-This receipt is evidence, not dispatch authority. Production revision, route
-HTTP status, concrete asset status, and closure are recorded on #8855 after the
-sanctioned Cloud Run deployment.
+This receipt is evidence, not dispatch authority. The sanctioned Cloud Run
+deployment, live route/asset smoke, and closure are also recorded on #8855.
