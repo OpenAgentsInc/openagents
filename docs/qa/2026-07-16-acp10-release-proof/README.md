@@ -114,7 +114,10 @@ confirmed the same boundary—33 models and one create-plan request, but zero
 question or todo calls—even after mode- and tool-qualified prompts. Its checked
 partial receipt is
 [`release-run-cursor-extensions-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json);
-the combined extension row remains blocked.
+the combined extension row remains blocked. The same exact-binary pass selected
+only offered allow/reject permission options and attempted two disposable file
+operations, but Cursor emitted zero `session/request_permission` calls; approval
+and refusal therefore remain unobserved rather than promoted.
 
 The production main-owned Desktop host then ran both pinned drivers and
 serialized the closed `openagents.desktop.acp-support.v1` bundle. The bundle

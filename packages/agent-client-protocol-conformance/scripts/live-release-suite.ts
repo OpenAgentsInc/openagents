@@ -135,11 +135,23 @@ const object = (value: unknown): Record<string, unknown> =>
 const qualifyCursorExtensions = async (
   root: string,
   probe: Awaited<ReturnType<typeof probeCursorAcpExecutable>>,
-): Promise<Readonly<{ questions: number; plans: number; todos: number; models: number }>> => {
+): Promise<
+  Readonly<{
+    questions: number;
+    plans: number;
+    todos: number;
+    models: number;
+    permissionApprovals: number;
+    permissionRefusals: number;
+  }>
+> => {
   let transport: AgentStdioTransport | undefined;
   let questions = 0;
   let plans = 0;
   let todos = 0;
+  let permissionApprovals = 0;
+  let permissionRefusals = 0;
+  let preferApproval = true;
   try {
     transport = await AgentStdioTransport.start({
       executable: probe.realPath,
@@ -174,6 +186,21 @@ const qualifyCursorExtensions = async (
     });
     transport.onNotification("cursor/update_todos", () => {
       todos += 1;
+    });
+    transport.registerReverseHandler("session/request_permission", async (params) => {
+      const options = Array.isArray(object(params).options)
+        ? object(params).options.map(object)
+        : [];
+      const preferred = options.find((option) =>
+        preferApproval
+          ? typeof option.kind === "string" && option.kind.startsWith("allow")
+          : typeof option.kind === "string" &&
+            (option.kind.startsWith("reject") || option.kind.startsWith("deny")),
+      );
+      if (typeof preferred?.optionId !== "string") return { outcome: { outcome: "cancelled" } };
+      if (preferApproval) permissionApprovals += 1;
+      else permissionRefusals += 1;
+      return { outcome: { outcome: "selected", optionId: preferred.optionId } };
     });
     const initialized = object(
       await transport.request("initialize", {
@@ -224,7 +251,31 @@ const qualifyCursorExtensions = async (
         })
         .catch(() => undefined);
     }
-    return { questions, plans, todos, models };
+    preferApproval = true;
+    await transport
+      .request("session/prompt", {
+        sessionId: attached.sessionId,
+        prompt: [
+          {
+            type: "text",
+            text: "Create a file named PERMISSION_ALLOW_PROOF.txt containing the word allowed.",
+          },
+        ],
+      })
+      .catch(() => undefined);
+    preferApproval = false;
+    await transport
+      .request("session/prompt", {
+        sessionId: attached.sessionId,
+        prompt: [
+          {
+            type: "text",
+            text: "Create a file named PERMISSION_REFUSE_PROOF.txt containing the word refused.",
+          },
+        ],
+      })
+      .catch(() => undefined);
+    return { questions, plans, todos, models, permissionApprovals, permissionRefusals };
   } finally {
     await transport?.dispose();
   }
@@ -573,6 +624,16 @@ const runCursor = async (): Promise<AcpLiveReleasePeerReceipt> => {
         "cursor-extensions-models",
         extensionsPassed ? "live-pass" : "not-observed",
         `Pinned extension counts: questions ${extensions.questions}, plans ${extensions.plans}, todos ${extensions.todos}, models ${extensions.models}`,
+      ),
+      scenario(
+        "permission-approval",
+        extensions.permissionApprovals > 0 ? "live-pass" : "not-observed",
+        `Pinned permission approval selections: ${extensions.permissionApprovals}`,
+      ),
+      scenario(
+        "permission-refusal",
+        extensions.permissionRefusals > 0 ? "live-pass" : "not-observed",
+        `Pinned permission refusal selections: ${extensions.permissionRefusals}`,
       ),
     );
     return {

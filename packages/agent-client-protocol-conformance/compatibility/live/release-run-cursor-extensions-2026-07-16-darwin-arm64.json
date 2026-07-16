@@ -4,8 +4,8 @@
   "protocolExclusions": ["Agent Communication Protocol", "A2A"],
   "proofClass": "candidate-live",
   "claimAuthority": "none-release-matrix-only",
-  "recordedAt": "2026-07-16T17:22:37.366Z",
-  "openAgentsRevision": "681f1ea325a2fa9f2b0829eb73802de00d206ec0",
+  "recordedAt": "2026-07-16T17:25:59.905Z",
+  "openAgentsRevision": "785978985d62eb20c95cab1a8396b96cdbbfa9c0",
   "schemaRelease": "schema-v1.19.0",
   "platform": "darwin-arm64-node-24.13.1",
   "peers": [
@@ -82,6 +82,16 @@
           "id": "cursor-extensions-models",
           "result": "not-observed",
           "safeDetail": "Pinned extension counts: questions 0, plans 1, todos 0, models 33"
+        },
+        {
+          "id": "permission-approval",
+          "result": "not-observed",
+          "safeDetail": "Pinned permission approval selections: 0"
+        },
+        {
+          "id": "permission-refusal",
+          "result": "not-observed",
+          "safeDetail": "Pinned permission refusal selections: 0"
         }
       ],
       "counters": {
