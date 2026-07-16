@@ -34,7 +34,7 @@ import {
   projectSessionUpdateForConformance,
   projectStopReasonForConformance,
 } from "./projection.ts";
-import { validateAcpReleaseMatrix } from "./release.ts";
+import { acpReleaseEvidenceClass, validateAcpReleaseMatrix } from "./release.ts";
 import { assertSecretAbsent } from "./transcript.ts";
 import {
   CONTENT_BLOCK_FIXTURES,
@@ -839,6 +839,8 @@ describe("MCP custody, durable evidence, and deterministic faults", () => {
   });
 
   it("keeps named-peer release claims independent, fresh, redacted, and live-gated", () => {
+    expect(acpReleaseEvidenceClass("grok", "auth-secondary")).toBe("optional-live-peer");
+    expect(acpReleaseEvidenceClass("cursor", "auth-secondary")).toBe("not-applicable");
     const matrix = JSON.parse(
       readFileSync(resolve(import.meta.dirname, "../compatibility/release-matrix.json"), "utf8"),
     ) as Record<string, unknown>;

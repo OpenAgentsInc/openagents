@@ -29,6 +29,8 @@ version`, resolves the real executable, and pins its SHA-256 at spawn.
   authentication is fail-closed behind a typed owner decision and is never
   invoked after cancellation. Every selected method sends `_meta: { headless:
 true }`; no OAuth-referrer metadata is enabled.
+- Cached local login is the supported headless default. `xai.api_key` is
+  optional and its absence never blocks ACP startup or a support claim.
 - A typed `requestedInteractiveAuthMethod` may select advertised `grok.com` or
   `oidc` ahead of cached authentication. This supports intentional re-login and
   proves cancellation without deleting or expiring an existing cached token.

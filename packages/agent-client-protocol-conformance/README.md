@@ -54,9 +54,10 @@ from fixture-only, blocked, untested, unsupported, and failed scenarios. The
 validator enforces the exact release/schema/platform/profile/binary identities,
 the complete 47-scenario catalog, freshness, and repository-local evidence
 references before recomputing release eligibility. Requiredness and evidence
-class are code-owned: live peer and packaged Desktop rows require live proof,
-while only explicitly hermetic production-transport rows may be satisfied by
-executed fixture proof. Matrix flags cannot self-exempt a provider, and one
+class are code-owned: required live peer and packaged Desktop rows require live
+proof, optional peer alternatives do not gate the default path, and only
+explicitly hermetic production-transport rows may be satisfied by executed
+fixture proof. Matrix flags cannot self-exempt a provider, and one
 provider can never mask the other. The current checked verdict is
 `experimental` for both peers.
 

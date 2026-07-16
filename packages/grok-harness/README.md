@@ -10,6 +10,9 @@ reason once, and uses protocol cancellation before process shutdown.
 Cached-token remains preferred when advertised. Interactive `grok.com` and
 enterprise `oidc` methods require an explicit typed owner continuation; the
 default and cancellation paths stop before `authenticate`.
+An existing local Grok login is sufficient for headless ACP operation; no API
+key is required. `xai.api_key` is only an optional, explicitly configured
+alternative.
 An explicit `requestedInteractiveAuthMethod` can select an advertised
 interactive method ahead of an existing cached token, allowing a user-requested
 login or cancellation without deleting cached credentials.

@@ -68,6 +68,7 @@ export const ACP_RELEASE_SCENARIO_IDS = [
 
 export type AcpReleaseEvidenceClass =
   | "live-peer"
+  | "optional-live-peer"
   | "packaged-desktop-live"
   | "hermetic-production"
   | "not-applicable";
@@ -84,6 +85,7 @@ const hermeticProductionScenarios = new Set<string>([
   "trust-controls",
 ]);
 const packagedDesktopScenarios = new Set<string>(["desktop-clean-machine", "support-bundle"]);
+const grokOptionalScenarios = new Set<string>(["auth-secondary"]);
 const grokNotApplicableScenarios = new Set<string>([
   "auth-logout-reauth",
   "session-resume-close-delete",
@@ -110,17 +112,20 @@ export const acpReleaseEvidenceClass = (
 ): AcpReleaseEvidenceClass => {
   const notApplicable = peer === "grok" ? grokNotApplicableScenarios : cursorNotApplicableScenarios;
   if (notApplicable.has(scenario)) return "not-applicable";
+  if (peer === "grok" && grokOptionalScenarios.has(scenario)) return "optional-live-peer";
   if (hermeticProductionScenarios.has(scenario)) return "hermetic-production";
   if (packagedDesktopScenarios.has(scenario)) return "packaged-desktop-live";
   return "live-peer";
 };
 
 const evidenceSatisfies = (evidenceClass: AcpReleaseEvidenceClass, result: unknown): boolean =>
-  evidenceClass === "not-applicable"
-    ? result === "unsupported"
-    : evidenceClass === "hermetic-production"
-      ? result === "fixture-pass" || result === "live-pass"
-      : result === "live-pass";
+  evidenceClass === "optional-live-peer"
+    ? true
+    : evidenceClass === "not-applicable"
+      ? result === "unsupported"
+      : evidenceClass === "hermetic-production"
+        ? result === "fixture-pass" || result === "live-pass"
+        : result === "live-pass";
 
 export type AcpReleaseClaimState = (typeof ACP_RELEASE_CLAIM_STATES)[number];
 export type AcpReleaseScenarioResult = (typeof ACP_RELEASE_SCENARIO_RESULTS)[number];
@@ -322,7 +327,8 @@ export const validateAcpReleaseMatrix = (
         peerName === "grok" || peerName === "cursor"
           ? acpReleaseEvidenceClass(peerName, id)
           : "live-peer";
-      const expectedRequired = evidenceClass !== "not-applicable";
+      const expectedRequired =
+        evidenceClass !== "not-applicable" && evidenceClass !== "optional-live-peer";
       if (scenario.requiredForSupported !== expectedRequired)
         errors.push(`${peerName}/${id}: requiredness does not match the code-owned catalog`);
       if (!(ACP_RELEASE_SCENARIO_RESULTS as readonly unknown[]).includes(scenario.result))

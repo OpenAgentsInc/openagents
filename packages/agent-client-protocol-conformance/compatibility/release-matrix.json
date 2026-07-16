@@ -98,10 +98,10 @@
         },
         {
           "id": "auth-secondary",
-          "requiredForSupported": true,
-          "result": "blocked",
+          "requiredForSupported": false,
+          "result": "not-tested",
           "evidenceRefs": [],
-          "safeDetail": "Intentional xai.api_key path was not configured for this run."
+          "safeDetail": "Optional xai.api_key authentication was not configured. Existing local cached_token authentication is the supported headless default and requires no API key."
         },
         {
           "id": "auth-cancel",

@@ -17,15 +17,16 @@ Its validator enforces the release/schema/platform/profile/binary/initialize
 identities, the exact 47-scenario catalog, evidence freshness, repository-local
 evidence references, and independently derived `releaseEligible`; it does not
 trust a hand-written promotion bit or matrix-controlled requiredness flag.
-Code assigns each scenario to `live-peer`, `packaged-desktop-live`,
-`hermetic-production`, or `not-applicable`. The first two require `live-pass`;
+Code assigns each scenario to `live-peer`, `optional-live-peer`,
+`packaged-desktop-live`, `hermetic-production`, or `not-applicable`. Required
+live peer and packaged Desktop rows require `live-pass`;
 an executed production-transport fixture may satisfy only the explicitly
 hermetic class. Grok passing never changes Cursor's gate, and Cursor passing
 never changes Grok's gate.
 
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
-| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    29 live passes |                                  2 | experimental |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    29 live passes |                                  1 | experimental |
 | Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    26 live passes |                                  4 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
@@ -160,6 +161,8 @@ credentials. It does **not** prove intentional valid `xai.api_key` or literal
 credential expiry. Neither exact peer advertised ACP `auth.logout`;
 the matrix records logout as unsupported rather than demanding an unavailable
 method. Fresh-process primary authentication is covered independently.
+`xai.api_key` is an optional alternative only: the supported headless/ACP path
+uses the existing local `cached_token` session and does not require an API key.
 
 A later exact-binary Grok process used ordinary HOME with the cached login
 untouched, explicitly requested the advertised `grok.com` method, and invoked
@@ -196,8 +199,8 @@ approval and refusal now pass against both pinned live peers.
 
 Provider-specific gaps:
 
-- Grok: intentional valid `xai.api_key` and the non-underscore ask-question
-  spelling.
+- Grok: the non-underscore ask-question spelling. Optional `xai.api_key`
+  qualification is tracked separately and cannot block cached-session support.
   The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.

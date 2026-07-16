@@ -128,7 +128,7 @@ package. #8891 then delivered the native/canonical projection and reverse
 authority bridge, and #8892 delivered the shared race-safe
 [session runtime](../adr/2026-07-16-agent-client-session-runtime.md). The
 #8893 Grok edge now composes those layers behind admitted `grok agent stdio`,
-uses documented cached-token/API-key negotiation, and records an exact 0.2.101
+uses documented cached-token negotiation with optional API-key selection, and records an exact 0.2.101
 candidate probe in the
 [Grok peer ADR](../adr/2026-07-16-grok-agent-client-protocol-peer.md). Its
 production compatibility facade no longer uses the raw JSON-RPC fixture client.
@@ -951,7 +951,8 @@ their own feature evidence.
 8. Prove Cursor login, modes/configuration, model discovery, and
    `cursor/ask_question`, `cursor/create_plan`, `cursor/update_todos`, and
    `cursor/list_available_models` independently from Grok.
-9. Prove Grok cached-token/API-key auth, update streaming, question extensions,
+9. Prove Grok cached-token auth, optional API-key auth only when intentionally
+   configured, update streaming, question extensions,
    and any unstable model/completion compatibility fallback independently from
    Cursor.
 

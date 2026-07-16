@@ -141,9 +141,10 @@ the wider reference set remains indexed in
 Desktop Settings now schema-decodes a main-owned Grok/Cursor projection with
 probe-verified executable identity, validated alternate executable selection,
 advertised authentication state, session/cancellation/recovery state, and
-stable-versus-extension configuration provenance. Grok cached-token and
-intentionally supplied `XAI_API_KEY` auth remain peer-advertised and
-evidence-gated; Cursor exposes only its advertised `cursor_login` flow. The
+stable-versus-extension configuration provenance. Grok uses the existing local
+cached-token session for headless ACP by default—no API key is required. An
+intentionally supplied `XAI_API_KEY` remains an optional peer-advertised path;
+Cursor exposes only its advertised `cursor_login` flow. The
 support artifact is constructed in main from a closed refs-only schema and
 omits executable paths, environment, auth payloads, prompts, files, terminal
 content, and native events. Desktop derives its label from trusted-profile
