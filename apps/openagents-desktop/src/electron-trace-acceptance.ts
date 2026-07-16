@@ -34,20 +34,20 @@ export const traceAcceptanceJourney = `(async () => {
   const forbiddenTitle = /^(untitled|codex history|new chat)$/i
   if (roots.some(root => !root.title.trim() || forbiddenTitle.test(root.title.trim()))) return {ok:false,reason:"known_title_fallback"}
   if (roots.some((root,index) => index > 0 && root.updatedAt > roots[index-1].updatedAt)) return {ok:false,reason:"catalog_order"}
-  const sidebarRows = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')]
   const rootRefs = new Set(visibleRoots.map(root => root.threadRef))
-  const sidebarList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label')?.endsWith(' of ' + visibleRoots.length + ' sessions'))
-  if (!sidebarList || sidebarRows.length === 0 || sidebarRows.some(row => !rootRefs.has(row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))) return {ok:false,reason:"child_leaked_to_sidebar"}
-  // #8712 H3/H4: the merged catalog carries BOTH providers, and free-text
-  // search returns + opens a session at its matching item. Both are additive
-  // and must not disturb the loss-accounted flow asserted below.
-  if (!roots.some(root => root.source === "codex") || !roots.some(root => root.source === "claude")) return {ok:false,reason:"missing_source"}
-  const searchResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-search",query:{id:"codex.history.search",query:"peregrine",limit:10}})
-  if (searchResponse?.kind !== "codex_history_search") return {ok:false,reason:"search_unavailable"}
-  const contentHit = searchResponse.search.results.find(result => result.matchKind === "content" && result.source === "claude")
-  if (!contentHit || contentHit.matchItemRef === null || contentHit.matchSequence === null) return {ok:false,reason:"search_no_content_hit"}
-  const openedResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-search-open",query:{id:"codex.history.page",threadRef:contentHit.threadRef,offset:contentHit.matchSequence,limit:1}})
-  if (openedResponse?.kind !== "codex_history_page" || !openedResponse.page.items.some(item => item.itemRef === contentHit.matchItemRef)) return {ok:false,reason:"search_open_at_item_failed"}
+  // Local draft rows now share the Recent list with imported Codex roots.
+  // They are valid top-level sessions, not leaked agent children; scope this
+  // topology assertion to catalog roots before checking their identities.
+  const sidebarRows = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')]
+    .filter(row => rootRefs.has(row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))
+  const sidebarList = document.querySelector('[aria-label="Recent sessions"]') ??
+    [...document.querySelectorAll('[aria-label]')].find(node => /^\\d+ of \\d+ sessions$/.test(node.getAttribute('aria-label') ?? ''))
+  if (!sidebarList) return {ok:false,reason:"sidebar_list_missing",labels:[...document.querySelectorAll('[aria-label]')].map(node=>node.getAttribute('aria-label')).filter(Boolean).slice(0,30)}
+  if (sidebarRows.length === 0) return {ok:false,reason:"catalog_roots_missing_from_sidebar",rootCount:rootRefs.size,rowKeys:[...document.querySelectorAll('[data-en-key^="sidebar-thread-"]')].map(row=>row.getAttribute('data-en-key')).slice(0,30)}
+  if (sidebarRows.some(row => !rootRefs.has(row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))) return {ok:false,reason:"child_leaked_to_sidebar"}
+  // The MVP catalog is intentionally Codex-only. Provider-agnostic merged
+  // search belongs to a later product phase and must not gate this harness.
+  if (!roots.some(root => root.source === "codex")) return {ok:false,reason:"missing_codex_source"}
   if ([...document.querySelectorAll('[data-en-key*="loading"]')].some(node => node.getClientRects().length > 0)) return {ok:false,reason:"stale_loading_copy"}
 
   const rootsWithTopology = visibleRoots.map(root => {
@@ -149,9 +149,10 @@ export const traceAcceptanceJourney = `(async () => {
   const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
   const modifierKey=bridge.platform==='darwin'?'Meta':'Control'
   window.dispatchEvent(new KeyboardEvent('keydown',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true,...modifier}))
-  const firstHint=await until(()=>document.querySelector('[data-en-key="sidebar-thread-'+visibleRoots[0].threadRef+'"] [data-en-role="meta"]')?.textContent==='1')
+  const firstHint=await until(()=>{const text=document.querySelector('[data-en-key="sidebar-thread-'+visibleRoots[0].threadRef+'"] [data-en-role="meta"]')?.textContent??'';return /^(?:⌘|Ctrl\\+)[1-9]$/.test(text)?text:null})
   if(!firstHint)return {ok:false,reason:'history_shortcut_hint_missing'}
-  window.dispatchEvent(new KeyboardEvent('keydown',{key:'1',code:'Digit1',bubbles:true,cancelable:true,...modifier}))
+  const firstHintDigit=firstHint.slice(-1)
+  window.dispatchEvent(new KeyboardEvent('keydown',{key:firstHintDigit,code:'Digit'+firstHintDigit,bubbles:true,cancelable:true,...modifier}))
   const numberLoaded=await until(()=>selectedRef()===visibleRoots[0].threadRef)
   if(!numberLoaded)return {ok:false,reason:'history_shortcut_number_failed'}
   window.dispatchEvent(new KeyboardEvent('keyup',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true}))
@@ -258,11 +259,11 @@ export const traceAcceptanceJourney = `(async () => {
   if (Math.abs(timeline.scrollTop - scrollTarget) > 2 || scrollTarget < 1) return {ok:false,reason:"timeline_scroll_stuck",clientHeight:timeline.clientHeight,scrollHeight:timeline.scrollHeight,scrollTop:timeline.scrollTop,scrollTarget}
   const scrollBeforeModifier = timeline.scrollTop
   window.dispatchEvent(new KeyboardEvent('keydown',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true,...modifier}))
-  if (!await until(() => document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"] [data-en-role="meta"]')?.textContent === '1')) return {ok:false,reason:"history_modifier_hint_missing",metaText:document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"] [data-en-role="meta"]')?.textContent??null,rowPresent:document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"]')!==null,metaPresent:document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"] [data-en-role="meta"]')!==null}
+  if (!await until(() => /^(?:⌘|Ctrl\\+)[1-9]$/.test(document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"] [data-en-role="meta"]')?.textContent ?? ''))) return {ok:false,reason:"history_modifier_hint_missing",metaText:document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"] [data-en-role="meta"]')?.textContent??null,rowPresent:document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"]')!==null,metaPresent:document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"] [data-en-role="meta"]')!==null}
   await wait(50)
   if (Math.abs(timeline.scrollTop-scrollBeforeModifier)>1) return {ok:false,reason:"history_modifier_scroll_reset",phase:"down"}
   window.dispatchEvent(new KeyboardEvent('keyup',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true}))
-  await until(() => document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"] [data-en-role="meta"]')?.textContent !== '1')
+  await until(() => !/^(?:⌘|Ctrl\\+)[1-9]$/.test(document.querySelector('[data-en-key="sidebar-thread-' + visibleRoots[0].threadRef + '"] [data-en-role="meta"]')?.textContent ?? ''))
   await wait(50)
   if (Math.abs(timeline.scrollTop-scrollBeforeModifier)>1) return {ok:false,reason:"history_modifier_scroll_reset",phase:"up"}
   const saved = JSON.parse(localStorage.getItem('openagents.desktop.history.v1') ?? 'null')

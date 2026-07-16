@@ -276,6 +276,8 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
             : sessions.map(session => <button
                 aria-current={session.selected ? "page" : undefined}
                 className="oa-react-session-row justify-start text-left"
+                data-en-key={`sidebar-thread-${session.id}`}
+                data-en-tag="Button"
                 data-selected={session.selected ? "true" : "false"}
                 data-session-row
                 key={session.id}
@@ -283,7 +285,7 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
                 type="button"
               >
                 <span className="oa-react-session-title">{session.title}</span>
-                <small className="oa-react-session-meta">{session.meta}</small>
+                <small className="oa-react-session-meta" data-en-role="meta">{session.meta}</small>
               </button>)}
         {canLoadMore ? <button className="oa-react-load-more" onClick={onLoadMore} type="button">Load more sessions</button> : null}
       </nav>

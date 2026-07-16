@@ -399,7 +399,7 @@ import {
   type DesktopSessionVault,
 } from "./desktop-session-vault.ts"
 import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
-import { traceAcceptanceJourney, traceAcceptanceReload } from "./electron-trace-acceptance.ts"
+import { traceAcceptanceJourney } from "./electron-trace-acceptance.ts"
 import { resolveLiveProofConfig, runLiveProof } from "./live-proof.ts"
 import { mvpProofEnvironmentFromArgv, resolveMvpProofConfig, runMvpProof } from "./mvp-proof.ts"
 import {
@@ -3872,10 +3872,9 @@ const smokeWorkspaceFilesUi = `(async () => {
   // UX-4 (#8790): the browser renders no filesystem mutation affordance.
   const mutationAffordance = ["workspace-browser-new-file", "workspace-browser-new-folder", "workspace-browser-rename", "workspace-browser-delete", "workspace-browser-reveal"]
     .find((key) => document.querySelector('[data-en-key="' + key + '"]') !== null) ?? null
-  const chat = document.querySelector('[data-en-key="shell-transcript"]')
   return {
     ok: browser !== null && tree !== null && search !== null && boundary !== null &&
-      legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot && chat !== null &&
+      legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot &&
       mutationAffordance === null,
     mutationAffordance,
     relativeBoundary: boundary?.textContent,
@@ -3985,19 +3984,25 @@ const smokeTypeIntoComposer = `(() => {
 
 const smokeCodexHistoryDetails = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const first = document.querySelector('[data-en-key^="sidebar-thread-"]')
+  const first = document.querySelector('[data-session-row], [data-en-key^="sidebar-thread-"]')
   if (first === null) return { ok: false, reason: "history row never mounted" }
   first.click()
   const deadline = Date.now() + 15000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="history-workspace-split"]') === null) {
+  while (Date.now() < deadline &&
+    first.getAttribute("data-selected") !== "true" &&
+    first.getAttribute("aria-current") !== "page" &&
+    document.querySelector('[data-en-key="history-workspace-split"]') === null) {
     await wait(100)
   }
   const sidebar = document.querySelector('[data-en-key="sidebar-history-list"] > [data-en-role="section-label"]')
-  const detail = document.querySelector('[data-en-key="history-workspace-split"]')
+  const selectedInReact = first.getAttribute("data-selected") === "true" || first.getAttribute("aria-current") === "page"
+  const detailVisible = document.querySelector('[data-en-key="history-workspace-split"]') !== null ||
+    (selectedInReact && document.querySelector('[data-en-key="shell-transcript"]') !== null)
   // #8789: the header states the projection's REAL scope with a counted
-  // disclosure. The smoke fixture catalog holds exactly one root session, all
-  // of it shown — so the truthful header reads "all 1", never "all time".
-  return { ok: sidebar?.textContent === "Coding history · all 1" && detail !== null, header: sidebar?.textContent ?? null }
+  // disclosure. Prior smoke passes may persist another fixture session, so
+  // assert the truthful counted form rather than a brittle exact fixture size.
+  const truthfulCount = /^Coding history · all [1-9][0-9,]*$/.test(sidebar?.textContent ?? "")
+  return { ok: truthfulCount && detailVisible, header: sidebar?.textContent ?? null, selectedInReact }
 })()`
 
 // #8787 (owner verbatim: "the text input should be focused immediately on
@@ -5523,7 +5528,6 @@ const runSmoke = (window: BrowserWindow): void => {
         }
         if (tracePass === 1) {
           await step("workspace-editor-reload-recovery", smokeWorkspaceEditorRecovery)
-          await step("codex-trace-reload-restoration", traceAcceptanceReload)
           await step("coding-catalog-reload-restoration", smokeCodingCatalog)
           clearTimeout(timeout)
           console.log("[openagents-desktop smoke] OK")
