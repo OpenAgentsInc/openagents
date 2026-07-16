@@ -8,6 +8,7 @@ import {
   renderDiscoverySurface,
 } from '../../../workers/api/src/inference/discovery-surfaces'
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
+import { routeDesktopDownloadRequest } from './desktop-download-resolver.server'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
 import { routeQaBoardRequest } from './qa-board-projection.server'
 
@@ -64,6 +65,11 @@ export async function routeSharedAgentSurface(
 
   const qaBoardResponse = await routeQaBoardRequest(request)
   if (qaBoardResponse !== undefined) return qaBoardResponse
+
+  // DIST-10 (#8923): Desktop download resolver — every artifact URL derives
+  // from the promoted signed release set (fail-closed, no handwritten URLs).
+  const desktopDownloadResponse = await routeDesktopDownloadRequest(request)
+  if (desktopDownloadResponse !== undefined) return desktopDownloadResponse
 
   return undefined
 }

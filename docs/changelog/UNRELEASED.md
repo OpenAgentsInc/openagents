@@ -64,3 +64,14 @@ Desktop packaging now requires an explicit build target: staging happens in a cl
 - invariants: INVARIANTS.md DIST-03 entry incl. signer/notary nondeterminism exception; packaging entrypoints require OA_DESKTOP_TARGET
 - evidence: tests/release-staging.test.ts (26) + release suite 99 green; live darwin-arm64 staging with identical ledgerRef across two runs; win32-arm64 typed missing_runtime_package refusal
 - lane: fable-dist03-staging-20260716
+
+## Verified desktop download resolution (DIST-10, #8923)
+
+openagents.com now resolves Desktop downloads from the cryptographically verified release feed instead of hand-written links. Visitors get the right installer for their platform with explicit alternatives, and the site can never serve a download URL that does not match the signed release — including fixing a dead pinned link that had been returning 404.
+
+- issues: #8923 (epic #8913)
+- commits: (integration commit on main)
+- contracts-specs: openagents.desktop.download_resolution.v1 + download_telemetry.v1; GET /api/public/desktop-download (+/artifact 302); DIST-09 feed-path assumptions documented in desktop-download-resolver.server.ts
+- invariants: /download INVARIANTS entry annotated; unavailable responses carry no URL; broken v2 never downgrades to v1
+- evidence: 57 resolver tests + seam 7 + start suite 305 green; live smoke resolved signed 0.1.0-rc.13 and 302'd to an HTTP-200 artifact
+- lane: fable-dist10-resolver-20260716

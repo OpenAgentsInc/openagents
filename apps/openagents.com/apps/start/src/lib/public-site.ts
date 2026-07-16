@@ -11,14 +11,20 @@ export const DOCS_URL = '/docs'
 
 export const DOWNLOAD_URL = '/download'
 
+// DIST-10 (#8923): the download CTA never links a handwritten artifact URL.
+// `downloadUrl` goes through the server-side resolver redirect, which 302s to
+// the artifact URL bound to the currently promoted SIGNED release feed and
+// returns typed unavailability instead of a dead link. (The previously pinned
+// rc.17 GitHub URL was a live 404 — no such tag/object ever existed; the
+// promoted feed serves 0.1.0-rc.13.) The static version/size labels below are
+// interim copy; #8924 replaces them with resolver-derived truth.
 export const MAC_RELEASE = {
-  version: '0.1.0-rc.17',
+  version: '0.1.0-rc.13',
   platform: 'macOS',
   architecture: 'Apple silicon',
-  size: '290 MB',
-  downloadUrl:
-    'https://github.com/OpenAgentsInc/openagents/releases/download/openagents-desktop-v0.1.0-rc.17/OpenAgents-0.1.0-rc.17-arm64.dmg',
-  releaseUrl: `${GITHUB_REPOSITORY_URL}/releases/tag/openagents-desktop-v0.1.0-rc.17`,
+  size: '304 MB',
+  downloadUrl: '/api/public/desktop-download/artifact?target=darwin-arm64&format=dmg',
+  releaseUrl: `${GITHUB_REPOSITORY_URL}/releases`,
 } as const
 
 export const PRODUCT_BOUNDARIES = [

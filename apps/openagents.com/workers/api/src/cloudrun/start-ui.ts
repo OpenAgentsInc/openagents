@@ -26,7 +26,12 @@ const REQUIRED_DOCS_CLIENT_ARTIFACTS = [
 // Server-owned Start endpoints must cross the same Cloud Run adapter as Start
 // documents. Keep this list exact: the Worker remains authoritative for every
 // other /api path.
-const START_SERVER_REQUEST_PATHS = new Set(['/api/public/qa-board'])
+const START_SERVER_REQUEST_PATHS = new Set([
+  '/api/public/qa-board',
+  // DIST-10 (#8923): Desktop download resolver + verified artifact redirect.
+  '/api/public/desktop-download',
+  '/api/public/desktop-download/artifact',
+])
 
 type StartWorker = Readonly<{
   fetch: (

@@ -463,7 +463,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   receipt; direct DEB/RPM downloads never imply a package repository,
   unattended update, or app-owned rollback. Typed resolver/route/accessibility
   and telemetry-redaction tests are the intended automated boundary; public
-  target-resolution/download receipts are the release boundary.
+  target-resolution/download receipts are the release boundary. The server-side
+  resolver enforcing this (DIST-10, #8923) is
+  `apps/openagents.com/apps/start/src/desktop-download-resolver.server.ts`
+  (`/api/public/desktop-download` + `/artifact` redirect): pinned Ed25519
+  verification via the landed ReleaseSet v2 / bounded v1 seams, fail-closed
+  unavailable projections with no URL, per-channel TTL cache that never serves
+  an expired snapshot, and schema-validated public-safe download telemetry —
+  covered by `desktop-download-resolver.server.test.ts` including URL/hash/
+  target mutation proofs.
 - (DIST-01, #8914) Once DIST-13 lands, the only documented production Desktop
   release entrypoint is root `pnpm run release` mapped exactly to
   `node --import tsx scripts/release.ts`. It owns freeze, target-capable owned

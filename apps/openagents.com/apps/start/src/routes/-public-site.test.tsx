@@ -15,7 +15,7 @@ describe('TanStack Start public site', () => {
     expect(html).toContain('Repository review never mutates the tree')
     expect(html).toContain('The important boundaries, plainly.')
     expect(html).toContain('The work should survive the window.')
-    expect(html).toContain('0.1.0-rc.17')
+    expect(html).toContain('0.1.0-rc.13')
     expect(html).toContain('href="/docs"')
     expect(html).toContain('OpenAgents on GitHub')
     expect(html).toContain('OpenAgents on X')
@@ -46,14 +46,20 @@ describe('TanStack Start public site', () => {
     expect(headerCss).toContain('.oa-unified-header-spacer')
   })
 
-  test('links the exact published Mac release candidate', () => {
+  test('download CTA resolves through the signed release resolver, never a pinned artifact URL', () => {
     const html = renderToStaticMarkup(<DownloadPage />)
 
     expect(html).toContain('Download OpenAgents Desktop')
     expect(html).toContain('Available now for Apple silicon Macs.')
     expect(html).toContain('>Download</a>')
-    expect(html).toContain('0.1.0-rc.17')
-    expect(html).toContain('OpenAgents-0.1.0-rc.17-arm64.dmg')
+    expect(html).toContain('0.1.0-rc.13')
+    // DIST-10 (#8923): the primary CTA goes through the server-side resolver
+    // redirect bound to the promoted signed release feed — a committed
+    // absolute artifact URL can silently 404 (rc.17 did exactly that).
+    expect(html).toContain(
+      'href="/api/public/desktop-download/artifact?target=darwin-arm64&amp;format=dmg"',
+    )
+    expect(html).not.toContain('releases/download/')
     expect(html).toContain('macOS')
     expect(html).toContain('Intel')
     expect(html).toContain('Windows')
