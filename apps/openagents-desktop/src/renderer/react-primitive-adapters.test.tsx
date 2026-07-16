@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client"
 import { resolveIntentRef, type IntentReporter } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts"
-import { WorkbenchShell, projectHeaderMeter, projectReactSessionRows } from "./react-primitive-adapters.tsx"
+import { WorkbenchShell, projectReactSessionRows, projectSidebarMeter } from "./react-primitive-adapters.tsx"
 import { RedactedSensitiveText, redactedSensitivePlaceholder } from "./react-sensitive-text.tsx"
 
 const restores: Array<() => void> = []
@@ -384,11 +384,11 @@ describe("React workbench shell", () => {
     expect(hinted.map(row => row.id)).toEqual(rows.map(row => row.id))
   })
 
-  test("projects the header meter shape, nesting token fields under usage (T11 #8868)", () => {
+  test("projects the sidebar meter shape, nesting token fields under usage (T11 #8868)", () => {
     const state = initialDesktopShellState("electron/darwin", "18:04")
-    expect(projectHeaderMeter(state)).toBeUndefined()
+    expect(projectSidebarMeter(state)).toBeUndefined()
 
-    const withMeter = projectHeaderMeter({
+    const withMeter = projectSidebarMeter({
       ...state,
       meter: {
         inputTokens: 100,
@@ -403,9 +403,33 @@ describe("React workbench shell", () => {
     })
 
     // No rate limits observed yet: the key is absent, not an empty array.
-    const tokensOnly = projectHeaderMeter({ ...state, meter: { totalTokens: 42 } })
+    const tokensOnly = projectSidebarMeter({ ...state, meter: { totalTokens: 42 } })
     expect(tokensOnly).toEqual({ usage: { totalTokens: 42 } })
     expect(tokensOnly).not.toHaveProperty("rateLimits")
+  })
+
+  test("mounts the live token meter in the fixed rail footer above Settings", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={{
+      ...fixtureState(),
+      meter: {
+        inputTokens: 100,
+        outputTokens: 20,
+        totalTokens: 120,
+        rateLimits: [{ label: "primary", usedPercent: 12 }],
+      },
+    }} report={() => Effect.void} />)
+
+    expect(container.querySelector(".oa-react-conversation-header .oa-react-meter")).toBeNull()
+    const sidebarMeter = container.querySelector(".oa-react-sidebar-meter .oa-react-meter")
+    const settings = container.querySelector('nav[aria-label="Settings"]')
+    expect(sidebarMeter).not.toBeNull()
+    expect(settings).not.toBeNull()
+    if (sidebarMeter === null || settings === null) throw new Error("sidebar meter and Settings must both render")
+    expect(sidebarMeter.textContent).toContain("120 TOKENS")
+    expect(sidebarMeter.textContent).toContain("PRIMARY")
+    expect(sidebarMeter.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
   })
 
   test("renders exactly one active background across destinations and conversation rows", async () => {

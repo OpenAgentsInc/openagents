@@ -162,6 +162,12 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(css).toContain("-webkit-app-region: no-drag")
   })
 
+  test("chat markdown restores semantic list markers after Tailwind preflight", () => {
+    const css = readFileSync(sharedWorkbenchCssPath, "utf8")
+    expect(css).toContain(".oa-react-markdown ul { list-style: disc outside; }")
+    expect(css).toContain(".oa-react-markdown ol { list-style: decimal outside; }")
+  })
+
   test("command palette keeps the T3 search/results/footer structure", () => {
     const source = readFileSync(path.resolve(rendererDir, "../components/ui/command.tsx"), "utf8")
     expect(source).toContain('data-command-palette="true"')

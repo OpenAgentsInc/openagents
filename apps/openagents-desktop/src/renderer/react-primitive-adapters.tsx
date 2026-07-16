@@ -29,6 +29,7 @@ import {
 import {
   DesktopConversation,
   DesktopConversationHeader,
+  ContextMeter,
   DesktopRailScrim,
   DesktopSessionRail,
   DesktopSidebarExpand,
@@ -153,12 +154,12 @@ const selectedLifecycle = (state: DesktopShellState): string => {
 /**
  * Projects the active thread's live context/usage meter (T11 #8868) onto the
  * shared `ContextMeter` mount's prop shape. `DesktopShellState.meter` carries
- * flat token fields + `rateLimits`; the header component nests the token
+ * flat token fields + `rateLimits`; the shared component nests the token
  * fields under `usage`. Returns `undefined` (not an empty object) when no
- * meter has been observed yet, so the header renders nothing extra rather
+ * meter has been observed yet, so the sidebar renders nothing extra rather
  * than an honest-but-premature "NO DATA" row before any turn has streamed.
  */
-export const projectHeaderMeter = (state: DesktopShellState): DesktopConversationHeaderMeter | undefined => {
+export const projectSidebarMeter = (state: DesktopShellState): DesktopConversationHeaderMeter | undefined => {
   if (state.meter === null) return undefined
   const { rateLimits, ...usage } = state.meter
   return {
@@ -173,12 +174,10 @@ export const ConversationHeader = ({ state }: {
   const selectedCoding = state.codingCatalog.sessions.find(
     session => session.sessionRef === state.codingCatalog.selectedSessionRef,
   )
-  const meter = projectHeaderMeter(state)
   return <DesktopConversationHeader
     lifecycle={selectedLifecycle(state)}
     secondary={selectedCoding?.repositoryLabel}
     title={selectedTitle(state)}
-    {...(meter === undefined ? {} : { meter })}
   />
 }
 
@@ -203,6 +202,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
   )
   const primaryDestinations = destinations.filter(destination => destination.id !== "shell-settings-toggle")
   const settingsDestination = destinations.find(destination => destination.id === "shell-settings-toggle")
+  const meter = projectSidebarMeter(state)
   const shown = state.history.visibleRootCount
   const searchOpen = state.presentation.sessionSearchOpen
   const closeSearch = (): void => {
@@ -224,6 +224,12 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       selected: destination.selected,
     }))}
     forwardLabel={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
+    footer={meter === undefined ? undefined : <div aria-label="Session token usage" className="oa-react-sidebar-meter">
+      <ContextMeter
+        {...(meter.usage === undefined ? {} : { usage: meter.usage })}
+        {...(meter.rateLimits === undefined ? {} : { rateLimits: meter.rateLimits })}
+      />
+    </div>}
     hydrated={state.history.hydrated}
     onBack={() => dispatch(report, "DesktopNavigationBackRequested")}
     onCollapse={onCollapse}

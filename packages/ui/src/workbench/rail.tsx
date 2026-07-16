@@ -195,10 +195,10 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
         {canLoadMore ? <button className="oa-react-load-more" onClick={onLoadMore} type="button">Load more sessions</button> : null}
       </nav>
     </div>
+    {footer}
     {settingsDestination === undefined ? null : <nav aria-label="Settings" className="oa-react-sidebar-footer">
       {renderDestination(settingsDestination)}
     </nav>}
-    {footer}
   </aside>
 })
 DesktopSessionRail.displayName = "DesktopSessionRail"

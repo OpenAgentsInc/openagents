@@ -274,6 +274,19 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   border-top: 1px solid var(--en-color-borderSubtle);
 }
 
+.oa-react-sidebar-meter {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding-top: var(--en-spacing-2);
+  border-top: 1px solid var(--en-color-borderSubtle);
+  overflow: hidden;
+}
+
+.oa-react-sidebar-meter + .oa-react-sidebar-footer {
+  padding-top: 0;
+  border-top: 0;
+}
+
 /* Status tick (design spec §5.7): a solid rectangle, never a dot. */
 .oa-react-primary-destination i[data-destination-indicator="current"] {
   width: 6px;
@@ -1327,6 +1340,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   padding-left: var(--en-spacing-5);
 }
 
+.oa-react-markdown ul { list-style: disc outside; }
+.oa-react-markdown ol { list-style: decimal outside; }
+
 .oa-react-markdown blockquote {
   margin: 0;
   padding-left: var(--en-spacing-3);
@@ -2063,3 +2079,29 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-meter-breakdown small { color: var(--en-color-textFaint); letter-spacing: .08em; }
 .oa-react-meter[data-historical="true"] { opacity: .82; }
 .oa-react-meter-row[data-rate-limited="true"] .oa-react-meter-label { color: var(--en-color-danger); }
+
+.oa-react-sidebar-meter .oa-react-meter {
+  width: 100%;
+  padding: var(--en-spacing-1) var(--en-spacing-2) var(--en-spacing-2);
+}
+.oa-react-sidebar-meter .oa-react-meter-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 4px;
+}
+.oa-react-sidebar-meter .oa-react-meter-blocks i {
+  width: auto;
+  height: 8px;
+  flex: 1 1 0;
+}
+.oa-react-sidebar-meter .oa-react-meter-total {
+  grid-column: 1 / -1;
+  text-align: right;
+}
+.oa-react-sidebar-meter .oa-react-meter-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px var(--en-spacing-2);
+  padding-left: 0;
+  font-size: 9px;
+}
