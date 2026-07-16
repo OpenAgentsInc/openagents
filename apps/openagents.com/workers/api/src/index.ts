@@ -194,6 +194,10 @@ import {
   handleAudioGrantIssueRequest,
 } from './audio-grant-routes'
 import {
+  DESKTOP_CODEX_USAGE_INGEST_PATH,
+  makeDesktopCodexUsageRouteHandler,
+} from './desktop-codex-usage-routes'
+import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_STATE_MAX_AGE_SECONDS,
@@ -7037,6 +7041,16 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   traceStore: env => makeTraceStoreForEnv(env),
 })
 
+const handleDesktopCodexUsage = makeDesktopCodexUsageRouteHandler({
+  ledger: (env: Env) =>
+    makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
+      onIngestedEvent: makeTokensServedProjectionObserver(env),
+      ...tokenLedgerWriteStoreOptionForEnv(env),
+    }),
+  requireUserBearerSession,
+  userIdFromSession: session => session.user.userId,
+})
+
 const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   authorizeOwnerCapacityReceipt: async (env, input) => {
@@ -11323,6 +11337,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           ctx,
         ),
       ),
+  },
+  {
+    path: DESKTOP_CODEX_USAGE_INGEST_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() => handleDesktopCodexUsage(request, env, ctx)),
   },
   {
     path: '/api/mobile/session',
