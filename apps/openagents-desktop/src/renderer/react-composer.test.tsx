@@ -398,6 +398,42 @@ describe("React Codex composer", () => {
       container.querySelector('[data-en-key="shell-full-auto-toggle"]')?.getAttribute("aria-pressed"),
     ).toBe("false");
   });
+
+  test("FA-H4 (#8877): a running background Full Auto turn renders the status badge and the Stop affordance; idle renders neither", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    // Idle (no live entry): no badge, no Stop.
+    await render(root, <ReactComposer state={fixtureState()} report={report} />);
+    expect(container.querySelector('[data-full-auto-status="running"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Stop current turn"]')).toBeNull();
+    // Background turn running (renderer NOT pending): badge + Stop render,
+    // and Stop reports the same DesktopTurnInterrupted intent whose handler
+    // targets the actual background turn.
+    await render(root, <ReactComposer state={fixtureState({
+      pending: false,
+      fullAutoLiveByThread: { "thread-1": { state: "turn_running", turnRef: "turn.full-auto.bg-1" } },
+    })} report={report} />);
+    const badge = container.querySelector('[data-full-auto-status="running"]');
+    expect(badge?.getAttribute("data-slot")).toBe("badge");
+    expect(badge?.textContent).toBe("Full Auto running…");
+    const stop = container.querySelector('[aria-label="Stop current turn"]') as HTMLButtonElement;
+    expect(stop).not.toBeNull();
+    await interact(() => stop.click());
+    expect(received).toContainEqual({ name: "DesktopTurnInterrupted", payload: null });
+    // A terminal live state clears both again.
+    await render(root, <ReactComposer state={fixtureState({
+      fullAutoLiveByThread: { "thread-1": { state: "turn_completed", turnRef: null } },
+    })} report={report} />);
+    expect(container.querySelector('[data-full-auto-status="running"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Stop current turn"]')).toBeNull();
+    // ANOTHER thread's running turn never leaks into this thread's composer.
+    await render(root, <ReactComposer state={fixtureState({
+      fullAutoLiveByThread: { "thread-2": { state: "turn_running", turnRef: "turn.full-auto.bg-2" } },
+    })} report={report} />);
+    expect(container.querySelector('[data-full-auto-status="running"]')).toBeNull();
+  });
 });
 
 describe("React command and decision surfaces", () => {

@@ -189,8 +189,13 @@ import {
   CodexLocalSteerTurnChannel,
   CodexLocalFullAutoSetChannel,
   CodexLocalFullAutoGetChannel,
+  CodexLocalFullAutoInterruptChannel,
+  CodexLocalFullAutoStateChannel,
   decodeCodexLocalFullAutoSetRequest,
   decodeCodexLocalFullAutoGetRequest,
+  decodeCodexLocalFullAutoInterruptRequest,
+  decodeCodexLocalFullAutoState,
+  type CodexLocalFullAutoState,
 } from "./codex-local-contract.ts"
 import {
   CodexEcosystemMutationChannel,
@@ -796,6 +801,30 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         return request === null
           ? Promise.resolve({ enabled: false })
           : ipcRenderer.invoke(CodexLocalFullAutoGetChannel, request)
+      },
+      /**
+       * FA-H4 (#8877): thread-scoped stop for a BACKGROUND continuation
+       * turn. The renderer names only { threadRef }; main resolves the live
+       * running turn ref itself and reuses the runtime interrupt path.
+       */
+      interrupt: (value: unknown) => {
+        const request = decodeCodexLocalFullAutoInterruptRequest(value)
+        return request === null
+          ? Promise.resolve({ ok: false })
+          : ipcRenderer.invoke(CodexLocalFullAutoInterruptChannel, request)
+      },
+      /**
+       * FA-H4 (#8877): coarse typed live-state push for background
+       * continuations — schema-decoded on this side of the bridge exactly
+       * like localTurnRecovery.onUpdate above; invalid payloads are dropped.
+       */
+      onState: (listener: (state: CodexLocalFullAutoState) => void) => {
+        const handler = (_event: unknown, value: unknown): void => {
+          const decoded = decodeCodexLocalFullAutoState(value)
+          if (decoded !== null) listener(decoded)
+        }
+        ipcRenderer.on(CodexLocalFullAutoStateChannel, handler)
+        return () => ipcRenderer.removeListener(CodexLocalFullAutoStateChannel, handler)
       },
     },
   },

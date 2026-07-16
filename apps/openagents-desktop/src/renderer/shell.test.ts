@@ -10,6 +10,8 @@ import type { DesktopVoiceState } from "../voice-host.ts"
 
 import {
   activeFullAutoEnabled,
+  activeFullAutoTurnRunning,
+  withFullAutoLiveState,
   chatMessageMetadataFields,
   desktopShellIntents,
   desktopShellView,
@@ -1038,6 +1040,139 @@ describe("desktopShellView (state -> component tree)", () => {
     // via set) remains visible.
     expect(activeFullAutoEnabled(await Effect.runPromise(SubscriptionRef.get(state)))).toBe(true)
     expect(setCalls).toEqual([{ threadRef: testThread.id, enabled: true }])
+  })
+
+  test("FA-H4 (#8877): withFullAutoLiveState projects a live-state event per thread and activeFullAutoTurnRunning reads only the ACTIVE thread", () => {
+    const running = withFullAutoLiveState(baseState, testThread.id, {
+      state: "turn_running",
+      turnRef: "turn.full-auto.bg-1",
+    })
+    expect(running.fullAutoLiveByThread[testThread.id]).toEqual({
+      state: "turn_running",
+      turnRef: "turn.full-auto.bg-1",
+    })
+    expect(activeFullAutoTurnRunning(running)).toBe(true)
+    // A terminal transition replaces the entry (last state wins) …
+    const completed = withFullAutoLiveState(running, testThread.id, {
+      state: "turn_completed",
+      turnRef: "turn.full-auto.bg-1",
+    })
+    expect(completed.fullAutoLiveByThread[testThread.id]?.state).toBe("turn_completed")
+    expect(activeFullAutoTurnRunning(completed)).toBe(false)
+    // … and ANOTHER thread's running turn never leaks into this thread's read.
+    const otherRunning = withFullAutoLiveState(baseState, "other-thread", {
+      state: "turn_running",
+      turnRef: "turn.full-auto.bg-2",
+    })
+    expect(activeFullAutoTurnRunning(otherRunning)).toBe(false)
+    expect(activeFullAutoTurnRunning(baseState)).toBe(false)
+  })
+
+  test("FA-H4 (#8877): a manual send while a background Full Auto turn runs is FENCED -- sendMessage is never called, a notice says why, and the draft is kept", async () => {
+    const calls: Array<string> = []
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      input: "My queued idea",
+      fullAutoLiveByThread: {
+        [testThread.id]: { state: "turn_running", turnRef: "turn.full-auto.bg-1" },
+      },
+    }))
+    const chatHost = {
+      listThreads: async () => [testThread],
+      newThread: async () => null,
+      openThread: async () => testThread,
+      sendMessage: async (input: { message: string }) => {
+        calls.push(input.message)
+        return { ok: true as const, thread: testThread }
+      },
+    }
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+    ))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Do more")))))
+    // Never a silent second concurrent turn on the same thread.
+    expect(calls).toEqual([])
+    const settled = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(settled.commandNotice).toBe(
+      "Full Auto is running a turn on this thread. Stop it first or wait for it to finish.",
+    )
+    // The draft survives the refusal.
+    expect(settled.input).toBe("My queued idea")
+
+    // Once the background turn is terminal, the same submit goes through.
+    await Effect.runPromise(SubscriptionRef.update(state, current =>
+      withFullAutoLiveState(current, testThread.id, { state: "turn_completed", turnRef: null })))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Do more")))))
+    expect(calls).toEqual(["Do more"])
+  })
+
+  test("FA-H4 (#8877): DesktopTurnInterrupted with a running BACKGROUND turn (not pending) calls fullAutoHost.interrupt with the active threadRef", async () => {
+    const interruptCalls: Array<{ threadRef: string }> = []
+    const fullAutoHost = {
+      set: async () => ({ ok: true }),
+      get: async () => ({ enabled: true }),
+      interrupt: async (input: { threadRef: string }) => {
+        interruptCalls.push(input)
+        return { ok: true }
+      },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      pending: false,
+      fullAutoLiveByThread: {
+        [testThread.id]: { state: "turn_running", turnRef: "turn.full-auto.bg-1" },
+      },
+    }))
+    const args: Parameters<typeof makeDesktopShellHandlers> = [
+      state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, fullAutoHost,
+    ]
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted", StaticPayload(null)))))
+    expect(interruptCalls).toEqual([{ threadRef: testThread.id }])
+    // Idle live state (or no entry) never signals the background interrupt.
+    await Effect.runPromise(SubscriptionRef.update(state, current =>
+      withFullAutoLiveState(current, testThread.id, { state: "turn_completed", turnRef: null })))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted", StaticPayload(null)))))
+    expect(interruptCalls).toHaveLength(1)
+  })
+
+  test("FA-H4 (#8877): while renderer-pending, Stop keeps signalling the ACTIVE streaming turn (chat.interruptActive), not the background channel", async () => {
+    let activeInterrupts = 0
+    const interruptCalls: Array<{ threadRef: string }> = []
+    const chatHost = {
+      listThreads: async () => [testThread],
+      newThread: async () => null,
+      openThread: async () => testThread,
+      sendMessage: async () => ({ ok: false as const, error: "unused" }),
+      interruptActive: async () => { activeInterrupts += 1; return true },
+    }
+    const fullAutoHost = {
+      set: async () => ({ ok: true }),
+      get: async () => ({ enabled: true }),
+      interrupt: async (input: { threadRef: string }) => {
+        interruptCalls.push(input)
+        return { ok: true }
+      },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      pending: true,
+      fullAutoLiveByThread: {
+        [testThread.id]: { state: "turn_running", turnRef: "turn.full-auto.bg-1" },
+      },
+    }))
+    const args: Parameters<typeof makeDesktopShellHandlers> = [
+      state, fixedNow, undefined, chatHost, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, fullAutoHost,
+    ]
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted", StaticPayload(null)))))
+    expect(activeInterrupts).toBe(1)
+    expect(interruptCalls).toEqual([])
   })
 
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {

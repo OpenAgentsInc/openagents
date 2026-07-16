@@ -353,6 +353,18 @@ export type DesktopShellState = Readonly<{
    * activeFullAutoEnabled).
    */
   fullAutoByThread: Readonly<Record<string, boolean>>
+  /**
+   * FA-H4 (#8877): per-thread projection of main's coarse Full Auto LIVE
+   * state (idle | turn_running | turn_completed | turn_failed | cap_reached
+   * | blocked). A background (main-initiated) continuation streams no events
+   * to any renderer; this map — fed by the boot-time
+   * `codexLocal.fullAuto.onState` subscription and the extended `get`
+   * hydration — is how "a background turn is running right now" becomes a
+   * rendered fact. While the active thread is `turn_running`, the composer
+   * shows a status badge and Stop, and a manual send is fenced (never a
+   * silent second concurrent turn).
+   */
+  fullAutoLiveByThread: Readonly<Record<string, Readonly<{ state: string; turnRef: string | null }>>>
   /** Provider-scoped model choices persist while switching provider. */
   codexModel: CodexModel
   claudeModel: ClaudeModel
@@ -482,6 +494,7 @@ export const initialDesktopShellState = (
   composerQueueEditingRef: null,
   codexReasoningEffort: "medium",
   fullAutoByThread: {},
+  fullAutoLiveByThread: {},
   codexModel: "gpt-5.6-sol",
   claudeModel: "claude-fable-5",
   providerTargetsByThread: {},
@@ -543,6 +556,30 @@ export const initialDesktopShellState = (
  */
 export const activeFullAutoEnabled = (state: DesktopShellState): boolean =>
   state.fullAutoByThread[state.activeThreadId ?? ""] ?? false
+
+/**
+ * FA-H4 (#8877): apply one coarse live-state event (from main's
+ * `CodexLocalFullAutoStateChannel` broadcast or the extended `get`
+ * hydration) onto the per-thread projection. Pure — boot's subscription
+ * runs it through SubscriptionRef.update exactly like the recovery
+ * subscription's withThreads application.
+ */
+export const withFullAutoLiveState = (
+  state: DesktopShellState,
+  threadRef: string,
+  live: Readonly<{ state: string; turnRef: string | null }>,
+): DesktopShellState => ({
+  ...state,
+  fullAutoLiveByThread: {
+    ...state.fullAutoLiveByThread,
+    [threadRef]: { state: live.state, turnRef: live.turnRef },
+  },
+})
+
+/** FA-H4 (#8877): true while main reports a background Full Auto turn
+ * running on the ACTIVE thread — the composer's badge/Stop/fencing read. */
+export const activeFullAutoTurnRunning = (state: DesktopShellState): boolean =>
+  state.fullAutoLiveByThread[state.activeThreadId ?? ""]?.state === "turn_running"
 
 // ---------------------------------------------------------------------------
 // Intents — typed end-to-end: DOM event -> IntentRef -> registry decode ->
@@ -1542,7 +1579,21 @@ export type DesktopPresentationRendererHost = Readonly<{
  */
 export type DesktopFullAutoRendererHost = Readonly<{
   set: (input: Readonly<{ threadRef: string; enabled: boolean }>) => Promise<unknown>
-  get: (input: Readonly<{ threadRef: string }>) => Promise<Readonly<{ enabled: boolean }>>
+  /** FA-H4 (#8877): `state`/`turnRef` are additive live-state fields — an
+   * older preload that returns only `{ enabled }` keeps wave-1 hydration
+   * working unchanged. */
+  get: (input: Readonly<{ threadRef: string }>) => Promise<Readonly<{
+    enabled: boolean
+    state?: string
+    turnRef?: string | null
+  }>>
+  /**
+   * FA-H4 (#8877): stop the ACTUAL background continuation turn on a thread.
+   * Main resolves the live running turn ref itself; the renderer names only
+   * the thread. Optional so pre-FA-H4 hosts (and existing tests) remain
+   * valid — an absent interrupt degrades to a no-op Stop.
+   */
+  interrupt?: (input: Readonly<{ threadRef: string }>) => Promise<Readonly<{ ok: boolean }>>
 }>
 
 export const makeDesktopShellHandlers = (
@@ -1805,12 +1856,24 @@ export const makeDesktopShellHandlers = (
     if (threadRef === "") return
     const editsBefore = fullAutoLocalEdits.get(threadRef) ?? 0
     const fetched = yield* Effect.promise(() =>
-      fullAutoHost.get({ threadRef }).then(result => result.enabled === true).catch(() => null))
+      fullAutoHost.get({ threadRef }).catch(() => null))
     if (fetched === null) return
-    yield* SubscriptionRef.update(state, current =>
-      (fullAutoLocalEdits.get(threadRef) ?? 0) === editsBefore
-        ? { ...current, fullAutoByThread: { ...current.fullAutoByThread, [threadRef]: fetched } }
-        : current)
+    yield* SubscriptionRef.update(state, current => {
+      const next = (fullAutoLocalEdits.get(threadRef) ?? 0) === editsBefore
+        ? { ...current, fullAutoByThread: { ...current.fullAutoByThread, [threadRef]: fetched.enabled === true } }
+        : current
+      // FA-H4 (#8877): the extended get also carries the coarse live state
+      // (additive; an older host omits it), so switching onto a thread with
+      // a background turn in flight shows the badge/Stop immediately instead
+      // of waiting for the next broadcast. Live state is main-owned truth —
+      // no local-edit guard applies to it.
+      return typeof fetched.state === "string"
+        ? withFullAutoLiveState(next, threadRef, {
+            state: fetched.state,
+            turnRef: typeof fetched.turnRef === "string" ? fetched.turnRef : null,
+          })
+        : next
+    })
   })
   /**
    * The shared "submit a note" path for both a direct user Send and the
@@ -1835,6 +1898,17 @@ export const makeDesktopShellHandlers = (
     // mid-turn (they ride the next started turn).
     if (current.pending) {
       yield* submitPendingMessage(current, message, current.pendingSubmitMode)
+      return
+    }
+    // FA-H4 (#8877) manual-send fencing: while main reports a BACKGROUND
+    // Full Auto turn running on this thread (renderer non-pending — no live
+    // events reach it), a manual send must never start a silent second
+    // concurrent turn. Keep the draft, say why, and leave the stop control
+    // (or waiting it out) as the honest ways forward.
+    if (activeFullAutoTurnRunning(current)) {
+      yield* noticeController.setTransientNotice(
+        "Full Auto is running a turn on this thread. Stop it first or wait for it to finish.",
+      )
       return
     }
     // Evidence-gated send (#8712): an unavailable selected lane must not
@@ -2270,8 +2344,20 @@ export const makeDesktopShellHandlers = (
       // typed `interrupted` failure) is what reverts pending -> Send. The Stop
       // handler never fabricates that terminal state itself.
       const current = yield* SubscriptionRef.get(state)
-      if (!current.pending) return
-      yield* Effect.promise(() => chat.interruptActive?.() ?? Promise.resolve(false))
+      if (current.pending) {
+        yield* Effect.promise(() => chat.interruptActive?.() ?? Promise.resolve(false))
+        return
+      }
+      // FA-H4 (#8877): non-pending but main reports a BACKGROUND Full Auto
+      // turn running on the active thread — Stop targets the ACTUAL
+      // background turn through the thread-scoped interrupt channel (main
+      // resolves the running turn ref itself). The resulting typed live-state
+      // transition, not this handler, is what clears the running badge.
+      const threadRef = current.activeThreadId
+      if (threadRef !== null && activeFullAutoTurnRunning(current)) {
+        yield* Effect.promise(() =>
+          fullAutoHost.interrupt?.({ threadRef }) ?? Promise.resolve({ ok: false }))
+      }
     }),
   DesktopCodexHandoffRequested: () =>
     Effect.gen(function* () {

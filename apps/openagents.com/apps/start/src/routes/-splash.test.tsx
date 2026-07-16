@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
@@ -11,6 +13,8 @@ describe('Desktop splash', () => {
     expect(html).toContain('Primary navigation')
     expect(html).toContain('Your last agent IDE.')
     expect(html).toContain('Download for Mac')
+    expect(html).toContain('href="/download"')
+    expect(html).not.toContain('href="/install"')
     expect(html).toContain('class="splash-hero-canvas"')
     expect(html).toContain('data-khala-canvas="server-static"')
     expect(html).toContain('aria-hidden="true"')
@@ -23,6 +27,7 @@ describe('Desktop splash', () => {
     expect(html).toContain('splash-product')
     expect(html).toContain('splash-window-bar')
     expect(html).toContain('OpenAgents Desktop live product preview')
+    expect(html).toContain('splash-demo-frame')
     expect(html).toContain('data-sidebar-destination-id="workspace-new-chat"')
     expect(html).toContain('data-sidebar-destination-id="shell-settings-toggle"')
     expect(html).toContain('aria-label="Settings"')
@@ -59,5 +64,14 @@ describe('Desktop splash', () => {
     expect(html).toContain('aria-label="Legal links"')
     expect(html).toContain('Open source · local first · evidence backed')
     expect(html).not.toContain('<img')
+  })
+
+  test('loads the shared workbench CSS and releases scroll gestures at demo boundaries', () => {
+    const css = readFileSync(path.resolve(import.meta.dirname, '../splash.css'), 'utf8')
+
+    expect(css).toContain("@import '@openagentsinc/ui/desktop-workbench.css'")
+    expect(css).toContain('.splash-demo-frame .oa-react-timeline-scroll')
+    expect(css).toContain('overscroll-behavior-y: auto')
+    expect(css).toContain('touch-action: pan-y')
   })
 })

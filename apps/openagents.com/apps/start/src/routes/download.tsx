@@ -1,17 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { DownloadEffectNativePage } from './-download-effect-native-page'
+import { DownloadPage } from './-public-site'
 
 export const Route = createFileRoute('/download')({
-  component: DownloadEffectNativePage,
+  component: DownloadPage,
   head: () => ({
     meta: [
-      { title: 'Download Autopilot - OpenAgents' },
+      { title: 'Download OpenAgents for Mac' },
       {
         name: 'description',
         content:
-          'Autopilot Desktop download page rendered through the TanStack Start staging app.',
+          'Download the latest OpenAgents Desktop release candidate for Apple-silicon Macs.',
       },
+      { name: 'theme-color', content: '#05070d' },
     ],
+    links: [{ rel: 'canonical', href: 'https://openagents.com/download' }],
   }),
 })

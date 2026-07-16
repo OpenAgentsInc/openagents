@@ -36,7 +36,7 @@ architecture.
 ## 2026-07-15 unified TanStack Start public and authenticated surfaces
 
 `apps/start` owns the public homepage at `/`, the Desktop MVP landing at
-`/astro`, the exact `/install` release-candidate page, and the authenticated
+`/astro`, the exact `/download` release-candidate page, and the authenticated
 application at `/app`. The root preserves the current holding page until its
 content is separately replaced. Keep public work minimal, Khala-themed, and
 centered on the accepted Desktop MVP; do not revive retired product areas.

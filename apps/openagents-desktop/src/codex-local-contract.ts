@@ -56,6 +56,19 @@ export const CodexLocalEventChannel = "openagents:codex-local:event" as const
  */
 export const CodexLocalFullAutoSetChannel = "openagents:codex-local:full-auto:set" as const
 export const CodexLocalFullAutoGetChannel = "openagents:codex-local:full-auto:get" as const
+/**
+ * FA-H4 (#8877): coarse, typed, main-owned in-flight state for background
+ * (main-initiated) continuations. The ProductSpec deliberately cuts live
+ * token streaming; this broadcast makes only "something is running right
+ * now" (plus its terminal outcome) a rendered fact, carrying the running
+ * turn ref so the renderer's stop control can target the ACTUAL background
+ * turn instead of silently no-opping.
+ */
+export const CodexLocalFullAutoStateChannel = "openagents:codex-local:full-auto:state" as const
+/** FA-H4 (#8877): thread-scoped interrupt for the background continuation
+ * turn — the renderer never learned the background turnRef before the state
+ * broadcast existed, so this channel resolves it main-side by threadRef. */
+export const CodexLocalFullAutoInterruptChannel = "openagents:codex-local:full-auto:interrupt" as const
 /** Exact packaged Codex compatibility identity; thread handoff remains disabled
  * unless a separately verified official-app continuity proof cites this ref. */
 export const CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF = "codex.compat.0.144.1" as const
@@ -156,6 +169,56 @@ export const CodexLocalFullAutoGetRequestSchema = Schema.Struct({
 export type CodexLocalFullAutoGetRequest = typeof CodexLocalFullAutoGetRequestSchema.Type
 export const decodeCodexLocalFullAutoGetRequest = (value: unknown): CodexLocalFullAutoGetRequest | null => {
   const decoded = Schema.decodeUnknownExit(CodexLocalFullAutoGetRequestSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
+
+/**
+ * FA-H4 (#8877): the coarse per-thread live state a background continuation
+ * moves through. `turn_running` carries the leased turn ref (interruptible);
+ * terminal states keep the last outcome until the next transition. `blocked`
+ * covers the typed disables (workspace_mismatch / workspace_unbound /
+ * failure-limit) with `detail` carrying the blockedReason — never a new
+ * silent-dormancy state.
+ */
+export const CodexLocalFullAutoLiveStateSchema = Schema.Literals([
+  "idle",
+  "turn_running",
+  "turn_completed",
+  "turn_failed",
+  "cap_reached",
+  "blocked",
+])
+export type CodexLocalFullAutoLiveState = typeof CodexLocalFullAutoLiveStateSchema.Type
+
+/** Bounded to the registry's blockedReason limit; the contract keeps its own
+ * literal so the renderer-safe module never imports the node:fs registry. */
+export const CODEX_LOCAL_FULL_AUTO_DETAIL_LIMIT = 300
+
+export const CodexLocalFullAutoStateSchema = Schema.Struct({
+  threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  state: CodexLocalFullAutoLiveStateSchema,
+  turnRef: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))),
+  detail: Schema.optional(Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(CODEX_LOCAL_FULL_AUTO_DETAIL_LIMIT),
+  )),
+})
+export type CodexLocalFullAutoState = typeof CodexLocalFullAutoStateSchema.Type
+export const decodeCodexLocalFullAutoState = (value: unknown): CodexLocalFullAutoState | null => {
+  const decoded = Schema.decodeUnknownExit(CodexLocalFullAutoStateSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
+
+/** FA-H4 (#8877): { threadRef } — main resolves the running background turn
+ * ref itself; the renderer never supplies a turn identity to interrupt. */
+export const CodexLocalFullAutoInterruptRequestSchema = Schema.Struct({
+  threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+})
+export type CodexLocalFullAutoInterruptRequest = typeof CodexLocalFullAutoInterruptRequestSchema.Type
+export const decodeCodexLocalFullAutoInterruptRequest = (
+  value: unknown,
+): CodexLocalFullAutoInterruptRequest | null => {
+  const decoded = Schema.decodeUnknownExit(CodexLocalFullAutoInterruptRequestSchema)(value)
   return Exit.isSuccess(decoded) ? decoded.value : null
 }
 

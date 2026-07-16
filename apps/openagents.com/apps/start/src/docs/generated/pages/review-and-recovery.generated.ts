@@ -31,8 +31,8 @@ const page: DocsPage = {
   },
   "path": "/docs/review-and-recovery",
   "previous": {
-    "path": "/docs/workroom",
-    "title": "Workroom"
+    "path": "/docs/full-auto",
+    "title": "Full Auto"
   },
   "rawMarkdownUrl": "/docs/review-and-recovery.md",
   "sidebarLabel": "Review and recovery",

@@ -200,10 +200,15 @@ import {
   CODEX_LOCAL_MODEL,
   CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF,
   CodexLocalFullAutoGetChannel,
+  CodexLocalFullAutoInterruptChannel,
   CodexLocalFullAutoSetChannel,
+  CodexLocalFullAutoStateChannel,
+  CODEX_LOCAL_FULL_AUTO_DETAIL_LIMIT,
   decodeCodexLocalContinuationProfile,
   decodeCodexLocalFullAutoGetRequest,
+  decodeCodexLocalFullAutoInterruptRequest,
   decodeCodexLocalFullAutoSetRequest,
+  type CodexLocalFullAutoLiveState,
 } from "./codex-local-contract.ts"
 import {
   FIXTURE_CODEX_LOCAL_ACCOUNT,
@@ -503,7 +508,19 @@ const localTurnRestartProbe = process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_
     process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE === "recover"
   ? process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE
   : null
-const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null
+// FA-H12 (#8885): the Full Auto two-process restart probe. Same fixture-mode
+// posture as the local-turn restart probe: seed phases write durable state
+// and quit; resume phases relaunch against the SAME userData directory and
+// observe startup reconciliation dispatch (or fail closed) for real.
+const FULL_AUTO_RESTART_PROBE_PHASES = ["seed", "resume", "seed-mismatch", "resume-mismatch"] as const
+const fullAutoRestartProbe: (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number] | null =
+  (FULL_AUTO_RESTART_PROBE_PHASES as ReadonlyArray<string>).includes(
+      process.env.OPENAGENTS_DESKTOP_FULL_AUTO_RESTART_PROBE ?? "",
+    )
+    ? process.env.OPENAGENTS_DESKTOP_FULL_AUTO_RESTART_PROBE as (typeof FULL_AUTO_RESTART_PROBE_PHASES)[number]
+    : null
+const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null ||
+  fullAutoRestartProbe !== null
 const reactSmokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE_REACT === "1"
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
@@ -1002,6 +1019,39 @@ const broadcastFullAutoThreadUpdate = (threadRef: string): void => {
   if (thread === null) return
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send(DesktopLocalTurnRecoveryUpdateChannel, thread)
+  }
+}
+/**
+ * FA-H4 (#8877): main-owned in-memory coarse live state per Full Auto
+ * thread. A background continuation dispatches with `sender: null`, so no
+ * live turn events reach any renderer; this map plus its broadcast are the
+ * ONLY renderer-visible signal that a background turn is running right now
+ * (with its interruptible turn ref) or how the last one ended. Terminal
+ * states persist in the map until the next transition — the renderer keeps
+ * showing the last outcome instead of snapping to a fabricated idle.
+ * Deliberately NOT durable: after a restart the startup reconciliation
+ * re-derives reality (either a fresh dispatch re-enters turn_running, or the
+ * blocked/cap notes already persisted on the thread itself).
+ */
+const fullAutoLiveState = new Map<string, Readonly<{
+  state: CodexLocalFullAutoLiveState
+  turnRef: string | null
+  detail?: string
+}>>()
+const setFullAutoLiveState = (
+  threadRef: string,
+  state: CodexLocalFullAutoLiveState,
+  turnRef: string | null,
+  detail?: string,
+): void => {
+  const bounded = detail === undefined || detail.trim() === ""
+    ? undefined
+    : detail.slice(0, CODEX_LOCAL_FULL_AUTO_DETAIL_LIMIT)
+  const entry = { state, turnRef, ...(bounded === undefined ? {} : { detail: bounded }) } as const
+  fullAutoLiveState.set(threadRef, entry)
+  // Same all-windows loop shape as broadcastFullAutoThreadUpdate above.
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(CodexLocalFullAutoStateChannel, { threadRef, ...entry })
   }
 }
 const codexDurableQueue = openCodexDurableQueue(
@@ -3230,6 +3280,10 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       // against the live contract enums (a field that no longer decodes
       // falls back to lane defaults instead of failing the loop).
       const bound = decodeCodexLocalContinuationProfile(profile)
+      // FA-H4 (#8877): the background turn becomes a rendered fact the moment
+      // it dispatches, carrying the lease turn ref so the composer's stop
+      // control can target the ACTUAL running background turn.
+      setFullAutoLiveState(threadRef, "turn_running", turnRef)
       const result = await dispatchCodexLocalTurn({
         turnRef,
         threadRef,
@@ -3241,21 +3295,33 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
           ? { target: { provider: "codex" as const, accountRef: bound.accountRef, model: bound.model } }
           : {}),
       }, null)
+      // FA-H4: success transitions here; every failure path (thrown OR
+      // ok:false, including the in-flight refusal above) transitions in
+      // onDispatchFailed below, so the two never double-report.
+      if (result.ok) setFullAutoLiveState(threadRef, "turn_completed", turnRef)
       return result.ok ? { ok: true } : { ok: false, reason: result.error ?? "dispatch_failed" }
     },
-    onCapReached: capThreadRef => appendFullAutoSystemNote(
-      capThreadRef,
-      `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
-    ),
+    onCapReached: capThreadRef => {
+      // FA-H4 (#8877): the cap stop is a typed live state, not just a note.
+      setFullAutoLiveState(capThreadRef, "cap_reached", null)
+      appendFullAutoSystemNote(
+        capThreadRef,
+        `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
+      )
+    },
     // FA-H2 (#8875): a continuation whose granted workspace no longer matches
     // (or was never bound) does not dispatch -- the record is disabled with a
     // typed blockedReason and the owner sees why, on the thread itself.
-    onWorkspaceBlocked: (blockedThreadRef, block) => appendFullAutoSystemNote(
-      blockedThreadRef,
-      block.reason === "workspace_unbound"
-        ? "Full Auto was turned off for this thread: it has no recorded granted workspace, so a continuation cannot be dispatched safely. Turn Full Auto back on from the workspace you want it to work in."
-        : "Full Auto was turned off for this thread: the selected workspace no longer matches the workspace that was granted when Full Auto was enabled. Turn Full Auto back on from the workspace you want it to work in.",
-    ),
+    onWorkspaceBlocked: (blockedThreadRef, block) => {
+      // FA-H4 (#8877): the typed disable is also a live state transition.
+      setFullAutoLiveState(blockedThreadRef, "blocked", null, block.reason)
+      appendFullAutoSystemNote(
+        blockedThreadRef,
+        block.reason === "workspace_unbound"
+          ? "Full Auto was turned off for this thread: it has no recorded granted workspace, so a continuation cannot be dispatched safely. Turn Full Auto back on from the workspace you want it to work in."
+          : "Full Auto was turned off for this thread: the selected workspace no longer matches the workspace that was granted when Full Auto was enabled. Turn Full Auto back on from the workspace you want it to work in.",
+      )
+    },
     // FA-H5 (#8878): a failed dispatch (thrown OR ok:false) is a typed,
     // owner-visible outcome -- never a silently dormant enabled record.
     onDispatchFailed: (failedThreadRef, failure) => {
@@ -3264,6 +3330,10 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
         failedThreadRef,
         failure.reason,
       )
+      // FA-H4 (#8877): a failure-limit disable renders as blocked; an
+      // ordinary failure renders as turn_failed with the typed reason.
+      if (failure.disabled) setFullAutoLiveState(failedThreadRef, "blocked", null, failure.reason)
+      else setFullAutoLiveState(failedThreadRef, "turn_failed", null, failure.reason)
       appendFullAutoSystemNote(
         failedThreadRef,
         failure.disabled
@@ -3310,8 +3380,28 @@ ipcMain.handle(CodexLocalFullAutoSetChannel, async (_event, value: unknown) => {
 })
 ipcMain.handle(CodexLocalFullAutoGetChannel, async (_event, value: unknown) => {
   const request = decodeCodexLocalFullAutoGetRequest(value)
-  if (request === null) return { enabled: false }
-  return { enabled: fullAutoRegistry.get(request.threadRef) }
+  if (request === null) return { enabled: false, state: "idle", turnRef: null }
+  // FA-H4 (#8877): additive live-state fields ride alongside `enabled` so
+  // the renderer's existing wave-1 hydration keeps working unchanged while
+  // a thread switch also picks up an in-flight background turn immediately.
+  const live = fullAutoLiveState.get(request.threadRef)
+  return {
+    enabled: fullAutoRegistry.get(request.threadRef),
+    state: live?.state ?? "idle",
+    turnRef: live?.turnRef ?? null,
+    ...(live?.detail === undefined ? {} : { detail: live.detail }),
+  }
+})
+// FA-H4 (#8877): thread-scoped stop for the background continuation turn.
+// The renderer names only the thread; main resolves the live running turn
+// ref itself and signals the exact same runtime interrupt path the existing
+// CodexLocalInterruptChannel handler uses (codexLocal.interrupt).
+ipcMain.handle(CodexLocalFullAutoInterruptChannel, async (_event, value: unknown) => {
+  const request = decodeCodexLocalFullAutoInterruptRequest(value)
+  if (request === null) return { ok: false }
+  const live = fullAutoLiveState.get(request.threadRef)
+  if (live === undefined || live.state !== "turn_running" || live.turnRef === null) return { ok: false }
+  return { ok: codexLocal.interrupt(live.turnRef) }
 })
 
 // Codex account connect + reconnect (#8640 unblock; EP250 owner mandate:
@@ -5938,6 +6028,134 @@ void app.whenReady().then(async () => {
       return
     } catch (error) {
       console.error("[openagents-desktop local-turn-restart] failed", error instanceof Error ? error.message : "unknown")
+      app.exit(1)
+      return
+    }
+  }
+  // FA-H12 (#8885): Full Auto two-process restart probe
+  // (scripts/full-auto-restart-smoke.ts). Mirrors the local-turn restart probe
+  // above: a seed process writes durable state (thread + COMPLETED fixture
+  // turn in the local-turn journal + enabled Full Auto registry record bound
+  // to the fixture workspace) and quits; a separate resume process relaunches
+  // against the same userData directory and observes the REAL startup
+  // reconciliation (localTurnRecovery -> runFullAutoReconciliation wiring
+  // below) dispatch a fixture continuation -- or fail closed on the
+  // deliberately mismatched workspace variant.
+  if (fullAutoRestartProbe !== null) {
+    // Windowless probe mode keeps the original fully-settled ordering.
+    openLocalSyncPersistence()
+    await recoverSessionVaultLocal()
+    await settleSessionRecovery()
+    runtimeGateway.start()
+    try {
+      await localTurnRecovery
+      const seedTurnRef = "turn.full-auto-restart-smoke.seed"
+      if (fullAutoRestartProbe === "seed" || fullAutoRestartProbe === "seed-mismatch") {
+        const store = threads()
+        const thread = store.newThread()
+        const key = { threadRef: thread.id, turnRef: seedTurnRef, lane: "codex-local" as const }
+        localTurnJournal.accept({
+          ...key,
+          userMessageKey: `${seedTurnRef}-user`,
+          assistantMessageKey: `${seedTurnRef}-assistant`,
+          accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
+          model: "gpt-5.6-sol",
+        })
+        store.upsert(thread.id, {
+          key: `${seedTurnRef}-user`, role: "user", text: "Seed a Full Auto loop that must survive a restart.", timestamp: "11:55 PM",
+        })
+        localTurnJournal.recordDispatch(key, FIXTURE_CODEX_LOCAL_ACCOUNT.ref)
+        localTurnJournal.recordProviderSession(key, {
+          accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
+          providerSessionRef: "thread-full-auto-restart-smoke",
+        })
+        localTurnJournal.appendAssistantText(key, "Seed turn complete. ")
+        store.upsert(thread.id, {
+          key: `${seedTurnRef}-assistant`, role: "assistant", text: "Seed turn complete. ", timestamp: "11:55 PM",
+        })
+        // COMPLETED terminal seed turn: nothing is in flight, so the resume
+        // phase's dispatch decision is purely the durable registry's.
+        localTurnJournal.terminal(key, "completed", "completed")
+        // Happy path binds the EXACT workspace the resume process will resolve
+        // (fixture-mode resolution is a pure function of the shared userData
+        // path). The mismatch variant binds a different absolute path so the
+        // resume phase must fail CLOSED (FA-H2) instead of dispatching.
+        const grantedWorkspaceRef = fullAutoRestartProbe === "seed"
+          ? resolveDesktopLocalWorkspaceRoot()
+          : path.join(app.getPath("userData"), "not-the-granted-workspace")
+        fullAutoRegistry.set(thread.id, true, { workspaceRef: grantedWorkspaceRef })
+        // Happy path: consume all but ONE cap slot so the resume phase
+        // dispatches exactly one continuation and then deterministically
+        // disables at the cap -- a bounded single-dispatch observation
+        // instead of a 20-turn loop.
+        if (fullAutoRestartProbe === "seed") {
+          for (let index = 0; index < FULL_AUTO_MAX_CONTINUATIONS - 1; index++) {
+            fullAutoRegistry.incrementContinuation(thread.id)
+          }
+        }
+        console.log(`[openagents-desktop full-auto-restart] phase-a seeded ${JSON.stringify({
+          variant: fullAutoRestartProbe,
+          enabled: fullAutoRegistry.get(thread.id),
+          continuationCount: fullAutoRegistry.record(thread.id)?.continuationCount ?? null,
+        })}`)
+        app.exit(0)
+        return
+      }
+      // Resume phases: the startup pass queued below (localTurnRecovery ->
+      // runFullAutoReconciliation({ startup: true })) plus the chained
+      // post-completion pass drive the registry to a deterministic terminal
+      // state; poll durable state (bounded) instead of racing the queue.
+      const expectMismatch = fullAutoRestartProbe === "resume-mismatch"
+      const seedRecord = localTurnJournal.list().find(value => value.turnRef === seedTurnRef) ?? null
+      const seeded = seedRecord !== null && seedRecord.phase === "completed"
+      const threadRef = seedRecord?.threadRef ?? ""
+      const deadline = Date.now() + 120_000
+      const settled = (): boolean => {
+        const current = fullAutoRegistry.record(threadRef)
+        if (current === null || current.enabled) return false
+        return current.blockedReason === (expectMismatch ? "workspace_mismatch" : "continuation_cap_reached")
+      }
+      while (!settled() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50))
+      const record = fullAutoRegistry.record(threadRef)
+      const continuationRecords = localTurnJournal.list().filter(value =>
+        value.threadRef === threadRef && value.turnRef.startsWith("turn.full-auto."))
+      const dispatchedTurnRef = continuationRecords[0]?.turnRef ?? null
+      const notes = threads().open(threadRef)?.notes ?? []
+      const continuationAssistantText = dispatchedTurnRef === null
+        ? ""
+        : notes.filter(note => note.role === "assistant" && note.key.startsWith(`${dispatchedTurnRef}-assistant`))
+          .map(note => note.text).join("")
+      // FA-H7 pinned semantic: DISABLING zeroes continuationCount, so the
+      // cap-disabled terminal record reads 0. The advancement 19 -> 20 is
+      // still durably proven twice over: the journal holds exactly one
+      // completed dispatched continuation, and the cap disable itself only
+      // fires when the registry count reached FULL_AUTO_MAX_CONTINUATIONS.
+      const advancedContinuationCount = (FULL_AUTO_MAX_CONTINUATIONS - 1) + continuationRecords.length
+      const ok = expectMismatch
+        ? seeded && record !== null && !record.enabled && record.blockedReason === "workspace_mismatch" &&
+          continuationRecords.length === 0 && record.continuationCount === 0 &&
+          notes.some(note => note.role === "system" && note.text.includes("no longer matches"))
+        : seeded && record !== null && !record.enabled && record.blockedReason === "continuation_cap_reached" &&
+          record.continuationCount === 0 &&
+          advancedContinuationCount === FULL_AUTO_MAX_CONTINUATIONS &&
+          typeof record.pendingTurnRef !== "string" &&
+          continuationRecords.length === 1 && continuationRecords[0]!.phase === "completed" &&
+          dispatchedTurnRef !== null &&
+          continuationAssistantText.includes("fixture") &&
+          notes.some(note => note.key === `${dispatchedTurnRef}-user`)
+      console.log(`[openagents-desktop full-auto-restart] phase-b ${JSON.stringify({
+        variant: fullAutoRestartProbe,
+        seeded,
+        resumed: continuationRecords.length > 0,
+        dispatchedTurnRefPresent: dispatchedTurnRef !== null,
+        continuationCount: expectMismatch ? record?.continuationCount ?? null : advancedContinuationCount,
+        blockedReason: record?.blockedReason ?? null,
+        ok,
+      })}`)
+      app.exit(ok ? 0 : 1)
+      return
+    } catch (error) {
+      console.error("[openagents-desktop full-auto-restart] failed", error instanceof Error ? error.message : "unknown")
       app.exit(1)
       return
     }

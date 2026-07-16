@@ -3,7 +3,7 @@ import path from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
-import { DesktopLandingPage, HoldingPage, InstallPage } from './-public-site'
+import { DesktopLandingPage, DownloadPage, HoldingPage } from './-public-site'
 
 describe('TanStack Start public site', () => {
   test('server-renders the complete Desktop MVP landing', () => {
@@ -44,12 +44,13 @@ describe('TanStack Start public site', () => {
   })
 
   test('links the exact published Mac release candidate', () => {
-    const html = renderToStaticMarkup(<InstallPage />)
+    const html = renderToStaticMarkup(<DownloadPage />)
 
     expect(html).toContain('OpenAgents Desktop')
     expect(html).toContain('Download for Mac')
     expect(html).toContain('0.1.0-rc.17')
     expect(html).toContain('OpenAgents-0.1.0-rc.17-arm64.dmg')
     expect(html).toContain('href="/docs"')
+    expect(html).not.toContain('href="/install"')
   })
 })

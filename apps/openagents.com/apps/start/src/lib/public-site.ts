@@ -3,7 +3,7 @@ export const GITHUB_REPOSITORY_URL =
 
 export const DOCS_URL = '/docs'
 
-export const INSTALL_URL = '/install'
+export const DOWNLOAD_URL = '/download'
 
 export const MAC_RELEASE = {
   version: '0.1.0-rc.17',

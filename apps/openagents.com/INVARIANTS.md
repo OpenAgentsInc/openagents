@@ -24,7 +24,7 @@ This is the invariant ledger for `openagents`.
 ## 2026-07-15 unified TanStack Start public and authenticated surfaces
 
 - `apps/start` owns the public homepage at `/`, the Desktop MVP landing at
-  `/astro`, the exact `/install` route, and the authenticated application entry
+  `/astro`, the exact `/download` route, and the authenticated application entry
   at `/app`. The root preserves the prior holding page without a visible change
   until the owner replaces its content. `/tanstack` is a compatibility redirect
   to `/astro`; it has no separate product or framework-comparison authority.

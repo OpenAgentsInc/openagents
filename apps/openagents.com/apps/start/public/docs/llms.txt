@@ -7,6 +7,7 @@
 - [OpenAgents Desktop](https://openagents.com/docs): A local-first workroom for durable, reviewable Codex work.
 - [Getting started](https://openagents.com/docs/getting-started): Run the current OpenAgents Desktop candidate from source.
 - [Workroom](https://openagents.com/docs/workroom): Understand sessions, the causal timeline, and composer actions.
+- [Full Auto](https://openagents.com/docs/full-auto): Let Codex continue bounded local work, turn after turn.
 - [Review and recovery](https://openagents.com/docs/review-and-recovery): Review exact changes and understand restart behavior.
 - [Security and privacy](https://openagents.com/docs/security-and-privacy): The local authority, credential, and renderer boundaries of OpenAgents Desktop.
 - [Troubleshooting](https://openagents.com/docs/troubleshooting): Diagnose common development and workroom states without widening authority.

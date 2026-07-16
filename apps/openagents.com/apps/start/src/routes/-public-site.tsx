@@ -4,6 +4,7 @@ import { InternalLink } from '@/components/internal-link'
 import { PublicHeader } from '@/components/public-header'
 import {
   DOCS_URL,
+  DOWNLOAD_URL,
   GITHUB_REPOSITORY_URL,
   MAC_RELEASE,
   PRODUCT_BOUNDARIES,
@@ -78,7 +79,7 @@ export function DesktopLandingPage() {
             <p className="oa-kicker">Codex, made durable.</p>
             <h1>A serious place<br />for serious agent work.</h1>
             <p className="oa-hero-summary">OpenAgents Desktop is a local-first workroom around your ordinary Codex session—built to find work, follow the turn, review changes, and resume without losing the thread.</p>
-            <div className="oa-actions"><InternalLink className="oa-button oa-button-primary" href="/install" preload="render">Download for Mac</InternalLink><InternalLink className="oa-button oa-button-secondary" href={DOCS_URL} preload="render">Read the docs</InternalLink></div>
+            <div className="oa-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="render">Download for Mac</InternalLink><InternalLink className="oa-button oa-button-secondary" href={DOCS_URL} preload="render">Read the docs</InternalLink></div>
             <p className="oa-release-note">{MAC_RELEASE.version} · {MAC_RELEASE.architecture} release candidate</p>
           </div>
           <div className="oa-hero-signal" aria-hidden="true"><span>session.open</span><span>turn.streaming</span><span>change.reviewable</span><span>restart.reconciled</span></div>
@@ -129,12 +130,12 @@ export function DesktopLandingPage() {
         <div className="oa-container oa-faq-layout"><div className="oa-faq-intro"><p>Questions and answers</p><h2 id="oa-faq-title">The important boundaries, plainly.</h2><InternalLink href={DOCS_URL} preload="render">Read the full documentation <span aria-hidden="true">→</span></InternalLink></div><div className="oa-question-list">{questions.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<span aria-hidden="true">＋</span></summary><p>{answer}</p></details>)}</div></div>
       </section>
 
-      <section className="oa-closing"><div className="oa-container oa-closing-layout"><div><p>Open source. Local first. Evidence backed.</p><h2>The work should survive the window.</h2></div><div className="oa-closing-actions"><InternalLink className="oa-button oa-button-primary" href="/install" preload="render">Download for Mac</InternalLink><a className="oa-source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div></div></section>
+      <section className="oa-closing"><div className="oa-container oa-closing-layout"><div><p>Open source. Local first. Evidence backed.</p><h2>The work should survive the window.</h2></div><div className="oa-closing-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="render">Download for Mac</InternalLink><a className="oa-source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div></div></section>
     </PublicSiteShell>
   )
 }
 
-export function InstallPage() {
+export function DownloadPage() {
   return (
     <PublicSiteShell>
       <section className="oa-install-hero"><div className="oa-container oa-install-layout"><div><p className="oa-kicker">OpenAgents Desktop</p><h1>Bring your Codex work<br />into one durable place.</h1><p className="oa-install-summary">Download the latest OpenAgents Desktop candidate for Mac. It uses your ordinary Codex session and keeps your work local, legible, and ready to resume.</p><div className="oa-download-row"><a className="oa-download-button" href={MAC_RELEASE.downloadUrl} rel="noreferrer"><span>Download for Mac</span><small>{MAC_RELEASE.version} · {MAC_RELEASE.size}</small></a><p>{MAC_RELEASE.architecture}<br />macOS disk image</p></div><p className="oa-candidate-note">This is a release candidate for early use, not the stable release.</p></div><aside className="oa-release-panel" aria-label="Release details"><p className="oa-kicker">Current candidate</p><dl><div><dt>Version</dt><dd>{MAC_RELEASE.version}</dd></div><div><dt>Platform</dt><dd>{MAC_RELEASE.platform}</dd></div><div><dt>Chip</dt><dd>{MAC_RELEASE.architecture}</dd></div><div><dt>Package</dt><dd>.dmg</dd></div></dl><a href={MAC_RELEASE.releaseUrl} target="_blank" rel="noreferrer">View release notes <span aria-hidden="true">↗</span></a></aside></div></section>
