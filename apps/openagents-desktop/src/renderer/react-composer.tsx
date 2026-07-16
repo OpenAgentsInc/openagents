@@ -42,7 +42,6 @@ import {
   ArrowDown,
   ArrowUp,
   CheckCircle2,
-  Command as CommandIcon,
   FileDiff,
   Files,
   FolderOpen,
@@ -90,7 +89,6 @@ import {
 } from "./lexical-composer-editor.tsx";
 
 const composerIconNames = {
-  commands: "Command",
   stop: "Stop",
   submit: "ArrowUp",
   attach: "Image",
@@ -478,14 +476,6 @@ export const ReactComposer = ({
         >
           <ImagePlus data-icon-name={composerIconNames.attach} aria-hidden="true" />
         </DesktopComposerButton> : null}
-        <DesktopComposerButton
-          kind="action"
-          onClick={() => dispatch(report, "DesktopCommandPaletteToggled")}
-          aria-label="Open commands"
-          title="Commands"
-        >
-          <CommandIcon data-icon-name={composerIconNames.commands} aria-hidden="true" />
-        </DesktopComposerButton>
         <DesktopComposerButton
           data-en-key="shell-provider-select"
           kind="action"

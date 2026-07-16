@@ -14,6 +14,8 @@
   --color-muted-foreground: var(--en-color-textMuted);
   --color-card: var(--en-color-surface);
   --color-card-foreground: var(--en-color-textPrimary);
+  --color-popover: var(--en-color-surfaceOverlay);
+  --color-popover-foreground: var(--en-color-textPrimary);
   --color-border: var(--en-color-borderSubtle);
   --color-primary: var(--en-color-accent);
   --color-primary-foreground: var(--en-color-textInverse);

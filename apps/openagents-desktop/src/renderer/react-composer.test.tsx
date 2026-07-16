@@ -190,9 +190,10 @@ describe("React Codex composer", () => {
     );
     const editor = container.querySelector('[data-lexical-composer="true"]') as HTMLElement;
     expect(container.querySelector('[data-en-key="shell-input"] [contenteditable="true"]')).toBe(editor);
-    expect(container.querySelector('[data-icon-name="Command"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon-name="Command"]')).toBeNull();
     expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(4);
+    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(3);
+    expect(container.querySelector('[aria-label="Open commands"]')).toBeNull();
     expect(container.querySelector('[data-composer-button-kind="toggle"]')).not.toBeNull();
     expect(container.querySelector('[data-composer-button-kind="submit"]')).not.toBeNull();
     await render(
@@ -549,6 +550,7 @@ describe("React command and decision surfaces", () => {
       <ReactCommandPalette state={fixtureState({ commandPaletteOpen: true })} report={report} />,
     );
     expect(window.document.querySelector('[data-command-palette="true"]')).not.toBeNull();
+    expect(window.document.querySelector('[data-command-palette="true"]')?.className).toContain("bg-popover");
     const paletteInput = window.document.querySelector('[data-slot="command-input"]') as unknown as HTMLInputElement | null;
     expect(paletteInput?.placeholder).toBe(
       "Search commands and sessions…",

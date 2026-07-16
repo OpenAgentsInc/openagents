@@ -237,6 +237,7 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
 
   test("the shadcn Vega zinc preset extends Khala instead of defining another palette", () => {
     const css = readFileSync(path.join(rendererDir, "shadcn-khala.css"), "utf8")
+    const appCss = readFileSync(path.join(rendererDir, "app.css"), "utf8")
     const config = JSON.parse(readFileSync(path.resolve(rendererDir, "../../components.json"), "utf8")) as {
       style: string
       iconLibrary: string
@@ -253,6 +254,8 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(css).toContain('var(--oa-font-mono)')
     expect(css).toContain("--background: var(--en-color-background)")
     expect(css).toContain("--primary: var(--en-color-accent)")
+    expect(appCss).toContain("--color-popover: var(--en-color-surfaceOverlay)")
+    expect(appCss).toContain("--color-popover-foreground: var(--en-color-textPrimary)")
     expect(css).not.toMatch(/oklch\(|#[0-9a-f]{3,8}\b/i)
   })
 
