@@ -1,6 +1,5 @@
 ARTIFACTS_GCS_BUCKET: "openagentsgemini-oa-artifacts"
 CLOUD_CODING_SESSIONS_ENABLED: "true"
-DESKTOP_CODEX_USAGE_INGEST_ENABLED: "0"
 CRM_RESEND_FROM_EMAIL: "Sarah <sarah@openagents.com>"
 CRM_RESEND_REPLY_TO_EMAIL: "sarah@openagents.com"
 CRM_RESEND_SEND_ENABLED: "1"

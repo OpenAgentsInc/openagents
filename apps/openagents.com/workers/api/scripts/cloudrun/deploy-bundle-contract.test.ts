@@ -6,6 +6,36 @@ import { shouldBundleCloudRunDependency } from '../../vite.config'
 import { externalRuntimeSpecifiers } from './assert-self-contained-bundle.mjs'
 
 describe('Cloud Run Vite Plus bundle contract', () => {
+  test.each(['env-production.yaml', 'env-staging.yaml'])(
+    '%s has unique top-level keys and exactly one enabled Desktop usage gate',
+    (fileName) => {
+      const contents = readFileSync(
+        fileURLToPath(new URL(fileName, import.meta.url)),
+        'utf8',
+      )
+      const entries = contents
+        .split(/\r?\n/u)
+        .filter((line) => line.trim().length > 0 && !line.trimStart().startsWith('#'))
+        .map((line) => {
+          const match = /^([A-Z][A-Z0-9_]*):\s*(.*)$/u.exec(line)
+          expect(match, `expected a flat top-level YAML mapping entry: ${line}`).not.toBeNull()
+          return { key: match![1], value: match![2] }
+        })
+
+      const counts = new Map<string, number>()
+      for (const { key } of entries) counts.set(key, (counts.get(key) ?? 0) + 1)
+      expect(
+        [...counts.entries()].filter(([, count]) => count !== 1),
+        'duplicate YAML keys are ambiguous and must fail closed',
+      ).toEqual([])
+      expect(
+        entries.filter(({ key }) => key === 'DESKTOP_CODEX_USAGE_INGEST_ENABLED'),
+      ).toEqual([
+        { key: 'DESKTOP_CODEX_USAGE_INGEST_ENABLED', value: '"1"' },
+      ])
+    },
+  )
+
   test('packs only the self-contained Node server bundle', () => {
     const deployScript = readFileSync(
       fileURLToPath(new URL('../deploy-cloudrun.sh', import.meta.url)),

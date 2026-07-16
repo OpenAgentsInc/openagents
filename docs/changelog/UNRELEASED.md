@@ -104,7 +104,7 @@ Engineering detail: the route loader resolves server-side against the DIST-10 re
 - issues: #8911
 - commits: 6f08644cb6, 8809f79b56, (this closeout commit)
 - contracts-specs: openagents.desktop.codex_turn_usage.v1 / codex_turn_admission.v1 (apps/openagents-desktop/src/desktop-codex-usage-reporter.ts, apps/openagents.com/workers/api/src/desktop-codex-usage-routes.ts); server rollout gate DESKTOP_CODEX_USAGE_INGEST_ENABLED added to scripts/cloudrun/env-production.yaml and env-staging.yaml
-- invariants: none changed — the triple gate (review-only Desktop control, default-off user preference, server ingest gate) holds; live proof ran with all three sanctioned on and the server gate was restored off pending the integration deploy
+- invariants: none changed — the ordinary shipped control keeps user consent default-off, the server ingest gate remains independently controlled, and every report still requires a server-verified session and pre-admission; the live proof temporarily enabled consent and ingest, then restored the deployed server gate off pending the integration deploy
 - evidence: issue #8911 live-proof receipts comment (three exact token_usage_events rows: ordinary 14,096; restart-retry 14,303; Full Auto continuation 176,026 — each matching the public counter delta exactly once); docs/sol/2026-07-16-desktop-local-usage-opt-in-verification.md
 - lane: fable-8911-live-proof-20260716
 
