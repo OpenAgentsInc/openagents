@@ -6,6 +6,21 @@ import type { makeThreadStore } from "./thread-store.ts"
 
 type ThreadStore = ReturnType<typeof makeThreadStore>
 
+/**
+ * Translate a provider-native Codex history ref back to the Desktop-local
+ * thread that owns it. Sidebar history is keyed by provider session ids,
+ * while the mutable composer/store is keyed by Desktop thread ids.
+ */
+export const localThreadRefForProviderSession = (
+  records: ReadonlyArray<LocalTurnRecord>,
+  providerSessionRef: string,
+): string | null => {
+  const matches = records.filter(record =>
+    record.lane === "codex-local" && record.providerSessionRef === providerSessionRef)
+  return [...matches].sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt) || right.turnRef.localeCompare(left.turnRef))[0]?.threadRef ?? null
+}
+
 const isRecoverableCodexModel = (model: string | null): model is CodexModel =>
   model === "gpt-5.5" || model === "gpt-5.6-sol"
 

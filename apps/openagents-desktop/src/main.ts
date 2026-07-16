@@ -283,7 +283,7 @@ import { openDesktopCodexUsageOutbox } from "./desktop-codex-usage-outbox.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
-import { reconcileLocalTurns } from "./local-turn-recovery.ts"
+import { localThreadRefForProviderSession, reconcileLocalTurns } from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { applyFullAutoComposerToggle, FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
@@ -1997,9 +1997,45 @@ ipcMain.handle(DesktopNewThreadChannel, (_event, value: unknown) => {
 // thread id lets the next local turn hit fable/codex-local's existing
 // per-thread SDK resume seam; imported provider history is never mutated.
 ipcMain.handle(DesktopLocalThreadsChannel, () => threads().list())
-ipcMain.handle(DesktopResumeLocalThreadChannel, (_event, value: unknown) => {
+ipcMain.handle(DesktopResumeLocalThreadChannel, async (_event, value: unknown) => {
   const request = decode(DesktopResumeLocalThreadRequestSchema, value) as DesktopResumeLocalThreadRequest | null
-  return request === null ? null : threads().open(request.threadRef)
+  if (request === null) return null
+  const store = threads()
+  const direct = store.open(request.threadRef)
+  if (direct !== null) return direct
+
+  // Codex history rows use the provider-native thread id, not the Desktop
+  // store id. Recover that identity from the durable turn journal before
+  // deciding this is provider-only history. This is also the restart path for
+  // a Desktop-owned chat that aged out of the five-row local cache.
+  const localThreadRef = localThreadRefForProviderSession(
+    localTurnJournal.list(),
+    request.threadRef,
+  )
+  if (localThreadRef === null) return null
+  const cached = store.open(localThreadRef)
+  if (cached !== null) return cached
+
+  // The bounded local store may have evicted the transcript even though its
+  // journal still proves exact provider continuity. Re-read the provider-owned
+  // transcript in main, translate only its verified identity, and re-admit it
+  // to the local cache. The renderer never supplies transcript content.
+  const history = hostLifecycle.history()
+  if (history === null) return null
+  const providerThread = await history.run({
+    kind: "detail",
+    sessionsRoot: codexSessionsRoot(),
+    id: request.threadRef,
+    messageLimit: 80,
+  }) as DesktopThread | null
+  if (providerThread === null) return null
+  return store.restoreThread({
+    ...providerThread,
+    id: localThreadRef,
+    // Selection is an access, so keep the restored entry in the bounded LRU
+    // instead of immediately evicting it again for its historical timestamp.
+    updatedAt: new Date().toISOString(),
+  })
 })
 // H2 refs-only fork. Main re-reads a bounded provider-history window through
 // the history worker, projects only user/assistant prose through the existing

@@ -5,6 +5,23 @@ import path from "node:path"
 import { makeThreadStore } from "./thread-store.ts"
 
 describe("H2 local thread fork persistence", () => {
+  test("restores a verified historical thread under its Desktop-local id", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-restore-"))
+    try {
+      const store = makeThreadStore(path.join(root, "threads.json"))
+      const restored = store.restoreThread({
+        id: "desktop-local-older",
+        title: "Older chat",
+        updatedAt: "2026-07-16T21:00:00.000Z",
+        notes: [{ key: "assistant-1", role: "assistant", text: "Restored", timestamp: "16:00" }],
+      })
+      expect(restored.id).toBe("desktop-local-older")
+      expect(store.open("desktop-local-older")).toEqual(restored)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("creates distinct seeded threads while leaving the seed and first fork unmutated", () => {
     const root = mkdtempSync(path.join(tmpdir(), "desktop-history-fork-"))
     try {

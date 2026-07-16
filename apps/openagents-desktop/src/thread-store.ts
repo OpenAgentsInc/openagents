@@ -28,6 +28,14 @@ export const makeThreadStore = (file: string) => {
   }
   return {
     list: (): DesktopThread[] => read(),
+    /** Re-admit a host-verified thread projection that aged out of the
+     * bounded recent set. Callers own identity/continuity verification; this
+     * store only persists the supplied local thread id and bounded notes. */
+    restoreThread: (thread: DesktopThread): DesktopThread => {
+      const restored = { ...thread, notes: thread.notes.slice(-maxNotes) }
+      write([restored, ...read().filter(candidate => candidate.id !== restored.id)])
+      return restored
+    },
     newThread: (title?: string): DesktopThread => {
       const thread: DesktopThread = { id: randomUUID(), title: title ?? "New chat", updatedAt: new Date().toISOString(), notes: [] }
       write([thread, ...read()])

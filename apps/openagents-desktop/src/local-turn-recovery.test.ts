@@ -3,11 +3,38 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { describe, expect, test } from "vite-plus/test"
 
-import { reconcileLocalTurns } from "./local-turn-recovery.ts"
+import { localThreadRefForProviderSession, reconcileLocalTurns } from "./local-turn-recovery.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { makeThreadStore } from "./thread-store.ts"
 
 describe("local turn native-state recovery", () => {
+  test("maps a provider history id back to the latest Desktop-local owner", () => {
+    const record = (threadRef: string, turnRef: string, updatedAt: string) => ({
+      schema: "openagents.desktop.local_turn_record.v1" as const,
+      threadRef,
+      turnRef,
+      lane: "codex-local",
+      userMessageKey: `${turnRef}-user`,
+      assistantMessageKey: `${turnRef}-assistant`,
+      accountRef: "codex-current",
+      providerSessionRef: "provider-thread-older",
+      model: "gpt-5.6-sol",
+      phase: "completed" as const,
+      persistedCursor: 0,
+      assistantText: "",
+      assistantSegments: [],
+      recoveryGeneration: 0,
+      disposition: "completed" as const,
+      createdAt: updatedAt,
+      updatedAt,
+    })
+    expect(localThreadRefForProviderSession([
+      record("desktop-local-old", "turn-1", "2026-07-15T10:00:00.000Z"),
+      record("desktop-local-current", "turn-2", "2026-07-16T10:00:00.000Z"),
+    ], "provider-thread-older")).toBe("desktop-local-current")
+    expect(localThreadRefForProviderSession([], "provider-thread-older")).toBeNull()
+  })
+
   test.each(["completed", "running"] as const)("does not fabricate a continuation when app-server reports %s", async nativeState => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-native-recovery-"))
     try {
