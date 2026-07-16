@@ -46,4 +46,6 @@ The candidate live record for Grok `0.2.101` is
 `packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json`.
 It contains no prompt/response text, auth material, provider metadata, or host
 identity and is diagnostic evidence, not the final cross-platform release
-claim.
+claim. The separately checked two-peer candidate run exercises the production
+composer through authentication, sequential prompts, and stream cancellation;
+its closed artifact is validated by the release check but cannot promote Grok.

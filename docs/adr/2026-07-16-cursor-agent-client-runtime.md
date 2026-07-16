@@ -49,4 +49,7 @@ retaining the full report in probe evidence. An initialize-only diagnostic
 confirmed wire version 1, `cursor_login`, load support, session listing, and
 the official `agent acp` command. It does not prove prompt, load repair,
 extensions, cancellation, or cross-platform compatibility. Those claims remain
-disabled until the pinned matrix in #8897 records successful artifacts.
+disabled until the pinned matrix in #8897 records successful artifacts. A
+separate checked candidate runner now reproduces authentication, sequential
+prompts, session listing, mode change, and stream cancellation through this
+production composer, but deliberately has no matrix-promotion authority.

@@ -127,8 +127,9 @@ and digest-bound feature gates. Cursor's composer launches only a resolved
 `cursor-agent` installation through `agent acp`, pins and rechecks its complete
 flat installation closure, negotiates `cursor_login`, and
 keeps model discovery behind its versioned extension decoder. Diagnostic live
-probes and source-derived fixtures remain explicitly non-release evidence. The
-checked
+probes and source-derived fixtures remain explicitly non-release evidence. A
+checked opt-in production runner now reproduces a redacted Grok/Cursor candidate
+receipt in disposable repositories; it has no claim authority. The checked
 [pinned live-binary matrix](packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
 and [human proof ledger](docs/qa/2026-07-16-acp10-release-proof/README.md) now
 independently gate the two peers; their current verdict is experimental because

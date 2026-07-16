@@ -40,6 +40,18 @@ contain update kinds, stop state, binary identity, and counts only—no prompt o
 response text, session identifier, credential, hostname, username, or absolute
 workspace path.
 
+The checked
+[`release-run-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-2026-07-16-darwin-arm64.json)
+is now reproducible with the opt-in production runner. On revision
+`3d38f12b5b5b9c2cf568389284e5c28f58b06f05`, it launched both pinned peers in
+separate disposable repositories and completed initialize, advertised local
+authentication, session creation, two sequential real model turns, and stream
+cancellation. Cursor additionally completed advertised session listing and a
+mode change. Grok did not advertise session listing, and the runner does not
+claim shutdown leak proof because it does not retain process leak counters.
+The artifact is a candidate input only; it cannot mutate or promote the release
+matrix.
+
 ```text
 GROK_ACP_LIVE=1 node --import tsx packages/grok-harness/scripts/live-acp-smoke.ts
 result: pass; stop=end_turn; bytes=4; events=thread_ready,message_start,message_delta,message_done
@@ -139,10 +151,10 @@ Provider-specific gaps:
 The ACP-10 validator now publishes the proof, derives the claim independently
 for each peer, and fails closed. Its current verdict is a release denial for
 general support—not an implied promotion. The issue remains open because the
-reproducible full live runner, remaining Desktop/provider failure journeys,
-credential-dependent auth states, and claimed-platform executions are not complete. Future evidence can
-change one peer at a time from `experimental` only by satisfying every
-code-owned evidence class on each claimed platform.
+remaining Desktop/provider failure journeys, credential-dependent auth states,
+unobserved permission/extension cases, and claimed-platform executions are not
+complete. Future evidence can change one peer at a time from `experimental`
+only by satisfying every code-owned evidence class on each claimed platform.
 
 ## Verification commands
 
@@ -152,6 +164,8 @@ pnpm --dir packages/agent-client-protocol-conformance run test
 pnpm --dir packages/agent-client-protocol-conformance run check:artifacts
 pnpm --dir packages/agent-client-protocol-conformance run report
 pnpm --dir packages/agent-client-protocol-conformance run check:release
+ACP_RELEASE_LIVE=1 ACP_RELEASE_PEER=both \
+  pnpm --dir packages/agent-client-protocol-conformance run live:release
 ```
 
 `check:release` rejects stale/future evidence, incomplete or invented scenario

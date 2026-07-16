@@ -139,8 +139,10 @@ It independently derives an experimental verdict for both pinned peers because
 required live and cross-platform rows remain unresolved; it does not turn
 fixture coverage into supported language. Grok and Cursor are now registered
 main-owned provider lanes, and an isolated production Desktop build completed a
-real Grok Full Auto turn. #8897 remains open for reproducible complete live and
-platform proof plus the remaining packaged failure/recovery journeys. The conformance package's exact
+real Grok Full Auto turn. A checked, opt-in production runner now reproduces a
+redacted two-peer candidate receipt without claim authority. #8897 remains open
+for the unobserved credential, permission, extension, platform, and packaged
+failure/recovery proof. The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference
 custody cases, and opt-in probes are checked artifacts. The Grok and Cursor
@@ -852,7 +854,9 @@ behavior without an explicit namespaced codec and peer profile.
 known variant inventories, a production-transport-backed scripted peer,
 concurrent sessions and reverse requests, deterministic redacted transcripts,
 MCP reference refusal/redaction, fault and compatibility artifacts, and inert
-by default Grok/Cursor live probes. Product-native projection and reverse
+by default Grok/Cursor live probes. It also includes an explicitly armed
+two-peer production runner whose closed artifact is validated by
+`check:release` but cannot promote the release matrix. Product-native projection and reverse
 authority are implemented by [#8891](https://github.com/OpenAgentsInc/openagents/issues/8891)
 and specified in the [runtime bridge ADR](../adr/2026-07-16-agent-client-runtime-bridge.md).
 The provider-independent lifecycle now single-flights startup, capability-gates
