@@ -46,7 +46,7 @@ Khala semantic roles.
 
 ## Verification
 
-- Focused composer, focus, and primitive-adapter suites: 3 files and 35 tests
+- Focused composer, focus, and primitive-adapter suites: 3 files and 36 tests
   passed.
 - Complete Desktop test inventory: all 167 files and 1,587 tests passed, with
   39 skipped. The command reported five post-suite React scheduler errors from
