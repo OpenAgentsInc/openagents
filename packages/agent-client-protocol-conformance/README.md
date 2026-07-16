@@ -39,7 +39,15 @@ pnpm --dir packages/agent-client-protocol-conformance run typecheck
 pnpm --dir packages/agent-client-protocol-conformance run test
 pnpm --dir packages/agent-client-protocol-conformance run check:artifacts
 pnpm --dir packages/agent-client-protocol-conformance run report
+pnpm --dir packages/agent-client-protocol-conformance run check:release
 ```
+
+`compatibility/release-matrix.json` is the release-defining named-peer ledger.
+It uses a closed claim vocabulary (`supported`, `experimental`, `incompatible`,
+`not-installed`, `auth-required`, `degraded`) and distinguishes `live-pass`
+from fixture-only, blocked, untested, unsupported, and failed scenarios. The
+validator recomputes release eligibility: a required fixture pass is useful but
+cannot promote either provider, and one provider can never mask the other.
 
 Live probes are inert unless explicitly armed and never run in ordinary CI:
 

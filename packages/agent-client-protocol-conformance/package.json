@@ -8,6 +8,7 @@
   },
   "scripts": {
     "check:artifacts": "node --import tsx scripts/generate-artifacts.ts --check",
+    "check:release": "node --import tsx scripts/check-release-matrix.ts",
     "generate": "node --import tsx scripts/generate-artifacts.ts",
     "live:grok": "node --import tsx scripts/live-probe.ts grok",
     "live:cursor": "node --import tsx scripts/live-probe.ts cursor",

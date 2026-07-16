@@ -29,6 +29,7 @@ import {
   projectSessionUpdateForConformance,
   projectStopReasonForConformance,
 } from "./projection.ts";
+import { validateAcpReleaseMatrix } from "./release.ts";
 import { assertSecretAbsent } from "./transcript.ts";
 import {
   CONTENT_BLOCK_FIXTURES,
@@ -740,6 +741,33 @@ describe("MCP custody, durable evidence, and deterministic faults", () => {
         "recovery",
       ]),
     );
+  });
+
+  it("keeps named-peer release claims independent, fresh, redacted, and live-gated", () => {
+    const matrix = JSON.parse(
+      readFileSync(
+        resolve(import.meta.dirname, "../compatibility/release-matrix.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(
+      validateAcpReleaseMatrix(matrix, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toEqual({ valid: true, errors: [] });
+
+    const promoted = structuredClone(matrix) as {
+      peers: Array<{ claimState: string; releaseEligible: boolean }>;
+    };
+    promoted.peers[0]!.claimState = "supported";
+    promoted.peers[0]!.releaseEligible = true;
+    expect(
+      validateAcpReleaseMatrix(promoted, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
+
+    const hostLeaking = structuredClone(matrix) as Record<string, unknown>;
+    hostLeaking["privatePath"] = "/Users/example/private-repository";
+    expect(
+      validateAcpReleaseMatrix(hostLeaking, { now: new Date("2026-07-16T16:00:00.000Z") }),
+    ).toMatchObject({ valid: false });
   });
 
   it.each(FAULT_CASES)("executes bounded %s/%s fault evidence", async (layer, fault) => {

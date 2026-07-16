@@ -1,8 +1,8 @@
 {
   "proofClass": "diagnostic-live",
   "claimAuthority": "candidate-only-final-release-gated-by-8897",
-  "recordedAt": "2026-07-16T14:36:25Z",
-  "openAgentsRevisionBase": "017b375e362c3adcfd9aeded52ecc45e7f8df3e5",
+  "recordedAt": "2026-07-16T15:34:21Z",
+  "openAgentsRevisionBase": "63cc0d073417d04bfa3146f7b92da1f385f9f420",
   "schemaRelease": "schema-v1.19.0",
   "profileId": "grok-cli",
   "profileRevision": 1,
@@ -33,11 +33,29 @@
     "sessionNew": "pass",
     "promptTextUpdate": "pass",
     "promptStopReasonExactlyOnce": "pass",
+    "observedEventTypes": ["thread_ready", "message_start", "message_delta", "message_done"],
+    "observedUpdateKinds": [
+      "agent_message_chunk",
+      "agent_thought_chunk",
+      "available_commands_update",
+      "user_message_chunk"
+    ],
+    "sequentialTurns": "pass-2-before-restart-plus-1-after-load",
+    "processRestart": "pass-orderly-shutdown-and-new-process",
+    "sessionLoad": "pass",
+    "postLoadPrompt": "pass",
+    "sigkillRepair": "pass-crash-new-process-load-post-load-prompt",
+    "repetition": {
+      "crashCycles": 5,
+      "cleanCycles": 5,
+      "exitListenerDelta": 0,
+      "pendingRequestsAfterClean": 0
+    },
     "cleanShutdown": "pass",
     "apiKeyAuthenticate": "fixture-pass-live-not-configured",
     "reverseAuthority": "fixture-pass-live-not-enabled",
     "questionExtensions": "fixture-pass-live-not-observed",
-    "loadReplay": "fixture-pass-live-not-run"
+    "loadReplay": "pass"
   },
   "redaction": {
     "promptTextRetained": false,
@@ -46,5 +64,5 @@
     "providerMetadataRetained": false,
     "hostIdentityRetained": false
   },
-  "result": "pass"
+  "result": "live-basic-pass-release-blocked"
 }
