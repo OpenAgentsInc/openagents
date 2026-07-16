@@ -24,6 +24,11 @@ apps/openagents-desktop/out/
 # Agent worktrees (on-disk, never tracked)
 .worktrees/
 
+# Release transaction scratch (DIST-13 #8926): durable resumable state and
+# dry-run receipts. Real release receipts are committed under
+# docs/deploy/receipts/ instead.
+.release/
+
 # Local agent working files / tooling (never tracked)
 .codex/
 NEEDS_OWNER.md

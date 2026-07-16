@@ -45,8 +45,6 @@ be fetched is marked unavailable honestly — the page never invents a number.
 
 ## Desktop release changelogs (DIST-14, #8927)
 
-Every release now publishes two changelog artifacts: a human-centric changelog at openagents.com/changelog and a detailed engineering ledger under docs/changelog/. Landing lanes append their entry to docs/changelog/UNRELEASED.md as part of CLAIM-RELEASE; `pnpm changelog roll` cuts the release file and emits the bounded release-notes string for the signed release set.
-
 - issues: #8927 (epic #8913)
 - commits: (integration commit on main)
 - contracts-specs: RELEASE_NOTES_MAX_LENGTH=2000 exported for ReleaseSet v2 (#8915); /changelog route in the Start route table
@@ -54,9 +52,9 @@ Every release now publishes two changelog artifacts: a human-centric changelog a
 - evidence: scripts/changelog.test.ts (17), -changelog.test.tsx (6), pnpm changelog check green
 - lane: fable-dist14-changelog-20260716
 
-## Target-aware release staging with provenance (DIST-03, #8916)
+Every release now publishes two changelog artifacts: a human-centric changelog at openagents.com/changelog and a detailed engineering ledger under docs/changelog/. Landing lanes append their entry to docs/changelog/UNRELEASED.md as part of CLAIM-RELEASE; `pnpm changelog roll` cuts the release file and emits the bounded release-notes string for the signed release set.
 
-Desktop packaging now requires an explicit build target: staging happens in a clean per-target workspace with target-correct native components, and every build emits a public-safe native-component ledger and a build receipt binding source revision, versions, toolchain, and worker identity. Unsigned development output is structurally inadmissible to publication.
+## Target-aware release staging with provenance (DIST-03, #8916)
 
 - issues: #8916 (epic #8913)
 - commits: (integration commit on main)
@@ -65,9 +63,9 @@ Desktop packaging now requires an explicit build target: staging happens in a cl
 - evidence: tests/release-staging.test.ts (26) + release suite 99 green; live darwin-arm64 staging with identical ledgerRef across two runs; win32-arm64 typed missing_runtime_package refusal
 - lane: fable-dist03-staging-20260716
 
-## Verified desktop download resolution (DIST-10, #8923)
+Desktop packaging now requires an explicit build target: staging happens in a clean per-target workspace with target-correct native components, and every build emits a public-safe native-component ledger and a build receipt binding source revision, versions, toolchain, and worker identity. Unsigned development output is structurally inadmissible to publication.
 
-openagents.com now resolves Desktop downloads from the cryptographically verified release feed instead of hand-written links. Visitors get the right installer for their platform with explicit alternatives, and the site can never serve a download URL that does not match the signed release — including fixing a dead pinned link that had been returning 404.
+## Verified desktop download resolution (DIST-10, #8923)
 
 - issues: #8923 (epic #8913)
 - commits: (integration commit on main)
@@ -75,3 +73,18 @@ openagents.com now resolves Desktop downloads from the cryptographically verifie
 - invariants: /download INVARIANTS entry annotated; unavailable responses carry no URL; broken v2 never downgrades to v1
 - evidence: 57 resolver tests + seam 7 + start suite 305 green; live smoke resolved signed 0.1.0-rc.13 and 302'd to an HTTP-200 artifact
 - lane: fable-dist10-resolver-20260716
+
+openagents.com now resolves Desktop downloads from the cryptographically verified release feed instead of hand-written links. Visitors get the right installer for their platform with explicit alternatives, and the site can never serve a download URL that does not match the signed release — including fixing a dead pinned link that had been returning 404.
+
+## One owner release command: step graph, preflight, dry-run, resumable transactions (DIST-13, #8926 slice 1)
+
+- issues: #8926 (epic #8913)
+- commits: (integration commit on main)
+- contracts-specs: openagents.desktop.release_transaction.v1 and openagents.desktop.release_receipt.v1 in scripts/release.ts; typed integration ports ReleaseCoordinatorPort (#8917) and ReleaseFeedPort (#8922) with fixture implementations only
+- invariants: implements the automated boundary of the DIST-01 one-command entrypoint invariant (dry-run, durable resume, idempotence, pre-promotion failure); fixture ports refuse non-dry-run execution, so no channel pointer can be touched by this slice
+- evidence: scripts/release.test.ts (28 green); live --dry-run receipt exercised from this revision
+- lane: fable-dist13-release-command-20260716
+
+Releasing OpenAgents Desktop now has its single owner entrypoint: `pnpm run release` plans and walks the whole nine-step release pipeline — checks, worker bring-up, six-target builds, test gates, candidate, changelog, promotion, and public-page verification — as one resumable transaction with a clear receipt at the end, and a safe dry-run mode that walks the full plan without building or publishing anything.
+
+Engineering detail: steps 2-5 and 7-8 execute only against typed ports (fixtures) until the #8917 coordinator and #8922 feed land; preflight (clean origin/main freeze, version authority, toolchain pins, credential PRESENCE), the DIST-14 changelog roll step, transaction state under `.release/`, owner gates named up front, and the ProductSpec §11.1 receipt are real.
