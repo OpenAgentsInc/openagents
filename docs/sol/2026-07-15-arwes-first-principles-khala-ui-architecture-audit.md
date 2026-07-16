@@ -852,6 +852,14 @@ surface gained motion.
 while hidden/offscreen, no renderer security-boundary change, and a stable
 fallback for unsupported hosts.
 
+**Pilot implementation receipt (2026-07-16):** #8850 adds the program's only
+product Canvas to the spacious `/splash` hero, outside its dense workroom. The
+[splash Canvas receipt](./2026-07-16-khala-ui-splash-canvas-pilot-receipt.md)
+records the static-CSS insufficiency decision, one-surface and hard scheduler
+budgets, DPR/resize/quality/visibility teardown proof, headed visual and frame
+sampling, startup/output A/B, and the exact rollout boundary. No other product
+surface gained Canvas ambience.
+
 ### KU-7 — Experimental effects, text, and sound
 
 **Goal:** explicitly decide whether these features belong in the product.

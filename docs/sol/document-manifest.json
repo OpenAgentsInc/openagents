@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "0c9f08dd2c670df47238306ffa5536402f10229c837d769da4787b0ebae4b87b",
+  "sourceTreeSha256": "b4725a818c954b88b83f3812da2197694994dddd90c93ff9d037b6fd3fcda5a8",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1529,7 +1529,7 @@
       "owner": "OpenAgents UI architecture",
       "disposition": "retain-historical",
       "dispatch": false,
-      "sha256": "9daf3752c508676588826d1572691749a514b5a6bfe1e778ea14a9d0a0df8042",
+      "sha256": "0993d4462a3effa208c72d52b69f96985c2cd2a765e1732333a45238b3e8d9d1",
       "status": "retain until Khala UI is implemented, rejected, or superseded",
       "snapshot": "OpenAgents `ac287fc22d2aaa76e3783e592d695ad54a84ec47`; Effect Native `ec04d1a066d6f3ed0c67735ba451cfc90a343aa8`; Arwes `bdbaa0324900ee978d42036d1304a053c1fe54b5`",
       "reviewedAt": "2026-07-12",
@@ -1542,7 +1542,8 @@
         8845,
         8846,
         8848,
-        8849
+        8849,
+        8850
       ]
     },
     {
@@ -1731,6 +1732,28 @@
       "inboundSourceCount": 1,
       "issueLinks": [
         8854
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-16-khala-ui-splash-canvas-pilot-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8850",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "96152adb6749406a7a21d0568626445b66c07043ea999c82298a866007d72803",
+      "status": "implementation and local headed proof complete",
+      "snapshot": "`7ed34252c4`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-15-arwes-first-principles-khala-ui-architecture-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8844,
+        8849,
+        8850
       ]
     },
     {
@@ -3091,7 +3114,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "471cbde0b12095097f3fc0be930906fc9d834d8722951315a70168e43b910665",
+      "sha256": "14a0c308d982f7059ad0d179775f71208dc538283e6ea0b220790c587caa1854",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3140,7 +3163,8 @@
         8846,
         8847,
         8848,
-        8849
+        8849,
+        8850
       ]
     },
     {

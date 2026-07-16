@@ -37,6 +37,7 @@ import {
 import { ArrowRight, ArrowUp, Command, Folder, ImagePlus, Square, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
+import { SplashHeroCanvas } from './-splash-khala-canvas'
 import '../splash.css'
 
 type DemoMessageItem = Readonly<{
@@ -619,6 +620,7 @@ export function SplashPage() {
     </header>
 
     <section aria-labelledby="splash-heading" className="splash-hero">
+      <SplashHeroCanvas />
       <InternalLink className="splash-release-link" href="/install" preload="render">
         OpenAgents Desktop · v0.1.0 RC
         <ArrowRight aria-hidden="true" />
