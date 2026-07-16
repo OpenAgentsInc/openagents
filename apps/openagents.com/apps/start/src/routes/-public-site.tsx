@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { InternalLink } from '@/components/internal-link'
+import { PublicHeader } from '@/components/public-header'
 import {
   DOCS_URL,
   GITHUB_REPOSITORY_URL,
@@ -56,19 +57,7 @@ const questions = [
 export function PublicSiteShell({ children }: { children: ReactNode }) {
   return (
     <div className="oa-public-site">
-      <header className="oa-site-header">
-        <nav className="oa-container oa-nav" aria-label="Primary navigation">
-          <InternalLink className="oa-brand" href="/" aria-label="OpenAgents home" preload="render">
-            <span>OpenAgents</span>
-          </InternalLink>
-          <div className="oa-nav-status" aria-label="Product status"><span />Desktop MVP</div>
-          <div className="oa-nav-links">
-            <InternalLink href="/install" preload="render">Install</InternalLink>
-            <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
-            <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Source <span aria-hidden="true">↗</span></a>
-          </div>
-        </nav>
-      </header>
+      <PublicHeader />
       <main>{children}</main>
       <footer className="oa-site-footer">
         <div className="oa-container oa-footer-inner">

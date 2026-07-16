@@ -17,6 +17,8 @@ describe('TanStack Start public site', () => {
     expect(html).toContain('The work should survive the window.')
     expect(html).toContain('0.1.0-rc.17')
     expect(html).toContain('href="/docs"')
+    expect(html).toContain('OpenAgents on GitHub')
+    expect(html).toContain('Open app')
     expect(html).not.toContain('data-astro')
     expect(html).not.toContain('Launch UI')
   })

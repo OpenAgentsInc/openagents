@@ -1,8 +1,9 @@
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
 import { autopilotTheme } from '@effect-native/tokens'
 import { InternalLink } from '@/components/internal-link'
+import { PublicHeader } from '@/components/public-header'
 import GithubMark from '@/components/launch-ui/logos/github'
-import { DOCS_URL, GITHUB_REPOSITORY_URL } from '@/lib/public-site'
+import { GITHUB_REPOSITORY_URL } from '@/lib/public-site'
 import {
   DesktopAgentGroup,
   DesktopApprovalCard,
@@ -35,7 +36,7 @@ import {
   type DesktopRailDestination,
   type DesktopToolKind,
 } from '@openagentsinc/ui/desktop-workbench'
-import { ArrowRight, ArrowUp, Command, Folder, ImagePlus, Square, Zap } from 'lucide-react'
+import { ArrowRight, ArrowUp, ArrowUpRight, Command, Folder, ImagePlus, Square, Zap } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import '../splash.css'
@@ -601,23 +602,7 @@ export function SplashPage() {
   const active = phase === 'preparing' || phase === 'streaming'
 
   return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(autopilotTheme)}>
-    <header className="splash-site-header">
-      <nav aria-label="Primary navigation" className="splash-nav">
-        <InternalLink aria-label="OpenAgents home" className="splash-brand" href="/" preload="render">
-          <span>OpenAgents</span>
-        </InternalLink>
-        <div className="splash-nav-links">
-          <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
-        </div>
-        <div className="splash-nav-actions">
-          <InternalLink className="splash-app-link" href="/app" preload="intent">Open app</InternalLink>
-          <a aria-label="OpenAgents on GitHub" className="splash-github-link" href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">
-            <GithubMark aria-hidden="true" />
-          </a>
-          <InternalLink className="splash-nav-download" href="/install" preload="render">Download</InternalLink>
-        </div>
-      </nav>
-    </header>
+    <PublicHeader />
 
     <section aria-labelledby="splash-heading" className="splash-hero">
       <InternalLink className="splash-release-link" href="/blog/introducing-openagents-desktop" preload="render">
@@ -631,7 +616,9 @@ export function SplashPage() {
         <ArrowRight aria-hidden="true" />
       </InternalLink>
       <a className="splash-source-link" href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">
+        <GithubMark aria-hidden="true" />
         Or build from source
+        <ArrowUpRight aria-hidden="true" />
       </a>
     </section>
 

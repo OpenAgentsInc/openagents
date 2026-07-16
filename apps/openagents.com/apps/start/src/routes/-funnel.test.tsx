@@ -56,8 +56,12 @@ describe('Start funnel routes', () => {
     const post = findBlogPost('introducing-openagents-desktop')
 
     expect(post).toBeDefined()
-    expect(indexHtml).toContain('OpenAgents Blog')
+    expect(indexHtml).toContain('Notes from the workroom.')
     expect(indexHtml).toContain('Introducing OpenAgents Desktop')
+    expect(indexHtml).toContain('OpenAgents on GitHub')
+    expect(indexHtml).toContain('Open app')
+    expect(indexHtml).not.toContain('Introducing Khala Code')
+    expect(indexHtml).not.toContain('>Business<')
 
     const postHtml = renderToStaticMarkup(<BlogPostPage post={post!} />)
     expect(postHtml).toContain('One workroom for the whole turn')
@@ -65,6 +69,7 @@ describe('Start funnel routes', () => {
       'OpenAgents Desktop is a local-first workroom around the Codex session you already use.',
     )
     expect(postHtml).toContain('App-server events, not flattened logs')
+    expect(postHtml).toContain('oa-blog-article')
   })
 
   test('server-renders the Khala Code download page inside the promise gate', () => {

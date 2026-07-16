@@ -46,14 +46,6 @@ export type BlogPost = Readonly<{
   title: string
 }>
 
-export const publicNavLinks: ReadonlyArray<NavLink> = [
-  { href: '/', label: 'OpenAgents' },
-  { href: '/business', label: 'Business' },
-  { href: '/docs', label: 'Docs' },
-  { href: '/blog', label: 'Blog' },
-  { href: '/code/download', label: 'Khala Code' },
-]
-
 export const businessOfferings: ReadonlyArray<BusinessOffering> = [
   {
     title: 'Coding & agent work',
@@ -409,7 +401,7 @@ export const blogPosts: ReadonlyArray<BlogPost> = [
   },
   {
     slug: 'introducing-khala-code',
-    listed: true,
+    listed: false,
     title: 'Introducing Khala Code',
     excerpt:
       'Khala Code is the OpenAgents front door for coding work, while the public installer and economics loop are still being brought online.',

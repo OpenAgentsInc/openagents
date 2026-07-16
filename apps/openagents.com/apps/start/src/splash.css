@@ -38,85 +38,6 @@
   outline-offset: 3px;
 }
 
-.splash-site-header {
-  position: relative;
-  z-index: 5;
-  border-bottom: 1px solid rgb(116 164 255 / 0.09);
-}
-
-.splash-nav {
-  display: flex;
-  align-items: center;
-  width: min(100% - 3rem, 76rem);
-  min-height: 4.25rem;
-  margin-inline: auto;
-  color: var(--splash-muted);
-  font-size: 0.82rem;
-}
-
-.splash-brand {
-  display: inline-flex;
-  align-items: center;
-  color: var(--splash-text) !important;
-  font-size: 0.92rem;
-  font-weight: 680;
-  letter-spacing: -0.015em;
-}
-
-.splash-nav-links,
-.splash-nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 1.35rem;
-}
-
-.splash-nav-links {
-  margin-left: 2.5rem;
-}
-
-.splash-nav-actions {
-  margin-left: auto;
-}
-
-.splash-nav a {
-  transition: color 160ms ease-out, background-color 160ms ease-out;
-}
-
-.splash-nav a:hover {
-  color: var(--splash-text);
-}
-
-.splash-nav-download {
-  min-height: 2rem;
-  padding: 0.4rem 0.78rem;
-  border: 1px solid var(--splash-border-strong);
-  border-radius: 999px;
-  color: var(--splash-text) !important;
-  background: rgb(58 123 255 / 0.13);
-}
-
-.splash-nav-download:hover {
-  background: rgb(58 123 255 / 0.24);
-}
-
-.splash-github-link {
-  display: inline-flex;
-  width: 2rem;
-  height: 2rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-}
-
-.splash-github-link:hover {
-  background: rgb(116 164 255 / 0.09);
-}
-
-.splash-github-link svg {
-  width: 1rem;
-  height: 1rem;
-}
-
 .splash-hero {
   display: flex;
   flex-direction: column;
@@ -200,12 +121,20 @@
 }
 
 .splash-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   margin-top: 0.85rem;
   color: var(--splash-muted) !important;
   font-size: 0.76rem;
   line-height: 1.4;
   text-underline-offset: 0.2em;
   transition: color 160ms ease-out;
+}
+
+.splash-source-link svg {
+  width: 0.85rem;
+  height: 0.85rem;
 }
 
 .splash-source-link:hover {
@@ -362,15 +291,6 @@
 }
 
 @media (max-width: 760px) {
-  .splash-nav {
-    width: min(100% - 2rem, 76rem);
-  }
-
-  .splash-nav-links,
-  .splash-app-link {
-    display: none;
-  }
-
   .splash-hero {
     min-height: 25rem;
     padding-top: 3.75rem;
@@ -391,10 +311,6 @@
 }
 
 @media (max-width: 520px) {
-  .splash-nav-download {
-    min-height: 2.25rem;
-  }
-
   .splash-hero {
     align-items: flex-start;
     min-height: 27rem;

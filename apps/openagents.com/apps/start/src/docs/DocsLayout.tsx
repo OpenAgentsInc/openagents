@@ -1,8 +1,8 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Menu, MonitorDown, X } from 'lucide-react'
+import { ChevronDown, Menu, X } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 
-import GithubMark from '../components/launch-ui/logos/github'
+import { PublicHeader } from '../components/public-header'
 import { docsNavigationDefinition } from './docs-navigation'
 import { docsManifest } from './generated/docs-manifest.generated'
 import { DocsSearch } from './DocsSearch'
@@ -173,8 +173,9 @@ export function DocsLayout() {
   return (
     <div className="docs-root" onClick={handleDocsNavigation}>
       <a className="docs-skip-link" href="#docs-content">Skip to documentation</a>
-      <header className="docs-header">
-        <div className="docs-header-inner">
+      <PublicHeader />
+      <div className="docs-toolbar">
+        <div className="docs-toolbar-inner">
           <button
             aria-haspopup="dialog"
             aria-label="Open documentation navigation"
@@ -185,24 +186,11 @@ export function DocsLayout() {
           >
             <Menu aria-hidden="true" size={20} />
           </button>
-          <Link className="docs-brand" preload="render" to="/">
-            <span className="docs-brand-text">OpenAgents</span>
-          </Link>
-          <Link aria-current="page" className="docs-section-link" preload="render" to="/docs">Docs</Link>
+          <Link aria-current="page" className="docs-toolbar-title" preload="render" to="/docs">Documentation</Link>
           <div className="docs-header-spacer" />
           <DocsSearch />
-          <nav aria-label="Product" className="docs-header-links">
-            <Link className="docs-header-link" preload="render" to="/install">
-              <MonitorDown aria-hidden="true" size={16} />
-              <span>Desktop</span>
-            </Link>
-            <a className="docs-header-link" href="https://github.com/OpenAgentsInc/openagents" rel="noreferrer" target="_blank">
-              <GithubMark aria-hidden="true" height={16} width={16} />
-              <span>Source</span>
-            </a>
-          </nav>
         </div>
-      </header>
+      </div>
 
       <div className="docs-shell">
         <aside className="docs-sidebar">
