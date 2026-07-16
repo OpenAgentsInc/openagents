@@ -335,12 +335,16 @@ const isWorkRecord = (record: ReactTimelineRecord): boolean =>
  * carried on `record.item`, so it dispatches here through the SAME real
  * `DesktopPlanCard` instead of the bespoke single-entry reconstruction below
  * (kept only as a fallback for a record whose source carried neither
- * structured entries nor prose). `message`, `agent`, and `notice` keep their
- * existing bespoke branches below unchanged (not part of Wave 2's scope).
+ * structured entries nor prose). `notice` joined this set in T12 (#8869): a
+ * typed `notice` item now carries `severity`, which only
+ * `dispatchWorkbenchItem`'s restyled `DesktopTimelineNotice` call honors —
+ * the generic string-kind branch below has no severity to read. `message`
+ * and `agent` keep their existing bespoke branches below unchanged (not part
+ * of Wave 2's scope).
  */
 const dispatchableWorkbenchKinds: ReadonlySet<WorkbenchItem["kind"]> = new Set([
   "command", "fileChange", "toolCall", "reasoning", "approval",
-  "meter", "compaction", "sleep", "review", "hook", "plan",
+  "meter", "compaction", "sleep", "review", "hook", "plan", "notice",
 ])
 
 const compact = (value: string, limit = 180): string => {

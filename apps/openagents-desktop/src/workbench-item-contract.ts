@@ -242,17 +242,20 @@ export const WorkbenchNoticeItemSchema = Schema.Struct({
   severity: Schema.optional(Schema.Literals(["info", "warning", "error"])),
   text: BoundedString(400),
 })
+export type WorkbenchNoticeItem = typeof WorkbenchNoticeItemSchema.Type
 
 export const WorkbenchCompactionItemSchema = Schema.Struct({
   kind: Schema.Literal("compaction"),
   source: WorkbenchItemSourceSchema,
 })
+export type WorkbenchCompactionItem = typeof WorkbenchCompactionItemSchema.Type
 
 export const WorkbenchSleepItemSchema = Schema.Struct({
   kind: Schema.Literal("sleep"),
   source: WorkbenchItemSourceSchema,
   durationMs: Schema.Number,
 })
+export type WorkbenchSleepItem = typeof WorkbenchSleepItemSchema.Type
 
 export const WorkbenchReviewItemSchema = Schema.Struct({
   kind: Schema.Literal("review"),
@@ -260,12 +263,14 @@ export const WorkbenchReviewItemSchema = Schema.Struct({
   phase: Schema.Literals(["entered", "exited"]),
   review: BoundedString(2_000),
 })
+export type WorkbenchReviewItem = typeof WorkbenchReviewItemSchema.Type
 
 export const WorkbenchHookItemSchema = Schema.Struct({
   kind: Schema.Literal("hook"),
   source: WorkbenchItemSourceSchema,
   text: BoundedString(2_000),
 })
+export type WorkbenchHookItem = typeof WorkbenchHookItemSchema.Type
 
 /**
  * The harness-neutral item union. Wave-0 (#8859) live-emits the command,
@@ -752,8 +757,72 @@ export const workbenchItemFromThreadItem = (
       ...(detail === null ? {} : { detail: head(redact(detail), 400) }),
     }
   }
+  // -------------------------------------------------------------------------
+  // Long-tail honest rows (#8869, T12 epic #8857 wave 2). These four
+  // `ThreadItem` variants carried no tool-call semantics (no status/exitCode/
+  // result) and were previously dropped WHOLE by the live turn client
+  // (`toolFacts()` returned null for every one of them) and left
+  // unclassified by the history projector (falling to `kind: "gap"`). Every
+  // one now projects to its own typed, non-tool `WorkbenchItem` kind so
+  // nothing is silently discarded on either path.
+  // -------------------------------------------------------------------------
+  if (type === "hookPrompt" || type === "hook_prompt") {
+    const fragments = Array.isArray(item.fragments) ? item.fragments : []
+    const text = fragments
+      .map(fragment => asString(asRecord(fragment)?.text) ?? "")
+      .filter(part => part !== "")
+      .join("\n")
+    return {
+      kind: "hook",
+      source,
+      text: head(redact(text), 2_000),
+    }
+  }
+  if (type === "sleep") {
+    const durationMs = asNumber(item.durationMs ?? item.duration_ms) ?? 0
+    return { kind: "sleep", source, durationMs }
+  }
+  if (type === "enteredReviewMode" || type === "entered_review_mode") {
+    return {
+      kind: "review",
+      source,
+      phase: "entered",
+      review: head(redact(asString(item.review) ?? ""), 2_000),
+    }
+  }
+  if (type === "exitedReviewMode" || type === "exited_review_mode") {
+    return {
+      kind: "review",
+      source,
+      phase: "exited",
+      review: head(redact(asString(item.review) ?? ""), 2_000),
+    }
+  }
+  if (type === "contextCompaction" || type === "context_compaction") {
+    return { kind: "compaction", source }
+  }
   return null
 }
+
+/**
+ * A typed `notice` `WorkbenchItem` for the notice-class app-server
+ * notifications (#8869): `ContextCompacted` (deprecated compat only —
+ * superseded by the `contextCompaction` item above), `ModelRerouted`,
+ * `Warning`, `ConfigWarning`, `DeprecationNotice`, `GuardianWarning`. These
+ * are top-level JSON-RPC notifications, not `ThreadItem`s, so they have no
+ * `id`/`type` envelope to route through `workbenchItemFromThreadItem`; main
+ * builds the bounded text and picks the severity, this just bounds/shapes it.
+ */
+export const workbenchNoticeItem = (
+  source: WorkbenchItemSource,
+  severity: "info" | "warning" | "error",
+  text: string,
+): WorkbenchNoticeItem => ({
+  kind: "notice",
+  source,
+  severity,
+  text: head(text, 400),
+})
 
 /**
  * Typed toolCall projection for the Claude/Fable SDK lane's `tool_use`

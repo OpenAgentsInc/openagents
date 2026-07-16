@@ -197,3 +197,42 @@ describe("typed WorkbenchItem history sidecar (#8859)", () => {
     })
   })
 })
+
+describe("long-tail honest rows count as rendered, not gaps (#8869, T12 epic #8857 wave 2)", () => {
+  test("hookPrompt, sleep, entered/exitedReviewMode, and contextCompaction rows decode with a typed item and zero gaps", () => {
+    const sessions = root()
+    const eventMsg = (timestamp: string, item: Record<string, unknown>) => ({
+      timestamp,
+      type: "event_msg",
+      payload: { type: "item_completed", item },
+    })
+    write(sessions, "long-tail.jsonl", [
+      meta("long-tail", "2026-07-10T17:00:00.000Z"),
+      eventMsg("2026-07-10T17:01:00.000Z", {
+        id: "hook-1", type: "hookPrompt", fragments: [{ hookRunId: "run-1", text: "Guard fired" }],
+      }),
+      eventMsg("2026-07-10T17:02:00.000Z", { id: "sleep-1", type: "sleep", durationMs: 4_200 }),
+      eventMsg("2026-07-10T17:03:00.000Z", {
+        id: "review-1", type: "enteredReviewMode", review: "Review the diff before merge",
+      }),
+      eventMsg("2026-07-10T17:04:00.000Z", { id: "review-2", type: "exitedReviewMode", review: "Approved" }),
+      eventMsg("2026-07-10T17:05:00.000Z", { id: "compaction-1", type: "contextCompaction" }),
+      message("2026-07-10T17:06:00.000Z", "assistant", "Done."),
+    ])
+    const page = readCodexHistoryPage({ sessionsRoot: sessions, threadRef: "long-tail", offset: 0, limit: 200 })!
+    // The core "nothing silently dropped" regression: none of these five
+    // previously-unclassified rows may be counted as a completeness gap.
+    expect(page.completeness.gaps).toBe(0)
+    const hook = page.items.find(item => item.item?.kind === "hook")
+    expect(hook?.kind).toBe("tool_call")
+    expect(hook?.item).toEqual({ kind: "hook", source: "codex", text: "Guard fired" })
+    const sleep = page.items.find(item => item.item?.kind === "sleep")
+    expect(sleep?.item).toEqual({ kind: "sleep", source: "codex", durationMs: 4_200 })
+    const entered = page.items.find(item => item.item?.kind === "review" && item.item.phase === "entered")
+    expect(entered?.item).toMatchObject({ review: "Review the diff before merge" })
+    const exited = page.items.find(item => item.item?.kind === "review" && item.item.phase === "exited")
+    expect(exited?.item).toMatchObject({ review: "Approved" })
+    const compaction = page.items.find(item => item.item?.kind === "compaction")
+    expect(compaction?.item).toEqual({ kind: "compaction", source: "codex" })
+  })
+})

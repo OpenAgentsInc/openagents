@@ -15,14 +15,17 @@ import {
   workbenchFileChangeItemFromDiff,
   workbenchItemFromThreadItem,
   workbenchItemSignature,
+  workbenchNoticeItem,
   workbenchPlanItemFromEntries,
   workbenchToolCallFromSdkUse,
   type WorkbenchAgentChild,
   type WorkbenchApprovalItem,
   type WorkbenchCommandItem,
   type WorkbenchFileChangeItem,
+  type WorkbenchHookItem,
   type WorkbenchPlanItem,
   type WorkbenchReasoningItem,
+  type WorkbenchReviewItem,
   type WorkbenchToolCallItem,
 } from "./workbench-item-contract.ts"
 
@@ -127,12 +130,23 @@ const wireSubAgentActivity = {
   agentThreadId: "thread-child-3",
   kind: "interacted",
 }
+/** Long-tail honest-row fixtures (#8869, T12 epic #8857 wave 2). */
+const wireHookPrompt = {
+  id: "item-11",
+  type: "hookPrompt",
+  fragments: [{ hookRunId: "run-1", text: "Guard: no secrets in diff" }],
+}
+const wireSleep = { id: "item-12", type: "sleep", durationMs: 4_200 }
+const wireEnteredReviewMode = { id: "item-13", type: "enteredReviewMode", review: "Review the diff before merge" }
+const wireExitedReviewMode = { id: "item-14", type: "exitedReviewMode", review: "Approved" }
+const wireContextCompaction = { id: "item-15", type: "contextCompaction" }
 
 describe("WorkbenchItem projection from app-server (camelCase) wire items", () => {
   test("every fixture is valid against the generated current-source item/completed wire schema", () => {
     for (const fixture of [
       wireCommandExecution, wireFileChange, wireMcpToolCall, wireDynamicToolCall, wireWebSearch, wirePlan,
       wireCollabAgentToolCall, wireSubAgentActivity,
+      wireHookPrompt, wireSleep, wireEnteredReviewMode, wireExitedReviewMode, wireContextCompaction,
     ]) {
       const result = decodeCurrentServerNotification("item/completed", {
         threadId: "thread-1",
@@ -323,10 +337,87 @@ describe("WorkbenchItem projection from app-server (camelCase) wire items", () =
     expect(item.children).toEqual([{ threadRef: "thread-child-3", status: "interrupted" }])
   })
 
-  test("non-tool, non-agent, non-approval items project as null (untyped kinds stay string-only)", () => {
+  test("non-tool, non-agent, non-approval, non-long-tail, non-plan items project as null (untyped kinds stay string-only)", () => {
     expect(workbenchItemFromThreadItem({ id: "x", type: "agentMessage", text: "hi" }, "codex")).toBeNull()
     expect(workbenchItemFromThreadItem({ id: "x", type: "reasoning" }, "codex")).toBeNull()
-    expect(workbenchItemFromThreadItem({ id: "x", type: "contextCompaction" }, "codex")).toBeNull()
+  })
+})
+
+describe("long-tail honest rows (#8869, T12 epic #8857 wave 2)", () => {
+  test("hookPrompt joins bounded fragment text into a hook item", () => {
+    const item = workbenchItemFromThreadItem({
+      id: "hook-1",
+      type: "hookPrompt",
+      fragments: [
+        { hookRunId: "run-1", text: "Guard: no secrets in diff" },
+        { hookRunId: "run-1", text: "Proceeding." },
+      ],
+    }, "codex")
+    expect(item).toEqual({ kind: "hook", source: "codex", text: "Guard: no secrets in diff\nProceeding." })
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("sleep keeps the exact durationMs", () => {
+    const item = workbenchItemFromThreadItem({ id: "sleep-1", type: "sleep", durationMs: 4_200 }, "codex")
+    expect(item).toEqual({ kind: "sleep", source: "codex", durationMs: 4_200 })
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("entered/exitedReviewMode keep the phase and review text", () => {
+    const entered = workbenchItemFromThreadItem(
+      { id: "review-1", type: "enteredReviewMode", review: "Review the diff before merge" },
+      "codex",
+    )
+    expect(entered).toEqual({
+      kind: "review", source: "codex", phase: "entered", review: "Review the diff before merge",
+    })
+    const exited = workbenchItemFromThreadItem(
+      { id: "review-2", type: "exitedReviewMode", review: "Approved" },
+      "codex",
+    )
+    expect(exited).toEqual({ kind: "review", source: "codex", phase: "exited", review: "Approved" })
+    expect(decodeWorkbenchItem(entered)).not.toBeNull()
+    expect(decodeWorkbenchItem(exited)).not.toBeNull()
+  })
+
+  test("contextCompaction projects to a bare compaction item", () => {
+    const item = workbenchItemFromThreadItem({ id: "compaction-1", type: "contextCompaction" }, "codex")
+    expect(item).toEqual({ kind: "compaction", source: "codex" })
+    expect(decodeWorkbenchItem(item)).not.toBeNull()
+  })
+
+  test("snake_case rollout aliases project identically", () => {
+    expect(workbenchItemFromThreadItem({ id: "x", type: "hook_prompt", fragments: [{ text: "hi" }] }, "codex"))
+      .toEqual({ kind: "hook", source: "codex", text: "hi" })
+    expect(workbenchItemFromThreadItem({ id: "x", type: "entered_review_mode", review: "r" }, "codex"))
+      .toEqual({ kind: "review", source: "codex", phase: "entered", review: "r" })
+    expect(workbenchItemFromThreadItem({ id: "x", type: "exited_review_mode", review: "r" }, "codex"))
+      .toEqual({ kind: "review", source: "codex", phase: "exited", review: "r" })
+    expect(workbenchItemFromThreadItem({ id: "x", type: "context_compaction" }, "codex"))
+      .toEqual({ kind: "compaction", source: "codex" })
+  })
+
+  test("the lane redactor bounds hook and review text", () => {
+    const redact = (value: string): string => value.replaceAll("secret", "[REDACTED]")
+    const hook = workbenchItemFromThreadItem(
+      { id: "x", type: "hookPrompt", fragments: [{ text: "the secret leaked" }] }, "codex", redact,
+    ) as WorkbenchHookItem
+    expect(hook).toMatchObject({ text: "the [REDACTED] leaked" })
+    const review = workbenchItemFromThreadItem(
+      { id: "x", type: "enteredReviewMode", review: "contains secret data" }, "codex", redact,
+    ) as WorkbenchReviewItem
+    expect(review).toMatchObject({ review: "contains [REDACTED] data" })
+  })
+
+  test("workbenchNoticeItem shapes and bounds notice-class notifications", () => {
+    const notice = workbenchNoticeItem("codex", "warning", "MODEL REROUTED · gpt-5.5 -> gpt-5.5-safe")
+    expect(notice).toEqual({
+      kind: "notice", source: "codex", severity: "warning",
+      text: "MODEL REROUTED · gpt-5.5 -> gpt-5.5-safe",
+    })
+    expect(decodeWorkbenchItem(notice)).not.toBeNull()
+    const bounded = workbenchNoticeItem("codex", "error", "x".repeat(1_000))
+    expect(bounded.text).toHaveLength(400)
   })
 
   test("the `plan` ThreadItem projects as a prose-only plan item (T8 #8865) instead of being dropped", () => {

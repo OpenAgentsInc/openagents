@@ -356,12 +356,17 @@ export const dispatchWorkbenchItem = (
       />
     }
 
+    // Notice grammar restyled onto the Autopilot muted-red convention
+    // (#8869, T12 epic #8857 wave 2): `severity` now rides through so
+    // info/warning stay on the grey luminance ladder and only "error" gets
+    // the muted brick-red text discipline (notice.tsx).
     case "notice":
       return <DesktopTimelineNotice
         body={item.text}
         danger={item.severity === "error"}
         itemKey={context.itemKey}
         kind="notice"
+        severity={item.severity}
       />
 
     case "reasoning": {
@@ -473,52 +478,48 @@ export const dispatchWorkbenchItem = (
       />
     }
 
-    // TODO(T12 #8869): replace compaction/sleep/review/hook with honest
-    // mono ledger rows instead of the generic work-entry shell.
+    // Long-tail honest rows (#8869, T12 epic #8857 wave 2): quiet, single-
+    // line mono ledger rows — NOT chat bubbles, NOT the generic work-entry
+    // disclosure shell. These four ThreadItem variants carry no status of
+    // their own (they are lifecycle facts, not tool outcomes), so there is
+    // nothing to disclose; a bounded fragment/caption line is the complete,
+    // honest presentation per the design spec's restraint principle.
     case "compaction":
-      return <DesktopWorkEntry
-        body=""
-        itemKey={context.itemKey}
-        kind="compaction"
-        label="Context compacted"
-        preview=""
-        status="completed"
-      />
+      // A thin full-width rule + mono caption (design spec §5.3 timeline
+      // ledger convention) — the compaction boundary reads as a system-log
+      // divider, not an event that happened TO the conversation.
+      return <div className="oa-react-compaction-row" data-timeline-key={context.itemKey} role="listitem">
+        <span className="oa-react-compaction-caption">CONTEXT COMPACTED</span>
+      </div>
 
     case "sleep": {
       const sleepItem: WorkbenchSleepDispatchItem = item
-      return <DesktopWorkEntry
-        body=""
-        itemKey={context.itemKey}
-        kind="sleep"
-        label="Sleep"
-        preview={`${sleepItem.durationMs}ms`}
-        status="completed"
-      />
+      const seconds = sleepItem.durationMs / 1_000
+      const label = Number.isInteger(seconds) ? `${seconds}` : seconds.toFixed(1)
+      return <div className="oa-react-sleep-row" data-timeline-key={context.itemKey} role="listitem">
+        <span>WAITING · {label}S</span>
+      </div>
     }
 
     case "review": {
       const reviewItem: WorkbenchReviewDispatchItem = item
-      return <DesktopWorkEntry
-        body={reviewItem.review}
-        itemKey={context.itemKey}
-        kind="review"
-        label={reviewItem.phase === "entered" ? "Entered review" : "Exited review"}
-        preview={reviewItem.review}
-        status="completed"
-      />
+      return <div
+        className="oa-react-review-row"
+        data-review-phase={reviewItem.phase}
+        data-timeline-key={context.itemKey}
+        role="listitem"
+      >
+        <strong>REVIEW MODE [{reviewItem.phase === "entered" ? "ENTERED" : "EXITED"}]</strong>
+        {reviewItem.review === "" ? null : <span>{reviewItem.review}</span>}
+      </div>
     }
 
     case "hook": {
       const hookItem: WorkbenchHookDispatchItem = item
-      return <DesktopWorkEntry
-        body={hookItem.text}
-        itemKey={context.itemKey}
-        kind="hook"
-        label="Hook"
-        preview={hookItem.text}
-        status="completed"
-      />
+      return <div className="oa-react-hook-row" data-timeline-key={context.itemKey} role="listitem">
+        <strong>HOOK PROMPT</strong>
+        <span>{hookItem.text}</span>
+      </div>
     }
   }
 }

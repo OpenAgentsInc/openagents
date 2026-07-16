@@ -894,6 +894,30 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-plan-list li[data-status="completed"] .oa-react-plan-glyph { color: var(--en-color-success); }
 .oa-react-plan-list li[data-status="in_progress"] .oa-react-plan-glyph { color: var(--en-color-accent); }
 
+/* Long-tail honest rows (issue 8869, T12 epic 8857 wave 2): quiet, single-line
+   mono ledger rows for ThreadItem variants with no tool-call/status shape of
+   their own (compaction, sleep, review-mode, hook prompt). These are
+   deliberately NOT the disclosure/work-entry shell — there is nothing to
+   expand, a bounded caption/fragment line is the complete presentation. */
+.oa-react-compaction-row, .oa-react-sleep-row, .oa-react-review-row, .oa-react-hook-row {
+  width: min(720px, 100%);
+  margin: 0 auto var(--en-spacing-2);
+}
+/* CONTEXT COMPACTED — a thin full-width rule + centered mono caption. */
+.oa-react-compaction-row { display: flex; align-items: center; gap: var(--en-spacing-2); padding: var(--en-spacing-1) var(--en-spacing-2); }
+.oa-react-compaction-row::before, .oa-react-compaction-row::after { flex: 1 1 auto; height: 1px; background: var(--en-color-borderSubtle); content: ""; }
+.oa-react-compaction-caption { flex: none; color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+/* WAITING · Ns — a single quiet mono line, no card chrome. */
+.oa-react-sleep-row { padding: var(--en-spacing-1) var(--en-spacing-2); color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+/* REVIEW MODE [ENTERED]/[EXITED] — accent-ticked, the review text below. */
+.oa-react-review-row { display: grid; gap: 2px; padding: var(--en-spacing-2); border-left: 2px solid var(--en-color-accent); background: var(--en-color-surfaceRaised); }
+.oa-react-review-row > strong { color: var(--en-color-accent); font-family: var(--oa-font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.oa-react-review-row > span { color: var(--en-color-textMuted); font-size: 12px; }
+/* HOOK PROMPT — a bounded fragment row, faint label over the fragment text. */
+.oa-react-hook-row { display: grid; gap: 2px; padding: var(--en-spacing-2); border-left: 2px solid var(--en-color-borderStrong); background: var(--en-color-surfaceRaised); }
+.oa-react-hook-row > strong { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.oa-react-hook-row > span { overflow: hidden; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
 .oa-react-protocol-card,
 .oa-react-agent-group,
 .oa-react-approval-card,
@@ -1216,8 +1240,21 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-queue-card > strong { color: var(--en-color-textPrimary); font-size: 11px; }
 .oa-react-queue-card > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .oa-react-queue-card > small { color: var(--en-color-textFaint); font-size: 10px; }
+/* Notice grammar (issue 8869, T12 epic 8857 wave 2): a quiet system-log row, not
+   a chat bubble or an alarm wall. Severity climbs the grey luminance ladder
+   (design spec §2.3: "no yellow/orange/amber anywhere" — warning stays grey,
+   only ERROR gets the muted-brick-red text discipline). The tick is the one
+   place a saturated mark is allowed (design spec §5.7, tiny solid rectangle,
+   same convention as the sidebar's "current" tick). */
 .oa-react-notice { display: flex; align-items: baseline; gap: var(--en-spacing-2); padding: var(--en-spacing-2); color: var(--en-color-textMuted); font-size: 12px; }
+.oa-react-notice-tick { align-self: center; width: 6px; height: 10px; flex: none; border-radius: var(--en-radius-none); background: var(--en-color-textFaint); }
+.oa-react-notice-tick[data-severity="warning"] { background: color-mix(in srgb, var(--en-color-textPrimary) 70%, var(--en-color-textMuted) 30%); }
+.oa-react-notice-tick[data-severity="error"] { background: var(--en-color-danger); }
+.oa-react-notice-tag { flex: none; color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; }
+.oa-react-notice[data-severity="warning"] { color: color-mix(in srgb, var(--en-color-textPrimary) 70%, var(--en-color-textMuted) 30%); }
+.oa-react-notice[data-severity="warning"] .oa-react-notice-tag { color: inherit; }
 .oa-react-notice[data-danger="true"] { color: var(--en-color-danger); }
+.oa-react-notice[data-danger="true"] .oa-react-notice-tag { color: inherit; }
 /* Quantized block progress (design spec §5.2/§7): discrete rectangles
    stepping active/inactive, never a smooth/eased fade. Echoes the corner
    pager — quantized-block progress is a system-wide motif. */

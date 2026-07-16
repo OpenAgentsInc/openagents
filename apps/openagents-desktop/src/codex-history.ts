@@ -470,6 +470,17 @@ export const projectRow = (row: unknown, threadRef: string, sequence: number): C
   else if (itemType.includes("output") || itemType.includes("result")) { kind = "tool_result"; label = string(item.name) ?? "Tool result"; summary = safeText(item.output ?? item.result ?? item.content); push("call", item.call_id); push("status", item.status); push("started", item.started_at ?? item.start_time); push("ended", item.completed_at ?? item.end_time); push("duration", item.duration_ms); push("output", item.output ?? item.result); push("files", item.files ?? item.affected_files); push("artifacts", item.artifacts ?? item.artifact_refs); push("error", item.error) }
   else if (itemType.includes("call") || itemType.includes("tool") || itemType.includes("shell") || itemType === "function_call" || itemType === "commandExecution" || itemType.includes("command_execution") || itemType === "apply_patch" || itemType === "applyPatch") { kind = "tool_call"; label = string(item.name) ?? itemType; summary = safeText(item.command ?? item.input ?? item.arguments); push("call", item.call_id); push("status", item.status); push("started", item.started_at ?? item.start_time); push("ended", item.completed_at ?? item.end_time); push("duration", item.duration_ms); push("input", item.arguments ?? item.input ?? item.command); push("files", item.files ?? item.affected_files); push("artifacts", item.artifacts ?? item.artifact_refs); push("error", item.error) }
   else if (itemType.includes("error")) { kind = "error"; label = "Error"; summary = safeText(item.message ?? item.error); status = "error" }
+  // Long-tail honest rows (#8869, T12 epic #8857 wave 2): these ThreadItem
+  // variants previously matched none of the branches above and fell through
+  // to `kind: "gap"` (counted as a completeness loss even though the source
+  // record decoded fine). Classified as `tool_call` so the typed-sidecar
+  // attachment below (kind === "tool_call") carries the real `WorkbenchItem`
+  // the renderer needs; the string label/summary stay the honest fallback.
+  else if (itemType === "hookPrompt" || itemType === "hook_prompt") { kind = "tool_call"; label = "Hook prompt"; summary = contentText(item.fragments) }
+  else if (itemType === "sleep") { kind = "tool_call"; label = "Sleep"; summary = `${typeof item.durationMs === "number" ? item.durationMs : 0}ms` }
+  else if (itemType === "enteredReviewMode" || itemType === "entered_review_mode") { kind = "tool_call"; label = "Entered review"; summary = safeText(item.review) }
+  else if (itemType === "exitedReviewMode" || itemType === "exited_review_mode") { kind = "tool_call"; label = "Exited review"; summary = safeText(item.review) }
+  else if (itemType === "contextCompaction" || itemType === "context_compaction") { kind = "tool_call"; label = "Context compacted"; summary = "" }
   else if (envelopeType === "event_msg") { kind = itemType.includes("error") ? "error" : "lifecycle"; label = itemType; summary = safeText(item.message ?? item.text ?? item.status); push("event", itemType) }
   const redactedSummary = redactCodexHistoryText(summary || label); const redacted = redactedSummary.redacted || fields.some(item => item.redacted) || summary.startsWith("[REDACTED:")
   // Typed sidecar (#8859, extended #8863 for reasoning, T9 #8866 for
@@ -503,6 +514,8 @@ const projectionAccounting = (row: unknown): Readonly<{ gap: boolean; redaction:
   const envelopeType=string(envelope.type)??"invalid";const nestedPayload=object(payload.payload);let item=nestedPayload??payload;let itemType=string(item.type)??envelopeType
   if(envelopeType==="event_msg"&&itemType==="item_completed"){const completed=object(item.item);if(completed){item=completed;itemType=string(item.type)??itemType}}
   const supported=envelopeType==="session_meta"||envelopeType==="turn_context"||envelopeType==="world_state"||envelopeType==="compacted"||envelopeType==="event_msg"||itemType==="message"||itemType==="agent_message"||itemType.includes("reasoning")||itemType.includes("plan")||itemType==="todo_list"||itemType.includes("collab")||itemType.includes("agent")||["spawn_agent","send_input","wait","resume_agent","interrupt_agent","close_agent"].includes(itemType)||itemType.includes("approval")||itemType.includes("usage")||itemType.includes("token_count")||itemType.includes("output")||itemType.includes("result")||itemType.includes("call")||itemType.includes("tool")||itemType.includes("shell")||itemType==="function_call"||itemType==="commandExecution"||itemType.includes("command_execution")||itemType==="apply_patch"||itemType==="applyPatch"||itemType.includes("error")
+    // Long-tail honest rows (issue 8869, T12 epic 8857 wave 2) — see projectRow.
+    ||itemType==="hookPrompt"||itemType==="hook_prompt"||itemType==="sleep"||itemType==="enteredReviewMode"||itemType==="entered_review_mode"||itemType==="exitedReviewMode"||itemType==="exited_review_mode"||itemType==="contextCompaction"||itemType==="context_compaction"
   const redaction=itemType.includes("reasoning")&&contentText(item.summary)===""
   return {gap:!supported,redaction}
 }

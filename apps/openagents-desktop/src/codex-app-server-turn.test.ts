@@ -7,8 +7,13 @@ import { runCodexAppServerTurn } from "./codex-app-server-turn.ts"
 import type { FableLocalEvent } from "./fable-local-contract.ts"
 import type {
   WorkbenchCommandItem,
+  WorkbenchCompactionItem,
   WorkbenchFileChangeItem,
+  WorkbenchHookItem,
+  WorkbenchNoticeItem,
   WorkbenchReasoningItem,
+  WorkbenchReviewItem,
+  WorkbenchSleepItem,
   WorkbenchToolCallItem,
 } from "./workbench-item-contract.ts"
 
@@ -804,5 +809,152 @@ describe("codex-app-server-turn guardian approval-review notices (T9 #8866)", ()
     )
     // No event pretends this is a user-actionable approval decision.
     expect(events.some(event => event.kind === "question_pending")).toBe(false)
+  })
+})
+
+/**
+ * Fixture app-server for the T12 long-tail + notice regression (#8869, epic
+ * #8857 wave 2): streams `hookPrompt`/`sleep`/`enteredReviewMode`/
+ * `exitedReviewMode`/`contextCompaction` item pairs — previously dropped
+ * WHOLE by `toolFacts()` — plus the six previously-ignored notice-class
+ * notifications (`thread/compacted`, `model/rerouted`, `warning`,
+ * `configWarning`, `deprecationNotice`, `guardianWarning`).
+ */
+const makeLongTailAndNoticeSpawn = (): CodexAppServerSpawn => () => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough
+    stdout: PassThrough
+    stderr: PassThrough
+    kill: () => boolean
+  }
+  child.stdin = stdin
+  child.stdout = stdout
+  child.stderr = new PassThrough()
+  child.kill = () => {
+    child.emit("close", 0)
+    return true
+  }
+  const write = (message: unknown): void => {
+    stdout.write(`${JSON.stringify(message)}\n`)
+  }
+  const notify = (method: string, params: unknown): void => write({ method, params })
+  const itemPair = (item: Record<string, unknown>): void => {
+    notify("item/started", { threadId: THREAD_ID, turnId: TURN_ID, item })
+    notify("item/completed", { threadId: THREAD_ID, turnId: TURN_ID, item })
+  }
+  let buffered = ""
+  stdin.on("data", chunk => {
+    buffered += chunk.toString("utf8")
+    while (buffered.includes("\n")) {
+      const newline = buffered.indexOf("\n")
+      const line = buffered.slice(0, newline)
+      buffered = buffered.slice(newline + 1)
+      if (line === "") continue
+      const message = JSON.parse(line) as Record<string, unknown>
+      if (message.method === "initialize" && typeof message.id === "number") {
+        write({ id: message.id, result: {} })
+      } else if (message.method === "thread/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { thread: { id: THREAD_ID } } })
+      } else if (message.method === "turn/start" && typeof message.id === "number") {
+        write({ id: message.id, result: { turn: { id: TURN_ID } } })
+        itemPair({
+          id: "item-hook",
+          type: "hookPrompt",
+          fragments: [{ hookRunId: "run-1", text: "Guard fired before commit" }],
+        })
+        itemPair({ id: "item-sleep", type: "sleep", durationMs: 4_200 })
+        itemPair({ id: "item-review-enter", type: "enteredReviewMode", review: "Review the diff before merge" })
+        itemPair({ id: "item-review-exit", type: "exitedReviewMode", review: "Approved" })
+        itemPair({ id: "item-compaction", type: "contextCompaction" })
+        notify("thread/compacted", { threadId: THREAD_ID, turnId: TURN_ID })
+        notify("model/rerouted", {
+          threadId: THREAD_ID, turnId: TURN_ID,
+          fromModel: "gpt-5.5", toModel: "gpt-5.5-safe", reason: "highRiskCyberActivity",
+        })
+        notify("warning", { message: "Sandbox is running with reduced isolation." })
+        notify("configWarning", { summary: "Unknown config key", details: "profile.foo" })
+        notify("deprecationNotice", { summary: "The --legacy-flag option is deprecated" })
+        notify("guardianWarning", { threadId: THREAD_ID, message: "Guardian flagged a risky command." })
+        notify("item/agentMessage/delta", { threadId: THREAD_ID, turnId: TURN_ID, delta: "done" })
+        notify("turn/completed", { threadId: THREAD_ID, turn: { id: TURN_ID, status: "completed", error: null } })
+      }
+    }
+  })
+  return child as never
+}
+
+describe("codex-app-server-turn long-tail + notice honesty (#8869, T12 epic #8857 wave 2)", () => {
+  test("hookPrompt, sleep, review-mode, contextCompaction, and every notice-class notification produce a rendering artifact — none are silently dropped", async () => {
+    const events: Array<FableLocalEvent> = []
+    const outcome = await runCodexAppServerTurn({
+      binary: "/packaged/codex",
+      env: {},
+      workspace: "/safe/repo",
+      threadRef: "thread-ref",
+      turnRef: "turn-ref",
+      accountRef: "codex",
+      prompt: "run the suite",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.5",
+      reasoningEffort: "medium",
+      productSpecSkill: { skillRoot: "/skills", skillPath: "/skills/productspec-work" },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: event => events.push(event),
+      spawnImpl: makeLongTailAndNoticeSpawn(),
+    })
+    expect(outcome.outcome).toBe("success")
+
+    const toolResults = events.filter(event => event.kind === "tool_result") as
+      Array<Extract<FableLocalEvent, { kind: "tool_result" }>>
+    const itemOfKind = <K extends string>(kind: K): unknown =>
+      toolResults.find(event => event.item?.kind === kind)?.item
+
+    // The regression this test guards: every one of these ThreadItem variants
+    // used to hit `toolFacts()`'s `default: return null` and vanish with zero
+    // trace. Each must now produce SOME rendering artifact (a typed item).
+    expect(itemOfKind("hook") as WorkbenchHookItem | undefined).toEqual({
+      kind: "hook", source: "codex", text: "Guard fired before commit",
+    })
+    expect(itemOfKind("sleep") as WorkbenchSleepItem | undefined).toEqual({
+      kind: "sleep", source: "codex", durationMs: 4_200,
+    })
+    const reviews = toolResults
+      .map(event => event.item)
+      .filter((item): item is WorkbenchReviewItem => item?.kind === "review")
+    expect(reviews).toHaveLength(2)
+    expect(reviews.find(item => item.phase === "entered")).toMatchObject({ review: "Review the diff before merge" })
+    expect(reviews.find(item => item.phase === "exited")).toMatchObject({ review: "Approved" })
+
+    // Two compaction rows: the item variant (item-compaction) and the
+    // deprecated notification form (thread/compacted) — both honest.
+    const compactions = toolResults
+      .map(event => event.item)
+      .filter((item): item is WorkbenchCompactionItem => item?.kind === "compaction")
+    expect(compactions.length).toBeGreaterThanOrEqual(2)
+    for (const compaction of compactions) expect(compaction).toEqual({ kind: "compaction", source: "codex" })
+
+    // Every notice-class notification becomes a severity-carrying notice item
+    // (model/rerouted, warning, configWarning, deprecationNotice,
+    // guardianWarning — five distinct methods; thread/compacted is the
+    // compaction-shaped exception counted above).
+    const notices = toolResults
+      .map(event => event.item)
+      .filter((item): item is WorkbenchNoticeItem => item?.kind === "notice")
+    expect(notices).toHaveLength(5)
+    expect(notices.find(item => item.text.includes("MODEL REROUTED"))).toMatchObject({
+      severity: "warning", text: "MODEL REROUTED · gpt-5.5 -> gpt-5.5-safe",
+    })
+    expect(notices.find(item => item.text.includes("reduced isolation"))).toMatchObject({ severity: "warning" })
+    expect(notices.find(item => item.text.includes("Unknown config key"))).toMatchObject({
+      severity: "warning", text: "Unknown config key: profile.foo",
+    })
+    expect(notices.find(item => item.text.includes("deprecated"))).toMatchObject({ severity: "info" })
+    expect(notices.find(item => item.text.includes("Guardian flagged"))).toMatchObject({
+      severity: "warning", text: "Guardian flagged a risky command.",
+    })
   })
 })

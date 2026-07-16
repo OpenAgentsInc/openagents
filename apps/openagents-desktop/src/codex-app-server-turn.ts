@@ -18,6 +18,7 @@ import {
   WORKBENCH_REASONING_SUMMARY_LIMIT,
   workbenchFileChangeItemFromDiff,
   workbenchItemFromThreadItem,
+  workbenchNoticeItem,
   type WorkbenchCommandItem,
   type WorkbenchFileChangeItem,
   type WorkbenchReasoningItem,
@@ -252,6 +253,29 @@ const toolFacts = (item: Record<string, unknown>): Readonly<{
         summary: (string(item.prompt) ?? string(item.tool) ?? "Delegate agent").slice(0, 400),
         ok: item.status === "completed",
       }
+    // Long-tail honest rows (#8869, T12 epic #8857 wave 2): these ThreadItem
+    // variants carry no status/exitCode of their own (they are lifecycle
+    // facts, not action outcomes), so `ok` is always true — nothing here can
+    // "fail", it either happened or it did not arrive. Previously each of
+    // these hit the `default: return null` below and the item was dropped
+    // WHOLE (never emitted as tool_use/tool_result at all).
+    case "hookPrompt": {
+      const fragments = Array.isArray(item.fragments) ? item.fragments : []
+      const text = fragments
+        .map(fragment => string(record(fragment)?.text))
+        .filter((value): value is string => value !== null)
+        .join(" ")
+      return { name: "HookPrompt", summary: text.slice(0, 400), ok: true }
+    }
+    case "sleep": {
+      const durationMs = typeof item.durationMs === "number" ? item.durationMs : 0
+      return { name: "Sleep", summary: `${durationMs}ms`, ok: true }
+    }
+    case "enteredReviewMode":
+    case "exitedReviewMode":
+      return { name: "ReviewMode", summary: (string(item.review) ?? "").slice(0, 400), ok: true }
+    case "contextCompaction":
+      return { name: "ContextCompaction", summary: "", ok: true }
     default:
       return null
   }
@@ -763,6 +787,85 @@ export const runCodexAppServerTurn = async (
           : facts.summary
         input.emit({ kind: "tool_result", toolName: facts.name, itemRef: id.slice(0, 120), ok: facts.ok, summary: output, ...typed })
       }
+      return
+    }
+    // Notice-class notifications (#8869, T12 epic #8857 wave 2): previously
+    // ignored entirely (61 of 69 notifications per the audit) — each now
+    // becomes a typed "notice" (or, for the deprecated compaction notice, a
+    // "compaction") WorkbenchItem so the timeline shows a quiet, honest row
+    // instead of silently swallowing the signal. Severity stays muted per the
+    // design spec (info/warning only; these are advisories, not failures).
+    if (message.method === "thread/compacted") {
+      // Deprecated in favor of the `contextCompaction` ThreadItem above; kept
+      // for older app-servers that only ever sent the notification form.
+      input.emit({
+        kind: "tool_result",
+        toolName: "ContextCompaction",
+        ok: true,
+        summary: "",
+        item: { kind: "compaction", source: "codex" },
+      })
+      return
+    }
+    if (message.method === "model/rerouted") {
+      const fromModel = string(params.fromModel) ?? "unknown"
+      const toModel = string(params.toModel) ?? "unknown"
+      const noticeText = `MODEL REROUTED · ${fromModel} -> ${toModel}`
+      input.emit({
+        kind: "tool_result",
+        toolName: "ModelRerouted",
+        ok: true,
+        summary: noticeText.slice(0, 400),
+        item: workbenchNoticeItem("codex", "warning", noticeText),
+      })
+      return
+    }
+    if (message.method === "warning") {
+      const noticeText = string(params.message) ?? "Codex reported a warning"
+      input.emit({
+        kind: "tool_result",
+        toolName: "Warning",
+        ok: true,
+        summary: noticeText.slice(0, 400),
+        item: workbenchNoticeItem("codex", "warning", noticeText),
+      })
+      return
+    }
+    if (message.method === "configWarning") {
+      const summary = string(params.summary) ?? "Config warning"
+      const details = string(params.details)
+      const noticeText = details === null ? summary : `${summary}: ${details}`
+      input.emit({
+        kind: "tool_result",
+        toolName: "ConfigWarning",
+        ok: true,
+        summary: noticeText.slice(0, 400),
+        item: workbenchNoticeItem("codex", "warning", noticeText),
+      })
+      return
+    }
+    if (message.method === "deprecationNotice") {
+      const summary = string(params.summary) ?? "Deprecation notice"
+      const details = string(params.details)
+      const noticeText = details === null ? summary : `${summary}: ${details}`
+      input.emit({
+        kind: "tool_result",
+        toolName: "DeprecationNotice",
+        ok: true,
+        summary: noticeText.slice(0, 400),
+        item: workbenchNoticeItem("codex", "info", noticeText),
+      })
+      return
+    }
+    if (message.method === "guardianWarning") {
+      const noticeText = string(params.message) ?? "Guardian warning"
+      input.emit({
+        kind: "tool_result",
+        toolName: "GuardianWarning",
+        ok: true,
+        summary: noticeText.slice(0, 400),
+        item: workbenchNoticeItem("codex", "warning", noticeText),
+      })
       return
     }
     if (message.method === "error") {
