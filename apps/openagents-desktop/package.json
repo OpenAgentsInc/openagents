@@ -49,6 +49,7 @@
     "@fontsource-variable/geist": "^5.2.9",
     "@fontsource-variable/oxanium": "^5.2.8",
     "@lexical/react": "^0.41.0",
+    "@openagentsinc/agent-client-runtime-bridge": "workspace:*",
     "@openagentsinc/assurance-spec": "workspace:*",
     "@openagentsinc/audio-contract": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",

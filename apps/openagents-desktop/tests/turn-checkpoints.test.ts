@@ -431,15 +431,14 @@ describe("openagents_desktop.workbench.turn_checkpoints.v1", () => {
     expect(guarantees).toContain(TURN_CHECKPOINT_CONTRACT)
     expect(guarantees).toContain("refs/openagents/checkpoints")
 
-    // The reactor seam is wired: main captures at turn start and completion
-    // on both local lanes through the checkpoint service.
+    // The reactor seam is wired: main gives the shared provider-lane
+    // dispatcher the checkpoint service, and that one engine captures both
+    // boundaries for every local lane.
     const main = readFileSync(path.join(appDir, "src", "main.ts"), "utf8")
+    const providerLane = readFileSync(path.join(appDir, "src", "provider-lane.ts"), "utf8")
     expect(main).toContain("openTurnCheckpointService(")
-    const startCaptures =
-      main.match(/captureTurnCheckpoint\(request\.threadRef, request\.turnRef, "turn_start"\)/g) ?? []
-    const completionCaptures =
-      main.match(/captureTurnCheckpoint\(request\.threadRef, request\.turnRef, "turn_completed"\)/g) ?? []
-    expect(startCaptures.length).toBeGreaterThanOrEqual(2)
-    expect(completionCaptures.length).toBeGreaterThanOrEqual(2)
+    expect(main).toContain("captureTurnCheckpoint,")
+    expect(providerLane).toContain('deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")')
+    expect(providerLane).toContain('deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")')
   })
 })

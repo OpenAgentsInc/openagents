@@ -115,7 +115,11 @@ export const reconcileLocalTurns = async (input: Readonly<{
   const outcomes: LocalTurnRecoveryOutcome[] = []
   for (const candidate of input.journal.nonterminal()) {
     const key: LocalTurnKey = candidate
-    if (candidate.lane === "fable-local" || candidate.accountRef === null ||
+    // Provider lane SPI (L1 #8899): only the codex-local lane owns durable
+    // provider-session replay; every other lane — fable-local and any SPI
+    // lane that never declared replay — fails CLOSED to an honest
+    // interrupted_by_restart disposition instead of guessing a resume path.
+    if (candidate.lane !== "codex-local" || candidate.accountRef === null ||
       candidate.providerSessionRef === null || !isRecoverableCodexModel(candidate.model)) {
       outcomes.push(interrupt(input.journal, input.store, candidate))
       publish(candidate.threadRef)

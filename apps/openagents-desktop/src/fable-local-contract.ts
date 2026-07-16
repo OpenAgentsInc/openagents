@@ -513,9 +513,10 @@ export const ClaudeModelSchema = Schema.Literals(["claude-fable-5", "claude-opus
 export type ClaudeModel = typeof ClaudeModelSchema.Type
 export const LocalModelSchema = Schema.Union([CodexModelSchema, ClaudeModelSchema])
 export type LocalModel = typeof LocalModelSchema.Type
-export const isCodexModel = (model: LocalModel): model is CodexModel =>
+export const isCodexModel = (model: string): model is CodexModel =>
   model === "gpt-5.6-sol" || model === "gpt-5.5"
-export const isClaudeModel = (model: LocalModel): model is ClaudeModel => !isCodexModel(model)
+export const isClaudeModel = (model: string): model is ClaudeModel =>
+  model === "claude-fable-5" || model === "claude-opus-4-8" || model === "claude-sonnet-5"
 
 export const LocalProviderTargetSchema = Schema.Struct({
   provider: Schema.Literals(["codex", "claude_agent"]),

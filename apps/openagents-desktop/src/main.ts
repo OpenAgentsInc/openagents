@@ -104,7 +104,6 @@ import { desktopWorkerUrl } from "./desktop-worker-location.ts"
 import { desktopRuntimeWorkspaceRoot } from "./desktop-runtime-workspace.ts"
 import { desktopLaunchWorkspaceRoot } from "./desktop-launch-workspace.ts"
 import {
-  FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FableLocalAnswerQuestionChannel,
   FableLocalAvailabilityChannel,
   FableLocalEventChannel,
@@ -123,12 +122,10 @@ import {
   decodeFableLocalSteerChildRequest,
   fableLocalFailureMessage,
   fableLocalModelNoteText,
-  fableLocalTraceNoteMeta,
-  fableLocalTraceNoteText,
   isClaudeModel,
   isCodexModel,
-  startRequestHasContent,
 } from "./fable-local-contract.ts"
+import { makeProviderLaneDispatcher, type ProviderLane } from "./provider-lane.ts"
 import {
   McpConfigAddChannel,
   McpConfigListChannel,
@@ -258,7 +255,6 @@ import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
-import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
@@ -2595,158 +2591,141 @@ ipcMain.handle(FableLocalQueueFollowupChannel, (_event, value: unknown) => {
     ? { ok: false, queued: false, reason: "no_active_turn" }
     : fableLocal.queueFollowup(request)
 })
-/**
- * Persisted user-note text for a turn (capability I1). An images-only turn
- * (empty message) gets an honest bounded placeholder so the transcript row is
- * never blank; a turn with text keeps the user's text verbatim.
- */
-const userNoteText = (message: string, images?: ReadonlyArray<unknown>): string => {
-  const trimmed = message.trim()
-  if (trimmed !== "") return trimmed
-  const count = images?.length ?? 0
-  return count === 1 ? "(1 image attached)" : `(${count} images attached)`
-}
+// ---------------------------------------------------------------------------
+// Provider lane SPI (L1 #8899, epic #8898): every local agent lane dispatches
+// through ONE shared engine (`makeProviderLaneDispatcher`), and each lane is a
+// plain typed adapter value implementing `ProviderLane` — dispatch, the frozen
+// stream envelope, interrupt, journal-mirrored recovery, exact usage
+// attribution, and a capability report (input to L2). The engine owns the
+// plumbing the two lanes previously duplicated here; the lane values below
+// contribute only what is genuinely lane-specific.
+// ---------------------------------------------------------------------------
+const laneDispatcher = makeProviderLaneDispatcher({
+  threads,
+  journal: localTurnJournal,
+  liveAgentGraph: {
+    // CUT-11 (#8691): the canonical live agent graph currently models the two
+    // built-in lanes; an SPI lane outside that set skips graph registration
+    // rather than corrupting the typed graph vocabulary.
+    beginTurn: ({ turnRef, threadRef, lane }) => {
+      if (lane === "fable_claude" || lane === "codex_local") {
+        liveAgentGraph.beginTurn({ turnRef, threadRef, lane })
+      }
+    },
+    applyEvent: (threadRef, envelope) => {
+      liveAgentGraph.applyEvent(threadRef, envelope)
+    },
+  },
+  usageLedger: {
+    record: input => {
+      if (input.provider === "claude_agent" || input.provider === "codex") {
+        usageLedger.record({ ...input, provider: input.provider })
+      }
+    },
+  },
+  captureTurnCheckpoint,
+  localTurnFlushers,
+  isQuitting: () => desktopIsQuitting,
+})
 
 /**
- * The text block sent to the model (capability I1). Images-only turns get a
- * neutral instruction so the SDK/codex receive non-empty prompt text alongside
- * the image; a turn with text keeps the user's text verbatim.
+ * The Claude lane (`claude_agent`) as a provider-lane value. Message metadata
+ * (#8712): every fact this host observes for the final assistant note is
+ * recorded so the renderer's inspector can project it later — SDK-reported
+ * effective model, lane, account ref, turn ref, exact token total, and
+ * wall-clock duration. Bounded public-safe strings only.
  */
-const turnPromptText = (message: string, images?: ReadonlyArray<unknown>): string => {
-  const trimmed = message.trim()
-  if (trimmed !== "") return trimmed
-  const count = images?.length ?? 0
-  return count > 0
-    ? `Please look at the attached image${count === 1 ? "" : "s"}.`
-    : trimmed
-}
-
-ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
-  const request = decodeFableLocalStartRequest(value)
-  if (request === null || !startRequestHasContent(request)) {
-    return { ok: false, error: "That message could not be sent." }
-  }
-  const requestedModel = request.model ?? request.target?.model ?? FABLE_LOCAL_MODEL
-  if ((request.target !== undefined && request.target.provider !== "claude_agent") || !isClaudeModel(requestedModel)) {
-    return { ok: false, error: "That provider target is not available on the Claude lane." }
-  }
-  const selectedSkill = request.skill === undefined
-    ? null
-    : pluginConfigStore.resolveSkill(request.skill.pluginRef, request.skill.name)
-  if (request.skill !== undefined && selectedSkill === null) {
-    return { ok: false, error: "That local skill is unavailable or disabled." }
-  }
-  const store = threads()
-  if (store.open(request.threadRef) === null) return { ok: false, error: "That conversation no longer exists." }
-  const turnKey = { threadRef: request.threadRef, turnRef: request.turnRef, lane: "fable-local" as const }
-  const user: DesktopMessage = {
-    key: `${request.turnRef}-user`,
-    role: "user",
-    text: userNoteText(request.message, request.images),
-    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-  }
-  const accepted = localTurnJournal.accept({
-    ...turnKey,
-    userMessageKey: user.key,
-    assistantMessageKey: `${request.turnRef}-assistant-0`,
-    accountRef: request.target?.accountRef ?? null,
-    model: requestedModel,
-  })
-  if (!accepted.accepted) return { ok: false, error: "That turn is already accepted." }
-  const saved = store.upsert(request.threadRef, user)
-  if (saved === null) return { ok: false, error: "That conversation no longer exists." }
-  // History authority is main's own thread store — the renderer supplies only
-  // the new message. The just-appended user note is the prompt, not history.
-  const history = saved.notes.filter(note => note.key !== user.key).map(note => ({ role: note.role, text: note.text }))
-  const sender = event.sender
-  // Message metadata (#8712): record every fact this host observes for the
-  // final assistant note so the renderer's inspector can project it later —
-  // SDK-reported effective model, lane, account ref, turn ref, exact token
-  // total, and wall-clock duration. Bounded public-safe strings only.
-  const startedAt = Date.now()
-  let effectiveModel: string | null = null
-  const textPersistence = makeLocalTurnTextPersistence({
-    journal: localTurnJournal,
-    store,
-    key: turnKey,
-    meta: () => ({
+const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
+  laneRef: "fable-local",
+  graphLaneRef: "fable_claude",
+  eventChannel: FableLocalEventChannel,
+  usageProvider: "claude_agent",
+  capabilities: () => ({
+    laneRef: "fable-local",
+    provider: "claude_agent",
+    // Spawn-config truth: the ClaudeModelSchema contract literals.
+    models: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"],
+    features: {
+      skills: true,
+      planOnly: true,
+      reasoningEffort: false,
+      images: true,
+      fullAuto: false,
+      interrupt: true,
+      queueFollowup: true,
+      steerTurn: false,
+      steerChild: true,
+      answerQuestion: true,
+    },
+    recovery: "interrupt_on_restart",
+  }),
+  admit: request => {
+    const requestedModel = request.model ?? request.target?.model ?? FABLE_LOCAL_MODEL
+    if ((request.target !== undefined && request.target.provider !== "claude_agent") || !isClaudeModel(requestedModel)) {
+      return { ok: false, error: "That provider target is not available on the Claude lane." }
+    }
+    const selectedSkill = request.skill === undefined
+      ? null
+      : pluginConfigStore.resolveSkill(request.skill.pluginRef, request.skill.name)
+    if (request.skill !== undefined && selectedSkill === null) {
+      return { ok: false, error: "That local skill is unavailable or disabled." }
+    }
+    return { ok: true, model: requestedModel, context: { skillName: selectedSkill?.name ?? null } }
+  },
+  streamMeta: ctx => {
+    const model = ctx.effectiveModel()
+    return {
       lane: "fable-local",
+      turnRef: ctx.request.turnRef,
+      ...(model === null ? {} : { model }),
+    }
+  },
+  modelNoteText: fableLocalModelNoteText,
+  runTurn: async ({ request, model, context, history, message, emit }) => {
+    if (!isClaudeModel(model)) {
+      return { ok: false, reason: "session_failed", detail: "non-Claude model admitted to the Claude lane" }
+    }
+    return fableLocal.runTurn({
       turnRef: request.turnRef,
-      ...(effectiveModel === null ? {} : { model: effectiveModel }),
-    }),
-  })
-  localTurnFlushers.add(textPersistence.flush)
-  // EP250 wave-2 (J2/J4): track the latest plan/todo list so the FINAL plan
-  // state persists into the finalized transcript (the live in-place plan card
-  // is renderer-only). One persisted plan card, latest wins.
-  let latestPlanEntries: ReadonlyArray<{ step: string; status: "pending" | "in_progress" | "completed" }> | null = null
-  // CUT-11 (#8691): register the root turn on the canonical live agent
-  // graph before its stream events arrive (duplicate turn refs refuse typed
-  // inside the assembler; the chat turn itself is never blocked).
-  liveAgentGraph.beginTurn({ turnRef: request.turnRef, threadRef: request.threadRef, lane: "fable_claude" })
-  // GIT-1 (#8781): checkpoint the pre-turn workspace state as a hidden ref
-  // before the model can write files. Awaited so the snapshot cannot race the
-  // turn's first edit; refusals (no workspace / not a repo) cost one probe.
-  await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")
-  const result = await fableLocal.runTurn({
-    turnRef: request.turnRef,
-    threadRef: request.threadRef,
-    history,
-    message: turnPromptText(request.message, request.images),
-    ...(request.queueRef === undefined ? {} : { queueRef: request.queueRef }),
-    ...(request.clientUserMessageId === undefined ? {} : { clientUserMessageId: request.clientUserMessageId }),
-    ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
-    ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
-    ...(request.extensions === undefined ? {} : { extensionSelection: request.extensions }),
-    model: requestedModel,
-    ...(selectedSkill === null ? {} : { skillName: selectedSkill.name }),
-    ...(request.permissionMode === "plan_only" ? { planMode: true } : {}),
-    ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
-    emit: turnEvent => {
-      // CUT-11 (#8691): fold the SAME typed envelope the renderer receives
-      // into the canonical live agent graph (root + codex delegate children).
-      liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
-      if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
-      if (turnEvent.kind === "text_delta") textPersistence.append(turnEvent.text)
-      else textPersistence.boundary()
-      // EP250 wave-2 J2/J4: remember the latest todo list; persist it once the
-      // turn completes so the finalized transcript keeps a plan/todo card.
+      threadRef: request.threadRef,
+      history,
+      message,
+      ...(request.queueRef === undefined ? {} : { queueRef: request.queueRef }),
+      ...(request.clientUserMessageId === undefined ? {} : { clientUserMessageId: request.clientUserMessageId }),
+      ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
+      ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+      ...(request.extensions === undefined ? {} : { extensionSelection: request.extensions }),
+      model,
+      ...(context.skillName === null ? {} : { skillName: context.skillName }),
+      ...(request.permissionMode === "plan_only" ? { planMode: true } : {}),
+      ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
+      emit,
+    })
+  },
+  interrupt: turnRef => fableLocal.interrupt(turnRef),
+  makeTurnProjector: ctx => {
+    // EP250 wave-2 (J2/J4): track the latest plan/todo list so the FINAL plan
+    // state persists into the finalized transcript (the live in-place plan
+    // card is renderer-only). One persisted plan card, latest wins.
+    let latestPlanEntries: ReadonlyArray<{ step: string; status: "pending" | "in_progress" | "completed" }> | null = null
+    return turnEvent => {
       if (turnEvent.kind === "plan_updated") {
         latestPlanEntries = turnEvent.entries.map(entry => ({ step: entry.step, status: entry.status }))
       }
       if (turnEvent.kind === "turn_completed" && latestPlanEntries !== null) {
-        store.append(request.threadRef, {
-          key: `${request.turnRef}-plan`,
+        ctx.store.append(ctx.request.threadRef, {
+          key: `${ctx.request.turnRef}-plan`,
           role: "system",
           text: "Plan updated",
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          timestamp: ctx.timestamp(),
           runtime: { kind: "plan", entries: latestPlanEntries },
         })
       }
-      // Session usage ledger feed (#8712 Lane C): exact usage from the typed
-      // completion events. Fable turns attribute to the Claude account the
-      // turn ran on; delegate children attribute to the Codex account with
-      // gpt-5.6-sol recorded as spawn-config truth. A child-observed revoked
-      // credential flips the account's typed reconnect flag (probe/child
-      // evidence supersedes presence-based "ready").
-      if (turnEvent.kind === "turn_completed" && turnEvent.accountRef !== undefined) {
-        usageLedger.record({
-          provider: "claude_agent",
-          accountRef: turnEvent.accountRef,
-          requestedModel,
-          kind: "turn",
-          usage: turnEvent.usage ?? (turnEvent.totalTokens === null
-            ? null
-            // Split unavailable from this emitter: recorded as total only.
-            : {
-                inputTokens: 0,
-                cachedInputTokens: 0,
-                outputTokens: 0,
-                reasoningTokens: 0,
-                totalTokens: turnEvent.totalTokens,
-              }),
-        })
-      }
+      // Session usage ledger feed (#8712 Lane C): delegate children attribute
+      // to the Codex account with gpt-5.6-sol recorded as spawn-config truth.
+      // A child-observed revoked credential flips the account's typed
+      // reconnect flag (probe/child evidence supersedes presence-based
+      // "ready").
       if (turnEvent.kind === "child_completed") {
         usageLedger.record({
           provider: "codex",
@@ -2766,33 +2745,6 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
         turnEvent.accountRef !== null) {
         usageLedger.markReconnectRequired({ provider: "codex", accountRef: turnEvent.accountRef })
       }
-      // Persist tool trace and effective-model lines so the finalized
-      // transcript keeps the same evidence the live stream showed (bounded by
-      // the store's note cap).
-      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_progress" || turnEvent.kind === "tool_result" ||
-        turnEvent.kind === "model_effective") {
-        const traceNote = turnEvent.kind === "model_effective" ? null : {
-          key: turnEvent.itemRef === undefined
-            ? randomUUID()
-            : `${request.turnRef}-tool-${turnEvent.itemRef}${turnEvent.kind === "tool_result" ? "-result" : ""}`,
-          role: "system",
-          text: fableLocalTraceNoteText(turnEvent),
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          // Typed trace facts (EP250 tool cards): the persisted note carries
-          // the same typed payload the live stream note does, so the
-          // finalized transcript renders the same typed tool cards.
-          meta: { trace: fableLocalTraceNoteMeta(turnEvent) },
-        } as const
-        if (turnEvent.kind === "model_effective") {
-          store.append(request.threadRef, {
-            key: randomUUID(), role: "system", text: fableLocalModelNoteText(turnEvent.model),
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          })
-        } else if (traceNote !== null) {
-          if (turnEvent.itemRef === undefined) store.append(request.threadRef, traceNote)
-          else store.upsert(request.threadRef, traceNote)
-        }
-      }
       // Smoke-only question-card fixture (EP250 question cards): persist ONE
       // pending interactive question after the fixture Read completes so the
       // built-Electron journey proves the interactive card, the real typed
@@ -2800,13 +2752,13 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
       // (this ref is store-persisted, not runtime-pending, so the runtime
       // answers false). Real question events come from the frozen contract.
       if (smokeMode && turnEvent.kind === "tool_result" && turnEvent.toolName === "Read") {
-        store.append(request.threadRef, {
+        ctx.store.append(ctx.request.threadRef, {
           key: randomUUID(),
           role: "system",
           text: "Which fixture path should this smoke turn take?",
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          timestamp: ctx.timestamp(),
           question: {
-            turnRef: request.turnRef,
+            turnRef: ctx.request.turnRef,
             questionRef: "question.fixture.1",
             status: "pending",
             questions: [{
@@ -2821,47 +2773,26 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
           },
         })
       }
-      if (sender.isDestroyed()) return
-      // Attach the persisted thread snapshot (user message included) to the
-      // start event so the renderer can stream onto real thread state.
-      const event = turnEvent.kind === "turn_started" ? { ...turnEvent, thread: saved } : turnEvent
-      sender.send(FableLocalEventChannel, { turnRef: request.turnRef, event })
-    },
-  })
-  if (!result.ok) {
-    textPersistence.flush()
-    localTurnFlushers.delete(textPersistence.flush)
-    if (!(desktopIsQuitting && result.reason === "interrupted")) {
-      localTurnJournal.terminal(
-        turnKey,
-        result.reason === "interrupted" ? "interrupted" : "failed",
-        result.reason === "interrupted" ? "owner_interrupted" : "failed",
-      )
     }
-    return { ok: false, error: fableLocalFailureMessage(result.reason, result.detail) }
-  }
-  textPersistence.complete(result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT))
-  localTurnFlushers.delete(textPersistence.flush)
-  const finalMeta = {
-    lane: "fable-local" as const,
-    turnRef: request.turnRef,
-    ...(effectiveModel === null ? {} : { model: effectiveModel }),
-    ...(result.accountRef === undefined ? {} : { accountRef: result.accountRef }),
-    totalTokens: result.totalTokens,
-    durationMs: Date.now() - startedAt,
-  }
-  const assistantKeys = new Set(localTurnJournal.get(turnKey)?.assistantSegments.map(segment => segment.key) ?? [])
-  for (const assistant of store.open(request.threadRef)?.notes.filter(note => assistantKeys.has(note.key)) ?? []) {
-    store.upsert(request.threadRef, { ...assistant, meta: finalMeta })
-  }
-  const thread = assistantKeys.size === 0 ? null : store.open(request.threadRef)
-  localTurnJournal.terminal(turnKey, "completed", "completed")
-  // GIT-1 (#8781): checkpoint the completed turn's workspace state. The
-  // completion ref supersedes the start ref for this turn.
-  await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")
-  return thread === null
-    ? { ok: false, error: "That conversation no longer exists." }
-    : { ok: true, thread }
+  },
+  finalMeta: ctx => {
+    const model = ctx.effectiveModel()
+    return {
+      lane: "fable-local",
+      turnRef: ctx.request.turnRef,
+      ...(model === null ? {} : { model }),
+      ...(ctx.result.accountRef === undefined ? {} : { accountRef: ctx.result.accountRef }),
+      totalTokens: ctx.result.totalTokens,
+      durationMs: ctx.durationMs,
+    }
+  },
+  failureMessage: fableLocalFailureMessage,
+}
+
+ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
+  const request = decodeFableLocalStartRequest(value)
+  if (request === null) return { ok: false, error: "That message could not be sent." }
+  return laneDispatcher.dispatchTurn(fableLocalLane, request, event.sender)
 })
 
 // Codex local lane (EP250 codex-first-class): a REAL `codex exec --json`
@@ -3036,224 +2967,174 @@ ipcMain.handle(CodexExperimentalRequestChannel, async (event, value: unknown) =>
   } catch (error) { return { ok: false, reason: typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string" ? error.reason : "experimental_request_failed" } }
 })
 /**
- * Full Auto (#8853): extracted so both a renderer-initiated send (via the IPC
- * handler below, sender = event.sender) and a main-initiated continuation
- * (sender = null; see reconcileFullAutoThreads wiring) share the exact same
- * turn-dispatch path -- no second, divergent execution route for background
- * continuations.
+ * The Codex lane as a provider-lane value. Message metadata (#8712 pattern):
+ * lane, spawn-config-truth model, account ref, turn ref, exact usage total,
+ * duration — plus the codex thread id (session-receipt continuity) in
+ * requestId.
  */
-const dispatchCodexLocalTurn = async (
-  request: import("./fable-local-contract.ts").FableLocalStartRequest,
-  sender: WebContents | null,
-): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> => {
-  if (!startRequestHasContent(request)) {
-    return { ok: false, error: "That message could not be sent." }
-  }
-  const requestedModel = request.model ?? request.target?.model ?? CODEX_LOCAL_MODEL
-  if ((request.target !== undefined && request.target.provider !== "codex") || !isCodexModel(requestedModel)) {
-    return { ok: false, error: "That provider target is not available on the Codex lane." }
-  }
-  if (request.skill !== undefined) {
-    return { ok: false, error: "Local Claude skills are not available on the Codex lane." }
-  }
-  if (request.permissionMode === "plan_only") {
-    return { ok: false, error: "Plan-only permission mode is not available on the Codex lane." }
-  }
-  const store = threads()
-  if (store.open(request.threadRef) === null) return { ok: false, error: "That conversation no longer exists." }
+const codexLocalLane: ProviderLane<null> = {
+  laneRef: "codex-local",
+  graphLaneRef: "codex_local",
+  eventChannel: CodexLocalEventChannel,
+  usageProvider: "codex",
+  capabilities: () => ({
+    laneRef: "codex-local",
+    provider: "codex",
+    // Spawn-config truth: the CodexModelSchema contract literals.
+    models: ["gpt-5.6-sol", "gpt-5.5"],
+    features: {
+      skills: false,
+      planOnly: false,
+      reasoningEffort: true,
+      images: true,
+      fullAuto: true,
+      interrupt: true,
+      queueFollowup: true,
+      steerTurn: true,
+      steerChild: false,
+      answerQuestion: true,
+    },
+    recovery: "provider_session_replay",
+  }),
+  admit: request => {
+    const requestedModel = request.model ?? request.target?.model ?? CODEX_LOCAL_MODEL
+    if ((request.target !== undefined && request.target.provider !== "codex") || !isCodexModel(requestedModel)) {
+      return { ok: false, error: "That provider target is not available on the Codex lane." }
+    }
+    if (request.skill !== undefined) {
+      return { ok: false, error: "Local Claude skills are not available on the Codex lane." }
+    }
+    if (request.permissionMode === "plan_only") {
+      return { ok: false, error: "Plan-only permission mode is not available on the Codex lane." }
+    }
+    return { ok: true, model: requestedModel, context: null }
+  },
   // FA-H6 (#8879): a renderer-initiated flagged turn defines the loop's
   // execution profile -- bind account/model/effort onto the durable record so
   // continuations (including post-restart resumes) replay the same profile
   // instead of falling back to lane defaults and account rotation. A
   // main-initiated continuation (sender === null) never rebinds: its profile
   // CAME from the record.
-  if (request.fullAuto === true && sender !== null) {
-    fullAutoRegistry.bindProfile(request.threadRef, {
-      ...(request.target?.accountRef === undefined ? {} : { accountRef: request.target.accountRef }),
-      model: requestedModel,
-      ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
-    })
-  }
-  const turnKey = { threadRef: request.threadRef, turnRef: request.turnRef, lane: "codex-local" as const }
-  const user: DesktopMessage = {
-    key: `${request.turnRef}-user`,
-    role: "user",
-    text: userNoteText(request.message, request.images),
-    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-  }
-  const accepted = localTurnJournal.accept({
-    ...turnKey,
-    userMessageKey: user.key,
-    assistantMessageKey: `${request.turnRef}-assistant-0`,
-    accountRef: request.target?.accountRef ?? null,
-    model: requestedModel,
-  })
-  if (!accepted.accepted) return { ok: false, error: "That turn is already accepted." }
-  const productSpecAuthority = currentProductSpecWorkroom()
-  if (productSpecAuthority !== null) {
-    codexHandoffBindings.bindNextTurn({
-      workContextRef: productSpecAuthority.workContextRef,
-      sessionRef: productSpecAuthority.sessionRef,
-      threadRef: request.threadRef,
-      turnRef: request.turnRef,
-    })
-  }
-  const saved = store.upsert(request.threadRef, user)
-  if (saved === null) return { ok: false, error: "That conversation no longer exists." }
-  const history = saved.notes.filter(note => note.key !== user.key).map(note => ({ role: note.role, text: note.text }))
-  // Message metadata (#8712 pattern): lane, spawn-config-truth model,
-  // account ref, turn ref, exact usage total, duration — plus the codex
-  // thread id (session-receipt continuity) in requestId.
-  const startedAt = Date.now()
-  let effectiveModel: string | null = null
-  const textPersistence = makeLocalTurnTextPersistence({
-    journal: localTurnJournal,
-    store,
-    key: turnKey,
-    meta: () => ({
-      lane: "codex-local",
-      turnRef: request.turnRef,
-      model: effectiveModel ?? codexLocalRequestedModelLabel(requestedModel),
-    }),
-  })
-  localTurnFlushers.add(textPersistence.flush)
-  // CUT-11 (#8691): the codex-local root turn joins the same canonical
-  // live agent graph contract on its own thread graph.
-  liveAgentGraph.beginTurn({ turnRef: request.turnRef, threadRef: request.threadRef, lane: "codex_local" })
-  // GIT-1 (#8781): same hidden-ref pre-turn checkpoint as the fable lane.
-  await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")
-  const result = await codexLocal.runTurn({
-    turnRef: request.turnRef,
-    threadRef: request.threadRef,
-    history,
-    message: turnPromptText(request.message, request.images),
-    ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
-    model: requestedModel,
-    ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
-    ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
-    ...(request.fullAuto === true ? { fullAuto: true } : {}),
-    // Full Auto #8884: a main-initiated background continuation (sender ===
-    // null) has no renderer capable of answering item/tool/requestUserInput —
-    // a pending question would hang the turn forever. Auto-resolve instead.
-    ...(request.fullAuto === true && sender === null ? { autoResolveQuestions: true } : {}),
-    emit: turnEvent => {
-      // CUT-11 (#8691): same one-callback graph fold as the fable lane.
-      liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
-      if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
-      if (turnEvent.kind === "text_delta") textPersistence.append(turnEvent.text)
-      else textPersistence.boundary()
-      // Session usage ledger: exact usage from turn.completed, attributed to
-      // the Codex account with the owner-selected model as spawn-config truth.
-      if (turnEvent.kind === "turn_completed" && turnEvent.accountRef !== undefined) {
-        usageLedger.record({
-          provider: "codex",
-          accountRef: turnEvent.accountRef,
-          requestedModel,
-          kind: "turn",
-          usage: turnEvent.usage ?? (turnEvent.totalTokens === null
-            ? null
-            : {
-                inputTokens: 0,
-                cachedInputTokens: 0,
-                outputTokens: 0,
-                reasoningTokens: 0,
-                totalTokens: turnEvent.totalTokens,
-              }),
-        })
-        if (turnEvent.usage !== null && turnEvent.usage !== undefined) {
-          Effect.runFork(desktopCodexUsageReporter.report({
-            turnRef: request.turnRef,
-            model: effectiveModel ?? requestedModel,
-            observedAt: new Date().toISOString(),
-            usage: turnEvent.usage,
-          }))
-        }
-      }
-      // Persist trace/model/reasoning/notice lines so the finalized
-      // transcript keeps the same evidence the live stream showed.
-      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_progress" || turnEvent.kind === "tool_result") {
-        const note = {
-          key: turnEvent.itemRef === undefined
-            ? randomUUID()
-            : `${request.turnRef}-tool-${turnEvent.itemRef}${turnEvent.kind === "tool_result" ? "-result" : ""}`,
-          role: "system",
-          text: fableLocalTraceNoteText(turnEvent),
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          meta: { trace: fableLocalTraceNoteMeta(turnEvent) },
-        } as const
-        if (turnEvent.itemRef === undefined) store.append(request.threadRef, note)
-        else store.upsert(request.threadRef, note)
-      }
-      if (turnEvent.kind === "model_effective" || turnEvent.kind === "reasoning" ||
-        turnEvent.kind === "lane_notice") {
-        store.append(request.threadRef, {
-          key: randomUUID(),
-          role: "system",
-          text: turnEvent.kind === "model_effective"
-            ? codexLocalModelNoteText(turnEvent.model)
-            : turnEvent.kind === "reasoning"
-              ? `Reasoning · ${turnEvent.text}`
-              : turnEvent.text,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        })
-      }
-      // Interactive and structured cards are host-owned durable state, not a
-      // renderer-only projection. Persist every update before forwarding it so
-      // renderer reload, final-thread replacement, and app restart preserve
-      // questions, plans, complete nested child transcripts, and queue chips.
-      const runtimeOperation = localRuntimePersistenceOperation({
-        turnRef: request.turnRef,
-        event: turnEvent,
-        notes: store.open(request.threadRef)?.notes ?? [],
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  prepare: (request, sender, model) => {
+    if (request.fullAuto === true && sender !== null) {
+      fullAutoRegistry.bindProfile(request.threadRef, {
+        ...(request.target?.accountRef === undefined ? {} : { accountRef: request.target.accountRef }),
+        model,
+        ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
       })
-      if (runtimeOperation.kind === "upsert") store.upsert(request.threadRef, runtimeOperation.note)
-      if (runtimeOperation.kind === "remove") store.remove(request.threadRef, runtimeOperation.key)
-      if (sender === null || sender.isDestroyed()) return
-      const forwarded = turnEvent.kind === "turn_started" ? { ...turnEvent, thread: saved } : turnEvent
-      sender.send(CodexLocalEventChannel, { turnRef: request.turnRef, event: forwarded })
-    },
-  })
-  if (!result.ok) {
-    textPersistence.flush()
-    localTurnFlushers.delete(textPersistence.flush)
-    if (!(desktopIsQuitting && result.reason === "interrupted")) {
-      localTurnJournal.terminal(
-        turnKey,
-        result.reason === "interrupted" ? "interrupted" : "failed",
-        result.reason === "interrupted" ? "owner_interrupted" : "failed",
-      )
     }
-    return { ok: false, error: codexLocalFailureMessage(result.reason, result.detail) }
-  }
-  textPersistence.complete(result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT))
-  localTurnFlushers.delete(textPersistence.flush)
-  const finalMeta = {
-    lane: "codex-local" as const,
-    turnRef: request.turnRef,
-    model: effectiveModel ?? codexLocalRequestedModelLabel(requestedModel),
-    accountRef: result.accountRef,
-    ...(result.threadId === null ? {} : { requestId: result.threadId }),
-    totalTokens: result.totalTokens,
-    durationMs: Date.now() - startedAt,
-  }
-  const assistantKeys = new Set(localTurnJournal.get(turnKey)?.assistantSegments.map(segment => segment.key) ?? [])
-  for (const assistant of store.open(request.threadRef)?.notes.filter(note => assistantKeys.has(note.key)) ?? []) {
-    store.upsert(request.threadRef, { ...assistant, meta: finalMeta })
-  }
-  const thread = assistantKeys.size === 0 ? null : store.open(request.threadRef)
-  localTurnJournal.terminal(turnKey, "completed", "completed")
-  // GIT-1 (#8781): completed-turn hidden-ref checkpoint, same as fable lane.
-  await captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")
+  },
+  bound: request => {
+    const productSpecAuthority = currentProductSpecWorkroom()
+    if (productSpecAuthority !== null) {
+      codexHandoffBindings.bindNextTurn({
+        workContextRef: productSpecAuthority.workContextRef,
+        sessionRef: productSpecAuthority.sessionRef,
+        threadRef: request.threadRef,
+        turnRef: request.turnRef,
+      })
+    }
+  },
+  streamMeta: ctx => ({
+    lane: "codex-local",
+    turnRef: ctx.request.turnRef,
+    model: ctx.effectiveModel() ?? codexLocalRequestedModelLabel(ctx.requestedModel),
+  }),
+  modelNoteText: codexLocalModelNoteText,
+  runTurn: async ({ request, model, history, message, background, emit }) => {
+    if (!isCodexModel(model)) {
+      return { ok: false, reason: "session_failed", detail: "non-Codex model admitted to the Codex lane" }
+    }
+    const result = await codexLocal.runTurn({
+      turnRef: request.turnRef,
+      threadRef: request.threadRef,
+      history,
+      message,
+      ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
+      model,
+      ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+      ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
+      ...(request.fullAuto === true ? { fullAuto: true } : {}),
+      // Full Auto #8884: a main-initiated background continuation (sender ===
+      // null) has no renderer capable of answering item/tool/requestUserInput —
+      // a pending question would hang the turn forever. Auto-resolve instead.
+      ...(request.fullAuto === true && background ? { autoResolveQuestions: true } : {}),
+      emit,
+    })
+    // The codex thread id is the lane's provider-native session ref
+    // (session-receipt continuity, journal-recorded for restart replay).
+    return result.ok ? { ...result, providerSessionRef: result.threadId } : result
+  },
+  interrupt: turnRef => codexLocal.interrupt(turnRef),
+  makeTurnProjector: ctx => turnEvent => {
+    // #8911: consent-gated reporting remains a Codex-lane concern while the
+    // shared dispatcher owns provider-agnostic usage-ledger attribution.
+    if (turnEvent.kind === "turn_completed" && turnEvent.usage !== null && turnEvent.usage !== undefined) {
+      Effect.runFork(desktopCodexUsageReporter.report({
+        turnRef: ctx.request.turnRef,
+        model: ctx.effectiveModel() ?? ctx.requestedModel,
+        observedAt: new Date().toISOString(),
+        usage: turnEvent.usage,
+      }))
+    }
+    // Persist reasoning/notice lines so the finalized transcript keeps the
+    // same evidence the live stream showed (the shared engine already owns
+    // the tool-trace and effective-model notes).
+    if (turnEvent.kind === "reasoning" || turnEvent.kind === "lane_notice") {
+      ctx.store.append(ctx.request.threadRef, {
+        key: randomUUID(),
+        role: "system",
+        text: turnEvent.kind === "reasoning" ? `Reasoning · ${turnEvent.text}` : turnEvent.text,
+        timestamp: ctx.timestamp(),
+      })
+    }
+    // Interactive and structured cards are host-owned durable state, not a
+    // renderer-only projection. Persist every update before forwarding it so
+    // renderer reload, final-thread replacement, and app restart preserve
+    // questions, plans, complete nested child transcripts, and queue chips.
+    const runtimeOperation = localRuntimePersistenceOperation({
+      turnRef: ctx.request.turnRef,
+      event: turnEvent,
+      notes: ctx.store.open(ctx.request.threadRef)?.notes ?? [],
+      timestamp: ctx.timestamp(),
+    })
+    if (runtimeOperation.kind === "upsert") ctx.store.upsert(ctx.request.threadRef, runtimeOperation.note)
+    if (runtimeOperation.kind === "remove") ctx.store.remove(ctx.request.threadRef, runtimeOperation.key)
+  },
+  finalMeta: ctx => ({
+    lane: "codex-local",
+    turnRef: ctx.request.turnRef,
+    model: ctx.effectiveModel() ?? codexLocalRequestedModelLabel(ctx.requestedModel),
+    ...(ctx.result.accountRef === undefined ? {} : { accountRef: ctx.result.accountRef }),
+    ...(ctx.result.providerSessionRef === undefined || ctx.result.providerSessionRef === null
+      ? {}
+      : { requestId: ctx.result.providerSessionRef }),
+    totalTokens: ctx.result.totalTokens,
+    durationMs: ctx.durationMs,
+  }),
+  failureMessage: codexLocalFailureMessage,
   // Full Auto (#8853): fire-and-forget -- do not make the caller (a real
   // renderer send, or a prior continuation in this same chain) wait on the
   // NEXT turn. runFullAutoReconciliation re-checks the durable registry
   // fresh, so a toggle-off that lands right after this line still stops it.
-  if (request.fullAuto === true) void runFullAutoReconciliation()
-  return thread === null
-    ? { ok: false, error: "That conversation no longer exists." }
-    : { ok: true, thread }
+  completed: request => {
+    if (request.fullAuto === true) void runFullAutoReconciliation()
+  },
 }
+
+/**
+ * Full Auto (#8853): extracted so both a renderer-initiated send (via the IPC
+ * handler below, sender = event.sender) and a main-initiated continuation
+ * (sender = null; see reconcileFullAutoThreads wiring) share the exact same
+ * turn-dispatch path -- no second, divergent execution route for background
+ * continuations. Since L1 (#8899) the shared path is the provider-lane
+ * dispatcher over the codex lane value above.
+ */
+const dispatchCodexLocalTurn = async (
+  request: import("./fable-local-contract.ts").FableLocalStartRequest,
+  sender: WebContents | null,
+): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> =>
+  laneDispatcher.dispatchTurn(codexLocalLane, request, sender)
 
 /** Owner-visible Full Auto outcome notes reuse the same system-note +
  * recovery-broadcast shape the cap note already shipped with. */

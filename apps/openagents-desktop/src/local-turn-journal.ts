@@ -16,7 +16,15 @@ export const LOCAL_TURN_RECORD_SCHEMA = "openagents.desktop.local_turn_record.v1
 export const LOCAL_TURN_TEXT_LIMIT = 32_000
 export const LOCAL_TURN_RECORD_LIMIT = 128
 
-export const LocalTurnLaneSchema = Schema.Literals(["fable-local", "codex-local"])
+/**
+ * Provider lane SPI (L1 #8899): the journal records turns for ANY registered
+ * lane, keyed by its bounded lane ref — the built-in `fable-local` /
+ * `codex-local` values plus future SPI lanes (ACP peers, fixtures). Widened
+ * from the original two-literal union; every previously valid journal file
+ * still decodes, and restart recovery fails closed for any lane that does not
+ * own provider-session replay (see ./local-turn-recovery.ts).
+ */
+export const LocalTurnLaneSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
 export type LocalTurnLane = typeof LocalTurnLaneSchema.Type
 
 export const LocalTurnPhaseSchema = Schema.Literals([

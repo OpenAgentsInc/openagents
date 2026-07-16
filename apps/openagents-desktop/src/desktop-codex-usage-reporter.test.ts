@@ -30,9 +30,9 @@ const credential = {
 describe("makeDesktopCodexUsageReporter", () => {
   test("main keeps reporting hard-disabled at the shared ordinary and Full Auto completion seam", () => {
     const source = readFileSync(path.join(import.meta.dirname, "main.ts"), "utf8")
-    const codexDispatchStart = source.indexOf("const dispatchCodexLocalTurn")
-    const completionStart = source.indexOf('if (turnEvent.kind === "turn_completed"', codexDispatchStart)
-    const persistenceStart = source.indexOf("// Persist trace/model/reasoning/notice lines", completionStart)
+    const codexLaneStart = source.indexOf("const codexLocalLane")
+    const completionStart = source.indexOf('if (turnEvent.kind === "turn_completed"', codexLaneStart)
+    const persistenceStart = source.indexOf("// Persist reasoning/notice lines", completionStart)
     const completionSource = source.slice(completionStart, persistenceStart)
 
     expect(source).toContain("consentEnabled: () => false")

@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-16.1",
+    version: "2026-07-16.2",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -1973,6 +1973,45 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Settings view/intent, Runtime Gateway, and Electron-boundary suites plus Desktop typecheck/build enforce the visible tokenless path without GUI automation.",
+      },
+      {
+        contractId: "openagents_desktop.chat.same_components_across_provider_lanes.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "provider-neutral local turn workbench",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-16" },
+        statement:
+          "Codex, Claude, ACP peers, and future agent lanes project plan, reasoning, tool/exec, approval/question, item-delta, and usage facts through one typed provider-lane envelope into the same renderer workbench components; a lane may not introduce a private transcript renderer or silently discard degradation.",
+        authorityBoundary:
+          "Electron main owns dispatch, durable journal state, host history, usage attribution, and restart disposition. The renderer receives only the existing bounded local-lane event envelope and gains no raw provider payload, credential, filesystem, process, transport, or provider-session authority. Facts without an exact shared-envelope counterpart stay on their typed sidecar/capability surface; degraded projection is always visible.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/provider-lane.ts",
+          "apps/openagents-desktop/src/provider-lane-acp.ts",
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "github:OpenAgentsInc/openagents#8899",
+        ],
+        oracles: [
+          {
+            id: "provider_lanes.fixture_shared_dispatch_and_renderer",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/provider-lane.test.ts",
+            description:
+              "Runs a never-hand-wired fixture lane through the shared dispatcher, durable journal, exact usage attribution, restart refusal, and the real shared renderer projection while requiring every forwarded event to decode against the frozen envelope.",
+          },
+          {
+            id: "provider_lanes.acp_canonical_mapping",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/provider-lane-acp.test.ts",
+            description:
+              "Proves ACP canonical text, reasoning, tool, plan, degradation, and exact usage facts map into the shared envelope without fabricated token fields or a provider-private renderer vocabulary.",
+          },
+        ],
+        verification:
+          "The Desktop test sweep runs the fixture-lane shared-dispatch/renderer oracle, ACP mapping oracle, local-turn recovery suite, both built-in lane runtime suites, and Desktop typecheck.",
       },
       {
         contractId: "openagents_desktop.chat.fable_local_lane_no_substitution.v1",
