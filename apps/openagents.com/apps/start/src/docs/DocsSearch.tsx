@@ -1,6 +1,7 @@
 import { Search, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import { InternalLink } from '@/components/internal-link'
 import { decodeDocsSearchIndex, type DocsSearchRecord } from './content-schema'
 
 const loadSearchEngine = async () => {
@@ -163,14 +164,14 @@ export function DocsSearch() {
               <ul className="docs-search-results">
                 {results.map(result => (
                   <li key={result.id}>
-              <a
-                className="docs-search-result-link"
-                href={result.path}
-                onClick={closeSearch}
-              >
+                    <InternalLink
+                      className="docs-search-result-link"
+                      href={result.path}
+                      onClick={closeSearch}
+                    >
                       <strong className="docs-search-result-title">{result.title}</strong>
                       <span className="docs-search-result-description">{result.description}</span>
-              </a>
+                    </InternalLink>
                   </li>
                 ))}
               </ul>

@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Check, Clipboard, ExternalLink, RotateCcw } from 'lucide-react'
 import { useState, type MouseEvent as ReactMouseEvent } from 'react'
 
+import { InternalLink } from '@/components/internal-link'
 import type { DocsPage as DocsPageModel } from './content-schema'
 
 export function DocsPage({ page }: Readonly<{ page: DocsPageModel }>) {
@@ -81,16 +82,16 @@ export function DocsPage({ page }: Readonly<{ page: DocsPageModel }>) {
         <footer>
           <nav aria-label="Documentation pagination" className="docs-pagination">
             {page.previous === undefined ? <span /> : (
-              <a className="docs-pagination-link" href={page.previous.path}>
+              <InternalLink className="docs-pagination-link" href={page.previous.path} preload="render">
                 <span className="docs-pagination-direction"><ArrowLeft aria-hidden="true" size={14} /> Previous</span>
                 <span className="docs-pagination-title">{page.previous.title}</span>
-              </a>
+              </InternalLink>
             )}
             {page.next === undefined ? <span /> : (
-              <a className="docs-pagination-link" href={page.next.path}>
+              <InternalLink className="docs-pagination-link" href={page.next.path} preload="render">
                 <span className="docs-pagination-direction">Next <ArrowRight aria-hidden="true" size={14} /></span>
                 <span className="docs-pagination-title">{page.next.title}</span>
-              </a>
+              </InternalLink>
             )}
           </nav>
         </footer>

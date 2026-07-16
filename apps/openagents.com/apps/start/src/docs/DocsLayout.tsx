@@ -182,15 +182,15 @@ export function DocsLayout() {
           >
             <Menu aria-hidden="true" size={20} />
           </button>
-          <Link className="docs-brand" to="/">
+          <Link className="docs-brand" preload="render" to="/">
             <span aria-hidden="true" className="docs-brand-mark" />
             <span className="docs-brand-text">OpenAgents</span>
           </Link>
-          <Link aria-current="page" className="docs-section-link" to="/docs">Docs</Link>
+          <Link aria-current="page" className="docs-section-link" preload="render" to="/docs">Docs</Link>
           <div className="docs-header-spacer" />
           <DocsSearch />
           <nav aria-label="Product" className="docs-header-links">
-            <Link className="docs-header-link" to="/astro">
+            <Link className="docs-header-link" preload="render" to="/astro">
               <MonitorDown aria-hidden="true" size={16} />
               <span>Desktop</span>
             </Link>
