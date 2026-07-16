@@ -597,9 +597,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "the assistant message there at end is out of order like the tool calls appeared BEFORE that, i need everything interleaved sequentially in the order we get it. fix it and push",
         authorityBoundary:
-          "The renderer and durable local thread store project display-bearing provider events in their exact arrival order. Consecutive text deltas coalesce into one assistant segment and publish at most once per renderer cadence only until a display-bearing non-text event arrives; that boundary synchronously flushes and closes the segment, the event is inserted next, and later text opens a new assistant segment after it. Header-only accounting and lifecycle events never split assistant prose. Completion still flushes before settlement. A tool result updates its matching invocation card in place at the invocation's original position. Final usage/model metadata may enrich the last assistant segment through a keyed in-place upsert but may never append or move that segment past intervening tool, model, reasoning, or lane events. No event gains new renderer, filesystem, provider, or persistence authority.",
+          "The renderer and durable local thread store project display-bearing provider events in their exact arrival order. Consecutive text deltas coalesce into one assistant segment and publish at most once per renderer cadence only until a display-bearing non-text event arrives; that boundary synchronously flushes and closes the segment, the event is inserted next, and later text opens a new assistant segment after it. Header-only accounting and lifecycle events never split assistant prose. Renderer-to-shell projection is bounded latest-state-wins: at most the in-flight and newest complete thread snapshots are retained, inactive-chat events publish no shell revision, and settlement awaits the newest projection. The durable main-process journal remains the complete ordered event authority. Completion still flushes before settlement. A tool result updates its matching invocation card in place at the invocation's original position. Final usage/model metadata may enrich the last assistant segment through a keyed in-place upsert but may never append or move that segment past intervening tool, model, reasoning, or lane events. No event gains new renderer, filesystem, provider, or persistence authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "apps/openagents-desktop/src/renderer/latest-only-queue.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/thread-store.ts",
         ],
@@ -611,6 +613,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
             description:
               "Streams model, assistant text, tool use, tool result, then more assistant text and proves the transcript notes retain that exact relative sequence with two correctly attributed assistant segments; a 10,000-delta stress case proves one cadence publication with exact text.",
+          },
+          {
+            id: "provider_event_interleaving.bounded_shell_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/latest-only-queue.test.ts",
+            description:
+              "Blocks the active projection, submits 10,000 newer complete snapshots, and proves only the in-flight and exact latest snapshots are retained and processed before flush settles.",
           },
           {
             id: "provider_event_interleaving.durable_upsert_position",

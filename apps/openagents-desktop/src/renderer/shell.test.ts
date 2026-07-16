@@ -2384,6 +2384,46 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     )
   })
 
+  test("stream settlement waits for the bounded latest projection and cannot resurrect pending", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const state = yield* SubscriptionRef.make(baseState)
+      const completed = {
+        ...testThread,
+        notes: [{ key: "assistant-final", role: "assistant" as const, text: "Final", timestamp: "18:05" }],
+      }
+      const registry = yield* makeIntentRegistry(
+        desktopShellIntents,
+        makeDesktopShellHandlers(state, fixedNow, undefined, {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async input => {
+            for (let revision = 0; revision < 10_000; revision += 1) {
+              input.onUpdate?.({
+                ...testThread,
+                notes: [{
+                  key: "assistant-live",
+                  role: "assistant",
+                  text: `Live ${revision}`,
+                  timestamp: "18:05",
+                }],
+              })
+            }
+            return { ok: true as const, thread: completed }
+          },
+        }),
+      )
+
+      yield* registry.dispatch(resolveIntentRef(
+        IntentRef("DesktopNoteSubmitted", StaticPayload("stress stream")),
+      ))
+
+      const settled = yield* SubscriptionRef.get(state)
+      expect(settled.pending).toBe(false)
+      expect(settled.notes).toEqual(completed.notes)
+    }))
+  })
+
   test.skip("retired out-of-scope provider/model selection controls", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {

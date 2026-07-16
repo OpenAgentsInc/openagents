@@ -84,6 +84,7 @@ import {
 import { chatMarkdownBody } from "./markdown.ts"
 import { runtimeAgentGraphView } from "./runtime-agent-graph.ts"
 import { localDelegateAgentRef } from "../live-agent-graph-local.ts"
+import { makeLatestOnlyQueue } from "./latest-only-queue.ts"
 import { emptyDesktopUpdateProjection } from "../update-staging-contract.ts"
 import type { DesktopUpdateProjection } from "../update-staging-host.ts"
 import { desktopCommandRegistry, formatCommandChord } from "./command-registry.ts"
@@ -2109,6 +2110,21 @@ export const makeDesktopShellHandlers = (
     const fullAutoActive = activeFullAutoEnabled(current) && current.selectedHarness === "codex"
     const submissionThreadId = current.activeThreadId!
     yield* SubscriptionRef.set(state, withNote(current, message, now()))
+    // Provider streams can emit far faster than React can commit a complete
+    // shell snapshot. A detached Effect fiber per event retained thousands of
+    // transcript copies and eventually exhausted Chromium's 4 GiB V8 heap.
+    // Live projection is latest-state-wins; main's durable journal still
+    // records the complete ordered event stream.
+    const liveProjection = makeLatestOnlyQueue<DesktopThread>(async thread => {
+      const next = await Effect.runPromise(SubscriptionRef.get(state))
+      // Do not publish a no-op shell revision for an inactive chat. The final
+      // result still updates that thread's bounded sidebar/catalog row below.
+      if (next.activeThreadId !== thread.id) return
+      await Effect.runPromise(SubscriptionRef.set(
+        state,
+        { ...withChatSelected(next, thread), pending: true },
+      ))
+    })
     const result = yield* Effect.promise(() => chat.sendMessage({
       id: submissionThreadId,
       message: routedMessage,
@@ -2129,13 +2145,12 @@ export const makeDesktopShellHandlers = (
       model: current.selectedHarness === "codex" ? current.codexModel : current.claudeModel,
       ...(images.length > 0 ? { images } : {}),
       ...(fullAutoActive ? { fullAuto: true } : {}),
-      onUpdate: thread => {
-        Effect.runFork(SubscriptionRef.update(state, next =>
-          next.activeThreadId === thread.id
-            ? { ...withChatSelected(next, thread), pending: true }
-            : next))
-      },
+      onUpdate: liveProjection.submit,
     }))
+    // Settlement must follow the newest admitted live projection. Otherwise
+    // an already-forked update can race after completion and resurrect the
+    // pending state (while also keeping its captured transcript alive).
+    yield* Effect.promise(liveProjection.flush)
     yield* SubscriptionRef.update(state, (next) => {
       // A turn belongs to the thread it was admitted on. If the owner moved
       // to another chat while it ran, settle only the originating thread's
