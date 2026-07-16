@@ -348,7 +348,8 @@ describe("React Codex composer", () => {
     );
     expect(received).not.toContainEqual(expect.objectContaining({ name: "DesktopPendingSubmitModeSelected" }));
     expect(container.querySelector('button[aria-label="Steer"]')).toBeNull();
-    expect(container.textContent).toContain("Steer now sends into active turn turn-provider-7")
+    expect(container.textContent).not.toContain("While this turn runs");
+    expect(container.textContent).not.toContain("Steer now sends into active turn");
   });
 
   test("projects durable queue order and disables mutation after dispatch ownership transfers", async () => {

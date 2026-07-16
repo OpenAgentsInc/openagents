@@ -1816,34 +1816,6 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   min-height: 36px;
 }
 
-.oa-react-composer-consequence {
-  display: flex;
-  min-width: 0;
-  margin: var(--en-spacing-1) 0 0;
-  gap: var(--en-spacing-2);
-  color: var(--en-color-textFaint);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.oa-react-composer-consequence strong {
-  flex: 0 0 auto;
-  color: var(--en-color-textSecondary);
-  font-weight: 600;
-}
-
-.oa-react-composer-consequence span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 520px) {
-  .oa-react-composer-consequence {
-    flex-direction: column;
-    gap: 0;
-  }
-}
-
 .oa-react-composer-spacer {
   flex: 1 1 auto;
 }

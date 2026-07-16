@@ -613,14 +613,6 @@ export const ReactComposer = ({
           <span className="sr-only">{submitLabel}</span>
         </DesktopComposerButton> : null}
       </DesktopComposerBar>
-      {state.pending ? (
-        <p className="oa-react-composer-consequence" role="status" aria-live="polite">
-          <strong>While this turn runs</strong>
-          <span>{state.composerQueueEditingRef === null
-            ? `Steer now sends into active turn ${state.composerAdmission.activeTurnId ?? "when available"}; Queue next starts after it settles.`
-            : "Queue next updates the durable queued turn and preserves its position."}</span>
-        </p>
-      ) : null}
       </DesktopComposerInput>
     </DesktopComposerFrame>
   );
