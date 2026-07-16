@@ -2635,6 +2635,61 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     }))
   })
 
+  test("a running Full Auto history row resumes its exact local thread so the composer and Stop stay reachable", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const resumed = {
+        id: historyPageFixture.rootThreadRef,
+        title: "Resumed Full Auto chat",
+        updatedAt: "2026-07-16T19:30:00Z",
+        notes: [{ key: "a1", role: "assistant" as const, text: "Still working", timestamp: "19:30" }],
+      }
+      const initial: DesktopShellState = {
+        ...baseState,
+        activeThreadId: null,
+        threads: [],
+        history: { ...baseState.history, page: null },
+        fullAutoLiveByThread: {
+          [resumed.id]: { state: "turn_running", turnRef: "turn.full-auto.resumed" },
+        },
+      }
+      const opened: string[] = []
+      let historyReads = 0
+      const state = yield* SubscriptionRef.make(initial)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(
+        state,
+        fixedNow,
+        undefined,
+        {
+          listThreads: async () => [],
+          newThread: async () => null,
+          openThread: async (threadRef) => {
+            opened.push(threadRef)
+            return threadRef === resumed.id ? resumed : null
+          },
+          sendMessage: async () => ({ ok: false as const, error: "unused" }),
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          catalog: async () => null,
+          page: async () => { historyReads += 1; return historyPageFixture },
+        },
+      ))
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected", StaticPayload(resumed.id))))
+      const next = yield* SubscriptionRef.get(state)
+      expect(opened).toEqual([resumed.id])
+      expect(historyReads).toBe(0)
+      expect(next.activeThreadId).toBe(resumed.id)
+      expect(next.threads[0]).toEqual(resumed)
+      expect(next.notes).toEqual(resumed.notes)
+      expect(next.history.page).toBeNull()
+      expect(activeFullAutoTurnRunning(next)).toBe(true)
+    }))
+  })
+
   test("a selected provider-history chat can never fall through to new-thread submission", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       let created = 0
