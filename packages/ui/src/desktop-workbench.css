@@ -535,10 +535,18 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-session-row .oa-react-session-meta {
   width: auto;
   justify-self: end;
+  font-family: var(--oa-font-sans);
   text-align: right;
 }
 
-.oa-react-session-row small,
+.oa-react-session-row small {
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-sans);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 .oa-react-conversation-meta {
   color: var(--en-color-textMuted);
   font-family: var(--oa-font-mono);
@@ -1469,7 +1477,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   min-width: 0;
   max-width: min(60vw, 480px);
   overflow: hidden;
-  font-family: var(--oa-font-mono);
+  font-family: var(--oa-font-sans);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;

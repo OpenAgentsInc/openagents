@@ -162,6 +162,15 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(css).toContain("-webkit-app-region: no-drag")
   })
 
+  test("user-state metadata uses the sans face while operational detail remains mono", () => {
+    const css = readFileSync(sharedWorkbenchCssPath, "utf8")
+    const rule = (selector: string): string =>
+      css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]+)\\}`))?.[1] ?? ""
+    expect(rule(".oa-react-session-row .oa-react-session-meta")).toContain("font-family: var(--oa-font-sans)")
+    expect(rule(".oa-react-empty-working-directory code")).toContain("font-family: var(--oa-font-sans)")
+    expect(rule(".oa-react-command-output")).toContain("font-family: var(--oa-font-mono)")
+  })
+
   test("chat markdown restores semantic list markers after Tailwind preflight", () => {
     const css = readFileSync(sharedWorkbenchCssPath, "utf8")
     expect(css).toContain(".oa-react-markdown ul { list-style: disc outside; }")
