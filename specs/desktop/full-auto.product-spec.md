@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Full Auto Codex Composer Loop"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
-updated_at: "2026-07-15T23:59:00.000Z"
+updated_at: "2026-07-16T00:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -18,10 +18,10 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_issue: "8852 (initial), 8853 (restart-durable continuation)"
+  openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8880 (FA-H7 cap semantics), 8883 (FA-H10 registry robustness)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
-  openagents_revision_note: "rev 2 (#8853) moves the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap: Full Auto now survives both a renderer reload and a full app restart, not just a live session."
+  openagents_revision_note: "rev 2 (#8853) moves the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap: Full Auto now survives both a renderer reload and a full app restart, not just a live session. rev 3 (#8880, #8883) covers two changes: FA-H7 pins the continuation-cap reset semantics unambiguously (the counter resets ONLY when Full Auto is toggled off; a manual send while the toggle stays on does not reset it; the dead resetContinuation API is removed) and FA-H10 hardens the registry (a corrupt/invalid registry file is quarantined and the app starts with an empty registry instead of failing main initialization, and record eviction never drops enabled records -- only the disabled tail is bounded)."
 ---
 
 ## Problem
@@ -112,13 +112,17 @@ cut:
   undefined (not `false`) and never resubmits automatically.
   Proof: `shell.test.ts` "toggled off, an ordinary Codex turn sends fullAuto
   undefined and never resubmits".
-- **FA-AC-06:** A run of 20 consecutive automatic continuations without an
-  intervening manual stop turns Full Auto off durably (registry, not
-  renderer state) and appends an explanatory system note, rather than
-  continuing unbounded -- and this holds even if a restart happens partway
-  through the count.
+- **FA-AC-06:** A run of 20 consecutive automatic continuations turns Full
+  Auto off durably (registry, not renderer state) and appends an explanatory
+  system note, rather than continuing unbounded -- and this holds even if a
+  restart happens partway through the count. The consecutive-continuation
+  counter resets only when Full Auto is toggled off for that thread; a manual
+  send while the toggle stays on does NOT reset it, and re-enabling an
+  already-enabled thread preserves the count.
   Proof: `full-auto-restart.e2e.test.ts` "a genuinely stuck loop self-disables
-  at the continuation cap across restarts, rather than continuing unbounded".
+  at the continuation cap across restarts, rather than continuing unbounded";
+  `full-auto-registry.test.ts` "continuationCount resets ONLY on toggle-off: a
+  manual send leaves it unchanged; off-then-on zeroes it".
 - **FA-AC-07:** A thread left enabled with no turn in flight when
   the app quits resumes its next continuation on its own at the next launch,
   with no user action beyond the original toggle.
@@ -141,6 +145,24 @@ cut:
 - **FA-AC-10:** No Full Auto packet performs a direct commit, merge, or push;
   Codex proposes changes exactly as every other Desktop Codex turn already
   does. (Unchanged existing boundary; no new authority was added.)
+- **FA-AC-11 (rev 3, #8883):** A corrupt or schema-invalid registry file never
+  blocks Desktop main initialization. Opening it fails closed for the feature
+  and open for the app: the bad file is quarantined beside the registry
+  (best-effort rename to `registry.json.quarantined-<ISO timestamp>` with an
+  owner-visible console diagnostic naming the quarantine path), the registry
+  starts empty (Full Auto disabled for all threads), and subsequent writes
+  persist normally.
+  Proof: `full-auto-registry.test.ts` "a corrupt registry file is quarantined
+  and the registry opens empty instead of throwing" and "a schema-invalid (but
+  valid JSON) registry file is also quarantined rather than thrown".
+- **FA-AC-12 (rev 3, #8883):** Registry record eviction never drops an
+  `enabled: true` record. All enabled records are kept; only the disabled tail
+  is bounded, filling remaining capacity (up to 128 total) with the
+  most-recently-updated disabled records. An owner-enabled thread therefore
+  always survives to the next restart, no matter how many other records were
+  touched more recently.
+  Proof: `full-auto-registry.test.ts` "eviction never drops an enabled record:
+  the oldest enabled thread survives while old disabled records are evicted".
 
 ## Success Metrics
 
@@ -199,6 +221,11 @@ cut:
   Exercises the real `full-auto-registry.ts` and `full-auto-reconcile.ts`
   modules directly against the same on-disk file across two independent
   opens -- no Electron process, no mock of the durable layer.
+- `full-auto-registry.test.ts` (rev 3, #8880/#8883): pins the cap-reset
+  semantics (reset only on toggle-off), corrupt-file quarantine (registry
+  opens empty, quarantine file exists, subsequent persist works), and
+  enabled-record eviction survival (enabled records never evicted; only the
+  disabled tail is bounded), all against the real on-disk registry.
 - Full run: `vp test --run --max-concurrency 1 --root ../..
   apps/openagents-desktop` — 1521 passed, 39 skipped, 1 failed. The one
   failure (`codex-turn-state.test.ts`, a Codex app-server protocol

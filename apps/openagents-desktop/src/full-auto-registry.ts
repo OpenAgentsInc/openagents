@@ -32,15 +32,27 @@ const Cursor = Schema.Number.check(
 export const FullAutoRecordSchema = Schema.Struct({
   threadRef: Ref,
   enabled: Schema.Boolean,
-  /** Consecutive auto-dispatched continuations since the last manual send or reset. */
+  /**
+   * Consecutive auto-dispatched continuations since Full Auto was last enabled
+   * for this thread (toggling off resets it). A manual send while the toggle
+   * stays on does NOT reset the count -- see FA-H7 (#8880) and the pinning
+   * test in tests/full-auto-registry.test.ts.
+   */
   continuationCount: Cursor,
   updatedAt: Schema.String,
 })
 export type FullAutoRecord = typeof FullAutoRecordSchema.Type
 
+/**
+ * The record bound (FULL_AUTO_RECORD_LIMIT) is enforced write-side and applies
+ * only to the disabled tail (FA-H10 #8883): enabled records are never evicted,
+ * so a legitimately persisted file may exceed the limit when more than
+ * FULL_AUTO_RECORD_LIMIT threads are enabled at once. The decode schema
+ * therefore carries no max-length check.
+ */
 const FullAutoRegistryFileSchema = Schema.Struct({
   schema: Schema.Literal(FULL_AUTO_REGISTRY_SCHEMA),
-  records: Schema.Array(FullAutoRecordSchema).check(Schema.isMaxLength(FULL_AUTO_RECORD_LIMIT)),
+  records: Schema.Array(FullAutoRecordSchema),
 })
 
 export type FullAutoRegistry = Readonly<{
@@ -49,7 +61,6 @@ export type FullAutoRegistry = Readonly<{
   enabledThreads: () => ReadonlyArray<string>
   set: (threadRef: string, enabled: boolean) => FullAutoRecord
   incrementContinuation: (threadRef: string) => number
-  resetContinuation: (threadRef: string) => void
 }>
 
 export class FullAutoRegistryError extends Error {
@@ -57,7 +68,7 @@ export class FullAutoRegistryError extends Error {
   override readonly name = "FullAutoRegistryError"
 
   constructor(
-    readonly reason: "invalid_registry" | "storage_unavailable",
+    readonly reason: "storage_unavailable",
     message: string,
   ) {
     super(message)
@@ -88,29 +99,56 @@ const writePrivateAtomic = (filePath: string, value: unknown): void => {
   }
 }
 
-const decodeFile = (filePath: string): ReadonlyArray<FullAutoRecord> => {
+/**
+ * FA-H10 (#8883): a corrupt or schema-invalid registry file must never block
+ * app initialization -- Full Auto is a non-critical automation preference, so
+ * decode failure fails closed for the feature (empty registry, nothing
+ * enabled) and open for the app. The bad file is quarantined beside the
+ * registry (best-effort) so the evidence survives for diagnosis instead of
+ * being silently overwritten by the next persist.
+ */
+const decodeFile = (filePath: string, now: () => Date): ReadonlyArray<FullAutoRecord> => {
   if (!existsSync(filePath)) return []
   try {
     const decoded = Schema.decodeUnknownSync(FullAutoRegistryFileSchema)(
       JSON.parse(readFileSync(filePath, "utf8")),
     )
     return decoded.records
-  } catch {
-    throw new FullAutoRegistryError(
-      "invalid_registry",
-      "full auto registry failed validation",
-    )
+  } catch (error) {
+    const quarantinePath = `${filePath}.quarantined-${now().toISOString()}`
+    try {
+      renameSync(filePath, quarantinePath)
+      console.error(
+        `full auto registry failed validation; quarantined the corrupt file at ${quarantinePath} and starting with an empty registry (Full Auto disabled for all threads)`,
+        error,
+      )
+    } catch {
+      console.error(
+        `full auto registry failed validation and the corrupt file at ${filePath} could not be quarantined; starting with an empty registry (Full Auto disabled for all threads)`,
+        error,
+      )
+    }
+    return []
   }
 }
 
 export const openFullAutoRegistry = (file: string, now: () => Date = () => new Date()): FullAutoRegistry => {
   const filePath = path.resolve(file)
-  let records = [...decodeFile(filePath)]
+  let records = [...decodeFile(filePath, now)]
 
+  /**
+   * FA-H10 (#8883): eviction never drops an `enabled: true` record -- an
+   * owner-enabled thread must survive to the next restart no matter how many
+   * other records were touched more recently. Only the disabled tail is
+   * bounded: all enabled records are kept, then remaining capacity is filled
+   * with the most-recently-updated disabled records.
+   */
   const persist = (): void => {
-    records = records
+    const sorted = [...records].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    const enabled = sorted.filter(record => record.enabled)
+    const disabled = sorted.filter(record => !record.enabled)
+    records = [...enabled, ...disabled.slice(0, Math.max(0, FULL_AUTO_RECORD_LIMIT - enabled.length))]
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .slice(0, FULL_AUTO_RECORD_LIMIT)
     writePrivateAtomic(filePath, { schema: FULL_AUTO_REGISTRY_SCHEMA, records })
   }
   const findIndex = (threadRef: string): number => records.findIndex(record => record.threadRef === threadRef)
@@ -143,12 +181,6 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
       records[index] = Schema.decodeUnknownSync(FullAutoRecordSchema)(next)
       persist()
       return next.continuationCount
-    },
-    resetContinuation: threadRef => {
-      const index = findIndex(threadRef)
-      if (index === -1) return
-      records[index] = { ...records[index]!, continuationCount: 0, updatedAt: now().toISOString() }
-      persist()
     },
   }
 }
