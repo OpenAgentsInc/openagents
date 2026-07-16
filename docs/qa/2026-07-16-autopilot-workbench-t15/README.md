@@ -37,6 +37,16 @@ the preflight file with its pure and repository-identity checks. No oracle was
 removed. The two-file focused suite then passed three consecutive runs, and the
 complete Desktop verification passed.
 
+After this receipt commit was rebased over the newly landed ACP runtime work,
+Desktop typecheck exposed a second current-main integration failure: shared
+`agent-client-protocol` and `agent-stdio-transport` sources use the ES2023
+`Array.prototype.toSorted` API, while the Desktop compiler declared only the
+ES2022 library. Desktop runs on the repository's Node 24 / current Electron
+baseline, and both owning shared packages already declare ES2023. Advancing the
+Desktop `lib` declaration to ES2023 restores the source-level contract without
+changing its emitted target. Desktop typecheck and the focused build/preflight
+suite pass with that compatibility fix.
+
 ## Automated verification
 
 All commands ran in a clean dedicated worktree except for the fix and receipt
@@ -115,3 +125,11 @@ prove their render hashes did not change). Then attach the refreshed directory
 to #8872, close #8872, update #8857's lane ledger to show T1–T15 complete, and
 close the epic with the Wave 0–4 commit/evidence ledger. Do not represent the
 credential-gated Chat Sync capture as authenticated Sync.
+
+The post-rebase full Desktop sweep also needs one quiet-host rerun. Under the
+current concurrent-agent load it missed three existing wall-clock assertions
+(React sheet mount, 500-row timeline under two seconds, and a 20 ms Codex
+connect transition). Those exact three files passed together in isolation at
+3 files / 66 tests. The earlier full proof-base run was green, but neither fact
+is a substitute for the required refreshed full-suite receipt after typography
+lands.
