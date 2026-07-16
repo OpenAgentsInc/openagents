@@ -626,3 +626,154 @@ currently resolved Desktop workspace does not match what was granted. This
 does not make dispatch exactly-once or serialized; it only stops a stale
 enabled thread from ever executing against a repository the owner did not
 grant it against.
+
+## Addendum 2 — fable, 2026-07-16: agent-triggerable Full Auto and remaining full-feature scope
+
+The document above is thorough on restart mechanics but says nothing about
+who or what is allowed to start, stop, and inspect Full Auto in the first
+place. Today the answer is: only a human, only by clicking the composer
+toggle inside the running Desktop app. That is too narrow a control surface
+for the product this is becoming. The owner should be able to direct an
+agent — in a chat session, this one included — to start Full Auto against a
+granted repository, watch it work, and stop it, with the actual Desktop UI
+showing what is happening while it happens. None of that exists yet.
+
+### 13. High — no programmatic control surface exists
+
+Every path into `full-auto-registry.ts` and `full-auto-reconcile.ts` today
+runs through `CodexLocalFullAutoSetChannel`/`CodexLocalFullAutoGetChannel`,
+which are `contextBridge`-exposed to one specific renderer window over
+Electron IPC (`preload.cts`). There is no HTTP endpoint, no CLI, no MCP
+server, and no other process-external entry point. An agent running in a
+terminal — even one running on the exact same machine as Desktop, which is
+the ordinary case for "the owner directs me in this chat" — has no way to
+enable Full Auto, check its status, or force an immediate continuation. The
+only thing an agent can do today is ask the owner to click the toggle
+themselves.
+
+### Recommended architecture: one OpenAPI spec, not three hand-written surfaces
+
+The right shape for this is not "pick MCP or CLI or API" as three
+competing options — it is one typed description generating all three, so
+they cannot drift out of sync with each other or with the implementation.
+This is standard, well-established guidance among people who build MCP
+servers for a living (a recent public framing of it, credited to Rhys, put
+it plainly: the best way for a company doing this is an OpenAPI spec that
+automatically gets converted into an SDK, an MCP server, and a CLI — write
+the operations once, generate the rest). It is also **already this repo's
+own convention**, not a new idea being imported: the public
+`openagents.com` API already does exactly this triad —
+[`openagents-openapi-routes.ts`](../../apps/openagents.com/workers/api/src/openagents-openapi-routes.ts)
+serves the OpenAPI document, [`omni-api-sdk-seed.ts`](../../apps/openagents.com/workers/api/src/omni-api-sdk-seed.ts)
+describes the generated-SDK surface, and
+[`public-agent-mcp-discovery.ts`](../../apps/openagents.com/workers/api/src/public-agent-mcp-discovery.ts)
+publishes the matching public MCP manifest. Full Auto's control surface
+should follow that exact convention rather than inventing a fourth pattern.
+
+Recommended in two phases, because the honest cheap thing to build now is
+not the same as the eventual right thing:
+
+**Phase 1 — local, same-machine, the actually-easy version for now.** Desktop
+main hosts a loopback-only (`127.0.0.1`), opt-in-only HTTP server describing
+a small OpenAPI surface: `GET /v1/full-auto` (list), `GET
+/v1/full-auto/{threadRef}` (status), `POST .../enable`, `POST .../disable`,
+`POST .../continue-now` (force an immediate reconciliation attempt instead of
+waiting for the next natural trigger), and `GET .../turns` (bounded recent
+turn/outcome history). Gate it behind an opt-in flag and a scoped, locally
+minted bearer credential, exactly the way the existing Harness MCP pilot
+already does for Pylon (`apps/pylon/src/harness-mcp-server.ts`, flag
+`OPENAGENTS_PYLON_CODEX_HARNESS_MCP_PILOT`, scopes minted via
+`@openagentsinc/environment-auth`) — do not invent a new auth pattern for
+this. A thin MCP server and a thin CLI are generated (or, if generation
+tooling for this pair isn't wired up yet, hand-written as a deliberately
+thin pass-through) from that one spec. This is what lets an agent on the
+owner's own machine — this session, right now, is exactly that case — call
+`full_auto.enable`/`full_auto.status`/`full_auto.continue_now` directly
+during a chat.
+
+**Phase 2 — cross-machine, later.** Extend the already-live
+`openagents.com` OpenAPI/Omni-SDK/public-MCP triad with Full Auto routes
+that relay through Khala Sync to a specific owner's running Desktop
+instance, mirroring the existing Khala → Pylon → Codex delegation runbook's
+cross-machine dispatch pattern (root workspace `CLAUDE.md`, `docs/khala/`).
+That is what lets an agent running anywhere — not only one on the owner's
+own machine — direct the owner's Desktop app. It is real, separate work
+(a command channel into an already-running Desktop process that today only
+listens on local IPC) and should stay explicitly out of scope until Phase 1
+and the hardening items above it are done.
+
+### This surface must not widen the authority gaps already found above
+
+An externally-triggerable enable endpoint is a materially larger attack
+surface than a UI button a human has to physically click, so the mitigations
+already described in this document stop being optional the moment this
+control surface exists:
+
+- An `enable` call must name the repository/workspace it expects; the
+  server must refuse (not silently redirect) if that does not match the
+  thread's actual granted workspace — this is the Finding 2 interim
+  mitigation above, promoted from "worth doing" to "required before this
+  ships."
+- Programmatic `enable` must never itself grant a new, previously-ungranted
+  repository — granting stays a human/UI action; the API can only turn Full
+  Auto on for a thread whose workspace is already granted.
+- Every programmatic call (enable, disable, continue-now) must produce a
+  durable, distinctly-attributed receipt so the owner can later tell, per
+  thread, whether a given run was started by their own click or by an agent
+  acting on their instruction, and by which agent/session.
+- `continue-now` must go through the exact same `reconcileFullAutoThreads`
+  path as every other trigger (Finding 3's non-idempotency applies to it
+  identically) — it is a new trigger point, not a new dispatch mechanism.
+
+### This capability makes Finding 4 a hard blocking dependency, not a nice-to-have
+
+The owner's stated requirement — start it via an agent, then watch it happen
+in the actual Desktop UI — cannot be satisfied while Finding 4 stands as
+written. If the UI shows nothing until a background turn fully completes,
+an owner who just asked an agent to kick off Full Auto and switches to the
+Desktop window sees no confirmation that anything is happening at all. At
+minimum, a coarse per-thread state (idle / turn running / turn completed /
+turn failed / cap reached) must render in the composer and thread list
+before this feature is usable the way it was asked for. This does not
+require the token-streaming Finding 4 already deliberately leaves cut — it
+requires only that "something is running right now" become a real,
+type-checked, rendered fact instead of silence until the end.
+
+### Other under-specified dimensions of the full feature
+
+Named here so they are not lost, not designed in depth:
+
+- **Cost/token visibility.** Nothing today surfaces how much an unattended
+  Full Auto run has spent. An owner (or an agent managing it on their
+  behalf) directing potentially dozens of unattended continuations has no
+  running total to watch or cap against, separate from the 20-turn count
+  cap.
+- **Pause vs. stop.** Today there is only enabled/disabled plus the hard
+  cap. There is no "pause without losing the continuation count" or
+  "pause for N minutes" concept — every stop is the same as never having
+  started that run again from the counter's perspective.
+- **Concurrent/multi-repo Full Auto.** Explicitly cut in the ProductSpec,
+  but "start Full Auto on repo A and repo B, let me watch both" is an
+  obviously natural agent-driven request once programmatic control exists.
+  Worth tracking as a likely near-term ask even though it stays out of
+  scope today.
+- **Outcome-quality evaluation.** Everything in this document and its
+  ProductSpec is about mechanism safety — does it survive a restart, does
+  it stop when told to, does it stay in the granted repo. Nothing evaluates
+  whether the "one concrete useful thing" Codex actually picked, turn after
+  turn, was good work. That is a distinct, unaddressed product question.
+- **Attention/notification model.** Full Auto runs while the owner is not
+  looking, by design. Beyond an in-app system note on a thread the owner
+  may not have open, there is no OS-level notification or digest for
+  "something worth your attention happened while you were away."
+
+### Addition to the recommended hardening order
+
+Item 8 (fable addition, ordered after the original items 1-4): **build the
+Phase 1 local control surface only after dispatch is exactly-once and the
+stop control is truthful.** Exposing `enable`/`continue-now` to programmatic
+callers before those land does not just carry over the existing correctness
+and safety gaps from Findings 2, 3, and 4 — it multiplies them, because a
+script or agent can now trigger the double-dispatch and stale-workspace
+failure modes far faster and more repeatably than a human clicking a toggle
+ever would.
