@@ -257,6 +257,38 @@ describe("React typed timeline projection", () => {
 })
 
 describe("React timeline scroll contract", () => {
+  test("keeps completed reasoning in the primary trace while settled tools remain foldable", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const reasoning: ReactTimelineRecord = {
+      ...record("reasoning", 0),
+      kind: "reasoning",
+      label: "Reasoning",
+      body: "Checked the cache and found the session token had expired.",
+      status: "completed",
+      item: {
+        kind: "reasoning",
+        source: "codex",
+        summary: "Checked the cache and found the session token had expired.",
+        status: "completed",
+      },
+    }
+    const work = (key: string, sequence: number): ReactTimelineRecord => ({
+      ...record(key, sequence), kind: "tool_call", label: "Run command", status: "completed",
+    })
+    root.render(<ReactTimeline sessionKey="thread-reasoning-primary" records={[
+      reasoning, work("done-a", 1), work("done-b", 2),
+    ]} loadedItemCount={3} offset={0} totalItems={3} loadingEdge={null} report={report} />)
+    await settle()
+
+    const reasoningRow = container.querySelector<HTMLElement>('[data-message-id="reasoning"]')
+    expect(reasoningRow?.textContent).toContain("Checked the cache")
+    expect(reasoningRow?.querySelector("summary")).toBeNull()
+    expect(container.querySelector('.oa-react-work-group-summary')?.textContent).toBe("Worked2 activities")
+    expect(container.querySelector('[data-timeline-key="done-a"]')).toBeNull()
+    root.unmount()
+  })
+
   test("folds settled work, exposes active work, and shows streaming state without accounting noise", async () => {
     const { container } = installDom()
     const root = createRoot(container)

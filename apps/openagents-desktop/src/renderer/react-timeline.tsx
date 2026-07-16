@@ -327,6 +327,12 @@ const isMessageRecord = (record: ReactTimelineRecord): boolean =>
 const isWorkRecord = (record: ReactTimelineRecord): boolean =>
   ["reasoning", "tool_call", "tool_result", "approval", "collaboration"].includes(record.kind)
 
+// Reasoning is authored transcript content, even after its streaming lifecycle
+// completes. Keep it on the primary timeline instead of letting the settled
+// work disclosure absorb it alongside commands and tool activity.
+const isFoldableWorkRecord = (record: ReactTimelineRecord): boolean =>
+  isWorkRecord(record) && record.kind !== "reasoning"
+
 /**
  * `WorkbenchItem` kinds (#8859) rendered through `dispatchWorkbenchItem`
  * (`dispatch.tsx`, #8860) instead of a bespoke branch below. Most of these
@@ -626,7 +632,7 @@ const TimelineRecords = ({ records, report }: {
   const output: Array<ReactElement> = []
   for (let index = 0; index < records.length;) {
     const record = records[index]!
-    if (!isWorkRecord(record)) {
+    if (!isFoldableWorkRecord(record)) {
       output.push(<MessageScrollerItem key={record.key} messageId={record.key} scrollAnchor={isUserRecord(record)}>
         <MemoTimelineItemBoundary record={record} report={report} />
       </MessageScrollerItem>)
@@ -634,7 +640,7 @@ const TimelineRecords = ({ records, report }: {
       continue
     }
     const group: Array<ReactTimelineRecord> = []
-    while (index < records.length && isWorkRecord(records[index]!)) group.push(records[index++]!)
+    while (index < records.length && isFoldableWorkRecord(records[index]!)) group.push(records[index++]!)
     if (group.length === 1) {
       output.push(<MessageScrollerItem key={group[0]!.key} messageId={group[0]!.key}>
         <MemoTimelineItemBoundary record={group[0]!} report={report} />
