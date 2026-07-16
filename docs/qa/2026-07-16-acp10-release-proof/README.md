@@ -25,8 +25,8 @@ never changes Grok's gate.
 
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
-| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    23 live passes |                                 10 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    24 live passes |                                  8 | experimental |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    23 live passes |                                  9 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    24 live passes |                                  7 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -124,7 +124,9 @@ ordinary HOME cancelled exactly once in the client decision callback before
 log out, or change keychain state. This proves client-side cancellation, not
 pending-device login, expiry, logout, or clean re-authentication. The Grok run
 used its existing cached-token path. It does **not** prove intentional
-`xai.api_key`, auth expiry, logout, or re-authentication.
+`xai.api_key` or auth expiry. Neither exact peer advertised ACP `auth.logout`;
+the matrix records logout as unsupported rather than demanding an unavailable
+method. Fresh-process primary authentication is covered independently.
 
 ## Hermetic evidence
 
@@ -152,12 +154,12 @@ tool/plan/config/usage variants, and non-Darwin-arm64 platform evidence.
 
 Provider-specific gaps:
 
-- Grok: intentional valid `xai.api_key`, auth cancel/expiry/logout, the
+- Grok: intentional valid `xai.api_key`, auth cancel/expiry, the
   non-underscore ask-question spelling, full permission/reverse authority, and
   rich plan/config/usage streaming. The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.
-- Cursor: pending-device login/expiry/re-auth, permission outcomes, and live
+- Cursor: pending-device login/expiry, permission outcomes, and live
   `cursor/ask_question`/`cursor/update_todos`. Model listing, create-plan,
   list/load, mode/config round trips, stream/reverse cancellation, and
   restart/load are proven.

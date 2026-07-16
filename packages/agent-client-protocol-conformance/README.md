@@ -29,6 +29,11 @@ binary transcripts and not release compatibility claims. The checked ACP-10
 release matrix owns pinned real-binary release admission. Stable, unstable, and
 vendor extension fixtures remain in separate namespaces.
 
+Live initialize summaries retain only safe identity/capability keys. This
+includes nested auth-capability keys so unavailable stable methods such as
+`auth.logout` can be recorded as exact unsupported behavior instead of an
+invented release blocker.
+
 The product lifecycle consuming these fixtures is specified by the
 [Agent Client Protocol session runtime ADR](../../docs/adr/2026-07-16-agent-client-session-runtime.md).
 

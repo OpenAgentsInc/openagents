@@ -45,6 +45,7 @@ export const summarizeSafeInitialize = (value: unknown): unknown => {
   const initialize = object(value);
   const info = object(initialize.agentInfo);
   const capabilities = object(initialize.agentCapabilities);
+  const authCapabilities = object(capabilities.auth);
   const sessionCapabilities = object(capabilities.sessionCapabilities);
   return Object.freeze({
     protocolVersion: initialize.protocolVersion,
@@ -57,6 +58,9 @@ export const summarizeSafeInitialize = (value: unknown): unknown => {
         }
       : {}),
     advertisedCapabilityKeys: Object.keys(capabilities)
+      .filter((key) => key !== "_meta")
+      .toSorted(),
+    advertisedAuthCapabilityKeys: Object.keys(authCapabilities)
       .filter((key) => key !== "_meta")
       .toSorted(),
     advertisedSessionCapabilityKeys: Object.keys(sessionCapabilities).toSorted(),

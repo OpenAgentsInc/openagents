@@ -82,11 +82,9 @@ const hermeticProductionScenarios = new Set<string>([
   "queue-stall-timeout-race",
   "trust-controls",
 ]);
-const packagedDesktopScenarios = new Set<string>([
-  "desktop-clean-machine",
-  "support-bundle",
-]);
+const packagedDesktopScenarios = new Set<string>(["desktop-clean-machine", "support-bundle"]);
 const grokNotApplicableScenarios = new Set<string>([
+  "auth-logout-reauth",
   "session-resume-close-delete",
   "model-mode-config",
   "cursor-wire-launch",
@@ -96,6 +94,7 @@ const grokNotApplicableScenarios = new Set<string>([
 ]);
 const cursorNotApplicableScenarios = new Set<string>([
   "auth-secondary",
+  "auth-logout-reauth",
   "session-resume-close-delete",
   "fs-terminal-enabled",
   "grok-wire-launch",
@@ -115,10 +114,7 @@ export const acpReleaseEvidenceClass = (
   return "live-peer";
 };
 
-const evidenceSatisfies = (
-  evidenceClass: AcpReleaseEvidenceClass,
-  result: unknown,
-): boolean =>
+const evidenceSatisfies = (evidenceClass: AcpReleaseEvidenceClass, result: unknown): boolean =>
   evidenceClass === "not-applicable"
     ? result === "unsupported"
     : evidenceClass === "hermetic-production"
@@ -163,9 +159,7 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
     : undefined;
 
 const strings = (value: unknown): ReadonlyArray<string> | undefined =>
-  Array.isArray(value) && value.every((entry) => typeof entry === "string")
-    ? value
-    : undefined;
+  Array.isArray(value) && value.every((entry) => typeof entry === "string") ? value : undefined;
 
 const nonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
@@ -199,7 +193,8 @@ export const validateAcpReleaseMatrix = (
   const matrix = object(value);
   if (matrix === undefined) return { valid: false, errors: ["matrix must be an object"] };
   if (matrix.format !== "openagents-acp-release-matrix-v1") errors.push("unexpected format");
-  if (matrix.protocol !== "Agent Client Protocol") errors.push("protocol must be Agent Client Protocol");
+  if (matrix.protocol !== "Agent Client Protocol")
+    errors.push("protocol must be Agent Client Protocol");
   const exclusions = strings(matrix.protocolExclusions);
   if (
     exclusions === undefined ||
@@ -222,7 +217,8 @@ export const validateAcpReleaseMatrix = (
   const openAgents = object(matrix.openAgents);
   if (openAgents === undefined) errors.push("OpenAgents release identity is required");
   else {
-    if (!gitRevision(openAgents.revision)) errors.push("OpenAgents revision must be a full Git SHA");
+    if (!gitRevision(openAgents.revision))
+      errors.push("OpenAgents revision must be a full Git SHA");
     if (!gitRevision(openAgents.desktopIntegrationRevision))
       errors.push("Desktop integration revision must be a full Git SHA");
     if (!nonEmptyString(openAgents.build)) errors.push("OpenAgents build identity is required");
@@ -279,7 +275,8 @@ export const validateAcpReleaseMatrix = (
     else {
       if (JSON.stringify(strings(binary.command)) !== JSON.stringify(expectedCommand))
         errors.push(`${peerName}: launch command does not match the trusted profile`);
-      if (!nonEmptyString(binary.reportedVersion)) errors.push(`${peerName}: reported version is required`);
+      if (!nonEmptyString(binary.reportedVersion))
+        errors.push(`${peerName}: reported version is required`);
       if (
         !nonEmptyString(binary.resolvedExecutableName) ||
         binary.resolvedExecutableName.includes("/") ||
@@ -331,7 +328,8 @@ export const validateAcpReleaseMatrix = (
         errors.push(`${peerName}/${id}: invalid result`);
       if (!evidenceSatisfies(evidenceClass, scenario.result)) allRequiredSatisfied = false;
       const evidenceRefs = strings(scenario.evidenceRefs);
-      if (evidenceRefs === undefined) errors.push(`${peerName}/${id}: evidenceRefs must be strings`);
+      if (evidenceRefs === undefined)
+        errors.push(`${peerName}/${id}: evidenceRefs must be strings`);
       else if (
         evidenceRefs.some(
           (ref) =>
@@ -351,9 +349,7 @@ export const validateAcpReleaseMatrix = (
         errors.push(`${peerName}/${id}: safeDetail is required`);
     }
     if (new Set(ids).size !== ids.length) errors.push(`${peerName}: scenario ids must be unique`);
-    if (
-      JSON.stringify(ids.toSorted()) !== JSON.stringify([...ACP_RELEASE_SCENARIO_IDS].toSorted())
-    )
+    if (JSON.stringify(ids.toSorted()) !== JSON.stringify([...ACP_RELEASE_SCENARIO_IDS].toSorted()))
       errors.push(`${peerName}: scenario catalog is incomplete or unknown`);
     if (scenarioCatalog === undefined) scenarioCatalog = ids.toSorted();
     else if (JSON.stringify(scenarioCatalog) !== JSON.stringify(ids.toSorted()))
@@ -365,6 +361,7 @@ export const validateAcpReleaseMatrix = (
   }
   if (!peerNames.has("grok") || !peerNames.has("cursor"))
     errors.push("matrix must independently identify Grok and Cursor");
-  if (containsExportedSecret(matrix)) errors.push("matrix contains secret-shaped or host-private data");
+  if (containsExportedSecret(matrix))
+    errors.push("matrix contains secret-shaped or host-private data");
   return { valid: errors.length === 0, errors };
 };

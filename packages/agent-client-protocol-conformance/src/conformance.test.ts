@@ -140,6 +140,7 @@ describe("stable Agent Client Protocol conformance", () => {
       protocolVersion: 1,
       agentCapabilities: {
         loadSession: true,
+        auth: { logout: {}, _meta: { token: "secret-token" } },
         sessionCapabilities: { resume: {} },
         _meta: { hostname: "secret-host", agentInstanceId: "secret-id" },
       },
@@ -148,7 +149,8 @@ describe("stable Agent Client Protocol conformance", () => {
     });
     expect(summary).toEqual({
       protocolVersion: 1,
-      advertisedCapabilityKeys: ["loadSession", "sessionCapabilities"],
+      advertisedCapabilityKeys: ["auth", "loadSession", "sessionCapabilities"],
+      advertisedAuthCapabilityKeys: ["logout"],
       advertisedSessionCapabilityKeys: ["resume"],
       authMethodIds: ["cached_token"],
     });
@@ -838,14 +840,11 @@ describe("MCP custody, durable evidence, and deterministic faults", () => {
 
   it("keeps named-peer release claims independent, fresh, redacted, and live-gated", () => {
     const matrix = JSON.parse(
-      readFileSync(
-        resolve(import.meta.dirname, "../compatibility/release-matrix.json"),
-        "utf8",
-      ),
+      readFileSync(resolve(import.meta.dirname, "../compatibility/release-matrix.json"), "utf8"),
     ) as Record<string, unknown>;
-    expect(
-      validateAcpReleaseMatrix(matrix, { now: new Date("2026-07-16T16:00:00.000Z") }),
-    ).toEqual({ valid: true, errors: [] });
+    expect(validateAcpReleaseMatrix(matrix, { now: new Date("2026-07-16T16:00:00.000Z") })).toEqual(
+      { valid: true, errors: [] },
+    );
 
     const promoted = structuredClone(matrix) as {
       peers: Array<{ claimState: string; releaseEligible: boolean }>;

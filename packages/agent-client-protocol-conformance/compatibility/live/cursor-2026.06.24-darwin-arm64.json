@@ -24,6 +24,7 @@
       "promptCapabilities",
       "sessionCapabilities"
     ],
+    "advertisedAuthCapabilityKeys": [],
     "advertisedSessionCapabilityKeys": ["list"]
   },
   "scenarios": {
