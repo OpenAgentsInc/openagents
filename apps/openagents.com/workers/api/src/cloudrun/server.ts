@@ -35,7 +35,12 @@ import {
 // #8652 PORTAL-1: client portal mounts at openagents.com/portal (EN surface).
 import { handlePortalUiRequest } from './portal-ui'
 import { isPublicSiteRootRequest } from './public-site-host'
-import { assertStartUiArtifactsExist, handleStartUiRequest } from './start-ui'
+import {
+  assertStartUiArtifactsExist,
+  handleStartUiRequest,
+  isStartDocumentRequestPath,
+  isStartServerRequestPath,
+} from './start-ui'
 import {
   type SyncBridgeData,
   isSyncConnectUpgrade,
@@ -111,6 +116,34 @@ const main = async (): Promise<void> => {
 
       if (url.pathname === '/internal/healthz') {
         return Response.json({ ok: true, service: 'openagents-monolith' })
+      }
+
+      // Start owns a deliberately tiny set of server endpoints in addition to
+      // its documents. Dispatch them explicitly before any Worker API route so
+      // production cannot silently turn a healthy Start handler into the
+      // Worker's generic not_found response.
+      if (
+        !isStartDocumentRequestPath(url.pathname) &&
+        isStartServerRequestPath(url.pathname)
+      ) {
+        const response = await handleStartUiRequest(
+          request,
+          runtime.env as unknown as Readonly<Record<string, unknown>>,
+          ctx,
+        )
+        if (response === undefined) {
+          return Response.json(
+            { error: 'start_server_route_unavailable', path: url.pathname },
+            { status: 500 },
+          )
+        }
+        const headers = new Headers(response.headers)
+        headers.set('x-openagents-route-owner', 'start')
+        return new Response(response.body, {
+          headers,
+          status: response.status,
+          statusText: response.statusText,
+        })
       }
 
       // Sarah removed at owner direction 2026-07-10 (epic #8610; supersedes
