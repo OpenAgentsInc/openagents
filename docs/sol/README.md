@@ -75,6 +75,10 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-16-openagents-desktop-full-auto-deep-dive.md`](./2026-07-16-openagents-desktop-full-auto-deep-dive.md)
+  — current source, runtime, test, release, and proof-rung audit of Desktop Full
+  Auto; distinguishes restart-persistent intent from exactly-once,
+  WorkContext-bound, distributed, live-proven unattended execution.
 - [`2026-07-15-khala-ui-components-workbench-receipt.md`](./2026-07-15-khala-ui-components-workbench-receipt.md)
   — deterministic implementation proof for the complete 30-capability,
   non-audio Khala UI workbench at `/components/khala`, its seven-package Effect

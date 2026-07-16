@@ -2,10 +2,14 @@
   "name": "@effect-native/khala-ui",
   "version": "0.0.0-openagents.8855",
   "private": true,
-  "type": "module",
   "license": "MIT",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "dependencies": {
     "@effect-native/tokens": "workspace:*",
     "effect": "catalog:"
