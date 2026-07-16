@@ -1138,6 +1138,31 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/agent-client-protocol:
+    dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: 1.2.1
+        version: 1.2.1(zod@3.25.76)
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.1
+        version: 24.13.1
+      fast-check:
+        specifier: ^4.8.0
+        version: 4.9.0
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
+
   packages/agent-readiness:
     dependencies:
       '@openagentsinc/runtime-platform':
@@ -1929,6 +1954,11 @@ importers:
   types/vite-plus-matchers: {}
 
 packages:
+
+  '@agentclientprotocol/sdk@1.2.1':
+    resolution: {integrity: sha512-jwYUdOQR7tc+Zfch53VL4JJyUNK/46q03uUTYb+PjECsmnNl94XFXOfYLJ8RBpMNidXd1rpOAVgb0vqD98xImA==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@ai-sdk/gateway@4.0.12':
     resolution: {integrity: sha512-Y7Fy8xJwPz7ZC0DhSQG3HIVk+drup42hrIj6yqKlib3CxwiR0F7nYyUI8+kPrEtbZEoyKoRstvT4/o0HEyFBHA==}
@@ -9985,6 +10015,10 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@agentclientprotocol/sdk@1.2.1(zod@3.25.76)':
+    dependencies:
+      zod: 3.25.76
 
   '@ai-sdk/gateway@4.0.12(zod@3.25.76)':
     dependencies:

@@ -17,6 +17,8 @@ import {
   DesktopTimelineMessage,
   DesktopTimelineNotice,
   DesktopWorkEntry,
+  dispatchWorkbenchItem,
+  type WorkbenchDispatchItem,
 } from "@openagentsinc/ui/desktop-workbench"
 import type { ReactElement, ReactNode } from "react"
 import { Component, createElement, memo, useEffect, useMemo, useRef, useState } from "react"
@@ -235,6 +237,22 @@ const isMessageRecord = (record: ReactTimelineRecord): boolean =>
 const isWorkRecord = (record: ReactTimelineRecord): boolean =>
   ["reasoning", "tool_call", "tool_result", "approval", "collaboration"].includes(record.kind)
 
+/**
+ * `WorkbenchItem` kinds (#8859) still rendered through the generic
+ * `DesktopWorkEntry`/`DesktopToolCallCard` shell in `dispatch.tsx` (#8860).
+ * When a record carries a typed item of one of these kinds, `TimelineItem`
+ * defers entirely to `dispatchWorkbenchItem` instead of its own string-based
+ * branches — today that is a no-op (same generic shell), but it means each
+ * Wave-2 lane (T4-T12, epic #8857) ships its polished card by editing ONLY
+ * its own `dispatch.tsx` branch, with zero further changes here. `message`,
+ * `plan`, `agent`, and `notice` keep their existing bespoke branches below
+ * unchanged (not part of Wave 2's scope).
+ */
+const dispatchableWorkbenchKinds: ReadonlySet<WorkbenchItem["kind"]> = new Set([
+  "command", "fileChange", "toolCall", "reasoning", "approval",
+  "meter", "compaction", "sleep", "review", "hook",
+])
+
 const compact = (value: string, limit = 180): string => {
   const normalized = value.replaceAll("\\n", " ").replaceAll(/\s+/g, " ").trim()
   return normalized.length <= limit ? normalized : `${normalized.slice(0, limit - 1)}…`
@@ -252,6 +270,12 @@ export const TimelineItem = ({ record, report }: {
 }): ReactElement => {
   if (record.kind === "lifecycle" && !["failed", "errored", "interrupted"].includes(record.status ?? "")) {
     return <span data-timeline-key={record.key} data-kind="lifecycle" hidden />
+  }
+  if (record.item !== undefined && dispatchableWorkbenchKinds.has(record.item.kind)) {
+    return dispatchWorkbenchItem(record.item as WorkbenchDispatchItem, {
+      itemKey: record.key,
+      sequence: record.sequence,
+    })
   }
   if (record.kind === "collaboration") {
     const status = ["failed", "errored", "interrupted"].includes(record.status ?? "")
