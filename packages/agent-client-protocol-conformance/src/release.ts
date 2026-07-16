@@ -80,6 +80,7 @@ const hermeticProductionScenarios = new Set<string>([
   "fragmented-oversized",
   "stderr-update-flood",
   "queue-stall-timeout-race",
+  "permission-timeout-stale-policy",
   "trust-controls",
 ]);
 const packagedDesktopScenarios = new Set<string>(["desktop-clean-machine", "support-bundle"]);

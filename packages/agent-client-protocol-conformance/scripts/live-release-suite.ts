@@ -260,7 +260,7 @@ const qualifyCursorExtensions = async (
         prompt: [
           {
             type: "text",
-            text: "Create a file named PERMISSION_ALLOW_PROOF.txt containing the word allowed.",
+            text: "You must call WebSearch exactly once for the query OpenAgents ACP permission approval proof, then summarize the result in one sentence.",
           },
         ],
       })
@@ -272,7 +272,7 @@ const qualifyCursorExtensions = async (
         prompt: [
           {
             type: "text",
-            text: "Create a file named PERMISSION_REFUSE_PROOF.txt containing the word refused.",
+            text: "You must call WebSearch exactly once for the query OpenAgents ACP permission refusal proof, then acknowledge if the search is rejected.",
           },
         ],
       })
@@ -393,7 +393,17 @@ const qualifyGrokReverse = async (
       methodId: "cached_token",
       _meta: { headless: true },
     });
-    const attached = object(await transport.request("session/new", { cwd: root, mcpServers: [] }));
+    const attached = object(
+      await transport.request("session/new", {
+        cwd: root,
+        mcpServers: [],
+        _meta: {
+          yoloMode: false,
+          autoMode: false,
+          clientIdentifier: "openagents-release-qualification",
+        },
+      }),
+    );
     if (typeof attached.sessionId !== "string") throw new Error("Grok returned no session id");
     for (const text of [
       "Before answering, call ask_user_question with one multiple-choice question, accept the answer, then reply briefly.",
@@ -414,10 +424,28 @@ const qualifyGrokReverse = async (
       })
       .catch(() => undefined);
     preferApproval = false;
+    const refusalSession = object(
+      await transport.request("session/new", {
+        cwd: root,
+        mcpServers: [],
+        _meta: {
+          yoloMode: false,
+          autoMode: false,
+          clientIdentifier: "openagents-release-qualification",
+        },
+      }),
+    );
+    if (typeof refusalSession.sessionId !== "string")
+      throw new Error("Grok returned no refusal-session id");
     await transport
       .request("session/prompt", {
-        sessionId: attached.sessionId,
-        prompt: [{ type: "text", text: "Create PERMISSION_REFUSE_GROK.txt with one word." }],
+        sessionId: refusalSession.sessionId,
+        prompt: [
+          {
+            type: "text",
+            text: "Run the shell command mkdir PERMISSION_REFUSE_GROK, then acknowledge if permission is rejected.",
+          },
+        ],
       })
       .catch(() => undefined);
     return {
