@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import type { FullAutoProfile, FullAutoRegistry } from "./full-auto-registry.ts"
+import type { FullAutoProfile, FullAutoRecord, FullAutoRegistry } from "./full-auto-registry.ts"
 
 /**
  * Full Auto (#8853): the single decision function called from two trigger
@@ -39,6 +39,32 @@ export const FULL_AUTO_FAILURE_BACKOFF_MAX_MS = 30 * 60_000
 /** Bounded exponential backoff: min(2^failures * 30s, 30min). */
 export const fullAutoFailureBackoffMs = (consecutiveFailures: number): number =>
   Math.min(2 ** consecutiveFailures * FULL_AUTO_FAILURE_BACKOFF_BASE_MS, FULL_AUTO_FAILURE_BACKOFF_MAX_MS)
+
+/**
+ * Apply the composer toggle at the durable boundary. Enabling is also a
+ * dispatch trigger: Full Auto means "go now", including on an empty new
+ * session, rather than "wait for a separate Send click". The supplied
+ * scheduler must enter the same serialized reconciliation path used by turn
+ * completion and startup so this adds no parallel dispatch mechanism.
+ */
+export const applyFullAutoComposerToggle = (input: Readonly<{
+  registry: FullAutoRegistry
+  threadRef: string
+  enabled: boolean
+  workspaceRef: string
+  profile: FullAutoProfile
+  scheduleReconciliation: () => void
+}>): FullAutoRecord => {
+  const record = input.registry.set(
+    input.threadRef,
+    input.enabled,
+    input.enabled
+      ? { workspaceRef: input.workspaceRef, profile: input.profile }
+      : { disabledBy: "ui_toggle" },
+  )
+  if (input.enabled) input.scheduleReconciliation()
+  return record
+}
 
 /**
  * FA-H3 (#8876): a promise-chain mutex. Each queued task awaits every task

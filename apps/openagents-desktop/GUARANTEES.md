@@ -690,7 +690,9 @@ Contract: `openagents_desktop.chat.composer_image_input.v1`.
 - Toggling Full Auto persists to main immediately via
   `CodexLocalFullAutoSetChannel`, independent of whether a turn is in flight,
   so a toggle-off is a durable stop even if the app quits before the next
-  turn would have started.
+  turn would have started. Toggling it on is itself an immediate trigger into
+  the same serialized reconciliation path: on a new empty session the first
+  autonomous turn starts without a separate message or Send action.
 - Because the registry and reconciliation live in main and on disk, the loop
   **does** survive a renderer reload and a full app restart at the durable
   module level: a thread left enabled with nothing in flight resumes its next

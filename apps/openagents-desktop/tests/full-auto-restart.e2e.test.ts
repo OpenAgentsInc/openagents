@@ -6,6 +6,7 @@ import path from "node:path"
 import { decodeCodexLocalContinuationProfile } from "../src/codex-local-contract.ts"
 import { openFullAutoRegistry, type FullAutoRegistry } from "../src/full-auto-registry.ts"
 import {
+  applyFullAutoComposerToggle,
   FULL_AUTO_MAX_CONSECUTIVE_FAILURES,
   FULL_AUTO_MAX_CONTINUATIONS,
   fullAutoFailureBackoffMs,
@@ -44,6 +45,59 @@ const reconcile = (
 })
 
 describe("Full Auto process restart", () => {
+  test("enabling from the composer schedules the first autonomous turn immediately", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-toggle-go-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      let scheduled = 0
+      applyFullAutoComposerToggle({
+        registry,
+        threadRef: "thread-new-session",
+        enabled: true,
+        workspaceRef: GRANTED_WORKSPACE,
+        profile: { lane: "codex-local" },
+        scheduleReconciliation: () => { scheduled += 1 },
+      })
+
+      expect(scheduled).toBe(1)
+      expect(registry.get("thread-new-session")).toBe(true)
+      expect(registry.record("thread-new-session")?.workspaceRef).toBe(GRANTED_WORKSPACE)
+
+      const dispatched: string[] = []
+      await reconcile(registry, {
+        dispatch: async ({ message }) => {
+          dispatched.push(message)
+          return { ok: true }
+        },
+      })
+      expect(dispatched).toEqual([expect.stringContaining("Continue Full Auto")])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("disabling from the composer does not schedule another turn", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-toggle-stop-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      registry.set("thread-stop", true, { workspaceRef: GRANTED_WORKSPACE })
+      let scheduled = 0
+      applyFullAutoComposerToggle({
+        registry,
+        threadRef: "thread-stop",
+        enabled: false,
+        workspaceRef: GRANTED_WORKSPACE,
+        profile: { lane: "codex-local" },
+        scheduleReconciliation: () => { scheduled += 1 },
+      })
+      expect(scheduled).toBe(0)
+      expect(registry.get("thread-stop")).toBe(false)
+      expect(registry.record("thread-stop")?.disabledBy).toBe("ui_toggle")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("a thread left enabled by Runtime A resumes on Runtime B with no manual re-toggle or re-send", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-restart-"))
     try {

@@ -285,7 +285,7 @@ import { localRuntimePersistenceOperation } from "./local-runtime-event-persiste
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { reconcileLocalTurns } from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
-import { FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
+import { applyFullAutoComposerToggle, FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
@@ -3808,13 +3808,17 @@ ipcMain.handle(CodexLocalFullAutoSetChannel, async (_event, value: unknown) => {
   // Reconciliation later refuses to dispatch when this binding no longer
   // matches. A pre-upgrade record with no binding is rebound here on its
   // next enable; until then it fails closed at dispatch.
-  fullAutoRegistry.set(
-    request.threadRef,
-    request.enabled,
-    request.enabled
-      ? { workspaceRef: resolveDesktopLocalWorkspaceRoot(), profile: { lane: FULL_AUTO_DEFAULT_LANE } }
-      : { disabledBy: "ui_toggle" },
-  )
+  applyFullAutoComposerToggle({
+    registry: fullAutoRegistry,
+    threadRef: request.threadRef,
+    enabled: request.enabled,
+    workspaceRef: resolveDesktopLocalWorkspaceRoot(),
+    profile: { lane: FULL_AUTO_DEFAULT_LANE },
+    // Enabling is an immediate trigger. Reconciliation is fire-and-forget
+    // because it owns the whole background turn lifetime; the toggle IPC must
+    // acknowledge promptly while the serialized queue starts work now.
+    scheduleReconciliation: () => { void runFullAutoReconciliation() },
+  })
   if (!request.enabled) {
     appendFullAutoSystemNote(
       request.threadRef,
@@ -4288,6 +4292,54 @@ const smokeReactTurn = `(async () => {
     turnVisible,
     reviewAbsent: reviewTrigger === undefined && reviewSurface === null,
     forbidden,
+  }
+})()`
+
+// Full Auto immediate-start regression: from a genuinely blank new session,
+// the only action performed is clicking the composer toggle. Main must bind
+// the session and start the first autonomous turn without a Send click. Turn
+// the toggle back off as soon as dispatch is observed so this bounded smoke
+// proves one turn rather than intentionally exercising the continuation cap.
+const smokeReactFullAutoImmediate = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 60000
+  const buttons = () => [...document.querySelectorAll('button')]
+  const newSession = buttons().find(button => button.textContent?.trim() === 'New session')
+  if (!(newSession instanceof HTMLButtonElement)) return { ok: false, reason: 'new session unavailable' }
+  newSession.click()
+  const timeline = () => [...document.querySelectorAll('.oa-react-timeline-item')]
+  while (Date.now() < deadline && timeline().length !== 0) await wait(25)
+  const toggle = document.querySelector('[data-en-key="shell-full-auto-toggle"]')
+  if (!(toggle instanceof HTMLButtonElement)) return { ok: false, reason: 'Full Auto toggle unavailable' }
+  const completedTurns = () => timeline().filter(item => (item.textContent ?? '').includes('Codex local fixture proof.')).length
+  const completedBefore = completedTurns()
+  toggle.click()
+  let runningObserved = false
+  let pressedObserved = false
+  let turnObserved = false
+  while (Date.now() < deadline && !(runningObserved || turnObserved)) {
+    runningObserved = document.querySelector('[data-full-auto-status="running"]') !== null
+    pressedObserved ||= toggle.getAttribute('aria-pressed') === 'true'
+    turnObserved = timeline().length > 0
+    if (!(runningObserved || turnObserved)) await wait(10)
+  }
+  // Stop the loop while its first turn is running; this click is the only
+  // action after toggle-on and cannot be mistaken for a composer Send.
+  const activeToggle = document.querySelector('[data-en-key="shell-full-auto-toggle"]')
+  if (activeToggle instanceof HTMLButtonElement && activeToggle.getAttribute('aria-pressed') === 'true') activeToggle.click()
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-full-auto-toggle"]')?.getAttribute('aria-pressed') !== 'false') {
+    await wait(25)
+  }
+  while (Date.now() < deadline && completedTurns() <= completedBefore) await wait(50)
+  const finalToggle = document.querySelector('[data-en-key="shell-full-auto-toggle"]')
+  return {
+    ok: (pressedObserved || runningObserved || turnObserved) && completedTurns() > completedBefore &&
+      finalToggle?.getAttribute('aria-pressed') === 'false',
+    pressedObserved,
+    runningObserved,
+    turnObserved,
+    assistantCompleted: completedTurns() > completedBefore,
+    toggleStopped: finalToggle?.getAttribute('aria-pressed') === 'false',
   }
 })()`
 
@@ -6181,6 +6233,7 @@ const runSmoke = (window: BrowserWindow): void => {
             "[openagents-desktop smoke] react-authoritative-decision OK",
             JSON.stringify(authoritativeDecision),
           )
+          await step("react-full-auto-immediate", smokeReactFullAutoImmediate)
           await step("react-navigation-history", smokeReactNavigationHistory)
           await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
           await step("react-sidebar-collapse-persisted", smokeReactCollapseForReload)

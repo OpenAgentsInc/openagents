@@ -114,9 +114,8 @@ Full Auto lets Codex keep choosing and completing the next useful task in the cu
 
 1. Open the Codex session and workspace you want to use.
 2. Select **Full Auto** in the composer. It is off by default.
-3. Send the first instruction yourself.
 
-After that turn completes, OpenAgents asks Codex to inspect the repository's README, documentation, and open issues, choose one concrete useful action, complete it, and stop. If Full Auto is still enabled, the next continuation begins automatically.
+Full Auto starts immediately. On a new empty session, selecting the toggle asks Codex to inspect the repository's README, documentation, and open issues, choose one concrete useful action, complete it, and stop. If Full Auto is still enabled, the next continuation begins automatically.
 
 The setting belongs to the session. OpenAgents stores it locally, binds it to the workspace and execution profile you selected, and can resume the loop after a renderer reload or application restart.
 
