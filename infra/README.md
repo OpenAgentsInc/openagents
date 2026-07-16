@@ -52,7 +52,6 @@ its own copies with a different state prefix.
 | GCS `openagentsgemini-terraform-state` | `module.terraform_state_bucket` |
 | Secret Manager `oa-updates-codesign-key` + accessor grant (#8530) | `module.oa_updates_codesign_key` |
 | Cloud Run `openagents-monolith` (shell pre-created for CFG-9/#8524) | `module.openagents_monolith` |
-| Cloud Run `openagents-docs` (detached rollback shell pending retirement) | `module.openagents_docs` |
 | Global External LB for `openagents.com` + `auth.openagents.com` — static IP, Certificate Manager cert + DNS authorizations, serverless NEG, backend, URL maps, HTTP(S) proxies, forwarding rules (CFG-10/#8525) | `module.openagents_lb` |
 
 19 resources on import day, +2 imported for #8530, +16 created for #8525

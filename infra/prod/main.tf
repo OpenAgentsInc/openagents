@@ -246,18 +246,6 @@ module "openagents_monolith" {
   region  = var.region
 }
 
-# Detached rollback shell for the former Blume documentation service. It is no
-# longer in the URL map; deletion protection is disabled so it can be retired
-# after the unified TanStack reader passes its public production soak.
-module "openagents_docs" {
-  source              = "../modules/cloud-run-service"
-  deletion_protection = false
-
-  project = var.project_id
-  name    = "openagents-docs"
-  region  = var.region
-}
-
 # Global External Application LB fronting the monolith for openagents.com +
 # auth.openagents.com. Pre-staged: the static IP receives no traffic until
 # the DNS flip described in

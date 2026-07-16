@@ -46,21 +46,20 @@ This is the invariant ledger for `openagents`.
   Legacy Sites, billing, credits, checkout, and other non-MVP Foldkit
   documents are not Start-owned.
 
-## 2026-07-15 static public documentation
+## 2026-07-15 unified public documentation
 
 - `/docs` and `/docs/*` are retained public documentation routes owned by the
-  static `apps/docs` artifact and the independent `openagents-docs` Cloud Run
-  service. The apex load balancer routes only those paths to that service;
-  `auth.openagents.com` and every other apex path remain monolith-owned.
-- Blume is an exact-pinned, build-only dependency. Production serves generated
-  static bytes through a GET/HEAD-only Node host with no database, application
-  secrets, dynamic Blume endpoint, Ask AI, MCP server, remote content adapter,
-  or application-runtime authority.
-- Human docs navigation uses Astro's client router and eager link prefetch so
-  page-to-page reading does not reload the entire document. The isolated docs
-  Cloud Run service keeps one minimum instance warm; it must not scale to zero
-  and put a cold-start delay in the reading path.
-- The public content graph is exactly the curated `apps/docs/content` tree.
+  TanStack Start app and the `openagents-monolith` Cloud Run service. The load
+  balancer has no docs-specific backend or path split.
+- The docs implementation is build-time Markdown compilation plus Start route
+  rendering. It has no documentation-specific server runtime, database,
+  application secrets, Ask AI, MCP server, remote content adapter, or separate
+  deployment authority.
+- Page-to-page reading uses TanStack client navigation and route preloading so
+  it does not reload the whole document. Orama search loads only after the user
+  invokes search.
+- The public content graph is exactly the curated
+  `apps/start/content/docs` tree.
   Repository-wide audits, runbooks, evidence, transcripts, internal topology,
   and secrets must not enter that graph. A bounded `Future / Advanced` section
   may summarize and link to public historical sources for retired or dormant
@@ -74,12 +73,13 @@ This is the invariant ledger for `openagents`.
   transition, audit, and receipt projections.
 - The docs and Start landing foundations use the canonical Khala theme
   background (`khalaTheme.color.background`, `#05070d`) rather than pure black.
-- Blume/Astro is a docs-only third-party presentation exception. Owned product
-  application UI remains Effect Native, and docs prose grants no auth, tool,
-  API, payment, deployment, acceptance, release, or public-claim authority.
-- Regression coverage lives in `apps/docs/server.test.mjs`, strict Blume
-  build/check/validate, Terraform validation/plan, and public document plus
-  concrete-asset smokes.
+- Generated Markdown prose is a docs-only presentation exception. Owned
+  product application UI remains Effect Native, and docs prose grants no auth,
+  tool, API, payment, deployment, acceptance, release, or public-claim
+  authority.
+- Regression coverage lives in the Start docs compiler/content tests, strict
+  generation check, shared route-ownership tests, Terraform validation/plan,
+  and public document plus concrete-asset smokes.
 
 ## 2026-07-14 payment, markets, and Sites retirement
 

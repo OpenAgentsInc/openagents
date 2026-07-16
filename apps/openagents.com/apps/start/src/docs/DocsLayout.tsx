@@ -43,16 +43,31 @@ function DocsNavigationGroup({
           return null
         }
         const active = entry.path === activePath
+        const linkContent = entry.sidebarLabel
         return (
           <li key={entry.slug || 'index'}>
-            <a
-              aria-current={active ? 'page' : undefined}
-              className="docs-nav-link"
-              href={entry.path}
-              onClick={onNavigate}
-            >
-              {entry.sidebarLabel}
-            </a>
+            {entry.slug === '' ? (
+              <Link
+                aria-current={active ? 'page' : undefined}
+                className="docs-nav-link"
+                onClick={onNavigate}
+                preload="render"
+                to="/docs"
+              >
+                {linkContent}
+              </Link>
+            ) : (
+              <Link
+                aria-current={active ? 'page' : undefined}
+                className="docs-nav-link"
+                onClick={onNavigate}
+                params={{ _splat: entry.slug }}
+                preload="render"
+                to="/docs/$"
+              >
+                {linkContent}
+              </Link>
+            )}
           </li>
         )
       })}

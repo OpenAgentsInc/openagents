@@ -1,0 +1,13 @@
+.gcloudignore
+.git
+.git/**
+#!include:.gitignore
+
+# Local dependency and infrastructure caches must never enter Cloud Build.
+.pnpm-store/**
+**/.terraform/**
+
+# The canonical Cloud Run deploy runs from workers/api inside Cloud Build.
+# Preserve its narrow build-context authority so the generated dist-cloudrun
+# bundle is uploaded instead of falling back to the worker's .gitignore.
+!apps/openagents.com/workers/api/.gcloudignore

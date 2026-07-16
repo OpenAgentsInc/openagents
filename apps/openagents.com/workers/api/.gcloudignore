@@ -2,4 +2,5 @@
 # everything is built on the deploy machine (scripts/deploy-cloudrun.sh).
 *
 !Dockerfile
+!dist-cloudrun/
 !dist-cloudrun/**

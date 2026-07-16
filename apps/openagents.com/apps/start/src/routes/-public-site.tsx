@@ -110,7 +110,7 @@ export function DesktopLandingPage() {
                 <header className="oa-conversation-header"><div><strong>Unified public website</strong><span>openagents · main</span></div><button type="button">Review changes <b>4</b></button></header>
                 <div className="oa-timeline">
                   <div className="oa-message oa-user-message">Bring the public website into TanStack Start and keep the existing routes intact.</div>
-                  <div className="oa-message oa-agent-message"><span>Codex</span><p>I’m consolidating the public pages and authenticated application into one Start build while the curated Blume docs remain independently served.</p></div>
+                  <div className="oa-message oa-agent-message"><span>Codex</span><p>I’m consolidating the public pages, curated documentation, and authenticated application into one Start build.</p></div>
                   <div className="oa-tool-row"><span className="oa-tool-state" /><strong>Working</strong><span>apps/openagents.com/apps/start</span><time>00:38</time></div>
                   <div className="oa-change-row"><span>＋</span><div><strong>Public routes unified</strong><small>Start pages · Cloud Run mount · route tests</small></div><button type="button">Open review</button></div>
                 </div>

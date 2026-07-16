@@ -51,27 +51,26 @@ is never authentication.
 During the completed root ownership cutover, retire remaining
 non-infrastructure Start documents rather than carrying them forward wholesale.
 Port only explicitly retained public material such as agent-readable promise
-evidence, required legal/auth entry, and companion agent documents. Blume
-remains the independent `/docs` owner; do not fold it into Start.
+evidence, required legal/auth entry, companion agent documents, and the curated
+public documentation graph.
 
-## 2026-07-15 Blume documentation destination
+## 2026-07-15 TanStack Start documentation destination
 
-`apps/docs` is the owner-selected public documentation workspace. It exact-pins
-Blume and builds a curated Markdown/MDX tree into static files served by the
-independent `openagents-docs` Cloud Run service at `/docs` and `/docs/*`.
-Terraform owns the service shell, serverless NEG, backend, and apex-only path
-rule. `auth.openagents.com` remains wholly routed to the monolith.
+`apps/start/content/docs` is the owner-selected public documentation tree.
+The Start build validates and compiles those Markdown files into lazy-loaded
+reader modules plus raw Markdown, local-search, `llms.txt`, full-text,
+readability, and sitemap artifacts. `/docs` and `/docs/*` are Start-owned routes
+served by the same `openagents-monolith` Cloud Run service as the website.
 
 Keep page-to-page reading client-routed and prefetched, with no decorative
-document transition delay. The docs service keeps one minimum Cloud Run
-instance warm so an idle site does not turn the next navigation into a cold
-start.
+document transition delay. Search may load Orama lazily on first use; it must
+not inflate the initial reader route.
 
-Keep Blume build-only. Ask AI, hosted MCP, server adapters, remote content,
-analytics, and application secrets are not permitted. The docs package may read
-only its owned `content/` tree; never point it at the repository-wide `docs/`
-directory. Public content must stay within current Desktop MVP, retained Forum,
-agent-readable, security/privacy, troubleshooting, machine-facing
+The docs compiler may read only its owned `apps/start/content/docs` tree; never
+point it at the repository-wide `docs/` directory. Ask AI, hosted MCP, remote
+content, analytics, and documentation-specific application secrets are not
+permitted. Public content must stay within current Desktop MVP, retained Forum,
+agent-readable, security/privacy, troubleshooting, and machine-facing
 product-promise facts, and the bounded `Future / Advanced` history section.
 That section may summarize retired or dormant product ideas only when every
 page labels its current status, distinguishes historical exploration from a
@@ -79,15 +78,15 @@ roadmap commitment, and gives no operational or availability claim. Do not
 migrate retired money, credit, market, settlement, Sites, Autopilot, or
 availability claims as current product documentation.
 
-The Blume/Astro renderer is a narrow third-party documentation exception to the
-Effect Native UI rule. It grants no application, authentication, tool, API,
-payment, deployment, or public-claim authority and must not spread to product
-UI. Keep the docs dark-only, on the canonical Khala background (`#05070d`),
-the public website's native sans stack for primary type, Commit Mono for code,
-Khala blue/cyan, compact,
-and free of the stock theme toggle, rounded SaaS cards, blur, and decorative
-shadows. The generated `.blume/` project is ignored and subordinate to the
-single root Node/pnpm/Vite Plus graph.
+The generated Markdown reader is a narrow third-party-content presentation
+exception to the Effect Native UI rule. It grants no application,
+authentication, tool, API, payment, deployment, or public-claim authority and
+must not spread to product UI. Keep the docs dark-only, on the canonical Khala
+background (`#05070d`), the public website's native sans stack for primary
+type, Commit Mono for code, Khala blue/cyan, compact, and free of rounded SaaS
+cards and decorative shadows. Generated modules and public agent artifacts are
+subordinate to the single root Node/pnpm/Vite Plus graph and must pass
+`generate:docs --check`.
 
 <!-- effect-solutions:start -->
 
@@ -270,10 +269,8 @@ For DOM operations (focus, scroll, modals, scroll lock), Foldkit ships a `Dom` m
 
 This directory is part of the pnpm workspace and uses the Vite Plus toolchain:
 
-- `apps/docs/` is the static Blume documentation source and independent Cloud
-  Run deployment owner for `/docs`.
-- `apps/start/` owns the public website, install page, authenticated `/app`, and
-  retained document routes; it does not own `/docs` routes.
+- `apps/start/` owns the public website, curated documentation, install page,
+  authenticated `/app`, and retained document routes.
 - `apps/web/` source is deleted; ignored build remnants are not an application.
 - `workers/api/` is the retained directory name for the Node API deployed to
   Google Cloud Run. It has no Cloudflare runtime or deploy authority.
