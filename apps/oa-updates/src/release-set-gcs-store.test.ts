@@ -60,4 +60,38 @@ describe("Google Cloud ReleaseSet pointer store", () => {
     expect(outcomes.toSorted()).toEqual([false, true])
     expect((await store.readPointer("rc"))?.revision).toBe(2)
   })
+
+  test("strictly rejects malformed/extra candidate documents and bounds every storage request", async () => {
+    const seenSignals: AbortSignal[] = []
+    const malformed = new TextEncoder().encode(JSON.stringify({
+      schema: "openagents.desktop.release_candidate.v2",
+      channel: "rc",
+      generation: "a".repeat(64),
+      payloadBase64: "e30=",
+      signatureBase64: "e30=",
+      unexpected: true,
+    }))
+    const store = createGoogleCloudReleaseSetFeedStore({
+      bucket: "openagents-release-test",
+      token: async () => "fixture-token",
+      operationTimeoutMs: 25,
+      fetch: async (_input, init) => {
+        if (init?.signal) seenSignals.push(init.signal)
+        return new Response(malformed, { headers: { "x-goog-generation": "1" } })
+      },
+    })
+    await expect(store.readCandidate("rc", "a".repeat(64)))
+      .rejects.toThrow("storage_candidate_invalid")
+    expect(seenSignals).toHaveLength(1)
+  })
+
+  test("bounds credential acquisition before any GCS operation", async () => {
+    const store = createGoogleCloudReleaseSetFeedStore({
+      bucket: "openagents-release-test",
+      operationTimeoutMs: 5,
+      token: () => new Promise<string>(() => undefined),
+      fetch: async () => { throw new Error("fetch must not run without credentials") },
+    })
+    await expect(store.readPointer("rc")).rejects.toThrow("storage_operation_timeout")
+  })
 })

@@ -17,6 +17,7 @@ import {
   createReleaseSetFeed,
   RELEASE_SET_PAYLOAD_LIMIT,
   type ReleaseSetFeed,
+  type ReleaseSetFeedStore,
 } from "./release-set-feed.ts"
 import { createUpdatesServer } from "./server.ts"
 
@@ -169,6 +170,11 @@ describe("ReleaseSet v2 atomic promotion and routes", () => {
     ))
     expect(await head?.text()).toBe("")
     expect(Number(head?.headers.get("content-length"))).toBe(candidate.signatureBytes.byteLength)
+    expect(feed.metrics()).toMatchObject({
+      "route_resolved.rc.payload.immutable.success": 1,
+      "route_resolved.rc.signature.immutable.success": 1,
+      "route_resolved.rc.pointer.bounded.success": 1,
+    })
 
     const cors = await feed.fetch(new Request(
       "https://updates.openagents.com/desktop/openagents/rc/v2/pointer.json",
@@ -215,6 +221,57 @@ describe("ReleaseSet v2 atomic promotion and routes", () => {
     expect(await feed.listGarbageCandidates("rc")).toEqual([])
   })
 
+  test("rollback re-authenticates the exact retained object and never changes current on failure", async () => {
+    const firstSet = await fixture()
+    const secondSet = {
+      ...firstSet,
+      version: "2.4.0-rc.4",
+      publishedAt: "2026-07-16T18:01:00.000Z",
+      targets: firstSet.targets.map((row) => ({
+        ...row,
+        artifacts: row.artifacts.map((artifact) => ({
+          ...artifact,
+          version: "2.4.0-rc.4",
+          name: artifact.name.replaceAll("2.4.0-rc.3", "2.4.0-rc.4"),
+          url: artifact.url.replaceAll("2.4.0-rc.3", "2.4.0-rc.4"),
+          objectIdentity: artifact.objectIdentity.replaceAll("2.4.0-rc.3", "2.4.0-rc.4"),
+        })),
+      })),
+    } as ReleaseSet
+    const store = createInMemoryReleaseSetFeedStore()
+    const healthy = makeFeed({ store }).feed
+    const first = await healthy.admitCandidate({ channel: "rc", ...signed(firstSet) })
+    const second = await healthy.admitCandidate({ channel: "rc", ...signed(secondSet) })
+    await healthy.promote("rc", first.generation, null)
+    await healthy.promote("rc", second.generation, 1)
+
+    const retained = await store.readCandidate("rc", first.generation)
+    if (retained === null) throw new Error("fixture retained candidate missing")
+    const corruptions = [
+      null,
+      { ...retained, generation: "e".repeat(64) },
+      { ...retained, channel: "stable" as const },
+      { ...retained, signatureBytes: new Uint8Array() },
+      { ...retained, payloadBytes: Uint8Array.from([...retained.payloadBytes, 0]) },
+    ] as const
+    for (const corrupted of corruptions) {
+      const malicious: ReleaseSetFeedStore = {
+        ...store,
+        readCandidate: async (channel, generation) =>
+          generation === first.generation ? corrupted : store.readCandidate(channel, generation),
+      }
+      const repairing = makeFeed({ store: malicious }).feed
+      await expect(repairing.rollback("rc", 2)).rejects.toThrow(
+        corrupted === null ? "rollback_candidate_missing" : "rollback_candidate_invalid",
+      )
+      expect(await store.readPointer("rc")).toMatchObject({
+        revision: 2,
+        generation: second.generation,
+        previousGeneration: first.generation,
+      })
+    }
+  })
+
   test("fails closed on pointer/object mismatch", async () => {
     const releaseSet = await fixture()
     const store = createInMemoryReleaseSetFeedStore()
@@ -236,8 +293,32 @@ describe("ReleaseSet v2 atomic promotion and routes", () => {
     const response = await brokenFeed.fetch(new Request(
       "https://updates.openagents.com/desktop/openagents/rc/release-set.json",
     ))
-    expect(response?.status).toBe(404)
+    expect(response?.status).toBe(503)
     expect(response?.headers.get("cache-control")).toBe("no-store")
+  })
+
+  test("normalizes storage errors into bounded redacted public failures and exports metrics", async () => {
+    const failingStore: ReleaseSetFeedStore = {
+      ...createInMemoryReleaseSetFeedStore(),
+      readPointer: async () => { throw new Error("private bucket topology") },
+    }
+    const { feed } = makeFeed({ store: failingStore })
+    const response = await feed.fetch(new Request(
+      "https://updates.openagents.com/desktop/openagents/rc/v2/pointer.json",
+    ))
+    expect(response?.status).toBe(503)
+    expect(response?.headers.get("access-control-allow-origin")).toBe("*")
+    expect(response?.headers.get("cache-control")).toBe("no-store")
+    expect(await response?.json()).toEqual({ error: "feed_unavailable" })
+
+    const metrics = await feed.fetch(new Request(
+      "https://updates.openagents.com/metrics/release-set.json",
+    ))
+    expect(metrics?.status).toBe(200)
+    expect(metrics?.headers.get("cache-control")).toBe("no-store")
+    const body = await metrics?.json() as { counters: Record<string, number> }
+    expect(body.counters["route_failed.rc.pointer.bounded.failure"]).toBe(1)
+    expect(JSON.stringify(body)).not.toContain("bucket topology")
   })
 })
 

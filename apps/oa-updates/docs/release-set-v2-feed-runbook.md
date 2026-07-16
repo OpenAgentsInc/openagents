@@ -37,6 +37,12 @@ Configure Cloud Run with:
 - `OA_RELEASE_SET_BUCKET`: the dedicated Google Cloud Storage bucket;
 - `OA_RELEASE_SET_PINS_PATH`: a deployed JSON array of public Ed25519 pins.
 
+The deploy script uses `gcloud run deploy --update-env-vars` and
+`--update-secrets`, never their destructive `--set-*` forms. A Desktop-only
+invocation therefore preserves the existing mobile seed configuration, and a
+mobile-only invocation preserves the ReleaseSet bucket and pins. Its dry-run
+mode is covered by command-level tests in both directions.
+
 The service account needs object read/create/delete on the bounded
 `desktop/release-set-v2/` prefix. It does not need signing-key access.
 Signing remains offline/coordinator-owned. Candidate admission takes exact

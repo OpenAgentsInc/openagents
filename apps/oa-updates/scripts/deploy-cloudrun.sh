@@ -5,7 +5,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 app_dir="$(cd "$script_dir/.." && pwd)"
 repo_dir="$(cd "$app_dir/../.." && pwd)"
 
-(cd "$repo_dir" && pnpm --dir apps/oa-updates run build:server)
+if [[ "${OA_UPDATES_DEPLOY_DRY_RUN:-0}" != "1" ]]; then
+  (cd "$repo_dir" && pnpm --dir apps/oa-updates run build:server)
+fi
 
 # Deploy OpenAgents Updates to Cloud Run from the oa-updates app directory.
 #
@@ -75,15 +77,22 @@ args=(
   --region us-central1 \
   --allow-unauthenticated \
   --port 8080 \
-  --set-env-vars "$env_csv"
+  # Additive by construction: gcloud's update form preserves every existing
+  # env mapping not named in this invocation. A Desktop-only publication can
+  # therefore never remove the mobile seed, and a mobile deploy can never
+  # remove the ReleaseSet bucket/pin configuration.
+  --update-env-vars "$env_csv"
 )
 
 # OA_SIGNING_KEY is mounted from Secret Manager, never inline (#8530).
-# --set-env-vars above replaces the full inline env list, so any previously
-# inline OA_SIGNING_KEY is dropped by the same deploy that mounts the secret.
+# Update only this named secret; unrelated secret mappings remain attached.
 signing_secret="${OA_SIGNING_SECRET-oa-updates-codesign-key:latest}"
 if [[ -n "$signing_secret" ]]; then
-  args+=(--set-secrets "OA_SIGNING_KEY=${signing_secret}")
+  args+=(--update-secrets "OA_SIGNING_KEY=${signing_secret}")
 fi
 
-(cd "$app_dir" && gcloud "${args[@]}")
+if [[ "${OA_UPDATES_DEPLOY_DRY_RUN:-0}" == "1" ]]; then
+  printf '%s\n' "${args[@]}"
+else
+  (cd "$app_dir" && gcloud "${args[@]}")
+fi

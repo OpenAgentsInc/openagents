@@ -66,6 +66,9 @@ export type ReleaseSetFeedLog = (entry: Readonly<{
   revision?: number
   targetCount?: number
   artifactCount?: number
+  leaf?: "pointer" | "payload" | "signature"
+  cacheMode?: "bounded" | "no_store" | "immutable"
+  outcome?: "success" | "failure"
   reason?: string
 }>) => void
 
@@ -164,6 +167,11 @@ const assertGeneration = (generation: string): void => {
   if (!generationPattern.test(generation)) throw new Error("generation_invalid")
 }
 
+const redactedReason = (error: unknown, fallback: string): string => {
+  const message = error instanceof Error ? error.message : ""
+  return /^[a-z0-9_]{1,80}$/.test(message) ? message : fallback
+}
+
 const pointerIsValid = (
   value: ReleaseSetPointer,
   channel: ReleaseSetChannel,
@@ -184,6 +192,7 @@ const pointerIsValid = (
     Number.isSafeInteger(value.revision) && value.revision > 0 &&
     generationPattern.test(value.generation) &&
     (value.previousGeneration === null || generationPattern.test(value.previousGeneration)) &&
+    value.previousGeneration !== value.generation &&
     generationPattern.test(value.payloadSha256) &&
     generationPattern.test(value.signatureSha256) &&
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value.publishedAt)
@@ -250,11 +259,11 @@ const jsonBytesResponse = (
   },
 )
 
-const safeError = (reason: string): Response =>
+const safeError = (reason: string, status?: number): Response =>
   Response.json(
     { error: reason },
     {
-      status: reason === "not_found" ? 404 : 400,
+      status: status ?? (reason === "not_found" ? 404 : 400),
       headers: {
         "access-control-allow-origin": "*",
         "cache-control": "no-store",
@@ -274,6 +283,8 @@ export const createReleaseSetFeed = (
     const channel = entry.channel === undefined ? "none" : entry.channel
     const key = `${entry.event}.${channel}`
     counters.set(key, (counters.get(key) ?? 0) + 1)
+    const detailKey = `${key}.${entry.leaf ?? "all"}.${entry.cacheMode ?? "none"}.${entry.outcome ?? "none"}`
+    counters.set(detailKey, (counters.get(detailKey) ?? 0) + 1)
     if (entry.revision !== undefined && entry.channel !== undefined) {
       counters.set(`pointer_revision.${entry.channel}`, entry.revision)
     }
@@ -309,7 +320,7 @@ export const createReleaseSetFeed = (
     if (pointer === null) return null
     if (!pointerIsValid(pointer, channel)) {
       emit({ event: "route_failed", channel, reason: "pointer_invalid" })
-      return null
+      throw new Error("pointer_invalid")
     }
     const candidate = await input.store.readCandidate(channel, pointer.generation)
     if (
@@ -318,7 +329,7 @@ export const createReleaseSetFeed = (
       sha256(candidate.signatureBytes) !== pointer.signatureSha256
     ) {
       emit({ event: "route_failed", channel, reason: "pointer_object_mismatch" })
-      return null
+      throw new Error("pointer_object_mismatch")
     }
     return { pointer, candidate }
   }
@@ -368,7 +379,7 @@ export const createReleaseSetFeed = (
         })
         return copyCandidate(candidate)
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "candidate_rejected"
+        const reason = redactedReason(error, "candidate_rejected")
         emit({ event: "candidate_rejected", channel: candidateInput.channel, reason })
         throw new Error(reason)
       }
@@ -416,9 +427,21 @@ export const createReleaseSetFeed = (
       if (current === null || current.revision !== expectedRevision) {
         throw new Error("pointer_revision_conflict")
       }
+      if (!pointerIsValid(current, channel)) throw new Error("current_pointer_invalid")
+      const currentCandidate = await input.store.readCandidate(channel, current.generation)
+      if (
+        currentCandidate === null || !candidateIsAuthentic(currentCandidate, channel) ||
+        currentCandidate.generation !== current.generation ||
+        sha256(currentCandidate.payloadBytes) !== current.payloadSha256 ||
+        sha256(currentCandidate.signatureBytes) !== current.signatureSha256
+      ) throw new Error("current_candidate_invalid")
       if (current.previousGeneration === null) throw new Error("rollback_slot_empty")
       const previous = await input.store.readCandidate(channel, current.previousGeneration)
       if (previous === null) throw new Error("rollback_candidate_missing")
+      if (
+        previous.generation !== current.previousGeneration ||
+        !candidateIsAuthentic(previous, channel)
+      ) throw new Error("rollback_candidate_invalid")
       const next: ReleaseSetPointer = {
         schema: "openagents.desktop.release_pointer.v2",
         channel,
@@ -473,13 +496,48 @@ export const createReleaseSetFeed = (
       }
       if (request.method !== "GET" && request.method !== "HEAD") return null
 
+      if (url.pathname === "/metrics/release-set.json") {
+        const bytes = new TextEncoder().encode(JSON.stringify({
+          schema: "openagents.desktop.release_feed_metrics.v1",
+          counters: Object.fromEntries(counters.entries()),
+        }))
+        return jsonBytesResponse(bytes, "current", request.method)
+      }
+
       const match = url.pathname.match(
         /^\/desktop\/openagents\/(stable|rc)\/(?:v2\/)?(pointer|release-set|release-set\.sig)\.json$/,
       )
       if (match !== null) {
         const channel = match[1] as ReleaseSetChannel
-        const current = await readCurrent(channel)
-        if (current === null) return safeError("not_found")
+        let current: Awaited<ReturnType<typeof readCurrent>>
+        try {
+          current = await readCurrent(channel)
+        } catch {
+          emit({
+            event: "route_failed",
+            channel,
+            leaf: match[2] === "pointer"
+              ? "pointer"
+              : match[2] === "release-set" ? "payload" : "signature",
+            cacheMode: match[2] === "pointer" ? "bounded" : "no_store",
+            outcome: "failure",
+            reason: "storage_unavailable",
+          })
+          return safeError("feed_unavailable", 503)
+        }
+        if (current === null) {
+          emit({
+            event: "route_failed",
+            channel,
+            leaf: match[2] === "pointer"
+              ? "pointer"
+              : match[2] === "release-set" ? "payload" : "signature",
+            cacheMode: match[2] === "pointer" ? "bounded" : "no_store",
+            outcome: "failure",
+            reason: "not_found",
+          })
+          return safeError("not_found")
+        }
         let bytes: Uint8Array
         if (match[2] === "pointer") {
           bytes = new TextEncoder().encode(JSON.stringify(current.pointer))
@@ -494,6 +552,11 @@ export const createReleaseSetFeed = (
           channel,
           generation: current.pointer.generation,
           revision: current.pointer.revision,
+          leaf: match[2] === "pointer"
+            ? "pointer"
+            : match[2] === "release-set" ? "payload" : "signature",
+          cacheMode: match[2] === "pointer" ? "bounded" : "no_store",
+          outcome: "success",
         })
         return jsonBytesResponse(
           bytes,
@@ -508,14 +571,53 @@ export const createReleaseSetFeed = (
       )
       if (candidateMatch !== null) {
         const channel = candidateMatch[1] as ReleaseSetChannel
-        const candidate = await input.store.readCandidate(channel, candidateMatch[2])
-        if (candidate === null || !candidateIsAuthentic(candidate, channel)) {
-          emit({ event: "route_failed", channel, reason: "candidate_invalid_or_missing" })
+        let candidate: StoredCandidate | null
+        try {
+          candidate = await input.store.readCandidate(channel, candidateMatch[2])
+        } catch {
+          emit({
+            event: "route_failed",
+            channel,
+            leaf: candidateMatch[3] === "release-set" ? "payload" : "signature",
+            cacheMode: "immutable",
+            outcome: "failure",
+            reason: "storage_unavailable",
+          })
+          return safeError("feed_unavailable", 503)
+        }
+        if (candidate === null) {
+          emit({
+            event: "route_failed",
+            channel,
+            leaf: candidateMatch[3] === "release-set" ? "payload" : "signature",
+            cacheMode: "immutable",
+            outcome: "failure",
+            reason: "candidate_missing",
+          })
           return safeError("not_found")
+        }
+        if (!candidateIsAuthentic(candidate, channel)) {
+          emit({
+            event: "route_failed",
+            channel,
+            leaf: candidateMatch[3] === "release-set" ? "payload" : "signature",
+            cacheMode: "immutable",
+            outcome: "failure",
+            reason: "candidate_invalid",
+          })
+          return safeError("feed_unavailable", 503)
         }
         const bytes = candidateMatch[3] === "release-set"
           ? candidate.payloadBytes
           : candidate.signatureBytes
+        emit({
+          event: "route_resolved",
+          channel,
+          generation: candidate.generation,
+          leaf: candidateMatch[3] === "release-set" ? "payload" : "signature",
+          cacheMode: "immutable",
+          outcome: "success",
+        })
         return jsonBytesResponse(bytes, "immutable", request.method, candidate.generation)
       }
       return null

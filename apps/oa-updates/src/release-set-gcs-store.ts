@@ -59,11 +59,16 @@ export const createGoogleCloudReleaseSetFeedStore = (input: Readonly<{
   bucket: string
   fetch?: typeof fetch
   token?: () => Promise<string>
+  operationTimeoutMs?: number
 }>): ReleaseSetFeedStore => {
   if (!/^[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]$/.test(input.bucket)) {
     throw new Error("release feed bucket invalid")
   }
   const fetchFn = input.fetch ?? fetch
+  const operationTimeoutMs = input.operationTimeoutMs ?? 30_000
+  if (!Number.isSafeInteger(operationTimeoutMs) || operationTimeoutMs < 1 || operationTimeoutMs > 600_000) {
+    throw new Error("release feed storage timeout invalid")
+  }
   let cachedToken: { value: string; expiresAt: number } | null = null
   const token = input.token ?? (async () => {
     if (cachedToken !== null && Date.now() < cachedToken.expiresAt) return cachedToken.value
@@ -81,8 +86,28 @@ export const createGoogleCloudReleaseSetFeedStore = (input: Readonly<{
     }
     return value.access_token
   })
+  const bounded = async <A>(operation: Promise<A>): Promise<A> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error("storage_operation_timeout")), operationTimeoutMs)
+        }),
+      ])
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }
   const authHeaders = async (): Promise<Record<string, string>> => ({
-    authorization: `Bearer ${await token()}`,
+    authorization: `Bearer ${await bounded(token())}`,
+  })
+  const storageFetch = (
+    url: string,
+    init: RequestInit = {},
+  ): Promise<Response> => fetchFn(url, {
+    ...init,
+    signal: init.signal ?? AbortSignal.timeout(operationTimeoutMs),
   })
   const mediaUrl = (name: string): string =>
     `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(input.bucket)}/o/${encodeURIComponent(name)}?alt=media`
@@ -95,7 +120,7 @@ export const createGoogleCloudReleaseSetFeedStore = (input: Readonly<{
     return `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(input.bucket)}/o?${query}`
   }
   const get = async (name: string, limit: number): Promise<Uint8Array | null> => {
-    const response = await fetchFn(mediaUrl(name), { headers: await authHeaders() })
+    const response = await storageFetch(mediaUrl(name), { headers: await authHeaders() })
     if (response.status === 404) return null
     return readBounded(response, limit)
   }
@@ -104,7 +129,7 @@ export const createGoogleCloudReleaseSetFeedStore = (input: Readonly<{
     bytes: Uint8Array,
     generation: string,
   ): Promise<"created" | "precondition_failed"> => {
-    const response = await fetchFn(uploadUrl(name, generation), {
+    const response = await storageFetch(uploadUrl(name, generation), {
       method: "POST",
       headers: {
         ...await authHeaders(),
@@ -120,7 +145,9 @@ export const createGoogleCloudReleaseSetFeedStore = (input: Readonly<{
   const readPointerWithGeneration = async (
     channel: ReleaseSetChannel,
   ): Promise<{ pointer: ReleaseSetPointer; generation: string } | null> => {
-    const response = await fetchFn(mediaUrl(pointerName(channel)), { headers: await authHeaders() })
+    const response = await storageFetch(mediaUrl(pointerName(channel)), {
+      headers: await authHeaders(),
+    })
     if (response.status === 404) return null
     const generation = response.headers.get("x-goog-generation")
     if (generation === null || !/^\d+$/.test(generation)) {
@@ -132,9 +159,28 @@ export const createGoogleCloudReleaseSetFeedStore = (input: Readonly<{
   const decodeCandidate = (bytes: Uint8Array): ReleaseSetCandidate => {
     const document = parseJson<StoredCandidateDocument>(bytes)
     if (
+      typeof document !== "object" || document === null || Array.isArray(document) ||
+      Object.keys(document).toSorted().join(",") !== [
+        "channel",
+        "generation",
+        "payloadBase64",
+        "schema",
+        "signatureBase64",
+      ].toSorted().join(",") ||
       document.schema !== "openagents.desktop.release_candidate.v2" ||
       (document.channel !== "stable" && document.channel !== "rc") ||
-      !/^[0-9a-f]{64}$/.test(document.generation)
+      typeof document.generation !== "string" ||
+      !/^[0-9a-f]{64}$/.test(document.generation) ||
+      typeof document.payloadBase64 !== "string" ||
+      typeof document.signatureBase64 !== "string" ||
+      document.payloadBase64.length > STORED_CANDIDATE_LIMIT * 2 ||
+      document.signatureBase64.length > 16 * 1024 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+        document.payloadBase64,
+      ) ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+        document.signatureBase64,
+      )
     ) throw new Error("storage_candidate_invalid")
     const payloadBytes = Uint8Array.from(Buffer.from(document.payloadBase64, "base64"))
     const signatureBytes = Uint8Array.from(Buffer.from(document.signatureBase64, "base64"))
@@ -178,7 +224,7 @@ export const createGoogleCloudReleaseSetFeedStore = (input: Readonly<{
     async listCandidateGenerations(channel) {
       const prefix = `desktop/release-set-v2/${channel}/candidates/`
       const query = new URLSearchParams({ prefix, fields: "items(name),nextPageToken" })
-      const response = await fetchFn(
+      const response = await storageFetch(
         `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(input.bucket)}/o?${query}`,
         { headers: await authHeaders() },
       )
