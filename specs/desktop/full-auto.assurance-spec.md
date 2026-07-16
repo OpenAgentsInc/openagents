@@ -26,13 +26,16 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "FA-AC-04",
       "FA-AC-05",
       "FA-AC-06",
-      "FA-AC-07"
+      "FA-AC-07",
+      "FA-AC-08",
+      "FA-AC-09",
+      "FA-AC-10"
     ],
-    "document_digest": "sha256:156c1ddce866b72a8c9015dc8af5291ac2532b761d4dc6fb72a3655fd7e0f88e",
+    "document_digest": "sha256:de5b1d6cd0e0f00a2d2c017ebeeb183e34a5138ed9b68e8640b44bb936decc3e",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 1
+    "spec_revision": 2
   }
 }
 ```
@@ -126,19 +129,28 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-desktop/src/codex-app-server-supervisor.test.ts",
       "apps/openagents-desktop/src/codex-child-runtime.test.ts",
       "apps/openagents-desktop/src/codex-config-health.test.ts",
+      "apps/openagents-desktop/src/codex-conformance.test.ts",
       "apps/openagents-desktop/src/codex-connection-signatures.test.ts",
       "apps/openagents-desktop/src/codex-control-plane.test.ts",
+      "apps/openagents-desktop/src/codex-durable-queue.test.ts",
+      "apps/openagents-desktop/src/codex-ecosystem.test.ts",
+      "apps/openagents-desktop/src/codex-experimental-contract.test.ts",
+      "apps/openagents-desktop/src/codex-experimental-runtime.test.ts",
       "apps/openagents-desktop/src/codex-handoff-host.test.ts",
       "apps/openagents-desktop/src/codex-handoff-integration.test.ts",
       "apps/openagents-desktop/src/codex-handoff.test.ts",
       "apps/openagents-desktop/src/codex-history-host.test.ts",
       "apps/openagents-desktop/src/codex-history-utility.test.ts",
+      "apps/openagents-desktop/src/codex-host-contract.test.ts",
+      "apps/openagents-desktop/src/codex-host-services.test.ts",
       "apps/openagents-desktop/src/codex-local-runtime.test.ts",
       "apps/openagents-desktop/src/codex-native-event-plane.test.ts",
       "apps/openagents-desktop/src/codex-preflight.test.ts",
       "apps/openagents-desktop/src/codex-release-notes.test.ts",
       "apps/openagents-desktop/src/codex-reverse-rpc-arbiter.test.ts",
       "apps/openagents-desktop/src/codex-thread-lifecycle.test.ts",
+      "apps/openagents-desktop/src/codex-turn-state.test.ts",
+      "apps/openagents-desktop/src/composer-admission.test.ts",
       "apps/openagents-desktop/src/desktop-host-lifecycle.test.ts",
       "apps/openagents-desktop/src/desktop-launch-workspace.test.ts",
       "apps/openagents-desktop/src/desktop-operation-context.test.ts",
@@ -300,7 +312,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents-mobile/tests/native-session-recovery.test.ts",
       "apps/openagents-mobile/tests/native-session-vault.test.ts",
       "apps/openagents-mobile/tests/ota-polling.test.ts",
-      "apps/openagents.com/apps/astro/site-contract.test.mjs",
       "apps/openagents.com/apps/docs/infra-contract.test.mjs",
       "apps/openagents.com/apps/docs/server.test.mjs",
       "apps/openagents.com/apps/start/src/forum-entry.test.ts",
@@ -332,6 +343,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-privacy-effect-native.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-promises.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-public-agent.test.tsx",
+      "apps/openagents.com/apps/start/src/routes/-public-site.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-pylon-codex-assignment-status.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-pylons.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-run.test.tsx",
@@ -339,7 +351,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/apps/start/src/routes/-share.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-stage1-effect-native.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-stats.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-tanstack-comparison.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-tassadar-effect-native.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-terms.test.tsx",
       "apps/openagents.com/apps/start/src/routes/-training-runs-deprecated.test.tsx",
@@ -453,15 +464,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "apps/openagents.com/workers/api/src/artanis-health.test.ts",
       "apps/openagents.com/workers/api/src/artanis-labor-green-readiness.test.ts",
       "apps/openagents.com/workers/api/src/artanis-labor-receipt-feed-verify.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-receipt-routes.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-receipt-store-d1.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-receipt-store.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-request-receipt-golden.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-request-receipt.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-requester.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-labor-tick-driver.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-launch-smoke.test.ts",
-      "apps/openagents.com/workers/api/src/artanis-loop.test.ts"
+      "apps/openagents.com/workers/api/src/artanis-labor-receipt-routes.test.ts"
     ],
     "declared_scripts": [
       {
@@ -715,6 +718,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "dev"
       },
       {
+        "command": "node --import tsx scripts/generate-codex-conformance-report.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "generate:codex-conformance"
+      },
+      {
         "command": "node --import tsx scripts/build.ts && node --import tsx scripts/run-live-proof.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
         "name": "live-proof"
@@ -750,9 +758,29 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "smoke:artifact:codex-runtime"
       },
       {
+        "command": "node --import tsx scripts/codex-binary-manifest-smoke.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "smoke:codex-binary-manifest"
+      },
+      {
         "command": "node --import tsx scripts/codex-control-plane-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
         "name": "smoke:codex-control-plane"
+      },
+      {
+        "command": "node --import tsx scripts/codex-ecosystem-smoke.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "smoke:codex-ecosystem"
+      },
+      {
+        "command": "node --import tsx scripts/codex-experimental-runtime-smoke.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "smoke:codex-experimental"
+      },
+      {
+        "command": "node --import tsx scripts/codex-host-services-smoke.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "smoke:codex-host-services"
       },
       {
         "command": "node --import tsx scripts/codex-app-server-supervisor-smoke.ts",
@@ -763,6 +791,11 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "node --import tsx scripts/codex-thread-lifecycle-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
         "name": "smoke:codex-thread-lifecycle"
+      },
+      {
+        "command": "node --import tsx scripts/codex-turn-control-smoke.ts",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "smoke:codex-turn-control"
       },
       {
         "command": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_HEADED=1 electron .",
@@ -830,31 +863,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "typecheck"
       },
       {
-        "command": "astro build",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "build"
-      },
-      {
-        "command": "astro dev",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "dev"
-      },
-      {
-        "command": "astro preview",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "preview"
-      },
-      {
-        "command": "node --test site-contract.test.mjs",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "test"
-      },
-      {
-        "command": "astro check",
-        "manifest_path": "apps/openagents.com/apps/astro/package.json",
-        "name": "typecheck"
-      },
-      {
         "command": "blume build --strict --analyze --budget-js 3800 --budget-css 120",
         "manifest_path": "apps/openagents.com/apps/docs/package.json",
         "name": "build"
@@ -883,11 +891,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "pnpm run typecheck && pnpm run validate && pnpm run test && pnpm run build",
         "manifest_path": "apps/openagents.com/apps/docs/package.json",
         "name": "verify"
-      },
-      {
-        "command": "node scripts/benchmark-landing-frameworks.mjs",
-        "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "benchmark:landing"
       },
       {
         "command": "pnpm run build && node --import tsx src/routes/-funnel-budget.ts",
@@ -935,7 +938,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "artanis:readiness"
       },
       {
-        "command": "pnpm run build:astro && pnpm run build:start && pnpm run build:api",
+        "command": "pnpm run build:start && pnpm run build:api",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "build"
       },
@@ -943,11 +946,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "pnpm --dir workers/api run build",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "build:api"
-      },
-      {
-        "command": "pnpm --dir apps/astro run build",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "build:astro"
       },
       {
         "command": "pnpm --dir apps/docs run build",
@@ -1023,11 +1021,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "pnpm --dir workers/api run dev",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "dev:api"
-      },
-      {
-        "command": "pnpm --dir apps/astro run dev",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "dev:astro"
       },
       {
         "command": "pnpm --dir apps/docs run dev",
@@ -1140,11 +1133,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "test:api"
       },
       {
-        "command": "pnpm --dir apps/astro run test",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:astro"
-      },
-      {
         "command": "vitest run scripts/check-command-composer-privacy-fixtures.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "test:command-composer-privacy-guard"
@@ -1190,7 +1178,7 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "name": "test:start"
       },
       {
-        "command": "pnpm run typecheck:packages && pnpm run typecheck:astro && pnpm run typecheck:start && pnpm run typecheck:api",
+        "command": "pnpm run typecheck:packages && pnpm run typecheck:start && pnpm run typecheck:api",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "typecheck"
       },
@@ -1203,11 +1191,6 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
         "command": "tsc -p workers/api/tsconfig.pylon-api-routes.test.json --noEmit",
         "manifest_path": "apps/openagents.com/package.json",
         "name": "typecheck:api-pylon-integration"
-      },
-      {
-        "command": "pnpm --dir apps/astro run typecheck",
-        "manifest_path": "apps/openagents.com/package.json",
-        "name": "typecheck:astro"
       },
       {
         "command": "pnpm --dir apps/docs run typecheck",
@@ -3040,12 +3023,12 @@ Repository facts are proposal context only. No Environment Profile, adapter, cap
       "repository_candidates_unmapped",
       "repository_dirty"
     ],
-    "head": "6f21f807aa76c9c83e171f504eb5a45ef1d05457",
-    "inventory_digest": "sha256:5a3f80e79192c2348f0a0008c07fc81168d07b2fee7dbb98ba16fb69c05f78dc",
-    "repository_label": "openagents-full-auto-8852",
+    "head": "19b4f26737da00a881a05794d0f81069cac55fc3",
+    "inventory_digest": "sha256:6c0edbf03e4d1462fc188d6fddb4dc00eefd41a7988d6571bccf0c7582a0731b",
+    "repository_label": "openagents-full-auto-restart-8853",
     "state": "dirty",
-    "tracked_file_count": 8791,
-    "tree": "277904c09ff7dd01b00a0d8fd151fc06150eee3d",
+    "tracked_file_count": 8822,
+    "tree": "b146823ad79c4d8facac9f941022104bf4bcc2d7",
     "truncated": true
   }
 }
@@ -3086,8 +3069,8 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     ],
     "disposition": "required",
     "id": "AO-FA-AC-03-01",
-    "source_claim_digest": "sha256:68feec0e3f18e35fa96f214b83bcf980feb6b9ef6de2dd3262dcae96266a557e",
-    "source_claim_snapshot": "After a Full-Auto turn completes with `result.ok`, the same\nthread automatically resubmits a continuation without the user clicking\ncontinue, using the same `chat.sendMessage` path as an ordinary Send.\nProof: `shell.test.ts` \"Full Auto (#8852): a clean Codex turn resubmits\nautomatically, and toggling off mid-loop stops it\".",
+    "source_claim_digest": "sha256:13add3dccc6a5307434b19ee3920e3e6bc545427e15b5f7178a6f1a743af136d",
+    "source_claim_snapshot": "A completed Full-Auto turn sends `fullAuto: true`\nexactly once from the renderer; the renderer never loops. Continuation is\ndecided in main by `reconcileFullAutoThreads`, called both right after that\nturn completes and once at app startup.\nProof: `shell.test.ts` \"a flagged turn sends fullAuto:true exactly once --\nmain, not the renderer, decides whether to continue\"; `main.ts`'s\n`dispatchCodexLocalTurn` calling `runFullAutoReconciliation()` after a\nsuccessful Full-Auto turn (code-reviewed; main.ts has no direct unit-test\nharness, see Receipts for the isolated-module proof used instead).",
     "title": "Assure FA-AC-03"
   },
   {
@@ -3097,8 +3080,8 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     ],
     "disposition": "required",
     "id": "AO-FA-AC-04-01",
-    "source_claim_digest": "sha256:5b3780d4476da95b90ce6d752d453caa2a982edce56eea4cf2ef1e6869faef48",
-    "source_claim_snapshot": "Toggling Full Auto off (including mid-loop, between two\ncontinuations) stops the next turn from starting; the loop rechecks fresh\nstate before each continuation rather than a stale snapshot.\nProof: same `shell.test.ts` case above (the mock flips `fullAuto` off\nbetween the first and second turn and only two calls are observed) and\n\"Full Auto (#8852): DesktopFullAutoToggled flips the flag\".",
+    "source_claim_digest": "sha256:c629cf55289ec3cb3f95bc3dab1527f5d37c1c83cc140663d7786463bed06f90",
+    "source_claim_snapshot": "Toggling Full Auto off persists to main immediately\n(`CodexLocalFullAutoSetChannel`), independent of whether a turn is in\nflight, so a toggle-off durably stops the loop even if the app quits before\nthe next turn would have started.\nProof: `shell.test.ts` \"DesktopFullAutoToggled flips the flag and persists\nit to main immediately\"; `full-auto-restart.e2e.test.ts` \"toggling off\nbefore restart durably stops it -- Runtime B never dispatches\".",
     "title": "Assure FA-AC-04"
   },
   {
@@ -3108,8 +3091,8 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     ],
     "disposition": "required",
     "id": "AO-FA-AC-05-01",
-    "source_claim_digest": "sha256:38cefe91812f31020810f66916b3e2c1a627685ed3d52dac496075e35ff107bb",
-    "source_claim_snapshot": "When Full Auto is off, an ordinary turn sends `fullAuto`\nundefined (not `false`) and never resubmits automatically.\nProof: `shell.test.ts` \"Full Auto (#8852): toggled off, an ordinary Codex\nturn sends fullAuto undefined and never resubmits\".",
+    "source_claim_digest": "sha256:da1b0266659d27ba0851e38614447a6334690794861843f6068c51b2fc57c224",
+    "source_claim_snapshot": "When Full Auto is off, an ordinary turn sends `fullAuto`\nundefined (not `false`) and never resubmits automatically.\nProof: `shell.test.ts` \"toggled off, an ordinary Codex turn sends fullAuto\nundefined and never resubmits\".",
     "title": "Assure FA-AC-05"
   },
   {
@@ -3119,8 +3102,8 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     ],
     "disposition": "required",
     "id": "AO-FA-AC-06-01",
-    "source_claim_digest": "sha256:f325def7b29de16a98b7a0527bd273b5d6a1424f3308ab63c786360963077c37",
-    "source_claim_snapshot": "A run of 20 consecutive automatic continuations without an\nintervening manual stop turns Full Auto off and appends an explanatory\nsystem note, rather than continuing unbounded.\n(Design-level; not covered by an automated test in this revision — see\nReceipts.)",
+    "source_claim_digest": "sha256:38c7b2c0cceba9d0cc58311c9cb09677086a211de5cd3f3cf1d09b4bffa1b2b6",
+    "source_claim_snapshot": "A run of 20 consecutive automatic continuations without an\nintervening manual stop turns Full Auto off durably (registry, not\nrenderer state) and appends an explanatory system note, rather than\ncontinuing unbounded -- and this holds even if a restart happens partway\nthrough the count.\nProof: `full-auto-restart.e2e.test.ts` \"a genuinely stuck loop self-disables\nat the continuation cap across restarts, rather than continuing unbounded\".",
     "title": "Assure FA-AC-06"
   },
   {
@@ -3130,9 +3113,42 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     ],
     "disposition": "required",
     "id": "AO-FA-AC-07-01",
-    "source_claim_digest": "sha256:633df991fd5eb903454126ff69fd7a5e60eb868a114c8d807c315d011020e199",
-    "source_claim_snapshot": "No Full Auto packet performs a direct commit, merge, or push;\nCodex proposes changes exactly as every other Desktop Codex turn already\ndoes. (Unchanged existing boundary; no new authority was added.)",
+    "source_claim_digest": "sha256:2254ce441c65d583c1a4cbf7940ad440914370d88a5d733b13a633131878a801",
+    "source_claim_snapshot": "A thread left enabled with no turn in flight when\nthe app quits resumes its next continuation on its own at the next launch,\nwith no user action beyond the original toggle.\nProof: `full-auto-restart.e2e.test.ts` \"a thread left enabled by Runtime A\nresumes on Runtime B with no manual re-toggle or re-send\".",
     "title": "Assure FA-AC-07"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-08"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-08-01",
+    "source_claim_digest": "sha256:cb34dc2b34869318843b7a396111fdaaea0afed8ea1b1a8d5f51138c7bd84524",
+    "source_claim_snapshot": "A thread whose turn was still in flight when the\napp quit is left alone by Full Auto reconciliation until existing\ninterrupted-turn recovery resolves it -- Full Auto never races or\nduplicates that recovery.\nProof: `full-auto-restart.e2e.test.ts` \"a thread with a turn still in\nflight at restart is left alone until that turn resolves\"; the real\nwiring sequences `runFullAutoReconciliation()` after `localTurnRecovery`\nresolves, and computes `nonterminalThreadRefs` from the same\n`localTurnJournal.nonterminal()` that recovery itself owns.",
+    "title": "Assure FA-AC-08"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-09"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-09-01",
+    "source_claim_digest": "sha256:e0928b54f48543be4384febe0697ca5995463691bab1060e1537e2bf3b7406d2",
+    "source_claim_snapshot": "A brand new thread (no id yet when the user\ntoggles Full Auto on) persists its enabled state to main once it actually\ngets a real thread id, rather than silently dropping the toggle's intent.\nProof: `shell.test.ts` \"a brand new thread persists its enabled state to\nmain once it has a real id\".",
+    "title": "Assure FA-AC-09"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-10"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-10-01",
+    "source_claim_digest": "sha256:d1daf49b0dffa4a3db43527a9d08ceac7b8c450c367d16f34c3d54fa6b5b66f7",
+    "source_claim_snapshot": "No Full Auto packet performs a direct commit, merge, or push;\nCodex proposes changes exactly as every other Desktop Codex turn already\ndoes. (Unchanged existing boundary; no new authority was added.)",
+    "title": "Assure FA-AC-10"
   }
 ]
 ```

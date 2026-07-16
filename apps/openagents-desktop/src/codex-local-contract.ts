@@ -43,6 +43,14 @@ export const CodexLocalQueueListChannel = "openagents:codex-local:queue-list" as
 export const CodexLocalQueueEditChannel = "openagents:codex-local:queue-edit" as const
 export const CodexLocalQueueCancelChannel = "openagents:codex-local:queue-cancel" as const
 export const CodexLocalEventChannel = "openagents:codex-local:event" as const
+/**
+ * Full Auto (#8853): main-owned durable per-thread toggle. Setting this is
+ * what makes the loop survive a restart -- main persists the fact and
+ * re-evaluates it at both turn completion and app startup, instead of the
+ * renderer deciding to continue from in-memory state that a reload destroys.
+ */
+export const CodexLocalFullAutoSetChannel = "openagents:codex-local:full-auto:set" as const
+export const CodexLocalFullAutoGetChannel = "openagents:codex-local:full-auto:get" as const
 /** Exact packaged Codex compatibility identity; thread handoff remains disabled
  * unless a separately verified official-app continuity proof cites this ref. */
 export const CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF = "codex.compat.0.144.1" as const
@@ -103,6 +111,25 @@ export const decodeCodexLocalAvailability = (value: unknown): CodexLocalAvailabi
 /** Start/interrupt/steer/queue requests reuse the frozen fable-local shapes. */
 export const CodexLocalStartRequestSchema = FableLocalStartRequestSchema
 export const CodexLocalInterruptRequestSchema = FableLocalInterruptRequestSchema
+
+/** Full Auto (#8853) toggle set/get requests, bounded to one thread ref. */
+export const CodexLocalFullAutoSetRequestSchema = Schema.Struct({
+  threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  enabled: Schema.Boolean,
+})
+export type CodexLocalFullAutoSetRequest = typeof CodexLocalFullAutoSetRequestSchema.Type
+export const decodeCodexLocalFullAutoSetRequest = (value: unknown): CodexLocalFullAutoSetRequest | null => {
+  const decoded = Schema.decodeUnknownExit(CodexLocalFullAutoSetRequestSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
+export const CodexLocalFullAutoGetRequestSchema = Schema.Struct({
+  threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+})
+export type CodexLocalFullAutoGetRequest = typeof CodexLocalFullAutoGetRequestSchema.Type
+export const decodeCodexLocalFullAutoGetRequest = (value: unknown): CodexLocalFullAutoGetRequest | null => {
+  const decoded = Schema.decodeUnknownExit(CodexLocalFullAutoGetRequestSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
 
 /**
  * Composer chip reason strings (EP250 verified-evidence rule). The chrome

@@ -220,6 +220,11 @@ type DesktopBridge = Readonly<{
     queueList?: (threadRef: unknown) => Promise<unknown>
     queueEdit?: (value: unknown) => Promise<unknown>
     queueCancel?: (value: unknown) => Promise<unknown>
+    /** Full Auto (#8853): main-owned durable per-thread toggle. */
+    fullAuto?: Readonly<{
+      set?: (input: unknown) => Promise<unknown>
+      get?: (input: unknown) => Promise<unknown>
+    }>
   }>
   codexEcosystem?: Readonly<{
     snapshot?: () => Promise<unknown>
@@ -1019,6 +1024,18 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }, updateRendererHost, harnessMaintenanceSettingsBridge, {
         setSidebarCollapsed: async (sidebarCollapsed) => {
           await readBridge()?.preferences?.update?.({ presentation: { sidebarCollapsed } })
+        },
+      }, {
+        // Full Auto (#8853): main-owned durable per-thread toggle. Absent
+        // preload/bridge degrades to a no-op set and an always-off get --
+        // the composer toggle still works locally, it just cannot survive a
+        // restart without this bridge.
+        set: async input => (await readBridge()?.codexLocal?.fullAuto?.set?.(input)) ?? { ok: false },
+        get: async input => {
+          const raw = await readBridge()?.codexLocal?.fullAuto?.get?.(input)
+          return typeof raw === "object" && raw !== null && typeof (raw as { enabled?: unknown }).enabled === "boolean"
+            ? { enabled: (raw as { enabled: boolean }).enabled }
+            : { enabled: false }
         },
       }),
     )

@@ -809,9 +809,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(commands).toContainEqual({ id: "voice.speak", protocolVersion: 1, turnRef: "turn.1", speechRef: "speech.assistant.1", messageRef: "assistant.1", text: "The deployment is healthy." })
   })
 
-  test("Full Auto (#8852): a clean Codex turn resubmits automatically, and toggling off mid-loop stops it", async () => {
-    const completedOnce = { ...testThread, notes: [{ key: "assistant.1", role: "assistant" as const, text: "Did the first thing.", timestamp: "18:05" }] }
-    const completedTwice = { ...testThread, notes: [{ key: "assistant.2", role: "assistant" as const, text: "Did the second thing.", timestamp: "18:06" }] }
+  test("Full Auto (#8853): a flagged turn sends fullAuto:true exactly once -- main, not the renderer, decides whether to continue", async () => {
+    const completed = { ...testThread, notes: [{ key: "assistant.1", role: "assistant" as const, text: "Did the first thing.", timestamp: "18:05" }] }
     const calls: Array<{ message: string; fullAuto?: boolean }> = []
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: true }))
     const chatHost = {
@@ -820,12 +819,7 @@ describe("desktopShellView (state -> component tree)", () => {
       openThread: async () => testThread,
       sendMessage: async (input: { message: string; fullAuto?: boolean }) => {
         calls.push({ message: input.message, fullAuto: input.fullAuto })
-        if (calls.length === 1) return { ok: true as const, thread: completedOnce }
-        // Simulate the owner toggling Full Auto off while this second turn was
-        // running (e.g. after watching the first completion) -- the loop must
-        // notice this on its NEXT continuation check rather than a stale read.
-        await Effect.runPromise(SubscriptionRef.update(state, current => ({ ...current, fullAuto: false })))
-        return { ok: true as const, thread: completedTwice }
+        return { ok: true as const, thread: completed }
       },
     }
     const registry = await Effect.runPromise(makeIntentRegistry(
@@ -833,14 +827,14 @@ describe("desktopShellView (state -> component tree)", () => {
       makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
     ))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Do the first thing")))))
-    expect(calls).toHaveLength(2)
+    // Exactly one call: the renderer never loops on its own. Continuation is
+    // main's durable full-auto-reconcile.ts, decided from the persisted
+    // registry at turn completion and again at app startup (see #8853).
+    expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({ message: "Do the first thing", fullAuto: true })
-    expect(calls[1]?.fullAuto).toBe(true)
-    expect(calls[1]?.message).toContain("Continue Full Auto")
-    expect((await Effect.runPromise(SubscriptionRef.get(state))).fullAuto).toBe(false)
   })
 
-  test("Full Auto (#8852): toggled off, an ordinary Codex turn sends fullAuto undefined and never resubmits", async () => {
+  test("Full Auto (#8853): toggled off, an ordinary Codex turn sends fullAuto undefined and never resubmits", async () => {
     const completed = { ...testThread, notes: [{ key: "assistant.1", role: "assistant" as const, text: "Done.", timestamp: "18:05" }] }
     const calls: Array<{ message: string; fullAuto?: boolean }> = []
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: false }))
@@ -862,13 +856,67 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(calls[0]?.fullAuto).toBeUndefined()
   })
 
-  test("Full Auto (#8852): DesktopFullAutoToggled flips the flag", async () => {
+  test("Full Auto (#8853): DesktopFullAutoToggled flips the flag and persists it to main immediately", async () => {
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, fullAuto: false }))
-    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow)))
+    const setCalls: Array<{ threadRef: string; enabled: boolean }> = []
+    const fullAutoHost = {
+      set: async (input: { threadRef: string; enabled: boolean }) => { setCalls.push(input); return { ok: true } },
+      get: async () => ({ enabled: false }),
+    }
+    // Typed against the function's own Parameters<> tuple rather than a hand
+    // counted list of `undefined`s -- a wrong count fails loudly at compile
+    // time (too few/many tuple elements) instead of silently landing
+    // fullAutoHost in the wrong positional slot.
+    const args: Parameters<typeof makeDesktopShellHandlers> = [
+      state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, fullAutoHost,
+    ]
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))
     expect((await Effect.runPromise(SubscriptionRef.get(state))).fullAuto).toBe(true)
+    // baseState already has an active thread, so the toggle persists to main
+    // immediately -- there is no lazy-thread-creation deferral here (that
+    // case is covered separately below).
+    expect(setCalls).toEqual([{ threadRef: testThread.id, enabled: true }])
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoToggled", StaticPayload(null)))))
     expect((await Effect.runPromise(SubscriptionRef.get(state))).fullAuto).toBe(false)
+    expect(setCalls).toEqual([
+      { threadRef: testThread.id, enabled: true },
+      { threadRef: testThread.id, enabled: false },
+    ])
+  })
+
+  test("Full Auto (#8853): a brand new thread persists its enabled state to main once it has a real id", async () => {
+    const completed = { id: "new-thread", title: "New chat", updatedAt: "2026-07-15T18:00:00.000Z", notes: [
+      { key: "assistant.1", role: "assistant" as const, text: "Did the first thing.", timestamp: "18:05" },
+    ] }
+    const setCalls: Array<{ threadRef: string; enabled: boolean }> = []
+    const fullAutoHost = {
+      set: async (input: { threadRef: string; enabled: boolean }) => { setCalls.push(input); return { ok: true } },
+      get: async () => ({ enabled: false }),
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      fullAuto: true,
+      activeThreadId: null,
+      threads: [],
+    }))
+    const chatHost = {
+      listThreads: async () => [],
+      newThread: async () => ({ id: "new-thread", title: "New chat", updatedAt: "2026-07-15T18:00:00.000Z", notes: [] }),
+      openThread: async () => completed,
+      sendMessage: async () => ({ ok: true as const, thread: completed }),
+    }
+    // See the previous test for why this is a typed tuple, not a spread array.
+    const args: Parameters<typeof makeDesktopShellHandlers> = [
+      state, fixedNow, undefined, chatHost, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, fullAutoHost,
+    ]
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(...args)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Do the first thing")))))
+    expect(setCalls).toEqual([{ threadRef: "new-thread", enabled: true }])
   })
 
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {
