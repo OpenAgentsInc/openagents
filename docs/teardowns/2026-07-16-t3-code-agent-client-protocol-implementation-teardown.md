@@ -142,7 +142,9 @@ main-owned provider lanes, and an isolated production Desktop build completed a
 real Grok Full Auto turn. A checked, opt-in production runner now reproduces a
 redacted two-peer candidate receipt without claim authority. #8897 remains open
 for the unobserved credential, permission, extension, and platform proof;
-packaged interruption/restart journeys for both pinned peers are now checked.
+packaged interruption/restart journeys for both pinned peers are now checked,
+and Grok now has live broker-only MCP custody evidence with a complete bounded
+post-shutdown scan of its exact session/configuration persistence surfaces.
 The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference

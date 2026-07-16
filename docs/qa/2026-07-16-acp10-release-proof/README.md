@@ -23,10 +23,10 @@ an executed production-transport fixture may satisfy only the explicitly
 hermetic class. Grok passing never changes Cursor's gate, and Cursor passing
 never changes Grok's gate.
 
-| Peer | Exact live identity | Basic live result | Code-owned requirements unresolved | Claim |
-|---|---|---:|---:|---|
-| Grok CLI | `0.2.101`, executable SHA-256 `8431538d…4e2` | 22 live passes | 11 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` | 23 live passes | 9 | experimental |
+| Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
+| ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    23 live passes |                                 10 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    23 live passes |                                  9 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -100,9 +100,14 @@ The Cursor reverse-cancel proof exposed and fixed a transport binding gap:
 the request to its resolved session before cancellation can target it. Both
 peers also received broker-materialized MCP configuration scoped to the live
 session. Grok reached initialize/list/call; Cursor reached initialize/list and
-its post-run known-root scan found zero credential matches. Grok's bounded
-post-run persistence scan remains incomplete, so its no-durable-secret row is
-not promoted. Cursor model discovery returned 33 models (26 with configuration)
+its post-run known-root scan found zero credential matches. A later Grok-only
+run passed a random canary solely through the broker-materialized stdio server
+environment, verified server receipt by SHA-256 digest, shut the peer down, and
+completed a bounded scan of the exact disposable session tree, MCP logs, and
+configuration/state surfaces: 23 files scanned and zero canary matches. The
+redacted checked receipt is
+[`release-run-grok-mcp-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-mcp-2026-07-16-darwin-arm64.json).
+Cursor model discovery returned 33 models (26 with configuration)
 and `cursor/create_plan` passed live; the other Cursor extension requests were
 not observed.
 
@@ -140,15 +145,13 @@ named-peer live compatibility.
 
 The largest shared gaps are credential lifecycle paths, every required live
 permission outcome, Grok enabled reverse filesystem/terminal behavior, complete
-tool/plan/config/usage variants, the remaining MCP persistence proof, full
-secret/support export scans, packaged Desktop journeys, and non-Darwin-arm64
-platform evidence.
+tool/plan/config/usage variants, and non-Darwin-arm64 platform evidence.
 
 Provider-specific gaps:
 
 - Grok: intentional valid `xai.api_key`, auth cancel/expiry/logout, the
-  non-underscore ask-question spelling, full permission/reverse authority, rich
-  plan/config/usage streaming, and bounded MCP persistence scan. The pinned
+  non-underscore ask-question spelling, full permission/reverse authority, and
+  rich plan/config/usage streaming. The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.
 - Cursor: login cancellation/pending/expiry/re-auth, permission outcomes, and live

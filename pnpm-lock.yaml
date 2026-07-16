@@ -1174,6 +1174,9 @@ importers:
 
   packages/agent-client-protocol-conformance:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 1.29.0
+        version: 1.29.0(zod@4.4.3)
       '@openagentsinc/agent-client-protocol':
         specifier: workspace:*
         version: link:../agent-client-protocol
@@ -1189,6 +1192,9 @@ importers:
       '@openagentsinc/grok-harness':
         specifier: workspace:*
         version: link:../grok-harness
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: 24.13.1

@@ -18,11 +18,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@openagentsinc/agent-client-protocol": "workspace:*",
     "@openagentsinc/agent-client-runtime-bridge": "workspace:*",
     "@openagentsinc/agent-stdio-transport": "workspace:*",
     "@openagentsinc/cursor-agent-runtime": "workspace:*",
-    "@openagentsinc/grok-harness": "workspace:*"
+    "@openagentsinc/grok-harness": "workspace:*",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "catalog:",

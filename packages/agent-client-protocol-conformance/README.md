@@ -65,7 +65,11 @@ CURSOR_ACP_LIVE=1 pnpm --dir packages/agent-client-protocol-conformance run live
 The deeper candidate runner launches the production Grok and Cursor runtimes in
 separate disposable Git repositories, authenticates through the peers' normal
 local login, performs sequential prompts, and attempts session listing, mode
-changes, streaming cancellation, and bounded shutdown where advertised:
+changes, streaming cancellation, and bounded shutdown where advertised. Its
+Grok lane also sends a random canary only through broker-materialized stdio MCP
+environment, proves the disposable server received it by digest, shuts Grok
+down, and scans the exact session/configuration persistence surfaces for the
+unredacted value:
 
 ```bash
 ACP_RELEASE_LIVE=1 ACP_RELEASE_PEER=both \
