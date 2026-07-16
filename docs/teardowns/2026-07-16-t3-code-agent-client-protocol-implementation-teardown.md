@@ -160,6 +160,13 @@ metadata override disables inherited YOLO/auto mode only for disposable proof
 sessions, yielding five live approval selections and one live refusal without
 changing global Grok configuration; only one question-extension spelling was
 emitted.
+The production bridge now also retains both metadata rails used by pinned Grok
+0.2.101: notification `_meta` (including cumulative token state) and
+`session/prompt` completion `_meta` (including turn usage/completion fields).
+The live qualification observed metadata on 63 updates and two completions,
+including 62 usage-bearing observations, while exporting counts only. Combined
+with the existing real-repository tool proof, this closes Grok's
+capability-aware tool/usage row; Grok does not advertise mode/config controls.
 The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference

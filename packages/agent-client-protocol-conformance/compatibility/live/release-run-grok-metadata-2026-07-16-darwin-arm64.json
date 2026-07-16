@@ -1,0 +1,123 @@
+{
+  "format": "openagents-acp-live-release-run-v1",
+  "protocol": "Agent Client Protocol",
+  "protocolExclusions": ["Agent Communication Protocol", "A2A"],
+  "proofClass": "candidate-live",
+  "claimAuthority": "none-release-matrix-only",
+  "recordedAt": "2026-07-16T18:07:25.480Z",
+  "openAgentsRevision": "d242b3bf08c83010fb5e80a0f8a7c0593c6db063",
+  "schemaRelease": "schema-v1.19.0",
+  "platform": "darwin-arm64-node-24.13.1",
+  "peers": [
+    {
+      "peer": "grok",
+      "result": "partial",
+      "binary": {
+        "reportedVersion": "grok 0.2.101 (5bc4b5dfadcf) [stable]",
+        "executableSha256": "8431538dbd99379240f558b48b779c651d668b06d793c87311ad532c4395a4e2"
+      },
+      "negotiation": {
+        "wireVersion": 1,
+        "authMethodIds": ["cached_token", "grok.com"],
+        "capabilityKeys": ["load"]
+      },
+      "scenarios": [
+        {
+          "id": "identity-version",
+          "result": "live-pass",
+          "safeDetail": "Exact Grok version and executable digest probed"
+        },
+        {
+          "id": "initialize",
+          "result": "live-pass",
+          "safeDetail": "Wire version 1 initialize completed"
+        },
+        {
+          "id": "auth-primary",
+          "result": "live-pass",
+          "safeDetail": "Advertised cached authentication completed"
+        },
+        {
+          "id": "session-new",
+          "result": "live-pass",
+          "safeDetail": "Disposable repository session created"
+        },
+        {
+          "id": "real-repo-text",
+          "result": "live-pass",
+          "safeDetail": "Real disposable repository produced assistant text"
+        },
+        {
+          "id": "sequential-turns",
+          "result": "live-pass",
+          "safeDetail": "Two sequential prompts completed"
+        },
+        {
+          "id": "session-list",
+          "result": "not-observed",
+          "safeDetail": "Peer did not advertise session list"
+        },
+        {
+          "id": "stream-cancel",
+          "result": "live-pass",
+          "safeDetail": "Streaming prompt cancelled after 1 updates"
+        },
+        {
+          "id": "mcp-authorized",
+          "result": "live-pass",
+          "safeDetail": "Brokered MCP canary reached only the disposable stdio server"
+        },
+        {
+          "id": "mcp-no-durable-secret",
+          "result": "live-pass",
+          "safeDetail": "Bounded post-shutdown scan found zero canary matches in 23 files"
+        },
+        {
+          "id": "cleanup-bounds",
+          "result": "live-pass",
+          "safeDetail": "Runtime completed bounded shutdown before scanning"
+        },
+        {
+          "id": "grok-question-extensions",
+          "result": "not-observed",
+          "safeDetail": "Pinned question methods observed: 1"
+        },
+        {
+          "id": "permission-approval",
+          "result": "live-pass",
+          "safeDetail": "Pinned permission approval selections: 4"
+        },
+        {
+          "id": "permission-refusal",
+          "result": "live-pass",
+          "safeDetail": "Pinned permission refusal selections: 1"
+        },
+        {
+          "id": "fs-terminal-enabled",
+          "result": "live-pass",
+          "safeDetail": "Pinned reverse calls: filesystem 4, terminal 20"
+        }
+      ],
+      "counters": {
+        "updateCount": 63,
+        "updateKinds": [
+          "agent_message_chunk",
+          "agent_thought_chunk",
+          "available_commands_update",
+          "user_message_chunk"
+        ],
+        "promptCount": 3,
+        "updateMetadataCount": 63,
+        "completionMetadataCount": 2,
+        "usageMetadataCount": 62
+      }
+    }
+  ],
+  "redaction": {
+    "promptTextRetained": false,
+    "responseTextRetained": false,
+    "sessionIdentifiersRetained": false,
+    "authMaterialRetained": false,
+    "absolutePathsRetained": false
+  }
+}

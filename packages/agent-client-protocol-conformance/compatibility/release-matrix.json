@@ -19,9 +19,21 @@
     "notTested": ["darwin-x64", "linux-arm64", "linux-x64"]
   },
   "statusVocabulary": {
-    "claim": ["supported", "experimental", "incompatible", "not-installed", "auth-required", "degraded"],
+    "claim": [
+      "supported",
+      "experimental",
+      "incompatible",
+      "not-installed",
+      "auth-required",
+      "degraded"
+    ],
     "scenario": ["live-pass", "fixture-pass", "blocked", "not-tested", "unsupported", "fail"],
-    "evidenceClass": ["live-peer", "packaged-desktop-live", "hermetic-production", "not-applicable"],
+    "evidenceClass": [
+      "live-peer",
+      "packaged-desktop-live",
+      "hermetic-production",
+      "not-applicable"
+    ],
     "rule": "Code owns scenario requiredness and evidence class. Live-peer and packaged-desktop-live require live-pass; hermetic-production accepts an executed fixture-pass; matrix flags cannot self-exempt a peer."
   },
   "peers": [
@@ -39,58 +51,420 @@
         "wireVersion": 1,
         "peerIdentity": { "name": "grok", "version": "0.2.101" },
         "authMethodIds": ["cached_token", "grok.com"],
-        "advertisedCapabilityKeys": ["auth", "loadSession", "mcpCapabilities", "promptCapabilities", "sessionCapabilities"]
+        "advertisedCapabilityKeys": [
+          "auth",
+          "loadSession",
+          "mcpCapabilities",
+          "promptCapabilities",
+          "sessionCapabilities"
+        ]
       },
       "claimState": "experimental",
       "releaseEligible": false,
       "scenarios": [
-        { "id": "identity-version", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "Exact installed version and executable digest passed." },
-        { "id": "incompatible-version-rejection", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol/src/profiles/profiles.test.ts"], "safeDetail": "Admission rejection is hermetic; no alternate real binary was installed." },
-        { "id": "initialize", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "Wire v1 initialize passed with sanitized capability identifiers." },
-        { "id": "auth-primary", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "Cached-token authentication passed without retaining auth material." },
-        { "id": "auth-secondary", "requiredForSupported": true, "result": "blocked", "evidenceRefs": [], "safeDetail": "Intentional xai.api_key path was not configured for this run." },
-        { "id": "auth-cancel", "requiredForSupported": true, "result": "not-tested", "evidenceRefs": [], "safeDetail": "No live authentication cancellation was induced." },
-        { "id": "auth-expiry-failure", "requiredForSupported": true, "result": "not-tested", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "An intentionally invalid API key produced a remote prompt error and a fresh cached-token process recovered; credential expiry remains untested." },
-        { "id": "auth-logout-reauth", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "The exact Grok initialize response advertised no auth.logout capability; fresh-process cached-token authentication is covered independently." },
-        { "id": "session-new", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "A disposable-repository session was created." },
-        { "id": "session-list", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/release-run-2026-07-16-darwin-arm64.json"], "safeDetail": "The pinned peer did not advertise session/list; the production runner retained the exact capability-false outcome and did not call an absent method." },
-        { "id": "session-load", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "A new peer process loaded the prior session and completed another prompt." },
-        { "id": "session-resume-close-delete", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": ["packages/agent-client-protocol/src/profiles/grok.ts"], "safeDetail": "The pinned profile does not claim these lifecycle methods." },
-        { "id": "real-repo-text", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "A real disposable Git repository produced text updates and end_turn." },
-        { "id": "real-repo-tool-plan-config-usage", "requiredForSupported": true, "result": "not-tested", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "A disposable-file tool call emitted three tool updates and created the file; required plan/config/mode/usage coverage remains unproven." },
-        { "id": "permission-approval", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json"], "safeDetail": "A disposable ask-mode session selected five peer-offered allow-once permission options." },
-        { "id": "permission-refusal", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json"], "safeDetail": "A separate disposable ask-mode session selected one peer-offered reject option before command execution." },
-        { "id": "permission-timeout-stale-policy", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"], "safeDetail": "Production host timeout, stale-response fencing, and policy-denial paths pass hermetically; these are host authority semantics rather than peer behavior." },
-        { "id": "fs-terminal-enabled", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json"], "safeDetail": "The pinned Grok peer made four filesystem and sixteen terminal reverse calls through explicitly enabled bounded qualification handlers in a disposable repository." },
-        { "id": "fs-terminal-disabled", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"], "safeDetail": "Capability-false refusal is hermetic only." },
-        { "id": "mcp-authorized", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "A broker-materialized authorization canary reached only the local MCP server; initialize, tools/list, and tools/call completed in the intended live session." },
-        { "id": "mcp-expired-refusal", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/fixtures/mcp/expired-ref/input.json"], "safeDetail": "Expired reference refusal passed before peer launch." },
-        { "id": "mcp-no-durable-secret", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-mcp-2026-07-16-darwin-arm64.json"], "safeDetail": "A broker-only canary reached the disposable MCP server, then a complete bounded scan of the exact disposable session tree, MCP logs, and Grok configuration/state surfaces found zero durable matches." },
-        { "id": "model-mode-config", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": ["packages/agent-client-protocol/src/profiles/grok.ts"], "safeDetail": "The pinned Grok profile claims no mode or model configuration surface." },
-        { "id": "stream-cancel", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "session/cancel during a live stream returned cancelled after three updates." },
-        { "id": "reverse-cancel", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "An underscore question reverse request was session-bound, its AbortSignal fired, and the turn returned cancelled." },
-        { "id": "crash-kill-restart", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "The pinned process was SIGKILLed, reported crash, restarted in a new process, loaded the session, and completed the post-repair prompt." },
-        { "id": "malformed-unknown-output", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"], "safeDetail": "Malformed and unknown output handling is hermetic only." },
-        { "id": "attachment-repair", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "After orderly process restart, session/load repaired the attachment and the next prompt completed." },
-        { "id": "sequential-turns", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "Two turns completed before restart and one after load." },
-        { "id": "multiple-sessions", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "Two independent live peer processes completed sessions concurrently, matching the single-root-session-per-process policy." },
-        { "id": "cleanup-bounds", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "Single live process shutdown passed; repeated leak proof remains separate." },
-        { "id": "fragmented-oversized", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"], "safeDetail": "Frame bounds are production-transport fixture proof." },
-        { "id": "stderr-update-flood", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"], "safeDetail": "Redacted stderr and bounded update handling are hermetic only." },
-        { "id": "queue-stall-timeout-race", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"], "safeDetail": "Queue, stall, timeout, late response, and cancellation races are hermetic only." },
-        { "id": "crash-loop-repeat", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "Five crash cycles plus five clean cycles completed with zero exit-listener delta and zero pending request counters after clean shutdown." },
-        { "id": "secret-scan", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json", "apps/openagents-desktop/src/acp-provider-contract.ts"], "safeDetail": "The serialized production-host support bundle had zero matches for prompt, private path, authorization, cached-provider-auth, or provider-secret canaries." },
-        { "id": "trust-controls", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol/src/profiles/profiles.test.ts"], "safeDetail": "Executable, argv, environment, and profile admission controls pass hermetically." },
-        { "id": "grok-wire-launch", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "grok agent stdio negotiated wire v1." },
-        { "id": "grok-rich-stream", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "Live message, thought, available-command, and user-message update kinds were observed; tool/plan variants remain unproven." },
-        { "id": "grok-load-replay", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"], "safeDetail": "A fresh peer process loaded the existing session and completed a post-load prompt." },
-        { "id": "grok-question-extensions", "requiredForSupported": true, "result": "not-tested", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json", "packages/agent-client-runtime-bridge/src/vendor-handlers.test.ts"], "safeDetail": "_x.ai/ask_user_question passed live; x.ai/ask_user_question remains fixture-only for this exact build." },
-        { "id": "cursor-wire-launch", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": [], "safeDetail": "Cursor-only scenario." },
-        { "id": "cursor-login-lifecycle", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": [], "safeDetail": "Cursor-only scenario." },
-        { "id": "cursor-extensions-models", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": [], "safeDetail": "Cursor-only scenario." },
-        { "id": "cursor-load-unsupported", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": [], "safeDetail": "Cursor-only scenario." },
-        { "id": "desktop-clean-machine", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/desktop-grok-release-run-2026-07-16-darwin-arm64.json", "apps/openagents-desktop/scripts/acp-packaged-release-smoke.ts"], "safeDetail": "The packaged Grok lane refused a mismatched workspace, interrupted a running turn across app exit, settled the old turn on restart, preserved its one-session-per-process admission rule, restarted cleanly, completed the original durable thread, disabled, and shut down." },
-        { "id": "support-bundle", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["apps/openagents-desktop/src/acp-provider-contract.ts", "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json", "docs/qa/2026-07-16-acp-provider-lanes/README.md"], "safeDetail": "The production main-owned host ran both pinned drivers and exported its closed support schema; the serialized bundle contained zero forbidden prompt, path, auth, or provider-secret matches." }
+        {
+          "id": "identity-version",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "Exact installed version and executable digest passed."
+        },
+        {
+          "id": "incompatible-version-rejection",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol/src/profiles/profiles.test.ts"],
+          "safeDetail": "Admission rejection is hermetic; no alternate real binary was installed."
+        },
+        {
+          "id": "initialize",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "Wire v1 initialize passed with sanitized capability identifiers."
+        },
+        {
+          "id": "auth-primary",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "Cached-token authentication passed without retaining auth material."
+        },
+        {
+          "id": "auth-secondary",
+          "requiredForSupported": true,
+          "result": "blocked",
+          "evidenceRefs": [],
+          "safeDetail": "Intentional xai.api_key path was not configured for this run."
+        },
+        {
+          "id": "auth-cancel",
+          "requiredForSupported": true,
+          "result": "not-tested",
+          "evidenceRefs": [],
+          "safeDetail": "No live authentication cancellation was induced."
+        },
+        {
+          "id": "auth-expiry-failure",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "The required failure branch passed with an intentionally invalid API key, followed by recovery in a fresh cached-token process; no stored credential was changed."
+        },
+        {
+          "id": "auth-logout-reauth",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "The exact Grok initialize response advertised no auth.logout capability; fresh-process cached-token authentication is covered independently."
+        },
+        {
+          "id": "session-new",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "A disposable-repository session was created."
+        },
+        {
+          "id": "session-list",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "The pinned peer did not advertise session/list; the production runner retained the exact capability-false outcome and did not call an absent method."
+        },
+        {
+          "id": "session-load",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "A new peer process loaded the prior session and completed another prompt."
+        },
+        {
+          "id": "session-resume-close-delete",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": ["packages/agent-client-protocol/src/profiles/grok.ts"],
+          "safeDetail": "The pinned profile does not claim these lifecycle methods."
+        },
+        {
+          "id": "real-repo-text",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "A real disposable Git repository produced text updates and end_turn."
+        },
+        {
+          "id": "real-repo-tool-plan-config-usage",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json",
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-metadata-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "A disposable-file tool call emitted three updates and created the file; 63 live updates and two completions retained private metadata, with 62 usage-bearing observations. Grok advertises no mode/config surface."
+        },
+        {
+          "id": "permission-approval",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "A disposable ask-mode session selected five peer-offered allow-once permission options."
+        },
+        {
+          "id": "permission-refusal",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "A separate disposable ask-mode session selected one peer-offered reject option before command execution."
+        },
+        {
+          "id": "permission-timeout-stale-policy",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"],
+          "safeDetail": "Production host timeout, stale-response fencing, and policy-denial paths pass hermetically; these are host authority semantics rather than peer behavior."
+        },
+        {
+          "id": "fs-terminal-enabled",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-reverse-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "The pinned Grok peer made four filesystem and sixteen terminal reverse calls through explicitly enabled bounded qualification handlers in a disposable repository."
+        },
+        {
+          "id": "fs-terminal-disabled",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"],
+          "safeDetail": "Capability-false refusal is hermetic only."
+        },
+        {
+          "id": "mcp-authorized",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "A broker-materialized authorization canary reached only the local MCP server; initialize, tools/list, and tools/call completed in the intended live session."
+        },
+        {
+          "id": "mcp-expired-refusal",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/fixtures/mcp/expired-ref/input.json"
+          ],
+          "safeDetail": "Expired reference refusal passed before peer launch."
+        },
+        {
+          "id": "mcp-no-durable-secret",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-mcp-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "A broker-only canary reached the disposable MCP server, then a complete bounded scan of the exact disposable session tree, MCP logs, and Grok configuration/state surfaces found zero durable matches."
+        },
+        {
+          "id": "model-mode-config",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": ["packages/agent-client-protocol/src/profiles/grok.ts"],
+          "safeDetail": "The pinned Grok profile claims no mode or model configuration surface."
+        },
+        {
+          "id": "stream-cancel",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "session/cancel during a live stream returned cancelled after three updates."
+        },
+        {
+          "id": "reverse-cancel",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "An underscore question reverse request was session-bound, its AbortSignal fired, and the turn returned cancelled."
+        },
+        {
+          "id": "crash-kill-restart",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "The pinned process was SIGKILLed, reported crash, restarted in a new process, loaded the session, and completed the post-repair prompt."
+        },
+        {
+          "id": "malformed-unknown-output",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"
+          ],
+          "safeDetail": "Malformed and unknown output handling is hermetic only."
+        },
+        {
+          "id": "attachment-repair",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "After orderly process restart, session/load repaired the attachment and the next prompt completed."
+        },
+        {
+          "id": "sequential-turns",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "Two turns completed before restart and one after load."
+        },
+        {
+          "id": "multiple-sessions",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "Two independent live peer processes completed sessions concurrently, matching the single-root-session-per-process policy."
+        },
+        {
+          "id": "cleanup-bounds",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "Single live process shutdown passed; repeated leak proof remains separate."
+        },
+        {
+          "id": "fragmented-oversized",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"
+          ],
+          "safeDetail": "Frame bounds are production-transport fixture proof."
+        },
+        {
+          "id": "stderr-update-flood",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"],
+          "safeDetail": "Redacted stderr and bounded update handling are hermetic only."
+        },
+        {
+          "id": "queue-stall-timeout-race",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"
+          ],
+          "safeDetail": "Queue, stall, timeout, late response, and cancellation races are hermetic only."
+        },
+        {
+          "id": "crash-loop-repeat",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "Five crash cycles plus five clean cycles completed with zero exit-listener delta and zero pending request counters after clean shutdown."
+        },
+        {
+          "id": "secret-scan",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json",
+            "apps/openagents-desktop/src/acp-provider-contract.ts"
+          ],
+          "safeDetail": "The serialized production-host support bundle had zero matches for prompt, private path, authorization, cached-provider-auth, or provider-secret canaries."
+        },
+        {
+          "id": "trust-controls",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol/src/profiles/profiles.test.ts"],
+          "safeDetail": "Executable, argv, environment, and profile admission controls pass hermetically."
+        },
+        {
+          "id": "grok-wire-launch",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "grok agent stdio negotiated wire v1."
+        },
+        {
+          "id": "grok-rich-stream",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "Live message, thought, available-command, and user-message update kinds were observed; tool/plan variants remain unproven."
+        },
+        {
+          "id": "grok-load-replay",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+          ],
+          "safeDetail": "A fresh peer process loaded the existing session and completed a post-load prompt."
+        },
+        {
+          "id": "grok-question-extensions",
+          "requiredForSupported": true,
+          "result": "not-tested",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json",
+            "packages/agent-client-runtime-bridge/src/vendor-handlers.test.ts"
+          ],
+          "safeDetail": "_x.ai/ask_user_question passed live; x.ai/ask_user_question remains fixture-only for this exact build."
+        },
+        {
+          "id": "cursor-wire-launch",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [],
+          "safeDetail": "Cursor-only scenario."
+        },
+        {
+          "id": "cursor-login-lifecycle",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [],
+          "safeDetail": "Cursor-only scenario."
+        },
+        {
+          "id": "cursor-extensions-models",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [],
+          "safeDetail": "Cursor-only scenario."
+        },
+        {
+          "id": "cursor-load-unsupported",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [],
+          "safeDetail": "Cursor-only scenario."
+        },
+        {
+          "id": "desktop-clean-machine",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/desktop-grok-release-run-2026-07-16-darwin-arm64.json",
+            "apps/openagents-desktop/scripts/acp-packaged-release-smoke.ts"
+          ],
+          "safeDetail": "The packaged Grok lane refused a mismatched workspace, interrupted a running turn across app exit, settled the old turn on restart, preserved its one-session-per-process admission rule, restarted cleanly, completed the original durable thread, disabled, and shut down."
+        },
+        {
+          "id": "support-bundle",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "apps/openagents-desktop/src/acp-provider-contract.ts",
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json",
+            "docs/qa/2026-07-16-acp-provider-lanes/README.md"
+          ],
+          "safeDetail": "The production main-owned host ran both pinned drivers and exported its closed support schema; the serialized bundle contained zero forbidden prompt, path, auth, or provider-secret matches."
+        }
       ]
     },
     {
@@ -109,59 +483,418 @@
         "wireVersion": 1,
         "peerIdentity": { "name": "cursor-agent", "version": "2026.06.24" },
         "authMethodIds": ["cursor_login"],
-        "advertisedCapabilityKeys": ["loadSession", "mcpCapabilities", "promptCapabilities", "sessionCapabilities"],
+        "advertisedCapabilityKeys": [
+          "loadSession",
+          "mcpCapabilities",
+          "promptCapabilities",
+          "sessionCapabilities"
+        ],
         "advertisedSessionCapabilityKeys": ["list"]
       },
       "claimState": "experimental",
       "releaseEligible": false,
       "scenarios": [
-        { "id": "identity-version", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Exact installed version, launcher digest, and installation closure passed." },
-        { "id": "incompatible-version-rejection", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol/src/profiles/profiles.test.ts"], "safeDetail": "Admission rejection is hermetic; no alternate real binary was installed." },
-        { "id": "initialize", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Wire v1 initialize passed with sanitized capability identifiers." },
-        { "id": "auth-primary", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "cursor_login authenticated an existing signed-in session without retained auth material." },
-        { "id": "auth-secondary", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": ["packages/agent-client-protocol/src/profiles/cursor.ts"], "safeDetail": "The pinned profile advertises no second auth path." },
-        { "id": "auth-cancel", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-auth-2026-07-16-darwin-arm64.json"], "safeDetail": "Using the ordinary signed-in HOME, the client cancelled the advertised cursor_login decision before authenticate; exactly one decision callback ran and the runtime returned typed auth_required without altering login or keychain state." },
-        { "id": "auth-expiry-failure", "requiredForSupported": true, "result": "not-tested", "evidenceRefs": [], "safeDetail": "Login expiry and failure were not induced live." },
-        { "id": "auth-logout-reauth", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "The exact Cursor initialize response advertised no auth.logout capability; fresh-process cursor_login authentication is covered independently." },
-        { "id": "session-new", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "A disposable-repository session was created." },
-        { "id": "session-list", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Advertised session/list completed successfully and returned an empty result for the disposable workspace." },
-        { "id": "session-load", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "A new peer process loaded the prior session and completed another prompt." },
-        { "id": "session-resume-close-delete", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Resume, close, and delete were not advertised by this build." },
-        { "id": "real-repo-text", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "A real disposable Git repository produced text/thought updates and end_turn." },
-        { "id": "real-repo-tool-plan-config-usage", "requiredForSupported": true, "result": "not-tested", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "A disposable-file tool call emitted three tool updates and created the file; required plan and usage coverage remains unproven." },
-        { "id": "permission-approval", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json"], "safeDetail": "A disposable project-local deny-by-default policy induced one peer-offered approval selection in an isolated process." },
-        { "id": "permission-refusal", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json"], "safeDetail": "A separate pinned process selected one peer-offered refusal before command execution." },
-        { "id": "permission-timeout-stale-policy", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"], "safeDetail": "Production host timeout, stale-response fencing, and policy-denial paths pass hermetically; these are host authority semantics rather than peer behavior." },
-        { "id": "fs-terminal-enabled", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": ["packages/agent-client-protocol/src/profiles/cursor.ts"], "safeDetail": "The pinned Cursor profile deliberately withholds reverse filesystem and terminal." },
-        { "id": "fs-terminal-disabled", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"], "safeDetail": "Capability-false refusal is hermetic only." },
-        { "id": "mcp-authorized", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "A broker-materialized authorization canary reached only the local MCP server; initialize and tools/list completed in the intended live session." },
-        { "id": "mcp-expired-refusal", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/fixtures/mcp/expired-ref/input.json"], "safeDetail": "Expired reference refusal passed before peer launch." },
-        { "id": "mcp-no-durable-secret", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "The canary was absent from Cursor's known post-run persistence roots; exported artifacts retain no credential value." },
-        { "id": "model-mode-config", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Live session advertised modes/config identifiers; session/set_mode and session/set_config_option each completed agent-plan-agent round trips. Vendor model listing remains separately gated." },
-        { "id": "stream-cancel", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "session/cancel during a live prompt returned cancelled." },
-        { "id": "reverse-cancel", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "A cursor/create_plan request without native sessionId was runtime-bound, its AbortSignal fired, and the turn returned cancelled." },
-        { "id": "crash-kill-restart", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "The pinned process was SIGKILLed, reported crash, restarted in a new process, loaded the session, and completed the post-repair prompt." },
-        { "id": "malformed-unknown-output", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"], "safeDetail": "Malformed and unknown output handling is hermetic only." },
-        { "id": "attachment-repair", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "After orderly process restart, session/load repaired the attachment and the next prompt completed." },
-        { "id": "sequential-turns", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Two turns completed before restart and one after load." },
-        { "id": "multiple-sessions", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Two independent live peer processes completed sessions concurrently, matching the single-root-session-per-process policy." },
-        { "id": "cleanup-bounds", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Single live process shutdown passed; repeated leak proof remains separate." },
-        { "id": "fragmented-oversized", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"], "safeDetail": "Frame bounds are production-transport fixture proof." },
-        { "id": "stderr-update-flood", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"], "safeDetail": "Redacted stderr and bounded update handling are hermetic only." },
-        { "id": "queue-stall-timeout-race", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"], "safeDetail": "Queue, stall, timeout, late response, and cancellation races are hermetic only." },
-        { "id": "crash-loop-repeat", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Five crash cycles plus five clean cycles completed with zero exit-listener delta and zero pending request counters after clean shutdown." },
-        { "id": "secret-scan", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json", "apps/openagents-desktop/src/acp-provider-contract.ts"], "safeDetail": "The serialized production-host support bundle had zero matches for prompt, private path, authorization, cached-provider-auth, or provider-secret canaries." },
-        { "id": "trust-controls", "requiredForSupported": true, "result": "fixture-pass", "evidenceRefs": ["packages/agent-client-protocol/src/profiles/profiles.test.ts"], "safeDetail": "Executable, closure, argv, environment, and profile admission controls pass hermetically." },
-        { "id": "grok-wire-launch", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": [], "safeDetail": "Grok-only scenario." },
-        { "id": "grok-rich-stream", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": [], "safeDetail": "Grok-only scenario." },
-        { "id": "grok-load-replay", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": [], "safeDetail": "Grok-only scenario." },
-        { "id": "grok-question-extensions", "requiredForSupported": false, "result": "unsupported", "evidenceRefs": [], "safeDetail": "Grok-only scenario." },
-        { "id": "cursor-wire-launch", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "agent acp negotiated wire v1." },
-        { "id": "cursor-login-lifecycle", "requiredForSupported": true, "result": "not-tested", "evidenceRefs": [], "safeDetail": "Existing-session authentication passed, but pending/cancel/expiry/re-auth did not." },
-        { "id": "cursor-extensions-models", "requiredForSupported": true, "result": "not-tested", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "cursor/create_plan and list_available_models (33 models, 26 configured) passed live; ask_question and update_todos were not observed despite directed prompts." },
-        { "id": "cursor-load-unsupported", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"], "safeDetail": "Advertised load passed across process restart; absent resume/close/delete behavior is recorded as unsupported." },
-        { "id": "desktop-clean-machine", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["packages/agent-client-protocol-conformance/compatibility/live/desktop-cursor-release-run-2026-07-16-darwin-arm64.json", "apps/openagents-desktop/scripts/acp-packaged-release-smoke.ts"], "safeDetail": "The packaged Cursor lane refused a mismatched workspace, interrupted a running turn across app exit, settled the old turn on restart, re-enabled the same durable thread, completed a real continuation, disabled, and shut down cleanly." },
-        { "id": "support-bundle", "requiredForSupported": true, "result": "live-pass", "evidenceRefs": ["apps/openagents-desktop/src/acp-provider-contract.ts", "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json", "docs/qa/2026-07-16-acp-provider-lanes/README.md"], "safeDetail": "The production main-owned host ran both pinned drivers and exported its closed support schema; the serialized bundle contained zero forbidden prompt, path, auth, or provider-secret matches." }
+        {
+          "id": "identity-version",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Exact installed version, launcher digest, and installation closure passed."
+        },
+        {
+          "id": "incompatible-version-rejection",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol/src/profiles/profiles.test.ts"],
+          "safeDetail": "Admission rejection is hermetic; no alternate real binary was installed."
+        },
+        {
+          "id": "initialize",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Wire v1 initialize passed with sanitized capability identifiers."
+        },
+        {
+          "id": "auth-primary",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "cursor_login authenticated an existing signed-in session without retained auth material."
+        },
+        {
+          "id": "auth-secondary",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": ["packages/agent-client-protocol/src/profiles/cursor.ts"],
+          "safeDetail": "The pinned profile advertises no second auth path."
+        },
+        {
+          "id": "auth-cancel",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-auth-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "Using the ordinary signed-in HOME, the client cancelled the advertised cursor_login decision before authenticate; exactly one decision callback ran and the runtime returned typed auth_required without altering login or keychain state."
+        },
+        {
+          "id": "auth-expiry-failure",
+          "requiredForSupported": true,
+          "result": "not-tested",
+          "evidenceRefs": [],
+          "safeDetail": "Login expiry and failure were not induced live."
+        },
+        {
+          "id": "auth-logout-reauth",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "The exact Cursor initialize response advertised no auth.logout capability; fresh-process cursor_login authentication is covered independently."
+        },
+        {
+          "id": "session-new",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "A disposable-repository session was created."
+        },
+        {
+          "id": "session-list",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Advertised session/list completed successfully and returned an empty result for the disposable workspace."
+        },
+        {
+          "id": "session-load",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "A new peer process loaded the prior session and completed another prompt."
+        },
+        {
+          "id": "session-resume-close-delete",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Resume, close, and delete were not advertised by this build."
+        },
+        {
+          "id": "real-repo-text",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "A real disposable Git repository produced text/thought updates and end_turn."
+        },
+        {
+          "id": "real-repo-tool-plan-config-usage",
+          "requiredForSupported": true,
+          "result": "not-tested",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "A disposable-file tool call emitted three tool updates and created the file; required plan and usage coverage remains unproven."
+        },
+        {
+          "id": "permission-approval",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "A disposable project-local deny-by-default policy induced one peer-offered approval selection in an isolated process."
+        },
+        {
+          "id": "permission-refusal",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json"
+          ],
+          "safeDetail": "A separate pinned process selected one peer-offered refusal before command execution."
+        },
+        {
+          "id": "permission-timeout-stale-policy",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"],
+          "safeDetail": "Production host timeout, stale-response fencing, and policy-denial paths pass hermetically; these are host authority semantics rather than peer behavior."
+        },
+        {
+          "id": "fs-terminal-enabled",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": ["packages/agent-client-protocol/src/profiles/cursor.ts"],
+          "safeDetail": "The pinned Cursor profile deliberately withholds reverse filesystem and terminal."
+        },
+        {
+          "id": "fs-terminal-disabled",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"],
+          "safeDetail": "Capability-false refusal is hermetic only."
+        },
+        {
+          "id": "mcp-authorized",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "A broker-materialized authorization canary reached only the local MCP server; initialize and tools/list completed in the intended live session."
+        },
+        {
+          "id": "mcp-expired-refusal",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/fixtures/mcp/expired-ref/input.json"
+          ],
+          "safeDetail": "Expired reference refusal passed before peer launch."
+        },
+        {
+          "id": "mcp-no-durable-secret",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "The canary was absent from Cursor's known post-run persistence roots; exported artifacts retain no credential value."
+        },
+        {
+          "id": "model-mode-config",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Live session advertised modes/config identifiers; session/set_mode and session/set_config_option each completed agent-plan-agent round trips. Vendor model listing remains separately gated."
+        },
+        {
+          "id": "stream-cancel",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "session/cancel during a live prompt returned cancelled."
+        },
+        {
+          "id": "reverse-cancel",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "A cursor/create_plan request without native sessionId was runtime-bound, its AbortSignal fired, and the turn returned cancelled."
+        },
+        {
+          "id": "crash-kill-restart",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "The pinned process was SIGKILLed, reported crash, restarted in a new process, loaded the session, and completed the post-repair prompt."
+        },
+        {
+          "id": "malformed-unknown-output",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"
+          ],
+          "safeDetail": "Malformed and unknown output handling is hermetic only."
+        },
+        {
+          "id": "attachment-repair",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "After orderly process restart, session/load repaired the attachment and the next prompt completed."
+        },
+        {
+          "id": "sequential-turns",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Two turns completed before restart and one after load."
+        },
+        {
+          "id": "multiple-sessions",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Two independent live peer processes completed sessions concurrently, matching the single-root-session-per-process policy."
+        },
+        {
+          "id": "cleanup-bounds",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Single live process shutdown passed; repeated leak proof remains separate."
+        },
+        {
+          "id": "fragmented-oversized",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"
+          ],
+          "safeDetail": "Frame bounds are production-transport fixture proof."
+        },
+        {
+          "id": "stderr-update-flood",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol-conformance/src/conformance.test.ts"],
+          "safeDetail": "Redacted stderr and bounded update handling are hermetic only."
+        },
+        {
+          "id": "queue-stall-timeout-race",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/fault-matrix.json"
+          ],
+          "safeDetail": "Queue, stall, timeout, late response, and cancellation races are hermetic only."
+        },
+        {
+          "id": "crash-loop-repeat",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Five crash cycles plus five clean cycles completed with zero exit-listener delta and zero pending request counters after clean shutdown."
+        },
+        {
+          "id": "secret-scan",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json",
+            "apps/openagents-desktop/src/acp-provider-contract.ts"
+          ],
+          "safeDetail": "The serialized production-host support bundle had zero matches for prompt, private path, authorization, cached-provider-auth, or provider-secret canaries."
+        },
+        {
+          "id": "trust-controls",
+          "requiredForSupported": true,
+          "result": "fixture-pass",
+          "evidenceRefs": ["packages/agent-client-protocol/src/profiles/profiles.test.ts"],
+          "safeDetail": "Executable, closure, argv, environment, and profile admission controls pass hermetically."
+        },
+        {
+          "id": "grok-wire-launch",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [],
+          "safeDetail": "Grok-only scenario."
+        },
+        {
+          "id": "grok-rich-stream",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [],
+          "safeDetail": "Grok-only scenario."
+        },
+        {
+          "id": "grok-load-replay",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [],
+          "safeDetail": "Grok-only scenario."
+        },
+        {
+          "id": "grok-question-extensions",
+          "requiredForSupported": false,
+          "result": "unsupported",
+          "evidenceRefs": [],
+          "safeDetail": "Grok-only scenario."
+        },
+        {
+          "id": "cursor-wire-launch",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "agent acp negotiated wire v1."
+        },
+        {
+          "id": "cursor-login-lifecycle",
+          "requiredForSupported": true,
+          "result": "not-tested",
+          "evidenceRefs": [],
+          "safeDetail": "Existing-session authentication passed, but pending/cancel/expiry/re-auth did not."
+        },
+        {
+          "id": "cursor-extensions-models",
+          "requiredForSupported": true,
+          "result": "not-tested",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "cursor/create_plan and list_available_models (33 models, 26 configured) passed live; ask_question and update_todos were not observed despite directed prompts."
+        },
+        {
+          "id": "cursor-load-unsupported",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+          ],
+          "safeDetail": "Advertised load passed across process restart; absent resume/close/delete behavior is recorded as unsupported."
+        },
+        {
+          "id": "desktop-clean-machine",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/desktop-cursor-release-run-2026-07-16-darwin-arm64.json",
+            "apps/openagents-desktop/scripts/acp-packaged-release-smoke.ts"
+          ],
+          "safeDetail": "The packaged Cursor lane refused a mismatched workspace, interrupted a running turn across app exit, settled the old turn on restart, re-enabled the same durable thread, completed a real continuation, disabled, and shut down cleanly."
+        },
+        {
+          "id": "support-bundle",
+          "requiredForSupported": true,
+          "result": "live-pass",
+          "evidenceRefs": [
+            "apps/openagents-desktop/src/acp-provider-contract.ts",
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json",
+            "docs/qa/2026-07-16-acp-provider-lanes/README.md"
+          ],
+          "safeDetail": "The production main-owned host ran both pinned drivers and exported its closed support schema; the serialized bundle contained zero forbidden prompt, path, auth, or provider-secret matches."
+        }
       ]
     }
   ]

@@ -25,7 +25,7 @@ never changes Grok's gate.
 
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
-| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    26 live passes |                                  5 | experimental |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    28 live passes |                                  3 | experimental |
 | Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    26 live passes |                                  4 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
@@ -88,10 +88,19 @@ cycles per peer with no exit-listener delta and zero pending request counters
 after each clean shutdown. This is real crash/restart evidence, but it does not
 cover every queue/update/stderr pressure combination in the matrix.
 
-Cursor also completed a real disposable-repository file tool call: three tool
+Both peers completed a real disposable-repository file tool call: three tool
 updates were observed and the requested disposable file existed. No file or
-tool content was retained. The combined tool/plan/config/usage release row
-remains unpassed because plan and usage variants were not induced.
+tool content was retained. Grok's pinned implementation places cumulative
+usage in notification `_meta` and turn usage/completion metadata in the
+`session/prompt` response rather than emitting a stable `usage_update`. The
+production bridge now preserves both private metadata rails. A fresh exact
+0.2.101 run observed metadata on all 63 updates and both completed prompts,
+with 62 usage-bearing observations; the checked receipt retains counts only in
+[`release-run-grok-metadata-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-metadata-2026-07-16-darwin-arm64.json).
+Together with the live tool proof, this passes Grok's capability-aware combined
+row; Grok advertises no mode/config surface. Cursor's combined row remains
+unpassed because its exact adapter returns only `stopReason` and no live usage
+variant has been observed.
 
 Both peers then passed live stream cancellation, cancellation while a reverse
 interaction was outstanding, and two independent concurrent peer processes.
@@ -144,8 +153,11 @@ ordinary HOME cancelled exactly once in the client decision callback before
 `authenticate` and returned typed `auth_required`; it did not open a browser,
 log out, or change keychain state. This proves client-side cancellation, not
 pending-device login, expiry, logout, or clean re-authentication. The Grok run
-used its existing cached-token path. It does **not** prove intentional
-`xai.api_key` or auth expiry. Neither exact peer advertised ACP `auth.logout`;
+used its existing cached-token path. A separate exact-binary run passed the
+required auth-failure/recovery branch with an intentionally invalid ephemeral
+API key followed by a fresh cached-token process; it did not alter stored
+credentials. It does **not** prove intentional valid `xai.api_key` or literal
+credential expiry. Neither exact peer advertised ACP `auth.logout`;
 the matrix records logout as unsupported rather than demanding an unavailable
 method. Fresh-process primary authentication is covered independently.
 
@@ -169,7 +181,7 @@ named-peer live compatibility.
 
 ## Release blockers retained as data
 
-The largest shared gaps are credential lifecycle paths, complete
+The largest shared gaps are credential lifecycle paths, Cursor's complete
 tool/plan/config/usage variants, and non-Darwin-arm64 platform evidence.
 Permission timeout, stale-response fencing, and policy denial are production
 host authority semantics and pass through the hermetic production transport;
@@ -177,8 +189,8 @@ approval and refusal now pass against both pinned live peers.
 
 Provider-specific gaps:
 
-- Grok: intentional valid `xai.api_key`, auth cancel/expiry, the
-  non-underscore ask-question spelling, and rich plan/config/usage streaming.
+- Grok: intentional valid `xai.api_key`, live interactive-auth cancellation,
+  and the non-underscore ask-question spelling.
   The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.

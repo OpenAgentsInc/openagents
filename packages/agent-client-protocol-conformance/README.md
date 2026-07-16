@@ -102,6 +102,10 @@ terminal handlers only inside the disposable repository, forces only its new
 disposable sessions out of inherited YOLO/auto mode through session metadata,
 and retains method counts rather than file, command, terminal, or response
 content. It never changes global Grok configuration.
+The shared runtime also preserves notification and prompt-completion `_meta` as
+private native evidence. Candidate receipts expose only metadata-presence and
+usage-presence counts; they never export token values, model/session IDs, or
+other metadata contents.
 
 After packaging Desktop, the separately armed peer journey proves real app
 workspace refusal, interruption, restart settlement, re-enable, completion,
