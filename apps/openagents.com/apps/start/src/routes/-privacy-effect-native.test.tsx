@@ -58,6 +58,9 @@ describe('EN-4 /privacy Effect Native route', () => {
       'OpenAgents, Inc., 1101 W 34th St. #581, Austin, TX 78705',
     )
     expect(serialized).toContain('Information you provide.')
+    expect(serialized).toContain('\u00a0We collect information you give us')
+    expect(serialized).toContain('website\u00a0')
+    expect(serialized).toContain('contact us at\u00a0')
     expect(serialized).toContain('API and agent data.')
     expect(serialized).toContain('Claim Your Agent')
     expect(serialized).toContain('Do Not Track')

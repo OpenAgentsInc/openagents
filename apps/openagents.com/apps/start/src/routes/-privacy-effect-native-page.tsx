@@ -133,6 +133,8 @@ const externalLink = (key: string, label: string, href: string): LinkView =>
   )
 
 // Paragraph with leading emphasis label as a separate run (flat Text only).
+// The non-breaking space belongs to the body run so adjacent inline DOM views
+// retain the same readable separation as a normal rich-text paragraph.
 const emphasizedParagraph = (
   key: string,
   emphasis: string,
@@ -147,7 +149,7 @@ const emphasizedParagraph = (
     },
     [
       text(`privacy-em-${key}`, emphasis, 'label', 'textPrimary'),
-      text(`privacy-em-body-${key}`, body, 'body', 'textMuted'),
+      text(`privacy-em-body-${key}`, `\u00a0${body}`, 'body', 'textMuted'),
     ],
   )
 
@@ -181,7 +183,7 @@ export const privacyLandingView = (
           [
             text(
               'privacy-intro-before',
-              'This Privacy Policy describes how OpenAgents, Inc. (“we,” “us,” or “our”) handles personal information that we collect through our website',
+              'This Privacy Policy describes how OpenAgents, Inc. (“we,” “us,” or “our”) handles personal information that we collect through our website\u00a0',
               'body',
               'textMuted',
             ),
@@ -317,7 +319,7 @@ export const privacyLandingView = (
             [
               text(
                 'privacy-contact-before',
-                'If you have questions about this Privacy Policy or our information practices, contact us at',
+                'If you have questions about this Privacy Policy or our information practices, contact us at\u00a0',
                 'body',
                 'textMuted',
               ),
