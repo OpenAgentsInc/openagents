@@ -1,24 +1,30 @@
+import { PublicPageShell } from '@/components/public-page-shell'
 import {
   Card,
+  type IntentReporter,
   Link,
+  type LinkView,
   Stack,
+  type StackView,
   Text,
+  type TextView,
+  type View,
   makeIntentRegistry,
   makeNavigationIntentHandlers,
   makeViewProgramFromState,
   navigationIntentDefinitions,
   resolveIntentRef,
-  type IntentReporter,
-  type LinkView,
-  type StackView,
-  type TextView,
-  type View,
 } from '@effect-native/core'
+import {
+  Effect,
+  Exit,
+  Scope,
+  SubscriptionRef,
+} from '@effect-native/core/effect'
 import {
   makeDomNavigationHandler,
   makeDomRenderer,
 } from '@effect-native/render-dom'
-import { Effect, Exit, Scope, SubscriptionRef } from '@effect-native/core/effect'
 import { useEffect, useRef } from 'react'
 
 import { stage1EffectNativeTheme } from './-stage1-effect-native-theme'
@@ -82,16 +88,16 @@ const legalSection = (
       gap: '3',
       style: { width: 'full' },
     },
-    [text(`privacy-heading-${key}`, heading, 'title', 'textPrimary'), ...children],
+    [
+      text(`privacy-heading-${key}`, heading, 'title', 'textPrimary'),
+      ...children,
+    ],
   )
 
 const bullet = (key: string, content: string): TextView =>
   text(key, `• ${content}`, 'body', 'textMuted')
 
-const bulletList = (
-  key: string,
-  items: ReadonlyArray<string>,
-): StackView =>
+const bulletList = (key: string, items: ReadonlyArray<string>): StackView =>
   Stack(
     {
       key: `privacy-bullets-${key}`,
@@ -100,31 +106,6 @@ const bulletList = (
       style: { width: 'full' },
     },
     items.map((item, index) => bullet(`${key}-${index}`, item)),
-  )
-
-const navLink = (key: string, label: string, path: string): LinkView =>
-  Link(
-    {
-      key,
-      destination: { kind: 'path', path },
-      style: {
-        borderColor: 'border',
-        borderWidth: 1,
-        borderRadius: 'md',
-        paddingTop: '3',
-        paddingRight: '4',
-        paddingBottom: '3',
-        paddingLeft: '4',
-      },
-    },
-    [
-      Text({
-        key: `${key}-label`,
-        content: label,
-        variant: 'label',
-        color: 'accent',
-      }),
-    ],
   )
 
 const externalLink = (key: string, label: string, href: string): LinkView =>
@@ -179,12 +160,13 @@ export const privacyLandingView = (
       key: 'privacy-root',
       direction: 'column',
       gap: '0',
-      style: { backgroundColor: 'background', minHeight: 'full', width: 'full' },
+      style: {
+        backgroundColor: 'background',
+        minHeight: 'full',
+        width: 'full',
+      },
     },
     [
-      section('privacy-back-row', [
-        navLink('privacy-back-home', '← OpenAgents', '/'),
-      ]),
       section('privacy-article', [
         text('privacy-title', 'Privacy Policy', 'heading'),
         text('privacy-updated', PRIVACY_LAST_UPDATED, 'caption', 'textMuted'),
@@ -409,7 +391,7 @@ export function PrivacyEffectNativePage() {
     let closeScope: (() => void) | undefined
 
     void Effect.runPromise(Scope.make())
-      .then((scope) => {
+      .then(scope => {
         const close = () => {
           void Effect.runPromise(Scope.close(scope, Exit.void))
         }
@@ -431,13 +413,14 @@ export function PrivacyEffectNativePage() {
   }, [])
 
   return (
-    <main
-      aria-label="Privacy Policy"
-      className="privacy-effect-native-host"
-      data-route="privacy"
-      data-privacy-effect-native=""
-    >
-      <div ref={rootRef} data-privacy-effect-native-root="" />
-    </main>
+    <PublicPageShell dataRoute="privacy">
+      <main
+        aria-label="Privacy Policy"
+        className="privacy-effect-native-host"
+        data-privacy-effect-native=""
+      >
+        <div ref={rootRef} data-privacy-effect-native-root="" />
+      </main>
+    </PublicPageShell>
   )
 }

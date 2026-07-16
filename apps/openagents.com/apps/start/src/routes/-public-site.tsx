@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { InternalLink } from '@/components/internal-link'
+import { PublicFooter } from '@/components/public-footer'
 import { PublicHeader } from '@/components/public-header'
 import {
   DOCS_URL,
@@ -60,12 +61,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
     <div className="oa-public-site">
       <PublicHeader />
       <main>{children}</main>
-      <footer className="oa-site-footer">
-        <div className="oa-container oa-footer-inner">
-          <p>OpenAgents Desktop · local-first Codex workroom</p>
-          <div className="oa-footer-links"><InternalLink href={DOCS_URL} preload="render">Docs</InternalLink><a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub</a></div>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   )
 }

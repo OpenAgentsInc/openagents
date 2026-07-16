@@ -9,7 +9,7 @@
   color: #aab5c8;
   font-family: var(--oa-font-sans);
   font-optical-sizing: auto;
-  font-variation-settings: "wdth" 100;
+  font-variation-settings: 'wdth' 100;
 }
 
 .oa-unified-header-spacer {
@@ -65,17 +65,21 @@
 }
 
 .oa-unified-docs-link,
+.oa-unified-icon-link,
 .oa-unified-github-link,
 .oa-unified-download-link {
-  transition: color 160ms ease-out, background-color 160ms ease-out;
+  transition:
+    color 160ms ease-out,
+    background-color 160ms ease-out;
 }
 
 .oa-unified-docs-link:hover,
+.oa-unified-icon-link:hover,
 .oa-unified-github-link:hover {
   color: #f4f6fb;
 }
 
-.oa-unified-github-link {
+.oa-unified-icon-link {
   display: inline-flex;
   width: 2rem;
   height: 2rem;
@@ -84,11 +88,11 @@
   border-radius: 999px;
 }
 
-.oa-unified-github-link:hover {
+.oa-unified-icon-link:hover {
   background: rgb(116 164 255 / 0.09);
 }
 
-.oa-unified-github-link svg {
+.oa-unified-icon-link svg {
   width: 1rem;
   height: 1rem;
 }
@@ -149,11 +153,12 @@
   }
 
   .oa-unified-docs-link,
+  .oa-unified-x-link,
   .oa-unified-github-link {
     display: none;
   }
 
-  .oa-unified-docs-link[aria-current="page"] {
+  .oa-unified-docs-link[aria-current='page'] {
     display: inline-flex;
   }
 

@@ -1,12 +1,21 @@
+import { InternalLink } from '@/components/internal-link'
+import GithubMark from '@/components/launch-ui/logos/github'
+import { PublicFooter } from '@/components/public-footer'
+import { PublicHeader } from '@/components/public-header'
+import {
+  DOCS_URL,
+  DOWNLOAD_URL,
+  GITHUB_REPOSITORY_URL,
+  MAC_RELEASE,
+} from '@/lib/public-site'
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
 import { khalaTheme } from '@effect-native/tokens'
-import { InternalLink } from '@/components/internal-link'
-import { PublicHeader } from '@/components/public-header'
-import GithubMark from '@/components/launch-ui/logos/github'
-import { DOCS_URL, DOWNLOAD_URL, GITHUB_REPOSITORY_URL, MAC_RELEASE } from '@/lib/public-site'
 import {
+  type DesktopActivityStatus,
+  type DesktopAgentActivity,
   DesktopAgentGroup,
   DesktopApprovalCard,
+  type DesktopApprovalDecision,
   DesktopCommandCard,
   DesktopComposerBar,
   DesktopComposerButton,
@@ -14,9 +23,12 @@ import {
   DesktopComposerInput,
   DesktopConversation,
   DesktopConversationHeader,
+  type DesktopFileChange,
   DesktopFileChangeCard,
   DesktopPlanCard,
+  type DesktopPlanEntry,
   DesktopQueuedFollowup,
+  type DesktopRailDestination,
   DesktopRailScrim,
   DesktopSessionRail,
   DesktopSidebarExpand,
@@ -24,23 +36,32 @@ import {
   DesktopTimelineMessage,
   DesktopTimelineNotice,
   DesktopToolCallCard,
-  DesktopWorkbench,
+  type DesktopToolKind,
   DesktopWorkEntry,
   DesktopWorkGroup,
+  DesktopWorkbench,
   desktopThemeCssVariables,
-  type DesktopActivityStatus,
-  type DesktopAgentActivity,
-  type DesktopApprovalDecision,
-  type DesktopFileChange,
-  type DesktopPlanEntry,
-  type DesktopRailDestination,
-  type DesktopToolKind,
 } from '@openagentsinc/ui/desktop-workbench'
-import { ArrowRight, ArrowUp, ArrowUpRight, Command, ImagePlus, Square, Zap } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type FormEvent, type WheelEvent } from 'react'
+import {
+  ArrowRight,
+  ArrowUp,
+  ArrowUpRight,
+  Command,
+  ImagePlus,
+  Square,
+  Zap,
+} from 'lucide-react'
+import {
+  type FormEvent,
+  type WheelEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
-import { SplashHeroCanvas } from './-splash-khala-canvas'
 import '../splash.css'
+import { SplashHeroCanvas } from './-splash-khala-canvas'
 
 type DemoMessageItem = Readonly<{
   id: string
@@ -132,8 +153,18 @@ type DemoWorkGroupItem = Readonly<{
   text: string
 }>
 
-type DemoItem = DemoMessageItem | DemoWorkItem | DemoPlanItem | DemoCommandItem | DemoFilesItem |
-  DemoToolItem | DemoAgentsItem | DemoApprovalItem | DemoNoticeItem | DemoQueueItem | DemoWorkGroupItem
+type DemoItem =
+  | DemoMessageItem
+  | DemoWorkItem
+  | DemoPlanItem
+  | DemoCommandItem
+  | DemoFilesItem
+  | DemoToolItem
+  | DemoAgentsItem
+  | DemoApprovalItem
+  | DemoNoticeItem
+  | DemoQueueItem
+  | DemoWorkGroupItem
 
 type DemoSession = Readonly<{
   id: string
@@ -164,10 +195,22 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     id: 'plan-start',
     kind: 'plan',
     entries: [
-      { step: 'Trace the current ThreadItem and notification unions', status: 'completed' },
-      { step: 'Audit Desktop plan, tool, approval, and child projections', status: 'completed' },
-      { step: 'Build shared app-server presentation components', status: 'in_progress' },
-      { step: 'Run renderer, accessibility, and route verification', status: 'pending' },
+      {
+        step: 'Trace the current ThreadItem and notification unions',
+        status: 'completed',
+      },
+      {
+        step: 'Audit Desktop plan, tool, approval, and child projections',
+        status: 'completed',
+      },
+      {
+        step: 'Build shared app-server presentation components',
+        status: 'in_progress',
+      },
+      {
+        step: 'Run renderer, accessibility, and route verification',
+        status: 'pending',
+      },
       { step: 'Review the finished workroom end to end', status: 'pending' },
     ],
   },
@@ -176,14 +219,17 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     kind: 'work',
     label: 'Reasoning summary',
     status: 'completed',
-    detail: 'The current source exposes plan, reasoning, commandExecution, fileChange, mcpToolCall, dynamicToolCall, collabAgentToolCall, subAgentActivity, webSearch, imageView, approval, and contextCompaction events. The UI should preserve those distinctions without exposing raw protocol envelopes.',
+    detail:
+      'The current source exposes plan, reasoning, commandExecution, fileChange, mcpToolCall, dynamicToolCall, collabAgentToolCall, subAgentActivity, webSearch, imageView, approval, and contextCompaction events. The UI should preserve those distinctions without exposing raw protocol envelopes.',
   },
   {
     id: 'inspect-protocol',
     kind: 'command',
-    command: 'rg -n "collabAgentToolCall|contextCompaction|requestApproval" packages apps/openagents-desktop',
+    command:
+      'rg -n "collabAgentToolCall|contextCompaction|requestApproval" packages apps/openagents-desktop',
     cwd: '/work/openagents',
-    output: 'current-source-thread-items.json:62  collabAgentToolCall\ncodex-app-server-turn.ts:396       registerChild(receiver, threadId, prompt)\nmeta.gen.ts:2140                   item/commandExecution/requestApproval\nmeta.gen.ts:2684                   item/reasoning/textDelta\n18 protocol projections matched',
+    output:
+      'current-source-thread-items.json:62  collabAgentToolCall\ncodex-app-server-turn.ts:396       registerChild(receiver, threadId, prompt)\nmeta.gen.ts:2140                   item/commandExecution/requestApproval\nmeta.gen.ts:2684                   item/reasoning/textDelta\n18 protocol projections matched',
     status: 'completed',
   },
   {
@@ -208,9 +254,18 @@ const appServerItems: ReadonlyArray<DemoItem> = [
         detail: 'Inventory app-server items and lifecycle notifications',
         status: 'completed',
         transcript: [
-          { label: 'spawnAgent', text: 'Trace the current generated protocol and report every UI-relevant item.' },
-          { label: 'Update', text: 'Mapped 18 ThreadItem variants and the corresponding delta/progress notifications.' },
-          { label: 'Result', text: 'Command, patch, MCP, collaboration, search, image, approval, and compaction are all first-class.' },
+          {
+            label: 'spawnAgent',
+            text: 'Trace the current generated protocol and report every UI-relevant item.',
+          },
+          {
+            label: 'Update',
+            text: 'Mapped 18 ThreadItem variants and the corresponding delta/progress notifications.',
+          },
+          {
+            label: 'Result',
+            text: 'Command, patch, MCP, collaboration, search, image, approval, and compaction are all first-class.',
+          },
         ],
       },
       {
@@ -220,9 +275,18 @@ const appServerItems: ReadonlyArray<DemoItem> = [
         detail: 'Build dense Khala timeline cards in the shared package',
         status: 'running',
         transcript: [
-          { label: 'spawnAgent', text: 'Own the shared workbench components and preserve Desktop geometry.' },
-          { label: 'FileChange', text: 'Added plan, command, patch, tool, approval, queue, and delegated-agent cards.' },
-          { label: 'Result', text: 'Web and Desktop can now consume one controlled component vocabulary.' },
+          {
+            label: 'spawnAgent',
+            text: 'Own the shared workbench components and preserve Desktop geometry.',
+          },
+          {
+            label: 'FileChange',
+            text: 'Added plan, command, patch, tool, approval, queue, and delegated-agent cards.',
+          },
+          {
+            label: 'Result',
+            text: 'Web and Desktop can now consume one controlled component vocabulary.',
+          },
         ],
       },
       {
@@ -231,12 +295,22 @@ const appServerItems: ReadonlyArray<DemoItem> = [
         role: 'Nested reviewer',
         parent: 'timeline-builder',
         depth: 1,
-        detail: 'Verify disclosure semantics, keyboard targets, and status names',
+        detail:
+          'Verify disclosure semantics, keyboard targets, and status names',
         status: 'completed',
         transcript: [
-          { label: 'spawnAgent', text: 'Nested child spawned by timeline-builder for an independent accessibility pass.' },
-          { label: 'Review', text: 'Details use native disclosures, status is exposed as text, and controls retain accessible names.' },
-          { label: 'Result', text: 'No icon-only ambiguity or inaccessible status color dependency found.' },
+          {
+            label: 'spawnAgent',
+            text: 'Nested child spawned by timeline-builder for an independent accessibility pass.',
+          },
+          {
+            label: 'Review',
+            text: 'Details use native disclosures, status is exposed as text, and controls retain accessible names.',
+          },
+          {
+            label: 'Result',
+            text: 'No icon-only ambiguity or inaccessible status color dependency found.',
+          },
         ],
       },
     ],
@@ -277,10 +351,30 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     kind: 'files',
     defaultOpen: true,
     changes: [
-      { kind: 'modified', path: 'packages/ui/src/desktop-workbench.tsx', additions: 284, deletions: 12 },
-      { kind: 'modified', path: 'packages/ui/src/desktop-workbench.css', additions: 191, deletions: 8 },
-      { kind: 'modified', path: 'apps/openagents.com/apps/start/src/routes/-splash-page.tsx', additions: 326, deletions: 48 },
-      { kind: 'modified', path: 'apps/openagents-desktop/src/renderer/react-timeline.tsx', additions: 18, deletions: 13 },
+      {
+        kind: 'modified',
+        path: 'packages/ui/src/desktop-workbench.tsx',
+        additions: 284,
+        deletions: 12,
+      },
+      {
+        kind: 'modified',
+        path: 'packages/ui/src/desktop-workbench.css',
+        additions: 191,
+        deletions: 8,
+      },
+      {
+        kind: 'modified',
+        path: 'apps/openagents.com/apps/start/src/routes/-splash-page.tsx',
+        additions: 326,
+        deletions: 48,
+      },
+      {
+        kind: 'modified',
+        path: 'apps/openagents-desktop/src/renderer/react-timeline.tsx',
+        additions: 18,
+        deletions: 13,
+      },
     ],
     status: 'completed',
   },
@@ -289,7 +383,8 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     kind: 'command',
     command: 'pnpm exec vitest run src/routes/-splash.test.tsx',
     cwd: '/work/openagents/apps/openagents.com/apps/start',
-    output: '✓ src/routes/-splash.test.tsx (2 tests) 41ms\n\nTest Files  1 passed (1)\nTests       2 passed (2)',
+    output:
+      '✓ src/routes/-splash.test.tsx (2 tests) 41ms\n\nTest Files  1 passed (1)\nTests       2 passed (2)',
     status: 'completed',
   },
   {
@@ -297,7 +392,8 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     kind: 'approval',
     decision: 'approved',
     title: 'Command approval',
-    description: 'Run the bounded production build to verify the shared UI package in both hosts.',
+    description:
+      'Run the bounded production build to verify the shared UI package in both hosts.',
     resource: 'pnpm --dir apps/openagents-desktop run build',
   },
   {
@@ -305,7 +401,8 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     kind: 'command',
     command: 'pnpm --dir apps/openagents-desktop run build',
     cwd: '/work/openagents',
-    output: 'renderer bundle     412.7 kB │ gzip: 121.9 kB\nmain process         188.4 kB │ gzip:  52.1 kB\n✓ built in 2.14s',
+    output:
+      'renderer bundle     412.7 kB │ gzip: 121.9 kB\nmain process         188.4 kB │ gzip:  52.1 kB\n✓ built in 2.14s',
     status: 'completed',
   },
   {
@@ -355,7 +452,8 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     kind: 'command',
     command: 'pnpm run build && pnpm run typecheck',
     cwd: '/work/openagents/apps/openagents.com/apps/start',
-    output: 'client route chunk    31.8 kB │ gzip: 9.7 kB\nshared workbench      18.6 kB │ gzip: 5.4 kB\n✓ typecheck passed\n✓ production build passed',
+    output:
+      'client route chunk    31.8 kB │ gzip: 9.7 kB\nshared workbench      18.6 kB │ gzip: 5.4 kB\n✓ typecheck passed\n✓ production build passed',
     status: 'completed',
   },
   {
@@ -393,25 +491,56 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     kind: 'plan',
     title: 'Plan updated',
     entries: [
-      { step: 'Trace the current ThreadItem and notification unions', status: 'completed' },
-      { step: 'Audit Desktop plan, tool, approval, and child projections', status: 'completed' },
-      { step: 'Build shared app-server presentation components', status: 'completed' },
-      { step: 'Run renderer, accessibility, and route verification', status: 'completed' },
+      {
+        step: 'Trace the current ThreadItem and notification unions',
+        status: 'completed',
+      },
+      {
+        step: 'Audit Desktop plan, tool, approval, and child projections',
+        status: 'completed',
+      },
+      {
+        step: 'Build shared app-server presentation components',
+        status: 'completed',
+      },
+      {
+        step: 'Run renderer, accessibility, and route verification',
+        status: 'completed',
+      },
       { step: 'Review the finished workroom end to end', status: 'completed' },
     ],
   },
 ]
 
 const sessions: ReadonlyArray<DemoSession> = [
-  { id: 'appserver', title: 'APPSERVER', meta: '⌘1', items: appServerItems, reply: initialReply },
+  {
+    id: 'appserver',
+    title: 'APPSERVER',
+    meta: '⌘1',
+    items: appServerItems,
+    reply: initialReply,
+  },
   {
     id: 't3code-yoink',
     title: 'T3CODE YOINK',
     meta: '⌘2',
     items: [
-      { id: 'extract-user', kind: 'user', text: 'Use the actual Desktop components on web so the two surfaces cannot drift.' },
-      { id: 'extract-work', kind: 'work-group', text: 'Shared workbench extraction', count: 3 },
-      { id: 'extract-assistant', kind: 'assistant', text: 'The controlled primitives now live in packages/ui and both hosts consume the same geometry.' },
+      {
+        id: 'extract-user',
+        kind: 'user',
+        text: 'Use the actual Desktop components on web so the two surfaces cannot drift.',
+      },
+      {
+        id: 'extract-work',
+        kind: 'work-group',
+        text: 'Shared workbench extraction',
+        count: 3,
+      },
+      {
+        id: 'extract-assistant',
+        kind: 'assistant',
+        text: 'The controlled primitives now live in packages/ui and both hosts consume the same geometry.',
+      },
     ],
   },
   {
@@ -419,9 +548,17 @@ const sessions: ReadonlyArray<DemoSession> = [
     title: 'ARWES',
     meta: '⌘3',
     items: [
-      { id: 'arwes-user', kind: 'user', text: 'Keep the Khala color and motion language restrained.' },
+      {
+        id: 'arwes-user',
+        kind: 'user',
+        text: 'Keep the Khala color and motion language restrained.',
+      },
       { id: 'arwes-work', kind: 'work-group', text: 'Token audit', count: 2 },
-      { id: 'arwes-assistant', kind: 'assistant', text: 'The shared workbench consumes the same Effect Native token sheet in both hosts.' },
+      {
+        id: 'arwes-assistant',
+        kind: 'assistant',
+        text: 'The shared workbench consumes the same Effect Native token sheet in both hosts.',
+      },
     ],
   },
   {
@@ -429,8 +566,16 @@ const sessions: ReadonlyArray<DemoSession> = [
     title: 'WEBSITE',
     meta: '⌘4',
     items: [
-      { id: 'website-user', kind: 'user', text: 'Make public navigation instant and keep the landing page focused.' },
-      { id: 'website-assistant', kind: 'assistant', text: 'The public surface stays in TanStack Start; this route embeds the shared Desktop workbench presentation.' },
+      {
+        id: 'website-user',
+        kind: 'user',
+        text: 'Make public navigation instant and keep the landing page focused.',
+      },
+      {
+        id: 'website-assistant',
+        kind: 'assistant',
+        text: 'The public surface stays in TanStack Start; this route embeds the shared Desktop workbench presentation.',
+      },
     ],
   },
   {
@@ -438,8 +583,16 @@ const sessions: ReadonlyArray<DemoSession> = [
     title: 'DOCS',
     meta: '⌘5',
     items: [
-      { id: 'docs-user', kind: 'user', text: 'Keep the documentation inside the same fast application shell.' },
-      { id: 'docs-assistant', kind: 'assistant', text: 'Docs, blog, website, and app routes share the TanStack application authority.' },
+      {
+        id: 'docs-user',
+        kind: 'user',
+        text: 'Keep the documentation inside the same fast application shell.',
+      },
+      {
+        id: 'docs-assistant',
+        kind: 'assistant',
+        text: 'Docs, blog, website, and app routes share the TanStack application authority.',
+      },
     ],
   },
   { id: 'untitled-6', title: 'Untitled Codex chat', meta: '⌘6', items: [] },
@@ -465,47 +618,125 @@ const followupReplies = [
 ] as const
 
 const splashQuestions = [
-  ['Does OpenAgents replace Codex?', 'No. Codex remains the engine and source of truth. OpenAgents Desktop adds a durable workroom around the session you already use.'],
-  ['Do I need an OpenAgents account?', 'Not for the Desktop MVP. It uses your ordinary logged-in Codex session and keeps the core workroom local-first.'],
-  ['Can the review UI change my files?', 'No. Repository status and diff views are deliberately read-only. Changes still happen through the active agent turn, where cause and result remain visible.'],
-  ['What happens after a restart or interrupted turn?', 'OpenAgents restores stable session identity, then reconciles the latest known turn state. It does not silently replay tools or pretend interrupted work completed.'],
-  ['What is available today?', `The current ${MAC_RELEASE.version} release candidate is available for Apple silicon Macs. OpenAgents Desktop is still an MVP, so the download and documentation describe the supported boundary precisely.`],
+  [
+    'Does OpenAgents replace Codex?',
+    'No. Codex remains the engine and source of truth. OpenAgents Desktop adds a durable workroom around the session you already use.',
+  ],
+  [
+    'Do I need an OpenAgents account?',
+    'Not for the Desktop MVP. It uses your ordinary logged-in Codex session and keeps the core workroom local-first.',
+  ],
+  [
+    'Can the review UI change my files?',
+    'No. Repository status and diff views are deliberately read-only. Changes still happen through the active agent turn, where cause and result remain visible.',
+  ],
+  [
+    'What happens after a restart or interrupted turn?',
+    'OpenAgents restores stable session identity, then reconciles the latest known turn state. It does not silently replay tools or pretend interrupted work completed.',
+  ],
+  [
+    'What is available today?',
+    `The current ${MAC_RELEASE.version} release candidate is available for Apple silicon Macs. OpenAgents Desktop is still an MVP, so the download and documentation describe the supported boundary precisely.`,
+  ],
 ] as const
 
 const cleanStreamingText = (value: string): string => value.replace(/▌$/u, '')
 
-const DemoTimelineItem = ({ item, sequence }: Readonly<{ item: DemoItem; sequence: number }>) => {
-  if (item.kind === 'work') return <DesktopWorkEntry
-    body={<pre><code>{item.detail}</code></pre>}
-    itemKey={item.id}
-    kind="reasoning"
-    label={item.label}
-    preview={item.detail}
-    status={item.status}
-  />
-  if (item.kind === 'work-group') return <DesktopWorkGroup count={item.count}>
-    <DesktopWorkEntry body={<pre><code>{item.text}</code></pre>} itemKey={`${item.id}:entry`} label="FileChange" preview={item.text} />
-  </DesktopWorkGroup>
-  if (item.kind === 'plan') return <DesktopPlanCard entries={item.entries} itemKey={item.id} title={item.title} />
-  if (item.kind === 'command') return <DesktopCommandCard {...item} itemKey={item.id} />
-  if (item.kind === 'files') return <DesktopFileChangeCard {...item} itemKey={item.id} />
-  if (item.kind === 'tool') return <DesktopToolCallCard
-    body={<pre><code>{item.body}</code></pre>}
-    defaultOpen={item.defaultOpen}
-    itemKey={item.id}
-    label={item.label}
-    meta={item.meta}
-    status={item.status}
-    summary={item.summary}
-    toolKind={item.toolKind}
-  />
-  if (item.kind === 'agents') return <DesktopAgentGroup agents={item.agents} itemKey={item.id} title={item.title} />
-  if (item.kind === 'approval') return <DesktopApprovalCard {...item} itemKey={item.id} />
-  if (item.kind === 'queue') return <DesktopQueuedFollowup {...item} itemKey={item.id} />
-  if (item.kind === 'notice') return <DesktopTimelineNotice body={item.body} danger={item.danger} itemKey={item.id} kind={item.noticeKind} label={item.label} />
-  return <DesktopTimelineMessage itemKey={item.id} label={item.kind === 'user' ? 'You' : 'Assistant'} sequence={sequence} tone={item.kind === 'user' ? 'user' : 'assistant'}>
-    <p>{item.text}</p>
-  </DesktopTimelineMessage>
+const DemoTimelineItem = ({
+  item,
+  sequence,
+}: Readonly<{ item: DemoItem; sequence: number }>) => {
+  if (item.kind === 'work')
+    return (
+      <DesktopWorkEntry
+        body={
+          <pre>
+            <code>{item.detail}</code>
+          </pre>
+        }
+        itemKey={item.id}
+        kind="reasoning"
+        label={item.label}
+        preview={item.detail}
+        status={item.status}
+      />
+    )
+  if (item.kind === 'work-group')
+    return (
+      <DesktopWorkGroup count={item.count}>
+        <DesktopWorkEntry
+          body={
+            <pre>
+              <code>{item.text}</code>
+            </pre>
+          }
+          itemKey={`${item.id}:entry`}
+          label="FileChange"
+          preview={item.text}
+        />
+      </DesktopWorkGroup>
+    )
+  if (item.kind === 'plan')
+    return (
+      <DesktopPlanCard
+        entries={item.entries}
+        itemKey={item.id}
+        title={item.title}
+      />
+    )
+  if (item.kind === 'command')
+    return <DesktopCommandCard {...item} itemKey={item.id} />
+  if (item.kind === 'files')
+    return <DesktopFileChangeCard {...item} itemKey={item.id} />
+  if (item.kind === 'tool')
+    return (
+      <DesktopToolCallCard
+        body={
+          <pre>
+            <code>{item.body}</code>
+          </pre>
+        }
+        defaultOpen={item.defaultOpen}
+        itemKey={item.id}
+        label={item.label}
+        meta={item.meta}
+        status={item.status}
+        summary={item.summary}
+        toolKind={item.toolKind}
+      />
+    )
+  if (item.kind === 'agents')
+    return (
+      <DesktopAgentGroup
+        agents={item.agents}
+        itemKey={item.id}
+        title={item.title}
+      />
+    )
+  if (item.kind === 'approval')
+    return <DesktopApprovalCard {...item} itemKey={item.id} />
+  if (item.kind === 'queue')
+    return <DesktopQueuedFollowup {...item} itemKey={item.id} />
+  if (item.kind === 'notice')
+    return (
+      <DesktopTimelineNotice
+        body={item.body}
+        danger={item.danger}
+        itemKey={item.id}
+        kind={item.noticeKind}
+        label={item.label}
+      />
+    )
+  return (
+    <DesktopTimelineMessage
+      itemKey={item.id}
+      label={item.kind === 'user' ? 'You' : 'Assistant'}
+      sequence={sequence}
+      tone={item.kind === 'user' ? 'user' : 'assistant'}
+    >
+      <p>{item.text}</p>
+    </DesktopTimelineMessage>
+  )
 }
 
 export function SplashPage() {
@@ -516,7 +747,10 @@ export function SplashPage() {
   const [draft, setDraft] = useState('')
   const [fullAuto, setFullAuto] = useState(true)
   const [phase, setPhase] = useState<PlaybackPhase>('preparing')
-  const [playback, setPlayback] = useState<Playback | null>({ id: 0, text: initial.reply! })
+  const [playback, setPlayback] = useState<Playback | null>({
+    id: 0,
+    text: initial.reply!,
+  })
   const [streamingText, setStreamingText] = useState('')
   const [railOpen, setRailOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -540,7 +774,10 @@ export function SplashPage() {
       setPhase('complete')
       return
     }
-    const frames = makeKhalaTextSequenceFrames(playback.text, { caret: true, frames: 96 })
+    const frames = makeKhalaTextSequenceFrames(playback.text, {
+      caret: true,
+      frames: 96,
+    })
     const startTimer = window.setTimeout(() => {
       setPhase('streaming')
       frames.forEach((frame, index) => {
@@ -584,7 +821,13 @@ export function SplashPage() {
     setStreamingText('')
     setPhase('idle')
     setRailOpen(false)
-    window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('#splash-composer-input')?.focus(), 0)
+    window.setTimeout(
+      () =>
+        document
+          .querySelector<HTMLTextAreaElement>('#splash-composer-input')
+          ?.focus(),
+      0,
+    )
   }
 
   const stopPlayback = (): void => {
@@ -601,163 +844,284 @@ export function SplashPage() {
     const priorReply = cleanStreamingText(streamingText)
     setItems(current => [
       ...current,
-      ...(priorReply === '' ? [] : [{ id: `assistant-${playbackId.current}`, kind: 'assistant' as const, text: priorReply }]),
+      ...(priorReply === ''
+        ? []
+        : [
+            {
+              id: `assistant-${playbackId.current}`,
+              kind: 'assistant' as const,
+              text: priorReply,
+            },
+          ]),
       { id: `user-${playbackId.current + 1}`, kind: 'user', text: value },
     ])
     setDraft('')
     setStreamingText('')
-    const reply = followupReplies[followupIndex.current % followupReplies.length]!
+    const reply =
+      followupReplies[followupIndex.current % followupReplies.length]!
     followupIndex.current += 1
     beginPlayback(reply)
   }
 
-  const visibleSessions = sessions.filter(session => session.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+  const visibleSessions = sessions.filter(session =>
+    session.title
+      .toLocaleLowerCase()
+      .includes(query.trim().toLocaleLowerCase()),
+  )
   const active = phase === 'preparing' || phase === 'streaming'
   const releaseDemoWheel = (event: WheelEvent<HTMLDivElement>): void => {
     const target = event.target
     if (!(target instanceof Element)) return
-    const scroller = target.closest<HTMLElement>('.oa-react-timeline-scroll, .oa-react-session-scroll')
+    const scroller = target.closest<HTMLElement>(
+      '.oa-react-timeline-scroll, .oa-react-session-scroll',
+    )
     if (scroller === null) return
     const atTop = scroller.scrollTop <= 1
-    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1
+    const atBottom =
+      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1
     if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
       event.preventDefault()
       window.scrollBy({ behavior: 'auto', top: event.deltaY })
     }
   }
 
-  return <div className="splash-page" data-route="splash" style={desktopThemeCssVariables(khalaTheme)}>
-    <PublicHeader />
+  return (
+    <div
+      className="splash-page"
+      data-route="splash"
+      style={desktopThemeCssVariables(khalaTheme)}
+    >
+      <PublicHeader />
 
-    <section aria-labelledby="splash-heading" className="splash-hero">
-      <SplashHeroCanvas />
-      <InternalLink className="splash-release-link" href="/blog/introducing-openagents-desktop" preload="render">
-        Introducing OpenAgents Desktop
-        <ArrowRight aria-hidden="true" />
-      </InternalLink>
-      <h1 id="splash-heading">Your last agent IDE.</h1>
-      <p>Plan, delegate, review, and steer coding work from one local-first desktop workroom.</p>
-      <InternalLink className="splash-primary-action" href={DOWNLOAD_URL} preload="render">
-        Download for Mac
-        <ArrowRight aria-hidden="true" />
-      </InternalLink>
-      <a className="splash-source-link" href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">
-        <GithubMark aria-hidden="true" />
-        Or build from source
-        <ArrowUpRight aria-hidden="true" />
-      </a>
-    </section>
+      <section aria-labelledby="splash-heading" className="splash-hero">
+        <SplashHeroCanvas />
+        <InternalLink
+          className="splash-release-link"
+          href="/blog/introducing-openagents-desktop"
+          preload="render"
+        >
+          Introducing OpenAgents Desktop
+          <ArrowRight aria-hidden="true" />
+        </InternalLink>
+        <h1 id="splash-heading">Your last agent IDE.</h1>
+        <p>
+          Plan, delegate, review, and steer coding work from one local-first
+          desktop workroom.
+        </p>
+        <InternalLink
+          className="splash-primary-action"
+          href={DOWNLOAD_URL}
+          preload="render"
+        >
+          Download for Mac
+          <ArrowRight aria-hidden="true" />
+        </InternalLink>
+        <a
+          className="splash-source-link"
+          href={GITHUB_REPOSITORY_URL}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <GithubMark aria-hidden="true" />
+          Or build from source
+          <ArrowUpRight aria-hidden="true" />
+        </a>
+      </section>
 
-    <figure className="splash-product" id="product">
-      <div aria-hidden="true" className="splash-window-bar">
-        <span className="splash-window-dots"><i /><i /><i /></span>
-        <span>OpenAgents Desktop</span>
-        <span className="splash-window-status"><i />Codex connected</span>
-      </div>
-      <div className="splash-demo-frame" onWheelCapture={releaseDemoWheel}>
-        <DesktopWorkbench aria-label="OpenAgents Desktop live product preview">
-          <DesktopSidebarExpand aria-expanded={railOpen} aria-label="Expand sidebar" onClick={() => setRailOpen(true)} title="Expand sidebar" />
-          <DesktopSessionRail
-            canGoBack
-            canGoForward={false}
-            destinations={destinations}
-            onBack={() => undefined}
-            onCollapse={() => setRailOpen(false)}
-            onDestinationSelect={destination => destination.id === 'workspace-new-chat' ? newSession() : undefined}
-            onForward={() => undefined}
-            onSearchOpenChange={setSearchOpen}
-            onSearchQueryChange={setQuery}
-            onSessionSelect={session => selectSession(session.id)}
-            open={railOpen}
-            searchOpen={searchOpen}
-            searchQuery={query}
-            sessions={visibleSessions.map(session => ({ ...session, selected: session.id === activeId }))}
-            settingsDestination={settingsDestination}
-            stageLabel="DEV"
-          />
-          {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
-          <DesktopConversation
-            composer={<DesktopComposerFrame aria-label="Message composer">
-              <DesktopComposerInput>
-                <textarea
-                  aria-label={active ? 'Steer a Codex message' : 'Message Codex'}
-                  id="splash-composer-input"
-                  onChange={event => setDraft(event.currentTarget.value)}
-                  onKeyDown={event => {
-                    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
-                    event.preventDefault()
-                    submitMessage()
-                  }}
-                  placeholder={active ? 'Steer the current turn…' : 'Message Codex…'}
-                  rows={2}
-                  value={draft}
-                />
-                <DesktopComposerBar>
-                  <DesktopComposerButton aria-label="Attach image" kind="action"><ImagePlus aria-hidden="true" /></DesktopComposerButton>
-                  <DesktopComposerButton aria-label="Open commands" kind="action"><Command aria-hidden="true" /></DesktopComposerButton>
-                  <DesktopComposerButton aria-label={fullAuto ? 'Turn off Full Auto' : 'Turn on Full Auto'} aria-pressed={fullAuto} kind="toggle" onClick={() => setFullAuto(value => !value)}><Zap aria-hidden="true" />Full Auto</DesktopComposerButton>
-                  <span className="oa-react-composer-spacer" />
-                  {active ? <DesktopComposerButton aria-label="Stop current turn" kind="stop" onClick={stopPlayback}><Square aria-hidden="true" /></DesktopComposerButton> : null}
-                  <DesktopComposerButton aria-label="Send" disabled={draft.trim() === ''} kind="submit" onClick={() => submitMessage()}><ArrowUp aria-hidden="true" /></DesktopComposerButton>
-                </DesktopComposerBar>
-              </DesktopComposerInput>
-            </DesktopComposerFrame>}
-            header={<DesktopConversationHeader lifecycle={active ? 'Running' : 'Ready'} secondary="openagents / main · gpt-5.6-sol" title={title} />}
-            timeline={<DesktopTimeline followKey={`${items.length}:${streamingText.length}:${phase}`} working={phase === 'preparing'}>
-              {items.length === 0 ? <div className="splash-empty"><h2>Start a conversation with Codex</h2><p>Choose a workspace, then send a message.</p></div> : items.map((item, index) => <DemoTimelineItem item={item} key={item.id} sequence={index} />)}
-              {playback === null || phase === 'preparing' ? null : <DesktopTimelineMessage itemKey={`playback-${playback.id}`} label="Assistant" sequence={items.length} tone="assistant">
-                <p aria-hidden="true">{streamingText}</p><span className="oa-react-sr-only">{playback.text}</span>
-              </DesktopTimelineMessage>}
-            </DesktopTimeline>}
-          />
-        </DesktopWorkbench>
-      </div>
-      <figcaption className="oa-react-sr-only">A live, interactive OpenAgents Desktop workroom rendered with the shared production components.</figcaption>
-    </figure>
-
-    <section aria-labelledby="splash-faq-title" className="splash-faq">
-      <div className="splash-faq-intro">
-        <p>Questions and answers</p>
-        <h2 id="splash-faq-title">The important boundaries, plainly.</h2>
-        <InternalLink href={DOCS_URL} preload="render">Read the full documentation <ArrowRight aria-hidden="true" /></InternalLink>
-      </div>
-      <div className="splash-question-list">
-        {splashQuestions.map(([question, answer], index) => (
-          <details key={question} open={index === 0}>
-            <summary>{question}<span aria-hidden="true">＋</span></summary>
-            <p>{answer}</p>
-          </details>
-        ))}
-      </div>
-    </section>
-
-    <footer className="splash-footer">
-      <div className="splash-footer-main">
-        <div className="splash-footer-brand">
-          <InternalLink href="/" preload="render">OpenAgents</InternalLink>
-          <p>A local-first workroom for durable, reviewable Codex work.</p>
+      <figure className="splash-product" id="product">
+        <div aria-hidden="true" className="splash-window-bar">
+          <span className="splash-window-dots">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span>OpenAgents Desktop</span>
+          <span className="splash-window-status">
+            <i />
+            Codex connected
+          </span>
         </div>
-        <nav aria-label="Product links">
-          <strong>Product</strong>
-          <InternalLink href={DOCS_URL} preload="render">Docs</InternalLink>
-          <InternalLink href="/blog" preload="render">Blog</InternalLink>
-          <InternalLink href={DOWNLOAD_URL} preload="render">Download</InternalLink>
-        </nav>
-        <nav aria-label="Project links">
-          <strong>Project</strong>
-          <a href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">GitHub</a>
-          <a href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">Build from source</a>
-        </nav>
-        <nav aria-label="Legal links">
-          <strong>Legal</strong>
-          <InternalLink href="/privacy" preload="render">Privacy</InternalLink>
-          <InternalLink href="/terms" preload="render">Terms</InternalLink>
-        </nav>
-      </div>
-      <div className="splash-footer-bottom">
-        <span>© 2026 OpenAgents</span>
-        <span>Open source · local first · evidence backed</span>
-      </div>
-    </footer>
-  </div>
+        <div className="splash-demo-frame" onWheelCapture={releaseDemoWheel}>
+          <DesktopWorkbench aria-label="OpenAgents Desktop live product preview">
+            <DesktopSidebarExpand
+              aria-expanded={railOpen}
+              aria-label="Expand sidebar"
+              onClick={() => setRailOpen(true)}
+              title="Expand sidebar"
+            />
+            <DesktopSessionRail
+              canGoBack
+              canGoForward={false}
+              destinations={destinations}
+              onBack={() => undefined}
+              onCollapse={() => setRailOpen(false)}
+              onDestinationSelect={destination =>
+                destination.id === 'workspace-new-chat'
+                  ? newSession()
+                  : undefined
+              }
+              onForward={() => undefined}
+              onSearchOpenChange={setSearchOpen}
+              onSearchQueryChange={setQuery}
+              onSessionSelect={session => selectSession(session.id)}
+              open={railOpen}
+              searchOpen={searchOpen}
+              searchQuery={query}
+              sessions={visibleSessions.map(session => ({
+                ...session,
+                selected: session.id === activeId,
+              }))}
+              settingsDestination={settingsDestination}
+              stageLabel="DEV"
+            />
+            {railOpen ? (
+              <DesktopRailScrim
+                aria-label="Close sessions"
+                onClick={() => setRailOpen(false)}
+              />
+            ) : null}
+            <DesktopConversation
+              composer={
+                <DesktopComposerFrame aria-label="Message composer">
+                  <DesktopComposerInput>
+                    <textarea
+                      aria-label={
+                        active ? 'Steer a Codex message' : 'Message Codex'
+                      }
+                      id="splash-composer-input"
+                      onChange={event => setDraft(event.currentTarget.value)}
+                      onKeyDown={event => {
+                        if (
+                          event.key !== 'Enter' ||
+                          event.shiftKey ||
+                          event.nativeEvent.isComposing
+                        )
+                          return
+                        event.preventDefault()
+                        submitMessage()
+                      }}
+                      placeholder={
+                        active ? 'Steer the current turn…' : 'Message Codex…'
+                      }
+                      rows={2}
+                      value={draft}
+                    />
+                    <DesktopComposerBar>
+                      <DesktopComposerButton
+                        aria-label="Attach image"
+                        kind="action"
+                      >
+                        <ImagePlus aria-hidden="true" />
+                      </DesktopComposerButton>
+                      <DesktopComposerButton
+                        aria-label="Open commands"
+                        kind="action"
+                      >
+                        <Command aria-hidden="true" />
+                      </DesktopComposerButton>
+                      <DesktopComposerButton
+                        aria-label={
+                          fullAuto ? 'Turn off Full Auto' : 'Turn on Full Auto'
+                        }
+                        aria-pressed={fullAuto}
+                        kind="toggle"
+                        onClick={() => setFullAuto(value => !value)}
+                      >
+                        <Zap aria-hidden="true" />
+                        Full Auto
+                      </DesktopComposerButton>
+                      <span className="oa-react-composer-spacer" />
+                      {active ? (
+                        <DesktopComposerButton
+                          aria-label="Stop current turn"
+                          kind="stop"
+                          onClick={stopPlayback}
+                        >
+                          <Square aria-hidden="true" />
+                        </DesktopComposerButton>
+                      ) : null}
+                      <DesktopComposerButton
+                        aria-label="Send"
+                        disabled={draft.trim() === ''}
+                        kind="submit"
+                        onClick={() => submitMessage()}
+                      >
+                        <ArrowUp aria-hidden="true" />
+                      </DesktopComposerButton>
+                    </DesktopComposerBar>
+                  </DesktopComposerInput>
+                </DesktopComposerFrame>
+              }
+              header={
+                <DesktopConversationHeader
+                  lifecycle={active ? 'Running' : 'Ready'}
+                  secondary="openagents / main · gpt-5.6-sol"
+                  title={title}
+                />
+              }
+              timeline={
+                <DesktopTimeline
+                  followKey={`${items.length}:${streamingText.length}:${phase}`}
+                  working={phase === 'preparing'}
+                >
+                  {items.length === 0 ? (
+                    <div className="splash-empty">
+                      <h2>Start a conversation with Codex</h2>
+                      <p>Choose a workspace, then send a message.</p>
+                    </div>
+                  ) : (
+                    items.map((item, index) => (
+                      <DemoTimelineItem
+                        item={item}
+                        key={item.id}
+                        sequence={index}
+                      />
+                    ))
+                  )}
+                  {playback === null || phase === 'preparing' ? null : (
+                    <DesktopTimelineMessage
+                      itemKey={`playback-${playback.id}`}
+                      label="Assistant"
+                      sequence={items.length}
+                      tone="assistant"
+                    >
+                      <p aria-hidden="true">{streamingText}</p>
+                      <span className="oa-react-sr-only">{playback.text}</span>
+                    </DesktopTimelineMessage>
+                  )}
+                </DesktopTimeline>
+              }
+            />
+          </DesktopWorkbench>
+        </div>
+        <figcaption className="oa-react-sr-only">
+          A live, interactive OpenAgents Desktop workroom rendered with the
+          shared production components.
+        </figcaption>
+      </figure>
+
+      <section aria-labelledby="splash-faq-title" className="splash-faq">
+        <div className="splash-faq-intro">
+          <p>Questions and answers</p>
+          <h2 id="splash-faq-title">The important boundaries, plainly.</h2>
+          <InternalLink href={DOCS_URL} preload="render">
+            Read the full documentation <ArrowRight aria-hidden="true" />
+          </InternalLink>
+        </div>
+        <div className="splash-question-list">
+          {splashQuestions.map(([question, answer], index) => (
+            <details key={question} open={index === 0}>
+              <summary>
+                {question}
+                <span aria-hidden="true">＋</span>
+              </summary>
+              <p>{answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <PublicFooter />
+    </div>
+  )
 }

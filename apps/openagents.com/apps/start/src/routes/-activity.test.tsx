@@ -8,6 +8,8 @@ describe('Start activity route', () => {
     const html = renderToStaticMarkup(<ActivityPage />)
 
     expect(html).toContain('data-route="activity"')
+    expect(html).toContain('aria-label="Primary navigation"')
+    expect(html).toContain('© 2026 OpenAgents, Inc.')
     expect(html).toContain('oa-public-activity-timeline')
     expect(html).toContain('data-start-activity-timeline=""')
     expect(html).toContain('Live public activity')

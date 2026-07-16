@@ -17,6 +17,9 @@ describe('Start terms route', () => {
     expect(html).toContain('12. Contact')
     expect(html).toContain('mailto:chris@openagents.com')
     expect(html).toContain('href="/"')
+    expect(html).toContain('aria-label="Primary navigation"')
+    expect(html).toContain('© 2026 OpenAgents, Inc.')
+    expect(html).not.toContain('&larr; OpenAgents')
   })
 
   test('keeps private/unsafe fields out of the rendered shell', () => {

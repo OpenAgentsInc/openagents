@@ -17,6 +17,8 @@ describe('EN-4 /privacy Effect Native route', () => {
 
     expect(html).toContain('data-route="privacy"')
     expect(html).toContain('data-privacy-effect-native-root=""')
+    expect(html).toContain('aria-label="Primary navigation"')
+    expect(html).toContain('© 2026 OpenAgents, Inc.')
     // Legal body is client-mounted via Effect Native, not SSR'd as React content.
     // (aria-label may mention the page title; assert against document body copy only.)
     expect(html).not.toContain(PRIVACY_LAST_UPDATED)
@@ -54,7 +56,9 @@ describe('EN-4 /privacy Effect Native route', () => {
     expect(serialized).toContain('https://openagents.com')
     expect(serialized).toContain('chris@openagents.com')
     expect(serialized).toContain('mailto:chris@openagents.com')
-    expect(serialized).toContain('OpenAgents, Inc., 1101 W 34th St. #581, Austin, TX 78705')
+    expect(serialized).toContain(
+      'OpenAgents, Inc., 1101 W 34th St. #581, Austin, TX 78705',
+    )
     expect(serialized).toContain('Information you provide.')
     expect(serialized).toContain('API and agent data.')
     expect(serialized).toContain('Claim Your Agent')

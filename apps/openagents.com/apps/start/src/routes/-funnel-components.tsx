@@ -1,11 +1,12 @@
+import { InternalLink } from '@/components/internal-link'
+import { PublicPageShell } from '@/components/public-page-shell'
 import { ArrowRight, CheckCircle2, ExternalLink, Terminal } from 'lucide-react'
 import type * as React from 'react'
 
-import { InternalLink } from '@/components/internal-link'
-import { PublicHeader } from '@/components/public-header'
 import '../blog.css'
-
 import {
+  type BlogPost,
+  type DocPage,
   blogPosts,
   businessOfferings,
   businessPackages,
@@ -13,8 +14,6 @@ import {
   khalaCodeInstall,
   ladderSteps,
   legalVerifiedStats,
-  type BlogPost,
-  type DocPage,
 } from './-funnel-data'
 
 type PageShellProps = Readonly<{
@@ -23,15 +22,7 @@ type PageShellProps = Readonly<{
 }>
 
 export function PageShell({ children, dataRoute }: PageShellProps) {
-  return (
-    <div
-      data-route={dataRoute}
-      className="min-h-dvh bg-khala-void text-khala-text selection:bg-khala-energy selection:text-white"
-    >
-      <PublicHeader />
-      {children}
-    </div>
-  )
+  return <PublicPageShell dataRoute={dataRoute}>{children}</PublicPageShell>
 }
 
 export function Hero({
@@ -125,14 +116,11 @@ export function BusinessPage() {
               className="grid min-h-36 content-start gap-3 px-4 py-4 font-mono text-base/7 text-khala-text-muted sm:text-sm/6"
               data-intake-chat-transcript=""
             >
-              <p
-                className="m-0 max-w-[62ch]"
-                data-intake-chat-empty=""
-              >
-                Tell Khala what your business needs — a stuck task, a
-                repetitive grind, software you wish existed. It runs a short
-                interview, matches you to what OpenAgents can honestly deliver
-                today, and drafts your intake spec.
+              <p className="m-0 max-w-[62ch]" data-intake-chat-empty="">
+                Tell Khala what your business needs — a stuck task, a repetitive
+                grind, software you wish existed. It runs a short interview,
+                matches you to what OpenAgents can honestly deliver today, and
+                drafts your intake spec.
               </p>
               <noscript>
                 <p className="m-0">
@@ -299,9 +287,9 @@ export function BusinessPage() {
           <div className="grid gap-2">
             <p className={eyebrowClass}>Tell us what to hand off</p>
             <p className="m-0 text-base/7 text-khala-text-muted">
-              Packages start with a fixed scope and receipt plan before
-              funding. Delivery is operator-assisted today; checkout and
-              self-serve hosting are not implied by the rate card.
+              Packages start with a fixed scope and receipt plan before funding.
+              Delivery is operator-assisted today; checkout and self-serve
+              hosting are not implied by the rate card.
             </p>
           </div>
           {[
@@ -310,7 +298,11 @@ export function BusinessPage() {
             ['website', 'Website', 'url'],
             ['phone', 'Phone', 'tel'],
           ].map(([name, label, type]) => (
-            <label className="grid gap-1" data-ui-family="forms/input-groups" key={name}>
+            <label
+              className="grid gap-1"
+              data-ui-family="forms/input-groups"
+              key={name}
+            >
               <span className="font-mono text-sm text-khala-text-muted">
                 {label}
               </span>
@@ -339,9 +331,16 @@ export function BusinessPage() {
             />
             <span>Request a shared Slack channel</span>
           </label>
-          <input id="business-referral-code" name="referralCode" type="hidden" />
+          <input
+            id="business-referral-code"
+            name="referralCode"
+            type="hidden"
+          />
           <input id="business-source-ref" name="sourceRef" type="hidden" />
-          <button className="khala-focus min-h-12 border border-khala-energy-cyan bg-khala-energy-cyan px-4 font-mono text-sm font-semibold text-black" type="submit">
+          <button
+            className="khala-focus min-h-12 border border-khala-energy-cyan bg-khala-energy-cyan px-4 font-mono text-sm font-semibold text-black"
+            type="submit"
+          >
             Send intake
           </button>
         </form>
@@ -393,14 +392,20 @@ export function DocPageView({ page }: Readonly<{ page: DocPage }>) {
             </p>
           ))}
           {page.sections?.map(section => (
-            <section className="grid gap-3 border-t border-khala-border/70 pt-5" key={section.heading}>
+            <section
+              className="grid gap-3 border-t border-khala-border/70 pt-5"
+              key={section.heading}
+            >
               <h2 className="m-0 text-2xl font-semibold tracking-tight text-white">
                 {section.heading}
               </h2>
               <ul className="m-0 grid gap-2 p-0">
                 {section.items.map(item => (
                   <li className="flex gap-2 text-base/7" key={item}>
-                    <CheckCircle2 aria-hidden="true" className="mt-1 size-4 shrink-0 text-khala-energy-cyan" />
+                    <CheckCircle2
+                      aria-hidden="true"
+                      className="mt-1 size-4 shrink-0 text-khala-energy-cyan"
+                    />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -408,9 +413,16 @@ export function DocPageView({ page }: Readonly<{ page: DocPage }>) {
             </section>
           ))}
           {page.links === undefined ? null : (
-            <nav className="flex flex-wrap gap-3 border-t border-khala-border/70 pt-5" aria-label="Doc links">
+            <nav
+              className="flex flex-wrap gap-3 border-t border-khala-border/70 pt-5"
+              aria-label="Doc links"
+            >
               {page.links.map(link => (
-                <a className="khala-focus inline-flex items-center gap-2 font-mono text-sm text-khala-energy-cyan underline underline-offset-4" href={link.href} key={link.href}>
+                <a
+                  className="khala-focus inline-flex items-center gap-2 font-mono text-sm text-khala-energy-cyan underline underline-offset-4"
+                  href={link.href}
+                  key={link.href}
+                >
                   {link.label}
                   <ExternalLink aria-hidden="true" className="size-4" />
                 </a>
@@ -432,7 +444,10 @@ export function BlogIndexPage() {
         <div className="oa-blog-hero-inner">
           <span className="oa-blog-label">OpenAgents journal</span>
           <h1 id="oa-blog-index-title">Notes from the workroom.</h1>
-          <p>Product decisions, release notes, and the reasoning behind OpenAgents Desktop.</p>
+          <p>
+            Product decisions, release notes, and the reasoning behind
+            OpenAgents Desktop.
+          </p>
         </div>
       </section>
       <main className="oa-blog-index" aria-label="OpenAgents articles">
@@ -459,7 +474,10 @@ export function BlogIndexPage() {
 export function BlogPostPage({ post }: Readonly<{ post: BlogPost }>) {
   return (
     <PageShell dataRoute="blog-post">
-      <section className="oa-blog-hero oa-blog-post-hero" aria-labelledby="oa-blog-post-title">
+      <section
+        className="oa-blog-hero oa-blog-post-hero"
+        aria-labelledby="oa-blog-post-title"
+      >
         <div className="oa-blog-hero-inner">
           <InternalLink className="oa-blog-label" href="/blog" preload="render">
             OpenAgents journal
@@ -502,7 +520,10 @@ export function KhalaCodeDownloadPage() {
         className="mx-auto grid w-[min(100%,980px)] gap-8 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]"
       >
         <div className="grid content-start gap-6">
-          <InstallPanel label="Required first" title="Install and sign in to Codex">
+          <InstallPanel
+            label="Required first"
+            title="Install and sign in to Codex"
+          >
             <p className="m-0 text-base/7">
               Khala Code does not bundle or replace Codex Core. Run the Codex
               install and login yourself for the primary user Codex home.
@@ -511,7 +532,11 @@ export function KhalaCodeDownloadPage() {
               command={`${khalaCodeInstall.codexInstallCommand}\n${khalaCodeInstall.codexLoginCommand}`}
             />
           </InstallPanel>
-          <InstallPanel label="Desktop DMG" status="public artifact pending" title="macOS release lane">
+          <InstallPanel
+            label="Desktop DMG"
+            status="public artifact pending"
+            title="macOS release lane"
+          >
             <p className="m-0 text-base/7">
               The Khala Code desktop release lane exists for signed/notarized
               macOS builds, but no public signed DMG receipt is recorded here
@@ -525,18 +550,27 @@ export function KhalaCodeDownloadPage() {
               </div>
               <div className="grid gap-1 sm:grid-cols-[8rem_1fr]">
                 <dt className="text-khala-text-faint">Feed</dt>
-                <dd className="m-0 break-all">{khalaCodeInstall.releaseFeedUrl}</dd>
+                <dd className="m-0 break-all">
+                  {khalaCodeInstall.releaseFeedUrl}
+                </dd>
               </div>
             </dl>
           </InstallPanel>
-          <InstallPanel label="Terminal" status="npm package" title="Install Pylon">
+          <InstallPanel
+            label="Terminal"
+            status="npm package"
+            title="Install Pylon"
+          >
             <p className="m-0 text-base/7">
               Pylon is the supported terminal path for Codex account connection
               and local capacity. Fleet coding still requires your own account.
             </p>
             <CommandBlock command={khalaCodeInstall.pylonInstallCommand} />
           </InstallPanel>
-          <InstallPanel label="Desktop from source" title="Run Khala Code from the repo">
+          <InstallPanel
+            label="Desktop from source"
+            title="Run Khala Code from the repo"
+          >
             <p className="m-0 text-base/7">
               This is the supported desktop path while the signed DMG remains
               receipt-gated. Clone shallow and install workspace dependencies at
@@ -546,14 +580,25 @@ export function KhalaCodeDownloadPage() {
           </InstallPanel>
         </div>
         <div className="grid content-start gap-6">
-          <section className={`${panelClass} grid gap-2`} data-promise-gate={khalaCodeInstall.promiseId}>
+          <section
+            className={`${panelClass} grid gap-2`}
+            data-promise-gate={khalaCodeInstall.promiseId}
+          >
             <p className={eyebrowClass}>Copy gate</p>
-            <p className="m-0 text-base/7">{khalaCodeInstall.promiseSafeCopy}</p>
-            <a className="khala-focus w-fit font-mono text-sm text-khala-energy-cyan underline underline-offset-4" href="/api/public/product-promises">
+            <p className="m-0 text-base/7">
+              {khalaCodeInstall.promiseSafeCopy}
+            </p>
+            <a
+              className="khala-focus w-fit font-mono text-sm text-khala-energy-cyan underline underline-offset-4"
+              href="/api/public/product-promises"
+            >
               Product promise registry
             </a>
           </section>
-          <section className={`${panelClass} grid gap-2`} data-download-counter="khala-code">
+          <section
+            className={`${panelClass} grid gap-2`}
+            data-download-counter="khala-code"
+          >
             <p className={eyebrowClass}>Counter</p>
             <h2 className="m-0 text-xl font-semibold tracking-tight text-white">
               Exact rows only
@@ -563,7 +608,10 @@ export function KhalaCodeDownloadPage() {
               rows. If there are no rows, it returns an empty counts array
               instead of a synthesized number.
             </p>
-            <a className="khala-focus break-all font-mono text-sm text-khala-energy-cyan underline underline-offset-4" href={khalaCodeInstall.counterEndpoint}>
+            <a
+              className="khala-focus break-all font-mono text-sm text-khala-energy-cyan underline underline-offset-4"
+              href={khalaCodeInstall.counterEndpoint}
+            >
               {khalaCodeInstall.counterEndpoint}
             </a>
           </section>
@@ -611,7 +659,9 @@ function CommandBlock({ command }: Readonly<{ command: string }>) {
   )
 }
 
-export function AutopilotPage({ legal = false }: Readonly<{ legal?: boolean }>) {
+export function AutopilotPage({
+  legal = false,
+}: Readonly<{ legal?: boolean }>) {
   return (
     <PageShell dataRoute={legal ? 'autopilot-legal' : 'autopilot'}>
       <Hero
@@ -642,21 +692,27 @@ export function AutopilotPage({ legal = false }: Readonly<{ legal?: boolean }>) 
                 ]
             ).map(item => (
               <li className="flex gap-2 text-base/7" key={item}>
-                <CheckCircle2 aria-hidden="true" className="mt-1 size-4 shrink-0 text-khala-energy-cyan" />
+                <CheckCircle2
+                  aria-hidden="true"
+                  className="mt-1 size-4 shrink-0 text-khala-energy-cyan"
+                />
                 <span>{item}</span>
               </li>
             ))}
           </ul>
         </section>
         {legal ? (
-          <section className={`${panelClass} grid gap-4`} data-autopilot-onboarding-legal-overlay="">
+          <section
+            className={`${panelClass} grid gap-4`}
+            data-autopilot-onboarding-legal-overlay=""
+          >
             <p className="m-0 max-w-[60ch] text-base/7">
               Stay in expert review mode. You share only the source material you
               choose; Autopilot prepares a bounded, template-driven,
               source-linked work surface — a draft prep packet, intake
-              questions, and a lawyer-review checklist — with an
-              attorney-review gate before anything is sent. Not an AI lawyer,
-              not case-law research.
+              questions, and a lawyer-review checklist — with an attorney-review
+              gate before anything is sent. Not an AI lawyer, not case-law
+              research.
             </p>
             <div
               aria-label="Legal overview video"

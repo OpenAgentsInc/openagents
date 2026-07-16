@@ -1,3 +1,4 @@
+import { PublicPageShell } from '@/components/public-page-shell'
 import type * as React from 'react'
 
 type ActivityPane = Readonly<{
@@ -39,13 +40,21 @@ const panes: ReadonlyArray<ActivityPane> = [
   },
 ] as const
 
-const filters = ['all', 'boot', 'work', 'verify', 'settle', 'forum', 'operator'] as const
+const filters = [
+  'all',
+  'boot',
+  'work',
+  'verify',
+  'settle',
+  'forum',
+  'operator',
+] as const
 
 const panelClass =
   'grid gap-3 border border-khala-border/80 bg-khala-surface p-4 text-khala-text-muted'
 
 const eyebrowClass =
-  'm-0 font-mono text-sm uppercase tracking-wide text-khala-text-faint'
+  'm-0 text-sm font-semibold uppercase tracking-wide text-khala-text-faint'
 
 function ActivityLightDom() {
   return (
@@ -74,7 +83,7 @@ function ActivityLightDom() {
         <div className="flex flex-wrap gap-2">
           {filters.map(filter => (
             <span
-              className="border border-khala-border/70 bg-khala-surface-muted px-2 py-1 font-mono text-sm text-khala-text"
+              className="border border-khala-border/70 bg-khala-surface-muted px-2 py-1 text-sm text-khala-text"
               data-activity-filter={filter}
               key={filter}
             >
@@ -99,7 +108,11 @@ function ActivityLightDom() {
           </section>
         ))}
       </div>
-      <aside className={panelClass} data-activity-pane="proof" data-proof-drawer="">
+      <aside
+        className={panelClass}
+        data-activity-pane="proof"
+        data-proof-drawer=""
+      >
         <h2 className="m-0 text-2xl font-semibold tracking-tight text-white">
           Proof Drawer
         </h2>
@@ -114,23 +127,21 @@ function ActivityLightDom() {
 
 export function ActivityPage() {
   return (
-    <main
-      aria-label="OpenAgents public activity"
-      className="min-h-dvh bg-black text-white"
-      data-route="activity"
-    >
-      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 font-mono sm:px-6 lg:px-8">
-        <a
-          className="khala-focus w-fit border border-khala-border bg-khala-surface-raised px-3 py-2 font-mono text-sm text-khala-text"
-          href="/"
-        >
-          OpenAgents
-        </a>
-        <oa-public-activity-timeline data-route="activity" data-start-activity-timeline="">
-          <ActivityLightDom />
-        </oa-public-activity-timeline>
-      </div>
-    </main>
+    <PublicPageShell dataRoute="activity">
+      <main
+        aria-label="OpenAgents public activity"
+        className="min-h-dvh bg-khala-void text-white"
+      >
+        <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:px-8">
+          <oa-public-activity-timeline
+            data-route="activity"
+            data-start-activity-timeline=""
+          >
+            <ActivityLightDom />
+          </oa-public-activity-timeline>
+        </div>
+      </main>
+    </PublicPageShell>
   )
 }
 

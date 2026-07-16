@@ -5,9 +5,11 @@ import type * as React from 'react'
 // page shell (centered readable article on the dark canvas) with the
 // StarCraft `khala-*` design tokens swapped in for the page's raw hex values.
 
-export const legalShellClass = 'min-h-dvh overflow-y-auto bg-khala-void text-khala-text'
+export const legalShellClass =
+  'min-h-dvh overflow-y-auto bg-khala-void text-khala-text'
 
-export const legalArticleClass = 'mx-auto w-full max-w-3xl px-6 py-12 sm:px-8 sm:py-16'
+export const legalArticleClass =
+  'mx-auto w-full max-w-3xl px-6 py-12 sm:px-8 sm:py-16'
 
 export const legalTitleClass =
   'text-3xl font-semibold tracking-tight text-khala-text sm:text-4xl'
@@ -23,15 +25,13 @@ const legalHeadingClass = 'text-xl font-semibold text-khala-text sm:text-2xl'
 
 const legalParagraphClass = 'mt-3 text-base/7 text-khala-text-muted'
 
-const legalListClass = 'mt-3 ml-5 list-disc space-y-2 text-base/7 text-khala-text-muted'
+const legalListClass =
+  'mt-3 ml-5 list-disc space-y-2 text-base/7 text-khala-text-muted'
 
 export const legalEmphasisClass = 'font-semibold text-khala-text'
 
 export const legalLinkClass =
   'khala-focus text-khala-energy-soft underline-offset-2 hover:text-khala-energy-cyan hover:underline'
-
-export const legalBackLinkClass =
-  'khala-focus inline-flex min-h-11 items-center gap-2 font-mono text-sm text-khala-text-muted hover:text-khala-text'
 
 export function LegalSection({
   heading,
@@ -49,7 +49,9 @@ export function LegalP({ children }: Readonly<{ children: React.ReactNode }>) {
   return <p className={legalParagraphClass}>{children}</p>
 }
 
-export function LegalBullets({ items }: Readonly<{ items: ReadonlyArray<React.ReactNode> }>) {
+export function LegalBullets({
+  items,
+}: Readonly<{ items: ReadonlyArray<React.ReactNode> }>) {
   return (
     <ul className={legalListClass}>
       {items.map((item, index) => (
@@ -60,7 +62,9 @@ export function LegalBullets({ items }: Readonly<{ items: ReadonlyArray<React.Re
   )
 }
 
-export function LegalEmphasis({ children }: Readonly<{ children: React.ReactNode }>) {
+export function LegalEmphasis({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return <span className={legalEmphasisClass}>{children}</span>
 }
 

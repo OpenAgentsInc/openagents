@@ -1,6 +1,12 @@
 export const GITHUB_REPOSITORY_URL =
   'https://github.com/OpenAgentsInc/openagents'
 
+export const X_URL = 'https://x.com/OpenAgents'
+
+export const DISCORD_URL = 'https://openagents.com/discord'
+
+export const STACKER_NEWS_URL = 'https://stacker.news/~openagents'
+
 export const DOCS_URL = '/docs'
 
 export const DOWNLOAD_URL = '/download'

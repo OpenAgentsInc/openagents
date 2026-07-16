@@ -29,7 +29,9 @@ describe('Desktop splash', () => {
     expect(html).toContain('OpenAgents Desktop live product preview')
     expect(html).toContain('splash-demo-frame')
     expect(html).toContain('data-sidebar-destination-id="workspace-new-chat"')
-    expect(html).toContain('data-sidebar-destination-id="shell-settings-toggle"')
+    expect(html).toContain(
+      'data-sidebar-destination-id="shell-settings-toggle"',
+    )
     expect(html).toContain('aria-label="Settings"')
     expect(html).not.toContain('>Chat<')
     expect(html).not.toContain('>Project home<')
@@ -60,15 +62,25 @@ describe('Desktop splash', () => {
     expect(html).toContain('Does OpenAgents replace Codex?')
     expect(html).toContain('What is available today?')
     expect(html).toContain('aria-label="Product links"')
-    expect(html).toContain('aria-label="Project links"')
+    expect(html).toContain('aria-label="Community links"')
     expect(html).toContain('aria-label="Legal links"')
+    expect(html).toContain('href="https://x.com/OpenAgents"')
+    expect(html).toContain('href="https://openagents.com/discord"')
+    expect(html).toContain('href="https://stacker.news/~openagents"')
+    expect(html).not.toContain('>Build from source</a>')
+    expect(html).toContain('© 2026 OpenAgents, Inc.')
     expect(html).toContain('Open source · local first · evidence backed')
     expect(html).not.toContain('<img')
   })
 
   test('loads the shared workbench CSS and releases scroll gestures at demo boundaries', () => {
-    const css = readFileSync(path.resolve(import.meta.dirname, '../splash.css'), 'utf8')
-    const releaseLinkRule = css.match(/\.splash-release-link \{([\s\S]*?)\n\}/)?.[1]
+    const css = readFileSync(
+      path.resolve(import.meta.dirname, '../splash.css'),
+      'utf8',
+    )
+    const releaseLinkRule = css.match(
+      /\.splash-release-link \{([\s\S]*?)\n\}/,
+    )?.[1]
     const heroHeadingRule = css.match(/\.splash-hero h1 \{([\s\S]*?)\n\}/)?.[1]
 
     expect(css).toContain("@import '@openagentsinc/ui/desktop-workbench.css'")
@@ -77,6 +89,8 @@ describe('Desktop splash', () => {
     expect(css).toContain('touch-action: pan-y')
     expect(releaseLinkRule).toContain('font-family: var(--font-sans)')
     expect(releaseLinkRule).not.toContain('font-family: var(--font-mono)')
-    expect(heroHeadingRule).toContain('font-size: clamp(3.15rem, 6.1vw, 5.25rem)')
+    expect(heroHeadingRule).toContain(
+      'font-size: clamp(3.15rem, 6.1vw, 5.25rem)',
+    )
   })
 })

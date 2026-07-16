@@ -1,31 +1,35 @@
 import { act } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { type Root, createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import {
+  FORUM_LAUNCH_STATUS_URL,
+  STATS_PYLON_STATS_URL,
+  TOKENS_SERVED_CHANNEL_MIX_URL,
+  TOKENS_SERVED_HISTORY_URL,
+  TOKENS_SERVED_MODEL_MIX_URL,
+  TOKENS_SERVED_URL,
   accountingPanelValues,
   fetchPublicJson,
-  FORUM_LAUNCH_STATUS_URL,
   forumPanelValues,
   historyBars,
   mixRows,
   nostrPanelValues,
   pylonPanelValues,
-  STATS_PYLON_STATS_URL,
   tokensServedDisplay,
-  TOKENS_SERVED_CHANNEL_MIX_URL,
-  TOKENS_SERVED_HISTORY_URL,
-  TOKENS_SERVED_MODEL_MIX_URL,
-  TOKENS_SERVED_URL,
 } from './-stats-data'
 import { StatsPage } from './-stats-page'
 
-;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+;(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true
 
 const livePayloads: Record<string, unknown> = {
   [FORUM_LAUNCH_STATUS_URL]: {
-    gates: [{ id: 'listed_forum_agent_posting', label: 'Listed', state: 'ready' }],
+    gates: [
+      { id: 'listed_forum_agent_posting', label: 'Listed', state: 'ready' },
+    ],
     orangeChecksSold: 2,
     publicTipping: {
       gates: [{ id: 'tip_recipient_readiness', label: 'Tips', state: 'ready' }],
@@ -58,8 +62,20 @@ const livePayloads: Record<string, unknown> = {
   },
   [TOKENS_SERVED_CHANNEL_MIX_URL]: {
     groups: [
-      { channel: 'khala_api', label: 'Khala API', pct: 96.42, reqs: 449937, tokens: 8160667542 },
-      { channel: 'direct_local', label: 'Direct local', pct: 3.58, reqs: 70, tokens: 302571194 },
+      {
+        channel: 'khala_api',
+        label: 'Khala API',
+        pct: 96.42,
+        reqs: 449937,
+        tokens: 8160667542,
+      },
+      {
+        channel: 'direct_local',
+        label: 'Direct local',
+        pct: 3.58,
+        reqs: 70,
+        tokens: 302571194,
+      },
     ],
     totalTokens: 8463238736,
     window: '30d',
@@ -75,8 +91,20 @@ const livePayloads: Record<string, unknown> = {
   },
   [TOKENS_SERVED_MODEL_MIX_URL]: {
     groups: [
-      { family: 'pylon_codex', label: 'Pylon-Codex', pct: 89.56, reqs: 2684, tokens: 7580053905 },
-      { family: 'gemini', label: 'Gemini', pct: 1.27854, reqs: 66891, tokens: 108205925 },
+      {
+        family: 'pylon_codex',
+        label: 'Pylon-Codex',
+        pct: 89.56,
+        reqs: 2684,
+        tokens: 7580053905,
+      },
+      {
+        family: 'gemini',
+        label: 'Gemini',
+        pct: 1.27854,
+        reqs: 66891,
+        tokens: 108205925,
+      },
     ],
     totalTokens: 8463238736,
     window: '30d',
@@ -134,6 +162,8 @@ describe('Start /stats route (public/anonymous variant)', () => {
     const html = renderToStaticMarkup(<StatsPage />)
 
     expect(html).toContain('data-route="stats"')
+    expect(html).toContain('aria-label="Primary navigation"')
+    expect(html).toContain('© 2026 OpenAgents, Inc.')
     expect(html).toContain('Network Stats')
     expect(html).toContain(
       'Live public-safe evidence: receipt-backed counters, launch gates, and claim boundaries. No dummy values; missing evidence is marked unavailable.',
@@ -159,7 +189,9 @@ describe('Start /stats route (public/anonymous variant)', () => {
     const html = renderToStaticMarkup(<StatsPage />)
 
     expect(html).toContain('Claim Boundary')
-    expect(html).toContain('Public copy boundaries for money and earning claims.')
+    expect(html).toContain(
+      'Public copy boundaries for money and earning claims.',
+    )
     expect(html).toContain('Bounded')
     expect(html).toContain('Endpoint Manifest')
     expect(html).toContain('/.well-known/openagents.json')
@@ -184,7 +216,9 @@ describe('Start /stats route (public/anonymous variant)', () => {
     const html = renderToStaticMarkup(<StatsPage />)
 
     expect(html).toContain('Nostr Relay Configuration')
-    expect(html).toContain('No relay endpoint list is public in the current response.')
+    expect(html).toContain(
+      'No relay endpoint list is public in the current response.',
+    )
     expect(html).toContain('href="/"')
   })
 
@@ -197,15 +231,18 @@ describe('Start /stats route (public/anonymous variant)', () => {
 
     const mounted = await mountStatsPage()
 
-    const counter = mounted.querySelector('[data-counter-display="khala-tokens-served"]')
+    const counter = mounted.querySelector(
+      '[data-counter-display="khala-tokens-served"]',
+    )
     expect(counter?.getAttribute('data-status')).toBe('ok')
     expect(counter?.getAttribute('data-value')).toBe('8,463,301,501')
     expect(counter?.textContent).toBe('8,463,301,501')
 
     // History chart renders one bar per day from the fetched series.
     expect(
-      mounted.querySelectorAll('[data-chart="khala-tokens-served-history"] [data-history-day]')
-        .length,
+      mounted.querySelectorAll(
+        '[data-chart="khala-tokens-served-history"] [data-history-day]',
+      ).length,
     ).toBe(3)
     // Mix panels render the fetched groups, not placeholders.
     expect(mounted.textContent).toContain('Pylon-Codex')
@@ -217,10 +254,14 @@ describe('Start /stats route (public/anonymous variant)', () => {
     const pylonPanel = mounted.querySelector('[data-stats-pylon-panel]')
     expect(pylonPanel?.getAttribute('data-stats-pylon-panel')).toBe('ok')
     expect(pylonPanel?.textContent).toContain('Heartbeat freshness: Just now.')
-    expect(pylonPanel?.textContent).toContain('Ready for bounded public earning copy')
+    expect(pylonPanel?.textContent).toContain(
+      'Ready for bounded public earning copy',
+    )
 
     // Accounting strip carries receipt-backed values; revshare stays honest.
-    const accountingPanel = mounted.querySelector('[data-stats-accounting-panel]')
+    const accountingPanel = mounted.querySelector(
+      '[data-stats-accounting-panel]',
+    )
     expect(accountingPanel?.textContent).toContain('844 sats')
     expect(accountingPanel?.textContent).toContain('2 receipts')
     expect(accountingPanel?.textContent).toContain('Unavailable')
@@ -239,7 +280,9 @@ describe('Start /stats route (public/anonymous variant)', () => {
 
     const mounted = await mountStatsPage()
 
-    const counter = mounted.querySelector('[data-counter-display="khala-tokens-served"]')
+    const counter = mounted.querySelector(
+      '[data-counter-display="khala-tokens-served"]',
+    )
     expect(counter?.getAttribute('data-status')).toBe('unavailable')
     expect(counter?.getAttribute('data-value')).toBe('—')
     expect(counter?.textContent).toBe('—')
@@ -247,15 +290,23 @@ describe('Start /stats route (public/anonymous variant)', () => {
     expect(mounted.textContent).toContain('History unavailable.')
     expect(mounted.textContent).toContain('Model mix unavailable.')
     expect(mounted.textContent).toContain('Channel mix unavailable.')
-    expect(mounted.querySelector('[data-stats-pylon-panel]')?.getAttribute('data-stats-pylon-panel')).toBe(
-      'unavailable',
-    )
+    expect(
+      mounted
+        .querySelector('[data-stats-pylon-panel]')
+        ?.getAttribute('data-stats-pylon-panel'),
+    ).toBe('unavailable')
     expect(mounted.textContent).toContain('Heartbeat freshness unavailable.')
-    expect((mounted.textContent?.match(/Unavailable/g) ?? []).length).toBeGreaterThan(8)
+    expect(
+      (mounted.textContent?.match(/Unavailable/g) ?? []).length,
+    ).toBeGreaterThan(8)
   })
 
   test('a non-OK response is treated as unavailable by the fail-soft fetcher', async () => {
-    const gone = { json: async () => ({ error: 'money_surface_retired' }), ok: false, status: 410 }
+    const gone = {
+      json: async () => ({ error: 'money_surface_retired' }),
+      ok: false,
+      status: 410,
+    }
     const result = await fetchPublicJson(
       '/api/forum/tip-leaderboards',
       (async () => gone as unknown as Response) as unknown as typeof fetch,
@@ -264,12 +315,24 @@ describe('Start /stats route (public/anonymous variant)', () => {
   })
 
   test('tokensServedDisplay never fabricates a number', () => {
-    expect(tokensServedDisplay({ state: 'loading' })).toEqual({ live: false, value: '—' })
-    expect(tokensServedDisplay({ state: 'unavailable' })).toEqual({ live: false, value: '—' })
-    expect(tokensServedDisplay({ data: {}, state: 'ok' })).toEqual({ live: false, value: '—' })
+    expect(tokensServedDisplay({ state: 'loading' })).toEqual({
+      live: false,
+      value: '—',
+    })
+    expect(tokensServedDisplay({ state: 'unavailable' })).toEqual({
+      live: false,
+      value: '—',
+    })
+    expect(tokensServedDisplay({ data: {}, state: 'ok' })).toEqual({
+      live: false,
+      value: '—',
+    })
     expect(
       tokensServedDisplay({ data: { tokensServed: 8463301501 }, state: 'ok' }),
-    ).toEqual({ live: true, value: '8,463,301,501' })
+    ).toEqual({
+      live: true,
+      value: '8,463,301,501',
+    })
   })
 
   test('historyBars supports daily and cumulative metrics without inventing rows', () => {
@@ -296,9 +359,17 @@ describe('Start /stats route (public/anonymous variant)', () => {
   test('mix, pylon, accounting, nostr, and forum derivations stay fail-soft', () => {
     expect(mixRows({})).toEqual([])
     expect(
-      mixRows({ groups: [{ label: 'Gemini', pct: 1.27854, reqs: 66891, tokens: 108205925 }] }),
+      mixRows({
+        groups: [
+          { label: 'Gemini', pct: 1.27854, reqs: 66891, tokens: 108205925 },
+        ],
+      }),
     ).toEqual([
-      { detail: '108,205,925 tokens · 66,891 reqs', label: 'Gemini', pct: '1.28%' },
+      {
+        detail: '108,205,925 tokens · 66,891 reqs',
+        label: 'Gemini',
+        pct: '1.28%',
+      },
     ])
 
     expect(pylonPanelValues({ available: false })).toBeNull()

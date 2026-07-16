@@ -1,9 +1,15 @@
 import { InternalLink } from '@/components/internal-link'
-import { DOCS_URL, DOWNLOAD_URL, GITHUB_REPOSITORY_URL } from '@/lib/public-site'
+import {
+  DOCS_URL,
+  DOWNLOAD_URL,
+  GITHUB_REPOSITORY_URL,
+  X_URL,
+} from '@/lib/public-site'
 import type { ReactNode } from 'react'
 
-import GithubMark from './launch-ui/logos/github'
 import '../public-header.css'
+import GithubMark from './launch-ui/logos/github'
+import { XMark } from './x-mark'
 
 type PublicHeaderProps = Readonly<{
   docsActive?: boolean
@@ -12,14 +18,30 @@ type PublicHeaderProps = Readonly<{
   variant?: 'default' | 'docs'
 }>
 
-export function PublicHeader({ docsActive = false, leading, utility, variant = 'default' }: PublicHeaderProps = {}) {
+export function PublicHeader({
+  docsActive = false,
+  leading,
+  utility,
+  variant = 'default',
+}: PublicHeaderProps = {}) {
   return (
     <>
-      <header className={variant === 'docs' ? 'oa-unified-header oa-unified-header--docs' : 'oa-unified-header'}>
+      <header
+        className={
+          variant === 'docs'
+            ? 'oa-unified-header oa-unified-header--docs'
+            : 'oa-unified-header'
+        }
+      >
         <nav aria-label="Primary navigation" className="oa-unified-nav">
           <div className="oa-unified-nav-left">
             {leading}
-            <InternalLink aria-label="OpenAgents home" className="oa-unified-brand" href="/" preload="render">
+            <InternalLink
+              aria-label="OpenAgents home"
+              className="oa-unified-brand"
+              href="/"
+              preload="render"
+            >
               OpenAgents
             </InternalLink>
             <InternalLink
@@ -33,10 +55,29 @@ export function PublicHeader({ docsActive = false, leading, utility, variant = '
           </div>
           <div className="oa-unified-nav-actions">
             {utility}
-            <a aria-label="OpenAgents on GitHub" className="oa-unified-github-link" href={GITHUB_REPOSITORY_URL} rel="noreferrer" target="_blank">
+            <a
+              aria-label="OpenAgents on X"
+              className="oa-unified-icon-link oa-unified-x-link"
+              href={X_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <XMark aria-hidden="true" />
+            </a>
+            <a
+              aria-label="OpenAgents on GitHub"
+              className="oa-unified-github-link oa-unified-icon-link"
+              href={GITHUB_REPOSITORY_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
               <GithubMark aria-hidden="true" />
             </a>
-            <InternalLink className="oa-unified-download-link" href={DOWNLOAD_URL} preload="render">
+            <InternalLink
+              className="oa-unified-download-link"
+              href={DOWNLOAD_URL}
+              preload="render"
+            >
               Download
             </InternalLink>
           </div>

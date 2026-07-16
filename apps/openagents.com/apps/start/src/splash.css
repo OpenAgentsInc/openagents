@@ -16,12 +16,16 @@
   min-height: 100dvh;
   overflow-x: clip;
   background:
-    radial-gradient(ellipse 68% 30% at 50% 4%, rgb(58 123 255 / 0.16), transparent 72%),
+    radial-gradient(
+      ellipse 68% 30% at 50% 4%,
+      rgb(58 123 255 / 0.16),
+      transparent 72%
+    ),
     linear-gradient(180deg, #070b1b 0, var(--splash-bg) 44rem, #01030a 100%);
   color: var(--splash-text);
   font-family: var(--font-sans);
   font-optical-sizing: auto;
-  font-variation-settings: "wdth" 100;
+  font-variation-settings: 'wdth' 100;
 }
 
 .splash-page,
@@ -66,11 +70,17 @@
   height: 100%;
   opacity: 0.7;
   pointer-events: none;
-  mask-image: radial-gradient(ellipse 64% 88% at 50% 46%, transparent 12%, black 78%);
+  mask-image: radial-gradient(
+    ellipse 64% 88% at 50% 46%,
+    transparent 12%,
+    black 78%
+  );
 }
 
 @media (forced-colors: active) {
-  .splash-hero-canvas { display: none; }
+  .splash-hero-canvas {
+    display: none;
+  }
 }
 
 .splash-release-link {
@@ -138,7 +148,9 @@
   color: white !important;
   font-size: 0.84rem;
   font-weight: 650;
-  transition: background-color 160ms ease-out, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    background-color 160ms ease-out,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .splash-primary-action:hover {
@@ -181,7 +193,7 @@
 }
 
 .splash-product::before {
-  content: "";
+  content: '';
   position: absolute;
   z-index: -1;
   inset: -14rem 8% auto;
@@ -220,9 +232,15 @@
   background: #26334c;
 }
 
-.splash-window-dots i:first-child { background: #ff5f57; }
-.splash-window-dots i:nth-child(2) { background: #febc2e; }
-.splash-window-dots i:last-child { background: #28c840; }
+.splash-window-dots i:first-child {
+  background: #ff5f57;
+}
+.splash-window-dots i:nth-child(2) {
+  background: #febc2e;
+}
+.splash-window-dots i:last-child {
+  background: #28c840;
+}
 
 .splash-window-status {
   justify-content: flex-end;
@@ -373,7 +391,9 @@
   color: var(--splash-faint);
   font-family: var(--font-mono);
   font-size: 1.1rem;
-  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), color 160ms ease-out;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 160ms ease-out;
 }
 
 .splash-question-list details[open] summary span {
@@ -390,76 +410,16 @@
   text-wrap: pretty;
 }
 
-.splash-footer {
-  border-top: 1px solid var(--splash-border);
-  background: rgb(2 5 14 / 0.76);
-}
-
-.splash-footer-main {
-  display: grid;
-  grid-template-columns: minmax(16rem, 2fr) repeat(3, minmax(7rem, 1fr));
-  gap: clamp(2rem, 6vw, 5rem);
-  width: min(100% - 3rem, 72rem);
-  margin-inline: auto;
-  padding-block: clamp(3.5rem, 7vw, 5.5rem);
-}
-
-.splash-footer-brand > a {
-  color: var(--splash-text);
-  font-size: 1rem;
-  font-weight: 680;
-}
-
-.splash-footer-brand p {
-  max-width: 28ch;
-  margin: 0.8rem 0 0;
-  color: var(--splash-faint);
-  font-size: 0.8rem;
-  line-height: 1.6;
-}
-
-.splash-footer nav {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.splash-footer nav strong {
-  margin-bottom: 0.2rem;
-  color: var(--splash-faint);
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
-  font-weight: 500;
-}
-
-.splash-footer nav a {
-  color: var(--splash-muted);
-  font-size: 0.78rem;
-}
-
-.splash-footer nav a:hover {
-  color: var(--splash-text);
-}
-
-.splash-footer-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  width: min(100% - 3rem, 72rem);
-  min-height: 4rem;
-  margin-inline: auto;
-  border-top: 1px solid var(--splash-border);
-  color: var(--splash-faint);
-  font-family: var(--font-mono);
-  font-size: 0.64rem;
-}
-
 @media (max-width: 979px) {
-  .splash-demo-frame .oa-react-session-rail { z-index: 4; }
-  .splash-demo-frame .oa-react-rail-scrim { z-index: 3; }
-  .splash-demo-frame .oa-react-conversation-header { padding-left: 3.5rem; }
+  .splash-demo-frame .oa-react-session-rail {
+    z-index: 4;
+  }
+  .splash-demo-frame .oa-react-rail-scrim {
+    z-index: 3;
+  }
+  .splash-demo-frame .oa-react-conversation-header {
+    padding-left: 3.5rem;
+  }
 }
 
 @media (max-width: 760px) {
@@ -489,14 +449,6 @@
   .splash-faq-intro h2 {
     max-width: 15ch;
   }
-
-  .splash-footer-main {
-    grid-template-columns: 1.5fr 1fr 1fr;
-  }
-
-  .splash-footer-brand {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 520px) {
@@ -525,21 +477,8 @@
     display: none;
   }
 
-  .splash-faq,
-  .splash-footer-main,
-  .splash-footer-bottom {
+  .splash-faq {
     width: calc(100% - 2.5rem);
-  }
-
-  .splash-footer-main {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .splash-footer-bottom {
-    align-items: flex-start;
-    flex-direction: column;
-    justify-content: center;
-    min-height: 5.5rem;
   }
 }
 
