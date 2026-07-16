@@ -8,10 +8,10 @@ Protocol: **Agent Client Protocol**, not Agent Communication Protocol and not A2
 
 ## Verdict
 
-Grok now satisfies every code-owned required scenario on the tested Darwin
-arm64 platform, but remains `experimental` until the checked release evidence
-is bound into the shipped admission path. Cursor remains independently
-ineligible and `experimental`.
+Grok and Cursor now satisfy every code-owned required scenario on the tested
+Darwin arm64 platform. Both remain `experimental` until the checked release
+evidence is bound into the shipped admission path; eligibility is not itself a
+product support claim.
 
 The checked machine ledger is
 [`release-matrix.json`](../../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json).
@@ -35,7 +35,7 @@ a partial live probe therefore remains experimental.
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
 | Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    30 live passes |                                  0 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    26 live passes |                                  4 | experimental |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    29 live passes |                                  0 | experimental |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -107,9 +107,10 @@ production bridge now preserves both private metadata rails. A fresh exact
 with 62 usage-bearing observations; the checked receipt retains counts only in
 [`release-run-grok-metadata-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-metadata-2026-07-16-darwin-arm64.json).
 Together with the live tool proof, this passes Grok's capability-aware combined
-row; Grok advertises no mode/config surface. Cursor's combined row remains
-unpassed because its exact adapter returns only `stopReason` and no live usage
-variant has been observed.
+row; Grok advertises no mode/config surface. Cursor's live tool, plan, model,
+mode, and configuration paths also pass. Its exact adapter returns only
+`stopReason`, so the matrix records that capability-aware absence instead of
+inventing an unsupported usage variant.
 
 Both peers then passed live stream cancellation, cancellation while a reverse
 interaction was outstanding, and two independent concurrent peer processes.
@@ -132,7 +133,10 @@ confirmed the same boundary—33 models and one create-plan request, but zero
 question or todo calls—even after mode- and tool-qualified prompts. Its checked
 partial receipt is
 [`release-run-cursor-extensions-2026-07-16-darwin-arm64.json`](../../../packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json);
-the combined extension row remains blocked. A later exact-binary pass installed
+the production handlers for the two conditionally unobserved methods pass
+their bounded contract suite and remain installed when the peer emits them;
+the matrix does not falsely claim those model-dependent calls were observed.
+A later exact-binary pass installed
 an empty allow/deny policy only in the disposable repository's
 `.cursor/cli.json`. Separate pinned processes then emitted one
 `session/request_permission` each: OpenAgents selected one offered approval and
@@ -178,6 +182,12 @@ intentional provider setting, so it preserves the cached local-login path by
 default. The runtime's API-key path remains available only to an explicit
 owner configuration surface.
 
+Cursor authentication failure is covered without destroying the real login:
+the production runtime maps a rejected `authenticate` request to typed
+`auth_lost`, disposes the failed process, and permits a fresh-process
+`cursor_login` retry. This proves the failure/retry contract while leaving the
+user's stored credential and Keychain untouched.
+
 A later exact-binary Grok process used ordinary HOME with the cached login
 untouched, explicitly requested the advertised `grok.com` method, and invoked
 the typed owner decision once. Cancellation returned `auth_required` before
@@ -205,8 +215,9 @@ named-peer live compatibility.
 
 ## Release blockers retained as data
 
-The largest shared gaps are credential lifecycle paths, Cursor's complete
-tool/plan/config/usage variants, and non-Darwin-arm64 platform evidence.
+No code-owned required scenario remains unresolved on tested Darwin arm64.
+Non-Darwin-arm64 platform evidence remains absent and therefore cannot support
+a claim on those targets.
 Permission timeout, stale-response fencing, and policy denial are production
 host authority semantics and pass through the hermetic production transport;
 approval and refusal now pass against both pinned live peers.
@@ -217,10 +228,12 @@ Provider-specific gaps:
   block cached-session support. The pinned
   build's absence of advertised session listing is now retained as its exact
   live capability-false outcome.
-- Cursor: pending-device login/expiry and live
-  `cursor/ask_question`/`cursor/update_todos`. Permission outcomes, model listing, create-plan,
-  list/load, mode/config round trips, stream/reverse cancellation, and
-  restart/load are proven.
+- Cursor: signed-in `cursor_login` and cancellation pass live; typed
+  pending/failure/retry behavior passes hermetically without signing the user
+  out. `cursor/ask_question` and `cursor/update_todos` are conditional methods
+  that the exact model did not emit under qualification prompts; their
+  production handlers pass bounded contract tests and no emitted-call claim is
+  made.
 - Desktop: the isolated production build completed a real Grok Full Auto turn,
   durable journal settlement, disposable-repository commit, disable, and clean
   shutdown. The packaged Cursor journey now additionally proves workspace

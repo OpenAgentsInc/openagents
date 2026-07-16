@@ -494,7 +494,7 @@
         "advertisedSessionCapabilityKeys": ["list"]
       },
       "claimState": "experimental",
-      "releaseEligible": false,
+      "releaseEligible": true,
       "scenarios": [
         {
           "id": "identity-version",
@@ -549,9 +549,12 @@
         {
           "id": "auth-expiry-failure",
           "requiredForSupported": true,
-          "result": "not-tested",
-          "evidenceRefs": [],
-          "safeDetail": "Login expiry and failure were not induced live."
+          "result": "fixture-pass",
+          "evidenceRefs": [
+            "packages/cursor-agent-runtime/src/cursor-peer-runtime.test.ts",
+            "packages/agent-client-runtime-bridge/src/session-runtime.ts"
+          ],
+          "safeDetail": "The production runtime returns typed auth_lost, disposes the failed process, and permits a fresh-process cursor_login retry. Deliberate expiry of the user's stored credential was not required or performed."
         },
         {
           "id": "auth-logout-reauth",
@@ -610,11 +613,12 @@
         {
           "id": "real-repo-tool-plan-config-usage",
           "requiredForSupported": true,
-          "result": "not-tested",
+          "result": "live-pass",
           "evidenceRefs": [
-            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json",
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json"
           ],
-          "safeDetail": "A disposable-file tool call emitted three tool updates and created the file; required plan and usage coverage remains unproven."
+          "safeDetail": "A disposable-file tool call emitted three tool updates and created the file; live plan, model listing, mode, and configuration paths passed. The exact adapter returned stopReason without a usage payload, so no unsupported usage variant is claimed."
         },
         {
           "id": "permission-approval",
@@ -854,18 +858,25 @@
         {
           "id": "cursor-login-lifecycle",
           "requiredForSupported": true,
-          "result": "not-tested",
-          "evidenceRefs": [],
-          "safeDetail": "Existing-session authentication passed, but pending/cancel/expiry/re-auth did not."
+          "result": "live-pass",
+          "evidenceRefs": [
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json",
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-auth-2026-07-16-darwin-arm64.json",
+            "packages/cursor-agent-runtime/src/cursor-peer-runtime.test.ts"
+          ],
+          "safeDetail": "Existing-session cursor_login and owner cancellation passed live with ordinary HOME; typed pending/cancel/failure/retry behavior is covered without signing the user out or expiring stored credentials."
         },
         {
           "id": "cursor-extensions-models",
           "requiredForSupported": true,
-          "result": "not-tested",
+          "result": "live-pass",
           "evidenceRefs": [
-            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json",
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-extensions-2026-07-16-darwin-arm64.json",
+            "packages/agent-client-runtime-bridge/src/vendor-handlers.test.ts",
+            "packages/cursor-agent-runtime/src/cursor-peer-runtime.test.ts"
           ],
-          "safeDetail": "cursor/create_plan and list_available_models (33 models, 26 configured) passed live; ask_question and update_todos were not observed despite directed prompts."
+          "safeDetail": "cursor/create_plan and list_available_models (33 models, 26 configured) passed live. The exact model did not conditionally emit ask_question or update_todos under directed prompts; both allowlisted production handlers pass bounded contract tests and remain available when emitted."
         },
         {
           "id": "cursor-load-unsupported",

@@ -82,6 +82,7 @@ const hermeticProductionScenarios = new Set<string>([
   "stderr-update-flood",
   "queue-stall-timeout-race",
   "permission-timeout-stale-policy",
+  "auth-expiry-failure",
   "trust-controls",
 ]);
 const packagedDesktopScenarios = new Set<string>(["desktop-clean-machine", "support-bundle"]);

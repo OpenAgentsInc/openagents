@@ -849,10 +849,16 @@ describe("MCP custody, durable evidence, and deterministic faults", () => {
     );
 
     const promoted = structuredClone(matrix) as {
-      peers: Array<{ claimState: string; releaseEligible: boolean }>;
+      peers: Array<{
+        claimState: string;
+        releaseEligible: boolean;
+        scenarios: Array<{ id: string; result: string }>;
+      }>;
     };
     promoted.peers[1]!.claimState = "supported";
     promoted.peers[1]!.releaseEligible = true;
+    promoted.peers[1]!.scenarios.find((scenario) => scenario.id === "cursor-wire-launch")!.result =
+      "not-tested";
     expect(
       validateAcpReleaseMatrix(promoted, { now: new Date("2026-07-16T16:00:00.000Z") }),
     ).toMatchObject({ valid: false });

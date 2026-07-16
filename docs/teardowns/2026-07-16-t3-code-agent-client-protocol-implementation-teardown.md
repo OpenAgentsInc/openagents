@@ -936,8 +936,10 @@ session modes and config options come from the peer; model discovery is a
 versioned, bounded `cursor/list_available_models` response with explicit
 provenance. The parameterized model-picker `_meta` flag, reverse authority, and
 all Cursor extensions require fresh evidence bound to the admitted version and
-digest. The observed version remains experimental because the #8897 matrix
-does not promote it.
+digest. The checked #8897 matrix now qualifies the exact Darwin arm64 build,
+including live model/create-plan behavior and bounded production handlers for
+conditional question/todo calls. Product admission remains experimental until
+that complete matrix evidence is wired into the shipped host.
 Initialize-only and incomplete prompt probes remain diagnostic and cannot mint
 their own feature evidence.
 

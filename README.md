@@ -133,7 +133,9 @@ receipt in disposable repositories; it has no claim authority. The checked
 [pinned live-binary matrix](packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
 and [human proof ledger](docs/qa/2026-07-16-acp10-release-proof/README.md) now
 independently gate the two peers; their current verdict is experimental because
-required live scenarios remain unresolved. Execution is tracked in
+the complete checked evidence has not yet been bound into shipped admission.
+All code-owned required scenarios are now satisfied on tested Darwin arm64;
+other platforms remain explicitly untested. Execution is tracked in
 [#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887);
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).

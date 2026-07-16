@@ -339,6 +339,32 @@ describe("Cursor admitted ACP peer runtime", () => {
     expect(transport.requests.map((request) => request.method)).toEqual(["initialize"]);
   });
 
+  it("returns typed auth_lost on Cursor login failure and permits a fresh-process retry", async () => {
+    const failed = new FakeCursorTransport();
+    failed.respond("initialize", {
+      protocolVersion: 1,
+      agentCapabilities: {},
+      authMethods: [{ id: "cursor_login", name: "Log in" }],
+    });
+    failed.respond("authenticate", () => {
+      throw new Error("credential rejected");
+    });
+    const first = await setup(failed);
+    await expect(first.start()).resolves.toMatchObject({ ok: false, reason: "auth_lost" });
+    expect(failed.state).toBe("disposed");
+
+    const retried = new FakeCursorTransport();
+    retried.respond("initialize", {
+      protocolVersion: 1,
+      agentCapabilities: {},
+      authMethods: [{ id: "cursor_login", name: "Log in" }],
+    });
+    retried.respond("authenticate", {});
+    const second = await setup(retried);
+    await expect(second.start()).resolves.toMatchObject({ ok: true });
+    await second.shutdown();
+  });
+
   it("rejects malformed model extension output without exposing the native payload", async () => {
     const transport = new FakeCursorTransport();
     transport.respond("initialize", {
