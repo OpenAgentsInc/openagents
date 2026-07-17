@@ -3,12 +3,13 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_23.desktop_thread_visibility_audience_authorization.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "bounded_packet_implemented"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
 base_revision: "9de9b278d13c326996c666fb8903f72d7adc3ccf"
 claim_revision: "dfb0569ea260d8d6e77d8241075333daa2b4f8e3"
+implementation_revision: "27d3d216bd04fe57163d302ba293154a3ec8b51e"
 proof_rung: "desktop_thread_visibility_audience_authorization_decision"
 observed_at: "2026-07-17T19:06:52Z"
 ---
@@ -24,6 +25,11 @@ receipts and releases, Fast Follow revision 3, the accepted plan, relevant
 ProductSpec and AssuranceSpec obligations, repository invariants, open issues,
 known baselines, Git configuration, and active worktrees were reconciled before
 mutation.
+
+The tested implementation tree was landed on current `origin/main` at
+`27d3d216bd04fe57163d302ba293154a3ec8b51e` after reconciling disjoint renderer
+work and regenerating the Sol manifest. This documentation-only release
+annotation records that remote fact; it does not extend scope.
 
 No open issue, worktree, or claim owns the two new audience-authorization
 paths. Active work continues to own Desktop `main.ts` and broad renderer

@@ -1792,6 +1792,14 @@ evidence, and Day 1 completion remain later packets.
 - baseline collisions: AssuranceSpec environment-digest drift remains 189/190; root Fast Follow teardown coverage still awaits the separately owned committed seed update for the mobile-component teardown
 - residual: real authority lookup and publication/transport, actual `main.ts` call-site composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim: `dfb0569ea260d8d6e77d8241075333daa2b4f8e3`
+- implementation: `27d3d216bd04fe57163d302ba293154a3ec8b51e`
+- disposition: `bounded_packet_landed`
+- released_at: `2026-07-17T19:10:08Z`
+- residual: real authority lookup and publication/transport, actual `main.ts` call-site composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
