@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`254`
+This directory contains machine-generated transcripts for episodes `001`-`255`
 of the OpenAgents video corpus, plus occasional clearly marked future-episode
 drafts. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
 presentation excerpt from the PlebLab Startup Day 2024 recording,
@@ -34,6 +34,12 @@ the host cuts over his own work to OpenAgents Desktop and bug-bashes it from
 inside itself: fixing typography while exposing queue replay loops, shared
 composer state, follow-up image failures, restart ambiguity, and the need for a
 trustworthy Full Auto harness.
+
+Episode [`255`](255.md) turns Full Auto into a standing **FastFollow** work
+source: study adjacent agent products and codebases, preserve evidence in
+content-addressed packets, admit product-specific gaps through ProductSpec and
+AssuranceSpec authority, and continuously drive OpenAgents Desktop toward
+functional parity without copying closed trust assumptions.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -73,6 +79,11 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
   self-hosted commit lands while the bash uncovers restart-sensitive queue
   loops, cross-chat composer leakage, attachment failures, and unclear binary
   state that must be hardened before release.
+- Episode [`255`](255.md): FastFollow becomes the durable learning contract
+  behind Full Auto. The host studies AMP's thread fabric and remote-control
+  model, seeds a machine-readable OpenAgents FastFollow program from the
+  teardown archive, and demonstrates the first gap-analysis run toward agent
+  parity while preserving local authority, receipts, and verification.
 
 ## Complete Episode Index
 
@@ -364,7 +375,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-254 - OAPN, Khala, and the OpenAgents Desktop alpha
+### 214-255 - OAPN, Khala, and the OpenAgents Desktop alpha
 
 | Episode | Summary |
 | --- | --- |
@@ -409,6 +420,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`252` OpenAgents Assurance](252.md) | Extends the ProductSpec evidence loop into a proof-design stack for agent-built software. A coordinated **QA Swarm** drives real browser, terminal, and native-window surfaces and turns discoveries into committed, re-runnable tests with honest CONFIRMED/REFUTED verdicts, videos, accounting, and shareable run views. Introduces **AssuranceSpec** as the framework-neutral record of verification intent and **Observer** as the product that reviews that design, compiles admitted obligations into immutable manifests, and runs them through real QA adapters. Preserves the authority boundary: ProductSpec defines intent and indexes evidence; the workroom executes accepted plans; AssuranceSpec commits how to know; Observer compiles obligations; QA tools execute and emit exact Assurance Receipts. |
 | [`253` Goodbye Bun](253.md) | Removes Bun from the OpenAgents production trust and failure path after contrasting Anthropic ownership with vendor-neutral Node governance. The repo completes its Node, pnpm, and Vite Plus cutover, informed by Effect-heavy OpenCode and T3 Code references, while the episode frames portable, inspectable, plural infrastructure as both an engineering and competitive requirement. |
 | [`254` Bug Bash](254.md) | Cuts the host's own development workflow over from Claude Code and Codex Desktop to the near-alpha OpenAgents Desktop app, then uses the app to improve itself. The first on-camera self-hosted commit fixes user-state typography, while live dogfooding exposes queued-message replay loops, per-chat composer-state leaks, follow-up image attachment failures, restart/binary ambiguity, and the release-critical gap between a promising Full Auto harness and dependable operation. |
+| [`255` FastFollow: Building Agent Parity](255.md) | Introduces FastFollow as a standing, machine-readable learning and work-source contract for OpenAgents. Starting from the teardown archive and a close reading of AMP's durable thread fabric, remote control, plugins, and specialist agents, the episode separates learning intent (FastFollow) from product intent (ProductSpec) and proof intent (AssuranceSpec), seeds reusable study packets and an OpenAgents-specific implementation program, and dogfoods the first evidence-grounded gap analysis through Full Auto. |
 
 ## Major Themes
 
@@ -496,7 +508,7 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 
 **OpenAgents Desktop, subagents, Fleet, ProductSpec, and Assurance:**
 [`246`](246.md) -> [`248`](248.md) -> [`249`](249.md) -> [`250`](250.md) ->
-[`251`](251.md) -> [`252`](252.md) -> [`254`](254.md).
+[`251`](251.md) -> [`252`](252.md) -> [`254`](254.md) -> [`255`](255.md).
 
 ## Maintenance Notes
 
