@@ -307,3 +307,94 @@ viewer, streaming, and scroll/history parity remain `T3M-A4`.
 - residual: `T3M-A4` attachments, viewer, streaming, scroll/history, and
   deep-transcript parity is the next ordered packet; full mobile parity remains
   open through `T3M-F2`
+
+## Active packet — T3M-A4
+
+Outcome: finish the mobile transcript's media and long-running-feed behavior:
+honest attachment previews/viewer, stable in-place active work, user-controlled
+auto-pin, unread recovery, and deterministic retained-history pagination.
+
+Owned paths:
+
+- `apps/openagents.com/packages/effect-native-core/src/index.ts`
+- `apps/openagents.com/packages/effect-native-render-rn/src/index.ts`
+- `apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts`
+- `apps/openagents-mobile/src/screens/mobile-transcript-attachment.ts`
+- `apps/openagents-mobile/src/screens/mobile-transcript-history.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/tests/mobile-transcript-attachment.test.ts`
+- `apps/openagents-mobile/tests/mobile-transcript-history.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/tests/mobile-accessibility.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger, `docs/sol/document-manifest-policy.json`, and
+  `docs/sol/document-manifest.json`
+
+Hot contracts: Effect Native Image and Transcript catalogs/renderers, exact
+confirmed transcript ordering, retained-history accounting, device-local view
+state, mobile behavior registry, and Sol manifest. The wire attachment schema
+and Sync retention policy are not versioned here.
+
+Required behavior:
+
+- confirmed image attachments use content-aware thumbnail cards with accessible
+  file metadata, native load/failure/retry state, and a dismissable full-screen
+  contain-fit viewer; unsupported non-image payloads are never fabricated from
+  the image-only authority schema;
+- active reasoning/work/message rows retain stable keys and update in place;
+  reduced motion never gates content or uses app-owned animation;
+- auto-pin follows the latest row only while the user remains at the end; user
+  scrolling suspends it, new rows increment an inline unread boundary, and a
+  touch-safe jump-to-latest action clears the boundary and restores pinning;
+- retained history opens newest-first in bounded pages, loads earlier retained
+  rows through a typed local action, preserves the first visible keyed row when
+  prepending, and names server-retained omissions exactly;
+- list rendering remains virtualized and bounded, and stale/foreign image,
+  pagination, scroll, or load callbacks fail closed.
+
+Proof: focused attachment, history/scroll-state, RN renderer, authoritative
+Home, accessibility, behavior-contract, mobile typecheck, and repository
+checks.
+
+Close rule: this closes Epic A's transcript surface only. Composer intelligence
+begins at `T3M-B1`; physical image gestures and screen-reader/device evidence
+remain `T3M-F2`.
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-a4-20260717`
+- base: `e39187ef97d2777ef21a609f3a0596cb607d34dd`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-A4` attachment viewer and deterministic transcript feed state
+- paths: the `T3M-A4` owned paths above
+- hot files: Effect Native Image/Transcript catalog and RN renderer, Home
+  intent registry, Khala transcript state, behavior registry, Sol manifest
+- hot contracts: typed native events, confirmed entry keys/order, retained
+  omission accounting, request-local view authority
+- verification: focused packet suites, renderer tests, mobile typecheck,
+  behavior/Sol checks, and `pnpm run check`
+- claimed_at: `2026-07-17T21:19:29Z`
+
+### CLAIM-STATUS
+
+- status: implementation complete; ready to commit and land
+- completed_at: `2026-07-17T21:35:03Z`
+- delivered: typed Effect Native image press/load/error lifecycle; confirmed
+  attachment loading/failure/retry cards and ready-only contain-fit viewer;
+  60-row retained-history pagination with exact non-retained accounting;
+  keyed anchor preservation and targeted-scroll fallback; real end-pin
+  detection, inline unread boundary, jump-to-latest, and stable-key active-row
+  replacement; reduced-motion-safe and Dynamic-Type touch targets
+- verification: 94 focused transcript, interaction, authoritative Home,
+  accessibility, local-first registry, RN renderer, and behavior-contract tests
+  passed; seven Effect Native vendor-guard tests passed; Effect Native core,
+  RN renderer, and mobile typechecks passed; `pnpm run check` passed
+- expanded-sweep note: the package-level `test` script ran the unscoped whole
+  workspace (17,982 passed / 21 failed); failures were current-head/shared-host
+  Postgres SHM exhaustion, Pylon/packaging timeouts, fixture drift, and Git
+  `core.bare` mutation. Its one relevant registry failure exposed three
+  presentation contracts carrying invalid seam metadata; that metadata was
+  removed and the focused local-first registry oracle is green.
+- close boundary: no attachment wire-schema widening or remote retention claim;
+  physical zoom/VoiceOver/TalkBack evidence remains `T3M-F2`; `T3M-B1` is next

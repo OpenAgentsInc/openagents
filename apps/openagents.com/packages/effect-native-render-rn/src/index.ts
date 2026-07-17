@@ -1075,6 +1075,7 @@ const renderSheet = (
 const renderImage = (
   view: ImageView,
   dependencies: ReactNativeDependencies,
+  report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
   const width = view.width === undefined ? undefined : resolveResponsiveValue(view.width)
@@ -1087,7 +1088,7 @@ const renderImage = (
     viewStyle(view, options)
   )
 
-  return createElement(
+  const image = createElement(
     dependencies,
     dependencies.ReactNative.Image,
     {
@@ -1095,9 +1096,28 @@ const renderImage = (
       accessibilityLabel: view.alt,
       alt: view.alt,
       resizeMode: view.fit,
-      source: { uri: view.source }
+      source: { uri: view.source },
+      ...(view.onLoad === undefined
+        ? {}
+        : { onLoad: () => runReportedIntent(report, view.onLoad!) }),
+      ...(view.onError === undefined
+        ? {}
+        : { onError: () => runReportedIntent(report, view.onError!) })
     }
   )
+  return view.onPress === undefined
+    ? image
+    : createElement(
+        dependencies,
+        dependencies.ReactNative.Pressable,
+        {
+          accessibilityRole: "imagebutton",
+          accessibilityLabel: `Open ${view.alt}`,
+          onPress: () => runReportedIntent(report, view.onPress!),
+          style
+        },
+        image
+      )
 }
 
 // TextField matrix axes (harmonization #79). `resolveTextFieldAppearance`'s
@@ -3979,6 +3999,21 @@ const renderTranscript = (
       textMuted: "rgba(255, 255, 255, 0.78)"
     }
   }
+  type NativeListHandle = Readonly<{
+    scrollToEnd?: (options?: Readonly<{ animated?: boolean }>) => void
+    scrollToIndex?: (options: Readonly<{ animated?: boolean; index: number; viewPosition?: number }>) => void
+    scrollToOffset?: (options: Readonly<{ animated?: boolean; offset: number }>) => void
+  }>
+  let listHandle: NativeListHandle | null = null
+  let lastPinned = view.pinToEnd === true
+  const reportPinned = (pinned: boolean): void => {
+    if (view.onPinnedChange === undefined || pinned === lastPinned) return
+    lastPinned = pinned
+    runReportedIntent(report, view.onPinnedChange, pinned)
+  }
+  const scrollTargetIndex = view.scrollToKey === undefined
+    ? -1
+    : view.messages.findIndex((message) => message.key === view.scrollToKey)
   return createElement(
     dependencies,
     dependencies.ReactNative.FlatList,
@@ -3987,22 +4022,48 @@ const renderTranscript = (
       testID: "en-transcript",
       accessibilityLiveRegion: "polite",
       data: view.messages,
+      ref: (value: NativeListHandle | null) => {
+        listHandle = value
+        if (value !== null && scrollTargetIndex >= 0) {
+          value.scrollToIndex?.({ animated: true, index: scrollTargetIndex, viewPosition: 1 })
+        }
+      },
       keyExtractor: (message: { readonly key: string }) => message.key,
       windowSize: 12,
       initialNumToRender: 16,
       maxToRenderPerBatch: 8,
       removeClippedSubviews: true,
-      ...(view.pinToEnd === true
-        ? {
-            maintainVisibleContentPosition: { minIndexForVisible: 0 },
-            onContentSizeChange: () => {
-              // Host list ref scroll-to-end is adapter-owned; mark pin intent for apps.
-              if (view.onPinnedChange !== undefined) {
-                runReportedIntent(report, view.onPinnedChange, true)
-              }
-            }
-          }
+      ...(view.pinToEnd === true || view.preserveScrollAnchor === true
+        ? { maintainVisibleContentPosition: { minIndexForVisible: 0 } }
         : {}),
+      onContentSizeChange: () => {
+        if (view.pinToEnd !== true) return
+        listHandle?.scrollToEnd?.({ animated: false })
+        reportPinned(true)
+      },
+      onScroll: (event: Readonly<{ nativeEvent?: Readonly<{
+        contentOffset?: Readonly<{ y?: number }>
+        contentSize?: Readonly<{ height?: number }>
+        layoutMeasurement?: Readonly<{ height?: number }>
+      }> }>) => {
+        const native = event.nativeEvent
+        const offset = native?.contentOffset?.y
+        const content = native?.contentSize?.height
+        const viewport = native?.layoutMeasurement?.height
+        if (typeof offset !== "number" || typeof content !== "number" || typeof viewport !== "number") return
+        reportPinned(content - viewport - offset <= 48)
+      },
+      scrollEventThrottle: 16,
+      onScrollToIndexFailed: (failure: Readonly<{ index?: number }>) => {
+        const index = typeof failure.index === "number" ? failure.index : scrollTargetIndex
+        if (index < 0) return
+        if (index >= view.messages.length - 1) {
+          listHandle?.scrollToEnd?.({ animated: true })
+          return
+        }
+        const estimated = typeof view.estimatedItemSize === "number" ? view.estimatedItemSize : 180
+        listHandle?.scrollToOffset?.({ animated: true, offset: Math.max(0, index * estimated) })
+      },
       renderItem: ({ item: message }: {
         readonly item: {
           readonly key: string
@@ -4560,7 +4621,7 @@ const renderResolvedReactNativeView = (
     case "Sheet":
       return renderSheet(view, dependencies, report, options)
     case "Image":
-      return renderImage(view, dependencies, options)
+      return renderImage(view, dependencies, report, options)
     case "TextField":
       return renderTextField(view, dependencies, report, options)
     case "List":

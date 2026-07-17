@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vite-plus/test"
 import {
   Button,
+  ComponentValueBinding,
   Composer,
+  Image,
   IntentRef,
   Markdown,
   Stack,
@@ -133,6 +135,89 @@ describe("React Native renderer host boundaries", () => {
     expect((userBody.props.children as ReactElementLike).props.style).toMatchObject({ color: "#ffffff" })
     expect(assistantMessage.props.style).toMatchObject({ maxWidth: "100%", width: "100%", marginBottom: 8 })
     expect(assistantBody.props.style).toEqual({})
+  })
+
+  test("reports typed image press/load/failure events without exposing native errors", () => {
+    const reported: Array<{ readonly name: string; readonly runtimeValue: unknown }> = []
+    const element = renderReactNativeView(
+      Image({
+        key: "attachment",
+        source: "data:image/png;base64,fixture",
+        alt: "fixture.png",
+        width: "full",
+        height: 220,
+        onPress: IntentRef("AttachmentOpened", ComponentValueBinding()),
+        onLoad: IntentRef("AttachmentLoaded", ComponentValueBinding()),
+        onError: IntentRef("AttachmentFailed", ComponentValueBinding()),
+      }),
+      { React: { createElement }, ReactNative: reactNative },
+      (ref, runtimeValue) => {
+        reported.push({ name: ref.name, runtimeValue })
+        return Effect.void
+      },
+    )
+    const image = element.props.children as ReactElementLike
+    ;(image.props.onLoad as () => void)()
+    ;(image.props.onError as () => void)()
+    ;(element.props.onPress as () => void)()
+
+    expect(element.type).toBe("Pressable")
+    expect(element.props.accessibilityRole).toBe("imagebutton")
+    expect(reported.map(item => item.name)).toEqual([
+      "AttachmentLoaded",
+      "AttachmentFailed",
+      "AttachmentOpened",
+    ])
+    expect(reported.every(item => item.runtimeValue === null)).toBe(true)
+  })
+
+  test("preserves keyed transcript anchors and reports real end-pin transitions", () => {
+    const pinned: Array<unknown> = []
+    const element = renderReactNativeView(
+      Transcript({
+        key: "feed",
+        messages: [
+          { key: "first", role: "assistant", body: [Text({ key: "a", content: "A", variant: "body" })] },
+          { key: "latest", role: "assistant", body: [Text({ key: "b", content: "B", variant: "body" })] },
+        ],
+        pinToEnd: true,
+        preserveScrollAnchor: true,
+        scrollToKey: "latest",
+        onPinnedChange: IntentRef("TranscriptPinnedChanged", ComponentValueBinding()),
+      }),
+      { React: { createElement }, ReactNative: reactNative },
+      (_ref, runtimeValue) => {
+        pinned.push(runtimeValue)
+        return Effect.void
+      },
+    )
+    const calls: Array<unknown> = []
+    ;(element.props.ref as (value: unknown) => void)({
+      scrollToEnd: (input: unknown) => calls.push(["end", input]),
+      scrollToIndex: (input: unknown) => calls.push(["index", input]),
+    })
+    ;(element.props.onScroll as (event: unknown) => void)({
+      nativeEvent: {
+        contentOffset: { y: 20 },
+        contentSize: { height: 800 },
+        layoutMeasurement: { height: 300 },
+      },
+    })
+    ;(element.props.onScroll as (event: unknown) => void)({
+      nativeEvent: {
+        contentOffset: { y: 500 },
+        contentSize: { height: 800 },
+        layoutMeasurement: { height: 300 },
+      },
+    })
+    ;(element.props.onContentSizeChange as () => void)()
+    ;(element.props.onScrollToIndexFailed as (failure: unknown) => void)({ index: 1 })
+
+    expect(element.props.maintainVisibleContentPosition).toEqual({ minIndexForVisible: 0 })
+    expect(calls).toContainEqual(["index", { animated: true, index: 1, viewPosition: 1 }])
+    expect(calls).toContainEqual(["end", { animated: false }])
+    expect(calls).toContainEqual(["end", { animated: true }])
+    expect(pinned).toEqual([false, true])
   })
 
   test("lowers a glass composer through renderer-owned SwiftUI on iOS 26 with typed change and submit parity", async () => {

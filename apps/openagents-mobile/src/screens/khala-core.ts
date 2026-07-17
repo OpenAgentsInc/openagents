@@ -4,7 +4,6 @@ import {
   Composer,
   Button,
   ComponentValueBinding,
-  Image,
   IntentRef,
   Stack,
   Spacer,
@@ -26,6 +25,17 @@ import {
 } from "@openagentsinc/khala-sync-client"
 import { mobileAssistantContentViews } from "./mobile-transcript-content"
 import { renderMobileInteractionCard } from "./mobile-interaction-card"
+import {
+  mobileAttachmentRef,
+  renderMobileAttachmentViewer,
+  renderMobileTranscriptAttachments,
+  type MobileAttachmentPreviewState,
+} from "./mobile-transcript-attachment"
+import {
+  MOBILE_TRANSCRIPT_PAGE_SIZE,
+  mobileTranscriptUnreadBoundaryIndex,
+  visibleMobileTranscriptEntries,
+} from "./mobile-transcript-history"
 import {
   renderMobileWorkLog,
   type MobileWorkGroup,
@@ -121,6 +131,13 @@ export interface KhalaState {
   readonly interactionActionsAvailable: boolean
   readonly expandedWorkGroups: Readonly<Record<string, boolean>>
   readonly expandedWorkItems: Readonly<Record<string, boolean>>
+  readonly transcriptVisibleCount: number
+  readonly transcriptPinned: boolean
+  readonly transcriptUnreadCount: number
+  readonly transcriptScrollToKey: string | null
+  readonly attachmentPreviewStates: Readonly<Record<string, MobileAttachmentPreviewState>>
+  readonly attachmentRetryEpochs: Readonly<Record<string, number>>
+  readonly viewingAttachmentRef: string | null
   readonly runtimeTurn: KhalaRuntimeTurn | null
   readonly runtimeControlSubmittingAction: MobileRuntimeControlAction | null
   readonly runtimeControlActionsAvailable: boolean
@@ -146,6 +163,13 @@ export const initialKhalaState: KhalaState = {
   interactionActionsAvailable: false,
   expandedWorkGroups: {},
   expandedWorkItems: {},
+  transcriptVisibleCount: MOBILE_TRANSCRIPT_PAGE_SIZE,
+  transcriptPinned: true,
+  transcriptUnreadCount: 0,
+  transcriptScrollToKey: null,
+  attachmentPreviewStates: {},
+  attachmentRetryEpochs: {},
+  viewingAttachmentRef: null,
   runtimeTurn: null,
   runtimeControlSubmittingAction: null,
   runtimeControlActionsAvailable: false,
@@ -167,6 +191,13 @@ export const AgentStackToggled = "AgentStackToggled"
 export const AgentRowSelected = "AgentRowSelected"
 export const WorkGroupToggled = "WorkGroupToggled"
 export const WorkItemToggled = "WorkItemToggled"
+export const TranscriptPinnedChanged = "TranscriptPinnedChanged"
+export const TranscriptEarlierHistoryRequested = "TranscriptEarlierHistoryRequested"
+export const TranscriptJumpToLatestRequested = "TranscriptJumpToLatestRequested"
+export const TranscriptAttachmentOpened = "TranscriptAttachmentOpened"
+export const TranscriptAttachmentLoadSettled = "TranscriptAttachmentLoadSettled"
+export const TranscriptAttachmentRetryRequested = "TranscriptAttachmentRetryRequested"
+export const TranscriptAttachmentViewerDismissed = "TranscriptAttachmentViewerDismissed"
 
 /** Mobile renders at most this many hierarchy rows and names the remainder. */
 export const MOBILE_AGENT_GRAPH_MAX_ROWS = 40
@@ -196,23 +227,13 @@ const interactionBody = (
           variant: "body",
           color: entry.status === "failed" ? "danger" : "textPrimary",
         })]
-    return [...textViews, ...(entry.attachments ?? []).flatMap((attachment, index) => [
-      Image({
-        key: `${entry.key}-attachment-${index}`,
-        source: `data:${attachment.mediaType};base64,${attachment.dataBase64}`,
-        alt: attachment.name,
-        width: "full",
-        height: 220,
-        fit: "contain",
-        style: { borderRadius: "md" },
-      }),
-      Text({
-        key: `${entry.key}-attachment-${index}-caption`,
-        content: `${attachment.name} · ${Math.max(1, Math.ceil(attachment.sizeBytes / 1024))} KB`,
-        variant: "caption",
-        color: "textMuted",
-      }),
-    ])]
+    return [...textViews, ...renderMobileTranscriptAttachments(
+      entry.key,
+      entry.attachments ?? [],
+      state.attachmentPreviewStates,
+      state.attachmentRetryEpochs,
+      accessibility,
+    )]
   }
   const submitting = state.interactionSubmittingRef === interaction.interactionRef
   const selections = state.interactionSelections[interaction.interactionRef] ?? {}
@@ -632,8 +653,52 @@ export const renderKhalaSurface = (
   accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
   executionTargets: ReadonlyArray<MobileExecutionTargetOption> = [],
   historyAvailability: "live" | "refreshing" | "unavailable" = "live",
-): View =>
-  Stack(
+): View => {
+  const visibleEntries = visibleMobileTranscriptEntries(
+    state.entries,
+    state.transcriptVisibleCount,
+  )
+  const unreadBoundaryIndex = mobileTranscriptUnreadBoundaryIndex(
+    visibleEntries.length,
+    state.transcriptUnreadCount,
+  )
+  const messages = visibleEntries.flatMap((entry, index): ReadonlyArray<TranscriptMessage> => [
+    ...(unreadBoundaryIndex === index
+      ? [{
+          key: "khala-transcript-unread-boundary",
+          role: "system" as const,
+          status: "done" as const,
+          body: [Text({
+            key: "khala-transcript-unread-boundary-label",
+            content: `${state.transcriptUnreadCount} ${state.transcriptUnreadCount === 1 ? "unread update" : "unread updates"}`,
+            variant: "caption",
+            color: "accent",
+            style: { width: "full", textAlign: "center" },
+          })],
+        }]
+      : []),
+    {
+      key: entry.key,
+      role: entry.role,
+      status: entry.status === "thinking" || entry.status === "pending" ? "thinking" : "done",
+      ...(entry.role === "system" ? { senderLabel: "SYSTEM" } : {}),
+      ...(entry.role !== "assistant" && entry.createdAt !== undefined
+        ? { timestamp: entry.createdAt.slice(11, 16) }
+        : {}),
+      body: interactionBody(state, entry, accessibility),
+    },
+  ])
+  const hiddenRetainedCount = Math.max(0, state.entries.length - visibleEntries.length)
+  const unavailableEarlierCount = state.threadHistory === null
+    ? 0
+    : Math.max(0, state.threadHistory.totalMessageCount - state.threadHistory.retainedMessageCount)
+  const viewingAttachment = state.viewingAttachmentRef === null
+    ? null
+    : state.entries.flatMap(entry => (entry.attachments ?? []).map((attachment, index) => ({
+        attachment,
+        attachmentRef: mobileAttachmentRef(entry.key, index),
+      }))).find(candidate => candidate.attachmentRef === state.viewingAttachmentRef) ?? null
+  return Stack(
     {
       key: "khala-surface",
       direction: "column",
@@ -673,25 +738,48 @@ export const renderKhalaSurface = (
             color: "textMuted",
           })]
         : []),
+      ...(hiddenRetainedCount > 0
+        ? [Button({
+            key: "khala-load-earlier-history",
+            label: `Load ${Math.min(MOBILE_TRANSCRIPT_PAGE_SIZE, hiddenRetainedCount)} earlier`,
+            variant: "ghost",
+            onPress: IntentRef(TranscriptEarlierHistoryRequested, StaticPayload({})),
+            a11y: { label: `Load earlier confirmed transcript entries. ${hiddenRetainedCount} retained entries remain.` },
+            style: { width: "full", minHeight: accessibility.minTouchTarget },
+          })]
+        : []),
+      ...(unavailableEarlierCount > 0
+        ? [Text({
+            key: "khala-unavailable-earlier-history",
+            content: `${unavailableEarlierCount} earlier ${unavailableEarlierCount === 1 ? "message is" : "messages are"} not retained on this device.`,
+            variant: "caption",
+            color: "textMuted",
+          })]
+        : []),
       Transcript({
         key: "khala-transcript",
-        messages: state.entries.map((entry): TranscriptMessage => ({
-          key: entry.key,
-          role: entry.role,
-          status: entry.status === "thinking" || entry.status === "pending" ? "thinking" : "done",
-          ...(entry.role === "system" ? { senderLabel: "SYSTEM" } : {}),
-          ...(entry.role !== "assistant" && entry.createdAt !== undefined
-            ? { timestamp: entry.createdAt.slice(11, 16) }
-            : {}),
-          body: interactionBody(state, entry, accessibility),
-        })),
+        messages,
         a11y: {
           role: "list",
           label: `Conversation transcript, reduced motion ${accessibility.reduceMotion ? "on" : "off"}`,
         },
-        pinToEnd: true,
+        pinToEnd: state.transcriptPinned,
+        onPinnedChange: IntentRef(TranscriptPinnedChanged, ComponentValueBinding()),
+        preserveScrollAnchor: true,
+        ...(state.transcriptScrollToKey === null ? {} : { scrollToKey: state.transcriptScrollToKey }),
+        virtualize: true,
+        estimatedItemSize: 180,
         style: { width: "full", flex: 1 },
       }),
+      ...(state.transcriptUnreadCount > 0
+        ? [Button({
+            key: "khala-jump-to-latest",
+            label: `Jump to latest · ${state.transcriptUnreadCount} unread`,
+            variant: "secondary",
+            onPress: IntentRef(TranscriptJumpToLatestRequested, StaticPayload({})),
+            style: { width: "full", minHeight: accessibility.minTouchTarget },
+          })]
+        : []),
       ...runtimeControlViews(state, accessibility),
       ...codingComposerContextViews(
         codingComposer,
@@ -737,8 +825,15 @@ export const renderKhalaSurface = (
           surface: "glass",
         },
       }),
+      ...(viewingAttachment === null
+        ? []
+        : [renderMobileAttachmentViewer(
+            viewingAttachment.attachmentRef,
+            viewingAttachment.attachment,
+          )]),
     ],
   )
+}
 
 export const khalaIntentDefinitions = [
   { name: KhalaDraftChanged, payload: Schema.String },

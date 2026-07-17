@@ -75,12 +75,25 @@ import {
   mobileInteractiveStyle,
   normalizeMobileAccessibilityProfile,
   renderKhalaSurface,
+  TranscriptAttachmentLoadSettled,
+  TranscriptAttachmentOpened,
+  TranscriptAttachmentRetryRequested,
+  TranscriptAttachmentViewerDismissed,
+  TranscriptEarlierHistoryRequested,
+  TranscriptJumpToLatestRequested,
+  TranscriptPinnedChanged,
   WorkGroupToggled,
   WorkItemToggled,
   type KhalaState,
   type KhalaTurnClient,
   type MobileAccessibilityProfile,
 } from "./khala-core"
+import { mobileAttachmentRef } from "./mobile-transcript-attachment"
+import {
+  initialMobileTranscriptVisibleCount,
+  newlyConfirmedTranscriptEntryCount,
+  nextMobileTranscriptVisibleCount,
+} from "./mobile-transcript-history"
 import { projectMobileWorkGroup } from "./mobile-work-log"
 
 export {
@@ -414,6 +427,34 @@ export const WorkItemToggledIntent = defineIntent(
   WorkItemToggled,
   Schema.Struct({ itemRef: Schema.String }),
 )
+export const TranscriptPinnedChangedIntent = defineIntent(
+  TranscriptPinnedChanged,
+  Schema.Boolean,
+)
+export const TranscriptEarlierHistoryRequestedIntent = defineIntent(
+  TranscriptEarlierHistoryRequested,
+  EmptyPayload,
+)
+export const TranscriptJumpToLatestRequestedIntent = defineIntent(
+  TranscriptJumpToLatestRequested,
+  EmptyPayload,
+)
+export const TranscriptAttachmentOpenedIntent = defineIntent(
+  TranscriptAttachmentOpened,
+  Schema.Struct({ attachmentRef: Schema.String }),
+)
+export const TranscriptAttachmentLoadSettledIntent = defineIntent(
+  TranscriptAttachmentLoadSettled,
+  Schema.Struct({ attachmentRef: Schema.String, outcome: Schema.Literals(["ready", "failed"]) }),
+)
+export const TranscriptAttachmentRetryRequestedIntent = defineIntent(
+  TranscriptAttachmentRetryRequested,
+  Schema.Struct({ attachmentRef: Schema.String }),
+)
+export const TranscriptAttachmentViewerDismissedIntent = defineIntent(
+  TranscriptAttachmentViewerDismissed,
+  Schema.Struct({ attachmentRef: Schema.String }),
+)
 
 export const homeIntentDefinitions = [
   DrawerToggled,
@@ -446,6 +487,13 @@ export const homeIntentDefinitions = [
   AgentRowSelectedIntent,
   WorkGroupToggledIntent,
   WorkItemToggledIntent,
+  TranscriptPinnedChangedIntent,
+  TranscriptEarlierHistoryRequestedIntent,
+  TranscriptJumpToLatestRequestedIntent,
+  TranscriptAttachmentOpenedIntent,
+  TranscriptAttachmentLoadSettledIntent,
+  TranscriptAttachmentRetryRequestedIntent,
+  TranscriptAttachmentViewerDismissedIntent,
   ...khalaIntentDefinitions.map((definition) => defineIntent(definition.name, definition.payload)),
 ] as const
 
@@ -1445,22 +1493,25 @@ const confirmedKhalaState = (
     version: message.version,
     ...(message.attachments === undefined ? {} : { attachments: message.attachments }),
   }))
+  const entries: KhalaState["entries"] = [
+    ...messageEntries,
+    ...runtimeEntries,
+    ...(workGroup === null ? [] : [{
+      key: workGroup.groupRef,
+      role: "tool" as const,
+      text: workGroup.summary,
+      status: workGroup.status === "failure"
+        ? "failed" as const
+        : workGroup.status === "running" ? "pending" as const : "done" as const,
+      createdAt: workGroup.createdAt,
+      version: thread?.timeline?.run?.version,
+      work: workGroup,
+    }]),
+  ].sort((left, right) =>
+    (left.createdAt ?? "").localeCompare(right.createdAt ?? ""))
   return {
     draft: "",
-    entries: [
-      ...messageEntries,
-      ...runtimeEntries,
-      ...(workGroup === null ? [] : [{
-        key: workGroup.groupRef,
-        role: "tool" as const,
-        text: workGroup.summary,
-        status: workGroup.status === "failure" ? "failed" as const : "done" as const,
-        createdAt: workGroup.createdAt,
-        version: thread?.timeline?.run?.version,
-        work: workGroup,
-      }]),
-    ].sort((left, right) =>
-      (left.createdAt ?? "").localeCompare(right.createdAt ?? "")),
+    entries,
     // A confirmed running turn is observable state, not an in-flight mobile
     // mutation. Keep the composer available so a second device can safely
     // append to that exact run. Only pre-dispatch queued state blocks input.
@@ -1471,6 +1522,13 @@ const confirmedKhalaState = (
     interactionActionsAvailable,
     expandedWorkGroups: previousGraphView?.expandedWorkGroups ?? {},
     expandedWorkItems: previousGraphView?.expandedWorkItems ?? {},
+    transcriptVisibleCount: initialMobileTranscriptVisibleCount(entries.length),
+    transcriptPinned: true,
+    transcriptUnreadCount: 0,
+    transcriptScrollToKey: null,
+    attachmentPreviewStates: {},
+    attachmentRetryEpochs: {},
+    viewingAttachmentRef: null,
     runtimeTurn: thread?.timeline?.run === null || thread?.timeline?.run === undefined
       ? null
       : {
@@ -1496,41 +1554,70 @@ const confirmedKhalaState = (
 const withConfirmedThread = (
   state: HomeState,
   thread: MobileConversationThread,
-): HomeState => ({
-  ...state,
-  drawerOpen: false,
-  surfaceMode: "khala",
-  activeThreadRef: thread.threadRef,
-  conversationThreads: [
-    {
-      threadRef: thread.threadRef,
-      title: thread.title,
-      status: thread.status,
-      messageCount: thread.messageCount,
-      lastMessageAt: thread.lastMessageAt,
-      updatedAt: thread.updatedAt,
-      version: thread.version,
-    },
-    ...state.conversationThreads.filter(item => item.threadRef !== thread.threadRef),
-  ],
-  khala: {
-    ...confirmedKhalaState(
-      thread,
-      state.khala.turnCounter,
-      state.khala.interactionActionsAvailable,
-      state.khala.runtimeControlActionsAvailable,
-      state.activeThreadRef === thread.threadRef
-        ? {
-            agentGraphExpanded: state.khala.agentGraphExpanded,
-            selectedAgentRef: state.khala.selectedAgentRef,
-            expandedWorkGroups: state.khala.expandedWorkGroups,
-            expandedWorkItems: state.khala.expandedWorkItems,
-          }
-        : null,
-    ),
+): HomeState => {
+  const sameThread = state.activeThreadRef === thread.threadRef
+  const nextKhala = confirmedKhalaState(
+    thread,
+    state.khala.turnCounter,
+    state.khala.interactionActionsAvailable,
+    state.khala.runtimeControlActionsAvailable,
+    sameThread
+      ? {
+          agentGraphExpanded: state.khala.agentGraphExpanded,
+          selectedAgentRef: state.khala.selectedAgentRef,
+          expandedWorkGroups: state.khala.expandedWorkGroups,
+          expandedWorkItems: state.khala.expandedWorkItems,
+        }
+      : null,
+  )
+  const addedEntryCount = sameThread
+    ? newlyConfirmedTranscriptEntryCount(state.khala.entries, nextKhala.entries)
+    : 0
+  const khala: KhalaState = {
+    ...nextKhala,
     draft: state.khala.draft,
-  },
-})
+    ...(sameThread
+      ? {
+          transcriptVisibleCount: Math.min(
+            nextKhala.entries.length,
+            Math.max(
+              state.khala.transcriptVisibleCount + (state.khala.transcriptPinned ? 0 : addedEntryCount),
+              initialMobileTranscriptVisibleCount(nextKhala.entries.length),
+            ),
+          ),
+          transcriptPinned: state.khala.transcriptPinned,
+          transcriptUnreadCount: state.khala.transcriptPinned
+            ? 0
+            : state.khala.transcriptUnreadCount + addedEntryCount,
+          transcriptScrollToKey: state.khala.transcriptPinned
+            ? state.khala.transcriptScrollToKey
+            : null,
+          attachmentPreviewStates: state.khala.attachmentPreviewStates,
+          attachmentRetryEpochs: state.khala.attachmentRetryEpochs,
+          viewingAttachmentRef: state.khala.viewingAttachmentRef,
+        }
+      : {}),
+  }
+  return {
+    ...state,
+    drawerOpen: false,
+    surfaceMode: "khala",
+    activeThreadRef: thread.threadRef,
+    conversationThreads: [
+      {
+        threadRef: thread.threadRef,
+        title: thread.title,
+        status: thread.status,
+        messageCount: thread.messageCount,
+        lastMessageAt: thread.lastMessageAt,
+        updatedAt: thread.updatedAt,
+        version: thread.version,
+      },
+      ...state.conversationThreads.filter(item => item.threadRef !== thread.threadRef),
+    ],
+    khala,
+  }
+}
 
 const failedConversationState = (
   state: HomeState,
@@ -2362,6 +2449,103 @@ export const makeHomeHandlers = (
           },
         }
       }),
+    [TranscriptPinnedChanged]: (pinned: boolean) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        khala: {
+          ...current.khala,
+          transcriptPinned: pinned,
+          transcriptUnreadCount: pinned ? 0 : current.khala.transcriptUnreadCount,
+          transcriptScrollToKey: null,
+        },
+      })),
+    [TranscriptEarlierHistoryRequested]: () =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        khala: {
+          ...current.khala,
+          transcriptVisibleCount: nextMobileTranscriptVisibleCount(
+            current.khala.transcriptVisibleCount,
+            current.khala.entries.length,
+          ),
+        },
+      })),
+    [TranscriptJumpToLatestRequested]: () =>
+      SubscriptionRef.update(state, current => {
+        const latest = current.khala.entries.at(-1)
+        return latest === undefined ? current : {
+          ...current,
+          khala: {
+            ...current.khala,
+            transcriptPinned: true,
+            transcriptUnreadCount: 0,
+            transcriptScrollToKey: latest.key,
+          },
+        }
+      }),
+    [TranscriptAttachmentOpened]: (payload: Readonly<{ attachmentRef: string }>) =>
+      SubscriptionRef.update(state, current => {
+        const exists = current.khala.entries.some(entry =>
+          (entry.attachments ?? []).some((_, index) =>
+            mobileAttachmentRef(entry.key, index) === payload.attachmentRef))
+        return !exists || current.khala.attachmentPreviewStates[payload.attachmentRef] !== "ready"
+          ? current
+          : {
+              ...current,
+              khala: { ...current.khala, viewingAttachmentRef: payload.attachmentRef },
+            }
+      }),
+    [TranscriptAttachmentLoadSettled]: (payload: Readonly<{
+      attachmentRef: string
+      outcome: "ready" | "failed"
+    }>) => SubscriptionRef.update(state, current => {
+      const exists = current.khala.entries.some(entry =>
+        (entry.attachments ?? []).some((_, index) =>
+          mobileAttachmentRef(entry.key, index) === payload.attachmentRef))
+      return !exists ? current : {
+        ...current,
+        khala: {
+          ...current.khala,
+          attachmentPreviewStates: {
+            ...current.khala.attachmentPreviewStates,
+            [payload.attachmentRef]: payload.outcome,
+          },
+          viewingAttachmentRef: payload.outcome === "failed" &&
+              current.khala.viewingAttachmentRef === payload.attachmentRef
+            ? null
+            : current.khala.viewingAttachmentRef,
+        },
+      }
+    }),
+    [TranscriptAttachmentRetryRequested]: (payload: Readonly<{ attachmentRef: string }>) =>
+      SubscriptionRef.update(state, current => {
+        if (current.khala.attachmentPreviewStates[payload.attachmentRef] !== "failed") return current
+        const exists = current.khala.entries.some(entry =>
+          (entry.attachments ?? []).some((_, index) =>
+            mobileAttachmentRef(entry.key, index) === payload.attachmentRef))
+        return !exists ? current : {
+          ...current,
+          khala: {
+            ...current.khala,
+            attachmentPreviewStates: {
+              ...current.khala.attachmentPreviewStates,
+              [payload.attachmentRef]: "loading" as const,
+            },
+            attachmentRetryEpochs: {
+              ...current.khala.attachmentRetryEpochs,
+              [payload.attachmentRef]: (current.khala.attachmentRetryEpochs[payload.attachmentRef] ?? 0) + 1,
+            },
+          },
+        }
+      }),
+    [TranscriptAttachmentViewerDismissed]: (payload: Readonly<{ attachmentRef: string }>) =>
+      SubscriptionRef.update(state, current =>
+        current.khala.viewingAttachmentRef !== payload.attachmentRef
+          ? current
+          : {
+              ...current,
+              khala: { ...current.khala, viewingAttachmentRef: null },
+            }),
     ConversationThreadSelected: synced?.ConversationThreadSelected ?? (() => Effect.void),
     ConversationThreadRenameStarted: synced?.ConversationThreadRenameStarted ?? (() => Effect.void),
     ConversationThreadRenameChanged: synced?.ConversationThreadRenameChanged ?? (() => Effect.void),
@@ -2458,6 +2642,13 @@ export interface HomeProgramHandle {
     readonly selectAgentRow: (agentRef: string) => void
     readonly toggleWorkGroup: (groupRef: string) => void
     readonly toggleWorkItem: (itemRef: string) => void
+    readonly setTranscriptPinned: (pinned: boolean) => void
+    readonly loadEarlierTranscript: () => void
+    readonly jumpToLatestTranscript: () => void
+    readonly openAttachment: (attachmentRef: string) => void
+    readonly settleAttachmentLoad: (attachmentRef: string, outcome: "ready" | "failed") => void
+    readonly retryAttachment: (attachmentRef: string) => void
+    readonly dismissAttachmentViewer: (attachmentRef: string) => void
   }
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
@@ -2589,6 +2780,28 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           toggleWorkItem: itemRef => fireRef(IntentRef(
             WorkItemToggled,
             StaticPayload({ itemRef }),
+          )),
+          setTranscriptPinned: pinned => fireRef(IntentRef(
+            TranscriptPinnedChanged,
+            StaticPayload(pinned),
+          )),
+          loadEarlierTranscript: fire(TranscriptEarlierHistoryRequested),
+          jumpToLatestTranscript: fire(TranscriptJumpToLatestRequested),
+          openAttachment: attachmentRef => fireRef(IntentRef(
+            TranscriptAttachmentOpened,
+            StaticPayload({ attachmentRef }),
+          )),
+          settleAttachmentLoad: (attachmentRef, outcome) => fireRef(IntentRef(
+            TranscriptAttachmentLoadSettled,
+            StaticPayload({ attachmentRef, outcome }),
+          )),
+          retryAttachment: attachmentRef => fireRef(IntentRef(
+            TranscriptAttachmentRetryRequested,
+            StaticPayload({ attachmentRef }),
+          )),
+          dismissAttachmentViewer: attachmentRef => fireRef(IntentRef(
+            TranscriptAttachmentViewerDismissed,
+            StaticPayload({ attachmentRef }),
           )),
         },
         sync: {

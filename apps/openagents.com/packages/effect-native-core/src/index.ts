@@ -2087,6 +2087,12 @@ export interface ImageView extends NodeBase {
   readonly width?: ResponsiveValue<Dimension>
   readonly height?: ResponsiveValue<Dimension>
   readonly fit?: ImageFit
+  /** Typed native press lifecycle for preview/viewer surfaces. */
+  readonly onPress?: IntentRef
+  /** Typed native image settlement; payload stays static and app-bounded. */
+  readonly onLoad?: IntentRef
+  /** Typed native image failure; raw native errors never enter app state. */
+  readonly onError?: IntentRef
   readonly style?: ImageStyle
 }
 
@@ -3060,6 +3066,10 @@ export interface TranscriptView extends NodeBase {
   // scrolls away from / back to the end (the "jump to latest" affordance).
   readonly pinToEnd?: boolean
   readonly onPinnedChange?: IntentRef
+  /** Keep the first visible keyed message stationary when history prepends. */
+  readonly preserveScrollAnchor?: boolean
+  /** Reveal this exact keyed message once when the target changes. */
+  readonly scrollToKey?: NodeKey
   readonly virtualize?: boolean
   readonly estimatedItemSize?: Dimension
   readonly style?: ListStyle
@@ -4083,6 +4093,9 @@ export const ImageSchema: Schema.Codec<ImageView, ImageView> = Schema.TaggedStru
   width: ResponsiveDimensionSchema.pipe(Schema.optionalKey),
   height: ResponsiveDimensionSchema.pipe(Schema.optionalKey),
   fit: ImageFitSchema.pipe(Schema.optionalKey),
+  onPress: IntentRefSchema.pipe(Schema.optionalKey),
+  onLoad: IntentRefSchema.pipe(Schema.optionalKey),
+  onError: IntentRefSchema.pipe(Schema.optionalKey),
   style: ImageStyleSchema.pipe(Schema.optionalKey)
 })
 
@@ -4850,6 +4863,8 @@ export const TranscriptSchema: Schema.Codec<TranscriptView, TranscriptView> = Sc
   messages: Schema.Array(TranscriptMessageSchema),
   pinToEnd: Schema.Boolean.pipe(Schema.optionalKey),
   onPinnedChange: IntentRefSchema.pipe(Schema.optionalKey),
+  preserveScrollAnchor: Schema.Boolean.pipe(Schema.optionalKey),
+  scrollToKey: NodeKeySchema.pipe(Schema.optionalKey),
   virtualize: Schema.Boolean.pipe(Schema.optionalKey),
   estimatedItemSize: DimensionSchema.pipe(Schema.optionalKey),
   style: ListStyleSchema.pipe(Schema.optionalKey)

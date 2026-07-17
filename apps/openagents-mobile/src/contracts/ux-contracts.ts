@@ -5,8 +5,59 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.3",
+    version: "2026-07-17.4",
     contracts: [
+      {
+        contractId: "openagents_mobile.transcript.media_and_history.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile transcript media and history",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "The mobile transcript renders confirmed images with explicit loading/failure/retry and a dismissable contain-fit viewer, keeps stable active rows keyed in place, suspends auto-pin when the user scrolls away, marks unread updates inline, offers jump-to-latest, and paginates retained history without moving the visible keyed anchor.",
+        authorityBoundary:
+          "Image, scroll, disclosure, viewer, retry, and retained-page state is device-local presentation. Attachment callbacks are accepted only for an exact attachment in the current confirmed transcript; the image-only wire schema is not widened. Pagination reveals only already-retained confirmed entries and names server/device omissions instead of claiming they were loaded.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-transcript-attachment.ts",
+          "apps/openagents-mobile/src/screens/mobile-transcript-history.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-a4",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/ThreadFeed.tsx",
+        ],
+        oracles: [
+          {
+            id: "mobile_transcript_attachment_viewer",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-transcript-attachment.test.ts",
+            description:
+              "Proves exact attachment lifecycle callbacks, honest failure/retry, foreign-callback refusal, ready-only viewer opening, contain-fit media, and dismissal.",
+          },
+          {
+            id: "mobile_transcript_history_scroll_state",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-transcript-history.test.ts",
+            description:
+              "Proves 60-row retained pages, omission accounting, stable in-place replacement, pin suspension, unread boundary, jump recovery, virtualization, and anchor retention intent.",
+          },
+          {
+            id: "effect_native_transcript_media_renderer",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts",
+            description:
+              "Proves native Image lifecycle/press dispatch plus FlatList keyed target scrolling, visible-position retention, real pin transitions, and end restoration.",
+          },
+        ],
+        verification:
+          "Attachment, history/scroll, authoritative Home, accessibility, RN renderer, behavior-contract, package/mobile typecheck, and repository checks; physical zoom gestures and screen-reader evidence remain T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.transcript.runtime_interaction_cards.v1",
         state: "enforced",
@@ -67,10 +118,6 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
           "Confirmed runtime activity in the mobile transcript is one compact causal work log: it groups the exact run's reasoning, connection, tools, plan steps, usage, failures, and terminal state; names running or settled status, derivable elapsed time, and runtime identity; keeps the latest five useful rows when collapsed; names bounded omissions; and reveals full selectable detail only through typed local disclosure.",
         authorityBoundary:
           "The work log is a presentation of the already-confirmed exact-thread agent timeline. Group and row disclosure are device-local Effect Native state and cannot issue runtime, tool, plan, navigation, or movement actions. Runtime-event schemas, ordering authority, private thread scope, and consequential controls remain unchanged; elapsed time is omitted when confirmed timestamps cannot prove it.",
-        seam: {
-          client: "apps/openagents-mobile/src/screens/mobile-work-log.ts",
-          server: "packages/khala-sync-client/src/agent-timeline.ts",
-        },
         evidenceRefs: [
           "apps/openagents-mobile/src/screens/home-core.ts",
           "apps/openagents-mobile/src/screens/khala-core.ts",
@@ -116,10 +163,6 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
           "i want full mobile parity, do the breakdown then start churning thru it",
         authorityBoundary:
           "Parity adapts T3 Code's complete mobile component and interaction grammar to OpenAgents styles while preserving one Effect Native application authority, exact confirmed refs, fail-closed target readiness, local credential custody, bounded private material, portable-session receipts, and server-authoritative consequential actions. It does not authorize release signing, deployment, credentials, or a screenshot-only parity claim.",
-        seam: {
-          client: "apps/openagents-mobile/src/screens/home-core.ts",
-          server: "apps/openagents-mobile/src/effect-native/effect-native-host.tsx",
-        },
         evidenceRefs: [
           "docs/teardowns/2026-07-17-t3-code-openagents-mobile-component-gap-analysis.md",
           "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md",
