@@ -2,11 +2,10 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-16
-- Revision: 116
+- Updated: 2026-07-17
+- Revision: 117
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: owner-admitted Fast Follow initial program, starting with
-  bounded Day 1 packets; #8777 remains independently claimable
+- Current queue: owner-approved FULL HARVEST of the Amp Fast Follow program; #8777 remains independently claimable
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -46,16 +45,15 @@ This file owns product direction, durable gates, issue projection, and dependenc
 order. Current code, tests, live issues, deployments, and receipts own factual
 proof; dated plans and analyses are evidence only.
 
-## Active expansion — ordered Fast Follow initial program
+## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
-The owner admitted the ordered Day 1–5 program on 2026-07-16 through the
+The owner approved **FULL HARVEST** on 2026-07-17: the full target-native Amp port is authorized through the
 target-owned [`accepted plan`](./2026-07-16-fast-follow-expansion-accepted-plan.md).
-Day 1 thread fabric is first; FF-D1-01 owns the provider-neutral Queue / Steer /
-Stop algebra and Desktop Queue/Steer lowering. Later bounded packets own
-adapters, visibility/export, routing, review, placement, and generated clients
-and plugins. GitHub issues remain bug-only. No packet may claim a day complete
-without runtime and rendered-surface evidence. Admission grants no deploy,
-release, spend, credential, settlement, promise, or invariant bypass.
+Every material capability identified by the Amp gap analysis is approved;
+none is optional or policy-blocked. Day 1 thread fabric is first; later packets
+continue adapters, supersession, visibility/export, routing, review, placement,
+remote control, generated clients, and signed plugins until the port is
+complete. Work packets sequence implementation and proof, not scope.
 
 ## Completed priority — ProductSpec-native Codex Workroom MVP
 
@@ -288,6 +286,8 @@ there is no remaining AssuranceSpec program queue.
     read-only and truthful. The non-dispatch contract is the
     [`full-conversion plan`](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md);
     epic #8777 and its bounded leaves require explicit claims.
+27. **FULL HARVEST: the full Amp port is approved.** Every material capability
+    in the Amp gap analysis is active scope; `blocked_by_policy` is superseded. Work packets sequence delivery, not approval.
 
 ## Product and authority model
 

@@ -2,12 +2,15 @@
 artifact_schema: "openagents.fastfollow.gap_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.amp.day1_thread_fabric_surfaces.44689c449110"
 class: "gap_receipt"
-status: "observed"
-disposition: "blocked_by_policy"
+status: "superseded"
+disposition: "superseded"
+owner_decision: "FULL_HARVEST"
+owner_decision_date: "2026-07-17"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "gap_analysis"
 target_revision: "15ce61bb58e5fcaf0b592f1ff485acf518071bbb"
-gap_assessment_sha256: "52885d3a05496e41591ae68cfa964cf17db6b942ca6cf590ace79081e1fbc94c"
+gap_assessment_sha256_at_observation: "52885d3a05496e41591ae68cfa964cf17db6b942ca6cf590ace79081e1fbc94c"
+gap_assessment_sha256_after_owner_decision: "ed37786f1ee904b1b65dccae9611554b88627c526ee6e6a237e5f80bcb5d2f68"
 dedupe_digest: "44689c4491106c32e833d86bf44e658dbea3ee26e4bba6721c3e1d111214f83d"
 proof_rung: "evidence_only"
 observed_at: "2026-07-17T04:14:54Z"
@@ -16,6 +19,11 @@ observed_at: "2026-07-17T04:14:54Z"
 # Day 1 Amp thread-fabric gap receipt
 
 ## Result
+
+**Owner amendment, 2026-07-17: FULL HARVEST. The full Amp port is approved.**
+The historical observation below remains evidence for its original target,
+but its `blocked_by_policy` disposition is superseded by the target-owned
+[accepted plan](../../sol/2026-07-16-fast-follow-expansion-accepted-plan.md).
 
 The first nonterminal directive in the admitted FastFollowSpec was selected at
 its default `gap_analysis` stage. The resulting
@@ -70,7 +78,6 @@ manifest would exceed this run's configured Fast Follow research write paths.
 
 ## Continuation
 
-This directive is blocked, satisfying the seed's
-`current_directive_terminal_or_blocked` advance condition. A later Fast Follow
-turn may select `amp.day2_routing_and_specialists` at `gap_analysis`. This
-receipt does not admit that directive's implementation.
+The former block no longer controls. FULL HARVEST admits the remaining Day 1
+work and the ordered Amp Fast Follow program for implementation through the
+accepted plan and claimed work packets.

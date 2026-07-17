@@ -2,8 +2,11 @@
 artifact_schema: "openagents.fastfollow.gap_assessment.v0"
 artifact_id: "openagents.fastfollow.gap.amp.day1_thread_fabric_surfaces.44689c449110"
 class: "target_gap_assessment"
-status: "blocked"
-disposition: "blocked_by_policy"
+status: "superseded"
+disposition: "superseded"
+owner_decision: "FULL_HARVEST"
+owner_decision_date: "2026-07-17"
+superseded_by: "docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "gap_analysis"
 target_revision: "15ce61bb58e5fcaf0b592f1ff485acf518071bbb"
@@ -22,8 +25,15 @@ observed_at: "2026-07-17T04:08:08Z"
 
 ## Outcome
 
-The first ordered Fast Follow directive has a material but currently
-non-dispatchable gap. At target revision `15ce61bb58e`, OpenAgents already has:
+**Owner decision — FULL HARVEST (2026-07-17): the full Amp port is approved.**
+Every material Amp capability identified by this assessment is in scope for
+implementation. The earlier `blocked_by_policy` disposition is superseded; it
+must not be used to defer, narrow, or reject the port. The accepted Fast Follow
+[plan and work-packet ledger](../../sol/2026-07-16-fast-follow-expansion-accepted-plan.md)
+is the implementation authority.
+
+This assessment originally found a material gap at target revision
+`15ce61bb58e`. OpenAgents already had:
 
 - title and bounded content search over local coding history, with content
   results opening the exact original projected item;
@@ -33,7 +43,7 @@ non-dispatchable gap. At target revision `15ce61bb58e`, OpenAgents already has:
 - durable pending/accepted/terminal distinctions for the admitted MVP command
   paths.
 
-The directive is not complete. Search does not carry later
+The port remains incomplete. Search does not carry later
 supersession/revert/acceptance relations, thread share/export has no explicit
 visibility schema or receipt, and steer/queue remain Desktop-local command
 semantics rather than one shared Runtime Gateway and
@@ -41,13 +51,12 @@ semantics rather than one shared Runtime Gateway and
 Verse projection client, not a conversation-thread client, and the repository
 has no active world backend.
 
-The current Sol authority says there is no product-expansion lane and no open
-`roadmap:sol` issue. The remaining work therefore has disposition
-`blocked_by_policy`. This artifact does not create an issue, ProductSpec delta,
-implementation claim, or permission to mutate product code. Under the seed's
-`advance_when: current_directive_terminal_or_blocked` rule, a later Fast Follow
-turn may advance to `amp.day2_routing_and_specialists` at `gap_analysis` while
-this Day 1 disposition remains unchanged.
+FULL HARVEST authorizes the complete target-native port: typed
+supersession/revert/acceptance relations, thread share/export and explicit
+visibility receipts, provider-neutral Queue/Steer/Stop semantics through the
+Runtime Gateway, and the remaining ordered Amp Fast Follow program. Execution
+continues through claimed work packets and normal verification; packetization
+is delivery sequencing, not a reduction in approved scope.
 
 ## Selection and exact identity
 
@@ -93,14 +102,18 @@ law. Its commercial/closed core is design evidence only; no Amp code is copied.
 
 ## Target authority reconciliation
 
+The first five rows preserve the authority observed at the original target
+revision. The final row is the current decision and controls implementation.
+
 | Authority | Exact observation | Effect on this gap |
 | --- | --- | --- |
-| Repository law | [`AGENTS.md`](../../../AGENTS.md) and [`INVARIANTS.md`](../../../INVARIANTS.md) admit research/gap artifacts only under configured Fast Follow paths and require separate target authority for product mutation | This assessment may land; product code may not |
-| Sol roadmap | `docs/sol/MASTER_ROADMAP.md` says there is no active Sol product-expansion lane and broader follow-ons require a new bounded owner decision and issue | Share/export, new visibility states, shared command expansion, and supersession UX are blocked |
+| Repository law at observation | [`AGENTS.md`](../../../AGENTS.md) and [`INVARIANTS.md`](../../../INVARIANTS.md) admit research/gap artifacts only under configured Fast Follow paths and require separate target authority for product mutation | The later accepted plan supplies that separate authority |
+| Sol roadmap at observation | `docs/sol/MASTER_ROADMAP.md` said there was no active Sol product-expansion lane and broader follow-ons required a new owner decision | Superseded by FULL HARVEST |
 | Live issue state | The live `roadmap:sol` query returned zero open issues at `2026-07-17T04:08:08Z`; #8712, [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756), [CAP-06 #8838](https://github.com/OpenAgentsInc/openagents/issues/8838), and [CAP-07 #8839](https://github.com/OpenAgentsInc/openagents/issues/8839) are closed completed | There is no issue to claim and no existing candidate to duplicate; the latter two explain why the bounded local steer/queue work is already present |
 | MVP ProductSpec | [`openagents-codex-workroom-mvp.product-spec.md`](../../mvp/openagents-codex-workroom-mvp.product-spec.md) admits session catalog/history and send/stop/steer/queue controls, but not thread sharing, export, public visibility, or a cross-provider history product | Existing controls are in authority; the remaining surface needs new intent |
 | MVP AssuranceSpec | [`openagents-codex-workroom-mvp.assurance-spec.md`](../../mvp/openagents-codex-workroom-mvp.assurance-spec.md) proves the accepted MVP revision, not a future sharing/supersession/shared-command delta | Current proof cannot be reused as acceptance for the gap |
 | World boundary | Root `AGENTS.md` retains `packages/world-client` as a read-only Verse projection and says a future world backend needs a new Google Cloud design and explicit product authority | `world-client` cannot be treated as an already-authorized thread service |
+| Owner decision, 2026-07-17 | **FULL HARVEST — full Amp port approved** through the target-owned accepted plan | Every material capability in this assessment is active implementation scope; no feature issue or further scope decision is required |
 
 No GitHub issue or implementation claim was created. The selected stage is
 `gap_analysis`; automatically opening a candidate issue would cross both the
@@ -201,21 +214,14 @@ and product admission.
 | License/provenance | Study is permitted; Amp core is closed/commercial and no code transfer is proposed; Codex evidence is Apache-2.0 source-backed |
 | Implementation | Search/open-at-item and local controls landed; supersession, sharing/export, and cross-surface steer/queue remain absent or partial |
 | Verification | Existing focused fixtures and accepted MVP evidence cover only the landed bounded paths; no proof design exists for the remaining delta |
-| Disposition | `blocked_by_policy` |
-| Exception | None granted; no test, source, or receipt may reopen the closed product lane |
+| Disposition | `superseded` by **FULL HARVEST** |
+| Exception | Owner decision opens the complete target-native Amp port through the accepted plan |
 
-## Reopen conditions and close rule
+## Owner decision and close rule
 
-The Day 1 gap may be reconsidered only after all of the following change:
-
-1. an owner decision opens a bounded product lane;
-2. an admitted ProductSpec names exact thread visibility/export and/or
-   supersession/shared-command outcomes without widening local data authority;
-3. an AssuranceSpec names privacy, loss-accounting, idempotency, restart,
-   cross-surface, and rendered-pixel falsifiers;
-4. one issue or accepted work packet owns exact paths and hot contracts; and
-5. one isolated implementation claim binds the current target and candidate.
-
-Until then, the honest close rule is: gap observed, existing implementation
-reconciled, no candidate admitted, no product code changed, no verification or
-public capability claim promoted.
+The prior reopen gate is satisfied and superseded by the 2026-07-17 owner
+decision: **FULL HARVEST — full port approved.** The accepted plan admits the
+implementation lane without a feature issue. Work remains open until every
+material capability identified above is implemented and verified or the owner
+explicitly removes it from scope. No residual may be closed as merely
+"optional," "future," or `blocked_by_policy` under the superseded assessment.

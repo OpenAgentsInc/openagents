@@ -5,18 +5,29 @@
 - Owner authority: current owner conversation
 - FastFollowSpec: `FASTFOLLOW.md` revision 3
 - Program: ordered `initial_program`
-- Status: active
+- Status: active — FULL HARVEST
 - Base: `f2c5591e3b5a2c160f436fb62633a6367272c70d`
 
 ## Owner direction
 
-> The policy is now go, that's unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.
+> FULL HARVEST. The full Amp port is approved. No more hesitation: implement
+> every material capability identified by the Amp Fast Follow gap analysis.
 
 This direction is the separate target authority required by Fast Follow. It
 admits the ordered five-day initial program as an active product-expansion
-lane. It supersedes the prior policy block for future work; it does not rewrite
-the historical gap or receipt, which remain truthful for their earlier target
-revision.
+lane and approves the complete target-native port of the material Amp
+capabilities identified by the gap analysis. The prior policy block is
+superseded. The historical receipt remains truthful for its earlier target
+revision; the gap assessment now carries the superseding owner decision so it
+cannot be mistaken for current policy.
+
+**Scope decision:** FULL HARVEST means full port. Supersession, revert and
+acceptance relations; thread search, share, export and visibility; shared
+Queue/Steer/Stop control semantics and receipts; disclosed routing and
+specialists; review and thread reading; placement and remote control; and
+generated clients and signed plugins are all approved outcomes. Bounded work
+packets sequence implementation and verification; they do not make any of
+these outcomes optional or defer them to an unspecified future decision.
 
 The repository accepts this plan instead of creating a feature issue because
 GitHub issues are reserved for concrete reproducible bugs. Each mutating unit
