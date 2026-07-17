@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "6631bcba080ec4005030f9ad1d5bcfee4d890a18"
 claim_revision: "4398a7765be0e338fb9426e4c1b51c38bec340fd"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "9c492766148371f4dc27000bc2695e11f028a726"
 proof_rung: "desktop_workspace_share_idempotent_retry"
 observed_at: "2026-07-17T21:32:01Z"
 ---
@@ -80,3 +80,7 @@ replay reconciliation. It does not add named-group authority or publication,
 supply canonical export evidence, compose resources in `main.ts`, connect
 renderer commands, render pixels, or prove an installed runtime journey.
 Those residuals, owner acceptance, and Day 1 completion remain unclaimed.
+
+The exact tested implementation tree landed on `origin/main` at
+`9c492766148371f4dc27000bc2695e11f028a726` before this documentation-only
+claim release.
