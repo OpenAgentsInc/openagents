@@ -597,6 +597,68 @@ Day 1 completion remain later packets.
 - remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: Desktop command consumption and pixels, persistence/transport, real exported artifacts, remaining adapters, rendered runtime evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-09 — Canonical thread event export artifact
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-08. Active
+Desktop history, shell, renderer, update, and release work remains excluded.
+The packet compiles one real owner-only canonical event bundle from bounded
+thread-event payloads and the accepted-event authority relations established by
+FF-D1-07, without introducing a second transcript store or granting persistence,
+transport, disclosure, or broader audience authority.
+
+Owned implementation paths:
+
+- `packages/agent-runtime-schema/src/thread-export-artifact.ts`
+- `packages/agent-runtime-schema/src/thread-export-artifact.test.ts`
+- `packages/agent-runtime-schema/src/index.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-09-canonical-thread-export-artifact-receipt.md`
+- this accepted-plan ledger, `docs/sol/receipts/README.md`, and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_intent.v1`,
+`openagents.thread_event_authority.v1`, and the new deterministic
+`openagents.thread_export_artifact.v1` owner-only canonical event bundle.
+Existing runtime-control, provider-event, Sync, and Desktop contracts remain
+unchanged.
+
+Required behavior:
+
+- only an exact decoded `thread.export.create` intent with
+  `canonical_event_bundle` format and `owner_only` audience can compile;
+- every bounded event names the exact intent thread, a unique stable event ref,
+  a unique non-negative sequence, and JSON data, then resolves through exact
+  accepted-event relation evidence;
+- missing, invalid, cross-thread, duplicate, ambiguous, or conflicting authority
+  evidence fails closed rather than silently omitting or promoting an event;
+- canonical recursive key ordering plus sequence/event-ref ordering produces
+  deterministic UTF-8 bytes and a caller-supplied SHA-256 implementation must
+  return a valid digest for those exact bytes; and
+- the artifact includes explicit accepted/superseded/reverted authority but
+  grants no persistence, transport, visibility mutation, audience expansion,
+  provider acceptance, or release authority.
+
+Proof: focused schema/compiler tests and package typecheck; Fast Follow,
+behavior-contract, ProductSpec, Sol, and repository-required checks.
+
+Close rule: this packet closes only deterministic owner-only canonical event
+bundle generation. Persistence/transport, Desktop command consumption and
+pixels, broader disclosure adapters, remaining runtime/rendered evidence, and
+Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-09-20260717`
+- base: `b2649ab74bf101136145db0b0f651bceefb699ca`
+- worktree/branch: `openagents-ff-d1-09` / detached `origin/main`
+- scope: deterministic owner-only canonical event bundle bytes and digest over exact event-authority evidence
+- paths: the FF-D1-09 owned implementation paths above
+- hot files: agent-runtime-schema index and new export compiler; accepted-plan ledger and Sol manifest/index
+- hot contracts: canonical JSON/event ordering, exact thread binding, authority conflict failure, owner-only audience, and digest-of-exact-bytes behavior
+- dependencies: FF-D1-08 released; current mobile/Sync lifecycle landings reconciled; active Desktop history/shell/rendering work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T14:21:36Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
