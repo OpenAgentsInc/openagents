@@ -74,7 +74,7 @@ export const CodexLocalFullAutoInterruptChannel = "openagents:codex-local:full-a
 export const CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF = "codex.compat.0.144.1" as const
 
 /** The lane's requested model/effort — spawn-config truth, shared with the
- * delegate children so "Codex" means ONE pinned model everywhere. */
+ * delegate children so "Codex" means ONE bundled-runtime-supported model everywhere. */
 export const CODEX_LOCAL_MODEL = CODEX_CHILD_MODEL
 export const CODEX_LOCAL_REASONING_EFFORT = CODEX_CHILD_REASONING_EFFORT
 
@@ -82,7 +82,7 @@ export const CODEX_LOCAL_REASONING_EFFORT = CODEX_CHILD_REASONING_EFFORT
  * truth, never a provider echo — the exec stream has none). */
 export const codexLocalRequestedModelLabel = (model: string = CODEX_LOCAL_MODEL): string => `${model} (requested)`
 
-/** Effective-model caption trace line for codex turns ("Codex · gpt-5.6-sol
+/** Effective-model caption trace line for codex turns ("Codex · gpt-5.5
  * (requested)") — the lane-branded sibling of fableLocalModelNoteText. */
 export const codexLocalModelNoteText = (model: string): string => `Codex · ${model}`
 

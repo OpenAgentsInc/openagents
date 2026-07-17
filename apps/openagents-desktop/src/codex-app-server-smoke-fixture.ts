@@ -72,7 +72,7 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
       approvalPolicy: "on-request" as const,
       approvalsReviewer: "user" as const,
       cwd,
-      model: "gpt-5.6-sol",
+      model: "gpt-5.5",
       modelProvider: "openai",
       sandbox: { type: "dangerFullAccess" as const },
       thread,

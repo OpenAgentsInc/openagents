@@ -160,11 +160,11 @@ export const FABLE_LOCAL_DELEGATION_TIMEOUT_MS = 600_000
 /**
  * The delegate tool contract shown to the model. LIMITATION (receipted): the
  * codex exec --json stream does not echo model/effort, so the pin is
- * spawn-config truth — the child is REQUESTED as gpt-5.6-sol at medium
+ * spawn-config truth — the child is REQUESTED as gpt-5.5 at medium
  * reasoning and results are labeled "(requested)".
  */
 export const FABLE_DELEGATE_TOOL_DESCRIPTION =
-  "Delegate a bounded task to a Codex sub-agent (gpt-5.6-sol, medium reasoning). " +
+  "Delegate a bounded task to a Codex sub-agent (gpt-5.5, medium reasoning). " +
   "Returns the sub-agent's final answer. Up to 3 delegations may run at once; " +
   "at most 6 per turn. The sub-agent starts in an EMPTY scratch directory (not " +
   "your project) with full filesystem access — always include absolute paths " +

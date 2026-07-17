@@ -317,7 +317,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       }
       if (event.kind === "model_effective") {
         // Effective-model caption above the assistant reply ("Fable ·
-        // claude-fable-5" / "Codex · gpt-5.6-sol (requested)"). For fable the
+        // claude-fable-5" / "Codex · gpt-5.5 (requested)"). For fable the
         // value is the SDK init report; for codex it is spawn-config truth
         // and arrives already "(requested)"-labeled. Main persists the same
         // line, so finalize does not reshuffle the transcript.

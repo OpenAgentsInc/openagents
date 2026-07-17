@@ -9,7 +9,7 @@
  * home). The ONLY cheap real validity signal codex-cli 0.144.1 offers is a
  * minimal `codex exec --json` turn. Receipted probe recipe + cost:
  *
- *   codex exec --json -m gpt-5.6-sol -c model_reasoning_effort=low \
+ *   codex exec --json -m gpt-5.5 -c model_reasoning_effort=low \
  *     -s read-only --skip-git-repo-check -C <scratch> --ephemeral \
  *     "Reply with the single word: ok"
  *

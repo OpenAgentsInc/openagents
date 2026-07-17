@@ -3225,7 +3225,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
         })
       }
       // Session usage ledger feed (#8712 Lane C): delegate children attribute
-      // to the Codex account with gpt-5.6-sol recorded as spawn-config truth.
+      // to the Codex account with gpt-5.5 recorded as spawn-config truth.
       // A child-observed revoked credential flips the account's typed
       // reconnect flag (probe/child evidence supersedes presence-based
       // "ready").
@@ -3471,7 +3471,7 @@ const codexLocalLane: ProviderLane<null> = {
     laneRef: "codex-local",
     provider: "codex",
     // Spawn-config truth: the CodexModelSchema contract literals.
-    models: ["gpt-5.6-sol", "gpt-5.5"],
+    models: [CODEX_LOCAL_MODEL],
     features: {
       skills: false,
       planOnly: false,
@@ -3495,7 +3495,7 @@ const codexLocalLane: ProviderLane<null> = {
       source: "native-static-declaration",
       profileRef: "native:codex-local:v1",
       evidence: "conformant",
-      allowedModels: ["gpt-5.6-sol", "gpt-5.5"],
+      allowedModels: [CODEX_LOCAL_MODEL],
       allowedFeatures: ["reasoningEffort", "images", "fullAuto", "interrupt", "queueFollowup", "steerTurn", "answerQuestion"],
       allowedExtensions: [],
     },
@@ -3503,7 +3503,8 @@ const codexLocalLane: ProviderLane<null> = {
   }),
   admit: request => {
     const requestedModel = request.model ?? request.target?.model ?? CODEX_LOCAL_MODEL
-    if ((request.target !== undefined && request.target.provider !== "codex") || !isCodexModel(requestedModel)) {
+    if ((request.target !== undefined && request.target.provider !== "codex") ||
+      !isCodexModel(requestedModel) || requestedModel !== CODEX_LOCAL_MODEL) {
       return { ok: false, error: "That provider target is not available on the Codex lane." }
     }
     if (request.skill !== undefined) {
@@ -4495,6 +4496,21 @@ const smokeReactSidebarDestinations = `(async () => {
   const settingsVisible = settings !== null && (settings.textContent ?? '').includes('Codex CLI')
   const settingsBack = document.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.textContent?.trim() === 'Back'
   const settingsIds = ids()
+  const select = async (id, heading) => {
+    click(id)
+    while (Date.now() < deadline && document.querySelector('[data-react-workspace="settings"] h2')?.textContent !== heading) await wait(50)
+    return document.querySelector('[data-react-workspace="settings"] h2')?.textContent === heading
+  }
+  const codexPane = await select('settings-codex', 'Codex CLI')
+  const diagnosticsPane = await select('settings-diagnostics', 'Diagnostics')
+  const accountPane = await select('settings-account', 'Provider accounts')
+  while (Date.now() < deadline && document.querySelector('[aria-label="Loading accounts"]') !== null) await wait(50)
+  const accountsResolved = document.querySelector('[aria-label="Loading accounts"]') === null &&
+    ((settings?.textContent ?? '').includes('Codex') || (settings?.textContent ?? '').includes('No account connected.'))
+  await document.fonts.ready
+  const fontFamilies = ['Inter Variable', 'Zalando Sans', 'Disket Mono']
+  const fontsLoaded = fontFamilies.every(family => document.fonts.check('12px "' + family + '"')) &&
+    !Array.from(document.fonts).some(face => fontFamilies.includes(face.family.replaceAll('"', '')) && face.status === 'error')
   click('shell-settings-toggle')
   const chat = await waitFor('[data-react-workspace="chat"]')
   const searchTrigger = document.querySelector('[aria-label="Search sessions"]')
@@ -4505,9 +4521,10 @@ const smokeReactSidebarDestinations = `(async () => {
   const chatVisible = chat !== null
   const searchClosed = document.querySelector('input[type="search"]') === null
   return {
-    ok: settingsVisible && settingsBack && settingsIds.includes('settings-general') && settingsIds.includes('settings-codex') &&
+    ok: settingsVisible && settingsBack && codexPane && diagnosticsPane && accountPane && accountsResolved && fontsLoaded &&
+      settingsIds.includes('settings-general') && settingsIds.includes('settings-codex') &&
       settingsIds.includes('settings-account') && chatVisible && searchClosed && document.querySelector('[data-react-workspace="home"]') === null,
-    ids: ids(), settingsIds, icons, settingsBack, settingsVisible, chatVisible, searchClosed,
+    ids: ids(), settingsIds, icons, settingsBack, settingsVisible, codexPane, diagnosticsPane, accountPane, accountsResolved, fontsLoaded, chatVisible, searchClosed,
   }
 })()`
 
@@ -5455,6 +5472,16 @@ const smokeSettingsHarnessMaintenance = `(async () => {
   }
 })()`
 
+// #8983: production CSP must admit the self-hosted font data emitted by the
+// renderer build, and every declared product family must finish loading.
+const smokeIssue8983Fonts = `(async () => {
+  await document.fonts.ready
+  const families = ['Inter Variable', 'Zalando Sans', 'Disket Mono']
+  const checks = Object.fromEntries(families.map(family => [family, document.fonts.check('12px "' + family + '"')]))
+  const failed = Array.from(document.fonts).filter(face => families.includes(face.family.replaceAll('"', '')) && face.status === 'error').map(face => face.family)
+  return { ok: Object.values(checks).every(Boolean) && failed.length === 0, checks, failed }
+})()`
+
 // UX-4 (#8790) pixel receipt for the return-to-chat hop.
 const smokeBackToChat = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -6137,7 +6164,7 @@ const smokeAskUserQuestionAnswer = `(async () => {
 // `codex exec --json` event sequence through the actual parser, IPC bridge,
 // thread persistence, and renderer path — rendering IDENTICALLY to fable
 // turns: reasoning line, Bash tool card, markdown assistant body (a real
-// <strong>), the "Codex · gpt-5.6-sol (requested)" spawn-config-truth
+// <strong>), the "Codex · gpt-5.5 (requested)" spawn-config-truth
 // caption, no ASSISTANT label, and the composer re-enabled.
 const smokeCodexLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -6183,7 +6210,7 @@ const smokeCodexLocalStreaming = `(async () => {
   const transcriptText = document.querySelector('[data-en-key="shell-transcript"]')?.textContent ?? ""
   // Spawn-config-truth caption: the trace line names the lane AND the
   // "(requested)" labeling — never an unlabeled model echo.
-  const modelCaption = transcriptText.includes("Codex · gpt-5.6-sol (requested)")
+  const modelCaption = transcriptText.includes("Codex · gpt-5.5 (requested)")
   const reasoningLine = transcriptText.includes("Reasoning · planned the fixture reply")
   const toolRows = Array.from(
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="tool"]'),
@@ -6301,7 +6328,7 @@ const smokeMessageInspector = `(async () => {
   let text = inspector === null ? "" : (inspector.textContent || "")
   while (Date.now() < deadline && (
     inspector === null ||
-    !text.includes("gpt-5.6-sol") ||
+    !text.includes("gpt-5.5") ||
     !text.includes("codex-local") ||
     !text.includes("Tokens (total)") ||
     !text.includes("952")
@@ -6311,7 +6338,7 @@ const smokeMessageInspector = `(async () => {
     text = inspector === null ? "" : (inspector.textContent || "")
   }
   if (inspector === null) return { ok: false, reason: "message inspector never opened" }
-  const hasModel = text.includes("gpt-5.6-sol")
+  const hasModel = text.includes("gpt-5.5")
   const hasLane = text.includes("codex-local")
   const hidesAccount = !text.includes("Account") && !text.includes("codex-3")
   const hasTokens = text.includes("Tokens (total)") && text.includes("952")
@@ -6391,7 +6418,7 @@ const smokeOpenFleetWorkspace = `(async () => {
       revoked !== null && revoked.textContent === "credentials-missing" &&
       ledgerSection !== null &&
       ledgerTotal !== null && (ledgerTotal.textContent ?? "").includes("1,440") &&
-      ledgerModel !== null && (ledgerModel.textContent ?? "").includes("gpt-5.6-sol") &&
+      ledgerModel !== null && (ledgerModel.textContent ?? "").includes("gpt-5.5") &&
       reconnectReadiness !== null && reconnectReadiness.textContent === "reconnect required",
     refs,
     revokedReadiness: revoked === null ? null : revoked.textContent,
@@ -6795,6 +6822,7 @@ const runSmoke = (window: BrowserWindow): void => {
         // Pylon account-linking or device-auth surface in Settings.
         await step("settings-current-codex-session", smokeOpenSettings)
         await captureShot(window, "04-settings-current-codex-session")
+        await step("issue-8983-self-hosted-fonts", smokeIssue8983Fonts)
         // MAINT-1 (#8785): the per-harness maintenance rows resolve from live
         // detection and render version/channel truth + the update affordance.
         await step("settings-harness-maintenance", smokeSettingsHarnessMaintenance)
@@ -7009,7 +7037,7 @@ void app.whenReady().then(async () => {
           userMessageKey: `${key.turnRef}-user`,
           assistantMessageKey: `${key.turnRef}-assistant`,
           accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
-          model: "gpt-5.6-sol",
+          model: CODEX_LOCAL_MODEL,
         })
         store.upsert(thread.id, {
           key: `${key.turnRef}-user`, role: "user", text: "Continue through a process restart.", timestamp: "11:55 PM",
@@ -7075,7 +7103,7 @@ void app.whenReady().then(async () => {
           lane: claudeVariant ? "fable-local" as const : "codex-local" as const,
         }
         const accountRef = claudeVariant ? FABLE_LOCAL_FIXTURE_ACCOUNT.ref : FIXTURE_CODEX_LOCAL_ACCOUNT.ref
-        const model = claudeVariant ? FABLE_LOCAL_MODEL : "gpt-5.6-sol"
+        const model = claudeVariant ? FABLE_LOCAL_MODEL : CODEX_LOCAL_MODEL
         localTurnJournal.accept({
           ...key,
           userMessageKey: `${seedTurnRef}-user`,

@@ -300,6 +300,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(html).toContain("Content-Security-Policy");
     expect(html).toContain("default-src 'none'");
     expect(html).toContain("script-src 'self'");
+    expect(html).toContain("font-src 'self' data:");
     expect(html).toContain("connect-src 'none'");
   });
 

@@ -589,7 +589,7 @@ describe("React Codex composer", () => {
     expect(container.querySelector('[data-en-key="shell-reasoning-select"]')).not.toBeNull();
     expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).not.toBeNull();
     expect(container.querySelector('[data-en-key="shell-permission-mode"]')).toBeNull();
-    expect(container.querySelector('[data-en-key="shell-model-select"]')?.textContent).toBe("gpt-5.6-sol");
+    expect(container.querySelector('[data-en-key="shell-model-select"]')?.textContent).toBe("gpt-5.5");
 
     await render(root, <ReactComposer state={fixtureState({
       selectedHarness: "fable", providerLaneCapabilities: [codex, claude], harnessLanes: lanes,

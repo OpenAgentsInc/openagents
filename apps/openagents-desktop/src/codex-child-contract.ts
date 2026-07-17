@@ -2,7 +2,7 @@
  * Codex sub-agent (child) contract (#8712 Lane C — Fable delegates to Codex).
  *
  * One bounded `codex exec --json` child per call, pinned to model
- * `gpt-5.6-sol` at reasoning effort `medium`. IMPORTANT LIMITATION (receipted
+ * `gpt-5.5` at reasoning effort `medium`. IMPORTANT LIMITATION (receipted
  * 2026-07-11 from codex-rs exec_events): the `codex exec --json` event stream
  * does NOT echo the effective model or reasoning effort back (there is no
  * `session_configured` event in exec JSON mode), so `requestedModel` /
@@ -16,7 +16,7 @@
  * user's home prefix dropped. Failures are typed values, never throws.
  */
 
-export const CODEX_CHILD_MODEL = "gpt-5.6-sol" as const
+export const CODEX_CHILD_MODEL = "gpt-5.5" as const
 export const CODEX_CHILD_REASONING_EFFORT = "medium" as const
 /**
  * Owner-local danger profile (owner statement 2026-07-11, verbatim:

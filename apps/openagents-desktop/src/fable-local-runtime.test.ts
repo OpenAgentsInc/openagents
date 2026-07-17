@@ -467,8 +467,13 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const pending = harness.runtime.runTurn({
       turnRef: "turn-int", threadRef: "thread-int", history: [], message: "hi", emit: sink.emit,
     })
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(harness.runtime.interrupt("turn-int")).toBe(true)
+    const interruptDeadline = Date.now() + 1_000
+    let interrupted = false
+    while (!interrupted && Date.now() < interruptDeadline) {
+      interrupted = harness.runtime.interrupt("turn-int")
+      if (!interrupted) await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    expect(interrupted).toBe(true)
     const result = await pending
     expect(result).toEqual({ ok: false, reason: "interrupted", detail: "turn interrupted" })
     expect(harness.runtime.interrupt("turn-int")).toBe(false)
@@ -1152,7 +1157,7 @@ const okChild = (accountRef: string): ReturnType<FableDelegateRuntime["runChild"
     usage: null,
     threadId: null,
     accountRef,
-    requestedModel: "gpt-5.6-sol",
+    requestedModel: "gpt-5.5",
     requestedEffort: "medium",
     durationMs: 5,
   })
@@ -1180,7 +1185,7 @@ describe("Codex delegation through the Fable lane", () => {
     expect(servers.codex!.tools![0]!.name).toBe("delegate")
     const description = servers.codex!.tools![0]!.description ?? ""
     // The contract docstring states the spawn-config limitation explicitly.
-    expect(description).toContain("gpt-5.6-sol, medium reasoning")
+    expect(description).toContain("gpt-5.5, medium reasoning")
     expect(description).toContain("spawn config")
     // EP250 empty-scratch guidance: children START in an empty scratch dir,
     // so Fable must pass absolute paths for anything they should read —
@@ -1266,7 +1271,7 @@ describe("Codex delegation through the Fable lane", () => {
     expect(toolResults[0]!.isError).toBeUndefined()
     expect(content).toContain(FIXTURE_CODEX_CHILD_TEXT)
     expect(content).toContain("account codex-2")
-    expect(content).toContain("gpt-5.6-sol (requested, medium reasoning)")
+    expect(content).toContain("gpt-5.5 (requested, medium reasoning)")
     expect(content).toContain("1,440 tokens")
   })
 

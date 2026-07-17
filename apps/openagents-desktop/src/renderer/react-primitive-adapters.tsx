@@ -834,6 +834,11 @@ export const WorkbenchShell = ({ state, report }: {
   useEffect(() => {
     if (railOpen) railRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
   }, [railOpen])
+  useEffect(() => {
+    if (state.workspace === "settings" && state.fleet.phase === "idle") {
+      dispatch(report, "FleetRefreshRequested")
+    }
+  }, [report, state.fleet.phase, state.workspace])
   const openRail = (): void => {
     dispatch(report, "DesktopSidebarCollapsedChanged", false)
     setRailOpen(true)
@@ -879,6 +884,7 @@ export const WorkbenchShell = ({ state, report }: {
     <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} selectedSettingsSectionId={selectedSettingsSectionId} onSettingsSectionSelect={sectionId => {
       setSelectedSettingsSectionId(sectionId)
       if (sectionId === "settings-connections") dispatch(report, "DesktopConnectionsRefreshRequested")
+      if (sectionId === "settings-account") dispatch(report, "FleetRefreshRequested")
     }} />
     {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     {workspaceSurface ?? <DesktopSurfaceManager state={state} report={report} conversation={<DesktopConversation

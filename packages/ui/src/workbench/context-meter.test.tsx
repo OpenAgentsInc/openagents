@@ -60,6 +60,16 @@ describe("ContextMeter", () => {
     expect(html).toContain("RESETS IN 3H")
   })
 
+  it("normalizes a weekly countdown sampled just shy of seven days to 7D", () => {
+    const html = renderToStaticMarkup(<ContextMeter now={NOW} rateLimits={[{
+      label: "weekly",
+      usedPercent: 12,
+      resetsAt: NOW / 1000 + 7 * 24 * 60 * 60 - 30,
+    }]} />)
+    expect(html).toContain("RESETS IN 7D")
+    expect(html).not.toContain("168.0H")
+  })
+
   it("flags a fully rate-limited window", () => {
     const html = renderToStaticMarkup(<ContextMeter rateLimits={[{ label: "secondary", usedPercent: 100 }]} />)
     expect(html).toContain('data-rate-limited="true"')

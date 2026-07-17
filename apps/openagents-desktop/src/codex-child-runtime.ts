@@ -1,12 +1,12 @@
 /**
  * Codex child runtime (#8712 Lane C): runs ONE bounded `codex exec --json`
- * sub-agent per call, pinned to gpt-5.6-sol / medium reasoning, against the
+ * sub-agent per call, pinned to gpt-5.5 / medium reasoning, against the
  * user's ordinary authenticated `~/.codex` session first, with the Pylon
  * account registry's isolated Codex homes as fallback capacity.
  *
  * Receipted spawn recipe (codex-cli 0.144.1, 2026-07-11):
  *
- *   codex exec --json -m gpt-5.6-sol -c model_reasoning_effort=medium \
+ *   codex exec --json -m gpt-5.5 -c model_reasoning_effort=medium \
  *     -s danger-full-access --skip-git-repo-check \
  *     -C <bounded scratch workspace> --ephemeral "<prompt>"
  *

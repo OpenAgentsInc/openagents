@@ -17,7 +17,7 @@ import {
 export type UsageLedgerRecordInput = Readonly<{
   provider: UsageLedgerProvider
   accountRef: string
-  /** Spawn-config truth for the lane (e.g. gpt-5.6-sol / claude-fable-5). */
+  /** Spawn-config truth for the lane (e.g. gpt-5.5 / claude-fable-5). */
   requestedModel: string | null
   kind: "turn" | "child"
   usage: UsageLedgerUsageInput | null

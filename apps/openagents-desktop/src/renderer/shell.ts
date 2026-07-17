@@ -578,7 +578,7 @@ export const initialDesktopShellState = (
   codexReasoningEffort: "medium",
   fullAutoByThread: {},
   fullAutoLiveByThread: {},
-  codexModel: "gpt-5.6-sol",
+  codexModel: "gpt-5.5",
   claudeModel: "claude-fable-5",
   providerTargetsByThread: {},
   permissionModeByThread: {},
@@ -4771,7 +4771,7 @@ const selectedModel = (state: DesktopShellState): LocalModel =>
 
 const targetForHarness = (harness: DesktopHarnessName, accountRef: string, model?: LocalModel): LocalProviderTarget =>
   harness === "codex"
-    ? { provider: "codex", accountRef, model: model?.startsWith("gpt-") ? model : "gpt-5.6-sol" }
+    ? { provider: "codex", accountRef, model: model === "gpt-5.5" ? model : "gpt-5.5" }
     : { provider: "claude_agent", accountRef, model: model?.startsWith("claude-") ? model : "claude-fable-5" }
 
 export const providerTargetForThread = (state: DesktopShellState): LocalProviderTarget | null => {
@@ -5174,10 +5174,7 @@ const modelSelect = (state: DesktopShellState): View => Select({
   key: "shell-model-select",
   value: selectedModel(state),
   options: state.selectedHarness === "codex"
-    ? [
-        { value: "gpt-5.6-sol", label: "GPT-5.6" },
-        { value: "gpt-5.5", label: "GPT-5.5" },
-      ]
+    ? [{ value: "gpt-5.5", label: "GPT-5.5" }]
     : [
         { value: "claude-fable-5", label: "Fable" },
         { value: "claude-opus-4-8", label: "Opus 4.8" },

@@ -709,7 +709,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     // Spawn-config truth caption — never an unlabeled provider echo.
     const model = sink.events.find(event => event.kind === "model_effective") as
       Extract<FableLocalEvent, { kind: "model_effective" }>
-    expect(model.model).toBe("gpt-5.6-sol (requested)")
+    expect(model.model).toBe("gpt-5.5 (requested)")
     const reasoning = sink.events.find(event => event.kind === "reasoning") as
       Extract<FableLocalEvent, { kind: "reasoning" }>
     expect(reasoning.text).toBe("planned the fixture reply")

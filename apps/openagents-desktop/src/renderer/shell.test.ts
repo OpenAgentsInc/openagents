@@ -280,7 +280,7 @@ test("provider target selection is exact and stable per conversation", () => {
     ],
   }
   expect(providerTargetForThread({ ...baseState, fleet })).toEqual({
-    provider: "codex", accountRef: "codex", model: "gpt-5.6-sol",
+    provider: "codex", accountRef: "codex", model: "gpt-5.5",
   })
   expect(providerTargetForThread({
     ...baseState,

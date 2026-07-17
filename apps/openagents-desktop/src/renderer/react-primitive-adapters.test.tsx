@@ -532,6 +532,7 @@ describe("React workbench shell", () => {
     await select("settings-connections", "Connections")
     expect(received.at(-1)).toEqual({ name: "DesktopConnectionsRefreshRequested", payload: null })
     await select("settings-account", "Provider accounts")
+    expect(received.at(-1)).toEqual({ name: "FleetRefreshRequested", payload: null })
   })
 
   test("mounts capability-scoped remote pairing and mobile client management", async () => {

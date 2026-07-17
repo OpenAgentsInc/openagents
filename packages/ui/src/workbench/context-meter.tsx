@@ -60,7 +60,11 @@ const formatCount = (value: number): string => value.toLocaleString("en-US")
 /** Compact duration label from real minutes — formatting, never invention. */
 const formatDuration = (mins: number): string => {
   if (!Number.isFinite(mins) || mins <= 0) return "—"
-  if (mins % (24 * 60) === 0) return `${mins / (24 * 60)}D`
+  // Long server windows are human calendar windows. Countdown sampling can
+  // land a few seconds/minutes shy of an exact boundary, so normalize 48h+
+  // to the nearest day instead of rendering the same weekly window as
+  // "7D" in one lane and "168.0H" in another.
+  if (mins >= 48 * 60) return `${Math.max(1, Math.round(mins / (24 * 60)))}D`
   if (mins % 60 === 0) return `${mins / 60}H`
   if (mins >= 60) return `${(mins / 60).toFixed(1)}H`
   return `${Math.round(mins)}M`

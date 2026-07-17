@@ -39,6 +39,10 @@ import {
   type CodexChildAccount,
 } from "./codex-child-runtime.ts"
 
+test("the bundled Codex runtime default is a model it actually serves", () => {
+  expect(CODEX_CHILD_MODEL).toBe("gpt-5.5")
+})
+
 const accounts: ReadonlyArray<CodexChildAccount> = [
   { ref: "codex", home: "/isolated/accounts/codex/codex" },
   { ref: "codex-2", home: "/isolated/accounts/codex/codex-2" },
@@ -125,7 +129,7 @@ describe("makeCodexChildRuntime.runChild", () => {
       "exec",
       "--json",
       "-m",
-      "gpt-5.6-sol",
+      CODEX_CHILD_MODEL,
       "-c",
       "model_reasoning_effort=medium",
       "-s",

@@ -376,9 +376,19 @@ export const refreshFleetAccounts = <S extends FleetCapableState>(
       ...next,
       fleet: withFleetLoading(next.fleet),
     }))
-    // Authority receipts are independent of the optional local Pylon account
-    // projection. Read them first so a slow or unavailable local runtime can
-    // never hide an authenticated server-side fleet result.
+    // Account identity is the latency-sensitive Settings/Fleet surface. Resolve
+    // it before optional server-side fleet authority so a slow authority read
+    // can never leave "Checking provider accounts…" stuck on screen.
+    const projection = decodeFleetAccountsProjection(
+      yield* Effect.promise(() => bridge.list().catch(() => null)),
+    )
+    yield* SubscriptionRef.update(state, (next) => ({
+      ...next,
+      fleet: withFleetProjection(next.fleet, projection),
+    }))
+    yield* pullFleetLedger(state, bridge)
+    // Authority receipts remain independent of the local account projection;
+    // they enrich the already-resolved view when available.
     if (bridge.fleetRuns !== undefined) {
       const result = yield* Effect.promise(() => bridge.fleetRuns!().catch(() => null))
       let projection: FleetRunClientProjection | null = null
@@ -393,14 +403,6 @@ export const refreshFleetAccounts = <S extends FleetCapableState>(
       }
       yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, authorityRuns: projection } }))
     }
-    const projection = decodeFleetAccountsProjection(
-      yield* Effect.promise(() => bridge.list().catch(() => null)),
-    )
-    yield* SubscriptionRef.update(state, (next) => ({
-      ...next,
-      fleet: withFleetProjection(next.fleet, projection),
-    }))
-    yield* pullFleetLedger(state, bridge)
     if (bridge.cockpit !== undefined) {
       const cockpit = yield* Effect.promise(() => bridge.cockpit!().catch(() => ({ authority: "unknown" as const, cards: [] })))
       yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, cockpitAuthority: cockpit.authority, cockpitCards: cockpit.cards.slice(0, 50) } }))
@@ -737,7 +739,7 @@ const fleetAccountsTable = (fleet: FleetWorkspaceState): View =>
  * Session usage (#8712 Lane C): a compact evidence-labeled section fed from
  * main's session ledger — exact tokens this desktop session dispatched
  * (Fable turns + Codex delegate children), per account. Codex rows show the
- * requested model (spawn-config truth: gpt-5.6-sol). Labeled "session
+ * requested model (spawn-config truth: gpt-5.5). Labeled "session
  * ledger" so it is never confused with the per-account "probe" numbers in
  * the table above.
  */

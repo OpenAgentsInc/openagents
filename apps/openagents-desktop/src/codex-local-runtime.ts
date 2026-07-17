@@ -6,7 +6,7 @@
  * Spawn recipe (receipted, codex-cli 0.144.1, 2026-07-11 — the child recipe
  * WITHOUT --ephemeral):
  *
- *   codex exec --json -m gpt-5.6-sol -c model_reasoning_effort=medium \
+ *   codex exec --json -m gpt-5.5 -c model_reasoning_effort=medium \
  *     -s danger-full-access --skip-git-repo-check -C <thread workspace> "<prompt>"
  *
  * DECISION (receipted): the chat lane does NOT pass `--ephemeral`, so codex
