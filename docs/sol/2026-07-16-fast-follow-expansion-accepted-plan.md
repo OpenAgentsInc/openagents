@@ -1303,6 +1303,15 @@ remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T17:02:41Z`
 
+### CLAIM-STATUS
+
+- implementation: added a renderer-safe Effect workflow that validates one exact owner-only export request, creates before writing, and exposes only bounded outcome identity
+- privacy/authority proof: only the decoded receipt crosses from create to write; thrown, malformed, path-leaking, and native-error outcomes collapse; written artifact identity must match the created receipt
+- focused proof: all 37 workflow/export-chain tests passed and the production workflow passes isolated strict TypeScript compilation
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, and focused ProductSpec 104/104 passed; repository checks are recorded in the packet receipt
+- reconciled baseline: disjoint landing `ea99862e52` repaired the prior Desktop lifecycle-schema drift and the rebased package typecheck passes; the known AssuranceSpec environment-digest snapshot drift remains 189/190 and outside this packet
+- residual: actual `main.ts` composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

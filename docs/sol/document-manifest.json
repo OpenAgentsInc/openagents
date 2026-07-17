@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "f9c04dcad18064b60bbf7a8d77ca450683a4d01823ca8da1d4a3e6c721f50845",
+  "sourceTreeSha256": "5b297e5d72a621e2d2452ce527671516e37b96231271cf4f0b92e0330df7b613",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1781,7 +1781,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "35928bad1aecb625df3510e78a665382b4f766d265a0029ecbb02ee75f34bb4d",
+      "sha256": "a653387e66c0892173354a457140d588943f5d75d73e582d664cbe7fef512f8b",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1806,10 +1806,11 @@
         "docs/fastfollow/receipts/2026-07-17-ff-d1-14-desktop-thread-export-main-handler-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-15-desktop-thread-export-create-preload-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-16-desktop-thread-export-create-main-handler-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-ff-d1-17-desktop-thread-export-workflow-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 21,
+      "inboundSourceCount": 22,
       "issueLinks": []
     },
     {
