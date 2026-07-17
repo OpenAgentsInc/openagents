@@ -139,6 +139,14 @@ export {
 } from "./conversation.js"
 
 export {
+  type ConfirmedRuntimeAttentionSnapshot,
+  createKhalaSyncAttentionInbox,
+  type KhalaSyncAttentionInbox,
+  MAX_CONFIRMED_RUNTIME_ATTENTION,
+  type RuntimeAttentionProjectionIssue,
+} from "./attention.js"
+
+export {
   KhalaConversationLiveEnvelopeSchema,
   type KhalaConversationLiveEnvelope,
   type KhalaConversationLiveMetrics,
