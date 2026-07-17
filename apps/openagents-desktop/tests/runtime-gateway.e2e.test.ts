@@ -271,6 +271,7 @@ describe("Desktop Runtime Gateway", () => {
         threads: [{
           threadRef: "thread.gateway.1",
           title: "Gateway thread",
+          status: "active",
           messageCount: 1,
           lastMessageAt: "2026-07-10T20:00:00.000Z",
           updatedAt: "2026-07-10T20:00:00.000Z",
@@ -310,7 +311,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(catalog).toMatchObject({
       kind: "conversation_catalog",
       status,
-      threads: [{ threadRef: "thread.gateway.1", version: 4 }],
+      threads: [{ threadRef: "thread.gateway.1", status: "active", version: 4 }],
     })
     const thread = await gateway.request({
       kind: "query",
@@ -973,6 +974,7 @@ describe("Desktop Runtime Gateway", () => {
         thread: {
           threadRef: "thread.gateway.1",
           title: "Gateway live",
+          status: "active",
           messageCount: 1,
           lastMessageAt: "2026-07-11T16:00:00.000Z",
           updatedAt: "2026-07-11T16:00:00.000Z",

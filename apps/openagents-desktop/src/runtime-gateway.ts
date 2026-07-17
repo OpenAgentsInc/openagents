@@ -12,6 +12,7 @@ import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse 
 import type {
   ConfirmedAgentRun,
   ConfirmedAgentTimelineEvent,
+  ConfirmedChatThread,
   ConfirmedRuntimeInteraction,
   RuntimeInteractionDecisionCommand,
   RuntimeCommandOutcome,
@@ -41,6 +42,7 @@ export type DesktopRuntimeConversation = Readonly<{
     threads: ReadonlyArray<Readonly<{
       threadRef: string
       title: string
+      status: ConfirmedChatThread["status"]
       messageCount: number
       lastMessageAt: string | null
       createdAt?: string

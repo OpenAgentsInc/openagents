@@ -253,6 +253,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
         threads: [{
           threadRef: "thread.hosted.after-bootstrap",
           title: "Hosted after bootstrap",
+          status: "active",
           messageCount: 0,
           lastMessageAt: now,
           updatedAt: now,
@@ -295,6 +296,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
         threads: [{
           threadRef: "thread.hosted.middle",
           title: "Hosted middle",
+          status: "active",
           messageCount: 0,
           lastMessageAt: "2026-07-12T17:00:00.000Z",
           createdAt: "2026-07-12T16:00:00.000Z",
@@ -337,6 +339,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
           threads: localThreads.map((thread, index) => ({
             threadRef: thread.id,
             title: thread.title,
+            status: "active",
             messageCount: 0,
             lastMessageAt: thread.updatedAt,
             updatedAt: thread.updatedAt,
@@ -450,6 +453,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
           threads: [...threads].map(([threadRef, thread], index) => ({
             threadRef,
             title: thread.title,
+            status: "active",
             messageCount: thread.messages.length,
             lastMessageAt: now,
             updatedAt: now,
@@ -624,6 +628,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
         thread: {
           threadRef: "thread.live.1",
           title: "Live",
+          status: "active",
           messageCount: messages.length,
           lastMessageAt: messages.length === 0 ? null : now,
           updatedAt: now,
@@ -748,7 +753,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
           kind: "conversation_catalog",
           requestId: value.requestId!,
           status,
-          threads: [{ threadRef: "thread.harness.1", title: "Harness", messageCount: 1, lastMessageAt: now, updatedAt: now, version: 1 }],
+          threads: [{ threadRef: "thread.harness.1", title: "Harness", status: "active", messageCount: 1, lastMessageAt: now, updatedAt: now, version: 1 }],
         }
       }
       if (value.query?.id === "conversation.thread") {
@@ -856,7 +861,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
           kind: "conversation_catalog",
           requestId: value.requestId!,
           status,
-          threads: [{ threadRef: "thread.harness.1", title: "Harness", messageCount: 1, lastMessageAt: now, updatedAt: now, version: 1 }],
+          threads: [{ threadRef: "thread.harness.1", title: "Harness", status: "active", messageCount: 1, lastMessageAt: now, updatedAt: now, version: 1 }],
         }
       }
       if (value.query?.id === "conversation.thread") {
@@ -907,6 +912,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
             threads: [{
               threadRef: "thread.pending",
               title: "Pending",
+              status: "active",
               messageCount: 0,
               lastMessageAt: null,
               updatedAt: now,
@@ -990,6 +996,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
             messageCount: 1,
             threadRef: "thread.desktop.expired",
             title: "Expired",
+            status: "active",
             updatedAt: now,
             version: 2,
           }],
@@ -1104,6 +1111,7 @@ describe("durable runtime turn controls (CUT-16)", () => {
           thread: {
             threadRef,
             title: "Controls",
+            status: "active",
             messageCount: messages.length,
             lastMessageAt: messages.length === 0 ? null : now,
             updatedAt: now,
@@ -1139,7 +1147,7 @@ describe("durable runtime turn controls (CUT-16)", () => {
           kind: "conversation_catalog",
           requestId: value.requestId!,
           status,
-          threads: [{ threadRef, title: "Controls", messageCount: messages.length, lastMessageAt: messages.length === 0 ? null : now, updatedAt: now, version: 1 }],
+          threads: [{ threadRef, title: "Controls", status: "active", messageCount: messages.length, lastMessageAt: messages.length === 0 ? null : now, updatedAt: now, version: 1 }],
         }
       }
       if (value.query?.id === "conversation.thread") {

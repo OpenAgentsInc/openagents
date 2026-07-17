@@ -34,6 +34,8 @@ const harness = (options: Readonly<{ failOpen?: boolean }> = {}) => {
     },
     createThread: () => Effect.die("unused"),
     appendMessage: () => Effect.die("unused"),
+    renameThread: () => Effect.die("unused"),
+    setThreadStatus: () => Effect.die("unused"),
   }
   const timeline: KhalaSyncAgentTimeline = {
     status: () => live,
