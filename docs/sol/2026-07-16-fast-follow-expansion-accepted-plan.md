@@ -1391,6 +1391,14 @@ completion remain later packets.
 - baseline collision: the known AssuranceSpec environment-digest snapshot drift remains 189/190 and outside this packet
 - residual: actual `main.ts` call-site composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim: `a3ff7ef774d9358a8ce6cb345d35eb2c9dd8e081`
+- implementation: `a98da6698e3a3fc74fefdb8a4f73fcf40a27425e`
+- disposition: `bounded_packet_landed`
+- released_at: `2026-07-17T17:37:38Z`
+- residual: actual `main.ts` call-site composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
