@@ -2804,6 +2804,17 @@ runtime-rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T23:18:04Z`
 
+### CLAIM-STATUS
+
+- implementation: added one Desktop acquisition adapter that accepts only exact canonical owner-only export receipts, loads each unique artifact through the injected private-store seam, re-verifies its bounded bytes/digest/schema/identity, and delegates only verified bundles to FF-D1-34 search
+- fail-closed proof: malformed or oversized receipt sets, conflicting receipt-ref reuse, non-canonical or non-owner receipts, invalid ref/digest binding, unavailable/corrupt artifacts, receipt-to-artifact identity mismatch, and duplicate-thread projections cannot produce results
+- bounded proof: receipt count and artifact bytes are capped; exact receipt/artifact replay dedupes before load; blank queries perform no receipt validation or private reads; returned values contain only the bounded FF-D1-34 projection or one redacted unavailable reason
+- focused proof: acquisition/search/artifact-store/compiler/disclosure/authority tests 29/29 passed; Desktop and agent-runtime-schema typechecks passed
+- authority proof: root Fast Follow 7/7, Fast Follow package 13/13 plus typecheck/distribution, behavior contracts 36/36, ProductSpec 107/107, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline: AssuranceSpec reproduced only the recorded environment-profile digest snapshot mismatch, 189/190; no baseline, invariant, or Git configuration was mutated
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-35-desktop-canonical-event-search-artifact-source-receipt.md`
+- residual: receipt catalog persistence, broader historical-session ingestion, Desktop host/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
