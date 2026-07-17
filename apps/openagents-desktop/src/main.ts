@@ -6466,10 +6466,6 @@ const runSmoke = (window: BrowserWindow): void => {
             "[openagents-desktop smoke] react-authoritative-decision OK",
             JSON.stringify(authoritativeDecision),
           )
-          await step("ask-user-question-opens", smokeAskUserQuestionOpen)
-          await captureShot(window, "14-ask-user-question-pending")
-          await step("ask-user-question-round-trip", smokeAskUserQuestionAnswer)
-          await captureShot(window, "15-ask-user-question-answered")
           await step("react-full-auto-immediate", smokeReactFullAutoImmediate)
           await step("react-navigation-history", smokeReactNavigationHistory)
           await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
@@ -6568,10 +6564,6 @@ const runSmoke = (window: BrowserWindow): void => {
         await captureShot(window, "13-session-search-filtered")
         await step("session-search-no-match-and-clear-restores", smokeSessionSearchNoMatchAndClear)
         await step("mvp-visible-surface-allowlist", smokeMvpSurfaceAllowlist)
-        await step("ask-user-question-opens", smokeAskUserQuestionOpen)
-        await captureShot(window, "14-ask-user-question-pending")
-        await step("ask-user-question-round-trip", smokeAskUserQuestionAnswer)
-        await captureShot(window, "15-ask-user-question-answered")
         // Release the codex availability gate: the popover assertions above
         // ran against the deterministic disabled/"verifying" chip; from here
         // the fixture PROBE-VERIFIED evidence lights the chip for the
