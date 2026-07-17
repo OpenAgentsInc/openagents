@@ -1213,6 +1213,29 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-settings-rows article strong { color: var(--en-color-textPrimary); font-size: 11px; text-transform: capitalize; }
 .oa-react-settings-rows article small, .oa-react-settings-rows article > span { color: var(--en-color-textMuted); font-size: 9px; }
 .oa-react-settings-inline-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; margin-top: 10px; }
+.oa-react-connect-stack { display: grid; width: min(860px, 100%); margin: 0 auto; gap: 12px; }
+.oa-react-connect-stack .oa-react-settings-card { width: 100%; }
+.oa-react-connect-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; }
+.oa-react-connect-summary > div { display: flex; align-items: center; gap: 9px; }
+.oa-react-connect-summary strong, .oa-react-connect-pairing strong, .oa-react-connect-unavailable strong { color: var(--en-color-textPrimary); font-size: 11px; }
+.oa-react-connect-summary small, .oa-react-connect-pairing span { display: block; margin-top: 2px; color: var(--en-color-textMuted); font-size: 9px; }
+.oa-react-connect-state { width: 8px; height: 8px; border-radius: 50%; background: var(--en-color-textMuted); box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-color-textMuted) 14%, transparent); }
+.oa-react-connect-state[data-state="connected"] { background: var(--en-color-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-color-success) 16%, transparent); }
+.oa-react-connect-state[data-state="connecting"] { background: var(--en-color-warning); }
+.oa-react-connect-state[data-state="errored"] { background: var(--en-color-danger); }
+.oa-react-connect-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.oa-react-connect-grid article { display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 8px; min-height: 130px; padding: 12px; border: 1px solid var(--en-color-borderSubtle); border-radius: 7px; background: var(--en-color-surfaceMuted); }
+.oa-react-connect-grid article > svg { width: 16px; height: 16px; color: var(--en-color-accent); }
+.oa-react-connect-grid article strong { color: var(--en-color-textPrimary); font-size: 11px; }
+.oa-react-connect-grid article p { margin: 4px 0 10px; color: var(--en-color-textMuted); font-size: 9px; line-height: 1.5; }
+.oa-react-connect-grid article > button, .oa-react-connect-grid article > [data-slot="badge"] { grid-column: 2; justify-self: start; }
+.oa-react-connect-pairing { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 10px; border: 1px solid var(--en-color-accentMuted); border-radius: 6px; }
+.oa-react-connect-form { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(220px, 1.3fr) auto; align-items: end; gap: 8px; margin-top: 12px; }
+.oa-react-connect-form label { display: grid; gap: 4px; color: var(--en-color-textMuted); font-size: 9px; }
+.oa-react-connect-unavailable { display: flex; gap: 9px; margin-top: 12px; padding: 10px; border: 1px dashed var(--en-color-borderSubtle); border-radius: 6px; color: var(--en-color-textMuted); }
+.oa-react-connect-unavailable svg { flex: 0 0 auto; width: 15px; height: 15px; }
+.oa-react-connect-unavailable p { margin: 3px 0 0; font-size: 9px; line-height: 1.45; }
+.oa-react-connect-notice { position: sticky; bottom: 12px; margin: 0 12px; padding: 9px 12px; border: 1px solid var(--en-color-borderSubtle); border-radius: 6px; background: var(--en-color-surfaceOverlay); color: var(--en-color-textSecondary); font-size: 10px; box-shadow: var(--en-shadow-overlay); }
 
 @media (max-width: 980px) {
   .oa-react-surface-panel { position: absolute; z-index: 5; inset: 0 0 0 auto; width: min(560px, 100%) !important; box-shadow: -18px 0 48px rgb(0 0 0 / 28%); }
@@ -1225,6 +1248,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   .oa-react-settings-rows article > div:last-child { grid-column: 1 / -1; justify-content: flex-start; }
   .oa-react-settings-inline-editor { grid-template-columns: minmax(0, 1fr) auto; }
   .oa-react-settings-inline-editor > :last-child { grid-column: 1 / -1; }
+  .oa-react-connect-grid { grid-template-columns: 1fr; }
+  .oa-react-connect-form { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

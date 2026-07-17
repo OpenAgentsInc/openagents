@@ -312,6 +312,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     "react-composer.tsx",
     "react-primitive-adapters.tsx",
     "react-review.tsx",
+    "react-connect-surface.tsx",
     "react-settings-surface.tsx",
     "react-sensitive-text.tsx",
     "react-timeline.tsx",

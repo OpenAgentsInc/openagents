@@ -161,6 +161,14 @@ import {
   type DesktopCodingCatalogProjection,
 } from "../coding-catalog-contract.ts"
 import {
+  decodeRemoteConnectResponse,
+  decodeRemoteConnectSnapshot,
+  emptyRemoteConnectProjection,
+  unavailableRemoteConnectBridge,
+  type RemoteConnectBridge,
+  type RemoteConnectProjection,
+} from "./remote-connect.ts"
+import {
   commitDesktopNavigationTraversal,
   desktopNavigationTarget,
   dropUnreachableDesktopNavigationTarget,
@@ -502,6 +510,8 @@ export type DesktopShellState = Readonly<{
   settings: SettingsState
   /** Diagnostics/watchdog panel, shown under the "settings" workspace (CUT-24). */
   diagnostics: DiagnosticsState
+  /** Public-safe remote environment, pairing, and mobile-client projection. */
+  connections: RemoteConnectProjection
   history: HistoryWorkspaceState
   /** Read-only fleet accounts projection (see ./fleet-workspace.ts). */
   fleet: FleetWorkspaceState
@@ -603,6 +613,7 @@ export const initialDesktopShellState = (
   loopProofs: 0,
   settings: initialSettingsState(),
   diagnostics: initialDiagnosticsState(),
+  connections: emptyRemoteConnectProjection(),
   history: emptyHistoryWorkspaceState(),
   fleet: emptyFleetWorkspaceState(),
   terminal: emptyTerminalWorkspaceState(),
@@ -847,6 +858,14 @@ export const DesktopCommandNoticeDismissed = defineIntent("DesktopCommandNoticeD
 export const DesktopHistoryShortcutHintsChanged = defineIntent("DesktopHistoryShortcutHintsChanged", Schema.Boolean)
 export const DesktopSidebarAccountsToggled = defineIntent("DesktopSidebarAccountsToggled", Schema.String)
 export const DesktopHistoryConversationPreviewed = defineIntent("DesktopHistoryConversationPreviewed", Schema.String)
+export const DesktopConnectionsRefreshRequested = defineIntent("DesktopConnectionsRefreshRequested", Schema.Null)
+export const DesktopRemoteControlEnabled = defineIntent("DesktopRemoteControlEnabled", Schema.Null)
+export const DesktopRemoteControlDisabled = defineIntent("DesktopRemoteControlDisabled", Schema.Null)
+export const DesktopRemotePairingStarted = defineIntent("DesktopRemotePairingStarted", Schema.Boolean)
+export const DesktopRemotePairingChecked = defineIntent("DesktopRemotePairingChecked", Schema.String)
+export const DesktopRemoteClientsRequested = defineIntent("DesktopRemoteClientsRequested", Schema.String)
+export const DesktopRemoteClientRevoked = defineIntent("DesktopRemoteClientRevoked", Schema.Struct({ environmentRef: Schema.String, clientRef: Schema.String }))
+export const DesktopRemoteEnvironmentAdded = defineIntent("DesktopRemoteEnvironmentAdded", Schema.Struct({ environmentId: Schema.String, execServerUrl: Schema.String }))
 
 export const desktopShellIntents = [
   DesktopInputChanged,
@@ -933,6 +952,14 @@ export const desktopShellIntents = [
   DesktopHistoryShortcutHintsChanged,
   DesktopSidebarAccountsToggled,
   DesktopHistoryConversationPreviewed,
+  DesktopConnectionsRefreshRequested,
+  DesktopRemoteControlEnabled,
+  DesktopRemoteControlDisabled,
+  DesktopRemotePairingStarted,
+  DesktopRemotePairingChecked,
+  DesktopRemoteClientsRequested,
+  DesktopRemoteClientRevoked,
+  DesktopRemoteEnvironmentAdded,
   ...settingsIntents,
   ...diagnosticsIntents,
   ...historyWorkspaceIntents,
@@ -1937,6 +1964,7 @@ export const makeDesktopShellHandlers = (
   presentationHost: DesktopPresentationRendererHost = { setSidebarCollapsed: async () => {} },
   fullAutoHost: DesktopFullAutoRendererHost = { set: async () => ({}), get: async () => ({ enabled: false }) },
   acpProviderBridge: AcpProviderSettingsBridge = unavailableAcpProviderSettingsBridge,
+  remoteConnectBridge: RemoteConnectBridge = unavailableRemoteConnectBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
   // Latest-selection-wins fence for async host reads. An older click may
   // finish later, but it must never replace the newer visible conversation.
@@ -1957,6 +1985,40 @@ export const makeDesktopShellHandlers = (
   })
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge, harnessMaintenanceBridge, acpProviderBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
+  const refreshConnections = Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      connections: { ...current.connections, phase: "loading" as const, notice: null },
+    }))
+    const raw = yield* Effect.promise(() => remoteConnectBridge.snapshot().catch(() => null))
+    const snapshot = decodeRemoteConnectSnapshot(raw)
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      connections: snapshot ?? {
+        ...current.connections,
+        phase: "unavailable" as const,
+        notice: "Remote control is unavailable from this Codex runtime.",
+      },
+    }))
+  })
+  const runConnectionRequest = (request: unknown, successNotice: string) => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      connections: { ...current.connections, phase: "mutating" as const, notice: null },
+    }))
+    const raw = yield* Effect.promise(() => remoteConnectBridge.request(request).catch(() => null))
+    const result = decodeRemoteConnectResponse(raw)
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      connections: result.snapshot === null
+        ? {
+            ...current.connections,
+            phase: result.ok ? "ready" as const : "unavailable" as const,
+            notice: result.ok ? successNotice : `Remote action refused: ${result.reason ?? "unavailable"}.`,
+          }
+        : { ...result.snapshot, notice: result.ok ? successNotice : `Remote action refused: ${result.reason ?? "unavailable"}.` },
+    }))
+  })
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
     state,
     workspaceHost.browser ?? unavailableWorkspaceBrowserBridge,
@@ -2707,6 +2769,14 @@ export const makeDesktopShellHandlers = (
       settings: { ...next.settings, shareLocalCodexUsage: enabled },
     }))
   }),
+  DesktopConnectionsRefreshRequested: () => refreshConnections,
+  DesktopRemoteControlEnabled: () => runConnectionRequest({ operation: "remote_enable", confirmed: true }, "Remote control enabled."),
+  DesktopRemoteControlDisabled: () => runConnectionRequest({ operation: "remote_disable", confirmed: true }, "Remote control disabled and pending pairing revoked."),
+  DesktopRemotePairingStarted: (manualCode) => runConnectionRequest({ operation: "remote_pair", manualCode, confirmed: true }, "A bounded pairing session is ready."),
+  DesktopRemotePairingChecked: (pairingRef) => runConnectionRequest({ operation: "remote_pair_status", pairingRef }, "Pairing status refreshed."),
+  DesktopRemoteClientsRequested: (environmentRef) => runConnectionRequest({ operation: "remote_clients", environmentRef }, "Mobile clients refreshed."),
+  DesktopRemoteClientRevoked: ({ environmentRef, clientRef }) => runConnectionRequest({ operation: "remote_revoke", environmentRef, clientRef, confirmed: true }, "Mobile client access revoked."),
+  DesktopRemoteEnvironmentAdded: ({ environmentId, execServerUrl }) => runConnectionRequest({ operation: "environment_add", environmentId, execServerUrl, confirmed: true }, "Remote environment connected."),
   DesktopSessionSearchDisclosureChanged: (sessionSearchOpen) =>
     SubscriptionRef.update(state, current => ({
       ...current,

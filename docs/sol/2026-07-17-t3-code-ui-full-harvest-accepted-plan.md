@@ -113,17 +113,23 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-09
+## Active packet — T3UI-10
 
-Outcome: converge Desktop settings into a routed T3-shaped family over the
-existing OpenAgents provider, extension, source-control, command-binding,
-diagnostic, account, and design-system authorities.
+Outcome: mount capability-scoped remote environment, pairing, portable-session,
+and mobile-client management over the existing Codex experimental runtime.
 
 Owned paths:
 
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
 - `apps/openagents-desktop/src/renderer/react-settings-surface.tsx`
+- `apps/openagents-desktop/src/renderer/react-connect-surface.tsx`
+- `apps/openagents-desktop/src/renderer/remote-connect.ts`
+- `apps/openagents-desktop/src/renderer/shell.ts`
+- `apps/openagents-desktop/src/renderer/boot.ts`
+- `apps/openagents-desktop/src/codex-experimental-contract.ts`
+- `apps/openagents-desktop/src/codex-experimental-runtime.ts`
+- `apps/openagents-desktop/src/main.ts`
 - `apps/openagents-desktop/tests/electron-boundary.test.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.test.ts`
@@ -134,43 +140,43 @@ Owned paths:
 
 Required behavior:
 
-- settings navigation selects General, Codex CLI, Extensions, Source control,
-  Keybindings, Diagnostics, and Account without replacing the shell;
-- loading, unavailable, empty, loaded, conflict, redacted, and read-only states
-  are explicit, and enabled actions dispatch existing typed intents;
-- existing OpenAgents buttons, badges, inputs, tables, tooltips, dialogs,
-  popovers, menus, selectors, sheets, and notices remain the primitive authority;
-  this packet adds no parallel component system; and
-- the existing Codex-only General defaults, local-usage consent, and sensitive
-  account redaction remain stable.
+- Connections routes in place and projects manifest, revision, environment,
+  remote-control, pairing, and client state through public refs only;
+- enable, disable, refresh, environment add, expiring pairing, status, client
+  list, and exact client revocation use schema-decoded preload/main requests;
+- raw environment ids remain main-private after connection, and pairing codes,
+  installation identity, service URLs, and credentials never return in the
+  renderer projection; and
+- SSH password/private-key prompts remain visibly unavailable until an admitted
+  native credential broker exists.
 
-Proof: mounted route/action/redaction tests, the settings-routed visual fixture,
-Desktop
+Proof: runtime correlation/revocation tests, projection redaction tests, mounted
+route/action tests, the remote-connect visual fixture, Desktop
 typecheck, full serial suite, production build, Electron fixture smokes, Sol
 guards, and publishing.
 
-Close rule: this packet closes the routed settings and primitive convergence
-scope. Remote/mobile, responsive/accessibility closure, installed journey,
-signed release, and T3 parity remain later.
+Close rule: this packet closes the admitted local Codex remote-control surface.
+Cross-machine live owner evidence, native SSH credential brokering,
+responsive/accessibility closure, installed journey, signed release, and T3
+parity remain later.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-09-20260717`
-- base: `7fe8b322ff`
+- actor/session: `codex-t3ui-10-20260717`
+- base: `5d2e1215b0`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: routed settings and primitive-family convergence
+- scope: remote environment, pairing, and mobile-client control
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: seven routed settings destinations, typed action lowering,
-  reusable status/table/empty/skeleton/conflict families, and sensitive-text
-  redaction are mounted
-- focused proof: 212 files and 2,050 tests pass; production, Electron, React,
-  and the 21-state zero-drift visual gate are green
-- receipt: [`2026-07-17-t3ui-09-settings-primitives-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-09-settings-primitives-receipt.md)
-- residual: remote/mobile, responsive/accessibility closure, installed evidence,
-  signed release, and T3 parity remain
+- implementation: typed environment connection, remote enable/disable, pairing,
+  status, public-safe client listing, and exact revocation are mounted
+- focused proof: 213 files and 2,055 tests pass; production, Electron, React,
+  and the 22-state zero-drift visual gate are green
+- receipt: [`2026-07-17-t3ui-10-remote-mobile-connect-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-10-remote-mobile-connect-receipt.md)
+- residual: live cross-machine evidence, native SSH broker, responsive/a11y
+  closure, installed evidence, signed release, and T3 parity remain
 
 ## Explicit non-authority
 

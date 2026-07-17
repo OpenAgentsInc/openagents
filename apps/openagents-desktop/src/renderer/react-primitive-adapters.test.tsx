@@ -507,6 +507,7 @@ describe("React workbench shell", () => {
     expect(container.querySelector('[data-sidebar-destination-id="settings-source-control"]')?.textContent).toContain("Source control")
     expect(container.querySelector('[data-sidebar-destination-id="settings-keybindings"]')?.textContent).toContain("Keybindings")
     expect(container.querySelector('[data-sidebar-destination-id="settings-diagnostics"]')?.textContent).toContain("Diagnostics")
+    expect(container.querySelector('[data-sidebar-destination-id="settings-connections"]')?.textContent).toContain("Connections")
     expect(container.querySelector('[data-sidebar-destination-id="settings-account"]')?.textContent).toContain("Account")
     expect(container.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.textContent).toContain("Back")
   })
@@ -528,7 +529,43 @@ describe("React workbench shell", () => {
     expect(received.at(-1)).toEqual({ name: "GitPanelRefreshRequested", payload: null })
     await select("settings-keybindings", "Keyboard shortcuts")
     await select("settings-diagnostics", "Diagnostics")
+    await select("settings-connections", "Connections")
+    expect(received.at(-1)).toEqual({ name: "DesktopConnectionsRefreshRequested", payload: null })
     await select("settings-account", "Provider accounts")
+  })
+
+  test("mounts capability-scoped remote pairing and mobile client management", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    await render(root, <WorkbenchShell state={{
+      ...base,
+      workspace: "settings",
+      connections: {
+        phase: "ready",
+        revision: 7,
+        manifestReady: true,
+        environments: [{ environmentRef: "environment.safe", state: "connected", shell: "zsh", cwdRef: "cwd.safe" }],
+        remote: {
+          state: "connected",
+          environmentRef: "environment.safe",
+          pairing: { pairingRef: "pairing.safe", state: "pending", expiresAt: Date.now() + 60_000 },
+          clients: [{ clientRef: "client.safe", displayName: "Owner iPhone", platform: "ios", state: "granted" }],
+        },
+        notice: null,
+      },
+    }} report={report} />)
+
+    await interact(() => container.querySelector<HTMLButtonElement>('[data-sidebar-destination-id="settings-connections"]')?.click())
+    expect(container.textContent).toContain("Pair OpenAgents mobile")
+    expect(container.textContent).toContain("SSH credential prompts stay native")
+    expect(container.textContent).not.toContain("pair-secret")
+    await interact(() => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Check status")?.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopRemotePairingChecked", payload: "pairing.safe" })
+    await interact(() => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Revoke")?.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopRemoteClientRevoked", payload: { environmentRef: "environment.safe", clientRef: "client.safe" } })
   })
 
   test("renders exactly one active background across destinations and conversation rows", async () => {

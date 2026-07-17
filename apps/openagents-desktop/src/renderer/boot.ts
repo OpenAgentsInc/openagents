@@ -1197,7 +1197,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         status: () => readBridge()?.acpProviders?.status?.() ?? unavailableAcpProviderSettingsBridge.status(),
         action: (provider, action) => readBridge()?.acpProviders?.action?.({ provider, action }) ?? unavailableAcpProviderSettingsBridge.action(provider, action),
         supportExport: () => readBridge()?.acpProviders?.supportBundle?.() ?? unavailableAcpProviderSettingsBridge.supportExport(),
-      } satisfies AcpProviderSettingsBridge),
+      } satisfies AcpProviderSettingsBridge, {
+        snapshot: () => readBridge()?.codexExperimental?.snapshot?.() ?? Promise.resolve(null),
+        request: value => readBridge()?.codexExperimental?.request?.(value) ?? Promise.resolve({ ok: false, reason: "unavailable" }),
+      }),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

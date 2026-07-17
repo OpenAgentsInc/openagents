@@ -328,5 +328,25 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
         },
       };
     }
+    case "remote-connect": {
+      const state = visualBaselineShellState("composer-idle");
+      return {
+        ...state,
+        workspace: "settings",
+        connections: {
+          phase: "ready",
+          revision: 12,
+          manifestReady: true,
+          environments: [{ environmentRef: "environment.visual", state: "connected", shell: "zsh", cwdRef: "cwd.visual" }],
+          remote: {
+            state: "connected",
+            environmentRef: "environment.visual",
+            pairing: { pairingRef: "pairing.visual", state: "pending", expiresAt: Date.parse("2026-07-15T09:51:00.000Z") },
+            clients: [{ clientRef: "client.visual", displayName: "Owner iPhone", platform: "ios", state: "granted" }],
+          },
+          notice: null,
+        },
+      };
+    }
   }
 };

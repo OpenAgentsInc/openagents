@@ -3364,8 +3364,8 @@ ipcMain.handle(CodexExperimentalRequestChannel, async (event, value: unknown) =>
       case "remote_status": await runtime.remoteStatus(); break
       case "remote_pair": { const payload = { operation: "pair", manualCode: request.manualCode }; result = await runtime.startPairing(request.manualCode, authorize("remote_control", payload)); break }
       case "remote_pair_status": result = await runtime.pairingStatus(request.pairingRef); break
-      case "remote_clients": await runtime.listRemoteClients(request.environmentId); break
-      case "remote_revoke": { const payload = { environmentId: request.environmentId, clientRef: request.clientRef }; await runtime.revokeRemoteClient(request.environmentId, request.clientRef, authorize("remote_revoke", payload)); break }
+      case "remote_clients": await runtime.listRemoteClients(request.environmentRef); break
+      case "remote_revoke": { const payload = { environmentRef: request.environmentRef, clientRef: request.clientRef }; await runtime.revokeRemoteClient(request.environmentRef, request.clientRef, authorize("remote_revoke", payload)); break }
       case "memory_reset": await runtime.resetMemory(request.confirmation, authorize("memory_reset", { confirmation: request.confirmation })); break
       case "thread_elicitation": { const payload = { threadId: request.threadId, direction: request.direction }; await runtime.adjustElicitation(request.threadId, request.direction, authorize("thread_control", payload)); break }
     }

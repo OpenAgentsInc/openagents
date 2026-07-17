@@ -110,8 +110,9 @@ describe("Codex experimental runtime", () => {
     const enable = { operation: "enable" }; await runtime.enableRemoteControl(runtime.authorize("remote_control", enable, runtime.snapshot().revision))
     const pair = { operation: "pair", manualCode: true }; const pairingRef = await runtime.startPairing(true, runtime.authorize("remote_control", pair, runtime.snapshot().revision))
     await expect(runtime.pairingStatus(pairingRef)).resolves.toBe(true)
-    await runtime.listRemoteClients("env-1"); const clientRef = runtime.snapshot().remoteControl.clients[0]!.clientRef
-    const revoke = { environmentId: "env-1", clientRef }; await runtime.revokeRemoteClient("env-1", clientRef, runtime.authorize("remote_revoke", revoke, runtime.snapshot().revision))
+    const environmentRef = runtime.snapshot().remoteControl.environmentRef!
+    await runtime.listRemoteClients(environmentRef); const clientRef = runtime.snapshot().remoteControl.clients[0]!.clientRef
+    const revoke = { environmentRef, clientRef }; await runtime.revokeRemoteClient(environmentRef, clientRef, runtime.authorize("remote_revoke", revoke, runtime.snapshot().revision))
     expect(runtime.snapshot().remoteControl.clients[0]?.state).toBe("revoked")
     const reset = { confirmation: "RESET" }; await runtime.resetMemory("RESET", runtime.authorize("memory_reset", reset, runtime.snapshot().revision))
     const control = { threadId: "thread-secret", direction: "increment" as const }; await runtime.adjustElicitation(control.threadId, control.direction, runtime.authorize("thread_control", control, runtime.snapshot().revision))

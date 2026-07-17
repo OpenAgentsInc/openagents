@@ -29,6 +29,7 @@ export const VISUAL_BASELINE_SHELL_STATES = [
   "terminal-workbench",
   "browser-preview",
   "settings-routed",
+  "remote-connect",
 ] as const;
 export type VisualBaselineShellStateName = (typeof VISUAL_BASELINE_SHELL_STATES)[number];
 

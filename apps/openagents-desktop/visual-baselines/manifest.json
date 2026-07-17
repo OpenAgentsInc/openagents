@@ -78,7 +78,14 @@
     {
       "name": "settings-routed",
       "file": "settings-routed.png",
-      "sha256": "3d555a17d9f8db96892c507d9704d1f17a1289d5f2060b84a1aac00c972d69e9",
+      "sha256": "5592d3412f71ceaac5c7f3ca123c16903278c348d7c9d9263a2d17d88c29f0ee",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "remote-connect",
+      "file": "remote-connect.png",
+      "sha256": "8ef603cd55cd34fd9b1d4fb965f525a7dcda26ba6801cbfbf778e2064a3845ff",
       "width": 1280,
       "height": 800
     },

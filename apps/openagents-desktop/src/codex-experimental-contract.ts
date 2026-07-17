@@ -25,8 +25,8 @@ export const CodexExperimentalRequestSchema = Schema.Union([
   Schema.Struct({ operation: Schema.Literal("remote_status") }),
   Schema.Struct({ operation: Schema.Literal("remote_pair"), manualCode: Schema.Boolean, confirmed: Confirmed }),
   Schema.Struct({ operation: Schema.Literal("remote_pair_status"), pairingRef: Schema.String }),
-  Schema.Struct({ operation: Schema.Literal("remote_clients"), environmentId: Schema.String }),
-  Schema.Struct({ operation: Schema.Literal("remote_revoke"), environmentId: Schema.String, clientRef: Schema.String, confirmed: Confirmed }),
+  Schema.Struct({ operation: Schema.Literal("remote_clients"), environmentRef: Schema.String }),
+  Schema.Struct({ operation: Schema.Literal("remote_revoke"), environmentRef: Schema.String, clientRef: Schema.String, confirmed: Confirmed }),
   Schema.Struct({ operation: Schema.Literal("memory_reset"), confirmation: Schema.Literal("RESET"), confirmed: Confirmed }),
   Schema.Struct({ operation: Schema.Literal("thread_elicitation"), threadId: Schema.String, direction: Schema.Literals(["increment", "decrement"]), confirmed: Confirmed }),
 ])

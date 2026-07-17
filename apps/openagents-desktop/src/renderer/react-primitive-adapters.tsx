@@ -553,6 +553,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     { id: "settings-source-control", label: "Source control", icon: "general", selected: selectedSettingsSectionId === "settings-source-control", current: selectedSettingsSectionId === "settings-source-control" ? "page" : undefined },
     { id: "settings-keybindings", label: "Keybindings", icon: "settings", selected: selectedSettingsSectionId === "settings-keybindings", current: selectedSettingsSectionId === "settings-keybindings" ? "page" : undefined },
     { id: "settings-diagnostics", label: "Diagnostics", icon: "privacy", selected: selectedSettingsSectionId === "settings-diagnostics", current: selectedSettingsSectionId === "settings-diagnostics" ? "page" : undefined },
+    { id: "settings-connections", label: "Connections", icon: "general", selected: selectedSettingsSectionId === "settings-connections", current: selectedSettingsSectionId === "settings-connections" ? "page" : undefined },
     { id: "settings-account", label: "Account", icon: "account", selected: selectedSettingsSectionId === "settings-account", current: selectedSettingsSectionId === "settings-account" ? "page" : undefined },
   ]
   const meter = projectSidebarMeter(state)
@@ -795,7 +796,9 @@ export const WorkbenchShell = ({ state, report }: {
   const railCollapsed = state.presentation.sidebarCollapsed
   const [codexUpdateOpen, setCodexUpdateOpen] = useState(false)
   const [dismissedCodexVersion, setDismissedCodexVersion] = useState<string | null>(null)
-  const [selectedSettingsSectionId, setSelectedSettingsSectionId] = useState<ReactSettingsSectionId>("settings-general")
+  const [selectedSettingsSectionId, setSelectedSettingsSectionId] = useState<ReactSettingsSectionId>(
+    state.workspace === "settings" && state.connections.phase === "ready" ? "settings-connections" : "settings-general",
+  )
   const railRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -865,7 +868,10 @@ export const WorkbenchShell = ({ state, report }: {
       aria-label="Expand sidebar"
       title="Expand sidebar"
     />
-    <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} selectedSettingsSectionId={selectedSettingsSectionId} onSettingsSectionSelect={setSelectedSettingsSectionId} />
+    <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} selectedSettingsSectionId={selectedSettingsSectionId} onSettingsSectionSelect={sectionId => {
+      setSelectedSettingsSectionId(sectionId)
+      if (sectionId === "settings-connections") dispatch(report, "DesktopConnectionsRefreshRequested")
+    }} />
     {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     {workspaceSurface ?? <DesktopSurfaceManager state={state} report={report} conversation={<DesktopConversation
         composer={state.history.page === null ? <div className="oa-react-composer-stack">

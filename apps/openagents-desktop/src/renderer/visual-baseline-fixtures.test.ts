@@ -28,6 +28,7 @@ describe("visual-baseline fixture states", () => {
       "terminal-workbench",
       "browser-preview",
       "settings-routed",
+      "remote-connect",
       "workbench-messages-reasoning",
       "workbench-commands",
       "workbench-files",
