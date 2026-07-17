@@ -1643,6 +1643,66 @@ completion remain later packets.
 - released_at: `2026-07-17T18:39:29Z`
 - residual: actual `main.ts` composition, renderer command/pixels, audience authorization/publication adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-22 — Desktop thread-visibility main composition resource
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-21. Active
+work still owns Desktop `main.ts` and broad renderer surfaces. The packet
+therefore adds a new-file-only composition resource that binds the trusted
+fixed-channel handler to the restart-stable private visibility policy store,
+without editing the application entry point, rendering pixels, or authorizing
+content publication.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-main-composition.ts`
+- `apps/openagents-desktop/src/thread-visibility-main-composition.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-22-desktop-thread-visibility-main-composition-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-19's private policy-store file and apply semantics,
+FF-D1-21's fixed-channel handler dependencies and lifetime, trusted sender
+admission, host-owned receipt metadata, Effect execution, restart replay, and
+bounded acquisition/cleanup errors. Existing shared schemas, `main.ts`,
+preload, renderer, Sync, provider, membership, authorization, publication, and
+transport contracts remain unchanged.
+
+Required behavior:
+
+- open exactly one private visibility store for the host-supplied file and
+  register exactly one FF-D1-21 fixed-channel handler;
+- adapt the store's Effect application into the handler without exposing the
+  store, path, Effect runtime, raw failures, or receipt-minting authority;
+- preserve stored, unchanged replay, corrupt-store, stale-version, and other
+  bounded policy outcomes across the composed boundary;
+- close handler ownership exactly once, reject post-close calls, and suppress
+  native cleanup details; and
+- prove close/reopen against the same private file returns the identical
+  persisted receipt for an exact retry without advancing visibility version.
+
+Proof: focused visibility composition, handler, bridge, store, and disclosure
+tests; Desktop TypeScript check; Fast Follow, behavior-contract, ProductSpec,
+Sol, AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only the tested visibility handler/store
+composition resource. The actual `main.ts` call site, renderer command/pixels,
+audience authorization and publication adapters, installed/runtime-rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-22-20260717`
+- base: `6b8ca94e0b6322762a6243ed9dac0ef9e7d7d8da`
+- worktree/branch: `openagents-ff-d1-22` / detached `origin/main`
+- scope: restart-stable private Desktop thread-visibility handler/store composition resource
+- paths: the FF-D1-22 owned implementation paths above
+- hot files: new Desktop visibility composition/test; accepted-plan ledger and Sol manifest
+- hot contracts: FF-D1-19 policy apply/store file, FF-D1-21 handler lifetime, trusted sender admission, host-owned receipt metadata, Effect execution, and restart replay
+- dependencies: FF-D1-21 released; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T18:52:03Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
