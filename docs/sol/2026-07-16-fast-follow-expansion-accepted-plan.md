@@ -980,6 +980,15 @@ evidence, and Day 1 completion remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T15:32:21Z`
 
+### CLAIM-STATUS
+
+- implementation: added the fixed canonical-export channel contract and exposed one schema-decoded ref-only `threadExports.write` method through sandboxed preload
+- privacy/authority proof: only an exact owner-only canonical-event export receipt invokes the fixed channel; exact result decoding rejects path/error leakage; native failures collapse to a bounded reason
+- focused proof: all 22 bridge/command/store tests passed; the bridge passes isolated strict TypeScript compilation; the production Desktop build contains exactly one fixed channel and bridge exposure
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, focused ProductSpec 104/104, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: the Desktop package typecheck retains only the pre-existing lifecycle-schema failures recorded by FF-D1-10 through FF-D1-12; the known AssuranceSpec environment-digest snapshot drift remains outside this packet
+- residual: main-process handler registration, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

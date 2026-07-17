@@ -98,6 +98,7 @@ import {
   type DesktopWorkspaceChange,
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
+import { invokeDesktopThreadExportWrite } from "./thread-export-bridge-contract.ts"
 import {
   ProductSpecCreateChannel,
   ProductSpecEditConfirmChannel,
@@ -383,6 +384,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         await ipcRenderer.invoke(DesktopRuntimeControlOutcomeRecordChannel, request),
       ) ?? { status: "rejected", reason: "persistence_failed" }
     },
+  },
+  threadExports: {
+    write: (value: unknown) => invokeDesktopThreadExportWrite(
+      (channel, request) => ipcRenderer.invoke(channel, request),
+      value,
+    ),
   },
   /** The sole renderer mutation: one schema-checked Fleet brief. */
   stageFleet: (value: unknown) => {
