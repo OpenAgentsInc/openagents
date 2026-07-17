@@ -297,3 +297,13 @@ viewer, streaming, and scroll/history parity remain `T3M-A4`.
   `pnpm run check` passed
 - close boundary: presentation only; exact confirmed decision settlement and
   runtime schemas remain unchanged; `T3M-A4` remains next
+
+### CLAIM-RELEASE
+
+- landed: `1a47f6252890eed3a30de86f59c1d601c1621b0f` on `main`
+- verification: post-rebase mobile typecheck; 63 focused interaction-card,
+  authoritative Home, accessibility, and behavior-contract tests; pre-rebase
+  `pnpm run check`
+- residual: `T3M-A4` attachments, viewer, streaming, scroll/history, and
+  deep-transcript parity is the next ordered packet; full mobile parity remains
+  open through `T3M-F2`
