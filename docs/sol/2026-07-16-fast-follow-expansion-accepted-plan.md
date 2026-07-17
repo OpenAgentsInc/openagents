@@ -918,6 +918,68 @@ evidence, and Day 1 completion remain later packets.
 - remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: IPC/preload wiring, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-13 — Desktop canonical-export preload boundary
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-12. Active
+work still owns Desktop `main.ts`, history, shell, renderer, update, and release
+surfaces. The packet therefore adds a fixed typed canonical-export IPC contract
+and exposes its ref-only request/result through the sandboxed preload bridge
+without registering the colliding main-process handler or rendering pixels.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-bridge-contract.ts`
+- `apps/openagents-desktop/src/thread-export-bridge-contract.test.ts`
+- `apps/openagents-desktop/src/preload.cts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-13-desktop-thread-export-preload-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_receipt.v1`, the fixed Desktop
+canonical-export channel, the sandboxed preload allowlist, and the FF-D1-12
+path-free transport result. Existing Desktop main-process registration,
+renderer, history, shell, Sync, provider, and disclosure-audience contracts
+remain unchanged.
+
+Required behavior:
+
+- the bridge accepts only an exact owner-only `canonical_event_bundle`
+  `export_created` receipt and rejects malformed, raw-content-bearing, broader,
+  other-format, pending, failed, or visibility receipts before IPC invocation;
+- the preload exposes one fixed method and channel, never raw `ipcRenderer`, a
+  caller-selected channel, destination path, artifact bytes, filesystem,
+  process, or provider authority;
+- successful, cancelled, and bounded rejected transport outcomes decode
+  explicitly, while malformed/native failures collapse to a typed unavailable
+  reason without leaking native errors; and
+- the renderer-visible result remains ref-only and contains no destination
+  path, exported bytes, raw evidence, broader disclosure, or release claim.
+
+Proof: focused contract/preload tests; isolated TypeScript compilation where
+the package baseline permits it; Fast Follow, behavior-contract, ProductSpec,
+Sol, and repository-required checks. Known current-main Desktop lifecycle
+typecheck and AssuranceSpec environment-digest snapshot failures remain
+baseline collisions unless separately resolved on `main`.
+
+Close rule: this packet closes only the sandboxed preload boundary for an exact
+owner-only canonical export receipt. Main-process handler registration,
+renderer command/pixels, broader disclosure adapters, installed/runtime-rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-13-20260717`
+- base: `ffefa153e866b5a0fb1af5b6f2411edb3bb85a27`
+- worktree/branch: `openagents-ff-d1-13` / detached `origin/main`
+- scope: fixed schema-decoded ref-only canonical-export preload boundary
+- paths: the FF-D1-13 owned implementation paths above
+- hot files: sandboxed `preload.cts`, new bridge contract/test, accepted-plan ledger, and Sol manifest
+- hot contracts: exact owner-only export receipt admission, fixed IPC channel, path-free bounded result, and no raw host authority
+- dependencies: FF-D1-12 released; no relevant feature issue or competing claim; active Desktop main/history/shell/renderer/update/release work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T15:32:21Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
