@@ -1973,6 +1973,80 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T19:59:19Z`
 - residual: named-group/workspace publication authority, ambiguous-create reconciliation, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-26 — Desktop workspace-members share publication transport
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-25. Canonical
+export boot composition still lacks a production accepted-event source,
+named-group publication still lacks authoritative group membership, and active
+work continues to own Desktop `main.ts` and broad renderer surfaces. The
+packet therefore adds a new-file-only Effect transport for an already-applied
+`workspace_members` visibility receipt through the existing authenticated
+`/api/share` projection service. It does not edit active host/UI files, invent
+group authority, upload local transcript bytes, or add a server route.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-workspace-publication-transport.ts`
+- `apps/openagents-desktop/src/thread-visibility-workspace-publication-transport.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-26-desktop-thread-visibility-workspace-publication-transport-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-23's exact authorization decision,
+`openagents.thread_disclosure_receipt.v1`, applied `workspace_members`
+visibility and `scope.team.<teamId>` identity, existing `/api/share`
+`TeamMembers` request behavior, team-thread source identity, credential custody,
+single-attempt publication uncertainty, same-origin canonical share URLs, and
+ref-only Desktop results. Existing shared schemas, server routes, policy
+persistence, `main.ts`, preload, renderer, named-group, provider, and Sync
+contracts remain unchanged.
+
+Required behavior:
+
+- accept only one exact applied `workspace_members` visibility receipt, an
+  FF-D1-23 authorized decision whose basis and receipt/thread/version binding
+  match, a bounded team display name, and a supported server source whose id
+  equals the thread ref;
+- derive the team id only from an exact `scope.team.<teamId>` target, require a
+  team-thread source to carry that same team id, and never accept a caller-
+  supplied alternate audience or authority scope;
+- obtain the existing host-custodied access token only after request
+  validation, then send exactly one authenticated `POST /api/share` carrying
+  only the source ref and exact `TeamMembers` audience—never local transcript,
+  export, file, credential, path, provider, native payload, or group bytes;
+- decode only the bounded active share response, require its canonical URL to
+  share the configured service origin, and return a ref-only publication
+  result bound to the visibility receipt/thread/version/team; and
+- fail closed without dispatch for malformed, mismatched, unsupported,
+  uncredentialed, or expanded requests, and never automatically retry an
+  ambiguous create while the existing route lacks a reviewed idempotency
+  contract.
+
+Proof: focused workspace-publication, audience-authorization, disclosure, Sync
+authority, and share-contract tests; Desktop TypeScript check; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only authorized workspace-members publication
+into the existing server-side redacted share builder. Named-group authority and
+publication, ambiguous-create reconciliation, canonical-export evidence
+authority, actual `main.ts` composition, renderer command/pixels,
+installed/runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-26-20260717`
+- base: `8342ad394292473564fb2f15429a65c2fc675562`
+- worktree/branch: `openagents-ff-d1-26` / detached `origin/main`
+- scope: ref-only Desktop publication of applied workspace-members visibility through existing `/api/share`
+- paths: the FF-D1-26 owned implementation paths above
+- hot files: new Desktop workspace-publication transport/test; accepted-plan ledger and Sol manifest
+- hot contracts: exact applied-workspace receipt/authorization binding, exact team scope/source, existing share route, credential custody, one-attempt uncertainty, same-origin response, and no local content upload
+- dependencies: FF-D1-25 released; canonical export source and named-group authority remain unavailable; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T20:07:00Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
