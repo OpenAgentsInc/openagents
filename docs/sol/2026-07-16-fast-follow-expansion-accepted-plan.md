@@ -1057,6 +1057,15 @@ evidence, and Day 1 completion remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T16:00:04Z`
 
+### CLAIM-STATUS
+
+- implementation: added a new-file-only fixed-channel handler registration seam with an idempotent cleanup and trusted-sender gate
+- privacy/authority proof: exact request decoding occurs before transport; only the decoded ref-only receipt crosses the transport boundary; exact result decoding rejects path/error leakage
+- focused proof: all 27 handler/bridge/export tests passed and the handler passes isolated strict TypeScript compilation
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, focused ProductSpec 104/104, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: the Desktop package typecheck retains only the pre-existing lifecycle-schema failures recorded by FF-D1-10 through FF-D1-13; the known AssuranceSpec environment-digest snapshot drift remains 189/190 and outside this packet
+- residual: actual `main.ts` composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
