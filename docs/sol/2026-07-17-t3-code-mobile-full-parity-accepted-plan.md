@@ -1082,3 +1082,17 @@ gesture driver plus hardware keyboard commands and host focus application remain
   renderer/accessibility tests, behavior contract, and Sol receipt
 - exclusions: genuine gesture driver, hardware shortcuts, and host-applied
   focus (`T3M-C2.2b`); physical evidence (`T3M-F2`)
+
+### CLAIM-RELEASE
+
+- landed: `b4dc67bcb97ae04a3da3af2589dbe78c3852548d` on `main`
+- verification: pre-push 223 mobile/RN-renderer tests, mobile typecheck,
+  repository lint/format, and 19 Sol tests; post-commit 22 workspace-action/
+  authoritative-Home/behavior tests and mobile typecheck; `git diff --check`
+- authority note: swipe-item action IDs are accepted only after exact current
+  active/archived membership and valid state/action checks; Delete never owns
+  full swipe and remains explicit confirmed writeback
+- close boundary: `T3M-C2.2a` compact native-lowered lifecycle sheet and typed
+  row-action grammar are complete; genuine native gesture/keyboard/focus host
+  behavior remains `T3M-C2.2b`, and full parity remains open through `T3M-F2`
+- verified_at: `2026-07-17T22:43:45Z`
