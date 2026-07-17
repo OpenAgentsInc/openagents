@@ -1158,6 +1158,71 @@ remain later packets.
 - remote proof: after reconciling a disjoint Sync landing, the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: main-process creation-handler registration, actual `main.ts` composition, renderer create-then-write command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-16 — Canonical-export creation main-process handler seam
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-15. Active
+work still owns Desktop `main.ts`, history, shell, renderer, update, and release
+surfaces. The packet therefore adds a new-file-only main-process registration
+seam that binds FF-D1-15's fixed decoded creation channel to FF-D1-11's
+canonical export command while leaving actual Electron composition and pixels
+untouched.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-create-main-handler.ts`
+- `apps/openagents-desktop/src/thread-export-create-main-handler.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-16-desktop-thread-export-create-main-handler-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: the fixed `openagents:thread-export:create` channel, exact
+FF-D1-15 request/result decoders, trusted Desktop sender authority, handler
+registration lifecycle, and FF-D1-11's intent-only command coordinator.
+Existing Desktop `main.ts`, preload, renderer, history, shell, Sync, provider,
+file transport, and disclosure-audience contracts remain unchanged.
+
+Required behavior:
+
+- registration accepts exactly the fixed creation channel and returns one
+  idempotent host-owned cleanup for the registered handler;
+- a closed handler, untrusted sender, throwing trust check, or malformed,
+  broader, non-canonical request fails before command invocation with the
+  bounded `invalid_request` result;
+- a trusted exact request passes only its decoded export intent to the command,
+  never renderer-supplied events, authority relations, receipt metadata,
+  digests, paths, bytes, filesystem, process, or provider authority;
+- valid stored, unchanged, and rejected command outcomes pass through the
+  identity-bound FF-D1-15 decoder, while thrown or malformed outcomes collapse
+  to `command_unavailable`; and
+- no result exposes canonical event payloads, authority relations, destination
+  paths, artifact bytes, native errors, broader disclosure, deployment,
+  release, or acceptance claims.
+
+Proof: focused creation-handler/bridge/command/store tests; isolated TypeScript
+compile; Fast Follow, behavior-contract, ProductSpec, Sol, and
+repository-required checks. Known current-main Desktop lifecycle typecheck and
+AssuranceSpec environment-digest snapshot failures remain baseline collisions
+unless separately resolved on `main`.
+
+Close rule: this packet closes only the tested creation handler and registration
+lifecycle seam. Actual `main.ts` composition, renderer create-then-write
+command/pixels, broader disclosure adapters, installed/runtime-rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-16-20260717`
+- base: `337d01b44b405097b1f2747f845af5d94bc71a61`
+- worktree/branch: `openagents-ff-d1-16` / detached `origin/main`
+- scope: fixed trusted-sender canonical-export creation main-process handler registration seam
+- paths: the FF-D1-16 owned implementation paths above
+- hot files: new Desktop creation handler/test; accepted-plan ledger and Sol manifest
+- hot contracts: fixed creation channel, exact request/result decoding, trusted sender gate, handler cleanup, and intent-only command delegation
+- dependencies: FF-D1-15 released; no relevant feature issue or competing claim; active Desktop main/history/shell/renderer/update/release work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T16:40:09Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
