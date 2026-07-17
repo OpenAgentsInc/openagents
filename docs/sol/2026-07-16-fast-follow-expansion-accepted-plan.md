@@ -2740,6 +2740,70 @@ evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T23:11:12Z`
 - residual: real historical acquisition/index persistence, Desktop consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-35 — Desktop persisted canonical-event search acquisition
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-34. The shared
+projection can search exact canonical events, and the private Desktop export
+store already durably verifies those bundles, but no adapter acquires persisted
+bundles from their ref-only export receipts for search. Active work owns
+Desktop `main.ts`, renderer, installed-runtime, mobile, T3, Full Auto, and
+teardown surfaces. This packet adds only a new-file acquisition adapter over
+the existing private store seam, leaving host composition and pixels unchanged.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-event-search-artifact-source.ts`
+- `apps/openagents-desktop/src/thread-event-search-artifact-source.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-35-desktop-canonical-event-search-artifact-source-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-08 ref-only export receipts, FF-D1-10 verified private
+artifact loads, FF-D1-09 exact owner-only bundle identity, and FF-D1-34's
+bounded search projection. No new persistence, transcript, acceptance,
+visibility, transport, provider, host, preload, renderer, or release authority
+is added.
+
+Required behavior:
+
+- accept only bounded canonical owner-only `export_created` receipts and
+  require each artifact ref to bind its exact SHA-256 digest;
+- load each unique artifact through the injected private-store seam, verify
+  byte bounds, digest, UTF-8/JSON/schema, and receipt-to-artifact intent/thread/
+  format/audience identity before search;
+- dedupe exact receipt replays without duplicate loads, while conflicting
+  receipt, artifact, or thread identity fails closed;
+- feed only verified bundles into FF-D1-34 and return only its bounded
+  projection or one redacted unavailable reason, never bytes, paths, receipt
+  bodies, or store authority; and
+- avoid all private artifact reads for a blank query.
+
+Proof: focused acquisition, search, artifact-store, compiler, disclosure, and
+authority tests; Desktop and shared-package typechecks; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only verified acquisition from already-
+persisted canonical export receipts into the shared search projection. Receipt
+catalog persistence, broader historical-session ingestion, Desktop host/UI
+consumption and pixels, authoritative supersession/reversion producers,
+named-group authority/publication, actual `main.ts` acquisition, installed/
+runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-35-20260717`
+- base: `13393b62306325dd1576c31ea8e29731461f6ab6`
+- worktree/branch: `openagents-ff-d1-35` / detached `origin/main`
+- scope: verify and acquire persisted canonical bundles through exact export receipts for FF-D1-34 search
+- paths: the FF-D1-35 owned implementation paths above
+- hot files: two new Desktop adapter/test files, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: exact ref/digest receipt identity, private verified load, owner-only artifact identity, bounded search, and no byte/path projection
+- dependencies: FF-D1-08, FF-D1-09, FF-D1-10, and FF-D1-34 released; no relevant open bug issue or competing claim; active host/UI, mobile, T3, Full Auto, teardown, and installed-runtime work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T23:18:04Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
