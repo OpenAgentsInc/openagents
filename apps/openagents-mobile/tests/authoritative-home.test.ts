@@ -601,11 +601,47 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       status: "done",
     })
     const content = JSON.stringify(renderContentView(program.initialState))
-    expect(content).toContain("Confirmed conversation, continuous across your devices.")
+    expect(content).toContain('"content":"Synced"')
+    expect(content).toContain("1 confirmed message · 0 runtime events")
     expect(content).toContain('"senderLabel":"YOU"')
     const drawer = JSON.stringify(renderDrawerView(program.initialState))
     expect(drawer).toContain("drawer-thread-thread.synced.1")
     expect(drawer).toContain('"label":"Synced"')
+  })
+
+  test("renders bounded full-thread accounting and accessible confirmed image attachments", () => {
+    const attachmentThread: MobileConversationThread = {
+      ...initialThread,
+      title: "Mobile parity plan",
+      messageCount: 3,
+      messages: [{
+        ...initialThread.messages[0]!,
+        attachments: [{
+          name: "parity-map.png",
+          mediaType: "image/png",
+          sizeBytes: 68,
+          sha256: "a".repeat(64),
+          dataBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ",
+        }],
+      }],
+    }
+    const host: MobileConversationHost = {
+      listThreads: async () => [attachmentThread],
+      newThread: async () => ({ ok: true, thread: attachmentThread }),
+      openThread: async () => attachmentThread,
+      sendMessage: async () => ({ ok: true, thread: attachmentThread }),
+    }
+    const program = buildHomeProgram({
+      conversation: { ...selection(host), threads: [attachmentThread], activeThread: attachmentThread },
+    })
+    const content = JSON.stringify(renderContentView(program.initialState))
+
+    expect(content).toContain('"content":"Mobile parity plan"')
+    expect(content).toContain("1 of 3 confirmed messages retained · 0 runtime events")
+    expect(content).toContain('"_tag":"Image"')
+    expect(content).toContain('"alt":"parity-map.png"')
+    expect(content).toContain("data:image/png;base64,iVBORw0KGgo")
+    expect(content).toContain("parity-map.png · 1 KB")
   })
 
   test("renders a confirmed running timeline while keeping safe follow-up available", () => {

@@ -4,6 +4,7 @@ import {
   Composer,
   Button,
   ComponentValueBinding,
+  Image,
   IconButton,
   IntentRef,
   Stack,
@@ -14,6 +15,7 @@ import {
   type TranscriptMessage,
   type View,
 } from "@effect-native/core"
+import type { ChatMessageImageAttachment } from "@openagentsinc/khala-sync"
 import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
 import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
 import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
@@ -73,6 +75,7 @@ export interface KhalaEntry {
   readonly status: "thinking" | "pending" | "done" | "failed"
   readonly createdAt?: string
   readonly version?: number
+  readonly attachments?: ReadonlyArray<ChatMessageImageAttachment>
   readonly interaction?: KhalaInteraction
 }
 
@@ -117,6 +120,12 @@ export interface KhalaState {
   readonly agentGraph: LiveAgentGraphPresentation | null
   readonly agentGraphExpanded: boolean
   readonly selectedAgentRef: string | null
+  readonly threadHistory: Readonly<{
+    title: string
+    totalMessageCount: number
+    retainedMessageCount: number
+    retainedEventCount: number
+  }> | null
 }
 
 export const initialKhalaState: KhalaState = {
@@ -133,6 +142,7 @@ export const initialKhalaState: KhalaState = {
   agentGraph: null,
   agentGraphExpanded: false,
   selectedAgentRef: null,
+  threadHistory: null,
 }
 
 export interface KhalaTurnClient {
@@ -172,7 +182,23 @@ const interactionBody = (
       content: entry.status === "thinking" ? "Khala is thinking…" : entry.text,
       variant: "body",
       color: entry.status === "failed" ? "danger" : "textPrimary",
-    })]
+    }), ...(entry.attachments ?? []).flatMap((attachment, index) => [
+      Image({
+        key: `${entry.key}-attachment-${index}`,
+        source: `data:${attachment.mediaType};base64,${attachment.dataBase64}`,
+        alt: attachment.name,
+        width: "full",
+        height: 220,
+        fit: "contain",
+        style: { borderRadius: "md" },
+      }),
+      Text({
+        key: `${entry.key}-attachment-${index}-caption`,
+        content: `${attachment.name} · ${Math.max(1, Math.ceil(attachment.sizeBytes / 1024))} KB`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+    ])]
   }
   const submitting = state.interactionSubmittingRef === interaction.interactionRef
   const actionable = interaction.status === "pending" &&
@@ -661,6 +687,7 @@ export const renderKhalaSurface = (
   }> | null = null,
   accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
   executionTargets: ReadonlyArray<MobileExecutionTargetOption> = [],
+  historyAvailability: "live" | "refreshing" | "unavailable" = "live",
 ): View =>
   Stack(
     {
@@ -678,19 +705,39 @@ export const renderKhalaSurface = (
       Spacer({ key: "khala-top-space", size: "16" }),
       Text({
         key: "khala-title",
-        content: authority === "sync" ? "OpenAgents" : "Khala",
+        content: authority === "sync"
+          ? state.threadHistory?.title ?? "OpenAgents"
+          : "Khala",
         variant: "title",
         color: "textPrimary",
       }),
       Text({
         key: "khala-subtitle",
         content: authority === "sync"
-          ? "Confirmed conversation, continuous across your devices."
+          ? historyAvailability === "unavailable"
+            ? "Confirmed history is unavailable until sync resumes."
+            : state.threadHistory === null
+              ? state.pending
+                ? "Loading confirmed history…"
+                : "Select a chat to see its confirmed history."
+              : `${historyAvailability === "refreshing" ? "Refreshing · " : ""}${
+                  state.threadHistory.retainedMessageCount < state.threadHistory.totalMessageCount
+                    ? `${state.threadHistory.retainedMessageCount} of ${state.threadHistory.totalMessageCount} confirmed messages retained`
+                    : `${state.threadHistory.retainedMessageCount} confirmed ${state.threadHistory.retainedMessageCount === 1 ? "message" : "messages"}`
+                } · ${state.threadHistory.retainedEventCount} runtime ${state.threadHistory.retainedEventCount === 1 ? "event" : "events"}`
           : "One conversation, routed by the OpenAgents orchestrator.",
         variant: "body",
         color: "textMuted",
       }),
       ...agentStackViews(state, accessibility),
+      ...(authority === "sync" && state.threadHistory !== null && state.entries.length === 0
+        ? [Text({
+            key: "khala-empty-history",
+            content: "No confirmed messages yet. Start this chat below.",
+            variant: "body",
+            color: "textMuted",
+          })]
+        : []),
       Transcript({
         key: "khala-transcript",
         messages: state.entries.map((entry): TranscriptMessage => ({

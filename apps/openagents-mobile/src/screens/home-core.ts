@@ -474,6 +474,11 @@ export const renderContentView = (state: HomeState): View =>
           state.codingAttachmentStatus,
           state.accessibility,
           state.codingExecutionTargets,
+          state.syncPhase === "catching_up"
+            ? "refreshing"
+            : state.conversationAuthority === "sync" && state.syncPhase !== "live"
+              ? "unavailable"
+              : "live",
         )]
       : [
           Spacer({ key: "openagents-top-space", size: "16" }),
@@ -1353,6 +1358,7 @@ const confirmedKhalaState = (
     status: "done" as const,
     createdAt: message.createdAt,
     version: message.version,
+    ...(message.attachments === undefined ? {} : { attachments: message.attachments }),
   }))
   return {
     draft: "",
@@ -1377,6 +1383,14 @@ const confirmedKhalaState = (
     agentGraph,
     agentGraphExpanded,
     selectedAgentRef,
+    threadHistory: thread === null
+      ? null
+      : {
+          title: thread.title,
+          totalMessageCount: thread.messageCount,
+          retainedMessageCount: thread.messages.length,
+          retainedEventCount: thread.timeline?.events.length ?? 0,
+        },
   }
 }
 

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "a245edb5881cf97a1d5f34e3a8cd3c297f16c780fd06008acd26232f648da987",
+  "sourceTreeSha256": "825ee3b941f16386a3d6dd2ef581962d6563e07b24e21ff0d1a3b0b43161ace7",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -3334,6 +3334,28 @@
       ]
     },
     {
+      "path": "docs/sol/receipts/2026-07-17-mobile-full-chat-threads.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "fe94a0b7d94c96579beb9f99ac624d16708edb92c2a9b1677a9d61f274ddafa0",
+      "status": "deterministic source receipt; no physical-device acceptance claim",
+      "snapshot": "2026-07-17",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8961,
+        8962,
+        8963,
+        8964
+      ]
+    },
+    {
       "path": "docs/sol/receipts/2026-07-17-mobile-thread-lifecycle.md",
       "class": "receipt",
       "owner": "Sol proof",
@@ -3406,7 +3428,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "db46fe4e13c1aa7f12bbe0182600b6d1f7794e275fbad2dc8f4aefb545da465b",
+      "sha256": "80c7dd1f0ca901ffba496123965543f79f3e430d6981f188d9891eacf4095ae9",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3463,7 +3485,8 @@
         8861,
         8862,
         8950,
-        8954
+        8954,
+        8961
       ]
     },
     {

@@ -728,3 +728,29 @@ Share/quick actions, physical push registration and delivery, installed-device
 acceptance, the remaining command breadth, and phase 4 repository Files remain
 explicit gaps. The next honest epic is phase 4 Files/repository onboarding
 unless the remaining share/push work is deliberately reprioritized first.
+
+## 13. Implementation update — MOBILE-PARITY-03E
+
+The full selected-chat slice landed on 2026-07-17 as
+[#8961](https://github.com/OpenAgentsInc/openagents/issues/8961), with retained
+projection, live-lease, and Effect Native presentation leaves
+[#8962](https://github.com/OpenAgentsInc/openagents/issues/8962),
+[#8963](https://github.com/OpenAgentsInc/openagents/issues/8963), and
+[#8964](https://github.com/OpenAgentsInc/openagents/issues/8964).
+
+The client now reconstructs the newest 500 confirmed messages, including
+bounded image attachments, and names that boundary explicitly. Mobile owns one
+generation-fenced ordinary-chat lease, replaces it on selection, and releases
+it on every navigation, authority, session, and unmount exit. A late prior
+selection cannot overwrite the current thread.
+
+The conversation surface now shows the selected title, confirmed retained
+message and runtime-event accounting, honest loading/refreshing/unavailable and
+empty states, and accessible confirmed images. This is the first point at which
+the mobile chat screen presents the selected confirmed thread as a durable
+cross-device transcript rather than a generic single-conversation shell.
+
+Parity is still bounded. History older than the retained 500-message window
+has no authorized pagination contract; non-image files, share/quick actions,
+physical push, and installed-device acceptance remain open. This work also does
+not implement the next phase's repository onboarding and Files surface.
