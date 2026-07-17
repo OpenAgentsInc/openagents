@@ -461,7 +461,6 @@ import {
   openDesktopSessionVault,
   type DesktopSessionVault,
 } from "./desktop-session-vault.ts"
-import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
 import { traceAcceptanceJourney } from "./electron-trace-acceptance.ts"
 import { resolveLiveProofConfig, runLiveProof } from "./live-proof.ts"
 import { mvpProofEnvironmentFromArgv, resolveMvpProofConfig, runMvpProof } from "./mvp-proof.ts"
@@ -515,8 +514,8 @@ const desktopDevServerUrl = (() => {
   }
   return url
 })()
-const installDesktopRendererProtocol = (): void => {
-  protocol.handle(DesktopRendererScheme, async request => {
+const installDesktopRendererProtocol = (target: Session): void => {
+  target.protocol.handle(DesktopRendererScheme, async request => {
     const url = new URL(request.url)
     const asset = url.hostname === "renderer" ? url.pathname.replace(/^\/+/, "") : ""
     if (desktopDevServerUrl !== null && asset !== "") {
@@ -549,7 +548,7 @@ const startupMarksFile = process.env.OPENAGENTS_DESKTOP_STARTUP_MARKS ?? null
 const startupMarksMode = startupMarksFile !== null
 // Real-wiring startup trace (2026-07-13 startup incident): the SAME milestone
 // driver as startup-marks, but WITHOUT fixture substitution — real userData,
-// real ~/.codex, real session recovery, then exit. Receipts carry timings
+// real ~/.codex and the same Keychain-free local-only startup, then exit. Receipts carry timings
 // only (never paths, tokens, or thread content). Ignored when the fixture
 // marks mode is active; the two must not mix wiring.
 const startupTraceFile = startupMarksMode ? null : (process.env.OPENAGENTS_DESKTOP_STARTUP_TRACE ?? null)
@@ -738,7 +737,27 @@ const providerAccounts = makeProviderAccountsService(
     : { packaged: app.isPackaged, diagnostic: event => providerAccountsDiagnostics.push(event) },
 )
 let desktopSessionVault: DesktopSessionVault | null = null
-let desktopSessionState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable" = "unavailable"
+let desktopSessionState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable" = "signed_out"
+const openDesktopSessionVaultForAccountAction = async (): Promise<DesktopSessionVault | null> => {
+  if (isolatedAppProofMode) return null
+  if (desktopSessionVault !== null) return desktopSessionVault
+  try {
+    // Resolving Electron safeStorage can ask macOS to unlock the login
+    // Keychain. This helper is intentionally reachable only from explicit
+    // account commands; ordinary startup must never call it.
+    const nativeSafeStorage = (await import("electron")).safeStorage
+    desktopSessionVault = openDesktopSessionVault({
+      filePath: path.join(app.getPath("userData"), "session", "native-session.enc"),
+      safeStorage: nativeSafeStorage,
+    })
+    return desktopSessionVault
+  } catch {
+    desktopSessionVault = null
+    desktopSessionState = "unavailable"
+    console.error("[openagents-desktop] OS-encrypted session custody unavailable")
+    return null
+  }
+}
 const desktopOperationSessionRef = `session.desktop.${randomUUID()}`
 let desktopCorrelationSequence = 0
 const desktopCorrelationJournal = makeDesktopCorrelationJournal()
@@ -793,10 +812,11 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
   syncNetworkPhase: hostLifecycle.sync()?.status().syncPhase ?? "closed",
 }), {
   signIn: async signal => {
-    if (desktopSessionVault === null) return { state: "unavailable" }
+    const vault = await openDesktopSessionVaultForAccountAction()
+    if (vault === null) return { state: "unavailable" }
     const previous = desktopSessionState
     const result = await signInDesktopSession({
-      vault: desktopSessionVault,
+      vault,
       openExternal: url => shell.openExternal(url),
       signal,
     })
@@ -809,13 +829,14 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     return result
   },
   signOut: async signal => {
-    if (desktopSessionVault === null) return { state: "unavailable" }
+    const vault = await openDesktopSessionVaultForAccountAction()
+    if (vault === null) return { state: "unavailable" }
     // Close and purge the account-linked Sync session before the renderer can
     // race another command against remote token revocation.
     await runtimeLiveSubscriptions.reset()
     await hostLifecycle.voice()?.command({ protocolVersion: 1, id: "voice.revoke" })
     try { hostLifecycle.sync()?.unlinkAccount() } catch { /* remote revocation still runs */ }
-    const result = await signOutDesktopSession({ vault: desktopSessionVault, signal })
+    const result = await signOutDesktopSession({ vault, signal })
     desktopSessionState = result.state
     return result
   },
@@ -4127,6 +4148,10 @@ const createWindow = (): BrowserWindow => {
       trafficLightPosition: { x: 12, y: 12 },
     } : {}),
     webPreferences: {
+      // No `persist:` prefix: the renderer uses an in-memory Chromium session.
+      // A persistent Chromium session initializes cookie encryption and can
+      // trigger macOS "OpenAgents Safe Storage" during ordinary launch.
+      partition: "openagents-renderer-memory",
       contextIsolation: true,
       nodeIntegration: false,
       nodeIntegrationInSubFrames: false,
@@ -4140,7 +4165,9 @@ const createWindow = (): BrowserWindow => {
     },
   })
   primaryDesktopWindow = window
-  if (isolatedAppProofMode) hardenSession(window.webContents.session)
+  installDesktopRendererProtocol(window.webContents.session)
+  hardenSession(window.webContents.session)
+  recordMainMark("sessionHardened")
   const unsubscribeRuntime = runtimeGateway.subscribe(event => {
     if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
   })
@@ -6706,7 +6733,6 @@ void app.whenReady().then(async () => {
     app.exit(result.ok ? 0 : 2)
     return
   }
-  installDesktopRendererProtocol()
   // macOS does not use BrowserWindow's icon for the active Dock tile in a
   // development Electron process. Set both native surfaces to the same mobile
   // PNG so the running desktop application has one product identity.
@@ -6719,19 +6745,6 @@ void app.whenReady().then(async () => {
     path.join(app.getPath("userData"), "commands", "bindings.json"),
   )
   installDesktopCommandMenu(desktopCommandBindings.snapshot())
-  if (isolatedAppProofMode) {
-    // Resolving Electron's default session initializes Chromium's persistent
-    // cookie encryption and can invoke macOS Keychain before BrowserWindow.
-    // The temp-only proof has no account/network session to harden; avoid
-    // constructing it entirely instead of weakening the production session.
-    console.warn("[openagents-desktop] isolated app proof: persistent browser session disabled")
-  } else {
-    // `session` is another lazy Electron export on macOS. Resolving it in the
-    // top-level import is enough to initialize persistent cookie encryption,
-    // so production requests the default session only inside this branch.
-    hardenSession((await import("electron")).session.defaultSession)
-  }
-  recordMainMark("sessionHardened")
   // Local Sync persistence: synchronous SQLite open + migrations. NEVER on
   // the pre-createWindow path (2026-07-13 startup incident).
   const openLocalSyncPersistence = (): void => {
@@ -6767,61 +6780,9 @@ void app.whenReady().then(async () => {
     }
     recordMainMark("syncHostOpened")
   }
-  // OS-keychain custody split (2026-07-13 startup incident): the synchronous
-  // vault recover stays local-only; the network verification is a SEPARATE
-  // step that must never be awaited before the window exists.
-  const recoverSessionVaultLocal = async (): Promise<void> => {
-    if (isolatedAppProofMode) {
-      desktopSessionVault = null
-      desktopSessionState = "signed_out"
-      console.warn("[openagents-desktop] isolated app proof: native session vault disabled (temporary user data only)")
-      return
-    }
-    try {
-      // Electron's `safeStorage` export can initialize macOS Keychain custody as
-      // soon as the property is resolved. Keep the getter entirely outside the
-      // isolated proof branch so a temp-only local-coding proof never opens OS
-      // authorization UI; ordinary launches still require the native backend.
-      const nativeSafeStorage = (await import("electron")).safeStorage
-      desktopSessionVault = openDesktopSessionVault({
-        filePath: path.join(app.getPath("userData"), "session", "native-session.enc"),
-        safeStorage: nativeSafeStorage,
-      })
-      desktopSessionState = desktopSessionVault.recover().state
-      recordMainMark("sessionVaultRecovered")
-    } catch {
-      desktopSessionVault = null
-      desktopSessionState = "unavailable"
-      console.error("[openagents-desktop] OS-encrypted session custody unavailable")
-    }
-  }
-  // Network session verification (https auth-session check + token rotation).
-  // Runs AFTER the window is visible; while it is in flight the renderer sees
-  // the honest typed "unverified" phase and the converging chat facade
-  // re-admits operations once verified Sync connects (CUT-10).
-  const settleSessionRecovery = async (): Promise<void> => {
-    if (desktopSessionVault === null || desktopSessionState !== "credential_present_unverified") return
-    try {
-      const recovery = await recoverVerifiedDesktopSession({
-        vault: desktopSessionVault,
-      })
-      desktopSessionState = recovery.state === "verified"
-        ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
-        : recovery.state
-      if(recovery.state==="denied")hostLifecycle.sync()?.unlinkAccount()
-      if (desktopSessionState === "session_ready") {
-        Effect.runFork(desktopCodexUsageReporter.flush())
-      }
-    } catch {
-      desktopSessionState = "unavailable"
-    }
-    recordMainMark("sessionRecoverySettled")
-  }
   if (localTurnRestartProbe !== null) {
-    // Windowless probe mode keeps the original fully-settled ordering.
+    // Windowless local-only probes never initialize credential custody.
     openLocalSyncPersistence()
-    await recoverSessionVaultLocal()
-    await settleSessionRecovery()
     runtimeGateway.start()
     try {
       await localTurnRecovery
@@ -6881,10 +6842,8 @@ void app.whenReady().then(async () => {
   // below) dispatch a fixture continuation -- or fail closed on the
   // deliberately mismatched workspace variant.
   if (fullAutoRestartProbe !== null) {
-    // Windowless probe mode keeps the original fully-settled ordering.
+    // Windowless local-only probes never initialize credential custody.
     openLocalSyncPersistence()
-    await recoverSessionVaultLocal()
-    await settleSessionRecovery()
     runtimeGateway.start()
     try {
       await localTurnRecovery
@@ -7030,8 +6989,6 @@ void app.whenReady().then(async () => {
   // ends the probe by writing full-auto/control-probe-stop under userData.
   if (fullAutoControlProbe) {
     openLocalSyncPersistence()
-    await recoverSessionVaultLocal()
-    await settleSessionRecovery()
     runtimeGateway.start()
     try {
       await localTurnRecovery
@@ -7086,6 +7043,7 @@ void app.whenReady().then(async () => {
         // khalaTheme color.background, same as createWindow.
         backgroundColor: "#05070d",
         webPreferences: {
+          partition: "openagents-visual-baseline-memory",
           offscreen: true,
           contextIsolation: true,
           nodeIntegration: false,
@@ -7097,6 +7055,7 @@ void app.whenReady().then(async () => {
           backgroundThrottling: false,
         },
       })
+      installDesktopRendererProtocol(window.webContents.session)
       const captured: Array<VisualBaselineCaptureReceipt> = []
       for (const stateName of VISUAL_BASELINE_STATES) {
         await window.loadURL(`${desktopRendererEntryUrl}?visualBaseline=${stateName}`)
@@ -7175,7 +7134,6 @@ void app.whenReady().then(async () => {
   })
   recordMainMark("windowCreated")
   openLocalSyncPersistence()
-  await recoverSessionVaultLocal()
   runtimeGateway.start()
   const rendererReadyAt = await rendererReady
   await ensureAcpProviders()
@@ -7199,7 +7157,6 @@ void app.whenReady().then(async () => {
     app.exit(0)
     return
   }
-  void settleSessionRecovery()
   // Boot probe round (EP250 preflight): async and non-blocking — results
   // stream into the shared health ordering, the ledger's typed reconnect
   // flags (fleet readiness), and the composer chip's availability call.

@@ -1,7 +1,7 @@
 import type { IntentReporter } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 import { Window } from "happy-dom"
-import { createRef } from "react"
+import { act, createRef } from "react"
 import { createRoot } from "react-dom/client"
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
 
@@ -53,10 +53,11 @@ describe("React narrow repository review", () => {
     }
     const report: IntentReporter = () => Effect.void
     const root = createRoot(container)
-    root.render(<ReviewSurface state={state} report={report} open onOpenChange={() => {}} triggerRef={createRef()} />)
-    await new Promise(resolve => setTimeout(resolve, 30))
+    await act(async () => {
+      root.render(<ReviewSurface state={state} report={report} open onOpenChange={() => {}} triggerRef={createRef()} />)
+    })
     expect(window.document.querySelector("[data-slot='sheet-content']")).not.toBeNull()
     expect(window.document.body.textContent).toContain("Potentially sensitive diff content was withheld.")
-    root.unmount()
+    await act(async () => { root.unmount() })
   })
 })

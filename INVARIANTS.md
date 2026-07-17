@@ -2031,11 +2031,10 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   unavailable OS encryption and the Linux `basic_text` backend; the directory
   and file are owner-private, replacement is atomic, and preload/renderer/
   Runtime Gateway schemas never carry owner or credential fields.
-- Desktop recovered-session validation sends the refresh token only to the
-  exact native-session GET, persists a valid OpenAuth rotation before
-  projecting `session_ready`, and purges denial or server-derived owner
-  mismatch. Transient network/server/schema failure retains encrypted custody
-  while projecting unavailable; verified session state is not live Sync.
+- Ordinary Desktop startup is Keychain-free: BrowserWindow uses a
+  non-persistent in-memory Chromium partition, Electron `safeStorage` is not
+  resolved, and encrypted native-session custody is neither read nor decrypted.
+  Only an explicit account command may initialize OS credential custody.
 - Desktop interactive OpenAuth uses the distinct public client
   `openagents-desktop` and only an RFC 8252 loopback redirect shaped exactly as
   `http://127.0.0.1:{ephemeral-port}/auth/callback`. The issuer requires GitHub

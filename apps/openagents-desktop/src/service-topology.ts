@@ -237,14 +237,13 @@ export const desktopServiceTopology = [
   },
   {
     id: "desktop-session-custody",
-    label: "OpenAgents account session vault, PKCE, recovery, and sign-out host",
+    label: "Explicit OpenAgents account session vault, PKCE, and sign-out host",
     owner: "electron-main",
     scope: "process",
     installedAt: "process",
     modules: [
       "apps/openagents-desktop/src/desktop-session-vault.ts",
       "apps/openagents-desktop/src/desktop-session-pkce.ts",
-      "apps/openagents-desktop/src/desktop-session-recovery.ts",
     ],
     sourceEvidence: [
       {
@@ -261,11 +260,6 @@ export const desktopServiceTopology = [
         module: "apps/openagents-desktop/src/desktop-session-pkce.ts",
         compositionModule: "apps/openagents-desktop/src/desktop-session-pkce.ts",
         constructions: ["openDesktopAuthLoopbackListener"],
-      },
-      {
-        module: "apps/openagents-desktop/src/desktop-session-recovery.ts",
-        compositionModule: "apps/openagents-desktop/src/main.ts",
-        constructions: ["recoverVerifiedDesktopSession"],
       },
     ],
     dependsOn: [],

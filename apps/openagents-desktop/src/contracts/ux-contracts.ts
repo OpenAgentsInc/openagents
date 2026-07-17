@@ -1968,7 +1968,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       {
         contractId:
           "openagents_desktop.session.recovered_validation_rotation.v1",
-        state: "enforced",
+        state: "retired",
         surface: "openagents-desktop",
         productArea: "native OpenAgents session recovery",
         enforcementTier: "test-sweep",
@@ -1979,9 +1979,9 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "Desktop validates recovered native credentials through the existing OpenAgents native-session boundary, persists bounded OpenAuth rotation before readiness, purges denial or owner mismatch, and never equates verified session readiness with live Sync.",
+          "Retired from ordinary startup on 2026-07-17: opening Desktop must not initialize OS credential custody or validate recovered native credentials. Secure custody remains reachable only after an explicit account action.",
         authorityBoundary:
-          "Server verification establishes only a native OpenAgents session. It does not make Khala Sync live, authorize cached rows or commands, create a device_session, or expose owner or replacement token fields through the Runtime Gateway.",
+          "The retained recovery module and its unit oracle do not authorize invocation during startup. Ordinary launch remains local-only and Keychain-free.",
         evidenceRefs: [
           "apps/openagents-desktop/src/desktop-session-recovery.ts",
           "docs/sol/issues/desktop-session-recovery.md",
@@ -4117,7 +4117,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Opening the openagents app, via our new oa command or in dev, shows a blank/brown screen for ~5 seconds before opening the UI. This is unacceptable. I thought we had a UX contract somewhere about the need to show initial codex chats in <50 ms. That should be timed from startup. Go look up our ways of testing load times. Startup and everything else. Write full analysis of current situation in openagents/docs/fable/ new doc. This is an incident. Very bad. Need good bootup process. No brown screen. If any loading, show beautiful starcraft version of it, or something. Time to seeing stuff and then interactable elements on bootup is extremely important. Analyze, fix, update analysis, push.",
         authorityBoundary:
-          "The BrowserWindow is created before any local database open, OS-keychain custody, or session network verification on the production whenReady path, and the post-window network settle is fire-and-forget. The renderer paints a static branded boot frame (product-theme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, and publishes the Codex-only top-level metadata catalog without requesting any selected-thread detail. Closed overlays perform zero catalog projection work and recent-only projections inspect a fixed-size prefix, never the full loss-accounted catalog. Hydration streams behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
+          "Ordinary launch uses a non-persistent in-memory Chromium partition and never resolves Electron safeStorage, reads/decrypts native credential custody, or performs session network verification; only an explicit account command may initialize secure custody. The BrowserWindow is created before local database work. The renderer paints a static branded boot frame (product-theme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, and publishes the Codex-only top-level metadata catalog without requesting any selected-thread detail. Closed overlays perform zero catalog projection work and recent-only projections inspect a fixed-size prefix, never the full loss-accounted catalog. Hydration streams behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).",
         evidenceRefs: [
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
@@ -4135,7 +4135,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
             description:
-              "Proves the production whenReady path creates the window before SQLite/keychain/network work, never awaits the network session settle after the window, and keeps the network call confined to the settle helper; falsifier fixtures prove the pre-incident ordering is rejected.",
+              "Proves ordinary launch uses an in-memory renderer session and contains no persistent-session, safeStorage, credential-recovery, or session-verification access; secure custody is confined to explicit account commands and falsifier fixtures reject delayed as well as pre-window recovery.",
           },
           {
             id: "startup.shell_mounts_before_hydration",

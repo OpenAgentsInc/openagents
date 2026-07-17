@@ -18,10 +18,10 @@
  *
  * Enforced structure (each validator is exercised against a known-bad
  * fixture — assurance design law 4: oracles must demonstrate sensitivity):
- *  1. main.ts whenReady: the window is created FIRST on the production path —
- *     no SQLite open, no keychain custody, and no network session
- *     verification before `createWindow()`; the network settle after the
- *     window is fire-and-forget (`void`), never awaited.
+ *  1. main.ts whenReady: ordinary launch never initializes persistent
+ *     Chromium storage, Electron safeStorage, Keychain custody, or recovered
+ *     session verification. The renderer uses an in-memory partition;
+ *     secure custody is reachable only from an explicit account command.
  *  2. boot.ts: the shell mounts BEFORE the coding-history hydration
  *     (`hydrateAfterMount`), catalog metadata paints before selected-thread
  *     detail starts, and the static boot frame is removed after mount.
@@ -64,44 +64,50 @@ const windowFirstViolations = (source: string): ReadonlyArray<string> => {
   if (idxWindow < 0) return ["createWindow() call not found in whenReady"]
   const preWindow = slice.slice(0, idxWindow)
   const after = slice.slice(idxWindow)
-  // The windowless local-turn-restart probe branch is the ONLY pre-window
-  // region allowed to run persistence/vault/settle (it app.exit()s).
+  // Windowless local-only probes may open persistence but never credential
+  // custody. Ordinary startup is Keychain-free, not merely window-first.
   const idxProbe = preWindow.indexOf("if (localTurnRestartProbe !== null) {")
   const preProbe = idxProbe >= 0 ? preWindow.slice(0, idxProbe) : preWindow
   if (preProbe.includes("openLocalSyncPersistence()")) {
     violations.push("SQLite sync persistence opens before createWindow on the production path")
   }
-  if (preProbe.includes("recoverSessionVaultLocal()")) {
-    violations.push("keychain vault recovery runs before createWindow on the production path")
-  }
-  if (preProbe.includes("settleSessionRecovery()")) {
-    violations.push("session network verification runs before createWindow on the production path")
-  }
   if (!after.includes("openLocalSyncPersistence()")) {
     violations.push("post-window persistence open missing (helper renamed or reverted to inline pre-window work)")
   }
-  if (after.includes("await settleSessionRecovery()")) {
-    violations.push("session network verification is awaited after createWindow (must be fire-and-forget)")
-  }
-  if (!after.includes("void settleSessionRecovery()")) {
-    violations.push("background session verification missing after createWindow")
-  }
-  // The raw network call may appear ONLY inside the settle helper definition
-  // (which is declared before the probe branch, executed after the window).
-  const idxSettleDef = slice.indexOf("const settleSessionRecovery")
-  if (idxSettleDef < 0) violations.push("settleSessionRecovery helper missing")
-  for (const match of slice.matchAll(/recoverVerifiedDesktopSession\(/g)) {
-    const at = match.index ?? -1
-    if (idxSettleDef < 0 || at < idxSettleDef || (idxProbe >= 0 && at >= idxProbe)) {
-      violations.push("recoverVerifiedDesktopSession is called outside the settle helper")
+  for (const forbidden of [
+    "recoverSessionVaultLocal",
+    "settleSessionRecovery",
+    "recoverVerifiedDesktopSession",
+    ".safeStorage",
+    ".defaultSession",
+  ]) {
+    if (slice.includes(forbidden)) {
+      violations.push(`ordinary startup contains forbidden credential/session access: ${forbidden}`)
     }
   }
   return violations
 }
 
-describe("startup contract: window before persistence/keychain/network (main.ts)", () => {
-  test("the production whenReady path creates the window first", () => {
+describe("startup contract: ordinary launch is Keychain-free (main.ts)", () => {
+  test("the production whenReady path never initializes credential custody", () => {
     expect(windowFirstViolations(mainSource)).toEqual([])
+    expect(mainSource).not.toContain(".defaultSession")
+    expect(mainSource).not.toContain("recoverVerifiedDesktopSession")
+    expect(mainSource.match(/\.safeStorage/g)).toHaveLength(1)
+
+    const helperStart = mainSource.indexOf("const openDesktopSessionVaultForAccountAction")
+    const helperEnd = mainSource.indexOf("const desktopOperationSessionRef", helperStart)
+    const helper = mainSource.slice(helperStart, helperEnd)
+    expect(helperStart).toBeGreaterThan(-1)
+    expect(helper).toContain('(await import("electron")).safeStorage')
+    expect(mainSource.match(/openDesktopSessionVaultForAccountAction\(\)/g)).toHaveLength(2)
+
+    const createWindowStart = mainSource.indexOf("const createWindow")
+    const createWindowEnd = mainSource.indexOf("const smoke", createWindowStart)
+    const createWindow = mainSource.slice(createWindowStart, createWindowEnd)
+    expect(createWindow).toContain('partition: "openagents-renderer-memory"')
+    expect(createWindow).not.toContain('partition: "persist:')
+    expect(createWindow).toContain("hardenSession(window.webContents.session)")
   })
 
   test("falsifier: the pre-incident ordering (persistence and awaited network before the window) is rejected", () => {
@@ -118,11 +124,12 @@ describe("startup contract: window before persistence/keychain/network (main.ts)
     ].join("\n")
     const violations = windowFirstViolations(bad)
     expect(violations).toContain("SQLite sync persistence opens before createWindow on the production path")
-    expect(violations).toContain("keychain vault recovery runs before createWindow on the production path")
-    expect(violations).toContain("session network verification runs before createWindow on the production path")
+    expect(violations).toContain("ordinary startup contains forbidden credential/session access: recoverSessionVaultLocal")
+    expect(violations).toContain("ordinary startup contains forbidden credential/session access: settleSessionRecovery")
+    expect(violations).toContain("ordinary startup contains forbidden credential/session access: recoverVerifiedDesktopSession")
   })
 
-  test("falsifier: awaiting the network settle after the window is rejected", () => {
+  test("falsifier: moving recovery after the window is still rejected", () => {
     const bad = [
       "void app.whenReady().then(async () => {",
       "  const settleSessionRecovery = async () => { await recoverVerifiedDesktopSession({ vault }) }",
@@ -133,9 +140,7 @@ describe("startup contract: window before persistence/keychain/network (main.ts)
       "})",
       'app.on("window-all-closed", () => {})',
     ].join("\n")
-    expect(windowFirstViolations(bad)).toContain(
-      "session network verification is awaited after createWindow (must be fire-and-forget)",
-    )
+    expect(windowFirstViolations(bad)).toContain("ordinary startup contains forbidden credential/session access: settleSessionRecovery")
   })
 
   test("the pre-boot BrowserWindow background stays the product-theme token background", () => {

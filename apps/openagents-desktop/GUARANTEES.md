@@ -269,28 +269,22 @@ Electron `safeStorage` beneath the private Desktop `userData` root.
   fail-closed.
 - Runtime Gateway receives only signed-out, credential-present-unverified, or
   unavailable capability copy; preload and renderer receive no credential.
+- Ordinary launch uses an in-memory Chromium partition and neither resolves
+  Electron `safeStorage` nor reads/decrypts this record. Only an explicit
+  account command may initialize OS credential custody.
 
 This custody guarantee does not claim Desktop PKCE sign-in. A recovered record
 remains unverified until the validation boundary below accepts it.
 
 Contract: `openagents_desktop.session.os_encrypted_custody.v1`.
 
-### Recovered native-session validation and rotation
+### Native-session validation remains explicit
 
-On startup, Electron main validates a recovered encrypted credential through
-the existing native-session GET using the bearer and bounded refresh headers.
-
-- A valid server-derived owner produces bounded `session_ready` capability
-  state only.
-- OpenAuth replacement credentials are rewritten to encrypted custody before
-  readiness is projected.
-- 401/403 and server-owner mismatch purge the record.
-- Network, server, and response-schema failures retain custody but project
-  unavailable so no private shared work can render.
-- Owner and token values never enter Runtime Gateway, preload, or renderer.
-
-This is session verification, not live Khala Sync or interactive Desktop
-sign-in.
+Ordinary startup does not recover or validate an encrypted native credential.
+Desktop starts local-only so opening the app cannot trigger an OS Keychain
+unlock prompt. Native-session custody and verification remain available only
+behind a deliberate account command; owner and token values never enter
+Runtime Gateway, preload, or renderer.
 
 Contract:
 `openagents_desktop.session.recovered_validation_rotation.v1`.
@@ -498,10 +492,9 @@ The application never shows a blank (or off-palette) frame at startup
 (2026-07-13 incident; owner statement recorded verbatim in
 `src/contracts/ux-contracts.ts`).
 
-- Electron main creates the window BEFORE any local database open,
-  OS-keychain custody, or session network verification on the production
-  `whenReady` path. The network session settle after the window is
-  fire-and-forget — never awaited.
+- Electron main uses a non-persistent in-memory Chromium partition and ordinary
+  launch performs no OS-keychain custody or session network verification at
+  all. Local database work remains after window creation.
 - The renderer paints a static branded boot frame (khala background, psi-bar
   shimmer; every color an exact `@effect-native/tokens` khalaTheme value)
   with the first HTML parse, before the bundle even evaluates.

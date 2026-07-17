@@ -267,6 +267,11 @@ encrypted blob, purges invalid records, and projects at most signed-out,
 credential-present-unverified, or unavailable through the Runtime Gateway.
 No owner ref, access token, or refresh token crosses preload.
 
+Ordinary launch is completely Keychain-free. The renderer uses a non-persistent
+in-memory Chromium session, main does not resolve Electron `safeStorage`, and
+main does not inspect, decrypt, or validate a stored native-session record at
+startup. Secure custody is initialized only after an explicit account command.
+
 ### Unattended macOS verification
 
 Never diagnose this custody with the macOS `security` CLI. A
@@ -289,12 +294,11 @@ not authenticated-Sync evidence. Authenticated checks instead launch the
 signed app with its existing normal profile and inspect only public-safe
 session/IPC state and visible UI; they never extract credential material.
 
-At startup, a recovered encrypted record is now validated through the existing
-native-session GET. Main rewrites valid OpenAuth rotation before projecting
-`session_ready`, purges 401/403 or server-derived owner mismatch, and retains
-custody but reports unavailable on transient or malformed-response failure.
-Verified session readiness remains distinct from an authoritative conversation
-projection.
+Stored native-session recovery is intentionally dormant during ordinary
+startup. The app starts local-only without asking macOS to unlock `OpenAgents
+Safe Storage`; an explicit account action is the only boundary allowed to
+initialize encrypted custody. Verified session readiness remains distinct from
+an authoritative conversation projection.
 
 Electron main now also composes the frozen Desktop loopback public-client
 policy end to end. It binds one temporary `127.0.0.1` listener, generates and

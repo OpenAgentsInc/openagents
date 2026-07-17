@@ -263,8 +263,9 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     }
     expect(main).toContain("safeStorage");
     expect(main).toContain('"session", "native-session.enc"');
-    expect(main).toContain("desktopSessionVault.recover().state");
-    expect(main).toContain("recoverVerifiedDesktopSession");
+    expect(main).toContain("openDesktopSessionVaultForAccountAction");
+    expect(main).not.toContain("desktopSessionVault.recover().state");
+    expect(main).not.toContain("recoverVerifiedDesktopSession");
     expect(main).toContain("signInDesktopSession");
     expect(main).toContain("signOutDesktopSession");
     expect(main).toContain("openExternal: url => shell.openExternal(url)");
