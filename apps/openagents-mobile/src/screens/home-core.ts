@@ -11,6 +11,7 @@ import {
   makeViewProgramFromState,
   resolveIntentRef,
   SegmentedControl,
+  SplitPane,
   Spacer,
   Stack,
   StaticPayload,
@@ -74,6 +75,16 @@ import {
   type MobileWorkspaceRow,
   type MobileWorkspaceStatusFilter,
 } from "./mobile-workspace-navigation"
+import {
+  clampMobileWorkspaceSidebar,
+  mobileWorkspaceActiveDescendant,
+  mobileWorkspaceLayoutMode,
+  MOBILE_WORKSPACE_SIDEBAR_DEFAULT,
+  MOBILE_WORKSPACE_SIDEBAR_MAX,
+  MOBILE_WORKSPACE_SIDEBAR_MIN,
+  type MobileWorkspaceFocusTarget,
+  type MobileWorkspaceLayoutMode,
+} from "./mobile-adaptive-workspace"
 
 import {
   AgentRowSelected,
@@ -142,6 +153,10 @@ export const surfaceModeOptions: ReadonlyArray<SurfaceModeOption> = [
 
 export interface HomeState {
   readonly drawerOpen: boolean
+  readonly workspaceLayoutMode: MobileWorkspaceLayoutMode
+  readonly workspaceSidebarWidth: number
+  readonly workspaceSidebarCollapsed: boolean
+  readonly workspaceFocusTarget: MobileWorkspaceFocusTarget
   readonly surfaceMode: SurfaceMode
   readonly modeMenuOpen: boolean
   readonly syncPhase: MobileSyncPhase
@@ -291,6 +306,10 @@ export const mobileAccountControl = (phase: MobileSyncPhase): MobileAccountContr
 
 export const initialHomeState: HomeState = {
   drawerOpen: false,
+  workspaceLayoutMode: "compact",
+  workspaceSidebarWidth: MOBILE_WORKSPACE_SIDEBAR_DEFAULT,
+  workspaceSidebarCollapsed: false,
+  workspaceFocusTarget: "transcript",
   surfaceMode: "khala",
   modeMenuOpen: false,
   syncPhase: "unconfigured",
@@ -337,6 +356,14 @@ export const BUNDLE_TAG = "2026-07-12.cut-09-runtime-selector-atomic"
 const EmptyPayload = Schema.Struct({})
 
 export const DrawerToggled = defineIntent("DrawerToggled", EmptyPayload)
+export const WorkspaceSidebarResized = defineIntent(
+  "WorkspaceSidebarResized",
+  Schema.Struct({ paneId: Schema.String, size: Schema.Number }),
+)
+export const WorkspaceViewportWidthChanged = defineIntent(
+  "WorkspaceViewportWidthChanged",
+  Schema.Number,
+)
 export const NewChatPressed = defineIntent("NewChatPressed", EmptyPayload)
 export const SettingsPressed = defineIntent("SettingsPressed", EmptyPayload)
 export const OpenAgentsSignInPressed = defineIntent("OpenAgentsSignInPressed", EmptyPayload)
@@ -558,6 +585,8 @@ export const TranscriptAttachmentViewerDismissedIntent = defineIntent(
 
 export const homeIntentDefinitions = [
   DrawerToggled,
+  WorkspaceSidebarResized,
+  WorkspaceViewportWidthChanged,
   NewChatPressed,
   SettingsPressed,
   OpenAgentsSignInPressed,
@@ -1070,6 +1099,12 @@ export const renderHomeView = (state: HomeState): View =>
       a11y: {
         role: "region",
         label: `OpenAgents mobile home, ${state.accessibility.textScale} text scale, reduced motion ${state.accessibility.reduceMotion ? "on" : "off"}`,
+        activeDescendant: mobileWorkspaceActiveDescendant(
+          state.workspaceLayoutMode,
+          state.drawerOpen,
+          state.workspaceSidebarCollapsed,
+          state.workspaceFocusTarget,
+        ),
       },
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
@@ -1092,7 +1127,9 @@ export const renderHomeView = (state: HomeState): View =>
           IconButton({
             key: "home-navigation",
             icon: "Menu",
-            accessibilityLabel: state.drawerOpen ? "Close threads list" : "Go to threads list",
+            accessibilityLabel: state.workspaceLayoutMode === "regular"
+              ? state.workspaceSidebarCollapsed ? "Show workspace navigation" : "Hide workspace navigation"
+              : state.drawerOpen ? "Close workspace navigation" : "Go to workspace navigation",
             onPress: IntentRef("DrawerToggled", StaticPayload({})),
             surface: "glass",
             style: mobileInteractiveStyle(state.accessibility),
@@ -1152,7 +1189,25 @@ export const renderHomeView = (state: HomeState): View =>
           ),
         ],
       ),
-      state.drawerOpen ? renderDrawerView(state) : renderContentView(state),
+      state.workspaceLayoutMode === "regular"
+        ? SplitPane({
+            key: "workspace-regular-split",
+            orientation: "row",
+            panes: [{
+              id: "navigation",
+              size: state.workspaceSidebarWidth,
+              min: MOBILE_WORKSPACE_SIDEBAR_MIN,
+              max: MOBILE_WORKSPACE_SIDEBAR_MAX,
+              collapsed: state.workspaceSidebarCollapsed,
+              content: renderDrawerView(state),
+            }, {
+              id: "detail",
+              content: renderContentView(state),
+            }],
+            onResize: IntentRef("WorkspaceSidebarResized", ComponentValueBinding()),
+            style: { width: "full", height: "full", backgroundColor: "background" },
+          })
+        : state.drawerOpen ? renderDrawerView(state) : renderContentView(state),
     ],
   )
 
@@ -1550,6 +1605,7 @@ export const renderDrawerView = (state: HomeState): View =>
 
 export interface HomeProgramOptions {
   readonly khalaTurn?: KhalaTurnClient
+  readonly workspaceWidth?: number
   readonly sessionActions?: Readonly<{
     signIn: () => Promise<void>
     signOut: () => Promise<void>
@@ -1877,6 +1933,7 @@ const withConfirmedThread = (
   return {
     ...state,
     drawerOpen: false,
+    workspaceFocusTarget: "transcript",
     surfaceMode: "khala",
     activeThreadRef: thread.threadRef,
     conversationThreads: [
@@ -2088,6 +2145,7 @@ const makeSyncedConversationHandlers = (
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
+      workspaceFocusTarget: "transcript" as const,
       surfaceMode: "khala" as const,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
@@ -2130,6 +2188,7 @@ const makeSyncedConversationHandlers = (
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
+      workspaceFocusTarget: "transcript" as const,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -2653,7 +2712,39 @@ export const makeHomeHandlers = (
       current.khala.runtimeControlSubmittingAction !== null,
   })
   return {
-    DrawerToggled: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: !current.drawerOpen })),
+    DrawerToggled: () => SubscriptionRef.update(state, current => current.workspaceLayoutMode === "regular"
+      ? {
+          ...current,
+          workspaceSidebarCollapsed: !current.workspaceSidebarCollapsed,
+          workspaceFocusTarget: current.workspaceSidebarCollapsed ? "navigation" as const : "transcript" as const,
+        }
+      : {
+          ...current,
+          drawerOpen: !current.drawerOpen,
+          workspaceFocusTarget: current.drawerOpen ? "transcript" as const : "navigation" as const,
+        }),
+    WorkspaceSidebarResized: ({ paneId, size }: { readonly paneId: string; readonly size: number }) =>
+      SubscriptionRef.update(state, current =>
+        current.workspaceLayoutMode !== "regular" || paneId !== "navigation"
+          ? current
+          : {
+              ...current,
+              workspaceSidebarWidth: clampMobileWorkspaceSidebar(size),
+              workspaceSidebarCollapsed: false,
+              workspaceFocusTarget: "navigation" as const,
+            }),
+    WorkspaceViewportWidthChanged: (width: number) =>
+      SubscriptionRef.update(state, current => {
+        const nextMode = mobileWorkspaceLayoutMode(width)
+        if (nextMode === current.workspaceLayoutMode) return current
+        return {
+          ...current,
+          workspaceLayoutMode: nextMode,
+          drawerOpen: false,
+          workspaceSidebarCollapsed: false,
+          workspaceFocusTarget: "transcript" as const,
+        }
+      }),
     WorkspaceSearchChanged: (search: string) => SubscriptionRef.update(state, current => ({
       ...current,
       workspaceSearch: search.slice(0, MOBILE_WORKSPACE_MAX_SEARCH),
@@ -2709,6 +2800,7 @@ export const makeHomeHandlers = (
       (() => SubscriptionRef.update(state, (current) => ({
         ...current,
         drawerOpen: false,
+        workspaceFocusTarget: "transcript" as const,
         surfaceMode: "khala" as const,
         codingComposer: null,
         codingComposerTargetPickerOpen: false,
@@ -2857,6 +2949,7 @@ export const makeHomeHandlers = (
     SettingsPressed: () => SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
+      workspaceFocusTarget: "transcript" as const,
       surfaceMode: surfaceModeOptions[0]?.id ?? current.surfaceMode,
     })),
     OpenAgentsSignInPressed: () => options.sessionActions === undefined
@@ -2868,7 +2961,12 @@ export const makeHomeHandlers = (
           yield* Effect.promise(selectedThreadLease.clear)
           yield* Effect.promise(options.sessionActions!.signOut)
         }),
-    SurfaceModeSelected: (payload) => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: payload.mode as SurfaceMode })),
+    SurfaceModeSelected: (payload) => SubscriptionRef.update(state, current => ({
+      ...current,
+      drawerOpen: false,
+      workspaceFocusTarget: "transcript" as const,
+      surfaceMode: payload.mode as SurfaceMode,
+    })),
     ControllerDestinationSelected: (destination) => SubscriptionRef.update(state, current => ({
       ...current,
       controllerDestination: destination,
@@ -2912,6 +3010,7 @@ export const makeHomeHandlers = (
             ...current,
             controllerDestination: "attention" as const,
             drawerOpen: false,
+            workspaceFocusTarget: "transcript" as const,
             codingComposer: null,
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
@@ -3176,6 +3275,7 @@ export const makeHomeHandlers = (
           yield* SubscriptionRef.update(state, current => ({
             ...current,
             drawerOpen: false,
+            workspaceFocusTarget: "transcript" as const,
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
             codingPathDiscovery: { state: "idle" as const },
@@ -3273,6 +3373,9 @@ export interface HomeProgramHandle {
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
   }
+  readonly workspace: {
+    readonly setWidth: (width: number) => void
+  }
   readonly controller: {
     readonly selectDestination: (destination: MobileControllerDestination) => void
     readonly inspectSession: (sessionRef: string) => void
@@ -3313,6 +3416,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
       const activeComposer = options.coding?.activeComposer() ?? null
       const programInitialState: HomeState = {
         ...baseInitialState,
+        workspaceLayoutMode: mobileWorkspaceLayoutMode(options.workspaceWidth ?? 390),
         codingDirectory: options.coding?.directory ?? null,
         portableSnapshot: options.coding?.portableSnapshot ?? null,
         attentionSnapshot: options.coding?.attentionSnapshot ?? null,
@@ -3475,6 +3579,12 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                   }
                 : { ...current, syncPhase: phase }))
           },
+        },
+        workspace: {
+          setWidth: width => fireRef(IntentRef(
+            "WorkspaceViewportWidthChanged",
+            StaticPayload(width),
+          )),
         },
         controller: {
           selectDestination: destination => fireText(

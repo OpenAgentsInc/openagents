@@ -95,7 +95,8 @@ export const HomeScreen = ({
   readonly pendingAttentionTarget?: MobileAttentionTarget | null
   readonly onAttentionTargetConsumed?: () => void
 }) => {
-  const { fontScale } = useWindowDimensions()
+  const { fontScale, width } = useWindowDimensions()
+  const initialWorkspaceWidth = useRef(width).current
   const [reduceMotion, setReduceMotion] = useState(false)
   const attentionDispatchRef = useRef<string | null>(null)
   const accessibility = useMemo(
@@ -108,9 +109,10 @@ export const HomeScreen = ({
       sessionActions,
       conversation,
       accessibility,
+      workspaceWidth: initialWorkspaceWidth,
       coding,
     }),
-    [sessionActions, conversation, coding],
+    [sessionActions, conversation, coding, initialWorkspaceWidth],
   )
   useEffect(() => {
     let active = true
@@ -129,6 +131,9 @@ export const HomeScreen = ({
   useEffect(() => {
     program.accessibility.setProfile(accessibility)
   }, [program, accessibility])
+  useEffect(() => {
+    program.workspace.setWidth(width)
+  }, [program, width])
   useEffect(() => () => {
     void program.close()
   }, [program])

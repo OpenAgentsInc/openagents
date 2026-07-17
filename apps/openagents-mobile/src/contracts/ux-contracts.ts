@@ -5,8 +5,42 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.11",
+    version: "2026-07-17.12",
     contracts: [
+      {
+        contractId: "openagents_mobile.adaptive_workspace.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile adaptive workspace shell",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "Phone width presents workspace navigation and detail as exclusive routes; tablet width keeps one bounded navigation pane and the sole transcript/detail authority mounted together through the typed Effect Native split-pane contract.",
+        authorityBoundary:
+          "Viewport width selects only layout, never conversation authority. Sidebar resize/collapse accepts typed bounded values; the detail transcript is mounted exactly once, route-aware navigation copy reflects the current layout, and each transition projects a serializable navigation-or-transcript focus-return identity.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-adaptive-workspace.ts",
+          "apps/openagents-mobile/src/screens/home-screen.tsx",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-c21",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/components/AdaptiveWorkspaceLayout.tsx",
+        ],
+        oracles: [{
+          id: "mobile_adaptive_workspace_matrix",
+          kind: "bun-test",
+          mode: "e2e",
+          ref: "apps/openagents-mobile/tests/mobile-adaptive-workspace.test.ts",
+          description:
+            "Proves compact/regular thresholds, bounded resizing, phone exclusivity, single tablet detail authority, route-aware chrome, and focus-return identity.",
+        }],
+        verification:
+          "Adaptive workspace, authoritative Home, accessibility, native SplitPane renderer, behavior-contract, mobile/package typechecks, and repository checks; native sheets/swipes/shortcuts and physical-device focus evidence remain T3M-C2.2/T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.workspace_navigation.v1",
         state: "enforced",

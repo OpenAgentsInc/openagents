@@ -999,3 +999,43 @@ surfaces remain `T3M-C2` through `T3M-F2`; this is not a full-parity claim.
   archived navigation are complete; adaptive/native workspace composition is
   `T3M-C2`, and full mobile parity remains open through `T3M-F2`
 - verified_at: `2026-07-17T22:34:08Z`
+
+## Active packet — T3M-C2.1
+
+Outcome: make the workspace shell explicitly compact/regular so phones retain
+a single-task drawer while tablets keep navigation and transcript visible in a
+stable split workspace with route-aware chrome and focus return.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/screens/mobile-adaptive-workspace.ts`
+- `apps/openagents-mobile/src/screens/home-screen.tsx`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/tests/mobile-adaptive-workspace.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/tests/mobile-accessibility.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger and Sol manifest files
+
+Required behavior: width classification is deterministic and bounded; compact
+mode keeps the current full-screen drawer/content exclusivity; regular mode
+uses the typed Effect Native split-pane contract with persistent navigation and
+detail, a bounded adjustable sidebar, no duplicate transcript authority, and a
+route-aware header/navigation affordance; transitions restore focus to the
+selected row or main transcript through typed serializable focus identity.
+
+Close rule: this closes only adaptive composition and route/focus semantics.
+Native sheet presentation, swipe actions, hardware keyboard commands, and
+their physical-device evidence remain `T3M-C2.2`; files/change/Git/terminal and
+release finish remain `T3M-D1` through `T3M-F2`.
+
+### CLAIM
+
+- packet: `T3M-C2.1`
+- base: `70bd452ded74a7d12aee5becee718bef7add2aaa`
+- claimed_at: `2026-07-17T22:35:01Z`
+- scope: compact/regular layout projection, phone exclusivity, tablet split
+  navigation/detail, typed resize/collapse state, route-aware header behavior,
+  focus restoration identity, tests, behavior contract, and Sol receipt
+- exclusions: sheets/swipes/hardware shortcuts (`T3M-C2.2`), workbench feature
+  routes (`T3M-D1`–`T3M-E2`), and physical distribution evidence (`T3M-F2`)
