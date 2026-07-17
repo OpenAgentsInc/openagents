@@ -293,6 +293,65 @@ and Day 1 completion remain later packets.
 - landed: `7a5066e2db` on `main`; enforced Desktop gate passed 1,934 tests with 39 skipped plus production build, compatibility smoke, React smoke, and repeated built Electron smoke
 - residual: lost-ACK replay/reconciliation, Sync/mobile/Pylon adapters, rendered evidence, and Day 1 completion remain unclaimed later packets
 
+## FF-D1-05 — Durable Queue/Steer acknowledgement replay
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next ordered Day 1 residual after FF-D1-04. It lets an
+exact Queue or Steer retry consult the restart-stable Desktop outcome ledger
+before transport dispatch, replaying retained acknowledgement without sending
+the control twice.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/runtime-control-outcome-contract.ts`
+- `apps/openagents-desktop/src/runtime-control-outcome-store.ts`
+- `apps/openagents-desktop/src/runtime-control-outcome-store.test.ts`
+- `apps/openagents-desktop/src/main.ts`
+- `apps/openagents-desktop/src/preload.cts`
+- `apps/openagents-desktop/src/renderer/boot.ts`
+- `apps/openagents-desktop/src/renderer/shell.ts`
+- `apps/openagents-desktop/src/renderer/shell.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-05-desktop-control-outcome-replay-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.runtime_control_outcome.v1`, the private Desktop
+outcome-ledger format, trusted preload IPC, and the Desktop `ChatHost`
+Queue/Steer retry seam. Shared runtime-control schemas remain unchanged.
+
+Required behavior:
+
+- an exact Queue/Steer retry looks up `{threadRef, intentRef, idempotencyKey}`
+  before calling any adapter transport;
+- a retained outcome is replayed into existing shell draft/queue semantics
+  without redispatch, including after ledger close/reopen;
+- retained pending acknowledgement remains pending and does not authorize a
+  duplicate dispatch or a successful UI transition;
+- a confirmed missing identity dispatches normally, while corrupt, invalid,
+  or conflicting reconciliation fails closed and retains the draft; and
+- lookup returns only schema-checked ref/status evidence, never raw message
+  bodies, provider credentials, or invented terminal observation.
+
+Proof: focused store, shell, and preload-boundary tests; Desktop typecheck;
+Fast Follow, behavior-contract, ProductSpec, and Sol document checks; and
+repository-required `pnpm run check`.
+
+Close rule: this packet closes only exact Queue/Steer acknowledgement replay.
+Stop retry identity, remote Sync/mobile/Pylon adapters, rendered evidence, and
+Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-05-20260717`
+- base: `28517a9777d6538b5832561eb1d2b666cba6cc08`
+- worktree/branch: `openagents-ff-d1-05` / detached `origin/main`
+- scope: exact durable Queue/Steer acknowledgement lookup and replay without redispatch
+- paths: the FF-D1-05 owned implementation paths above
+- hot files: this accepted-plan ledger, Sol manifest, Desktop outcome store/IPC, boot, and shell retry seams
+- hot contracts: outcome identity tuple, lookup result, and no-duplicate-dispatch behavior
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T12:47:16Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
