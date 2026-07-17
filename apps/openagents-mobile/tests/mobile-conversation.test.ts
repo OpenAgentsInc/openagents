@@ -766,7 +766,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     })
   })
 
-  test("steers a confirmed waiting run instead of starting a concurrent turn", async () => {
+  test("queues after a confirmed waiting run instead of starting a concurrent turn", async () => {
     const fixture = makeConversation()
     const intents: Array<KhalaRuntimeControlIntent> = []
     let settled = false
@@ -843,10 +843,27 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
       sleep: async () => undefined,
     })
 
-    expect(await host.sendMessage({
+    const queued = await host.sendMessage({
       threadRef: "thread.synced.1",
       body: "Use the existing migration",
-    })).toMatchObject({ ok: true, thread: { timeline: { run: { runRef: "turn.mobile.waiting" } } } })
+    })
+    expect(queued).toMatchObject({
+      ok: true,
+      thread: { timeline: { run: { runRef: "turn.mobile.waiting" } } },
+      queueReceipt: {
+        parentRunRef: "turn.mobile.waiting",
+        control: {
+          schema: "openagents.runtime_control_intent.v2",
+          kind: "turn.queue",
+          threadRef: "thread.synced.1",
+          targetGeneration: { state: "known", value: 14 },
+        },
+        outcome: {
+          admission: { status: "accepted" },
+          delivery: { status: "pending" },
+        },
+      },
+    })
     expect(startCalls).toBe(0)
     expect(intents).toMatchObject([{
       kind: "message.append",

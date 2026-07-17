@@ -5,8 +5,52 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.9",
+    version: "2026-07-17.10",
     contracts: [
+      {
+        contractId: "openagents_mobile.composer.provider_neutral_queue.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile coding composer",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "Text submitted during a confirmed running or waiting turn queues a durable follow-up after that turn. The draft clears only after confirmed admission, and a compact receipt keeps admission distinct from pending delivery and promotion.",
+        authorityBoundary:
+          "Mobile mints an exact provider-neutral turn.queue control bound to the confirmed thread, run generation, durable message ref, ordering key, origin, idempotency key, and deadline. The adapter lowers that semantic only through Pylon's proven queue-until-idle message.append path; it never relabels queue as steer or starts a concurrent turn. Stop remains bound to the parent run. Cross-restart delivery observation remains T3M-F1.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/conversation/mobile-runtime-queue.ts",
+          "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
+          "apps/openagents-mobile/src/screens/mobile-composer-run-control.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-b23b",
+          "apps/pylon/src/orchestration/runtime-intent-enforcement.ts",
+        ],
+        oracles: [
+          {
+            id: "mobile_provider_neutral_queue_control",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-runtime-queue.test.ts",
+            description:
+              "Proves exact queue identity, replay classification, and separate admission, delivery, and terminal axes.",
+          },
+          {
+            id: "mobile_queue_adapter_and_receipt",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves queue-only active-run lowering, no concurrent start, confirmed draft clearing, and honest pending-delivery receipt beside Stop.",
+          },
+        ],
+        verification:
+          "Queue schema, conversation adapter, Home receipt, run-control, accessibility, behavior-contract, mobile typecheck, and repository checks; cross-restart promotion and physical-device evidence remain T3M-F1/T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.composer.active_run_admission_and_stop.v1",
         state: "enforced",
@@ -20,9 +64,9 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
           statedOn: "2026-07-17",
         },
         statement:
-          "The composer names queued, running, waiting, confirmation, and stop-pending state beside the transcript. Running or waiting text steers the exact current run; an empty composer action becomes Stop and requires explicit confirmation.",
+          "The composer names queued, running, waiting, confirmation, and stop-pending state beside the transcript. Running or waiting text queues a durable follow-up after the exact current run; an empty composer action becomes Stop and requires explicit confirmation.",
         authorityBoundary:
-          "Stop request, confirmation, and dispatch are bound to the exact current thread/run and confirmed runtime-control availability; stale or foreign confirmation cannot dispatch. Waiting-for-input is treated as the same steerable run and cannot fall through to a concurrent start. This contract does not rename same-run steering as durable queue-next; provider-neutral turn.queue transport remains T3M-B2.3b.",
+          "Stop request, confirmation, and dispatch are bound to the exact current thread/run and confirmed runtime-control availability; stale or foreign confirmation cannot dispatch. Active text mints provider-neutral turn.queue identity and lowers through Pylon's queue-until-idle message.append adapter; it cannot fall through to a concurrent start or be mislabeled as mid-stream steering.",
         evidenceRefs: [
           "apps/openagents-mobile/src/screens/mobile-composer-run-control.ts",
           "apps/openagents-mobile/src/screens/khala-core.ts",
@@ -40,12 +84,12 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
               "Proves composer-local active status, exact Stop confirmation/refusal, pending preservation, and confirmed terminal replacement.",
           },
           {
-            id: "mobile_waiting_run_exact_steer",
+            id: "mobile_waiting_run_exact_queue",
             kind: "bun-test",
             mode: "e2e",
             ref: "apps/openagents-mobile/tests/mobile-conversation.test.ts",
             description:
-              "Proves waiting-for-input follow-up appends to the exact current run and never dispatches startTurn.",
+              "Proves waiting-for-input follow-up queues after the exact current run and never dispatches startTurn.",
           },
           {
             id: "effect_native_mobile_composer_stop_action",
@@ -57,7 +101,7 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
           },
         ],
         verification:
-          "Run-control, authoritative Home, mobile conversation, native renderer, accessibility, behavior-contract, package/mobile typechecks, and repository checks; durable queue-next remains T3M-B2.3b and physical-device evidence remains T3M-F2.",
+          "Run-control, authoritative Home, mobile conversation, native renderer, accessibility, behavior-contract, package/mobile typechecks, and repository checks; queue admission/delivery semantics are covered by the paired queue contract and physical-device evidence remains T3M-F2.",
       },
       {
         contractId: "openagents_mobile.composer.repository_path_context.v1",

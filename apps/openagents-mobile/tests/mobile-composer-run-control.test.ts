@@ -33,17 +33,17 @@ describe("T3M-B2.3a mobile active-run composer admission", () => {
     })
     expect(running).toMatchObject({
       badge: "Running",
-      placeholder: "Steer current turn",
-      submitLabel: "Steer current turn",
+      placeholder: "Queue a follow-up",
+      submitLabel: "Queue follow-up",
     })
-    expect(running.detail).toContain("exact running turn")
+    expect(running.detail).toContain("after this exact running turn")
 
     expect(projectMobileComposerRunAdmission({
       turn: { runRef: "run.waiting", status: "waiting_for_input" },
       controlAvailable: true,
       submittingAction: null,
       stopConfirmationRunRef: null,
-    }).detail).toContain("exact waiting turn")
+    }).detail).toContain("after this exact waiting turn")
 
     expect(projectMobileComposerRunAdmission({
       turn: { runRef: "run.active", status: "running" },

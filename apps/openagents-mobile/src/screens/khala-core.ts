@@ -15,6 +15,7 @@ import {
 } from "@effect-native/core"
 import type { ChatMessageImageAttachment } from "@openagentsinc/khala-sync"
 import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
+import type { MobileRuntimeQueueReceipt } from "../conversation/mobile-runtime-queue"
 import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
 import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
 import {
@@ -156,6 +157,7 @@ export interface KhalaState {
   readonly runtimeControlSubmittingAction: MobileRuntimeControlAction | null
   readonly runtimeControlActionsAvailable: boolean
   readonly runtimeStopConfirmationRunRef: string | null
+  readonly runtimeQueueReceipt: MobileRuntimeQueueReceipt | null
   /** Confirmed canonical live-agent hierarchy for the active thread, or null. */
   readonly agentGraph: LiveAgentGraphPresentation | null
   readonly agentGraphExpanded: boolean
@@ -189,6 +191,7 @@ export const initialKhalaState: KhalaState = {
   runtimeControlSubmittingAction: null,
   runtimeControlActionsAvailable: false,
   runtimeStopConfirmationRunRef: null,
+  runtimeQueueReceipt: null,
   agentGraph: null,
   agentGraphExpanded: false,
   selectedAgentRef: null,
@@ -666,6 +669,7 @@ export const renderKhalaSurface = (
     controlAvailable: state.runtimeControlActionsAvailable,
     submittingAction: state.runtimeControlSubmittingAction,
     stopConfirmationRunRef: state.runtimeStopConfirmationRunRef,
+    queueReceipt: state.runtimeQueueReceipt,
   })
   return Stack(
     {

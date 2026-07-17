@@ -506,6 +506,9 @@ importers:
       '@expo/ui':
         specifier: 57.0.4
         version: 57.0.4(@babel/core@7.29.7)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(expo@57.0.2)(react-dom@19.2.7(react@19.2.7))(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime-schema
       '@openagentsinc/behavior-contracts':
         specifier: workspace:*
         version: link:../../packages/behavior-contracts

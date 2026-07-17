@@ -28,6 +28,11 @@ import {
 import { Effect } from "effect"
 
 import type { MobileCodingThreadLease } from "../coding/mobile-coding-navigation"
+import {
+  makeMobileRuntimeQueueControl,
+  mobileRuntimeQueueAdmissionOutcome,
+  type MobileRuntimeQueueReceipt,
+} from "./mobile-runtime-queue"
 
 export type MobileConversationMessage = ConfirmedChatMessage
 export type MobileConversationThreadSummary = ConfirmedChatThread
@@ -40,7 +45,11 @@ export type MobileConversationThread = MobileConversationThreadSummary & Readonl
 }>
 
 export type MobileConversationMutationResult =
-  | Readonly<{ ok: true; thread: MobileConversationThread }>
+  | Readonly<{
+      ok: true
+      thread: MobileConversationThread
+      queueReceipt?: MobileRuntimeQueueReceipt
+    }>
   | Readonly<{ ok: false; error: string }>
 
 export type MobileThreadLifecycleAction = "archive" | "delete" | "rename" | "restore"
@@ -394,6 +403,57 @@ export const makeMobileConversationHost = (
         const thread = update.snapshot === null ? null : threadFromSnapshot(update.snapshot)
         settle(await evaluate(thread))
       })
+    } catch {
+      return null
+    }
+    const deadline = sleep(Math.max(pollAttempts, 300) * 100).then(() => null)
+    const resolved = await Promise.race([result, deadline])
+    settled = true
+    await subscription.close()
+    return resolved
+  }
+
+  const confirmedQueueAdmission = async (input: Readonly<{
+    intentId: string
+    threadRef: string
+  }>): Promise<Readonly<{
+    kind: "accepted" | "expired" | "failed"
+    observedAt: string
+  }> | null> => {
+    const evaluate = async () => {
+      const command = await run(options.runtime!.outcome(input))
+      if (command === null || command.status === "pending") return null
+      return {
+        kind: command.status === "expired"
+          ? "expired" as const
+          : command.status === "failed" || command.status === "canceled"
+            ? "failed" as const
+            : "accepted" as const,
+        observedAt: command.updatedAt ?? now().toISOString(),
+      }
+    }
+    const initial = await evaluate()
+    if (initial !== null) return initial
+    let settle!: (outcome: Awaited<ReturnType<typeof evaluate>>) => void
+    let settled = false
+    const result = new Promise<Awaited<ReturnType<typeof evaluate>>>(resolve => {
+      settle = outcome => {
+        if (settled || outcome === null) return
+        settled = true
+        resolve(outcome)
+      }
+    })
+    let subscription
+    try {
+      subscription = await openKhalaConversationLive({
+        conversation: options.conversation,
+        timeline: options.timeline,
+        ...(options.agentGraph === undefined ? {} : { agentGraph: options.agentGraph }),
+        subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
+        generation: subscriptionSequence,
+        threadRef: input.threadRef,
+        afterCursor: options.conversation.threadStatus(input.threadRef).cursor,
+      }, async () => settle(await evaluate()))
     } catch {
       return null
     }
@@ -819,6 +879,16 @@ export const makeMobileConversationHost = (
             threadRef: input.threadRef,
             turnRef,
           })
+      const queueControl = !continuingActiveRun
+        ? null
+        : makeMobileRuntimeQueueControl({
+            intentRef: `queue.mobile.${turnRef}`,
+            messageRef,
+            threadRef: input.threadRef,
+            runVersion: active.version,
+            createdAt: context.nowIso,
+            expiresAt: context.expiresAtIso,
+          })
       try {
         if (continuingActiveRun) {
           await run(options.runtime.appendUserMessage(runtimeIntent))
@@ -830,6 +900,39 @@ export const makeMobileConversationHost = (
       }
       if (thread === null) {
         return { ok: false, error: "Message and runtime command are queued pending reconciliation." }
+      }
+      if (queueControl !== null) {
+        const parentRunRef = runtimeIntent.turnId
+        if (parentRunRef === undefined) {
+          return { ok: false, error: "Queued follow-up lost its exact parent run identity." }
+        }
+        const admission = await confirmedQueueAdmission({
+          intentId: runtimeIntent.intentId,
+          threadRef: input.threadRef,
+        })
+        if (admission?.kind === "expired") {
+          return { ok: false, error: "Queued follow-up expired before runtime admission." }
+        }
+        if (admission?.kind === "failed") {
+          return { ok: false, error: "Queued follow-up was rejected by runtime admission." }
+        }
+        if (admission === null) {
+          return { ok: false, error: "Queued follow-up is still pending runtime admission." }
+        }
+        return {
+          ok: true,
+          thread,
+          queueReceipt: {
+            control: queueControl,
+            outcome: mobileRuntimeQueueAdmissionOutcome({
+              control: queueControl,
+              observedAt: admission.observedAt,
+              admission: "accepted",
+            }),
+            parentRunRef,
+            messageRef,
+          },
+        }
       }
       const expectedRunRef = continuingActiveRun ? active.runRef : turnRef
       const settled = await confirmedRuntimeOutcome({

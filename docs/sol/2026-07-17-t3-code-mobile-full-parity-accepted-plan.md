@@ -829,3 +829,85 @@ provider-neutral queue-next transport and render its durable outcome.
 - residual: `T3M-B2.3a` exact-run steering and confirmed composer Stop are
   complete; provider-neutral durable queue-next remains `T3M-B2.3b`; full
   mobile parity remains open through `T3M-F2`
+
+## Active packet — T3M-B2.3b
+
+Outcome: expose the real Pylon queue-until-idle behavior through an explicit
+provider-neutral `turn.queue` mobile adapter, settle the composer on confirmed
+admission rather than terminal completion, and render the queued follow-up's
+separate admission/delivery/promotion state.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/conversation/mobile-runtime-queue.ts`
+- `apps/openagents-mobile/src/conversation/mobile-conversation.ts`
+- `apps/openagents-mobile/src/screens/mobile-composer-run-control.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/tests/mobile-runtime-queue.test.ts`
+- `apps/openagents-mobile/tests/mobile-conversation.test.ts`
+- `apps/openagents-mobile/tests/mobile-composer-run-control.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.runtime_control_intent.v2`, exact thread/run/message
+identity, legacy Pylon queue-only lowering, distinct admission/delivery/terminal
+axes, confirmed transcript state, behavior registry, and Sol manifest.
+
+Required behavior:
+
+- text submitted during a confirmed running or waiting turn mints exact
+  `turn.queue` identity and lowers only through the proven queue-until-idle
+  `message.append` adapter; it is never labeled or dispatched as steer;
+- queue identity binds the exact thread, current run generation, durable chat
+  message ref, ordering key, origin, idempotency key, and deadline;
+- the composer clears only after the chat message and legacy queue mutation are
+  confirmed admitted; pending, expired, rejected, or mismatched outcomes retain
+  the draft with explicit copy;
+- a compact queued-follow-up receipt names accepted admission separately from
+  pending delivery/promotion and remains until a replacement run proves
+  promotion or a typed failure replaces it;
+- Stop continues to target the active run and never cancels or silently consumes
+  the queued follow-up;
+- this packet corrects B2.3a presentation language: current Pylon
+  `message.append` is queue-until-idle, not literal mid-stream steering.
+
+Proof: queue intent decoder/replay, exact adapter lowering, pending/rejection,
+Home draft/receipt journey, run replacement, Stop coexistence, accessibility,
+behavior contracts, mobile typecheck, and repository checks.
+
+Close rule: this closes B2.3 mobile queue/Stop product semantics for the current
+Pylon runtime adapter. Cross-restart delivery proof and physical-device evidence
+remain release gates in `T3M-F1`/`T3M-F2`; genuine provider steering remains a
+separate capability and is not claimed.
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-b2-3b-20260717`
+- base: `ecb39424af6798d40a427b99f8882eedfc8f4a63`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-B2.3b` provider-neutral queue adapter and mobile admission receipt
+- paths: the `T3M-B2.3b` owned paths above
+- verification: focused queue/conversation/Home/run-control/accessibility
+  suites, behavior/Sol checks, mobile typecheck, and `pnpm run check`
+- claimed_at: `2026-07-17T22:18:07Z`
+
+### CLAIM-STATUS
+
+- status: implementation complete and release gates green
+- verification: 118 focused provider-neutral queue, mobile conversation,
+  run-control, authoritative Home, composer discovery/toolbar/attachments,
+  accessibility, local-first, native renderer, agent-runtime-schema, and
+  behavior-contract tests; mobile typecheck; `pnpm run check`;
+  `git diff --check`
+- authority note: active text mints `turn.queue` bound to exact confirmed
+  thread/run generation/message identity and lowers only to Pylon's existing
+  queue-until-idle adapter; admission, delivery, and promotion remain distinct
+- correction: B2.3a's interim "steer" presentation is superseded for the
+  current Pylon adapter; `message.append` is queue-until-idle and the product
+  now labels it Queue without claiming genuine mid-stream steering
+- close boundary: B2.3 mobile queue/Stop semantics are complete for the current
+  adapter; cross-restart promotion proof remains `T3M-F1` and physical-device
+  evidence remains `T3M-F2`
+- verified_at: `2026-07-17T22:23:13Z`

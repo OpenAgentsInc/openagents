@@ -1,6 +1,7 @@
 import { Badge, Button, IntentRef, Stack, StaticPayload, Text, type View } from "@effect-native/core"
 
 import type { MobileAccessibilityProfile, KhalaRuntimeTurn } from "./khala-core"
+import type { MobileRuntimeQueueReceipt } from "../conversation/mobile-runtime-queue"
 
 export type MobileComposerRunAdmission = Readonly<{
   active: boolean
@@ -11,6 +12,7 @@ export type MobileComposerRunAdmission = Readonly<{
   stopAvailable: boolean
   stopping: boolean
   confirming: boolean
+  queueDetail: string | null
 }>
 
 export const projectMobileComposerRunAdmission = (input: Readonly<{
@@ -18,6 +20,7 @@ export const projectMobileComposerRunAdmission = (input: Readonly<{
   controlAvailable: boolean
   submittingAction: "cancel" | "close" | "resume" | "retry" | null
   stopConfirmationRunRef: string | null
+  queueReceipt?: MobileRuntimeQueueReceipt | null
 }>): MobileComposerRunAdmission => {
   const turn = input.turn
   const active = turn?.status === "queued" || turn?.status === "running" ||
@@ -32,6 +35,7 @@ export const projectMobileComposerRunAdmission = (input: Readonly<{
       stopAvailable: false,
       stopping: false,
       confirming: false,
+      queueDetail: null,
     }
   }
   const stopping = input.submittingAction === "cancel"
@@ -48,17 +52,22 @@ export const projectMobileComposerRunAdmission = (input: Readonly<{
         : turn.status === "queued"
           ? "Start is awaiting runtime admission. You can keep drafting or stop the exact queued turn."
           : turn.status === "waiting_for_input"
-            ? "Send steers this exact waiting turn. An empty composer action stops it."
-            : "Send steers this exact running turn. An empty composer action stops it."
+            ? "Send queues a follow-up after this exact waiting turn. An empty composer action stops it."
+            : "Send queues a follow-up after this exact running turn. An empty composer action stops it."
   return {
     active,
     badge,
     detail,
-    placeholder: turn.status === "queued" ? "Draft while this turn starts" : "Steer current turn",
-    submitLabel: "Steer current turn",
+    placeholder: turn.status === "queued" ? "Draft while this turn starts" : "Queue a follow-up",
+    submitLabel: "Queue follow-up",
     stopAvailable: input.controlAvailable && input.submittingAction === null,
     stopping,
     confirming,
+    queueDetail: (input.queueReceipt ?? null) === null
+      ? null
+      : input.queueReceipt!.outcome.admission.status === "accepted"
+        ? "Admitted · delivery and promotion pending"
+        : "Admission pending",
   }
 }
 
@@ -100,6 +109,21 @@ export const renderMobileComposerRunControl = (
           }),
         ],
       ),
+      ...(admission.queueDetail === null
+        ? []
+        : [Stack(
+            { key: "mobile-composer-queued-followup", direction: "row", gap: "2", align: "center" },
+            [
+              Badge({ key: "mobile-composer-queued-followup-badge", label: "Queued follow-up", tone: "info" }),
+              Text({
+                key: "mobile-composer-queued-followup-detail",
+                content: admission.queueDetail,
+                variant: "caption",
+                color: "textMuted",
+                style: { flex: 1 },
+              }),
+            ],
+          )]),
       ...(admission.confirming
         ? [Stack(
             { key: "mobile-composer-stop-confirmation", direction: "row", gap: "2", align: "center" },

@@ -23,6 +23,10 @@ import type {
 import type { MobileCodingComposerSession } from "../src/coding/mobile-coding-composer"
 import type { MobileExecutionTargetOption } from "../src/coding/mobile-execution-targets"
 import {
+  makeMobileRuntimeQueueControl,
+  mobileRuntimeQueueAdmissionOutcome,
+} from "../src/conversation/mobile-runtime-queue"
+import {
   buildHomeProgram,
   chromeProps,
   makeMobileSelectedThreadLeaseController,
@@ -759,8 +763,8 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       activeThread: running,
     } })
     const initial = JSON.stringify(renderContentView(program.initialState))
-    expect(initial).toContain("Send steers this exact running turn")
-    expect(initial).toContain('"placeholder":"Steer current turn"')
+    expect(initial).toContain("Send queues a follow-up after this exact running turn")
+    expect(initial).toContain('"placeholder":"Queue a follow-up"')
     expect(initial).toContain('"name":"RuntimeTurnStopConfirmationRequested"')
 
     program.khala.requestStopConfirmation("run.foreign")
@@ -785,6 +789,88 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(controls).toMatchObject([{ action: "cancel", runRef, threadRef: initialThread.threadRef }])
     expect(state.khala.runtimeTurn).toMatchObject({ runRef, status: "canceled" })
     expect(state.khala.runtimeStopConfirmationRunRef).toBeNull()
+  })
+
+  test("clears an admitted follow-up draft and renders delivery separately from admission", async () => {
+    const runRef = "run.mobile.queue-receipt"
+    const running: MobileConversationThread = {
+      ...initialThread,
+      timeline: {
+        status: { phase: "live", cursor: 14, pendingMutationCount: 0 },
+        run: {
+          runRef,
+          routeRef: initialThread.threadRef,
+          runtime: "codex",
+          backend: "pylon",
+          status: "running",
+          createdAt: now,
+          updatedAt: now,
+          startedAt: now,
+          completedAt: null,
+          failedAt: null,
+          canceledAt: null,
+          version: 14,
+        },
+        events: [],
+      },
+    }
+    const messageRef = "message.mobile.queued-followup"
+    const confirmed: MobileConversationThread = {
+      ...running,
+      messageCount: 2,
+      messages: [...running.messages, {
+        messageRef,
+        threadRef: initialThread.threadRef,
+        body: "Run this after the current turn",
+        createdAt: now,
+        updatedAt: now,
+        version: 15,
+      }],
+    }
+    const control = makeMobileRuntimeQueueControl({
+      intentRef: "queue.mobile.home.fixture",
+      messageRef,
+      threadRef: initialThread.threadRef,
+      runVersion: 14,
+      createdAt: now,
+      expiresAt: "2026-07-10T20:20:00.000Z",
+    })
+    const host: MobileConversationHost = {
+      listThreads: async () => [running],
+      newThread: async () => ({ ok: true, thread: running }),
+      openThread: async () => running,
+      sendMessage: async () => ({
+        ok: true,
+        thread: confirmed,
+        queueReceipt: {
+          control,
+          outcome: mobileRuntimeQueueAdmissionOutcome({
+            control,
+            observedAt: "2026-07-10T20:15:01.000Z",
+            admission: "accepted",
+          }),
+          parentRunRef: runRef,
+          messageRef,
+        },
+      }),
+      controlTurn: async () => ({ ok: true, thread: running }),
+    }
+    const program = buildHomeProgram({ conversation: {
+      ...selection(host), threads: [running], activeThread: running,
+    } })
+    program.khala.draftChanged("Run this after the current turn")
+    program.khala.submitTurn("Run this after the current turn")
+    await Effect.runPromise(settle)
+    const state = await Effect.runPromise(lastState(program))
+    expect(state.khala.draft).toBe("")
+    expect(state.khala.runtimeQueueReceipt).toMatchObject({
+      parentRunRef: runRef,
+      outcome: { admission: { status: "accepted" }, delivery: { status: "pending" } },
+    })
+    const content = JSON.stringify(renderContentView(state))
+    expect(content).toContain('"label":"Queued follow-up"')
+    expect(content).toContain("Admitted · delivery and promotion pending")
+    expect(content).toContain('"placeholder":"Queue a follow-up"')
   })
 
   test("renders grouped pending questions and resolves only after the confirmed decision", async () => {
@@ -964,7 +1050,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
 
     const initial = JSON.stringify(renderContentView(program.initialState))
     expect(initial).toContain('"name":"RuntimeTurnStopConfirmationRequested"')
-    expect(initial).toContain("Send steers this exact running turn")
+    expect(initial).toContain("Send queues a follow-up after this exact running turn")
     expect(initial).not.toContain('"label":"Retry"')
 
     program.khala.requestStopConfirmation("turn.mobile.control")

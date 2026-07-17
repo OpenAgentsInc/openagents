@@ -1634,6 +1634,7 @@ const confirmedKhalaState = (
     runtimeControlSubmittingAction: null,
     runtimeControlActionsAvailable,
     runtimeStopConfirmationRunRef: null,
+    runtimeQueueReceipt: null,
     agentGraph,
     agentGraphExpanded,
     selectedAgentRef,
@@ -1700,6 +1701,11 @@ const withConfirmedThread = (
               nextKhala.runtimeTurn.runRef === state.khala.runtimeStopConfirmationRunRef
               ? state.khala.runtimeStopConfirmationRunRef
               : null,
+          runtimeQueueReceipt: state.khala.runtimeQueueReceipt === null ||
+              nextKhala.runtimeTurn === null ||
+              nextKhala.runtimeTurn.runRef === state.khala.runtimeQueueReceipt.parentRunRef
+            ? state.khala.runtimeQueueReceipt
+            : null,
         }
       : {}),
   }
@@ -2329,7 +2335,17 @@ const makeSyncedConversationHandlers = (
         ? yield* Effect.promise(() => coding.updateComposerText(before.codingComposer!, ""))
         : yield* Effect.promise(() => coding.clearComposer!(before.codingComposer!))
     yield* SubscriptionRef.update(state, current => result.ok
-      ? { ...withConfirmedThread(current, result.thread), codingComposer: settledComposer }
+      ? (() => {
+          const confirmed = withConfirmedThread(current, result.thread)
+          return {
+            ...confirmed,
+            codingComposer: settledComposer,
+            khala: {
+              ...confirmed.khala,
+              runtimeQueueReceipt: result.queueReceipt ?? confirmed.khala.runtimeQueueReceipt,
+            },
+          }
+        })()
       : {
           ...failedConversationState(current, result.error),
           codingComposer: settledComposer,
