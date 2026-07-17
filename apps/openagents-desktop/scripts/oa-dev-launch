@@ -8,6 +8,8 @@ launch_repo="$HOME/work/.oa-launch"
 node24_bin="$HOME/.nvm/versions/node/v24.13.1/bin"
 owner_launch_cwd="$PWD"
 restart_requested=false
+restart_root="$HOME/Library/Logs/OpenAgents/oa-dev-restarts"
+generation_path="$restart_root/current-generation.json"
 
 if [[ "${1:-}" == "--restart" ]]; then
   restart_requested=true
@@ -47,20 +49,57 @@ else
   echo "oa-dev: note: primary checkout is busy; using isolated launch worktree"
 fi
 
-existing_pid="$(pgrep -x 'OpenAgents Dev' | head -1)"
-if $restart_requested && [[ -n "$existing_pid" ]]; then
+managed_status="$(node -e '
+  try {
+    const fs = require("node:fs"), cp = require("node:child_process");
+    const g = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const ps = (args) => cp.spawnSync("/bin/ps", args, {encoding:"utf8"});
+    const pgid = ps(["-o","pgid=","-p",String(g.devPid)]);
+    const start = ps(["-o","lstart=","-p",String(g.devPid)]);
+    if (pgid.status === 0 && start.status === 0 && Number(pgid.stdout.trim()) === g.processGroupId && start.stdout.trim() === g.processStartIdentity)
+      process.stdout.write(String(g.devPid));
+    else {
+      const groups = ps(["-axo","pgid="]);
+      if (groups.status === 0 && groups.stdout.split(/\s+/).some((value) => Number(value) === g.processGroupId))
+        process.stdout.write("orphan");
+    }
+  } catch {}
+' "$generation_path")"
+if [[ "$managed_status" == "orphan" ]]; then
+  echo "oa-dev: a managed dev process group survived without its identity-bound leader; refusing to mutate the launch worktree" >&2
+  exit 1
+fi
+managed_pid="$managed_status"
+managed_pgid=""
+if [[ -n "$managed_pid" ]]; then
+  managed_pgid="$(/bin/ps -o pgid= -p "$managed_pid" | tr -d '[:space:]')"
+fi
+existing_pid=""
+for candidate in ${(f)"$(pgrep -x 'OpenAgents Dev' 2>/dev/null)"}; do
+  candidate_pgid="$(/bin/ps -o pgid= -p "$candidate" | tr -d '[:space:]')"
+  if [[ -n "$managed_pgid" && "$candidate_pgid" == "$managed_pgid" ]]; then existing_pid="$candidate"; break; fi
+done
+if [[ -z "$managed_pid" && -n "$(pgrep -x 'OpenAgents Dev' 2>/dev/null)" ]]; then
+  echo "oa-dev: an unmanaged OpenAgents Dev process exists; refusing to mutate the launch worktree" >&2
+  exit 1
+fi
+if [[ -z "$managed_pid" ]] && /usr/bin/nc -z 127.0.0.1 5734 >/dev/null 2>&1; then
+  echo "oa-dev: renderer port 5734 is occupied without a valid managed generation; refusing to mutate the launch worktree" >&2
+  exit 1
+fi
+if $restart_requested && [[ -n "$managed_pid" ]]; then
   if [[ ! -e "$launch_repo/.git" ]]; then
     echo "oa-dev: cannot supervise restart because the managed launch worktree is missing" >&2
     exit 1
   fi
   target_sha="$(git -C "$source_repo" rev-parse origin/main)" || exit 1
   old_sha="$(git -C "$launch_repo" rev-parse HEAD 2>/dev/null)" || old_sha="unknown"
-  old_pgid="$(/bin/ps -o pgid= -p "$existing_pid" | tr -d '[:space:]')"
+  old_pgid="$managed_pgid"
+  [[ -n "$existing_pid" ]] || existing_pid="$managed_pid"
   if [[ -z "$old_pgid" || "$old_pgid" != <-> ]]; then
     echo "oa-dev: could not identify the running OpenAgents Dev process group" >&2
     exit 1
   fi
-  restart_root="$HOME/Library/Logs/OpenAgents/oa-dev-restarts"
   lock_dir="$restart_root/active.lock"
   mkdir -p "$restart_root" || exit 1
   chmod 700 "$restart_root" || exit 1
@@ -69,7 +108,15 @@ if $restart_requested && [[ -n "$existing_pid" ]]; then
   log_path="$restart_root/$request_ref.log"
   supervisor_path="$restart_root/$request_ref-supervisor.mjs"
   label="com.openagents.desktop.dev-restart.$$.${target_sha[1,10]}"
-  if ! mkdir "$lock_dir" 2>/dev/null; then
+  lock_token="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+  candidate_lock="$restart_root/.active.lock.$$.${lock_token}"
+  mkdir "$candidate_lock" || exit 1
+  printf '%s\n' "$receipt_path" > "$candidate_lock/receipt"
+  printf '%s\n' "$$" > "$candidate_lock/owner-pid"
+  printf '%s\n' "$label" > "$candidate_lock/launchd-label"
+  printf '%s\n' "$lock_token" > "$candidate_lock/token"
+  chmod 600 "$candidate_lock"/*
+  if ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$candidate_lock" "$lock_dir" 2>/dev/null; then
     active_receipt="$(cat "$lock_dir/receipt" 2>/dev/null)"
     active_owner_pid="$(cat "$lock_dir/owner-pid" 2>/dev/null)"
     active_label="$(cat "$lock_dir/launchd-label" 2>/dev/null)"
@@ -79,20 +126,24 @@ if $restart_requested && [[ -n "$existing_pid" ]]; then
     if [[ -n "$active_coordinator_pid" ]] && kill -0 "$active_coordinator_pid" 2>/dev/null; then restart_active=true; fi
     if [[ -n "$active_label" ]] && /bin/launchctl print "gui/$UID/$active_label" >/dev/null 2>&1; then restart_active=true; fi
     if $restart_active; then
+      rm -rf "$candidate_lock"
       echo "oa-dev: a supervised restart is already active${active_receipt:+; receipt: $active_receipt}" >&2
       exit 75
     fi
     echo "oa-dev: recovering an abandoned restart lock${active_receipt:+; prior receipt: $active_receipt}"
+    lock_age="$(node -e 'const fs=require("node:fs"); try { process.stdout.write(String(Date.now()-fs.statSync(process.argv[1]).mtimeMs)) } catch { process.stdout.write("0") }' "$lock_dir")"
+    if (( lock_age < 30000 )); then
+      rm -rf "$candidate_lock"
+      echo "oa-dev: restart lock is still initializing; retry" >&2
+      exit 75
+    fi
     rm -rf "$lock_dir"
-    if ! mkdir "$lock_dir" 2>/dev/null; then
+    if ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$candidate_lock" "$lock_dir" 2>/dev/null; then
+      rm -rf "$candidate_lock"
       echo "oa-dev: restart lock recovery raced another request; retry" >&2
       exit 75
     fi
   fi
-  printf '%s\n' "$receipt_path" > "$lock_dir/receipt"
-  printf '%s\n' "$$" > "$lock_dir/owner-pid"
-  printf '%s\n' "$label" > "$lock_dir/launchd-label"
-  chmod 600 "$lock_dir/receipt" "$lock_dir/owner-pid" "$lock_dir/launchd-label"
   if ! git -C "$source_repo" show "$target_sha:apps/openagents-desktop/scripts/oa-dev-supervisor.mjs" > "$supervisor_path"; then
     rm -rf "$lock_dir" "$supervisor_path"
     echo "oa-dev: target commit does not contain the restart supervisor" >&2
@@ -111,12 +162,13 @@ if $restart_requested && [[ -n "$existing_pid" ]]; then
       requestRef: process.argv[1], requestedAt: process.argv[2], oldCommit: process.argv[3],
       targetSha: process.argv[4], oldAppPid: Number(process.argv[5]), oldProcessGroupId: Number(process.argv[6]),
       sourceRepo: process.argv[7], launchRepo: process.argv[8], receiptPath: process.argv[9], lockDir: process.argv[10],
-      logPath: process.argv[11], ownerLaunchCwd: process.argv[12], nodePath: process.argv[13], pnpmPath: process.argv[14], rendererPort: 5734,
+      logPath: process.argv[11], ownerLaunchCwd: process.argv[12], nodePath: process.argv[13], pnpmPath: process.argv[14],
+      lockToken: process.argv[15], generationPath: process.argv[16], rendererPort: 5734,
       graceMs: 15000, quitTimeoutMs: 20000, groupTerminateTimeoutMs: 5000, forceQuitTimeoutMs: 5000,
       portReleaseTimeoutMs: 10000, readinessTimeoutMs: 60000,
     };
     process.stdout.write(Buffer.from(JSON.stringify(value)).toString("base64url"));
-  ' "$request_ref" "$requested_at" "$old_sha" "$target_sha" "$existing_pid" "$old_pgid" "$source_repo" "$launch_repo" "$receipt_path" "$lock_dir" "$log_path" "$owner_launch_cwd" "$node24_bin/node" "$pnpm_path")" || {
+  ' "$request_ref" "$requested_at" "$old_sha" "$target_sha" "$existing_pid" "$old_pgid" "$source_repo" "$launch_repo" "$receipt_path" "$lock_dir" "$log_path" "$owner_launch_cwd" "$node24_bin/node" "$pnpm_path" "$lock_token" "$generation_path")" || {
     rm -rf "$lock_dir" "$supervisor_path"
     exit 1
   }
@@ -174,8 +226,8 @@ if $restart_requested && [[ -n "$existing_pid" ]]; then
   echo "oa-dev: target ${target_sha[1,10]} receipt $receipt_path"
   exit 0
 fi
-if [[ -n "$existing_pid" ]]; then
-  echo "oa-dev: OpenAgents Dev is already running as process $existing_pid"
+if [[ -n "$managed_pid" ]]; then
+  echo "oa-dev: OpenAgents Dev is already running as process $managed_pid"
   if [[ -e "$launch_repo/.git" ]]; then
     launch_head="$(git -C "$launch_repo" rev-parse HEAD 2>/dev/null)"
     origin_head="$(git -C "$source_repo" rev-parse origin/main)"
@@ -188,7 +240,7 @@ if [[ -n "$existing_pid" ]]; then
   else
     echo "oa-dev: running stable preview revision is unavailable; restart OpenAgents Dev to synchronize"
   fi
-  if ! /usr/bin/osascript -e "tell application \"System Events\" to set frontmost of first application process whose unix id is $existing_pid to true" >/dev/null 2>&1; then
+  if [[ -n "$existing_pid" ]] && ! /usr/bin/osascript -e "tell application \"System Events\" to set frontmost of first application process whose unix id is $existing_pid to true" >/dev/null 2>&1; then
     echo "oa-dev: could not activate the existing OpenAgents Dev window" >&2
     exit 1
   fi
@@ -251,5 +303,15 @@ if [[ ! -x "$electron_app/Contents/MacOS/Electron" ||
   echo "oa-dev: Electron runtime failed integrity verification" >&2
   exit 1
 fi
+
+mkdir -p "$restart_root" && chmod 700 "$restart_root"
+launch_pgid="$(/bin/ps -o pgid= -p $$ | tr -d '[:space:]')"
+launch_start="$(/bin/ps -o lstart= -p $$ | sed -e 's/^ *//' -e 's/ *$//')"
+generation_token="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+node -e '
+  const fs=require("node:fs"), path=require("node:path"); const p=process.argv[1], next=`${p}.next-${process.pid}`;
+  const d={schemaVersion:"openagents.desktop.dev_generation.v1",generationToken:process.argv[2],devPid:Number(process.argv[3]),processGroupId:Number(process.argv[4]),processStartIdentity:process.argv[5],launchCommit:process.argv[6],launchRepo:process.argv[7],recordedAt:new Date().toISOString()};
+  fs.writeFileSync(next,`${JSON.stringify(d,null,2)}\n`,{mode:0o600}); const f=fs.openSync(next,"r");fs.fsyncSync(f);fs.closeSync(f);fs.renameSync(next,p);const dir=fs.openSync(path.dirname(p),"r");fs.fsyncSync(dir);fs.closeSync(dir);
+' "$generation_path" "$generation_token" "$$" "$launch_pgid" "$launch_start" "$launch_head" "$launch_repo" || exit 1
 
 exec pnpm --dir apps/openagents-desktop dev "$@"

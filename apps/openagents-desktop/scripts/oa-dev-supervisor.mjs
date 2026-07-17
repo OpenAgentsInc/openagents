@@ -95,6 +95,13 @@ const processGroupAlive = (pgid) => {
   return (result.stdout ?? "").split(/\s+/u).some((value) => Number.parseInt(value, 10) === pgid);
 };
 
+const processStartIdentity = (pid) => {
+  const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+    encoding: "utf8",
+  });
+  return result.status === 0 ? (result.stdout ?? "").trim() || null : null;
+};
+
 const waitUntil = async (predicate, timeoutMs, intervalMs = 100) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -118,11 +125,19 @@ const portAccepting = (host, port) =>
     socket.once("error", () => done(false));
   });
 
-const findDevAppPid = () => {
+const findDevAppPid = (requiredProcessGroupId) => {
   const result = spawnSync("/usr/bin/pgrep", ["-x", "OpenAgents Dev"], { encoding: "utf8" });
   if (result.status !== 0) return null;
-  const pid = Number.parseInt((result.stdout ?? "").trim().split(/\s+/u)[0] ?? "", 10);
-  return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
+  for (const value of (result.stdout ?? "").trim().split(/\s+/u)) {
+    const pid = Number.parseInt(value, 10);
+    if (
+      Number.isSafeInteger(pid) &&
+      pid > 0 &&
+      processGroupId(pid) === requiredProcessGroupId
+    )
+      return pid;
+  }
+  return null;
 };
 
 const requestGracefulQuit = (oldAppPid) => {
@@ -252,6 +267,7 @@ const realDependencies = (config) => ({
         child.once("exit", (code, signal) => resolve({ code, signal }));
       }),
       alive: () => child.pid !== undefined && pidAlive(child.pid),
+      processGroupAlive: () => child.pid !== undefined && processGroupAlive(child.pid),
       terminate: (signal) => {
         if (child.pid === undefined) return;
         try {
@@ -263,8 +279,7 @@ const realDependencies = (config) => ({
     };
   },
   findNewAppPid: () => {
-    const pid = findDevAppPid();
-    return pid !== null && pid !== config.oldAppPid ? pid : null;
+    return findDevAppPid(config.newProcessGroupId);
   },
   rendererReady: () => {
     if (!existsSync(config.logPath)) return false;
@@ -272,8 +287,46 @@ const realDependencies = (config) => ({
     return log.includes("[openagents-desktop] renderer dev server ready at");
   },
   notifyFailure,
-  releaseLock: () => rmSync(config.lockDir, { recursive: true, force: true }),
+  writeGeneration: ({ newDevPid, newAppPid }) => {
+    const document = {
+      schemaVersion: "openagents.desktop.dev_generation.v1",
+      generationToken: config.lockToken,
+      devPid: newDevPid,
+      processGroupId: newDevPid,
+      processStartIdentity: processStartIdentity(newDevPid),
+      appPid: newAppPid,
+      launchCommit: config.targetSha,
+      launchRepo: config.launchRepo,
+      recordedAt: isoNow(),
+    };
+    writeRestartReceipt(config.generationPath, document);
+  },
+  removeGeneration: () => {
+    try {
+      const generation = JSON.parse(readFileSync(config.generationPath, "utf8"));
+      if (generation.generationToken === config.lockToken) rmSync(config.generationPath);
+    } catch {
+      /* a successor generation is authoritative */
+    }
+  },
+  releaseLock: () => {
+    try {
+      const token = readFileSync(path.join(config.lockDir, "token"), "utf8").trim();
+      if (token === config.lockToken) rmSync(config.lockDir, { recursive: true, force: true });
+    } catch {
+      /* never delete a lock whose ownership cannot be proven */
+    }
+  },
 });
+
+const drainProcessGroup = async ({ alive, terminate, waitMs, killWaitMs }) => {
+  if (!alive()) return "already_stopped";
+  terminate("SIGTERM");
+  if (await waitUntil(() => !alive(), waitMs)) return "group_sigterm";
+  terminate("SIGKILL");
+  if (await waitUntil(() => !alive(), killWaitMs)) return "group_sigkill";
+  throw new Error("replacement process group survived SIGTERM and SIGKILL");
+};
 
 export const superviseRestart = async (config, injectedDependencies) => {
   const deps = injectedDependencies ?? realDependencies(config);
@@ -291,6 +344,8 @@ export const superviseRestart = async (config, injectedDependencies) => {
   let newDevPid = null;
   let newAppPid = null;
   let launchedChild = null;
+  let oldProcessTreeOutcome = "not_started";
+  let replacementCleanupOutcome = "not_needed";
   try {
     const coordinatorProcessGroupId = deps.coordinatorProcessGroupId();
     if (coordinatorProcessGroupId === config.oldProcessGroupId) {
@@ -306,13 +361,16 @@ export const superviseRestart = async (config, injectedDependencies) => {
     await deps.sleep(config.graceMs);
     deps.requestQuit();
     let stopped = await waitUntil(() => !deps.oldProcessGroupAlive(), config.quitTimeoutMs);
+    if (stopped) oldProcessTreeOutcome = "graceful_app_exit";
     if (!stopped) {
       deps.terminateOldProcessGroup("SIGTERM");
       stopped = await waitUntil(() => !deps.oldProcessGroupAlive(), config.groupTerminateTimeoutMs);
+      if (stopped) oldProcessTreeOutcome = "group_sigterm";
     }
     if (!stopped) {
       deps.terminateOldProcessGroup("SIGKILL");
       stopped = await waitUntil(() => !deps.oldProcessGroupAlive(), config.forceQuitTimeoutMs);
+      if (stopped) oldProcessTreeOutcome = "group_sigkill";
     }
     if (!stopped)
       throw new Error(`old OpenAgents Dev process group ${config.oldProcessGroupId} did not exit`);
@@ -327,12 +385,14 @@ export const superviseRestart = async (config, injectedDependencies) => {
       ...base,
       state: "synchronizing",
       oldProcessExitedAt: deps.now(),
+      oldProcessTreeOutcome,
     });
     deps.syncLaunchWorktree();
     deps.ensureDependencies();
     const child = deps.launchDev();
     launchedChild = child;
     newDevPid = child.pid;
+    config.newProcessGroupId = child.pid;
     const becameReady = await waitUntil(async () => {
       if (!child.alive()) return false;
       newAppPid = deps.findNewAppPid();
@@ -342,6 +402,7 @@ export const superviseRestart = async (config, injectedDependencies) => {
       throw new Error("replacement OpenAgents Dev did not become ready before the deadline");
 
     readyAt = deps.now();
+    deps.writeGeneration?.({ newDevPid, newAppPid });
     writeRestartReceipt(config.receiptPath, {
       ...base,
       state: "ready",
@@ -349,9 +410,11 @@ export const superviseRestart = async (config, injectedDependencies) => {
       readyAt,
       newDevPid,
       newAppPid,
+      oldProcessTreeOutcome,
     });
     deps.releaseLock();
     const exit = await child.exited;
+    deps.removeGeneration?.();
     writeRestartReceipt(config.receiptPath, {
       ...base,
       state: "stopped",
@@ -363,13 +426,27 @@ export const superviseRestart = async (config, injectedDependencies) => {
       exitCode: exit.code,
       exitSignal: exit.signal,
       exitClassification: classifyDevExit(exit),
+      oldProcessTreeOutcome,
     });
     return { state: "stopped", readyAt, newDevPid, newAppPid, exit };
   } catch (error) {
     try {
-      launchedChild?.terminate?.("SIGTERM");
-    } catch {
-      /* receipt remains authoritative */
+      if (launchedChild) {
+        replacementCleanupOutcome = await drainProcessGroup({
+          alive: launchedChild.processGroupAlive ?? launchedChild.alive,
+          terminate: launchedChild.terminate,
+          waitMs: config.groupTerminateTimeoutMs,
+          killWaitMs: config.forceQuitTimeoutMs,
+        });
+        const portReleased = await waitUntil(
+          () => deps.rendererPortAccepting().then((value) => !value),
+          config.portReleaseTimeoutMs,
+        );
+        if (!portReleased) throw new Error("replacement cleanup did not release renderer port");
+        deps.removeGeneration?.();
+      }
+    } catch (cleanupError) {
+      replacementCleanupOutcome = `failed: ${bounded(cleanupError?.message || cleanupError)}`;
     }
     const detail = bounded(error?.stack || error?.message || error);
     writeRestartReceipt(config.receiptPath, {
@@ -380,10 +457,12 @@ export const superviseRestart = async (config, injectedDependencies) => {
       newDevPid,
       newAppPid,
       error: detail,
-      recoveryCommand: "oa-dev",
+      oldProcessTreeOutcome,
+      replacementCleanupOutcome,
+      recoveryCommand: "oa-dev --restart",
     });
-    deps.releaseLock();
-    deps.notifyFailure(`${detail}. Run oa-dev to recover.`);
+    if (!replacementCleanupOutcome.startsWith("failed:")) deps.releaseLock();
+    deps.notifyFailure(`${detail}. Run oa-dev --restart to recover.`);
     throw error;
   }
 };
@@ -412,6 +491,8 @@ const main = async () => {
     "targetSha",
     "receiptPath",
     "lockDir",
+    "lockToken",
+    "generationPath",
     "logPath",
     "requestRef",
     "ownerLaunchCwd",

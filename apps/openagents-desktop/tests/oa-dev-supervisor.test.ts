@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -51,6 +52,65 @@ const fixture = () => {
 };
 
 describe("oa-dev launchd restart supervisor", () => {
+  test("drains a real detached old process group while the coordinator survives", async () => {
+    const value = fixture();
+    const oldGroup = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    if (oldGroup.pid === undefined) throw new Error("fixture process did not spawn");
+    const oldPgid = oldGroup.pid;
+    const groupAlive = () => {
+      const result = spawnSync("/bin/ps", ["-axo", "pgid="], { encoding: "utf8" });
+      return (result.stdout ?? "")
+        .split(/\s+/u)
+        .some((entry) => Number.parseInt(entry, 10) === oldPgid);
+    };
+    value.config.oldAppPid = oldPgid;
+    value.config.oldProcessGroupId = oldPgid;
+    value.config.quitTimeoutMs = 1;
+    value.config.groupTerminateTimeoutMs = 1_000;
+    let rendererAccepting = false;
+    try {
+      await supervisor.superviseRestart(value.config, {
+        now: () => new Date().toISOString(),
+        sleep: async () => undefined,
+        coordinatorProcessGroupId: () => process.pid,
+        oldProcessGroupAlive: groupAlive,
+        requestQuit: () => undefined,
+        terminateOldProcessGroup: (signal: NodeJS.Signals) => process.kill(-oldPgid, signal),
+        rendererPortAccepting: async () => rendererAccepting,
+        syncLaunchWorktree: () => undefined,
+        ensureDependencies: () => undefined,
+        launchDev: () => {
+          rendererAccepting = true;
+          return {
+            pid: 201,
+            alive: () => true,
+            exited: Promise.resolve({ code: 0, signal: null }),
+          };
+        },
+        findNewAppPid: () => 202,
+        rendererReady: () => true,
+        notifyFailure: () => undefined,
+        releaseLock: () => rmSync(value.lockDir, { recursive: true, force: true }),
+      });
+      expect(process.pid).toBeGreaterThan(0);
+      expect(groupAlive()).toBe(false);
+      expect(JSON.parse(readFileSync(value.receiptPath, "utf8"))).toMatchObject({
+        state: "stopped",
+        oldProcessTreeOutcome: "group_sigterm",
+      });
+    } finally {
+      try {
+        process.kill(-oldPgid, "SIGKILL");
+      } catch {
+        // The expected path already drained the fixture group.
+      }
+      rmSync(value.root, { recursive: true, force: true });
+    }
+  });
+
   test("does not touch the launch worktree until the old process group is gone", async () => {
     const value = fixture();
     const events: string[] = [];
@@ -113,6 +173,7 @@ describe("oa-dev launchd restart supervisor", () => {
         newDevPid: 201,
         newAppPid: 202,
         exitClassification: "expected_supervised_sigterm",
+        oldProcessTreeOutcome: "graceful_app_exit",
       });
     } finally {
       rmSync(value.root, { recursive: true, force: true });
@@ -161,7 +222,63 @@ describe("oa-dev launchd restart supervisor", () => {
       expect(JSON.parse(readFileSync(value.receiptPath, "utf8"))).toMatchObject({
         state: "failed",
         ready: false,
-        recoveryCommand: "oa-dev",
+        recoveryCommand: "oa-dev --restart",
+        oldProcessTreeOutcome: "not_started",
+      });
+    } finally {
+      rmSync(value.root, { recursive: true, force: true });
+    }
+  });
+
+  test("escalates and proves failed replacement cleanup before releasing the lock", async () => {
+    const value = fixture();
+    const events: string[] = [];
+    let oldAlive = true;
+    let replacementAlive = true;
+    let rendererAccepting = false;
+    try {
+      await expect(
+        supervisor.superviseRestart(value.config, {
+          now: () => "time",
+          sleep: async () => undefined,
+          coordinatorProcessGroupId: () => 900,
+          oldProcessGroupAlive: () => oldAlive,
+          requestQuit: () => {
+            oldAlive = false;
+          },
+          terminateOldProcessGroup: () => undefined,
+          rendererPortAccepting: async () => rendererAccepting,
+          syncLaunchWorktree: () => undefined,
+          ensureDependencies: () => undefined,
+          launchDev: () => {
+            rendererAccepting = true;
+            return {
+              pid: 201,
+              alive: () => true,
+              processGroupAlive: () => replacementAlive,
+              terminate: (signal: NodeJS.Signals) => {
+                events.push(signal);
+                if (signal === "SIGKILL") {
+                  replacementAlive = false;
+                  rendererAccepting = false;
+                }
+              },
+              exited: new Promise(() => undefined),
+            };
+          },
+          findNewAppPid: () => null,
+          rendererReady: () => false,
+          notifyFailure: () => events.push("notify"),
+          releaseLock: () => {
+            events.push("release-lock");
+            rmSync(value.lockDir, { recursive: true, force: true });
+          },
+        }),
+      ).rejects.toThrow("did not become ready");
+      expect(events).toEqual(["SIGTERM", "SIGKILL", "release-lock", "notify"]);
+      expect(JSON.parse(readFileSync(value.receiptPath, "utf8"))).toMatchObject({
+        state: "failed",
+        replacementCleanupOutcome: "group_sigkill",
       });
     } finally {
       rmSync(value.root, { recursive: true, force: true });
