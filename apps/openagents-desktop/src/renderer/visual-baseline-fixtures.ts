@@ -316,5 +316,17 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
     }
     case "browser-preview":
       return visualBaselineShellState("terminal-workbench");
+    case "settings-routed": {
+      const state = visualBaselineShellState("composer-idle");
+      return {
+        ...state,
+        workspace: "settings",
+        settings: {
+          ...state.settings,
+          localCodexUsageControlAvailable: true,
+          shareLocalCodexUsage: false,
+        },
+      };
+    }
   }
 };

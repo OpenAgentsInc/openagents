@@ -503,8 +503,32 @@ describe("React workbench shell", () => {
     expect(container.querySelector('[aria-label="Search sessions"]')).toBeNull()
     expect(container.querySelector('[data-sidebar-destination-id="settings-general"]')?.textContent).toContain("General")
     expect(container.querySelector('[data-sidebar-destination-id="settings-codex"]')?.textContent).toContain("Codex CLI")
+    expect(container.querySelector('[data-sidebar-destination-id="settings-extensions"]')?.textContent).toContain("Extensions")
+    expect(container.querySelector('[data-sidebar-destination-id="settings-source-control"]')?.textContent).toContain("Source control")
+    expect(container.querySelector('[data-sidebar-destination-id="settings-keybindings"]')?.textContent).toContain("Keybindings")
+    expect(container.querySelector('[data-sidebar-destination-id="settings-diagnostics"]')?.textContent).toContain("Diagnostics")
     expect(container.querySelector('[data-sidebar-destination-id="settings-account"]')?.textContent).toContain("Account")
     expect(container.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.textContent).toContain("Back")
+  })
+
+  test("routes every settings family in place and keeps actions on typed intents", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    await render(root, <WorkbenchShell state={{ ...fixtureState(), workspace: "settings" }} report={report} />)
+
+    const select = async (id: string, heading: string): Promise<void> => {
+      await interact(() => container.querySelector<HTMLButtonElement>(`[data-sidebar-destination-id="${id}"]`)?.click())
+      expect(container.querySelector('[data-react-workspace="settings"] h2')?.textContent).toBe(heading)
+    }
+    await select("settings-extensions", "Extensions")
+    await select("settings-source-control", "Source control")
+    await interact(() => container.querySelector<HTMLButtonElement>('.oa-react-settings-card button')?.click())
+    expect(received.at(-1)).toEqual({ name: "GitPanelRefreshRequested", payload: null })
+    await select("settings-keybindings", "Keyboard shortcuts")
+    await select("settings-diagnostics", "Diagnostics")
+    await select("settings-account", "Provider accounts")
   })
 
   test("renders exactly one active background across destinations and conversation rows", async () => {

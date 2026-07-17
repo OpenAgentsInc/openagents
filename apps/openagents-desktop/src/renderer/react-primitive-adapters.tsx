@@ -82,10 +82,10 @@ import { capabilityForHarness, desktopConversationShortcutLabel, formatRelativeT
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
 import { StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
-import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 import { ReactBrowserPreviewSurface, ReactFilesSurface, ReactReviewSurface, ReactTerminalSurface } from "./react-workspace-surfaces.tsx"
+import { ReactSettingsSurface, type ReactSettingsSectionId } from "./react-settings-surface.tsx"
 import {
   decodeDesktopSurfaceLayout,
   defaultDesktopSurfaceLayout,
@@ -529,13 +529,15 @@ const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Settings"): DesktopRail
   return "settings"
 }
 
-export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRef }: {
+export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRef, selectedSettingsSectionId, onSettingsSectionSelect }: {
   readonly state: DesktopShellState
   readonly report: IntentReporter
   readonly open: boolean
   readonly onCollapse: () => void
   readonly onDismiss: () => void
   readonly railRef: RefObject<HTMLElement | null>
+  readonly selectedSettingsSectionId: ReactSettingsSectionId
+  readonly onSettingsSectionSelect: (sectionId: ReactSettingsSectionId) => void
 }): ReactElement => {
   const rows = projectReactSessionRows(state)
   const destinations = projectDesktopSidebarDestinations(
@@ -544,11 +546,13 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
   )
   const primaryDestinations = destinations.filter(destination => destination.id !== "shell-settings-toggle")
   const settingsDestination = destinations.find(destination => destination.id === "shell-settings-toggle")
-  const [selectedSettingsSectionId, setSelectedSettingsSectionId] = useState("settings-general")
   const settingsSections: ReadonlyArray<DesktopRailDestination> = state.workspace !== "settings" ? [] : [
     { id: "settings-general", label: "General", icon: "general", selected: selectedSettingsSectionId === "settings-general", current: selectedSettingsSectionId === "settings-general" ? "page" : undefined },
     { id: "settings-codex", label: "Codex CLI", icon: "settings", selected: selectedSettingsSectionId === "settings-codex", current: selectedSettingsSectionId === "settings-codex" ? "page" : undefined },
-    ...(state.settings.localCodexUsageControlAvailable ? [{ id: "settings-privacy", label: "Privacy", icon: "privacy" as const, selected: selectedSettingsSectionId === "settings-privacy", current: selectedSettingsSectionId === "settings-privacy" ? "page" as const : undefined }] : []),
+    { id: "settings-extensions", label: "Extensions", icon: "general", selected: selectedSettingsSectionId === "settings-extensions", current: selectedSettingsSectionId === "settings-extensions" ? "page" : undefined },
+    { id: "settings-source-control", label: "Source control", icon: "general", selected: selectedSettingsSectionId === "settings-source-control", current: selectedSettingsSectionId === "settings-source-control" ? "page" : undefined },
+    { id: "settings-keybindings", label: "Keybindings", icon: "settings", selected: selectedSettingsSectionId === "settings-keybindings", current: selectedSettingsSectionId === "settings-keybindings" ? "page" : undefined },
+    { id: "settings-diagnostics", label: "Diagnostics", icon: "privacy", selected: selectedSettingsSectionId === "settings-diagnostics", current: selectedSettingsSectionId === "settings-diagnostics" ? "page" : undefined },
     { id: "settings-account", label: "Account", icon: "account", selected: selectedSettingsSectionId === "settings-account", current: selectedSettingsSectionId === "settings-account" ? "page" : undefined },
   ]
   const meter = projectSidebarMeter(state)
@@ -643,18 +647,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     onCollapse={onCollapse}
     onDestinationSelect={selected => {
       if (selected.id.startsWith("settings-")) {
-        setSelectedSettingsSectionId(selected.id)
-        const targetId = selected.id === "settings-codex"
-          ? "react-runtime-maintenance-title"
-          : selected.id === "settings-privacy"
-            ? "react-local-usage-title"
-            : selected.id === "settings-account"
-              ? "react-provider-accounts-title"
-              : "react-settings-title"
-        document.getElementById(targetId)?.scrollIntoView({
-          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-          block: "start",
-        })
+        onSettingsSectionSelect(selected.id as ReactSettingsSectionId)
         return
       }
       const destination = destinations.find(candidate => candidate.id === selected.id)
@@ -802,6 +795,7 @@ export const WorkbenchShell = ({ state, report }: {
   const railCollapsed = state.presentation.sidebarCollapsed
   const [codexUpdateOpen, setCodexUpdateOpen] = useState(false)
   const [dismissedCodexVersion, setDismissedCodexVersion] = useState<string | null>(null)
+  const [selectedSettingsSectionId, setSelectedSettingsSectionId] = useState<ReactSettingsSectionId>("settings-general")
   const railRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -845,58 +839,7 @@ export const WorkbenchShell = ({ state, report }: {
             <div><p>OpenAgents</p><h1>Settings</h1></div>
             <Button type="button" variant="outline" onClick={() => dispatch(report, "DesktopHarnessMaintenanceRefreshRequested")}>Refresh</Button>
           </header>
-          <section className="oa-react-settings-section" aria-labelledby="react-runtime-maintenance-title">
-            <h2 id="react-runtime-maintenance-title">Codex CLI</h2>
-            <p>Installed Codex version, channel, and update truth from this Mac.</p>
-            {state.settings.harnessMaintenance.view.state === "loading" ? <p role="status">Checking harnesses…</p>
-              : state.settings.harnessMaintenance.view.state === "unavailable" ? <p role="alert">{state.settings.harnessMaintenance.view.message}</p>
-              : state.settings.harnessMaintenance.view.harnesses.filter(harness => harness.harness === "codex").map(harness => <article className="oa-react-settings-status-article" key={harness.harness} data-harness={harness.harness} data-status={harness.advisory}>
-                  <div><strong>Codex</strong><span>{harness.installedVersion ?? "Not installed"} · {harness.channel}</span>{harness.recoveryMessage == null ? null : <small>{harness.recoveryMessage}</small>}</div>
-                  <span className="oa-react-settings-status-label">{harness.advisory === "current" ? "Up to date" : harness.advisory === "behind_latest" ? "Update available" : "Version unknown"}</span>
-                  {harness.updateSupported ? <Button type="button" size="sm" disabled={state.settings.harnessMaintenance.updating !== null} onClick={() => dispatch(report, "DesktopHarnessUpdateRequested", harness.harness)}>Update</Button> : null}
-                </article>)}
-            {state.settings.harnessMaintenance.lastOutcome === null ? null : <p role="status">{state.settings.harnessMaintenance.lastOutcome}</p>}
-          </section>
-          {state.settings.localCodexUsageControlAvailable
-            ? <section className="oa-react-settings-section" aria-labelledby="react-local-usage-title">
-                <h2 id="react-local-usage-title">Share local Codex usage</h2>
-                <p>When on, OpenAgents reports how many tokens each turn used — the input, cached-input, output, reasoning, and total token counts — plus the model name and a one-time turn reference. Only those numbers are sent: never your prompts, responses, files, paths, account names, or credentials. This updates the aggregate public tokens-served counter. Turn it off any time; queued reports are deleted.</p>
-                <Button
-                  type="button"
-                  variant={state.settings.shareLocalCodexUsage ? "default" : "outline"}
-                  aria-pressed={state.settings.shareLocalCodexUsage}
-                  onClick={() => dispatch(
-                    report,
-                    "DesktopLocalCodexUsageSharingToggled",
-                    !state.settings.shareLocalCodexUsage,
-                  )}
-                >{state.settings.shareLocalCodexUsage ? "Sharing on" : "Sharing off"}</Button>
-              </section>
-            : null}
-          <section className="oa-react-settings-section" aria-labelledby="react-provider-accounts-title">
-            <h2 id="react-provider-accounts-title">Codex account</h2>
-            <p>Your Codex account identity is blurred until you explicitly reveal it.</p>
-            {state.fleet.phase === "loading" || state.fleet.phase === "idle"
-              ? <p role="status">Checking provider accounts…</p>
-              : state.fleet.accounts.filter(account => account.provider === "codex").length === 0
-                ? <p>No Codex account connected.</p>
-                : state.fleet.accounts.filter(account => account.provider === "codex").map(account => <article className="oa-react-settings-status-article" key={account.ref} data-provider-account={account.ref} data-status={account.readiness}>
-                    <div>
-                      <strong>Codex</strong>
-                      <span>{account.ref}</span>
-                    </div>
-                    <span>{account.readiness.replaceAll("-", " ")}</span>
-                    {account.email === null ? null : <span className="oa-react-provider-email">
-                      <span>Authenticated as</span>
-                      <RedactedSensitiveText
-                        value={account.email}
-                        ariaLabel="Toggle account email visibility"
-                        revealTooltip="Click to reveal email"
-                        hideTooltip="Click to hide email"
-                      />
-                    </span>}
-                  </article>)}
-          </section>
+          <ReactSettingsSurface state={state} report={report} sectionId={selectedSettingsSectionId as ReactSettingsSectionId} />
         </main>
       : null
   const maintenance = state.settings.harnessMaintenance
@@ -922,7 +865,7 @@ export const WorkbenchShell = ({ state, report }: {
       aria-label="Expand sidebar"
       title="Expand sidebar"
     />
-    <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} />
+    <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} selectedSettingsSectionId={selectedSettingsSectionId} onSettingsSectionSelect={setSelectedSettingsSectionId} />
     {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     {workspaceSurface ?? <DesktopSurfaceManager state={state} report={report} conversation={<DesktopConversation
         composer={state.history.page === null ? <div className="oa-react-composer-stack">

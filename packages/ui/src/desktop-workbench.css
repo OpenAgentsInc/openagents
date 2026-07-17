@@ -1186,9 +1186,49 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-browser-status span > span[data-status="ready"] { background: var(--en-color-success); }
 .oa-react-browser-status svg { width: 10px; height: 10px; }
 
+.oa-react-settings-card { width: min(860px, 100%); margin: 0 auto; padding: 16px; border: 1px solid var(--en-color-borderSubtle); border-radius: 8px; background: var(--en-color-surfaceRaised); }
+.oa-react-settings-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-settings-card > header p { margin: 0 0 2px; color: var(--en-color-textMuted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.oa-react-settings-card > header h2 { margin: 0; color: var(--en-color-textPrimary); font-size: 17px; }
+.oa-react-settings-table { display: grid; margin-top: 12px; border: 1px solid var(--en-color-borderSubtle); border-radius: 6px; overflow: hidden; }
+.oa-react-settings-table [role="row"] { display: grid; grid-template-columns: minmax(120px, .45fr) minmax(0, 1fr); gap: 12px; padding: 9px 11px; border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textSecondary); font-size: 11px; }
+.oa-react-settings-table button[role="row"] { width: 100%; appearance: none; background: transparent; text-align: left; cursor: pointer; }
+.oa-react-settings-table button[role="row"]:hover { background: var(--en-color-surfaceMuted); }
+.oa-react-settings-table [role="row"][data-conflict="true"] { color: var(--en-color-warning); }
+.oa-react-settings-table [role="row"]:last-child { border-bottom: 0; }
+.oa-react-settings-table [role="columnheader"] { color: var(--en-color-textMuted); }
+.oa-react-settings-boundary { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; color: var(--en-color-textMuted); font-size: 10px; }
+.oa-react-settings-boundary svg { width: 13px; height: 13px; color: var(--en-color-success); }
+.oa-react-settings-skeleton { display: grid; gap: 8px; padding-top: 14px; }
+.oa-react-settings-skeleton span { display: block; height: 34px; border-radius: 5px; background: linear-gradient(90deg, var(--en-color-surfaceMuted), var(--en-color-surfaceRaised), var(--en-color-surfaceMuted)); background-size: 200% 100%; animation: oa-settings-shimmer 1.4s linear infinite; }
+@keyframes oa-settings-shimmer { to { background-position: -200% 0; } }
+.oa-react-settings-empty { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--en-color-textMuted); }
+.oa-react-settings-empty svg { width: 24px; height: 24px; margin-bottom: 8px; }
+.oa-react-settings-empty h3 { margin: 0 0 5px; color: var(--en-color-textPrimary); font-size: 13px; }
+.oa-react-settings-empty p { max-width: 380px; margin: 0; font-size: 10px; }
+.oa-react-settings-rows { display: grid; gap: 6px; padding-top: 12px; }
+.oa-react-settings-rows article { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(180px, 1fr); align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--en-color-borderSubtle); border-radius: 6px; }
+.oa-react-settings-rows article > div { display: grid; gap: 2px; }
+.oa-react-settings-rows article > div:last-child { display: flex; justify-content: flex-end; gap: 5px; }
+.oa-react-settings-rows article strong { color: var(--en-color-textPrimary); font-size: 11px; text-transform: capitalize; }
+.oa-react-settings-rows article small, .oa-react-settings-rows article > span { color: var(--en-color-textMuted); font-size: 9px; }
+.oa-react-settings-inline-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; margin-top: 10px; }
+
 @media (max-width: 980px) {
   .oa-react-surface-panel { position: absolute; z-index: 5; inset: 0 0 0 auto; width: min(560px, 100%) !important; box-shadow: -18px 0 48px rgb(0 0 0 / 28%); }
   .oa-react-surface-resize { display: none; }
+}
+
+@media (max-width: 720px) {
+  .oa-react-settings-card > header { align-items: flex-start; }
+  .oa-react-settings-rows article { grid-template-columns: minmax(0, 1fr) auto; }
+  .oa-react-settings-rows article > div:last-child { grid-column: 1 / -1; justify-content: flex-start; }
+  .oa-react-settings-inline-editor { grid-template-columns: minmax(0, 1fr) auto; }
+  .oa-react-settings-inline-editor > :last-child { grid-column: 1 / -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-react-settings-skeleton span { animation: none; }
 }
 
 @media (max-width: 620px) {

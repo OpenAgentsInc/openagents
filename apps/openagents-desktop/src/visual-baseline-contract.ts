@@ -28,6 +28,7 @@ export const VISUAL_BASELINE_SHELL_STATES = [
   "files-rich-diff",
   "terminal-workbench",
   "browser-preview",
+  "settings-routed",
 ] as const;
 export type VisualBaselineShellStateName = (typeof VISUAL_BASELINE_SHELL_STATES)[number];
 

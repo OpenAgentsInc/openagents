@@ -113,19 +113,18 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-08
+## Active packet — T3UI-09
 
-Outcome: mount T3's browser-preview component family over admitted OpenAgents
-local-preview and file authorities without weakening renderer isolation.
+Outcome: converge Desktop settings into a routed T3-shaped family over the
+existing OpenAgents provider, extension, source-control, command-binding,
+diagnostic, account, and design-system authorities.
 
 Owned paths:
 
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
-- `apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx`
-- `apps/openagents-desktop/src/renderer/react-composer.tsx`
-- `apps/openagents-desktop/src/renderer/shell.ts`
-- `apps/openagents-desktop/src/renderer/surface-layout.ts`
+- `apps/openagents-desktop/src/renderer/react-settings-surface.tsx`
+- `apps/openagents-desktop/tests/electron-boundary.test.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.test.ts`
 - `apps/openagents-desktop/src/visual-baseline-contract.ts`
@@ -135,44 +134,43 @@ Owned paths:
 
 Required behavior:
 
-- local targets come only from exact ready ports announced by generation-owned
-  terminal output; no scan or arbitrary URL field is admitted;
-- browser chrome, target selection, system-browser open, refresh discovery,
-  file preview, responsive/mobile/tablet/desktop framing, empty/waiting/error
-  states, annotation, cursor, capture, and recording affordances are mounted;
-- unsupported DOM automation, capture, recording, credentials, and in-app
-  navigation remain visibly unavailable rather than gaining ambient authority;
-- typed preview annotations validate exact session + ready port, enter bounded
-  one-turn composer state, and lower as untrusted provider context; and
-- the transcript remains mounted behind the T3UI-05 workbench panel.
+- settings navigation selects General, Codex CLI, Extensions, Source control,
+  Keybindings, Diagnostics, and Account without replacing the shell;
+- loading, unavailable, empty, loaded, conflict, redacted, and read-only states
+  are explicit, and enabled actions dispatch existing typed intents;
+- existing OpenAgents buttons, badges, inputs, tables, tooltips, dialogs,
+  popovers, menus, selectors, sheets, and notices remain the primitive authority;
+  this packet adds no parallel component system; and
+- the existing Codex-only General defaults, local-usage consent, and sensitive
+  account redaction remain stable.
 
-Proof: mounted preview chrome/device/file/annotation controls, exact local-target
-and composer-context tests, the browser-preview visual fixture, Desktop
+Proof: mounted route/action/redaction tests, the settings-routed visual fixture,
+Desktop
 typecheck, full serial suite, production build, Electron fixture smokes, Sol
 guards, and publishing.
 
-Close rule: this packet closes the capability-backed safe Preview workbench and
-truthfully disposes unadmitted T3 controls. A future isolated browser host is
-still required before automation/recording can become enabled. Settings,
-remote/mobile, installed journey, signed release, and T3 parity remain later.
+Close rule: this packet closes the routed settings and primitive convergence
+scope. Remote/mobile, responsive/accessibility closure, installed journey,
+signed release, and T3 parity remain later.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-08-20260717`
-- base: `9309e0c407`
+- actor/session: `codex-t3ui-09-20260717`
+- base: `7fe8b322ff`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: safe local/file Preview workbench and typed annotation
+- scope: routed settings and primitive-family convergence
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: local-server/file Preview, browser chrome, device framing,
-  truthful unsupported controls, and typed composer annotation are mounted
-- focused proof: shell/UI contracts pass and the 20th visual state is admitted
-  before final full acceptance
-- receipt: [`2026-07-17-t3ui-08-browser-preview-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-08-browser-preview-receipt.md)
-- residual: isolated automation/recording host and later packets remain; this is
-  not T3 parity
+- implementation: seven routed settings destinations, typed action lowering,
+  reusable status/table/empty/skeleton/conflict families, and sensitive-text
+  redaction are mounted
+- focused proof: 212 files and 2,050 tests pass; production, Electron, React,
+  and the 21-state zero-drift visual gate are green
+- receipt: [`2026-07-17-t3ui-09-settings-primitives-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-09-settings-primitives-receipt.md)
+- residual: remote/mobile, responsive/accessibility closure, installed evidence,
+  signed release, and T3 parity remain
 
 ## Explicit non-authority
 

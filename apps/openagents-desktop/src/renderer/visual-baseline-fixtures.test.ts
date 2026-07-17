@@ -27,6 +27,7 @@ describe("visual-baseline fixture states", () => {
       "files-rich-diff",
       "terminal-workbench",
       "browser-preview",
+      "settings-routed",
       "workbench-messages-reasoning",
       "workbench-commands",
       "workbench-files",

@@ -76,6 +76,13 @@
       "height": 800
     },
     {
+      "name": "settings-routed",
+      "file": "settings-routed.png",
+      "sha256": "3d555a17d9f8db96892c507d9704d1f17a1289d5f2060b84a1aac00c972d69e9",
+      "width": 1280,
+      "height": 800
+    },
+    {
       "name": "workbench-messages-reasoning",
       "file": "workbench-messages-reasoning.png",
       "sha256": "138687471add2badd2db813b0f1f16ff3f9b72711ef2fbcbd5381980ad4cb918",
