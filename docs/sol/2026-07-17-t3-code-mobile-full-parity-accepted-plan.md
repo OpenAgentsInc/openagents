@@ -658,3 +658,73 @@ context remains `T3M-B2.2b`; active-run queue/stop presentation remains
   pre-rebase `pnpm run check`
 - residual: `T3M-B2.2a` is complete; repository-backed `@` context remains
   `T3M-B2.2b`; full mobile parity remains open through `T3M-F2`
+
+## Active packet — T3M-B2.2b
+
+Outcome: add the exact repository/worktree-scoped `@` path-search contract,
+autocomplete states, and mention insertion boundary. This slice must expose
+missing environment transport honestly; it cannot manufacture paths from the
+coding catalog's display labels.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/coding/mobile-composer-path-context.ts`
+- `apps/openagents-mobile/src/screens/mobile-composer-discovery.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/tests/mobile-composer-path-context.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: exact repository/worktree identity, bounded environment query,
+stale-result rejection, safe relative paths, canonical draft text, Effect
+Native mention autocomplete, behavior registry, and Sol manifest.
+
+Required behavior:
+
+- an explicit trailing `@` token queries at most twenty entries against the
+  exact repository and worktree refs already bound to the composer;
+- results carry safe relative path, kind, and revision identity; stale,
+  foreign, traversal, oversized, or duplicate results are rejected;
+- loading, empty, unavailable, and failed states render honestly in the native
+  composer autocomplete;
+- selecting an exact current result replaces only the trigger token with a
+  mention and persists the resulting draft text; arbitrary path text cannot
+  bypass the result set;
+- when no environment search transport is connected, the UI says so and keeps
+  the draft. Full transport closure is a dependency shared with `T3M-D1` and
+  `T3M-F1`, not permission to synthesize repository contents.
+
+Proof: decoder/path safety tests, stale query races, Home selection/refusal,
+autocomplete states, authoritative draft regressions, accessibility, behavior
+contracts, mobile typecheck, and repository checks.
+
+Close rule: this closes the mobile query/presentation/admission boundary. A
+real paired environment provider remains a named `T3M-D1`/`T3M-F1` release
+dependency; active-run queue/stop remains `T3M-B2.3`.
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-b2-2b-20260717`
+- base: `c6abfbf69e67f37b643dbee996e228b6aebe7200`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-B2.2b` exact path-search, autocomplete, and mention admission
+- paths: the `T3M-B2.2b` owned paths above
+- verification: focused path/Home/accessibility suites, behavior/Sol checks,
+  mobile typecheck, and `pnpm run check`
+- claimed_at: `2026-07-17T21:59:09Z`
+
+### CLAIM-STATUS
+
+- status: implementation complete and release gates green
+- verification: 87 focused repository-path, slash discovery, composer toolbar/
+  attachments, authoritative Home, accessibility, local-first registry, RN
+  renderer, and behavior-contract tests; mobile typecheck; `pnpm run check`;
+  `git diff --check`
+- authority note: queries and decoded pages must match the exact composer-bound
+  repository/worktree/query; only a current decoded result can be inserted, and
+  stale, foreign, traversal, oversized, or duplicate results are refused
+- close boundary: the current mobile composition reports an unavailable search
+  transport honestly; connecting a real paired environment provider remains a
+  `T3M-D1`/`T3M-F1` release dependency; queue/stop remains `T3M-B2.3`
+- verified_at: `2026-07-17T22:04:49Z`

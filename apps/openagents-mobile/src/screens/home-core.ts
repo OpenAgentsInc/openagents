@@ -46,6 +46,11 @@ import {
 import type { MobileCodingAttachmentDeliveryResult } from "../coding/mobile-coding-attachment-delivery"
 import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
 import {
+  normalizeMobileComposerPathQuery,
+  searchMobileComposerPaths,
+  type MobileComposerPathSearchPort,
+} from "../coding/mobile-composer-path-context"
+import {
   projectMobilePortableSessionControl,
   type MobilePortableControlAction,
   type MobilePortableSessionControl,
@@ -97,9 +102,11 @@ import {
 import { projectMobileWorkGroup } from "./mobile-work-log"
 import {
   mobileComposerSlashTrigger,
+  mobileComposerPathTrigger,
   mobileSlashCommandIds,
   mobileSlashCommands,
   type MobileSlashCommandContext,
+  type MobileComposerPathDiscoveryState,
 } from "./mobile-composer-discovery"
 
 export {
@@ -158,6 +165,7 @@ export interface HomeState {
   readonly codingComposer: MobileCodingComposerSession | null
   readonly codingComposerTargetPickerOpen: boolean
   readonly codingComposerTargetSearch: string
+  readonly codingPathDiscovery: MobileComposerPathDiscoveryState
   readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
   readonly fleetRuns?: FleetRunClientProjection
   readonly codingExecutionTargetCatalogRequired: boolean
@@ -299,6 +307,7 @@ export const initialHomeState: HomeState = {
   codingComposer: null,
   codingComposerTargetPickerOpen: false,
   codingComposerTargetSearch: "",
+  codingPathDiscovery: { state: "idle" },
   codingExecutionTargets: [],
   codingExecutionTargetCatalogRequired: false,
   codingAttachmentPicking: false,
@@ -430,6 +439,14 @@ export const CodingComposerSlashCommandSelected = defineIntent(
   "CodingComposerSlashCommandSelected",
   Schema.Literals(mobileSlashCommandIds),
 )
+export const CodingComposerPathQueryChanged = defineIntent(
+  "CodingComposerPathQueryChanged",
+  Schema.String,
+)
+export const CodingComposerPathSelected = defineIntent(
+  "CodingComposerPathSelected",
+  Schema.String,
+)
 export const RuntimeInteractionOptionToggled = defineIntent(
   "RuntimeInteractionOptionToggled",
   Schema.Struct({
@@ -527,6 +544,8 @@ export const homeIntentDefinitions = [
   CodingComposerTargetSearchChanged,
   CodingComposerSlashQueryChanged,
   CodingComposerSlashCommandSelected,
+  CodingComposerPathQueryChanged,
+  CodingComposerPathSelected,
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
   RuntimeTurnControlRequested,
@@ -614,6 +633,7 @@ export const renderContentView = (state: HomeState): View =>
             pickerOpen: state.codingComposerTargetPickerOpen,
             search: state.codingComposerTargetSearch,
           },
+          state.codingPathDiscovery,
           state.syncPhase === "catching_up"
             ? "refreshing"
             : state.conversationAuthority === "sync" && state.syncPhase !== "live"
@@ -1390,6 +1410,7 @@ export interface HomeProgramOptions {
     pickComposerAttachments: (
       session: MobileCodingComposerSession,
     ) => Promise<MobileCodingAttachmentUpdateResult>
+    searchComposerPaths?: MobileComposerPathSearchPort["search"]
     removeComposerAttachment?: (
       session: MobileCodingComposerSession,
       attachmentId: string,
@@ -1699,6 +1720,67 @@ const failedConversationState = (
   },
 })
 
+const refreshComposerPathDiscovery = (
+  state: SubscriptionRef.SubscriptionRef<HomeState>,
+  coding: NonNullable<HomeProgramOptions["coding"]>,
+  composer: MobileCodingComposerSession,
+  text: string,
+) => Effect.gen(function* () {
+  const trigger = mobileComposerPathTrigger(text)
+  if (trigger === null) {
+    yield* SubscriptionRef.update(state, current =>
+      current.codingPathDiscovery.state === "idle"
+        ? current
+        : { ...current, codingPathDiscovery: { state: "idle" as const } })
+    return
+  }
+  const query = normalizeMobileComposerPathQuery(trigger.query)
+  const repository = composer.draft.context.find(item => item.kind === "repository")
+  const worktree = composer.draft.context.find(item => item.kind === "worktree")
+  if (repository?.kind !== "repository" || worktree?.kind !== "worktree" ||
+    coding.searchComposerPaths === undefined) {
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      codingPathDiscovery: {
+        state: "unavailable" as const,
+        query,
+        message: "Connect the exact worktree environment to search repository files.",
+      },
+    }))
+    return
+  }
+  if (query === "") {
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      codingPathDiscovery: { state: "ready" as const, query, entries: [] },
+    }))
+    return
+  }
+  yield* SubscriptionRef.update(state, current => ({
+    ...current,
+    codingPathDiscovery: { state: "loading" as const, query },
+  }))
+  const result = yield* Effect.promise(() => searchMobileComposerPaths(
+    { search: coding.searchComposerPaths! },
+    {
+      repositoryRef: repository.repositoryRef,
+      worktreeRef: worktree.worktreeRef,
+      query,
+    },
+  ))
+  yield* SubscriptionRef.update(state, current => {
+    const currentTrigger = mobileComposerPathTrigger(current.khala.draft)
+    if (current.codingComposer?.draft.draftRef !== composer.draft.draftRef ||
+      normalizeMobileComposerPathQuery(currentTrigger?.query ?? "") !== query) return current
+    return {
+      ...current,
+      codingPathDiscovery: result.state === "ready"
+        ? { state: "ready" as const, query, entries: result.page.entries }
+        : { state: "failed" as const, query, message: result.message },
+    }
+  })
+})
+
 export const initialHomeStateForConversation = (
   selection: HomeProgramOptions["conversation"],
   accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
@@ -1771,6 +1853,7 @@ const makeSyncedConversationHandlers = (
         codingComposer: activeRemoved ? null : current.codingComposer,
         codingComposerTargetPickerOpen: activeRemoved ? false : current.codingComposerTargetPickerOpen,
         codingComposerTargetSearch: activeRemoved ? "" : current.codingComposerTargetSearch,
+        codingPathDiscovery: activeRemoved ? { state: "idle" as const } : current.codingPathDiscovery,
         codingAttachmentMutatingRef: activeRemoved ? null : current.codingAttachmentMutatingRef,
         threadLifecycle: {
           editingThreadRef: null,
@@ -1813,6 +1896,7 @@ const makeSyncedConversationHandlers = (
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
+      codingPathDiscovery: { state: "idle" as const },
       codingAttachmentPicking: false,
       codingAttachmentMutatingRef: null,
       codingAttachmentStatus: null,
@@ -1853,6 +1937,7 @@ const makeSyncedConversationHandlers = (
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
+      codingPathDiscovery: { state: "idle" as const },
       codingAttachmentPicking: false,
       codingAttachmentMutatingRef: null,
       codingAttachmentStatus: null,
@@ -1935,8 +2020,16 @@ const makeSyncedConversationHandlers = (
     const before = yield* SubscriptionRef.get(state)
     const composer = before.codingComposer
     if (composer === null || coding === undefined) {
+      const pathTrigger = mobileComposerPathTrigger(bounded)
       yield* SubscriptionRef.update(state, current => ({
         ...current,
+        codingPathDiscovery: pathTrigger === null
+          ? { state: "idle" as const }
+          : {
+              state: "unavailable" as const,
+              query: normalizeMobileComposerPathQuery(pathTrigger.query),
+              message: "Open a coding session before searching repository files.",
+            },
         khala: { ...current.khala, draft: bounded },
       }))
       return
@@ -1952,6 +2045,7 @@ const makeSyncedConversationHandlers = (
             codingComposer: updated,
             khala: { ...current.khala, draft: bounded },
           })
+    yield* refreshComposerPathDiscovery(state, coding, updated, bounded)
   }),
   RuntimeInteractionOptionToggled: (payload: Readonly<{
     interactionRef: string
@@ -2359,6 +2453,7 @@ export const makeHomeHandlers = (
         codingComposer: null,
         codingComposerTargetPickerOpen: false,
         codingComposerTargetSearch: "",
+        codingPathDiscovery: { state: "idle" as const },
         codingAttachmentPicking: false,
         codingAttachmentMutatingRef: null,
         codingAttachmentStatus: null,
@@ -2452,6 +2547,22 @@ export const makeHomeHandlers = (
           }
       }
     }),
+    CodingComposerPathQueryChanged: (query: string) => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const trigger = mobileComposerPathTrigger(before.khala.draft)
+      if (trigger === null) return
+      const bounded = query.replace(/[\s@\\]/gu, "").slice(0, 128)
+      yield* draftChanged(`${before.khala.draft.slice(0, trigger.replaceFrom)}@${bounded}`)
+    }),
+    CodingComposerPathSelected: (pathRef: string) => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const trigger = mobileComposerPathTrigger(before.khala.draft)
+      const selected = before.codingPathDiscovery.state === "ready"
+        ? before.codingPathDiscovery.entries.find(entry => entry.pathRef === pathRef)
+        : undefined
+      if (trigger === null || selected === undefined) return
+      yield* draftChanged(`${before.khala.draft.slice(0, trigger.replaceFrom)}@${selected.pathRef} `)
+    }),
     SettingsPressed: () => SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
@@ -2513,6 +2624,7 @@ export const makeHomeHandlers = (
             codingComposer: null,
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
+            codingPathDiscovery: { state: "idle" as const },
             codingAttachmentPicking: false,
             codingAttachmentMutatingRef: null,
             codingAttachmentStatus: null,
@@ -2775,6 +2887,7 @@ export const makeHomeHandlers = (
             drawerOpen: false,
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
+            codingPathDiscovery: { state: "idle" as const },
             codingAttachmentPicking: false,
             codingAttachmentMutatingRef: null,
             codingAttachmentStatus: null,
@@ -2798,6 +2911,7 @@ export const makeHomeHandlers = (
                 codingComposer: selected.composer,
                 codingComposerTargetPickerOpen: false,
                 codingComposerTargetSearch: "",
+                codingPathDiscovery: { state: "idle" as const },
                 codingAttachmentPicking: false,
                 codingAttachmentMutatingRef: null,
                 codingAttachmentStatus: null,
@@ -2886,6 +3000,8 @@ export interface HomeProgramHandle {
     readonly searchTargets: (search: string) => void
     readonly searchSlashCommands: (query: string) => void
     readonly selectSlashCommand: (commandId: (typeof mobileSlashCommandIds)[number]) => void
+    readonly searchPaths: (query: string) => void
+    readonly selectPath: (pathRef: string) => void
   }
   readonly session: {
     readonly signIn: () => void
@@ -3040,6 +3156,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     codingComposer: null,
                     codingComposerTargetPickerOpen: false,
                     codingComposerTargetSearch: "",
+                    codingPathDiscovery: { state: "idle" as const },
                     portableSnapshot: null,
                     attentionSnapshot: null,
                     selectedPortableDestinationRef: null,
@@ -3115,6 +3232,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             "CodingComposerSlashCommandSelected",
             StaticPayload(commandId),
           )),
+          searchPaths: query => fireText(
+            IntentRef("CodingComposerPathQueryChanged", ComponentValueBinding()),
+            query,
+          ),
+          selectPath: pathRef => fireText(
+            IntentRef("CodingComposerPathSelected", ComponentValueBinding()),
+            pathRef,
+          ),
         },
         session: {
           signIn: fire("OpenAgentsSignInPressed"),

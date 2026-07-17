@@ -4,6 +4,7 @@ import {
   IntentRef,
   type ComposerAutocomplete,
 } from "@effect-native/core"
+import type { MobileComposerPathEntry } from "../coding/mobile-composer-path-context"
 
 export const mobileSlashCommandIds = [
   "mobile.command.new_chat",
@@ -79,12 +80,31 @@ export type MobileComposerSlashTrigger = Readonly<{
   replaceFrom: number
 }>
 
+export type MobileComposerPathTrigger = Readonly<{
+  query: string
+  replaceFrom: number
+}>
+
+export type MobileComposerPathDiscoveryState =
+  | Readonly<{ state: "idle" }>
+  | Readonly<{ state: "loading"; query: string }>
+  | Readonly<{ state: "ready"; query: string; entries: ReadonlyArray<MobileComposerPathEntry> }>
+  | Readonly<{ state: "unavailable"; query: string; message: string }>
+  | Readonly<{ state: "failed"; query: string; message: string }>
+
 /** Deterministic parsing begins only after the explicit slash trigger. */
 export const mobileComposerSlashTrigger = (text: string): MobileComposerSlashTrigger | null => {
   const match = /(?:^|\s)\/([A-Za-z0-9_-]*)$/u.exec(text)
   if (match === null) return null
   const slashOffset = match.index + (match[0].startsWith("/") ? 0 : 1)
   return { query: match[1] ?? "", replaceFrom: slashOffset }
+}
+
+export const mobileComposerPathTrigger = (text: string): MobileComposerPathTrigger | null => {
+  const match = /(?:^|\s)@([^\s@]*)$/u.exec(text)
+  if (match === null) return null
+  const atOffset = match.index + (match[0].startsWith("@") ? 0 : 1)
+  return { query: match[1] ?? "", replaceFrom: atOffset }
 }
 
 export const projectMobileSlashCommands = (
@@ -127,6 +147,45 @@ export const renderMobileSlashCommandAutocomplete = (
       onSelect: IntentRef("CodingComposerSlashCommandSelected", ComponentValueBinding()),
       style: { width: "full" },
       a11y: { role: "listbox", label: "Composer commands" },
+    }),
+  }
+}
+
+export const renderMobilePathAutocomplete = (
+  text: string,
+  state: MobileComposerPathDiscoveryState,
+): ComposerAutocomplete | undefined => {
+  const trigger = mobileComposerPathTrigger(text)
+  if (trigger === null) return undefined
+  const current = state.state !== "idle" && state.query === trigger.query ? state : { state: "loading" as const, query: trigger.query }
+  const entries = current.state === "ready" ? current.entries : []
+  const emptyLabel = current.state === "unavailable" || current.state === "failed"
+    ? current.message
+    : current.state === "loading"
+      ? "Searching this worktree…"
+      : trigger.query === ""
+        ? "Type a file or folder name."
+        : "No matching files or folders."
+  return {
+    trigger: "mention",
+    query: trigger.query,
+    combobox: Combobox({
+      key: "khala-coding-composer-path-context",
+      query: trigger.query,
+      placeholder: "Search this worktree",
+      options: entries.map(entry => ({
+        id: entry.pathRef,
+        label: entry.pathRef.split("/").at(-1) ?? entry.pathRef,
+        subtitle: `${entry.pathRef} · ${entry.kind}`,
+        group: "Worktree",
+        icon: entry.kind === "directory" ? "Folder" : "File",
+      })),
+      loading: current.state === "loading",
+      emptyLabel,
+      onQueryChange: IntentRef("CodingComposerPathQueryChanged", ComponentValueBinding()),
+      onSelect: IntentRef("CodingComposerPathSelected", ComponentValueBinding()),
+      style: { width: "full" },
+      a11y: { role: "listbox", label: "Repository files and folders" },
     }),
   }
 }

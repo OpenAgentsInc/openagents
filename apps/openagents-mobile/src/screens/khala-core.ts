@@ -29,7 +29,11 @@ import {
   type MobileComposerToolbarState,
 } from "./mobile-composer-toolbar"
 import { renderMobileComposerAttachments } from "./mobile-composer-attachments"
-import { renderMobileSlashCommandAutocomplete } from "./mobile-composer-discovery"
+import {
+  renderMobilePathAutocomplete,
+  renderMobileSlashCommandAutocomplete,
+  type MobileComposerPathDiscoveryState,
+} from "./mobile-composer-discovery"
 import { renderMobileInteractionCard } from "./mobile-interaction-card"
 import {
   mobileAttachmentRef,
@@ -593,6 +597,7 @@ export const renderKhalaSurface = (
   accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
   executionTargets: ReadonlyArray<MobileExecutionTargetOption> = [],
   composerToolbarState: MobileComposerToolbarState = { pickerOpen: false, search: "" },
+  composerPathDiscovery: MobileComposerPathDiscoveryState = { state: "idle" },
   historyAvailability: "live" | "refreshing" | "unavailable" = "live",
 ): View => {
   const visibleEntries = visibleMobileTranscriptEntries(
@@ -648,7 +653,7 @@ export const renderKhalaSurface = (
       state.runtimeTurn?.status === "running" || state.runtimeTurn?.status === "waiting_for_input",
     pendingAction: codingAttachmentPicking || codingAttachmentMutatingRef !== null ||
       state.runtimeControlSubmittingAction !== null,
-  })
+  }) ?? renderMobilePathAutocomplete(state.draft, composerPathDiscovery)
   return Stack(
     {
       key: "khala-surface",

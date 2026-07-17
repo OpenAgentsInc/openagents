@@ -5,8 +5,42 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.7",
+    version: "2026-07-17.8",
     contracts: [
+      {
+        contractId: "openagents_mobile.composer.repository_path_context.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile coding composer",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "An explicit trailing @ token opens bounded repository-path autocomplete with loading, empty, unavailable, and failed states; selecting a current result inserts only that safe relative path mention into the persisted draft.",
+        authorityBoundary:
+          "Queries are scoped to the exact repository and worktree refs already bound to the composer. Results must echo that scope and query, carry safe relative path and revision identity, and survive duplicate, traversal, and stale-completion checks. The current mobile app names a missing environment search transport instead of manufacturing repository contents; connecting that real provider remains a T3M-D1/T3M-F1 release dependency.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/coding/mobile-composer-path-context.ts",
+          "apps/openagents-mobile/src/screens/mobile-composer-discovery.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-b22b",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/ThreadComposer.tsx",
+        ],
+        oracles: [{
+          id: "mobile_composer_repository_path_context",
+          kind: "bun-test",
+          mode: "e2e",
+          ref: "apps/openagents-mobile/tests/mobile-composer-path-context.test.ts",
+          description:
+            "Proves exact repository/worktree search scope, bounded safe result decoding, stale-race suppression, current-result-only insertion, foreign selection refusal, and honest missing-transport presentation.",
+        }],
+        verification:
+          "Path context, composer discovery, authoritative Home, accessibility, behavior-contract, mobile typecheck, and repository checks; a paired live environment transport and physical-device evidence remain T3M-D1/T3M-F1/T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.composer.typed_slash_commands.v1",
         state: "enforced",
