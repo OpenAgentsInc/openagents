@@ -3,7 +3,7 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_11.desktop_thread_export_command.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "implementation_ready_for_claim_release"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
@@ -74,6 +74,10 @@ and independently passes strict compilation. The targeted AssuranceSpec suite
 reproduces the unrelated environment-profile digest snapshot mismatch at
 189/190. Neither collision is owned, absorbed, weakened, or claimed fixed by
 this packet.
+
+The implementation landed on `main` as
+`9453fe057a29a78eb37e42798236321c03ff21bd`. The fetched remote tree exactly
+matched the fully checked local implementation tree.
 
 ## Honest boundary and next packet
 

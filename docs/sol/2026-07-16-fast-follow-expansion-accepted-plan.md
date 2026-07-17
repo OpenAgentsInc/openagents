@@ -830,6 +830,12 @@ evidence, and Day 1 completion remain later packets.
 - baseline collisions: the Desktop package typecheck retains only the pre-existing lifecycle-schema failures recorded by FF-D1-10; the known AssuranceSpec environment-digest snapshot drift remains outside this packet
 - residual: IPC/preload wiring, save-dialog or remote transport, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- landed: `9453fe057a29a78eb37e42798236321c03ff21bd` on `main`
+- remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
+- residual: IPC/preload wiring, save-dialog or remote transport, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
