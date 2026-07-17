@@ -35,6 +35,12 @@ wholesale:
 - default/plan/auto-accept permissions and hook policy are useful
   authorization UX, but the package contains no evidence of a local OS
   sandbox; `--yolo` deliberately bypasses prompts;
+- the permission service reads project `allow` entries only for `Bash(...)`,
+  never evaluates configured `deny` entries, and uses a raw string-prefix
+  check for trusted filesystem paths rather than a path-segment boundary;
+- autonomous `/goal` completion has a strict-looking model judge but fails
+  open: timeout, request failure, an empty stream, or an unparseable verdict
+  all become `done: true` with “verifier unavailable — accepted self-claim”;
 - documentation calls Taste learning local, while the bundle sends prompt
   batches and compiled learning context to the Command Code generation API;
 - an authenticated background fingerprint hashes machine id, MAC addresses,
@@ -42,7 +48,8 @@ wholesale:
   a materially broader disclosure surface than the telemetry page explains;
 - the bundled VS Code extension has unusually good bounds and filesystem
   modes, but trusts any process running as the same OS user that can discover
-  its Unix socket; and
+  its Unix socket; the official CLI adds privacy filtering after that socket
+  boundary and treats Git-ignore checker failure as “nothing ignored”; and
 - the unauthenticated CLI path exposed small release-quality seams: `cmd info`
   reported an unknown version, `cmd status` recommended a command spelling
   different from top-level help, and the advertised `cmd taste learn` command
@@ -88,14 +95,30 @@ This document uses the directory convention:
 
 ### 1.3 Important limitations
 
-The package is minified but not opaque: function names, schemas, prompts,
-routes, state paths, policy logic, and the complete VS Code extension source
-map remain visible. That is enough to assess client architecture. It cannot
-prove how the hosted API stores prompts, implements `taste-1`, enforces account
-policy, routes providers, or deletes server-side data. No real login, model
-request, Taste upload, MCP OAuth, shared session, auto-update, or cloud sandbox
-was performed. Private credentials and real project/session contents were not
-read. [limitation]
+The package is minified but not opaque. A formatting-only expansion of the
+exact bundle exposed 22,491 lines. The build preserves at least 1,824 distinct
+`__name(...)` labels, including `SessionManager`, `LearningAgent`,
+`CompactAgent`, `PermissionsService`, `VSCodeIPCClient`, route builders,
+schema-repair helpers, importers, hook functions, and UI components. It also
+preserves source-module comments, Zod constructors, full prompt literals,
+route constants and regexes, model/plan tables, headers, state-path
+constructors, error strings, and branch logic. The counts describe this exact
+build artifact, not a stable public API. [bundle]
+
+The VSIX map is even clearer: it embeds 22,562 bytes of original TypeScript in
+`sourcesContent` across six emitted modules—`utils/workspace.ts`,
+`context-provider.ts`, `utils/diagnostics.ts`, `utils/ipc-caps.ts`,
+`ipc-server.ts`, and `extension.ts`. “Complete source map” here means complete
+for the JavaScript emitted into `dist/extension.js`; type-only `types.ts`,
+tests, build configuration, and repository history are not embedded. [bundle]
+
+That is enough to assess shipped client behavior. It cannot prove how the
+hosted API stores prompts, implements `taste-1`, enforces account policy,
+authorizes the internal routes present in the client catalog, routes
+providers, or deletes server-side data. No real login, model request, Taste
+upload, MCP OAuth, shared session, auto-update, or cloud sandbox was performed.
+Private credentials and real project/session contents were not read.
+[limitation]
 
 ## 2. Public-source reality: the product is closed
 
@@ -163,7 +186,38 @@ This is a conventional, portable terminal application rather than a native
 binary or an editor fork. The shipped VSIX is only about 48 KB; the CLI remains
 the engine and product shell. [bundle]
 
-### 4.2 CLI surface
+### 4.2 What the minified bundle actually discloses
+
+The retained names and literals are sufficient to recover a detailed client
+map without pretending the closed source is open source:
+
+| Visible seam | Concrete bundle evidence | What can and cannot be concluded |
+| --- | --- | --- |
+| Function/class topology | At least 1,824 unique retained names, including `ContextEngine`, `SessionManager`, `LearningAgent`, `CompactAgent`, `CheckpointManager`, `PermissionsService`, `McpConnectionManager`, `SessionImporter`, and `VSCodeIPCClient` | Establishes shipped client responsibilities and call seams, not original repository structure or server implementation |
+| Runtime schemas | 52 Zod object constructions, 26 literals, 11 enums, three discriminated unions, plus tool-input preprocessors and repair rules in this build | Establishes local validation shapes; server validation and compatibility policy remain unknown |
+| Prompts | Complete literals for compaction, Taste observation, repository-Taste synthesis, session-title generation, tool-description generation, PR review, goal continuation, and goal verification | Establishes client-side instructions and remote payload construction, not the hosted model's implementation or retention |
+| API catalog | Provider messages/models, generation, agent generation, web search/fetch, fingerprint, sandbox, sharing, Taste, billing, usage, lifecycle, consent, package-registry, profile, organization, invitation, API-key, and admin route families | Proves the client knows these route names; presence is not proof that every route is enabled or that an ordinary user is authorized |
+| Request metadata | OAuth/provider, project slug, Taste learning/usage, CLI environment/version, session id, system-prompt breakdown, provider selection, and zero-data-retention headers | Establishes the client protocol vocabulary, not server compliance with those flags |
+| Local state | Environment-specific auth/config, project settings, sessions, prompts, metadata, shares, checkpoints, file history, plans, skills, agents, MCP config/tokens, IDE sessions, hook trust, logs, shell-task output, prompt history, and updater state under project files or `~/.commandcode` | Establishes custody locations and migration surface; file presence alone is not durable admission or encryption |
+| Policy logic | Tool filtering by mode, shell classification, trusted-command matching, hook precedence/trust, Taste writer bounds, IDE context filtering, model-plan gates, retry/continuation limits, and goal-verifier fallback | Establishes actual client decisions and exposes the fail-open and path-prefix issues described below |
+
+The schemas are not passive documentation. Tool input is first parsed, then a
+bounded repair layer can rename known aliases, drop null or empty-object
+placeholders, parse JSON-stringified arrays, wrap a bare string as an array,
+or wrap a root string in the expected object field. Repaired inputs are parsed
+again, repair hints are returned to the model, and outcomes are counted for
+telemetry. This explains how the product tolerates common model/tool-schema
+drift while still rejecting inputs that remain invalid. [bundle]
+
+The route table is unusually broad for a client bundle. It includes explicit
+internal admin operations for users, organizations, credits, bans, deletion,
+and plan-id migration as well as customer-facing organization, billing,
+profile, following, API-key, usage, and Taste package operations. Those names
+are useful attack-surface inventory, but no unauthenticated or unauthorized
+call was attempted, and the bundle cannot establish the server's authorization
+checks. [bundle] [limitation]
+
+### 4.3 CLI surface
 
 The audited help exposes:
 
@@ -183,7 +237,7 @@ Code's “terminal as application platform,” but Command Code is smaller,
 JavaScript-based, and organized around a hosted generation API plus the Taste
 loop rather than a public bidirectional engine protocol.
 
-### 4.3 Hosted generation seam
+### 4.4 Hosted generation seam
 
 The main generation path constructs config, memory, Taste, skills, permission
 mode, model messages, tools, reasoning effort, and token limits, then posts a
@@ -384,6 +438,31 @@ That is strong local-product behavior. OpenAgents should keep the UX while
 retaining stable Thread/Turn/Item/Work Unit refs and durable admission rather
 than copying filesystem snapshots as canonical identity.
 
+### 7.4 The local state map is recoverable
+
+The path constructors show which state is shared, per-environment,
+per-project, or per-session:
+
+| State | Shipped location |
+| --- | --- |
+| Production/local/staging auth | `~/.commandcode/auth.json`, `auth.local.json`, or `auth.staging.json`, mode `0600` after writes |
+| Production/local/staging config | `~/.commandcode/config.json`, `config.local.json`, or `config.staging.json` |
+| User/project settings | `~/.commandcode/settings.json`, `.commandcode/settings.json`, `.commandcode/settings.local.json`, plus per-project global state under `~/.commandcode/projects/<slug>/settings.json` |
+| Sessions | `~/.commandcode/projects/<slug>/<session>.{jsonl,meta.json,share.json,checkpoints.jsonl,prompts.jsonl}` |
+| File backups | `~/.commandcode/file-history/<session>/...`, keyed by hashed original paths |
+| Taste | `.commandcode/taste/taste.md`, one-level category `taste.md` files, and `~/.commandcode/taste/...` |
+| Instructions and extensions | Enterprise/user/project `AGENTS.md`; user/project `.commandcode/skills` and `.agents/skills`; user/project `.commandcode/agents` |
+| MCP | `~/.commandcode/mcp.json`, per-project local `~/.commandcode/projects/<slug>/mcp.json`, project `.mcp.json`, and `~/.commandcode/mcp-tokens.json` with mode `0600` |
+| IDE and hooks | `~/.commandcode/ide/*`, `~/.commandcode/trusted-hooks.json`, and hook configuration in the settings files above |
+| Operator/runtime convenience | `~/.commandcode/history.jsonl`, `plans/`, `logs/command.log`, `updates.json`, `update.lock`, and `update-status` |
+
+This map also shows that “local” does not mean “one store with one lifecycle.”
+Credentials, configuration, transcripts, checkpoints, backups, extension
+discovery, learned preferences, hook trust, and updater state have separate
+formats and retention paths. Logout, session deletion, Taste deletion, and
+uninstall therefore need distinct deletion semantics; the package does not
+expose one manifest proving complete local erasure. [bundle] [inferred]
+
 ## 8. Checkpoints and rewind
 
 Command Code creates a checkpoint per user message and backs up original file
@@ -483,6 +562,33 @@ trusted shell commands, compound-command parsing, and explicit `--yolo` /
 Windows sandbox, VM, container, or equivalent local containment runtime.
 [bundle]
 
+The deeper policy read found that the local settings vocabulary is stronger
+than its enforcement:
+
+- `PermissionsService.loadConfig` recognizes `defaultMode: "acceptEdits"`,
+  per-action auto-approval, and `permissions.allow`, but it imports only
+  `Bash(...)` entries from the allow list;
+- configured `permissions.deny` entries are preserved when settings are
+  rewritten but are never consulted by `requestPermission`,
+  `requestShellPermission`, or trusted-command matching;
+- the service allocates `projectPermissions`, but this build neither writes nor
+  reads it for file decisions;
+- trusted paths are checked with `relativePath.startsWith(trustedPath) ||
+  absolutePath.startsWith(trustedPath)`, without canonicalization or a path
+  separator boundary, so trusting `.../foo` also matches sibling-prefix
+  `.../foobar`; and
+- project approval for one file operation flips create, edit, delete, and
+  execute auto-approval together and persists `defaultMode: "acceptEdits"`.
+  Shell approval remains separate. [bundle]
+
+The shell classifier is more careful. It tokenizes commands, distinguishes
+simple, compound, redirected, dynamic, and malformed forms, rejects dynamic
+shell wrappers from prefix trust, and recognizes only a small read-only set
+(`basename`, `dirname`, `file`, `grep`, `ls`, `pwd`, `stat`, constrained
+`find`/`tree`, and constrained `git status`/`git log`/`git diff`/`git branch`)
+for implicit approval. A persisted `Bash(git:*)`-style rule matches only a
+simple parsed argv prefix. [bundle]
+
 An experimental remote sandbox command and API route exist in the bundle, but
 that does not contain ordinary local interactive or headless execution.
 [bundle] [limitation]
@@ -497,6 +603,11 @@ OS sandbox / guest / capability broker
   = not established for ordinary local execution
 ```
 
+It should also not be described as a deny-overrides policy engine. In this
+artifact, a visible `deny` array is inert client-side configuration. Whether a
+hosted request path applies separate policy cannot be established here.
+[bundle] [limitation]
+
 ### 10.3 Taste cannot grant authority
 
 The hosted request includes Taste beside memory, skills, tools, and permission
@@ -506,6 +617,30 @@ preference can rank or condition behavior only inside already-admitted
 authority. It cannot select a broader execution target, grant a tool, suppress
 an approval, publish, spend, or convert an agent result into acceptance.
 
+### 10.4 Autonomous goal verification fails open
+
+`/goal` is not only a long-running prompt convention. The client asks the
+working model to emit a `<goal-complete>` marker, collects a bounded digest of
+recent tool evidence, defangs goal/response/evidence tags, and sends the claim
+to a second strict completion prompt. That prompt requires one JSON object with
+`done` and a reason, limits the assistant response to 6,000 characters, uses a
+30-second timeout, and tells the judge to reject missing or weak evidence.
+[bundle]
+
+The fallback reverses that strict policy. A missing response stream, timeout,
+request exception, or verdict that cannot be parsed all return the constant:
+
+```text
+done: true
+reason: verifier unavailable — accepted self-claim
+```
+
+This is a fail-open availability choice at the acceptance boundary. It means a
+network or parser failure can promote an unverified autonomous goal to complete
+even though the verifier prompt explicitly says missing evidence is not done.
+OpenAgents must keep verification unavailable, malformed, timed out, and
+negative as distinct non-accepting states. [bundle]
+
 ## 11. IDE integration
 
 The bundled extension supports VS Code, Cursor, and Windsurf. It publishes a
@@ -513,28 +648,66 @@ small session file under `~/.commandcode/ide`, listens on a Unix socket or
 Windows named pipe, and answers two requests: current editor context and
 diagnostics. Context contains workspace, active file metadata, cursor,
 selection capped at 10,000 characters, and visible file metadata. The CLI
-filters returned context against allowed workspace directories. [bundle]
+then filters returned context to canonical files strictly beneath the primary
+workspace root, excludes sensitive basenames such as `.env`, private keys,
+credentials, `.npmrc`, `.pypirc`, and `.netrc`, and excludes Git-ignored files.
+Filtering uses batched `git check-ignore`, a two-second timeout, a 30-second
+per-workspace cache, and canonical real paths. A general filtering exception
+drops the context, but `git check-ignore` timeout, spawn error, or unexpected
+exit is converted to an empty ignored-path set. That fails open specifically
+for Git-ignore privacy: non-sensitive in-workspace candidates are admitted as
+though none were ignored. Diagnostics pass through the same safe-file filter.
+[bundle]
+
+The source map makes the exact division of responsibility visible:
+
+| Module | Shipped behavior |
+| --- | --- |
+| `utils/workspace.ts` | Uses the first workspace folder as root, exposes workspace name, and computes relative display paths |
+| `context-provider.ts` | Caches active editor, 1-indexed cursor, language, line count, UTF-8/scheme, tab size, selected text, and deduplicated visible editors; refreshes on editor, selection, document, and configuration changes |
+| `utils/diagnostics.ts` | Reads VS Code's aggregate diagnostic collection, drops non-file URIs and empty files, and maps range, message, severity, source, and code |
+| `utils/ipc-caps.ts` | Defines byte-honest UTF-8 caps: 8 MB accumulated buffer, 4 MB framed message, 16 peers, and 60-second idle timeout |
+| `ipc-server.ts` | Owns session/socket creation, framing, request dispatch, caps, errors, teardown, and filesystem modes |
+| `extension.ts` | Detects VS Code/Cursor/Windsurf, starts the server on `onStartupFinished`, publishes discovery, and registers “Open Command Code” to launch `cmdc` in the first workspace folder |
+
+The map does not embed the type-only `types.ts` import, so the request and
+response interfaces must be reconstructed from runtime construction and use.
+It also does not embed tests even though `vitest.config.ts` and
+`tsconfig.tsbuildinfo` ship in the VSIX. The manifest contributes no visible
+configuration schema for `commandcode.context.maxSelectionLength`; the code
+still reads that setting with a 10,000-character default. [bundle]
 
 The extension's implementation is unusually disciplined for a companion
 bridge:
 
 - session directory mode `0700`, socket/session-file mode `0600`;
-- atomic session-file publication;
+- atomic session-file publication through an exclusive `0600` temp file,
+  explicit stale-temp unlink, full write, rename, and post-rename chmod;
 - 16-connection cap;
 - 60-second idle timeout;
 - 8 MB accumulated-buffer and 4 MB message caps;
 - newline-framed request/response with only two action names; and
 - cleanup on deactivate. [bundle]
 
-The VSIX also ships a complete source map with `sourcesContent`, making this
-part inspectable despite the closed CLI. [bundle]
+CLI discovery validates the session JSON with Zod, constrains socket names to
+the expected IDE prefix and directory, drops dead-PID sessions, prefers a
+matching IDE ancestor within ten parent-process hops, and otherwise selects
+the longest matching workspace prefix. Requests then require matching ids and
+use two-second connection and five-second response bounds. [bundle]
 
 There is no per-request token or challenge. Any process with the same OS-user
 authority that discovers the socket can request editor selection and
-diagnostics. Filesystem modes make that a deliberate same-user trust boundary,
-not a remotely exposed unauthenticated service. OpenAgents should copy the
-bounds and narrow vocabulary while retaining its host-owned typed capability
-and generation fence.
+diagnostics. More importantly, sensitive-basename, Git-ignore, canonical
+workspace, and diagnostics filtering live in the official CLI client, not the
+extension server. A same-user process speaking the two-action protocol
+directly receives the raw extension response and bypasses those client-side
+privacy filters. The extension also exposes all workspace diagnostics when
+`filePaths` is omitted. Filesystem modes make this a deliberate same-user trust
+boundary, not a remotely exposed unauthenticated service, but the trust unit is
+the whole OS account rather than the Command Code process. OpenAgents should
+copy the bounds and narrow vocabulary while moving minimization into the
+serving boundary and retaining its host-owned typed capability and generation
+fence. [bundle] [inferred]
 
 ## 12. Telemetry, fingerprinting, and privacy
 
@@ -611,9 +784,31 @@ Within that boundary:
   The separate `cmd learn-taste --help` path does exist for importing previous
   agent sessions. [runtime]
 
-These are not core-architecture failures. They demonstrate why CLI help,
-non-TTY behavior, auth gating, diagnostics, and every documented command path
-need release oracles rather than spot checks.
+The expanded source review added release-oracle candidates that did not require
+executing private paths:
+
+- a configured permission `deny` must override every allow, trusted path,
+  trusted command, auto-accept mode, and hook outcome; the current client does
+  not read it;
+- trusted path matching must canonicalize and use a segment boundary, with
+  regression pairs such as `foo` versus `foobar`;
+- every goal-verifier timeout, empty stream, parse failure, and request failure
+  must remain incomplete rather than accept the working model's self-claim;
+- IDE privacy tests must connect directly to the socket, not only through the
+  official CLI, because the filtering boundary currently sits in the client;
+- Git-ignore filtering must treat checker timeout/error as unavailable and
+  drop the candidate rather than interpret failure as “not ignored”;
+- a multi-root IDE test should state whether non-primary workspace folders are
+  intentionally visible, because context uses the first folder while session
+  discovery advertises every folder; and
+- the extension package should either contribute the selection-length setting
+  it reads or remove the undocumented configuration seam. [bundle]
+
+The help inconsistencies are not core-architecture failures. The inert deny
+configuration, fail-open completion verifier, and server-side/client-side IDE
+minimization split are more material. Together they demonstrate why policy,
+CLI help, non-TTY behavior, auth gating, diagnostics, and every documented
+command path need release oracles rather than spot checks.
 
 ## 15. Comparison with the reference set
 
@@ -626,7 +821,8 @@ need release oracles rather than spot checks.
 | Terminal host | React/Ink, background tasks, monitors | Grok Build | Keep Grok as renderer/process-lifecycle reference |
 | Multi-provider | Broad hosted model catalog | T3 Code harness boundary | Model choice is not a substitute for open peer/runtime contracts |
 | IDE bridge | Tiny bounded same-user socket adapter | OpenCode thin client/server split | Adapt caps and visibility under typed host authority |
-| Permissions | Ask/plan/auto/bypass + hooks | Codex compiled sandbox policy | Keep authorization and containment separate |
+| Permissions | Ask/plan/auto/bypass + hooks; client `deny` is inert | Codex compiled sandbox policy | Require deny precedence, canonical path bounds, and separate containment |
+| Autonomous completion | Evidence prompt plus model judge, but verifier failure accepts self-claim | OpenAgents accepted-outcome and Assurance boundaries | Verification unavailable is non-accepting; prose cannot mint completion |
 | Extensions | Skills, agents, MCP, hooks | Claude/OpenCode/Grok breadth | Resolve into signed isolated generations |
 | Portable sessions | Same-machine JSONL and cloud share | OpenAgents pathway target | Retain host-neutral identity, authority, and receipts |
 | Updates | Staged npm self-update | T3/OpenCode build matrix; OpenAgents fail-closed ledger | Take staging UX, not unsigned authority |
@@ -738,6 +934,12 @@ Adapt these independently of Taste:
 10. **No closed load-bearing preference engine.** The schema, compiler
     boundary, applicability rules, and evidence semantics should be public and
     testable even when a selected inference model is external.
+11. **No inert deny configuration.** Deny must have explicit precedence over
+    allow, trust, remembered approval, hooks, and automatic modes, with
+    canonical path-segment matching.
+12. **No fail-open autonomous completion.** Verifier unavailable, timed out,
+    malformed, empty, or negative remains incomplete and cannot accept an
+    agent's self-claim.
 
 ## 18. Recommended sequence
 
