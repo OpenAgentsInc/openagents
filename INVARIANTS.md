@@ -257,6 +257,39 @@ More specific invariant ledgers apply inside imported apps and packages.
   responses, files, paths, or account names, and disabling consent deletes it.
   Telemetry failure never blocks an ordinary or Full Auto local turn.
 
+- Full Auto's autonomous-run authority (`specs/desktop/full-auto.product-spec.md`
+  rev >= 10, epic #8967, issue #8968) is scoped exactly as follows once the
+  `FullAutoRun` model ships: a run's `runRef` is durable and independent of
+  any `threadRef` it is currently bound to; v1 permits at most one active
+  (non-terminal) Full Auto run per Desktop profile, never silent queueing or
+  parallel dispatch of a second active run; every lifecycle transition among
+  Draft, Running, Pausing, Paused, Retrying, Stalled, Completed, Failed,
+  Stopped, and Cap-reached carries actor, timestamp, and a typed reason,
+  extending the existing `disabledBy` attribution pattern to the full graph;
+  Stop is a terminal transition distinct from Pause and is never resumed; and
+  a run's objective/done-condition text is a first-class durable field that
+  must not depend solely on provider-native session continuity or bounded
+  transcript notes, so a provider switch or a truncated history projection
+  cannot silently lose it. A provider reporting a turn as done never by
+  itself asserts that a run's objective/done condition was satisfied;
+  automatic done-condition verification is out of scope, and Completed stays
+  a self-reported, owner-reviewable disposition backed by the run's bounded
+  private report. That `FullAutoRunReport` may summarize turns, commits,
+  failures, and provider transitions, but raw prompts, tool output, and
+  provider transcripts remain private and must not enter public receipts,
+  telemetry, or the promise registry without a separate approved authority
+  path; any public-safe control/receipt projection of it must expose only
+  bounded, non-transcript fields, and any raw-evidence pointer it carries
+  must resolve only to owner-private storage. A cross-provider handoff (manual
+  switch or an explicit Pause -> switch -> Resume) must project only a
+  host-owned bounded history, re-check target admission/auth/capability with
+  rollback on refusal, append a visible from/to/actor/time/reason/truncation
+  receipt, and never imply that provider-private session state itself
+  transfers. Cross-machine control, concurrent multi-run execution,
+  fleet/multi-repo scheduling, and autonomous (loop-decided) provider
+  selection remain out of this authority until a separately admitted design
+  changes it.
+
 - Public UI does not own settlement, payout, runtime promotion, or accepted
   outcome authority.
 - Desktop Codex host services accept only canonical WorkContext-relative

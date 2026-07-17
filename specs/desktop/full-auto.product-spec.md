@@ -1,13 +1,16 @@
 ---
 spec_format_version: "0.1"
-title: "Full Auto Provider-Lane Composer Loop"
+title: "Full Auto Autonomous Run Contract"
 artifact_type: "prd"
-spec_revision: 9
+spec_revision: 10
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
-updated_at: "2026-07-16T16:20:00.000Z"
+updated_at: "2026-07-17T19:25:20.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
+  - id: "custom-criterion-disposition-map"
+    label: "Criterion Disposition Map (Rev 9 -> Rev 10)"
+    after: "acceptance_criteria"
   - id: "custom-owner-gates"
     label: "Owner Gates"
     after: "success_metrics"
@@ -21,89 +24,144 @@ tool_metadata:
   openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8875 (FA-H2 workspace binding), 8876 (FA-H3 exactly-once dispatch), 8877 (FA-H4 background in-flight state, stop, send-fencing), 8878 (FA-H5 failure policy), 8879 (FA-H6 profile continuity), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness), 8885 (FA-H12 two-process restart smoke), 8886 (FA-H13 local programmatic control surface)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
+  openagents_assurance_spec_status: "stale_pending_reconciliation: bound to rev 9 document digest and FA-AC-01..37 only; rev 10 adds FA-AC-38..66 and a criterion disposition map that the AssuranceSpec has not yet absorbed. Reconciliation (new obligations, retired/changed obligation mapping, admission) is FA-AS-01 (#8978), which explicitly depends on this revision. Do not treat the existing 37/37 needs_design obligation set as covering rev 10."
   openagents_revision_8_issue: "8901 (L6 provider-lane generalization)"
   openagents_revision_8_note: "Rev 8 generalizes the durable loop over the L1 ProviderLane SPI. The additive optional profile.lane defaults legacy rows to codex-local; reconciliation capability-gates the selected lane; built-in Codex and Claude use one lane-keyed instruction/background-question policy; and control start/enable, OpenAPI, MCP, and CLI accept an optional lane selector. Claude background questions deny immediately with proceed-with-judgment guidance instead of parking without a renderer."
   openagents_revision_9_issue: "8902 (L7 lane-independent ProductSpec/AssuranceSpec workflow)"
   openagents_revision_9_note: "Rev 9 projects a bounded, read-only ProductSpec/AssuranceSpec context through the shared ProviderLane dispatcher for every lane; adds specs/** unmet obligations to Full Auto candidate discovery; and re-runs the authority packages after each dispatched turn to append an evidence-only system note. Provider lanes receive no parsing, admission, verification, release, or public-claim authority."
-  openagents_revision_note: "rev 7 adds programmatic BOOTSTRAP to the Phase 1 control surface: POST /v1/full-auto/start (OpenAPI startFullAuto, MCP full_auto_start, CLI start) mints a brand-new local thread in main's own thread store (main names the ref, never the caller), binds the resolved workspace, enables via the same registry.set path as the composer toggle, appends the (caller: control-api) note, and schedules the shared serialized reconcile pass so the first continuation opens a brand-new provider conversation -- closing the gap where enable/continue-now could only operate on threads the UI had already created (a live dispatch on an unknown threadRef failed with that-conversation-no-longer-exists). start obeys the exact enable authority rule: 409 workspace_mismatch mints NO thread, writes NO record, appends NO note. Rev 6 (FA-H13 #8886) adds the Phase 1 LOCAL programmatic control surface: an opt-in (OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1), loopback-only (127.0.0.1), scoped-bearer-gated node:http server in Desktop main (full-auto-control-server.ts) exposing list / status / enable / disable / continue-now / turns plus GET /v1/openapi.json serving the hand-authored OpenAPI 3.1 document (full-auto-control-openapi.ts) that IS the surface's source of truth -- a thin stdio MCP server (scripts/full-auto-mcp.ts) and a thin argv CLI (scripts/full-auto-cli.ts) are deliberately pass-through clients of that one document, following the repo's existing OpenAPI/SDK/MCP triad convention. Auth follows the Harness MCP pilot pattern exactly: one per-process bearer credential minted at startup with scopes drawn from @openagentsinc/environment-auth's narrowing-only exchange (operator_read + coding_session_control; no new auth framework), constant-time verification on every request, connection info written mode-0600 to full-auto/control.json under userData. Authority boundaries: enable NAMES the workspace the caller expects and refuses with 409 workspace_mismatch (registry untouched) on any difference from the currently resolved workspace -- a refusal, never a redirect, and never a grant of a new workspace; continue-now is a new TRIGGER into the exact same serialized reconciliation path (runFullAutoReconciliation / the FA-H3 promise-chain mutex + durable lease), never a parallel dispatch mechanism; every mutating call appends a durable, distinctly-attributed system note (caller: control-api) via the existing appendFullAutoSystemNote so the owner can always tell a programmatic action from their own click. Projections are public-safe: records expose threadRef/enabled/continuationCount/workspaceRef/blockedReason/live state and only accountRef from the bound profile; turns expose identity/phase/disposition/timestamps for the last 20 Full Auto turns, never transcript text. Phase 2 (cross-machine relay through the openagents.com triad and Khala Sync) stays explicitly out of scope. Rev 5 (FA-H4 #8877) makes background continuations rendered facts instead of silence-until-completion. Main keeps a coarse, typed, in-memory per-thread live state (idle | turn_running | turn_completed | turn_failed | cap_reached | blocked; blocked carries the typed blockedReason as detail) and broadcasts every transition to all windows over a new CodexLocalFullAutoStateChannel; the CodexLocalFullAutoGetChannel response additively carries { state, turnRef } beside enabled so thread switches hydrate an in-flight background turn immediately. While the active thread's live state is turn_running the composer renders a status badge and the Stop control; Stop signals a new thread-scoped CodexLocalFullAutoInterruptChannel whose main handler resolves the live running turn ref itself and reuses the exact codexLocal.interrupt runtime path; a manual send during turn_running is fenced with a transient notice that keeps the draft (never a silent second concurrent turn). Token-by-token streaming of background turns remains deliberately out; live state is deliberately NOT durable -- startup reconciliation re-derives reality. An interrupted background turn terminates through the existing FA-H5 typed-failure path (owner-visible note, backoff) with the toggle remaining the durable loop-level stop. Rev 4 (#8875, #8876, #8878, #8879) hardens dispatch authority and delivery semantics on the durable record. FA-H2 (#8875): enabling binds the currently resolved workspace (resolved by main, never renderer-supplied) onto the record; a continuation whose resolved workspace no longer matches refuses to dispatch and disables the record with blockedReason workspace_mismatch and an owner-visible note; an enabled record with NO binding (pre-upgrade row) fails CLOSED (workspace_unbound) and rebinds only on its next enable. FA-H3 (#8876): reconciliation is serialized through a promise-chain mutex in main, and each continuation claims a durable per-thread lease carrying the exact dispatched turn ref before dispatch, so overlapping passes dispatch a thread at most once; only the startup pass clears a stale lease whose turn ref never reached the local-turn journal; main's dispatch adapter additionally refuses when the journal already holds a nonterminal turn on the thread. FA-H5 (#8878): thrown errors AND ok:false dispatch results are typed failures -- failure state (consecutiveFailures, lastFailureAt, blockedReason) persists on the record with an owner-visible note, retries respect bounded exponential backoff min(2^failures*30s, 30min), and the 5th consecutive failure disables the record; a successful dispatch clears failure state. Cap-counting decision: continuationCount increments ONLY on successful dispatch -- a failed dispatch consumes failure budget, never a cap slot (rev 3 incremented before dispatch). FA-H6 (#8879): the initiating renderer-sent flagged turn binds its execution profile (account target, model, reasoning effort) onto the record and continuations replay it (revalidated against live contract enums); images, attachments, and extension selection deliberately reset -- a continuation is a fresh instruction, not a replay. All new record fields are optional so v1 registry files still decode. Rev 3 (#8880, #8882, #8883) pinned cap-reset semantics, registry quarantine/eviction hardening, and measurable-metrics cleanup. Rev 2 (#8853) moved the continuation decision from the renderer to a durable main-process registry, closing rev 1's CUT-FA-02 gap."
+  openagents_revision_10_issue: "8968 (FA-RUN-00, epic #8967 child 1 of 12)"
+  openagents_revision_10_note: "Rev 10 supersedes the rev-9 composer-toggle product model after the 2026-07-17 owner overnight dogfood run (docs/fable/2026-07-17-full-auto-implementation-audit.md) proved it wrong-shaped: a six-hour silent stall behind a generic composer failure banner, no run-level diagnosis, no durable objective record, and an ambiguous chat-vs-autonomous-program interaction model. This revision (a) maps every FA-AC-01..37 criterion to an explicit disposition in the new Criterion Disposition Map section rather than silently reinterpreting them; (b) adds FA-AC-38..66 defining the target FullAutoRun contract -- stable runRef independent of threadRef, one-active-run-per-profile v1 concurrency, a full Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached lifecycle with actor/time/reason attribution on every transition, run-level liveness distinct from turn duration, a bounded private FullAutoRunReport, a dedicated left-rail launcher plus read-only run view replacing the composer toggle, and a host-owned objective-priority provider-handoff envelope; (c) is the first of 12 issues under epic #8967 -- FA-AC-38 onward name the exact child issue that owns their implementation and their Proof lines are explicitly 'planned' evidence, not yet executed; (d) adds three pending behavior-contract entries (separate launcher, read-only running state, Play/Pause/Stop semantics) to packages/behavior-contracts per the CLAUDE.md behavior-contracts mandate; and (e) extends root INVARIANTS.md Authority Boundaries with the run-authority/state-transition/evidence-privacy invariant this model commits to. This revision changes NO application code: apps/openagents-desktop's full-auto-registry.ts, full-auto-reconcile.ts, full-auto-lane.ts, and full-auto-control-contract.ts are unchanged pending #8969's implementation of the FullAutoRun model this spec now requires. Per the epic's own acceptance criteria, owner/reviewer acceptance identity for this document is NOT yet recorded -- see Owner Gates; this document establishes the pre-implementation contract that blocks conflicting work (specs/CONVENTIONS.md: 'Implementation must not proceed under a ProductSpec that forbids the intended result'), but that is a claim-blocking function, not a substitute for the owner's own sign-off."
 ---
 
 ## Problem
 
-OpenAgents Desktop's Codex composer requires a user to click Send for every
-turn. A developer who wants Codex to keep making real, repo-grounded progress
-on a granted repository unattended has no way to say "just keep working" —
-they must manually resend after each completion, and there is no toggle that
-tells Codex what to look at (README, docs, open issues) when the user has not
-spelled out a task. Rev 1 (#8852) shipped a single composer toggle whose
-continuation loop lived in the renderer (`shell.ts`): a clean turn completion
-resubmitted the next turn from an in-memory `while` loop. That loop could not
-survive a renderer reload or an app restart — its state was destroyed the
-instant the renderer's JS context reset, silently leaving the owner to
-discover Full Auto had stopped without their toggling it off. Rev 2 (#8853)
-closes that gap: the continuation decision now lives in the main process,
-persisted to disk exactly the way interrupted-turn recovery already is, and
-re-evaluated at both turn completion and app startup.
+Rev 9 (and the wave of hardening issues #8852-#8902 that produced it) shipped
+a durable, restart-survivable Full Auto continuation loop as a single
+composer toggle: FA-AC-01 required exactly one `Full Auto` toggle
+(`shell-full-auto-toggle`) and explicitly ruled out any new screen or review
+surface. That model shipped real durability -- workspace binding, exactly-once
+dispatch, typed failure/backoff, execution-profile continuity, a 20-turn cap,
+a local programmatic control surface, and provider-lane generalization -- and
+its foundations remain sound (see the Criterion Disposition Map below).
+
+The 2026-07-17 owner overnight dogfood run disproved the product model built
+on top of that durability. The corrected audit
+(`docs/fable/2026-07-17-full-auto-implementation-audit.md`) records what
+actually happened: a bounded Fast Follow packet completed successfully after
+~14m40s, the next reconciliation then failed closed because a five-thread
+mutable cache evicted the still-active Full Auto thread under ordinary
+multi-chat pressure, and the owner-facing surface showed only a generic "Turn
+failed / That conversation no longer exists" banner for roughly **six hours**
+-- the exact window the product was supposed to work unattended. The specific
+cache defect is fixed on `main` (`8cb900bbf9`), but the incident exposed
+product-model defects the fix does not touch:
+
+- **No run-level diagnosis.** The composer toggle has no concept of "this
+  run" independent of "this thread"; there was nothing to ask why the loop
+  stopped, when it would retry, or what to do about it.
+- **No durable objective.** The registry persists workspace, profile,
+  continuation count, and failure state, but never a structured objective or
+  done condition -- so a recovered or provider-switched run has no mission
+  contract to fall back on beyond bounded transcript notes.
+- **An ambiguous interaction model.** A composer toggle asks the user to read
+  one canvas simultaneously as an interactive chat they steer message by
+  message and an unattended program they start and walk away from. FA-AC-01's
+  "no new screen" requirement is precisely what produces that ambiguity.
+- **No run report or transcript-quality loop.** "Dogfood it, inspect it,
+  improve it, repeat" is currently a manual forensic exercise over private
+  provider JSONL and Desktop state, because no artifact summarizes a run's
+  turns, outcomes, commits, failures, and provider transitions.
+- **Provider handoff is plumbing without a proven experience.** Provider-lane
+  infrastructure exists (registry, bounded-history projection, capability
+  admission), but no test has proven a real, same-thread, sequential
+  Codex-to-Claude (or reverse) handoff with legible context and a visible
+  transition receipt.
+
+Implementation must not proceed under a ProductSpec that forbids the intended
+result. This revision is the first of 12 issues under epic #8967 and exists
+to resolve that contract conflict before any run-model or UI implementation
+lands.
 
 ## Hypothesis
 
-If the decision "should this thread's Full Auto loop continue" is owned by
-main and persisted per-thread to disk — re-checked immediately after every
-completed turn and again once at app startup, after existing interrupted-turn
-recovery settles — then toggling Full Auto on, sending one message, and
-quitting the app entirely will still result in the loop resuming on its own
-at the next launch, with no renderer-side state to lose and no user action
-required beyond the original toggle. A toggle-off must remain an immediate,
-durable stop regardless of whether a turn is in flight when it happens.
+If Full Auto becomes a named, durable **autonomous run** -- with a stable
+`runRef` independent of `threadRef`; an explicit objective and done condition
+as first-class durable fields; a v1 policy of at most one active run per
+Desktop profile; a full lifecycle state machine (Draft, Running, Pausing,
+Paused, Retrying, Stalled, Completed, Failed, Stopped, Cap-reached) where
+every transition carries actor, timestamp, and typed reason; run-level
+liveness distinct from healthy long provider-turn duration; a bounded private
+run report; a dedicated left-rail launcher and read-only run view that
+replaces the composer toggle and removes the ordinary composer while a run is
+active; and a host-owned, objective-priority provider-handoff envelope with a
+visible transition receipt -- then an owner can start a run, walk away, and
+later answer every question in epic #8967's Outcome section (is it running,
+paused, retrying, stalled, completed, failed, stopped, or capped; what
+governs it; what did it accomplish; why did it stop and what can I do; what
+context moved on a provider switch and what didn't) directly from Desktop
+state, without forensic access to raw provider logs. The six named sidebar
+dogfood tests in the audit (Codex-to-Claude and reverse context handoff,
+objective retention under context pressure, a three-turn unattended run, a
+restart-survival run, and a thread-pressure replay of the actual incident)
+should then pass in the owner's real profile.
+
+This revision commits the target contract; FA-AC-38 onward are implemented
+across the 11 remaining child issues of epic #8967, each named in its own
+Proof line.
 
 ## Scope
 
 ```productspec-scope
 in:
-  - one `Full Auto` toggle in the React composer's action bar (`shell-full-auto-toggle`), off by default, no new screens (unchanged from rev 1)
-  - a provider-lane-keyed Full Auto instruction in `full-auto-lane.ts`, sharing the one-concrete-step contract while allowing bounded provider framing for Codex and Claude
-  - a lane-independent, main-owned spec work projection in `spec-lane-workflow.ts`: bounded `specs/**` ProductSpec identities/criteria and AssuranceSpec unmet obligations are prepended by the shared ProviderLane dispatcher to both manual and Full Auto turns on every admitted lane
-  - hard projection bounds: at most 32 spec/evidence files, 512,000 bytes per file, 64 criteria per ProductSpec and 128 obligations in the host snapshot, 12 criteria per ProductSpec plus 12 unmet obligations and 8,000 characters in a provider prompt; truncation is explicit and providers are directed back to the authoritative files
-  - post-turn spec revalidation through `@openagentsinc/product-spec` and `@openagentsinc/assurance-spec`, with a bounded owner-visible system note reporting changed/unmet obligation state and diagnostics; the note explicitly carries evidence-only authority
-  - optional schema-valid `*.assurance-evidence-index.json` consumption for the eight-axis obligation state: only executable + CONFIRMED + ready infrastructure + stable + current + accepted + no exception projects `confirmed`; absence, malformed evidence, or any weaker axis remains unmet
-  - durable provider-lane continuity: the bound profile carries an additive optional `lane` ref, with absent rev-7 values interpreted as `codex-local`; every continuation dispatches through the L1 ProviderLane SPI
-  - capability-gated background eligibility: a lane must be admitted by L2, advertise Full Auto, and declare a safe background-question policy; Claude `AskUserQuestion` calls deny immediately with proceed-with-judgment guidance when no renderer can answer
-  - `approvalPolicy: "never"` forced on a Full Auto turn's app-server thread/turn-start requests; sandbox stays the existing danger-full-access default unchanged
-  - a durable, main-owned per-thread registry (full-auto-registry.ts) recording enabled/disabled, a consecutive-continuation counter, the granted workspace identity, the bound execution profile, a per-thread dispatch lease, and typed failure/backoff state, persisted the same way local-turn-journal.ts already persists interrupted-turn state (every post-v1 field optional so existing files keep decoding)
-  - workspace authority binding (FA-H2): enabling binds the currently resolved workspace (resolved by main from the same source of truth codex-local turns execute against); reconciliation refuses to dispatch -- disabling the record visibly rather than silently redirecting -- when the resolution no longer matches, and fails closed on an unbound record
-  - exactly-once continuation dispatch (FA-H3): a promise-chain mutex serializing every reconciliation trigger in main, plus a durable per-thread lease claimed with the exact continuation turn ref before dispatch; the startup pass alone clears stale (crashed mid-dispatch) leases
-  - a typed dispatch-failure policy (FA-H5): thrown and ok:false outcomes both persist failure state with an owner-visible note, retry under bounded exponential backoff, and disable the record after 5 consecutive failures
-  - execution-profile continuity (FA-H6): the initiating flagged turn's account target, model, and reasoning effort are bound onto the record and replayed by every continuation, including post-restart resumes
-  - a shared reconciliation decision (full-auto-reconcile.ts) called from two trigger points -- immediately after any Full-Auto-flagged turn completes, and once at app startup after existing turn-recovery settles -- so a background continuation and a post-restart resume are the same durable decision, not two
-  - two new IPC channels: a set channel the composer toggle calls immediately (independent of whether a turn is in flight, so a toggle-off durably stops even a not-yet-sent thread) and a get channel for reading current durable state
-  - reuse of the existing `DesktopLocalTurnRecoveryUpdateChannel` broadcast (already wired end to end for turn-recovery) to reflect a background continuation's result in any open window, rather than inventing a new channel
-  - a bounded safety cap (20 consecutive continuations) that turns Full Auto off and leaves an explanatory note if hit, now enforced durably by main rather than an in-memory renderer counter
-  - a plain toggle-off stop control, now backed by the durable registry so it stops the loop even across a restart, not just within a live session
-  - coarse typed background-turn live state (FA-H4): main tracks an in-memory per-thread state (idle | turn_running | turn_completed | turn_failed | cap_reached | blocked, with the running turn ref and a bounded detail for blocked) and broadcasts every transition over `CodexLocalFullAutoStateChannel`; the get channel additively returns `{ state, turnRef }` beside `enabled`
-  - a working background-turn stop (FA-H4): while the active thread's live state is turn_running the composer shows a "Full Auto running…" badge plus the Stop control, and Stop signals the thread-scoped `CodexLocalFullAutoInterruptChannel` -- main resolves the live running turn ref itself and reuses the same runtime interrupt path as the existing turn interrupt channel
-  - manual-send fencing (FA-H4): a manual composer send while the active thread's live state is turn_running is refused with a transient notice and the draft kept -- never a silent second concurrent turn on the same thread
-  - a Phase 1 LOCAL programmatic control surface (FA-H13): an opt-in (`OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1`), loopback-only (127.0.0.1), scoped-bearer-gated HTTP server in main (full-auto-control-server.ts) exposing list, status, enable, disable, continue-now, and bounded turn history, described by one hand-authored OpenAPI 3.1 document served at `GET /v1/openapi.json`; connection info written mode-0600 to `full-auto/control.json` under userData
-  - thin MCP (scripts/full-auto-mcp.ts) and CLI (scripts/full-auto-cli.ts) clients that are deliberate pass-throughs of that one OpenAPI surface -- no client-side policy, no second schema vocabulary
-  - an additive optional provider-lane selector on control `start` and `enable`, defaulting to `codex-local`, reflected through OpenAPI/MCP/CLI and the public-safe status projection
-  - programmatic-call attribution (FA-H13): every control-API mutation (enable / disable / continue-now) appends a durable, distinctly-attributed system note to the thread via the existing appendFullAutoSystemNote, so an owner can always tell a programmatic action from their own click
+  - preserved from rev 9, unchanged mechanism (see Criterion Disposition Map for the exact per-criterion accounting): `approvalPolicy: "never"` forced on a Full Auto turn; a durable main-owned per-thread/run registry persisted the way local-turn-journal.ts persists interrupted-turn state with every post-v1 field optional; workspace authority binding (fail-closed on mismatch or unbound); exactly-once continuation dispatch via a serialized promise-chain mutex plus a durable per-thread dispatch lease; typed dispatch-failure policy with bounded exponential backoff and a 5-consecutive-failure disable; execution-profile (lane/account/model/effort) continuity across continuations and restarts; the 20-consecutive-continuation safety cap; corrupt-registry quarantine; enabled/non-terminal-record eviction protection; the opt-in loopback bearer-gated local programmatic control surface (OpenAPI/MCP/CLI triad) with attributed system notes on every mutating call; provider-lane generalization (L1 SPI dispatch, L2 capability admission, lane-keyed background-question policy); and the bounded ProductSpec/AssuranceSpec spec-lane projection and post-turn revalidation note on every dispatched turn across every admitted lane
+  - a stable `runRef` identity independent of `threadRef`, with title, objective, explicit done condition, workspace, provider profile, and turn cap as first-class durable run fields (FA-RUN-01, #8969)
+  - v1 concurrency policy: at most one active (non-terminal) Full Auto run per Desktop profile by default; additional Draft or terminal (Completed/Failed/Stopped/Cap-reached) run records may exist without limit beyond existing registry bounds (FA-RUN-01, #8969)
+  - rerun/new-generation semantics: starting a new run from a terminal run always mints a new distinct `runRef` and never mutates the terminal record; a new run may optionally reference a prior run as context for the report/transcript-analysis loop (FA-RUN-01, #8969; FA-RUN-05, #8973)
+  - a full run lifecycle state machine -- Draft, Running, Pausing, Paused, Retrying, Stalled, Completed, Failed, Stopped, Cap-reached -- with actor/time/reason attribution recorded on every transition, extending the existing `disabledBy` attribution pattern to the complete state graph (FA-RUN-01, #8969)
+  - Pause with an active provider turn transitions to Pausing until that turn resolves (completes or is interrupted), then Paused; Pause with no turn in flight transitions directly to Paused; Resume is legal only from Paused and dispatches at most once through the existing exactly-once lease path; Stop is a terminal transition legal from any non-terminal state and is distinct from Pause -- a stopped run is never resumed (FA-RUN-01, #8969)
+  - provider-declared turn completion and product/evidence-level run disposition are tracked as distinct facts: a provider reporting a turn as done does not by itself assert the run's objective/done-condition was satisfied; automatic verification of done-condition satisfaction is explicitly deferred (see cut list) and Completed remains a self-reported, owner-reviewable disposition backed by the run report, not a verified-truth claim
+  - missing/orphaned `threadRef` or provider-session recovery at reconciliation is a typed fail-closed disposition (Stalled or Failed with an owner-visible reason) -- never silent reattachment to an unrelated thread and never the six-hour silent stall the audit recorded (FA-RUN-02, #8970; FA-RUN-03, #8971)
+  - additive, idempotent migration from the legacy `enabled: boolean` per-thread registry rows to exactly one migrated run record per previously-enabled thread on first startup after the model ships, with no data loss and no duplicate migration on a later restart (FA-RUN-01, #8969)
+  - run-level liveness distinct from a healthy long provider turn: a run is live while a turn is genuinely executing OR while time-since-last-dispatch is within a defined SLO window; outside that window it is Stalled with an explicit, owner-visible cause and retry ETA rather than silence (FA-RUN-03, #8971)
+  - a bounded private `FullAutoRunReport` per run: run ref, thread ref, title, objective, workspace, started/stopped timestamps, provider/lane per turn and every provider transition, per-turn disposition/duration/selected packet/outcome summary, commits/receipts claimed (verified independently where possible), failure classification/retry/recovery-action/disabled-reason, liveness gaps over threshold, objective/acceptance progress and remaining work, transcript-analysis findings, and a pointer to private raw evidence rather than raw transcript contents (FA-RUN-04, #8972)
+  - offline/private dogfood transcript analysis producing measurable, comparable quality findings across runs (duplicated setup, drift, stalls, unclear UI state, false completion claims), reusing #8911's default-off Desktop usage/telemetry plumbing and consent boundary rather than a parallel telemetry path (FA-RUN-05, #8973)
+  - a dedicated **Full Auto** launcher action beside/under **New session** in the left rail, collecting title (auto-suggested, editable), objective and explicit done condition, workspace, provider/lane, and a bounded turn cap (default 20, clearly shown), replacing the composer toggle as the run's entry point (FA-UX-01, #8974)
+  - after Start, the main canvas becomes a dedicated **read-only run view** for v1: objective/workspace pinned at the top, explicit current state (Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached), Pause/Resume as the primary control depending on state, Stop as a distinct terminal control, an inspectable per-turn transcript (provider, duration, outcome, artifacts) without live token-by-token streaming, and the ordinary composer absent while the run is active (FA-UX-01, #8974)
+  - sidebar status/title/search/navigation reflects a run's live state and objective-derived title rather than a first-message title, closing the "Hello" concealed-program defect the audit recorded (FA-UX-01, #8974; reuses generic-title work tracked at #8940)
+  - a host-owned, objective-priority provider-handoff envelope for the existing manual same-thread Codex<->Claude switch and for an explicit Pause -> switch provider -> Resume sequence, carrying a visible from/to/actor/time/reason/truncation receipt into the thread and the run report, target admission/auth/capability re-checks with rollback on refusal, and an explicit statement that no provider-private session state is implied to transfer -- only the host-owned bounded projection (FA-HO-01, #8975)
+  - provider support/picker truth derived from exact admitted evidence: a lane is presented as Full-Auto-eligible or handoff-eligible only when its L2 capability admission and background-question policy are proven, never because an adapter merely exists (FA-HO-01, #8975; repairs the ACP-picker gap tracked at #8977)
+  - the six named real-sidebar dogfood tests from the audit (Codex->Claude context, Claude->Codex context, objective retention under context pressure, a three-turn unattended Codex run, a Claude run surviving restart, and the thread-pressure replay of the actual incident) as named, retained release-gate evidence, run in the owner's real Desktop profile rather than a headless fixture (FA-QA-01, #8976)
+  - a superseding AssuranceSpec design/admission/execution/review pass covering the FA-AC-38..66 obligations this revision adds, reconciling rather than discarding the existing 37/37 `needs_design` FA-AC-01..37 obligation set per each criterion's disposition below (FA-AS-01, #8978)
+  - packaged release and product-promise admission gated on the above, including a signed build from an exact tag containing the run model passing the owner restart-resume observation (FA-REL-01, #8979)
 out:
-  - Phase 2 cross-machine programmatic control (relaying Full Auto routes through the openagents.com OpenAPI/Omni-SDK/public-MCP triad and Khala Sync to a running Desktop); the control surface in this revision is same-machine loopback only
-  - the control API granting a new, previously-ungranted workspace; granting stays a human/UI action -- programmatic enable can only turn Full Auto on for a workspace that matches the current resolution
-  - any dedicated ProductSpec/AssuranceSpec review UI, criterion board, or admission-gate screen for Full Auto
-  - a separate permission/envelope/policy system; Full Auto inherits the same full-trust execution profile every other Codex turn in this app already uses
-  - multi-repo, multi-thread, or fleet-wide Full Auto
-  - live, token-by-token streaming of a background (main-initiated) continuation into an open window; since rev 5 (FA-H4) a background turn IS rendered as a coarse typed in-flight state with a working stop and manual-send fencing while it runs, and its result still surfaces as a completed-thread refresh -- only live text deltas stay cut
-  - durability for the coarse live state itself; it is main-owned in-memory truth, and after a restart the startup reconciliation re-derives reality (a fresh dispatch re-enters turn_running, and the durable cap/blocked notes already persist on the thread)
-  - the composer toggle re-syncing to a different thread's persisted enabled state on every in-session thread switch; the toggle reflects the truth for the thread you send from, but switching to another previously Full-Auto-enabled thread does not auto-flip the visible toggle in this revision
-  - any change to release or public-claim authority
-  - claiming ACP Full Auto readiness before an ACP lane's admitted peer profile and background-question behavior are proven; unknown/unadmitted lanes fail closed
+  - Phase 2 cross-machine programmatic control (relaying Full Auto routes through the openagents.com OpenAPI/Omni-SDK/public-MCP triad and Khala Sync to a running Desktop); the control surface remains same-machine loopback only
+  - the control API granting a new, previously-ungranted workspace; granting stays a human/UI action
+  - concurrent multi-run execution, multi-repo Full Auto, and fleet-wide scheduling; v1 enforces exactly one active run per Desktop profile (see in:)
+  - autonomous provider selection; a run's provider/lane is chosen at launch (or at an explicit Pause -> switch -> Resume) by a human, never decided by the loop itself
+  - free-form steering into a running autonomous run; the only v1 steering path is the explicit Pause -> add instruction (via provider switch or a future dedicated steering feature) -> Resume sequence -- an always-visible chat box during an active run is explicitly rejected by this revision
+  - automatic verification that a run's stated done condition was actually satisfied; Completed remains a self-reported, owner-reviewable disposition in v1 (see in: and the Criterion Disposition Map)
+  - live, token-by-token streaming of a run's in-progress turn into the read-only run view; the view shows coarse typed state plus the completed per-turn transcript, not a live token feed
+  - a separate permission/envelope/policy system beyond the run lifecycle and the existing full-trust Codex/Claude execution profile every other Desktop turn already uses
+  - claiming ACP Full Auto or handoff readiness before an ACP lane's admitted peer profile and background-question behavior are proven; unknown/unadmitted lanes fail closed
+  - any change to release or public-claim authority beyond what FA-REL-01 (#8979) explicitly gates
 cut:
-  - CUT-FA-01: fine-grained autonomy policy beyond the plain stop control and the 20-turn safety cap
-  - CUT-FA-02 (rev 1): main-process durable goal state for restart-survivable continuation -- CLOSED by this revision
-  - CUT-FA-03: per-thread toggle-state resync on arbitrary in-session thread switch (open question below)
+  - CUT-FA-01: fine-grained autonomy policy beyond Pause/Resume/Stop and the 20-turn safety cap
+  - CUT-FA-02 (rev 1): main-process durable goal state for restart-survivable continuation -- CLOSED (rev 2, #8853)
+  - CUT-FA-03: per-thread toggle-state resync on arbitrary in-session thread switch -- superseded/moot: rev 10 replaces the composer toggle with a dedicated run view that is not a per-thread visibility toggle (see Criterion Disposition Map, FA-AC-19/FA-AC-21)
+  - CUT-FA-04: automatic done-condition verification (provider or product code deciding a run's objective was actually satisfied) -- deferred past this revision; Completed stays self-reported/owner-reviewable
+  - CUT-FA-05: concurrent multi-run execution and multi-repo/fleet-wide Full Auto -- deferred past this revision; v1 is one active run per Desktop profile
+  - CUT-FA-06: autonomous (loop-decided) provider selection and free-form mid-run steering -- deferred past this revision; provider/lane and objective are set at launch or through the explicit Pause -> switch/instruct -> Resume sequence only
 ```
 
 ## Acceptance Criteria
+
+FA-AC-01 through FA-AC-37 below are the exact criteria admitted in rev 9,
+kept verbatim for auditability. The Criterion Disposition Map immediately
+following resolves every one of them for rev 10. FA-AC-38 onward are new
+criteria this revision introduces for the target autonomous-run contract;
+each names the exact epic #8967 child issue that owns its implementation, and
+its Proof line is explicitly **planned** evidence -- not yet executed -- until
+that issue lands.
 
 - **FA-AC-01:** The composer renders exactly one `Full Auto` toggle
   (`shell-full-auto-toggle`), off by default, with `aria-pressed` reflecting
@@ -403,7 +461,6 @@ cut:
   rev 6 entry under Receipts (`pnpm run smoke:full-auto-control` exercises
   the real CLI as a second OS process against the real running Electron
   main).
-
 - **FA-AC-28:** The control surface can BOOTSTRAP Full Auto with no existing
   thread: `POST /v1/full-auto/start` (OpenAPI `startFullAuto`, MCP
   `full_auto_start`, CLI `start --workspace <path> [--title <t>]`) mints a
@@ -424,7 +481,6 @@ cut:
   a 409 typed refusal: NO thread minted...", "start discipline: bodyless
   start is 400...", plus the doc <-> route parity test covering
   `startFullAuto`).
-
 - **FA-AC-29:** The durable execution profile carries an optional ProviderLane
   ref. A rev-7 registry row with no lane still decodes and continues on
   `codex-local`; a selected `fable-local` row survives a Runtime A → Runtime B
@@ -482,6 +538,327 @@ cut:
   Proof: the two-lane dispatcher fixture in `provider-lane.test.ts` and the
   Codex/Claude note assertions in `spec-lane-workflow.test.ts`.
 
+- **FA-AC-38:** A `FullAutoRun` record carries a stable `runRef` distinct from
+  and independent of any `threadRef` it is currently bound to, plus title,
+  objective, explicit done condition, workspace, provider profile
+  (lane/account/model/effort), and turn cap as first-class durable fields
+  decoded by an Effect Schema.
+  Proof: planned, owned by FA-RUN-01 (#8969); regression target
+  `full-auto-run-registry.test.ts` (module TBD by #8969).
+- **FA-AC-39:** Starting a second active (non-terminal) run while one active
+  run already exists for the Desktop profile is refused with a typed conflict
+  identifying the existing active `runRef`; it is never silently queued and
+  never dispatched in parallel. Draft and terminal run records are unaffected
+  by this limit.
+  Proof: planned, owned by FA-RUN-01 (#8969).
+- **FA-AC-40:** Starting a new run from a terminal run's launcher always mints
+  a new distinct `runRef` and never mutates the terminal record's fields or
+  state; an optional predecessor-run reference may be carried for report
+  continuity only, never for authority or objective inheritance.
+  Proof: planned, owned by FA-RUN-01 (#8969).
+- **FA-AC-41:** On first startup after the FullAutoRun model ships, every
+  existing `enabled: true` legacy thread-keyed registry row migrates
+  additively to exactly one `FullAutoRun` record (Running or Paused per its
+  prior live state) with no data loss; a second startup performs no duplicate
+  migration; an `enabled: false` legacy row does not migrate to an active run.
+  Proof: planned, owned by FA-RUN-01 (#8969).
+- **FA-AC-42:** A run whose bound `threadRef` or provider session is missing
+  or orphaned at reconciliation transitions to a typed Stalled or Failed
+  disposition with an owner-visible reason; it never silently reattaches to
+  an unrelated thread and never reproduces the six-hour silent stall recorded
+  in the 2026-07-17 audit.
+  Proof: planned, owned by FA-RUN-02 (#8970) (thread-pressure replay) and
+  FA-RUN-03 (#8971) (stall classification); regression target: a deterministic
+  replay of the exact incident composition (long turn, concurrent chats,
+  bounded mutable-thread eviction, gap-to-next-reconciliation) plus a real
+  Full Auto pressure run.
+- **FA-AC-43:** The full run lifecycle state machine is exactly Draft,
+  Running, Pausing, Paused, Retrying, Stalled, Completed, Failed, Stopped, and
+  Cap-reached; every transition between these states persists actor (owner
+  UI, control-api, or a named system policy such as workspace_guard or
+  continuation_cap), a UTC timestamp, and a typed reason, extending the
+  existing `disabledBy` attribution pattern to the complete graph. An illegal
+  transition (for example Resume from a non-Paused state) is refused with a
+  typed error and never silently coerced.
+  Proof: planned, owned by FA-RUN-01 (#8969).
+- **FA-AC-44:** Pause with an active provider turn transitions the run to
+  Pausing immediately and to Paused only once that turn resolves (completes
+  normally or is interrupted); Pause with no turn in flight transitions
+  directly to Paused. Resume is legal only from Paused, dispatches exactly
+  once through the existing FA-H3 serialized-mutex-plus-lease path (FA-AC-15,
+  retained unchanged), and a run cannot be resumed twice concurrently.
+  Proof: planned, owned by FA-RUN-01 (#8969).
+- **FA-AC-45:** Stop is a terminal transition legal from any non-terminal
+  state (Draft, Running, Pausing, Paused, Retrying, Stalled) and is distinct
+  from Pause: a Stopped run is never resumed, and starting new work requires
+  the rerun path (FA-AC-40), never a mutation of the stopped record.
+  Proof: planned, owned by FA-RUN-01 (#8969).
+- **FA-AC-46:** A run's Completed disposition is a self-reported,
+  owner-reviewable claim backed by the bounded `FullAutoRunReport`
+  (FA-AC-51), not an automatically verified assertion that the objective/done
+  condition was actually satisfied; the product never presents Completed as
+  verified truth. Automatic done-condition verification is explicitly cut
+  (CUT-FA-04) past this revision.
+  Proof: planned, owned by FA-RUN-01 (#8969) for the state itself and
+  FA-RUN-04 (#8972) for the report it is backed by; UX copy proof owned by
+  FA-UX-01 (#8974).
+- **FA-AC-47:** Run-level liveness is computed distinctly from a single
+  healthy long-running provider turn: a run is live while a turn is genuinely
+  executing OR while elapsed time since the last dispatch is within a defined
+  SLO window; outside that window the run transitions to Stalled with an
+  explicit owner-visible cause and a retry ETA, never silence.
+  Proof: planned, owned by FA-RUN-03 (#8971).
+- **FA-AC-48:** A stalled run exposes an explicit, owner-actionable recovery
+  affordance (at minimum: retry now, or Stop) rather than requiring the owner
+  to infer the situation from a generic failure banner, closing the exact
+  observability gap the 2026-07-17 audit recorded.
+  Proof: planned, owned by FA-RUN-03 (#8971) (detection/recovery) and
+  FA-UX-01 (#8974) (affordance).
+- **FA-AC-49:** Objective and done-condition text are durable fields on the
+  `FullAutoRun` record itself, never dependent solely on provider-native
+  session continuity or the bounded transcript-note window; a provider
+  switch or a bounded-history truncation cannot cause the objective to be
+  lost from Desktop's own state.
+  Proof: planned, owned by FA-RUN-01 (#8969); handoff-path proof owned by
+  FA-HO-01 (#8975).
+- **FA-AC-50:** Registry eviction never drops a non-terminal (Running,
+  Pausing, Paused, Retrying, Stalled) run record, extending the existing
+  enabled-record eviction protection (FA-AC-12, retained with stronger proof)
+  to the full FullAutoRun state set.
+  Proof: planned, owned by FA-RUN-01 (#8969).
+- **FA-AC-51:** Every run produces a bounded, private `FullAutoRunReport`
+  containing: run ref, thread ref, title, objective, workspace, started/
+  stopped timestamps; provider/lane per turn and every provider transition;
+  per-turn disposition, duration, selected packet/issue, and bounded outcome
+  summary; commits/receipts claimed by the agent (verified independently
+  where possible); failure classification, retry/backoff, recovery action,
+  and disabled reason; liveness gaps over threshold; objective/acceptance
+  progress and remaining work; transcript-analysis findings; and a pointer to
+  private raw evidence rather than raw transcript contents. The report never
+  contains raw prompts, raw provider tool output, secrets, or credentials.
+  Proof: planned, owned by FA-RUN-04 (#8972).
+- **FA-AC-52:** A public-safe control/receipt projection of the run report
+  exposes only bounded, non-transcript fields (extending the existing
+  FA-AC-26 public-safety bound), and any raw-evidence pointer it carries
+  resolves only to owner-private storage, never a public route.
+  Proof: planned, owned by FA-RUN-04 (#8972).
+- **FA-AC-53:** An offline/private transcript-analysis pass runs against a
+  completed run's report and evidence pointer, reusing #8911's default-off
+  Desktop usage/telemetry consent boundary rather than a parallel collection
+  path, and produces measurable, comparable findings (duplicated setup,
+  drift, stalls, unclear UI state, false completion claims) across at least
+  two runs of the same named test.
+  Proof: planned, owned by FA-RUN-05 (#8973).
+- **FA-AC-54:** A dedicated **Full Auto** launcher action appears beside/
+  under **New session** in the left rail and collects title (auto-suggested
+  from the objective, editable), objective, explicit done condition,
+  workspace, provider/lane, and a bounded turn cap (default 20, clearly
+  shown) before Start is enabled; Start applies the same workspace-authority
+  refusal rule as the existing control-API `start` (FA-AC-28, retained with
+  stronger proof).
+  Proof: planned, owned by FA-UX-01 (#8974).
+- **FA-AC-55:** After Start, the main canvas renders a dedicated read-only run
+  view for v1: objective and workspace remain pinned at the top; current
+  state is one of Running, Pausing, Paused, Retrying, Stalled, Completed,
+  Failed, Stopped, or Cap-reached, rendered explicitly (not inferred from a
+  generic banner); Pause/Resume is the primary control depending on state;
+  Stop is a distinct, always-available terminal control while non-terminal;
+  the per-turn transcript (provider, duration, outcome, artifacts) is
+  inspectable; and the ordinary chat composer is absent from this view while
+  the run is active.
+  Proof: planned, owned by FA-UX-01 (#8974).
+- **FA-AC-56:** The composer-embedded Full Auto toggle, badge, and
+  manual-send fencing (FA-AC-01, FA-AC-19, FA-AC-21) are removed from the
+  ordinary chat composer once the dedicated launcher and run view ship; an
+  ordinary chat thread never exposes Full Auto controls inline again.
+  Proof: planned, owned by FA-UX-01 (#8974).
+- **FA-AC-57:** The left-rail sidebar entry for an active or recently-terminal
+  run displays its objective-derived title (never a raw first-message title)
+  and a live-state-derived status indicator, and remains reachable via the
+  same search/navigation affordances as an ordinary thread.
+  Proof: planned, owned by FA-UX-01 (#8974); reuses generic-title work
+  tracked at #8940.
+- **FA-AC-58:** A manual same-thread provider switch (Codex<->Claude) and an
+  explicit Pause -> switch provider -> Resume sequence both project a
+  host-owned, objective-priority bounded history (never raw provider-private
+  session state) to the target provider, and both append a visible
+  transition receipt to the thread and the run report carrying from/to/
+  actor/time/reason and an explicit truncation flag when the projection was
+  bounded.
+  Proof: planned, owned by FA-HO-01 (#8975).
+- **FA-AC-59:** A provider switch (manual or Pause -> switch -> Resume)
+  re-checks the target lane's L2 capability admission, auth, and Full Auto/
+  background-question eligibility before switching; on refusal the run
+  remains on its current provider/lane with no partial state change (an
+  explicit rollback, not a redirect).
+  Proof: planned, owned by FA-HO-01 (#8975).
+- **FA-AC-60:** No documentation, UI copy, or public claim states or implies
+  that a provider switch transfers provider-private session state; copy is
+  restricted to what is actually true: a host-owned bounded projection of
+  Desktop-visible thread history.
+  Proof: planned, owned by FA-HO-01 (#8975).
+- **FA-AC-61:** Provider support and picker eligibility are derived from
+  exact admitted evidence (proven L2 capability admission plus a proven safe
+  background-question policy), never presented merely because a lane adapter
+  exists in code. An admitted ACP lane that has not cleared this bar is not
+  exposed as a first-class Full Auto or handoff picker option.
+  Proof: planned, owned by FA-HO-01 (#8975); repairs the picker gap tracked
+  at #8977.
+- **FA-AC-62:** Real-provider execution of `TEST 01` and `TEST 02` from the
+  2026-07-17 audit's sidebar test batch (Codex establishes a marker and a
+  two-step task, switches the same thread to Claude, Claude states the
+  marker and performs step two; and the reverse) is captured as a named,
+  retained receipt in the owner's real Desktop sidebar, not inferred from
+  fixture coverage.
+  Proof: planned, owned by FA-QA-01 (#8976).
+- **FA-AC-63:** Real-provider execution of `TEST 03` (objective retention
+  under context/notes pressure -- either the target provider states the
+  original objective and acceptance rule correctly, or the product visibly
+  reports truncation and requires confirmation rather than silently
+  fabricating continuity) is captured as a named, retained receipt.
+  Proof: planned, owned by FA-QA-01 (#8976).
+- **FA-AC-64:** Real-provider execution of `TEST 04` (a three-turn unattended
+  Codex run with no manual message between turns, visible progress, and an
+  explicit stop reason) and `TEST 05` (a Claude run surviving a Desktop
+  restart with the same objective/lane and no duplicate turn) are captured as
+  named, retained receipts.
+  Proof: planned, owned by FA-QA-01 (#8976); reuses FA-RUN-02 (#8970) restart
+  infrastructure.
+- **FA-AC-65:** `TEST 06` -- the real replay of the 2026-07-17 incident
+  (launch Full Auto, then create/open more than five other chats while its
+  turn runs) -- passes with the autonomous thread remaining addressable and
+  the next continuation starting, both as an automated deterministic
+  regression and as a real-provider dogfood receipt.
+  Proof: planned, owned by FA-RUN-02 (#8970) (automated regression) and
+  FA-QA-01 (#8976) (real-provider receipt).
+- **FA-AC-66:** The Full Auto AssuranceSpec is reconciled to this revision:
+  every FA-AC-01..37 obligation carries its Criterion Disposition Map
+  outcome (retired obligations marked accordingly, changed obligations
+  rebound to their rev-10 criterion text) and every FA-AC-38..65 obligation
+  has a designed proof rung -- no obligation may round green by omission or
+  silent carry-forward of the rev-9 needs_design set.
+  Proof: planned, owned by FA-AS-01 (#8978).
+
+## Criterion Disposition Map (Rev 9 -> Rev 10)
+
+Every rev-9 acceptance criterion resolves to exactly one disposition:
+**retained unchanged**, **retained with stronger proof** (same behavior, the
+bar for evidence or its scope grows), **changed-superseded** (the criterion's
+literal text no longer describes the intended product and a rev-10 criterion
+replaces it), **removed with rationale**, or **deferred** with an explicit
+`CUT-FA-*` identifier. No rev-9 criterion is silently reinterpreted.
+
+- **FA-AC-01** -- changed-superseded. "Exactly one composer toggle, no other
+  new screen" is the literal contradiction issue #8968 was opened to resolve.
+  Superseded by FA-AC-54/FA-AC-55 (dedicated launcher + read-only run view)
+  and retired by FA-AC-56 (composer controls removed).
+- **FA-AC-02** -- retained unchanged. Per-turn `approvalPolicy: "never"` and
+  prompt prefixing is an execution-posture fact orthogonal to how a run is
+  launched or displayed.
+- **FA-AC-03** -- retained with stronger proof. `fullAuto: true` sent once,
+  continuation decided by main, remains true; the decision now keys off
+  `FullAutoRun` lifecycle state (FA-AC-43) rather than a boolean.
+- **FA-AC-04** -- changed-superseded. The single toggle-off mutation is
+  replaced by two distinct typed transitions, Stop (FA-AC-45) and Pause
+  (FA-AC-44); the underlying guarantee -- an owner action persists to main
+  immediately and durably regardless of an in-flight turn -- is retained by
+  both.
+- **FA-AC-05** -- retained unchanged. Ordinary (non-run) chat still never
+  auto-resubmits.
+- **FA-AC-06** -- retained with stronger proof. The 20-continuation cap
+  becomes the explicit Cap-reached terminal lifecycle state (part of
+  FA-AC-43) instead of an implicit "disabled" with a note; reset-only-on-off
+  semantics carry forward to reset-only-on-Stop-or-new-run.
+- **FA-AC-07** -- retained with stronger proof. Restart-resume now also
+  restores the durable objective/done-condition fields (FA-AC-49), not only
+  thread continuity.
+- **FA-AC-08** -- retained unchanged. In-flight-turn-at-restart deference to
+  existing interrupted-turn recovery is unaffected by the run model.
+- **FA-AC-09** -- retained with stronger proof. The specific "brand-new
+  thread toggled before it has an id" race is largely mooted by FA-AC-54's
+  launcher minting run+thread together at Start, but the general principle --
+  never silently drop an owner intent recorded before a durable id exists --
+  is retained and reproved wherever a run still creates a thread lazily.
+- **FA-AC-10** -- retained unchanged. No new commit/merge/push authority is
+  introduced by the run model.
+- **FA-AC-11** -- retained with stronger proof. Corrupt-file quarantine
+  extends to the FullAutoRun store (part of FA-AC-41's migration path).
+- **FA-AC-12** -- retained with stronger proof, restated as FA-AC-50:
+  eviction-safety extends from the single `enabled` boolean to every
+  non-terminal lifecycle state.
+- **FA-AC-13** -- retained unchanged. Workspace-authority binding and
+  fail-closed mismatch behavior move from "enable" to "Start" with identical
+  semantics.
+- **FA-AC-14** -- retained unchanged. Unbound-record fail-closed behavior is
+  unaffected by the run model; it re-expresses over FullAutoRun rows.
+- **FA-AC-15** -- retained unchanged. The FA-H3 serialized-mutex-plus-lease
+  exactly-once dispatch mechanism is unmodified and is explicitly reused by
+  Resume (FA-AC-44).
+- **FA-AC-16** -- retained with stronger proof. The typed failure/backoff/
+  disable-after-5 policy is retained; its terminal outcome now lands in the
+  explicit Failed or Stalled lifecycle state (FA-AC-43) rather than a generic
+  "disabled" boolean.
+- **FA-AC-17** -- retained unchanged. Execution-profile continuity across
+  continuations and restarts is unaffected by the run model.
+- **FA-AC-18** -- retained unchanged as a general principle; the specific v1
+  registry migration instance is restated and extended by FA-AC-41.
+- **FA-AC-19** -- changed-superseded. The coarse typed live-state model
+  (idle/turn_running/turn_completed/turn_failed/cap_reached/blocked) is
+  retained as a mechanism but now drives the dedicated read-only run view
+  (FA-AC-55) instead of a composer badge, and its state enumeration is
+  folded into the full lifecycle machine (FA-AC-43).
+- **FA-AC-20** -- retained with stronger proof. The Stop-targets-actual-
+  background-turn mechanism (interrupt resolves the live running turn ref)
+  is retained; Stop is now a first-class terminal lifecycle transition
+  (FA-AC-45) rather than a composer button behavior.
+- **FA-AC-21** -- changed-superseded. Manual-send fencing during a
+  background turn is retired as literally specified because the ordinary
+  composer is no longer present at all while a run is active (FA-AC-55); the
+  underlying guarantee -- never a silent second concurrent turn on the same
+  thread -- is retained unconditionally by the exactly-once lease (FA-AC-15).
+- **FA-AC-22** -- retained unchanged. Control-surface opt-in/loopback/bearer
+  gating is unaffected by the run model.
+- **FA-AC-23** -- retained unchanged. Programmatic workspace-authority
+  naming and 409 mismatch refusal carry forward to `start` unchanged.
+- **FA-AC-24** -- retained with stronger proof. Attributed system notes on
+  every mutating control call are retained; the general attribution
+  requirement now extends to every lifecycle transition, not only
+  enable/disable/continue-now (part of FA-AC-43).
+- **FA-AC-25** -- retained unchanged. continue-now remains a trigger into
+  the shared serialized reconciliation path, never a new dispatch mechanism.
+- **FA-AC-26** -- retained with stronger proof. Served-surface/OpenAPI parity
+  and public-safety bounds are retained; the schema/route table grows to
+  carry the new run fields (title/objective/done condition/lifecycle state)
+  under the same no-transcript-text bound.
+- **FA-AC-27** -- retained unchanged. MCP/CLI thin-pass-through-client
+  architecture is unaffected by the run model.
+- **FA-AC-28** -- retained with stronger proof. `POST /v1/full-auto/start`
+  becomes the canonical Draft->Running mission-contract launch path
+  (FA-AC-54/FA-AC-38), now also carrying objective/done-condition/title
+  fields; the exact workspace-authority refusal rule is unchanged.
+- **FA-AC-29** -- retained unchanged. Optional ProviderLane ref continuity
+  and cross-restart decode are unaffected by the run model.
+- **FA-AC-30** -- retained unchanged. L1 SPI dispatch and fail-closed lane
+  eligibility gating are unaffected by the run model.
+- **FA-AC-31** -- retained unchanged. The lane-keyed background-question
+  policy is unaffected while Running; a future interactive path while Paused
+  is explicitly out of scope (see Scope: out).
+- **FA-AC-32** -- retained unchanged. Optional lane selector on start/enable
+  and typed `lane_not_eligible` refusal are unaffected by the run model.
+- **FA-AC-33** -- deferred, CUT reference: tracked under FA-REL-01 (#8979)
+  release admission rather than cut from intent; still an open residual, not
+  satisfied by this revision.
+- **FA-AC-34** -- retained unchanged. The bounded ProductSpec/AssuranceSpec
+  spec-lane projection applies identically regardless of launch surface.
+- **FA-AC-35** -- retained unchanged. The shared lane instruction's unmet-
+  obligation framing is unaffected by the run model.
+- **FA-AC-36** -- retained with stronger proof. The post-turn spec
+  revalidation note becomes one structured entry among the
+  `FullAutoRunReport`'s per-turn disposition fields (FA-AC-51); its
+  evidence-only authority is unchanged.
+- **FA-AC-37** -- retained unchanged. Cross-lane projection/revalidation
+  parity is unaffected by the run model.
+
 ## Success Metrics
 
 ```productspec-success-metrics
@@ -491,23 +868,84 @@ cut:
   window: before any release claim
   segment: owner dogfood
   source: manual owner receipt linked from issue #8885
+- id: full_auto_six_named_dogfood_tests_passed
+  metric: named_sidebar_tests_passed_of_six (TEST 01-06, docs/fable/2026-07-17-full-auto-implementation-audit.md section 5)
+  target: "6/6"
+  window: before any Full Auto release claim
+  segment: owner dogfood, real Desktop sidebar (not a headless fixture profile)
+  source: FA-QA-01 (#8976) retained receipts
 ```
 
 ## Owner Gates
 
-- Owner review of the restart-survival behavior itself (toggle on, send,
-  quit the app, relaunch, watch it resume) before any further Full Auto
-  scope -- additional auto-admit categories, multi-repo, per-thread toggle
-  resync on switch -- is proposed.
-- Owner sign-off on the deliberate scoping choices that remain after rev 5:
-  a background continuation now renders a coarse typed in-flight state with
-  a working stop and manual-send fencing (FA-H4), but live token streaming
-  stays cut, and the toggle does not resync on every in-session thread
-  switch (see Open Questions) -- both are cheap to revisit later, not free
-  to build now.
+- **RESOLVED by this revision's own trigger.** The rev-9 gate "owner review of
+  the restart-survival behavior itself... before any further Full Auto scope"
+  was exercised: the 2026-07-17 owner overnight dogfood run performed exactly
+  that review and found the underlying composer-toggle model insufficient.
+  The corrected audit and epic #8967 are the direct product of that review.
+- **OUTSTANDING -- explicit, not inferred.** Per epic #8967's acceptance
+  criteria and issue #8968's own acceptance checklist ("the owner/reviewer
+  acceptance identity is recorded; the spec cannot self-approve through
+  implementation code"), owner sign-off on THIS rev-10 contract is not yet
+  recorded. This document is agent-authored under `docs/sol/CLAIM_PROTOCOL.md`
+  and this repository's default-yes coordinator-admits-owner-reviews-post-hoc
+  convention (the same convention every prior Full Auto revision, 1 through
+  9, was admitted under -- none of their commit messages or this spec's prior
+  Owner Gates entries record a distinct human approval step beyond
+  authorship). Consistent with that convention, this revision is admitted to
+  `main` by the authoring agent so it can perform its claim-blocking function
+  ("Implementation must not proceed under a ProductSpec that forbids the
+  intended result," specs/CONVENTIONS.md) for the 11 dependent child issues.
+  That is NOT the same thing as owner acceptance, and this document does not
+  claim to have received it. Specifically outstanding for explicit owner
+  review/amendment:
+  - the v1 concurrency default of exactly one active run per Desktop profile
+    (FA-AC-39);
+  - the full ten-state lifecycle machine and its exact legal-transition set
+    (FA-AC-43);
+  - retiring the composer toggle in favor of a no-composer-while-active
+    dedicated run view (FA-AC-54/55/56);
+  - the provider-handoff claims boundary -- that no provider-private session
+    state is implied to transfer (FA-AC-60); and
+  - treating the six named sidebar dogfood tests as release-gate evidence
+    (FA-AC-62..65).
+  FA-REL-01 (#8979) may not claim public release readiness against this
+  contract until that sign-off is recorded, and any implementation issue
+  (#8969 onward) that lands before it proceeds against a document the owner
+  has not yet explicitly accepted, amended, or rejected.
+- Retained from rev 5, still open and still cheap to revisit later rather
+  than free to build now: live token-by-token streaming of an in-progress
+  turn remains cut in the read-only run view (see Scope: out), and per-thread
+  toggle-state resync on arbitrary in-session switch is moot under the new
+  model (CUT-FA-03) but a future multi-run or multi-thread run view remains
+  an explicit later owner decision, not assumed by this revision.
 
 ## Receipts
 
+- **Rev 10 (#8968):** ProductSpec-only revision -- no `apps/openagents-desktop`
+  application code changed. Retitled from "Full Auto Provider-Lane Composer
+  Loop" to "Full Auto Autonomous Run Contract"; added the Criterion
+  Disposition Map custom section resolving all 37 rev-9 criteria; added
+  FA-AC-38 through FA-AC-66 (29 new criteria) for the target FullAutoRun
+  contract, each naming its owning epic #8967 child issue with an explicit
+  `planned` proof status; rewrote Problem/Hypothesis/Scope/Owner Gates;
+  restructured `cut:` to add CUT-FA-04/05/06 and mark CUT-FA-03
+  superseded/moot. Companion changes in the same commit: three `pending`
+  behavior-contract entries added to
+  `packages/behavior-contracts/src/openagents-apps.ts` (separate launcher,
+  read-only running state, Play/Pause/Stop lifecycle semantics), and a new
+  Full Auto run-authority bullet added to root `INVARIANTS.md`'s Authority
+  Boundaries section. The existing AssuranceSpec
+  (`specs/desktop/full-auto.assurance-spec.md`) is left untouched and flagged
+  stale-pending-reconciliation (see `tool_metadata.openagents_assurance_spec_status`);
+  its reconciliation is FA-AS-01 (#8978), which explicitly depends on this
+  issue.
+  Verification: `node --import tsx packages/product-spec/src/cli.ts validate
+  --specs-root specs`; `pnpm --dir packages/product-spec run test` (includes
+  the repo Product Spec roots gate that validates every file under `specs/`,
+  including this one, with zero errors); `pnpm --dir packages/behavior-contracts
+  run test`. Exact pass/fail counts recorded in the issue #8968 closeout
+  comment.
 - Rev 8 (L6 #8901): provider-lane generalization. `pnpm --dir
   apps/openagents-desktop run typecheck`; 97 focused provider/Full Auto tests;
   Desktop suite 1732 passed / 39 skipped with one pre-existing timing failure

@@ -884,7 +884,116 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "pnpm exec vp test --cwd apps/openagents-mobile runs the reconciler and account-control oracles in the normal mobile sweep; mobile typecheck plus behavior-contract coverage guard the phase-to-authority and phase-to-account-control boundaries.",
     },
+    {
+      authorityBoundary:
+        "This binds only the launch entry point (a lightning-bolt Full Auto action beside/under New session in the left rail). It does not itself define the run's lifecycle state machine (see full_auto_play_pause_stop_lifecycle.v1) or the read-only run view's contents (see full_auto_read_only_run_view.v1), and it grants no release or public-claim authority.",
+      blockerRefs: ["github:OpenAgentsInc/openagents#8974"],
+      contractId: "openagents_desktop.full_auto_dedicated_launcher.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "specs/desktop/full-auto.product-spec.md",
+        "docs/fable/2026-07-17-full-auto-implementation-audit.md",
+        "github:OpenAgentsInc/openagents#8968",
+        "github:OpenAgentsInc/openagents#8974",
+      ],
+      oracles: [
+        {
+          description:
+            "Planned real-Chromium DOM oracle proving the left rail renders a Full Auto launcher action beside/under New session, that Start collects title/objective/done-condition/workspace/provider-lane/turn-cap before it is enabled, and that Start applies the same workspace-authority refusal rule as the existing control-API start.",
+          id: "openagents_desktop.full_auto_dedicated_launcher.planned",
+          kind: "planned",
+          mode: "e2e",
+          ref: "github:OpenAgentsInc/openagents#8974",
+        },
+      ],
+      productArea: "Desktop Full Auto launch surface",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-17",
+      },
+      state: "pending",
+      statement:
+        "Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.",
+      surface: "openagents-desktop",
+      verification:
+        "Planned: a real-Chromium e2e oracle under FA-UX-01 (#8974) drives the left rail, opens the launcher, fills the mission-contract fields, and asserts Start is disabled until required fields are present and refuses on a workspace mismatch exactly like the existing control-API start (FA-AC-28/FA-AC-54 in the ProductSpec).",
+    },
+    {
+      authorityBoundary:
+        "This binds only the visible run view while a Full Auto run is active: pinned objective/workspace, explicit lifecycle state, an inspectable per-turn transcript, and the absence of the ordinary chat composer. It does not grant live token-streaming, steering, or any release/public-claim authority, and it does not itself define Play/Pause/Stop transition legality (see full_auto_play_pause_stop_lifecycle.v1).",
+      blockerRefs: ["github:OpenAgentsInc/openagents#8974"],
+      contractId: "openagents_desktop.full_auto_read_only_run_view.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "specs/desktop/full-auto.product-spec.md",
+        "docs/fable/2026-07-17-full-auto-implementation-audit.md",
+        "github:OpenAgentsInc/openagents#8968",
+        "github:OpenAgentsInc/openagents#8974",
+      ],
+      oracles: [
+        {
+          description:
+            "Planned real-Chromium DOM oracle proving that once a run Starts, the main canvas renders a dedicated read-only run view (pinned objective/workspace, an explicit lifecycle state -- not a generic failure banner -- and an inspectable per-turn transcript) and that the ordinary chat composer, its Full Auto toggle, and its manual-send fencing are absent while the run is active.",
+          id: "openagents_desktop.full_auto_read_only_run_view.planned",
+          kind: "planned",
+          mode: "e2e",
+          ref: "github:OpenAgentsInc/openagents#8974",
+        },
+      ],
+      productArea: "Desktop Full Auto run view",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-17",
+      },
+      state: "pending",
+      statement:
+        "Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.",
+      surface: "openagents-desktop",
+      verification:
+        "Planned: a real-Chromium e2e oracle under FA-UX-01 (#8974) asserts the read-only run view renders explicit lifecycle state (never a generic 'Turn failed' banner, closing the 2026-07-17 audit's observability gap) and that the ordinary composer, toggle, and badge (FA-AC-01/19/21 in the ProductSpec) are retired from the chat surface once the run view ships (FA-AC-55/FA-AC-56).",
+    },
+    {
+      authorityBoundary:
+        "This binds the lifecycle state machine and its Play/Pause/Stop (Resume/Pause/Stop) transition legality and attribution. It grants no autonomous provider-selection, mid-run steering, or concurrent multi-run authority, and it does not itself verify that a run's stated done condition was actually satisfied -- Completed remains a self-reported, owner-reviewable disposition.",
+      blockerRefs: [
+        "github:OpenAgentsInc/openagents#8969",
+        "github:OpenAgentsInc/openagents#8974",
+      ],
+      contractId: "openagents_desktop.full_auto_play_pause_stop_lifecycle.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "specs/desktop/full-auto.product-spec.md",
+        "docs/fable/2026-07-17-full-auto-implementation-audit.md",
+        "github:OpenAgentsInc/openagents#8968",
+        "github:OpenAgentsInc/openagents#8969",
+        "github:OpenAgentsInc/openagents#8974",
+      ],
+      oracles: [
+        {
+          description:
+            "Planned oracle proving the full Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached lifecycle: Pause with an active turn transitions through Pausing to Paused only once that turn resolves; Pause with no turn in flight transitions directly to Paused; Resume is legal only from Paused and dispatches exactly once; Stop is terminal, legal from any non-terminal state, and distinct from Pause (never resumable); and every transition persists actor/timestamp/typed reason.",
+          id: "openagents_desktop.full_auto_play_pause_stop_lifecycle.planned",
+          kind: "planned",
+          mode: "unit",
+          ref: "github:OpenAgentsInc/openagents#8969",
+        },
+      ],
+      productArea: "Desktop Full Auto run lifecycle",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-17",
+      },
+      state: "pending",
+      statement:
+        "Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.",
+      surface: "openagents-desktop",
+      verification:
+        "Planned: FA-RUN-01 (#8969) unit/e2e coverage over the FullAutoRun state machine (FA-AC-43/FA-AC-44/FA-AC-45 in the ProductSpec) plus FA-UX-01 (#8974) wiring the Pause/Resume/Stop controls in the read-only run view to those exact typed transitions -- an illegal transition (e.g. Resume from a non-Paused state) must be refused, never silently coerced.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-16.1",
+  version: "2026-07-17.1",
 }
