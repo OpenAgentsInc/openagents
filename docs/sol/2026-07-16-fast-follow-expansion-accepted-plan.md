@@ -508,6 +508,14 @@ adapters, rendered runtime evidence, and Day 1 completion remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T13:35:00Z`
 
+### CLAIM-STATUS
+
+- implementation: added the ref-only accepted/superseded/reverted relation union and deterministic missing/resolved/conflict projector in the shared agent-runtime schema
+- fail-closed proof: malformed, self-referential, cross-thread, duplicate, ambiguously ordered, and invalid-transition evidence cannot resolve authority
+- focused proof: 6/6 relation tests and the agent-runtime-schema typecheck passed
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, ProductSpec 104/104, Sol checks 19/19, and the repository check/fast guard passed
+- residual: Desktop consumption, share/export visibility, remaining adapters, rendered runtime evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

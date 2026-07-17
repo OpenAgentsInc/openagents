@@ -3,6 +3,7 @@ import { Schema as S } from "effect";
 export * from "./live-agent-graph.js";
 export * from "./live-agent-graph-adapters.js";
 export * from "./thread-control.js";
+export * from "./thread-event-authority.js";
 
 export const AgentRuntimeRunId = S.String;
 export type AgentRuntimeRunId = typeof AgentRuntimeRunId.Type;
