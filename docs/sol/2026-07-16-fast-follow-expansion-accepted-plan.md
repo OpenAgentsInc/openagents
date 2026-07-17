@@ -91,6 +91,7 @@ Owned implementation paths:
 - `apps/openagents-desktop/src/renderer/shell.ts`
 - `apps/openagents-desktop/src/renderer/shell.test.ts`
 - `apps/openagents-desktop/src/renderer/local-harness.ts`
+- `apps/openagents-desktop/src/renderer/local-harness.test.ts`
 - `apps/openagents-desktop/src/renderer/runtime-conversation.ts`
 - `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
 - `docs/fastfollow/receipts/2026-07-16-ff-d1-02-desktop-stop-control-receipt.md`
