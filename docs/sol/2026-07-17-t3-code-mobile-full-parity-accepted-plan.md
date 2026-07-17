@@ -818,3 +818,14 @@ provider-neutral queue-next transport and render its durable outcome.
   no durable queue-next claim is made, and provider-neutral `turn.queue`
   transport remains the immediately following `T3M-B2.3b` slice
 - verified_at: `2026-07-17T22:13:41Z`
+
+### CLAIM-RELEASE
+
+- landed: `05d6bf4d0d8ab92000063c471156bb484dfc7f7f` on `main`
+- verification: post-rebase 128 active-run control, conversation, authoritative
+  Home, composer discovery/toolbar/attachments, accessibility, local-first,
+  Effect Native core/native renderer, behavior-contract, and Sol tests; Effect
+  Native core, native renderer, and mobile typechecks; pre-rebase `pnpm run check`
+- residual: `T3M-B2.3a` exact-run steering and confirmed composer Stop are
+  complete; provider-neutral durable queue-next remains `T3M-B2.3b`; full
+  mobile parity remains open through `T3M-F2`
