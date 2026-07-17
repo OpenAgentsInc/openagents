@@ -2601,6 +2601,9 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "docs/receipts/2026-07-17-ask-user-question/README.md",
+          "docs/receipts/2026-07-17-ask-user-question/01-pending-question.png",
+          "docs/receipts/2026-07-17-ask-user-question/02-answer-round-trip.png",
           "github:OpenAgentsInc/openagents#8941",
         ],
         oracles: [
