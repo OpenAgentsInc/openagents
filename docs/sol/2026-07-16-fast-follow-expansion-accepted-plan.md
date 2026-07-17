@@ -2225,6 +2225,14 @@ remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-28-desktop-public-share-idempotent-retry-receipt.md`
 - residual: workspace-members retry, named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim: `4c4510bf6c564e354f1df7f633c3dd184a7b7fcb`
+- implementation: `f2d88980e7ada9b732802468904cde0d8ba60d48`
+- disposition: bounded FF-D1-28 public-share client retry landed, verified, and receipted; release only this packet's claim
+- released_at: `2026-07-17T21:21:31Z`
+- residual: workspace-members retry, named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

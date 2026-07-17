@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "20f352f33213e4aa9c908f468391787cca496c74"
 claim_revision: "4c4510bf6c564e354f1df7f633c3dd184a7b7fcb"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "f2d88980e7ada9b732802468904cde0d8ba60d48"
 proof_rung: "desktop_public_share_idempotent_retry"
 observed_at: "2026-07-17T21:18:53Z"
 ---
@@ -81,3 +81,7 @@ publication, add named-group authority or publication, supply canonical export
 evidence, compose resources in `main.ts`, connect renderer commands, render
 pixels, or prove an installed runtime journey. Those residuals, owner
 acceptance, and Day 1 completion remain unclaimed.
+
+The exact tested implementation tree landed on `origin/main` at
+`f2d88980e7ada9b732802468904cde0d8ba60d48` before this documentation-only
+claim release.
