@@ -13,6 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
 import {
+  decodeDesktopDownloadResolution,
   desktopDownloadArtifactHref,
   desktopDownloadFormats,
   desktopDownloadTargets,
@@ -471,11 +472,78 @@ describe('/download helpers', () => {
     )
     expect(badSchema.state).toBe('unavailable')
 
+    // A malformed payload that keeps the CORRECT schema id (the DIST-11
+    // #8924 independent-review finding: a shallow `schema` string check
+    // alone would have cast this straight through instead of degrading).
+    const malformedSameSchema = await fetchDesktopDownloadResolution(
+      {},
+      (() =>
+        Promise.resolve(
+          Response.json({
+            schema: 'openagents.desktop.download_resolution.v1',
+            source: 'release_set_v2',
+            availability: 'available',
+            channel: 'rc',
+            version: V2_VERSION,
+            releasedAt: header.releasedAt,
+            releaseNotes: null,
+            sourceRevision: null,
+            detection: { platform: 'darwin', architecture: 'arm64', method: 'client_hints' },
+            // `selected` is missing entirely — a same-schema, wrong-shape payload.
+            alternatives: [],
+          }),
+        )) as typeof fetch,
+    )
+    expect(malformedSameSchema.state).toBe('unavailable')
+    if (malformedSameSchema.state === 'unavailable') {
+      expect(malformedSameSchema.detail).toContain('malformed')
+    }
+
     const network = await fetchDesktopDownloadResolution(
       {},
       (() => Promise.reject(new Error('offline'))) as typeof fetch,
     )
     expect(network).toEqual({ state: 'unavailable', detail: 'offline' })
+  })
+
+  test('decodeDesktopDownloadResolution strictly validates every resolution shape', () => {
+    // Every hand-built fixture used across this suite must decode losslessly
+    // through the client-safe schema — proof the two schemas (server + this
+    // client mirror) have not drifted apart.
+    for (const resolution of [
+      fullAvailable,
+      overrideAvailable,
+      partialV1,
+      chooseUnknown,
+      chooseWindowsUnavailable,
+      unavailableFeed,
+    ]) {
+      expect(decodeDesktopDownloadResolution(resolution)).toEqual(resolution)
+    }
+
+    // Wrong enum value.
+    expect(
+      decodeDesktopDownloadResolution({ ...unavailableFeed, reason: 'not_a_real_reason' }),
+    ).toBeNull()
+    const macDmg = artifact('darwin-arm64', 'dmg')
+    // Malformed sha256 (not 64 lowercase hex chars).
+    expect(
+      decodeDesktopDownloadResolution({
+        ...fullAvailable,
+        selected: { ...macDmg, sha256: 'not-a-hash' },
+      }),
+    ).toBeNull()
+    // byteLength must be a positive integer.
+    expect(
+      decodeDesktopDownloadResolution({
+        ...fullAvailable,
+        selected: { ...macDmg, byteLength: -1 },
+      }),
+    ).toBeNull()
+    // Completely unrelated JSON.
+    expect(decodeDesktopDownloadResolution({ hello: 'world' })).toBeNull()
+    expect(decodeDesktopDownloadResolution(null)).toBeNull()
+    expect(decodeDesktopDownloadResolution('a string')).toBeNull()
   })
 
   test('format vocabulary stays in lockstep with the release-set contract', () => {

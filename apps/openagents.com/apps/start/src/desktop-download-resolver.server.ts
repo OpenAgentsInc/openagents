@@ -726,11 +726,19 @@ export const createDesktopDownloadResolver = (input?: Readonly<{
         options,
       }
     }
-    // Same-target alternatives first, then the other targets' preferred
-    // artifacts — explicit alternatives per the DIST-01 §15 contract.
+    // Same-target formats first (excluding the selection itself), then every
+    // OTHER promoted target's full format catalog — not just its preferred
+    // format. `/download`'s "All platforms" matrix (DIST-11 #8924) renders
+    // exclusively from `selected + alternatives` for a detected client, so a
+    // preferred-only projection here would silently hide promoted formats
+    // (e.g. the Intel ZIP or Linux DEB/RPM builds) from anyone whose platform
+    // was auto-detected — an unintentional overclaim-by-omission the DIST-01
+    // §15 "always exposes explicit alternatives" contract forbids. Bounded by
+    // the schema's `isMaxLength(24)` check; the current five-target/eleven-
+    // artifact catalog is well within it.
     const alternatives = [
       ...targetArtifacts.filter(artifact => artifact !== selected),
-      ...options.filter(artifact => artifact.target !== target && artifact.preferred),
+      ...options.filter(artifact => artifact.target !== target),
     ]
     return {
       ...header,

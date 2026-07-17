@@ -10,6 +10,8 @@
 // release set. When the resolver reports `unavailable` there is NO URL to
 // render — show an honest unavailable state, never a fallback link.
 
+import { Exit, Schema } from 'effect'
+
 export type {
   DesktopDownloadArtifact,
   DesktopDownloadDetection,
@@ -70,6 +72,103 @@ const _targetsCover: _TargetsCover = true
 const _formatsCover: _FormatsCover = true
 void _targetsCover
 void _formatsCover
+
+// ---------------------------------------------------------------------------
+// Client-safe strict decoder (closes the DIST-11 #8924 independent-review
+// finding: client navigations previously validated only the `schema` string,
+// then cast the rest of the response — a same-schema but malformed payload
+// would have misrendered instead of degrading honestly). This mirrors the
+// resolver's `DesktopDownloadResolutionSchema` shape using ONLY the `effect`
+// package and the local literal vocab above — never an import of
+// `../desktop-download-resolver.server`, whose transitive deps (pinned-key
+// verification, feed fetch/cache) must never enter the client bundle. The
+// `format vocabulary stays in lockstep` test in `-download.test.tsx` and the
+// resolver's own self-check (`decodeResolutionExit` in the `.server.ts` file)
+// keep the two schemas from silently drifting apart.
+const ChannelSchema = Schema.Literals(desktopDownloadChannels)
+const BoundedText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096))
+const Sha256Hex = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
+const HttpsUrl = Schema.String.check(
+  Schema.isMinLength(9),
+  Schema.isMaxLength(2_048),
+  Schema.isPattern(/^https:\/\/[^\s]+$/),
+)
+const IsoInstant = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/),
+)
+
+const DetectionSchema = Schema.Struct({
+  platform: Schema.NullOr(Schema.Literals(['darwin', 'win32', 'linux'])),
+  architecture: Schema.NullOr(Schema.Literals(['arm64', 'x64'])),
+  method: Schema.Literals(['override', 'client_hints', 'user_agent', 'none']),
+})
+
+const ArtifactSchema = Schema.Struct({
+  target: Schema.Literals(desktopDownloadTargets),
+  format: Schema.Literals(desktopDownloadFormats),
+  version: BoundedText,
+  channel: ChannelSchema,
+  url: HttpsUrl,
+  sha256: Sha256Hex,
+  byteLength: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  minimumOs: BoundedText,
+  preferred: Schema.Boolean,
+})
+
+const sharedFields = {
+  schema: Schema.Literal(DESKTOP_DOWNLOAD_RESOLUTION_SCHEMA),
+  source: Schema.Literal('release_set_v2'),
+  channel: ChannelSchema,
+  version: BoundedText,
+  releasedAt: IsoInstant,
+  releaseNotes: Schema.NullOr(BoundedText),
+  sourceRevision: Schema.NullOr(Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/))),
+  detection: DetectionSchema,
+} as const
+
+const AvailableSchema = Schema.Struct({
+  ...sharedFields,
+  availability: Schema.Literal('available'),
+  selected: ArtifactSchema,
+  alternatives: Schema.Array(ArtifactSchema).check(Schema.isMaxLength(24)),
+})
+const ChooseManuallySchema = Schema.Struct({
+  ...sharedFields,
+  availability: Schema.Literal('choose_manually'),
+  reason: Schema.Literals(['unknown_client', 'target_unavailable', 'format_unavailable']),
+  options: Schema.Array(ArtifactSchema).check(Schema.isMaxLength(24)),
+})
+const UnavailableSchema = Schema.Struct({
+  schema: Schema.Literal(DESKTOP_DOWNLOAD_RESOLUTION_SCHEMA),
+  availability: Schema.Literal('unavailable'),
+  channel: ChannelSchema,
+  reason: Schema.Literals([
+    'feed_unreachable',
+    'feed_schema_invalid',
+    'release_pointer_invalid',
+    'release_pointer_replayed',
+    'release_candidate_mismatch',
+    'release_set_verification_failed',
+  ]),
+  detection: DetectionSchema,
+})
+
+const ClientResolutionSchema = Schema.Union([AvailableSchema, ChooseManuallySchema, UnavailableSchema])
+const decodeResolutionExit = Schema.decodeUnknownExit(ClientResolutionSchema)
+
+/**
+ * Strictly decode an unknown JSON value as a `DesktopDownloadResolution`.
+ * Exported for direct testing; `fetchDesktopDownloadResolution` is the normal
+ * consumer. Any shape violation — wrong enum value, missing field, malformed
+ * hash/URL/version string, an over-length alternatives array — fails, never
+ * silently coerces.
+ */
+export const decodeDesktopDownloadResolution = (
+  value: unknown,
+): DesktopDownloadResolution | null => {
+  const decoded = decodeResolutionExit(value)
+  return Exit.isSuccess(decoded) ? (decoded.value as DesktopDownloadResolution) : null
+}
 
 /** Validated `/download` search params — explicit target/format/channel overrides. */
 export type DownloadSearch = Readonly<{
@@ -152,14 +251,15 @@ export const fetchDesktopDownloadResolution = async (
         detail: `Download resolver returned HTTP ${response.status}.`,
       }
     }
-    const value = (await response.json()) as Partial<DesktopDownloadResolution>
-    if (value.schema !== DESKTOP_DOWNLOAD_RESOLUTION_SCHEMA) {
+    const value: unknown = await response.json()
+    const decoded = decodeDesktopDownloadResolution(value)
+    if (decoded === null) {
       return {
         state: 'unavailable',
-        detail: 'Download resolver returned an unsupported projection.',
+        detail: 'Download resolver returned a malformed or unsupported projection.',
       }
     }
-    return { state: 'ok', data: value as DesktopDownloadResolution }
+    return { state: 'ok', data: decoded }
   } catch (error) {
     return {
       state: 'unavailable',

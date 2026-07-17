@@ -283,20 +283,34 @@ describe('resolution from the verified release set', () => {
     })
   }
 
-  test('alternatives list same-target formats then other targets preferred artifacts', async () => {
+  test('alternatives list same-target formats, then the FULL catalog of every other target', async () => {
     const { body } = await resolveJson(makeResolver(), {
       headers: { 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' },
     })
     const alternatives = body.alternatives as Array<Record<string, unknown>>
-    expect(alternatives).toHaveLength(5)
+    // Total fixture catalog is 11 artifacts (darwin-arm64:2, darwin-x64:2,
+    // win32-x64:1, linux-arm64:3, linux-x64:3) minus the 1 selected = 10.
+    expect(alternatives).toHaveLength(10)
     expect(alternatives[0]).toMatchObject({ target: 'darwin-arm64', format: 'zip' })
-    expect(alternatives.slice(1).map(row => row.target)).toEqual([
-      'darwin-x64',
-      'win32-x64',
-      'linux-arm64',
-      'linux-x64',
-    ])
-    for (const row of alternatives.slice(1)) expect(row.preferred).toBe(true)
+    // Every OTHER target's full format list is present — not just its
+    // preferred format. A detected client must never have promoted formats
+    // (Intel ZIP, Linux DEB/RPM, ...) silently hidden from its alternatives.
+    const others = alternatives.slice(1)
+    expect(others.map(row => `${row.target}:${row.format}`).toSorted()).toEqual(
+      [
+        'darwin-x64:dmg',
+        'darwin-x64:zip',
+        'win32-x64:nsis',
+        'linux-arm64:appimage',
+        'linux-arm64:deb',
+        'linux-arm64:rpm',
+        'linux-x64:appimage',
+        'linux-x64:deb',
+        'linux-x64:rpm',
+      ].toSorted(),
+    )
+    const preferredCount = others.filter(row => row.preferred === true).length
+    expect(preferredCount).toBe(4) // one preferred format per other target
   })
 
   test('unknown client fails open to choose_manually with the full verified catalog', async () => {

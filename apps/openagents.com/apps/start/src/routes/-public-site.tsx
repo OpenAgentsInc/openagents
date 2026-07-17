@@ -52,7 +52,7 @@ const questions = [
   ['Do I need an OpenAgents account?', 'Not for the Desktop MVP. It uses your ordinary logged-in Codex session and keeps the core workroom local-first.'],
   ['Can the review UI change my files?', 'No. Repository status and diff views are deliberately read-only. Changes still happen through the active agent turn, where the cause and result remain visible.'],
   ['What happens after a restart or interrupted turn?', 'OpenAgents restores stable session identity, then reconciles the latest known turn state. It does not silently replay tools or pretend interrupted work completed.'],
-  ['What is available today?', 'The current release candidate is available for Apple silicon Macs; the download page shows the exact version and platform availability from the signed release feed. The product is still an MVP, so the download and docs describe the supported boundary precisely.'],
+  ['What is available today?', 'Platform and version availability comes from the signed release feed, never a guess or a hard-coded platform claim — the download page shows exactly what is available today for macOS, Windows, and Linux as each ships. The product is still an MVP, so the download and docs describe the supported boundary precisely.'],
 ] as const
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
@@ -74,8 +74,8 @@ export function DesktopLandingPage() {
             <p className="oa-kicker">Codex, made durable.</p>
             <h1>A serious place<br />for serious agent work.</h1>
             <p className="oa-hero-summary">OpenAgents Desktop is a local-first workroom around your ordinary Codex session—built to find work, follow the turn, review changes, and resume without losing the thread.</p>
-            <div className="oa-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="intent">Download for Mac</InternalLink><InternalLink className="oa-button oa-button-secondary" href={DOCS_URL} preload="render">Read the docs</InternalLink></div>
-            <p className="oa-release-note">Apple silicon release candidate · exact version on the download page</p>
+            <div className="oa-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="intent">Download OpenAgents Desktop</InternalLink><InternalLink className="oa-button oa-button-secondary" href={DOCS_URL} preload="render">Read the docs</InternalLink></div>
+            <p className="oa-release-note">Release candidate · exact platform, architecture, and version on the download page</p>
           </div>
           <div className="oa-hero-signal" aria-hidden="true"><span>session.open</span><span>turn.streaming</span><span>change.reviewable</span><span>restart.reconciled</span></div>
         </div>
@@ -125,7 +125,7 @@ export function DesktopLandingPage() {
         <div className="oa-container oa-faq-layout"><div className="oa-faq-intro"><p>Questions and answers</p><h2 id="oa-faq-title">The important boundaries, plainly.</h2><InternalLink href={DOCS_URL} preload="render">Read the full documentation <span aria-hidden="true">→</span></InternalLink></div><div className="oa-question-list">{questions.map(([question, answer], index) => <details key={question} open={index === 0}><summary>{question}<span aria-hidden="true">＋</span></summary><p>{answer}</p></details>)}</div></div>
       </section>
 
-      <section className="oa-closing"><div className="oa-container oa-closing-layout"><div><p>Open source. Local first. Evidence backed.</p><h2>The work should survive the window.</h2></div><div className="oa-closing-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="intent">Download for Mac</InternalLink><a className="oa-source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div></div></section>
+      <section className="oa-closing"><div className="oa-container oa-closing-layout"><div><p>Open source. Local first. Evidence backed.</p><h2>The work should survive the window.</h2></div><div className="oa-closing-actions"><InternalLink className="oa-button oa-button-primary" href={DOWNLOAD_URL} preload="intent">Download OpenAgents Desktop</InternalLink><a className="oa-source-link" href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a></div></div></section>
     </PublicSiteShell>
   )
 }

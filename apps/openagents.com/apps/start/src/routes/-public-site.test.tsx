@@ -18,7 +18,12 @@ describe('TanStack Start public site', () => {
     // DIST-11 (#8924): no hard-coded release version on marketing pages —
     // /download renders the exact version from the signed release resolver.
     expect(html).not.toMatch(/0\.1\.0-rc\.\d+/)
-    expect(html).toContain('exact version on the download page')
+    expect(html).toContain('exact platform, architecture, and version on the download page')
+    // No platform-specific overclaim on the marketing shell — availability
+    // truth lives exclusively on /download, driven by the resolver.
+    expect(html).not.toContain('for Mac')
+    expect(html).not.toContain('Apple silicon Macs')
+    expect(html).toContain('Download OpenAgents Desktop')
     expect(html).toContain('href="/download"')
     expect(html).toContain('href="/docs"')
     expect(html).toContain('OpenAgents on GitHub')
