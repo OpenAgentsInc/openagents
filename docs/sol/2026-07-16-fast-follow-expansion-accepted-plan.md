@@ -1320,6 +1320,68 @@ remain later packets.
 - released_at: `2026-07-17T17:14:00Z`
 - residual: actual `main.ts` composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-18 — Desktop canonical-export main composition resource
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-17. Active
+work still owns Desktop `main.ts` and broad renderer surfaces. The packet
+therefore adds a new-file-only Effect resource that atomically composes the
+already-landed create and write handler registrations while leaving actual
+Electron boot composition and pixels untouched.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-main-composition.ts`
+- `apps/openagents-desktop/src/thread-export-main-composition.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-18-desktop-thread-export-main-composition-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-14's fixed write handler, FF-D1-16's fixed create handler,
+trusted-sender reuse, exact channel ownership, atomic acquisition rollback, and
+idempotent reverse-order cleanup. Existing `main.ts`, preload, renderer,
+history, shell, Sync, provider, file transport, workflow, and
+disclosure-audience contracts remain unchanged.
+
+Required behavior:
+
+- composition registers the fixed write and create handlers exactly once using
+  one shared trusted-sender decision and the already-bounded operations;
+- successful acquisition returns only one idempotent close resource and no raw
+  handler, IPC, filesystem, process, provider, path, receipt, or event authority;
+- close unregisters both handlers in reverse acquisition order and does not
+  repeat either cleanup;
+- if write registration fails, acquisition returns a typed bounded `write`
+  failure without attempting create;
+- if create registration fails, the already-acquired write handler is closed
+  exactly once before acquisition returns a typed bounded `create` failure; and
+- registration or cleanup failures never project native messages, paths, or
+  stack details.
+
+Proof: focused composition and existing handler/bridge tests; isolated and
+Desktop TypeScript checks; Fast Follow, behavior-contract, ProductSpec, Sol,
+and repository-required checks. The known AssuranceSpec environment-digest
+snapshot failure remains a baseline collision unless separately resolved on
+`main`.
+
+Close rule: this packet closes only tested atomic composition of the two main
+handler resources. The actual `main.ts` call site, renderer command/pixels,
+broader disclosure adapters, installed/runtime-rendered evidence, and Day 1
+completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-18-20260717`
+- base: `dcfac105bbce524f87bdfa194d113fc535b40cce`
+- worktree/branch: `openagents-ff-d1-18` / detached `origin/main`
+- scope: atomic main-process composition resource for fixed canonical-export create/write handlers
+- paths: the FF-D1-18 owned implementation paths above
+- hot files: new Desktop main-composition resource/test; accepted-plan ledger and Sol manifest
+- hot contracts: exact dual-handler registration, shared trust gate, typed acquisition failure, rollback, and idempotent reverse cleanup
+- dependencies: FF-D1-17 released; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T17:31:05Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
