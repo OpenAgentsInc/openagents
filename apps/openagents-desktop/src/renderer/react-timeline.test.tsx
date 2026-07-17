@@ -361,6 +361,10 @@ describe("React typed timeline projection", () => {
     root.render(<ReactTimeline sessionKey="thread-assistant-actions" records={[{
       ...record("settled-answer", 0), body: "Streaming…", status: "running",
     }]} loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    // Two ticks: under full-suite CPU contention a single macrotask turn is
+    // not always enough for the tooltip-trigger button's disabled->removed
+    // transition to finish before this assertion runs (observed flake).
+    await settle()
     await settle()
     expect(container.querySelector('[aria-label="Copy message"]')).toBeNull()
     root.unmount()
