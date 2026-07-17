@@ -1459,6 +1459,8 @@ export type ChatHost = Readonly<{
    * `interruptActiveControl` below.
    */
   interruptActive?: (threadRef?: string) => Promise<boolean>
+  /** Stable ref-only identity used to reconcile an exact Stop retry before transport. */
+  interruptActiveControlIdentity?: (threadRef?: string) => Promise<DesktopRuntimeControlOutcomeLookup | null>
   /**
    * Provider-neutral Stop acknowledgement. A compatible host lowers the exact
    * active thread/turn into the shared ref-only control envelope and keeps the
@@ -2803,6 +2805,21 @@ export const makeDesktopShellHandlers = (
         yield* Effect.promise(async () => {
           const threadRef = current.activeThreadId ?? undefined
           if (chat.interruptActiveControl !== undefined) {
+            if (
+              chat.interruptActiveControlIdentity !== undefined &&
+              chat.reconcileControlOutcome !== undefined
+            ) {
+              const identity = await chat.interruptActiveControlIdentity(threadRef)
+              if (identity === null) return
+              const reconciliation = await chat.reconcileControlOutcome(identity)
+              // Any retained acknowledgement, including pending, proves this
+              // exact Stop already crossed the transport boundary. Terminal
+              // UI state still comes only from the runtime's observed event.
+              if (reconciliation.status === "found") return
+              // Corrupt/conflicting/unavailable reconciliation is fail-closed:
+              // never risk signalling the same active turn twice.
+              if (reconciliation.status === "unavailable") return
+            }
             const outcome = await chat.interruptActiveControl(threadRef)
             if (outcome !== null && threadRef !== undefined) {
               await chat.recordControlOutcome?.({ threadRef, outcome })

@@ -439,6 +439,14 @@ search/share/export/supersession, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T13:10:00Z`
 
+### CLAIM-STATUS
+
+- implementation: local-harness and durable-conversation Stop targets derive stable exact thread/turn identities, and the shell reconciles that identity before interrupt transport
+- fail-closed proof: retained pending acknowledgement suppresses redispatch; corrupt, conflicting, invalid, or unavailable ledger lookup cannot authorize transport or terminal UI state
+- focused proof: 193 tests passed with 11 skipped across shell, local harness, durable conversation, and outcome-ledger suites; Desktop typecheck passed
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, ProductSpec 104/104, and Sol checks 19/19 passed
+- residual: Sync/mobile/Pylon adapters, rendered evidence, thread search/share/export/supersession, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

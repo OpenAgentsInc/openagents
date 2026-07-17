@@ -588,6 +588,13 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     }
   }
 
+  const interruptActiveControlIdentity: NonNullable<ChatHost["interruptActiveControlIdentity"]> = async threadRef => {
+    const active = activeTurn
+    if (active === null || (threadRef !== undefined && active.threadRef !== threadRef)) return null
+    const intentRef = `intent.desktop.interrupt.${active.turnRef}`
+    return { threadRef: active.threadRef, intentRef, idempotencyKey: intentRef }
+  }
+
   const interruptActiveControl: NonNullable<ChatHost["interruptActiveControl"]> = async threadRef => {
     const active = activeTurn
     if (active === null || (threadRef !== undefined && active.threadRef !== threadRef)) return null
@@ -595,7 +602,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     const control = makeComposerInterruptIntent({
       threadRef: active.threadRef,
       turnRef: active.turnRef,
-      intentRef: `intent.desktop.interrupt.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`,
+      intentRef: `intent.desktop.interrupt.${active.turnRef}`,
       createdAt,
     })
     const raw = await active.bridge.interrupt({ turnRef: active.turnRef })
@@ -703,6 +710,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
      */
     interruptActive: async threadRef =>
       (await interruptActiveControl(threadRef))?.delivery.status === "applied",
+    interruptActiveControlIdentity,
     interruptActiveControl,
     /**
      * Interrupt a running delegate child of the active turn (EP250 wave-2 G4).

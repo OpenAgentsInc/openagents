@@ -143,9 +143,14 @@ describe("makeLocalHarnessChatHost", () => {
 
     expect(await harness.host.interruptActiveControl!("wrong-thread")).toBeNull()
     expect(harness.interruptCalls).toEqual([])
+    expect(await harness.host.interruptActiveControlIdentity!("thread-1")).toEqual({
+      threadRef: "thread-1",
+      intentRef: "intent.desktop.interrupt.turn.fable.fixed",
+      idempotencyKey: "intent.desktop.interrupt.turn.fable.fixed",
+    })
     expect(await harness.host.interruptActiveControl!("thread-1")).toMatchObject({
       schema: "openagents.runtime_control_outcome.v1",
-      intentRef: "intent.desktop.interrupt.fixed",
+      intentRef: "intent.desktop.interrupt.turn.fable.fixed",
       admission: { status: "accepted" },
       delivery: { status: "applied" },
       terminal: { status: "pending" },

@@ -1221,6 +1221,12 @@ describe("durable runtime turn controls (CUT-16)", () => {
 
     expect(await fixture.chat.interruptActiveControl!("another-thread")).toBeNull()
     expect(fixture.commands.some(command => command.id === "conversation.interrupt")).toBe(false)
+    const runRef = fixture.startedRunRefs()[0]!
+    expect(await fixture.chat.interruptActiveControlIdentity!(fixture.threadRef)).toEqual({
+      threadRef: fixture.threadRef,
+      intentRef: `desktop.interrupt.${runRef}`,
+      idempotencyKey: `desktop.interrupt.${runRef}`,
+    })
     expect(await fixture.chat.interruptActiveControl!(fixture.threadRef)).toMatchObject({
       schema: "openagents.runtime_control_outcome.v1",
       intentRef: `desktop.interrupt.${fixture.startedRunRefs()[0]!}`,
@@ -1229,7 +1235,6 @@ describe("durable runtime turn controls (CUT-16)", () => {
       terminal: { status: "pending" },
     })
     const interrupt = fixture.commands.find(command => command.id === "conversation.interrupt")
-    const runRef = fixture.startedRunRefs()[0]!
     expect(interrupt).toEqual({
       id: "conversation.interrupt",
       commandRef: `desktop.interrupt.${runRef}`,

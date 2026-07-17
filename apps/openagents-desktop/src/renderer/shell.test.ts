@@ -55,6 +55,7 @@ import {
   withComposerImageAdded,
   withComposerImageNotice,
   type DesktopShellState,
+  type ChatHost,
   type CommandBindingHost,
   type HarnessLanes,
 } from "./shell.ts"
@@ -2803,6 +2804,96 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         expect(events).toEqual(["interrupt", "record"])
       }),
     )
+  })
+
+  test("FF-D1-06: an exact Stop retry replays the durable acknowledgement without signalling transport twice", async () => {
+    const events: string[] = []
+    const identity = {
+      threadRef: testThread.id,
+      intentRef: "intent.desktop.interrupt.turn.stop-retry",
+      idempotencyKey: "intent.desktop.interrupt.turn.stop-retry",
+    }
+    const outcome = makeComposerInterruptOutcome({
+      control: {
+        schema: "openagents.runtime_control_intent.v2",
+        intentRef: identity.intentRef,
+        idempotencyKey: identity.idempotencyKey,
+        threadRef: identity.threadRef,
+        targetGeneration: { state: "unknown", reason: "not_observed" },
+        orderingKey: `order:${identity.threadRef}`,
+        createdAt: "2026-07-17T13:00:00Z",
+        expiresAt: "2026-07-17T13:05:00Z",
+        origin: { surface: "desktop", lane: "owner_local" },
+        kind: "turn.interrupt",
+        turnRef: "turn.stop-retry",
+      },
+      observedAt: "2026-07-17T13:00:01Z",
+      admission: { status: "accepted", acceptedAt: "2026-07-17T13:00:01Z" },
+      delivery: { status: "pending" },
+    })
+    let retained: typeof outcome | null = null
+    const chatHost: ChatHost = {
+      listThreads: async () => [],
+      newThread: async () => null,
+      openThread: async () => null,
+      sendMessage: async () => ({ ok: false, error: "unused in this test" }),
+      interruptActiveControlIdentity: async () => identity,
+      reconcileControlOutcome: async () => {
+        events.push("lookup")
+        return retained === null
+          ? { status: "missing" }
+          : { status: "found", outcome: retained }
+      },
+      interruptActiveControl: async () => {
+        events.push("interrupt")
+        return outcome
+      },
+      recordControlOutcome: async () => {
+        events.push("record")
+        retained = outcome
+        // Simulate a lost record acknowledgement after durable persistence.
+        return false
+      },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make(withPending(baseState, true)))
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+    ))
+
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted"), null)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted"), null)))
+
+    expect(events).toEqual(["lookup", "interrupt", "record", "lookup"])
+  })
+
+  test("FF-D1-06: unavailable Stop reconciliation fails closed before transport", async () => {
+    let interrupts = 0
+    const chatHost: ChatHost = {
+      listThreads: async () => [],
+      newThread: async () => null,
+      openThread: async () => null,
+      sendMessage: async () => ({ ok: false, error: "unused in this test" }),
+      interruptActiveControlIdentity: async () => ({
+        threadRef: testThread.id,
+        intentRef: "intent.desktop.interrupt.turn.unavailable",
+        idempotencyKey: "intent.desktop.interrupt.turn.unavailable",
+      }),
+      reconcileControlOutcome: async () => ({ status: "unavailable" }),
+      interruptActiveControl: async () => {
+        interrupts += 1
+        return null
+      },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make(withPending(baseState, true)))
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+    ))
+
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted"), null)))
+
+    expect(interrupts).toBe(0)
   })
 
   test("submit resets the composer value binding and the composer stays usable (clear-on-submit contract)", async () => {

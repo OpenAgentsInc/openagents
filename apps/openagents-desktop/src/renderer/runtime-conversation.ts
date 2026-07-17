@@ -577,6 +577,12 @@ export const makeRuntimeConversationChatHost = (
         await observer?.close()
       }
     },
+    interruptActiveControlIdentity: async threadRef => {
+      const send = activeSend
+      if (send === null || (threadRef !== undefined && send.threadRef !== threadRef)) return null
+      const intentRef = `desktop.interrupt.${send.runRef}`
+      return { threadRef: send.threadRef, intentRef, idempotencyKey: intentRef }
+    },
     interruptActiveControl: async threadRef => {
       // Stop acts only on the exact durable send this renderer has in flight.
       // Admission truth only: the confirmed canceled terminal (not this
@@ -850,6 +856,8 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
       },
     }),
     interruptActive: async () => active?.interruptActive?.() ?? false,
+    interruptActiveControlIdentity: async threadRef =>
+      active?.interruptActiveControlIdentity?.(threadRef) ?? null,
     interruptActiveControl: async () => active?.interruptActiveControl?.() ?? null,
     steerChild: async value => active?.steerChild?.(value) ?? { ok: false, outcome: "not_found" },
     queueFollowup: async value => active?.queueFollowup?.(value) ?? { ok: false, queued: false },
