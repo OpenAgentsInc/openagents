@@ -911,3 +911,15 @@ separate capability and is not claimed.
   adapter; cross-restart promotion proof remains `T3M-F1` and physical-device
   evidence remains `T3M-F2`
 - verified_at: `2026-07-17T22:23:13Z`
+
+### CLAIM-RELEASE
+
+- landed: `9c380f28430e697e431f5c32d8b3efe273473bf6` on `main`
+- verification: post-first-rebase 137 provider-neutral queue, conversation,
+  run-control, authoritative Home, composer, accessibility, local-first, native
+  renderer, schema, behavior-contract, and Sol tests plus mobile typecheck;
+  post-final-rebase 62 queue/conversation/Home/local-first/Sol tests plus mobile
+  typecheck; pre-rebase `pnpm run check`
+- residual: `T3M-B2.3` mobile queue/Stop semantics are complete for the current
+  Pylon adapter; transcript/composer group B is complete; ordered parity work
+  advances to `T3M-C1`; full mobile parity remains open through `T3M-F2`
