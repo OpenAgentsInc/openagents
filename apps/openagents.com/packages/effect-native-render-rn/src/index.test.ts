@@ -3,6 +3,7 @@ import {
   Button,
   Composer,
   IntentRef,
+  Markdown,
   Stack,
   Text,
   Transcript,
@@ -54,6 +55,40 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("React Native renderer host boundaries", () => {
+  test("renders selectable Markdown and opens only safe external links through the native host", async () => {
+    const opened: Array<string> = []
+    const element = renderReactNativeView(
+      Markdown({
+        key: "assistant-markdown",
+        blocks: [{
+          kind: "paragraph",
+          children: [
+            { kind: "text", text: "Open " },
+            { kind: "link", href: "https://openagents.com/docs", children: [{ kind: "text", text: "docs" }] },
+          ],
+        }],
+      }),
+      {
+        React: { createElement },
+        ReactNative: {
+          ...reactNative,
+          Linking: { openURL: async (url) => { opened.push(url) } },
+        },
+      },
+      () => Effect.succeed(undefined),
+    )
+    const paragraph = element.props.children as ReactElementLike
+    const link = (paragraph.props.children as ReadonlyArray<ReactElementLike>)[1]
+    if (link === undefined) throw new Error("expected Markdown link")
+
+    expect(paragraph.props.selectable).toBe(true)
+    expect(link.props.accessibilityRole).toBe("link")
+    expect(link.props.selectable).toBe(true)
+    ;(link.props.onPress as () => void)()
+    await Promise.resolve()
+    expect(opened).toEqual(["https://openagents.com/docs"])
+  })
+
   test("matches T3 Code mobile message geometry", () => {
     const element = renderReactNativeView(
       Transcript({

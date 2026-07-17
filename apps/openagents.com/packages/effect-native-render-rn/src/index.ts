@@ -182,6 +182,9 @@ export interface ReactNativeRuntime {
   readonly SectionList: unknown
   readonly Image: unknown
   readonly Modal: unknown
+  readonly Linking?: {
+    readonly openURL: (url: string) => Promise<unknown>
+  }
   /** Optional — present on real RN; headless tests may omit and still declare onRefresh. */
   readonly RefreshControl?: unknown
   // Optional — present on real RN. The @expo/ui glass lowering gates on
@@ -3901,7 +3904,15 @@ const renderMarkdownInline = (
     case "emphasis":
       return createElement(dependencies, dependencies.ReactNative.Text, { key, style: { fontStyle: "italic" } }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies)))
     case "link":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, accessibilityRole: "link", style: { textDecorationLine: "underline" } }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies)))
+      return createElement(dependencies, dependencies.ReactNative.Text, {
+        key,
+        accessibilityRole: "link",
+        selectable: true,
+        style: { textDecorationLine: "underline" },
+        ...(dependencies.ReactNative.Linking === undefined || !/^https?:\/\//.test(inline.href)
+          ? {}
+          : { onPress: () => { void dependencies.ReactNative.Linking?.openURL(inline.href) } }),
+      }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies)))
   }
 }
 
@@ -3912,9 +3923,9 @@ const renderMarkdownBlock = (
   const key = `mdb-${markdownKeyCounter++}`
   switch (block.kind) {
     case "heading":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, accessibilityRole: "header", style: { fontWeight: "700" } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies)))
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, accessibilityRole: "header", selectable: true, style: { fontWeight: "700" } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies)))
     case "paragraph":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key }, ...block.children.map((child) => renderMarkdownInline(child, dependencies)))
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, selectable: true }, ...block.children.map((child) => renderMarkdownInline(child, dependencies)))
     case "list":
       return createElement(
         dependencies,
@@ -3925,7 +3936,7 @@ const renderMarkdownBlock = (
             dependencies,
             dependencies.ReactNative.View,
             { key: `li-${index}`, style: { flexDirection: "row" } },
-            createElement(dependencies, dependencies.ReactNative.Text, { key: "bullet" }, block.ordered ? `${index + 1}. ` : "• "),
+            createElement(dependencies, dependencies.ReactNative.Text, { key: "bullet", selectable: false }, block.ordered ? `${index + 1}. ` : "• "),
             createElement(dependencies, dependencies.ReactNative.View, { key: "content" }, ...item.map((child) => renderMarkdownBlock(child, dependencies)))
           ))
       )
@@ -4172,7 +4183,7 @@ const renderCodeBlock = (
       parts.push(createElement(dependencies, dependencies.ReactNative.Text, { key: "gutter", style: { color: colorValue(theme, "textMuted") } }, `${startLine + index} `))
     }
     parts.push(...renderCodeTokens(line.tokens, dependencies, theme))
-    children.push(createElement(dependencies, dependencies.ReactNative.Text, { key: `line-${index}`, testID: `en-code-line:${index}` }, ...parts))
+    children.push(createElement(dependencies, dependencies.ReactNative.Text, { key: `line-${index}`, testID: `en-code-line:${index}`, selectable: true }, ...parts))
   })
   return createElement(
     dependencies,

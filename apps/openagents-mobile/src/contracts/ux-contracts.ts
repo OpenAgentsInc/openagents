@@ -5,8 +5,57 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.4",
+    version: "2026-07-17.1",
     contracts: [
+      {
+        contractId: "openagents_mobile.t3_code_full_mobile_parity.v1",
+        state: "pending",
+        surface: "openagents-mobile",
+        productArea: "T3 Code mobile parity",
+        enforcementTier: "unenforced",
+        blockerRefs: [
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#ordered-program",
+        ],
+        source: {
+          channel: "owner-codex-session",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "i want full mobile parity, do the breakdown then start churning thru it",
+        authorityBoundary:
+          "Parity adapts T3 Code's complete mobile component and interaction grammar to OpenAgents styles while preserving one Effect Native application authority, exact confirmed refs, fail-closed target readiness, local credential custody, bounded private material, portable-session receipts, and server-authoritative consequential actions. It does not authorize release signing, deployment, credentials, or a screenshot-only parity claim.",
+        seam: {
+          client: "apps/openagents-mobile/src/screens/home-core.ts",
+          server: "apps/openagents-mobile/src/effect-native/effect-native-host.tsx",
+        },
+        evidenceRefs: [
+          "docs/teardowns/2026-07-17-t3-code-openagents-mobile-component-gap-analysis.md",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d",
+          "apps/openagents-mobile/tests/mobile-transcript-content.test.ts",
+        ],
+        oracles: [
+          {
+            id: "mobile_t3_parity_transcript_a1",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-transcript-content.test.ts",
+            description:
+              "First enforced rung: bounded rich assistant Markdown, fenced code, safe links, and native clipboard actions without changing transcript authority.",
+          },
+          {
+            id: "mobile_t3_full_parity_physical_matrix",
+            kind: "planned",
+            mode: "e2e",
+            ref: "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#epic-f--connections-and-native-finish",
+            description:
+              "Pending complete component census, compact/regular layouts, physical iOS/Android journeys, VoiceOver/TalkBack traversal, signed build evidence, and owner acceptance.",
+          },
+        ],
+        verification:
+          "T3M-A1 focused tests plus mobile typecheck and repository checks; full parity remains pending through T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.seam.identity.local_first_account_link.v1",
         state: "enforced",

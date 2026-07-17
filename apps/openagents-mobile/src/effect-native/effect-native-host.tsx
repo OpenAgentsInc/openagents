@@ -1,5 +1,9 @@
 import * as React from "react"
 import * as ReactNative from "react-native"
+import * as ExpoClipboard from "expo-clipboard"
+
+import { clipboardWriteError } from "@effect-native/core"
+import { Effect } from "@effect-native/core/effect"
 
 import {
   createEffectNativeSurface,
@@ -30,10 +34,17 @@ const dependencies = {
 
 const OpenAgentsEffectNativeSurface = createEffectNativeSurface(dependencies)
 
+const clipboard = {
+  writeText: (content: string) => Effect.tryPromise({
+    try: () => ExpoClipboard.setStringAsync(content),
+    catch: () => clipboardWriteError("Native clipboard write failed"),
+  }),
+}
+
 export const EffectNativeHost = (
   props: EffectNativeSurfaceProps,
 ): React.ReactElement =>
   React.createElement(
     OpenAgentsEffectNativeSurface as unknown as React.FunctionComponent<EffectNativeSurfaceProps>,
-    props,
+    { ...props, clipboard },
   )

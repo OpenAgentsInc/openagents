@@ -24,6 +24,7 @@ import {
   type LiveAgentGraphPresentationRow,
   type LiveAgentGraphTone,
 } from "@openagentsinc/khala-sync-client"
+import { mobileAssistantContentViews } from "./mobile-transcript-content"
 
 export type MobileTextScale = "normal" | "large" | "extra_large"
 
@@ -176,12 +177,15 @@ const interactionBody = (
 ): ReadonlyArray<View> => {
   const interaction = entry.interaction
   if (interaction === undefined) {
-    return [Text({
-      key: `${entry.key}-text`,
-      content: entry.status === "thinking" ? "Khala is thinking…" : entry.text,
-      variant: "body",
-      color: entry.status === "failed" ? "danger" : "textPrimary",
-    }), ...(entry.attachments ?? []).flatMap((attachment, index) => [
+    const textViews = entry.role === "assistant" && entry.status === "done"
+      ? mobileAssistantContentViews(entry.key, entry.text)
+      : [Text({
+          key: `${entry.key}-text`,
+          content: entry.status === "thinking" ? "Khala is thinking…" : entry.text,
+          variant: "body",
+          color: entry.status === "failed" ? "danger" : "textPrimary",
+        })]
+    return [...textViews, ...(entry.attachments ?? []).flatMap((attachment, index) => [
       Image({
         key: `${entry.key}-attachment-${index}`,
         source: `data:${attachment.mediaType};base64,${attachment.dataBase64}`,
