@@ -19,7 +19,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run packages/fast-follow-spec/test/fast-follow-spec.test.ts",
+    "test": "vp test --run packages/fast-follow-spec/test/fast-follow-spec.test.ts packages/fast-follow-spec/test/manifest.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:distribution": "node --import tsx scripts/verify-distribution.ts"
   },

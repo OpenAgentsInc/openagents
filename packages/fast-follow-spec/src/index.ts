@@ -17,6 +17,8 @@ import {
 } from "./schema.ts";
 
 export * from "./schema.ts";
+export * from "./manifest.ts";
+export * from "./inventory.ts";
 
 const decodeFrontmatter = Schema.decodeUnknownSync(FrontmatterSchema);
 const decodeProjection = Schema.decodeUnknownSync(ProjectionSchema);

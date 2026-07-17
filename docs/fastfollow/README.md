@@ -31,15 +31,17 @@ is no implicit merge in format 0.1.
 
 1. [`FAST_FOLLOW_SPEC.md`](FAST_FOLLOW_SPEC.md) — normative format, lifecycle,
    artifacts, work program, sharing boundary, and Full Auto composition.
-2. [`../../FASTFOLLOW.md`](../../FASTFOLLOW.md) — the first OpenAgents
+2. [`FAST_FOLLOW_MANIFEST.md`](FAST_FOLLOW_MANIFEST.md) — deterministic
+   compiler, exact inventory, provenance/confidence, and typed drift contract.
+3. [`../../FASTFOLLOW.md`](../../FASTFOLLOW.md) — the first OpenAgents
    FastFollowSpec, whose ordered initial program follows
    [`Amp in a Few Days`](../fable/2026-07-16-amp-in-a-few-days-on-openagents.md)
    before returning to the complete `docs/teardowns/` catalog.
-3. [`../../specs/openagents/fast-follow.product-spec.md`](../../specs/openagents/fast-follow.product-spec.md)
+4. [`../../specs/openagents/fast-follow.product-spec.md`](../../specs/openagents/fast-follow.product-spec.md)
    — product intent and acceptance criteria for the native system.
-4. [`SUGGESTED_ISSUES.md`](SUGGESTED_ISSUES.md) — dependency-ordered,
+5. [`SUGGESTED_ISSUES.md`](SUGGESTED_ISSUES.md) — dependency-ordered,
    issue-ready implementation program.
-5. [`fast-follow.schema.json`](fast-follow.schema.json) — JSON Schema for the
+6. [`fast-follow.schema.json`](fast-follow.schema.json) — JSON Schema for the
    canonical projection compiled from an authored document.
 
 The workspace skill at
