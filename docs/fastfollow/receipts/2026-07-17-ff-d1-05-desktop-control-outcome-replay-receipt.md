@@ -58,6 +58,14 @@ runtime observation.
 | ProductSpec package test | PASS — 104/104 |
 | Sol document checks | PASS — 19/19 plus manifest check |
 | `pnpm run check` | PASS |
+| Enforced Desktop gate | PASS — 1,940 passed, 39 skipped; production build, compatibility Electron smoke, and React Electron smoke passed |
+
+The packet implementation landed on `main` as
+`aa6b9f79eeb47dfe061fd9ecf5f0a347e16b10bf`. The push hook's redundant
+second Desktop run later measured the pre-existing 256 MiB rollout benchmark
+at 59 ms against its 50 ms ceiling. Its exact test passed separately, and the
+gate, benchmark, and unrelated implementation were not changed; the already
+green complete Desktop verification was used as the landing evidence.
 
 ## Honest boundary and next packet
 

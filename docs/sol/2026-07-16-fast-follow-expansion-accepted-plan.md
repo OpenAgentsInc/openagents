@@ -372,6 +372,13 @@ Day 1 completion remain later packets.
 - repository check: `pnpm run check` passed
 - residual: Stop retry identity, Sync/mobile/Pylon adapters, rendered evidence, thread search/share/export/supersession, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- landed: `aa6b9f79eeb47dfe061fd9ecf5f0a347e16b10bf` on `main`
+- enforced Desktop proof: 1,940 tests passed with 39 skipped, followed by production build, compatibility Electron smoke, and React Electron smoke
+- retry note: the hook's redundant second Desktop run intermittently exceeded the existing 50 ms large-rollout benchmark at 59 ms; that exact benchmark passed separately, and no gate or benchmark was changed
+- residual: Stop retry identity, Sync/mobile/Pylon adapters, rendered evidence, thread search/share/export/supersession, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
