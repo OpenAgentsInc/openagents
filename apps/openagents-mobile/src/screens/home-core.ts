@@ -54,6 +54,14 @@ import {
   type MobileComposerPathSearchPort,
 } from "../coding/mobile-composer-path-context"
 import {
+  initialMobileRepositoryBrowserState,
+  loadMobileRepositoryPreview,
+  loadMobileRepositoryTree,
+  type MobileRepositoryBrowserState,
+  type MobileRepositoryFilesPort,
+  type MobileRepositoryScope,
+} from "../coding/mobile-repository-files"
+import {
   projectMobilePortableSessionControl,
   type MobilePortableControlAction,
   type MobilePortableSessionControl,
@@ -88,6 +96,7 @@ import {
   type MobileWorkspaceLayoutMode,
 } from "./mobile-adaptive-workspace"
 import type { MobileWorkspaceKeyboardCommand } from "./mobile-workspace-keyboard"
+import { renderMobileFilesView } from "./mobile-files-view"
 
 import {
   AgentRowSelected,
@@ -161,6 +170,8 @@ export interface HomeState {
   readonly workspaceSidebarCollapsed: boolean
   readonly workspaceFocusTarget: MobileWorkspaceFocusTarget
   readonly surfaceMode: SurfaceMode
+  readonly workbenchRoute: "conversation" | "files"
+  readonly repositoryBrowser: MobileRepositoryBrowserState
   readonly modeMenuOpen: boolean
   readonly syncPhase: MobileSyncPhase
   readonly conversationAuthority: "local" | "sync"
@@ -314,6 +325,8 @@ export const initialHomeState: HomeState = {
   workspaceSidebarCollapsed: false,
   workspaceFocusTarget: "transcript",
   surfaceMode: "khala",
+  workbenchRoute: "conversation",
+  repositoryBrowser: initialMobileRepositoryBrowserState,
   modeMenuOpen: false,
   syncPhase: "unconfigured",
   conversationAuthority: "local",
@@ -520,6 +533,17 @@ export const CodingComposerPathSelected = defineIntent(
   "CodingComposerPathSelected",
   Schema.String,
 )
+export const FilesRouteOpened = defineIntent("FilesRouteOpened", EmptyPayload)
+export const FilesRouteClosed = defineIntent("FilesRouteClosed", EmptyPayload)
+export const RepositoryDirectoryToggled = defineIntent(
+  "RepositoryDirectoryToggled",
+  Schema.Struct({ pathRef: Schema.String, revisionRef: Schema.String }),
+)
+export const RepositoryFileSelected = defineIntent(
+  "RepositoryFileSelected",
+  Schema.Struct({ pathRef: Schema.String, revisionRef: Schema.String }),
+)
+export const RepositoryFilesRefreshed = defineIntent("RepositoryFilesRefreshed", EmptyPayload)
 export const RuntimeInteractionOptionToggled = defineIntent(
   "RuntimeInteractionOptionToggled",
   Schema.Struct({
@@ -641,6 +665,11 @@ export const homeIntentDefinitions = [
   CodingComposerSlashCommandSelected,
   CodingComposerPathQueryChanged,
   CodingComposerPathSelected,
+  FilesRouteOpened,
+  FilesRouteClosed,
+  RepositoryDirectoryToggled,
+  RepositoryFileSelected,
+  RepositoryFilesRefreshed,
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
   RuntimeTurnControlRequested,
@@ -683,6 +712,13 @@ export interface MobileHeaderProps {
  * authority of their own.
  */
 export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
+  if (state.workbenchRoute === "files") {
+    const scope = state.repositoryBrowser.scope
+    return {
+      title: "Files",
+      subtitle: scope === null ? "Repository workbench" : `${scope.repositoryRef} · ${scope.worktreeRef}`,
+    }
+  }
   if (state.surfaceMode === "openagents") {
     return { title: "OpenAgents", subtitle: syncStatusCopy(state.syncPhase).title }
   }
@@ -717,7 +753,9 @@ export const renderContentView = (state: HomeState): View =>
       direction: "column",
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
-    state.surfaceMode === "khala"
+    state.workbenchRoute === "files"
+      ? [renderMobileFilesView(state.repositoryBrowser, state.accessibility)]
+      : state.surfaceMode === "khala"
       ? [renderKhalaSurface(
           state.khala,
           state.conversationAuthority,
@@ -1189,6 +1227,20 @@ export const renderHomeView = (state: HomeState): View =>
               style: { surface: "glass", borderRadius: "full" },
             },
             [
+              ...(state.codingComposer === null
+                ? []
+                : [IconButton({
+                    key: "home-files",
+                    icon: state.workbenchRoute === "files" ? "Chats" : "Folder",
+                    accessibilityLabel: state.workbenchRoute === "files"
+                      ? "Return to conversation"
+                      : "Open repository files",
+                    onPress: IntentRef(
+                      state.workbenchRoute === "files" ? "FilesRouteClosed" : "FilesRouteOpened",
+                      StaticPayload({}),
+                    ),
+                    style: mobileInteractiveStyle(state.accessibility),
+                  })]),
               IconButton({
                 key: "home-new-chat",
                 icon: "Compose",
@@ -1699,6 +1751,7 @@ export interface HomeProgramOptions {
       session: MobileCodingComposerSession,
     ) => Promise<MobileCodingAttachmentUpdateResult>
     searchComposerPaths?: MobileComposerPathSearchPort["search"]
+    repositoryFiles?: MobileRepositoryFilesPort
     removeComposerAttachment?: (
       session: MobileCodingComposerSession,
       attachmentId: string,
@@ -2199,6 +2252,8 @@ const makeSyncedConversationHandlers = (
       drawerOpen: false,
       workspaceFocusTarget: "transcript" as const,
       surfaceMode: "khala" as const,
+      workbenchRoute: "conversation" as const,
+      repositoryBrowser: initialMobileRepositoryBrowserState,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -2241,6 +2296,8 @@ const makeSyncedConversationHandlers = (
       ...current,
       drawerOpen: false,
       workspaceFocusTarget: "transcript" as const,
+      workbenchRoute: "conversation" as const,
+      repositoryBrowser: initialMobileRepositoryBrowserState,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -2651,6 +2708,77 @@ export const makeHomeHandlers = (
         options.coding,
         selectedThreadLease,
       )
+  const repositoryScope = (composer: MobileCodingComposerSession | null): MobileRepositoryScope | null => {
+    if (composer === null) return null
+    const repository = composer.draft.context.find(item => item.kind === "repository")
+    const worktree = composer.draft.context.find(item => item.kind === "worktree")
+    return repository?.kind !== "repository" || worktree?.kind !== "worktree"
+      ? null
+      : {
+          sessionRef: composer.draft.sessionRef,
+          repositoryRef: repository.repositoryRef,
+          worktreeRef: worktree.worktreeRef,
+        }
+  }
+  const loadRepositoryRoot = () => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const scope = repositoryScope(before.codingComposer)
+    const epoch = before.repositoryBrowser.requestEpoch + 1
+    if (scope === null || options.coding?.repositoryFiles === undefined) {
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        workbenchRoute: "files" as const,
+        repositoryBrowser: {
+          ...initialMobileRepositoryBrowserState,
+          scope,
+          state: "unavailable" as const,
+          requestEpoch: epoch,
+          message: scope === null
+            ? "Select a coding session with an exact repository and worktree first."
+            : "Connect the paired worktree environment to browse repository files.",
+        },
+      }))
+      return
+    }
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      workbenchRoute: "files" as const,
+      drawerOpen: false,
+      workspaceFocusTarget: "transcript" as const,
+      repositoryBrowser: {
+        ...initialMobileRepositoryBrowserState,
+        scope,
+        state: "loading" as const,
+        requestEpoch: epoch,
+        message: null,
+      },
+    }))
+    const result = yield* Effect.promise(() => loadMobileRepositoryTree(
+      options.coding!.repositoryFiles!,
+      { ...scope, directoryRef: "", cursor: null },
+    ))
+    yield* SubscriptionRef.update(state, current => {
+      const browser = current.repositoryBrowser
+      if (current.workbenchRoute !== "files" || browser.requestEpoch !== epoch ||
+        browser.scope?.sessionRef !== scope.sessionRef ||
+        browser.scope.repositoryRef !== scope.repositoryRef ||
+        browser.scope.worktreeRef !== scope.worktreeRef) return current
+      return result.state === "ready"
+        ? {
+            ...current,
+            repositoryBrowser: {
+              ...browser,
+              state: "ready" as const,
+              pages: { "": result.page },
+              message: null,
+            },
+          }
+        : {
+            ...current,
+            repositoryBrowser: { ...browser, state: "failed" as const, message: result.message },
+          }
+    })
+  })
   const mutateComposerAttachment = (
     attachmentId: string,
     action: "remove" | "retry",
@@ -2818,6 +2946,16 @@ export const makeHomeHandlers = (
           drawerOpen: false,
           workspaceFocusTarget: "transcript" as const,
         }
+        if (command === "dismiss" && current.workbenchRoute === "files") return {
+          ...current,
+          drawerOpen: false,
+          workbenchRoute: "conversation" as const,
+          workspaceFocusTarget: "transcript" as const,
+          repositoryBrowser: {
+            ...current.repositoryBrowser,
+            requestEpoch: current.repositoryBrowser.requestEpoch + 1,
+          },
+        }
         if (current.threadLifecycle.pendingAction !== null) return current
         return {
           ...current,
@@ -2926,6 +3064,8 @@ export const makeHomeHandlers = (
         drawerOpen: false,
         workspaceFocusTarget: "transcript" as const,
         surfaceMode: "khala" as const,
+        workbenchRoute: "conversation" as const,
+        repositoryBrowser: initialMobileRepositoryBrowserState,
         codingComposer: null,
         codingComposerTargetPickerOpen: false,
         codingComposerTargetSearch: "",
@@ -3039,6 +3179,112 @@ export const makeHomeHandlers = (
       if (trigger === null || selected === undefined) return
       yield* draftChanged(`${before.khala.draft.slice(0, trigger.replaceFrom)}@${selected.pathRef} `)
     }),
+    FilesRouteOpened: loadRepositoryRoot,
+    FilesRouteClosed: () => SubscriptionRef.update(state, current => ({
+      ...current,
+      workbenchRoute: "conversation" as const,
+      workspaceFocusTarget: "transcript" as const,
+      repositoryBrowser: {
+        ...current.repositoryBrowser,
+        requestEpoch: current.repositoryBrowser.requestEpoch + 1,
+      },
+    })),
+    RepositoryFilesRefreshed: loadRepositoryRoot,
+    RepositoryDirectoryToggled: payload => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const browser = before.repositoryBrowser
+      const scope = browser.scope
+      const entry = Object.values(browser.pages).flatMap(page => page.entries).find(candidate =>
+        candidate.kind === "directory" && candidate.pathRef === payload.pathRef &&
+        candidate.revisionRef === payload.revisionRef)
+      if (before.workbenchRoute !== "files" || browser.state !== "ready" || scope === null || entry === undefined) return
+      if (browser.expandedRefs.includes(entry.pathRef)) {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          repositoryBrowser: {
+            ...current.repositoryBrowser,
+            expandedRefs: current.repositoryBrowser.expandedRefs.filter(ref => ref !== entry.pathRef),
+          },
+        }))
+        return
+      }
+      if (browser.pages[entry.pathRef] !== undefined) {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          repositoryBrowser: {
+            ...current.repositoryBrowser,
+            expandedRefs: [...current.repositoryBrowser.expandedRefs, entry.pathRef],
+          },
+        }))
+        return
+      }
+      if (options.coding?.repositoryFiles === undefined) return
+      const epoch = browser.requestEpoch + 1
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        repositoryBrowser: { ...current.repositoryBrowser, requestEpoch: epoch, message: null },
+      }))
+      const result = yield* Effect.promise(() => loadMobileRepositoryTree(
+        options.coding!.repositoryFiles!,
+        { ...scope, directoryRef: entry.pathRef, cursor: null },
+      ))
+      yield* SubscriptionRef.update(state, current => {
+        const active = current.repositoryBrowser
+        if (current.workbenchRoute !== "files" || active.requestEpoch !== epoch ||
+          active.scope?.sessionRef !== scope.sessionRef) return current
+        return result.state === "ready"
+          ? {
+              ...current,
+              repositoryBrowser: {
+                ...active,
+                pages: { ...active.pages, [entry.pathRef]: result.page },
+                expandedRefs: [...active.expandedRefs, entry.pathRef],
+                message: null,
+              },
+            }
+          : {
+              ...current,
+              repositoryBrowser: { ...active, message: result.message },
+            }
+      })
+    }),
+    RepositoryFileSelected: payload => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const browser = before.repositoryBrowser
+      const scope = browser.scope
+      const entry = Object.values(browser.pages).flatMap(page => page.entries).find(candidate =>
+        candidate.kind === "file" && candidate.pathRef === payload.pathRef &&
+        candidate.revisionRef === payload.revisionRef)
+      if (before.workbenchRoute !== "files" || scope === null || entry === undefined ||
+        options.coding?.repositoryFiles === undefined) return
+      const epoch = browser.requestEpoch + 1
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        repositoryBrowser: {
+          ...current.repositoryBrowser,
+          requestEpoch: epoch,
+          preview: { state: "loading" as const, pathRef: entry.pathRef, revisionRef: entry.revisionRef },
+        },
+      }))
+      const result = yield* Effect.promise(() => loadMobileRepositoryPreview(
+        options.coding!.repositoryFiles!,
+        { ...scope, pathRef: entry.pathRef, expectedRevisionRef: entry.revisionRef },
+      ))
+      yield* SubscriptionRef.update(state, current => {
+        const active = current.repositoryBrowser
+        if (current.workbenchRoute !== "files" || active.requestEpoch !== epoch ||
+          active.scope?.sessionRef !== scope.sessionRef) return current
+        return {
+          ...current,
+          repositoryBrowser: {
+            ...active,
+            preview: result.state === "ready"
+              ? { state: "ready" as const, preview: result.preview }
+              : { state: "failed" as const, pathRef: entry.pathRef, message: result.message },
+          },
+        }
+      })
+    }),
     RuntimeTurnStopConfirmationRequested: payload =>
       SubscriptionRef.update(state, current => {
         const turn = current.khala.runtimeTurn
@@ -3074,6 +3320,7 @@ export const makeHomeHandlers = (
       ...current,
       drawerOpen: false,
       workspaceFocusTarget: "transcript" as const,
+      workbenchRoute: "conversation" as const,
       surfaceMode: surfaceModeOptions[0]?.id ?? current.surfaceMode,
     })),
     OpenAgentsSignInPressed: () => options.sessionActions === undefined
@@ -3089,6 +3336,7 @@ export const makeHomeHandlers = (
       ...current,
       drawerOpen: false,
       workspaceFocusTarget: "transcript" as const,
+      workbenchRoute: "conversation" as const,
       surfaceMode: payload.mode as SurfaceMode,
     })),
     ControllerDestinationSelected: (destination) => SubscriptionRef.update(state, current => ({
@@ -3400,6 +3648,8 @@ export const makeHomeHandlers = (
             ...current,
             drawerOpen: false,
             workspaceFocusTarget: "transcript" as const,
+            workbenchRoute: "conversation" as const,
+            repositoryBrowser: initialMobileRepositoryBrowserState,
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
             codingPathDiscovery: { state: "idle" as const },
@@ -3513,6 +3763,11 @@ export interface HomeProgramHandle {
   }
   readonly coding: {
     readonly selectSession: (target: MobileCodingTarget) => void
+    readonly openFiles: () => void
+    readonly closeFiles: () => void
+    readonly refreshFiles: () => void
+    readonly toggleDirectory: (pathRef: string, revisionRef: string) => void
+    readonly selectFile: (pathRef: string, revisionRef: string) => void
     readonly pickAttachments: () => void
     readonly removeAttachment: (attachmentId: string) => void
     readonly retryAttachment: (attachmentId: string) => void
@@ -3687,6 +3942,8 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     conversationThreads: [],
                     archivedConversationThreads: [],
                     activeThreadRef: null,
+                    workbenchRoute: "conversation" as const,
+                    repositoryBrowser: initialMobileRepositoryBrowserState,
                     threadLifecycle: initialHomeState.threadLifecycle,
                     codingComposer: null,
                     codingComposerTargetPickerOpen: false,
@@ -3750,6 +4007,17 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             sessionRef: target.sessionRef,
             threadRef: target.threadRef,
           }))),
+          openFiles: fire("FilesRouteOpened"),
+          closeFiles: fire("FilesRouteClosed"),
+          refreshFiles: fire("RepositoryFilesRefreshed"),
+          toggleDirectory: (pathRef, revisionRef) => fireRef(IntentRef(
+            "RepositoryDirectoryToggled",
+            StaticPayload({ pathRef, revisionRef }),
+          )),
+          selectFile: (pathRef, revisionRef) => fireRef(IntentRef(
+            "RepositoryFileSelected",
+            StaticPayload({ pathRef, revisionRef }),
+          )),
           pickAttachments: fire("CodingComposerAttachmentsRequested"),
           removeAttachment: attachmentId => fireRef(IntentRef(
             "CodingComposerAttachmentRemoved",

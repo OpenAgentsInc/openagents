@@ -1133,3 +1133,39 @@ unmodified keys do nothing. Focus announcements/targets never select authority.
   `T3M-F2`. Epic C is complete and ordered work advances to `T3M-D1`; full
   mobile parity remains open through `T3M-F2`
 - verified_at: `2026-07-17T22:48:42Z`
+
+## Active packet — T3M-D1.1
+
+Outcome: establish the exact mobile paired-worktree tree/read contract and a
+real Files workbench route with bounded source, Markdown, and image preview
+states, without manufacturing repository data while transport is absent.
+
+Required behavior:
+
+- every tree/read request is bound to the selected session, repository,
+  worktree, directory/path, revision/cursor, and a bounded limit;
+- decoders reject foreign scope, traversal, duplicate/oversized pages,
+  unsupported media, unsafe image URLs, stale revisions, malformed UTF-8, and
+  content beyond the mobile preview limits;
+- the Files route preserves the transcript and its anchor, exposes loading,
+  empty, unavailable, failed, and stale states, and supports deterministic
+  folder expansion, selection, refresh, path copy, and return-to-conversation;
+- source uses the typed code/line presentation, Markdown uses the safe existing
+  parser/renderer, and images use only an authenticated or short-lived HTTPS
+  content URL carrying exact revision/digest identity;
+- a missing provider is visible and cannot be counted as D1 completion.
+
+Close rule: this closes only the mobile contract and route. `T3M-D1.2` must
+connect and prove a real authenticated paired-environment provider before D1
+closes; D2 and later epics remain open.
+
+### CLAIM
+
+- packet: `T3M-D1.1`
+- base: `3297bcb0cd24785095c474d3c36abdf8a6e94951`
+- claimed_at: `2026-07-17T22:50:53Z`
+- scope: bounded tree/read schemas and decoder, Files route/state machine,
+  source/Markdown/image previews, navigation/copy/refresh actions, tests,
+  behavior contract, and Sol receipt
+- exclusions: real paired provider (`T3M-D1.2`), changes/review (`T3M-D2`),
+  Git/terminal/connections/release (`T3M-E1`–`T3M-F2`)
