@@ -2065,6 +2065,72 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T20:19:32Z`
 - residual: named-group authority/publication, ambiguous-create reconciliation, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-27 — Idempotent share-create reconciliation
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-26. Active work
+continues to own Desktop `main.ts` and broad renderer surfaces, canonical
+export boot composition still lacks an authoritative accepted-event source,
+and named-group publication still lacks authoritative membership. The prior
+public and workspace publication transports also cannot safely retry an
+ambiguous `POST /api/share`, because the share-create route has no reviewed
+idempotency identity. This packet adds that server-side contract without
+touching active Desktop host/UI work.
+
+Owned implementation paths:
+
+- `apps/openagents.com/workers/api/src/share-create-idempotency.ts`
+- `apps/openagents.com/workers/api/src/share-create-idempotency.test.ts`
+- `apps/openagents.com/workers/api/src/share-routes.ts`
+- `apps/openagents.com/workers/api/src/share-routes.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-27-idempotent-share-create-reconciliation-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: authenticated actor identity, bounded `Idempotency-Key`, exact
+share-create semantics, existing redacted source loading and audience
+authorization, deterministic owner-scoped share identity, semantic replay,
+conflicting-key refusal, canonical same-origin URL, and no credential or
+content widening. No schema, migration, Desktop `main.ts`, preload, renderer,
+provider, or Sync contract changes are admitted.
+
+Required behavior:
+
+- accept an optional bounded ASCII `Idempotency-Key` only on authenticated
+  share creation and derive a deterministic UUID-shaped share identity from
+  the authenticated owner plus that exact key;
+- preserve existing random identities when the header is absent;
+- after normal authentication, source loading, and audience authorization,
+  return an existing active record only when its owner, source, audience,
+  title, redaction policy, expiry, and canonical URL exactly match the request;
+- refuse a reused key whose existing record differs, is revoked, expired, or
+  malformed, without overwriting or publishing another share; and
+- keep the response bounded and distinguish a replay from a first creation
+  without exposing private source content.
+
+Proof: focused idempotency and share-route tests; API typecheck; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only server-side ambiguous-create
+reconciliation. Client transport retry/reconciliation, named-group authority
+and publication, canonical-export evidence authority, actual `main.ts`
+composition, renderer command/pixels, installed/runtime-rendered evidence, and
+Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-27-20260717`
+- base: `eb15ce99c54af497874a998192b1afbb2fa8268b`
+- worktree/branch: `openagents-ff-d1-27` / detached `origin/main`
+- scope: authenticated owner-scoped idempotency and exact semantic replay for existing `/api/share` creation
+- paths: the FF-D1-27 owned implementation paths above
+- hot files: existing share route/test; new idempotency helper/test; accepted-plan ledger and Sol manifest
+- hot contracts: authenticated owner binding, bounded key syntax, deterministic UUID identity, exact semantic replay, conflict refusal, and unchanged no-header behavior
+- dependencies: FF-D1-26 released; no relevant open bug issue or competing active claim; July 4 share-route worktrees audited stale with no owning process; active Desktop host/UI paths explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T20:45:03Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
