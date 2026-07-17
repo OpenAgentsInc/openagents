@@ -220,6 +220,7 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     const css = readFileSync(sharedWorkbenchCssPath, "utf8")
     const reducedMotion = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ""
     expect(reducedMotion).toContain(".oa-react-codex-update-spinner { animation: none; }")
+    expect(reducedMotion).toContain(".oa-react-session-loading svg { animation: none; }")
   })
 
   test("shared workbench presentation cannot become a second Desktop runtime authority", () => {

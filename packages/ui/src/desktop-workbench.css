@@ -91,6 +91,7 @@
 .oa-react-codex-update-state > svg { flex: 0 0 auto; width: 1rem; height: 1rem; margin-top: .15rem; }
 .oa-react-codex-update-state p { margin: .2rem 0 0; color: var(--muted-foreground); font-size: .8rem; line-height: 1.45; }
 .oa-react-codex-update-spinner { animation: oa-codex-update-spin .8s linear infinite; }
+.oa-react-session-loading svg { animation: oa-codex-update-spin .8s linear infinite; }
 @keyframes oa-codex-update-spin { to { transform: rotate(360deg); } }
 .oa-react-codex-release-notes { min-height: 12rem; overflow: hidden; border: 1px solid var(--border); border-radius: var(--en-radius-none); }
 .oa-react-codex-release-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border-bottom: 1px solid var(--border); }
@@ -124,6 +125,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .oa-react-codex-update-spinner { animation: none; }
+  .oa-react-session-loading svg { animation: none; }
   .oa-react-sensitive-text { transition: none; }
 }
 
@@ -537,6 +539,19 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   justify-self: end;
   font-family: var(--oa-font-sans);
   text-align: right;
+}
+
+.oa-react-session-row .oa-react-session-loading {
+  display: inline-flex;
+  width: auto;
+  align-items: center;
+  justify-self: end;
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-session-loading svg {
+  width: 13px;
+  height: 13px;
 }
 
 .oa-react-session-row small {

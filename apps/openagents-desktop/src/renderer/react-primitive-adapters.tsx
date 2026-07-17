@@ -69,6 +69,7 @@ export type ReactSessionRow = Readonly<{
   title: string
   updatedAt: string
   meta: string
+  working: boolean
   source: "local" | "history" | "search"
   selected: boolean
   intent: "DesktopChatSelected" | "HistoryConversationSelected" | "HistorySearchResultOpened"
@@ -90,6 +91,7 @@ export const projectReactSessionRows = (
       title: thread.title || "Untitled session",
       updatedAt: thread.updatedAt,
       meta: formatRelativeTimestamp(thread.updatedAt, now),
+      working: state.pendingByThread[thread.id] === true || state.fullAutoLiveByThread[thread.id]?.state === "turn_running",
       source: "local",
       selected: selectedHistoryRef === null && state.activeThreadId === thread.id,
       intent: "DesktopChatSelected",
@@ -100,6 +102,7 @@ export const projectReactSessionRows = (
       title: row.title || "Untitled session",
       updatedAt: row.updatedAt,
       meta: formatRelativeTimestamp(row.updatedAt, now),
+      working: false,
       selected: selectedHistoryRef === row.threadRef,
       source: "history",
       intent: "HistoryConversationSelected",
@@ -109,6 +112,7 @@ export const projectReactSessionRows = (
       title: row.title || "Untitled session",
       updatedAt: row.updatedAt,
       meta: formatRelativeTimestamp(row.updatedAt, now),
+      working: false,
       selected: selectedHistoryRef === row.threadRef,
       source: "search",
       intent: "HistorySearchResultOpened",
@@ -332,7 +336,13 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     searchOpen={searchOpen}
     searchPending={state.history.searchPending}
     searchQuery={state.history.searchQuery}
-    sessions={rows.map(row => ({ id: row.id, meta: row.meta, selected: row.selected, title: row.title }))}
+    sessions={rows.map(row => ({
+      id: row.id,
+      meta: row.meta,
+      selected: row.selected,
+      title: row.title,
+      working: row.working && !state.historyShortcutHintsVisible,
+    }))}
     settingsDestination={settingsDestination === undefined ? undefined : {
       accessibilityLabel: settingsDestination.accessibilityLabel,
       current: settingsDestination.accessibilityCurrent,

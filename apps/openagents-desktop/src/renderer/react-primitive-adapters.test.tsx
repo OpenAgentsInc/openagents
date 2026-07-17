@@ -338,8 +338,8 @@ describe("React workbench shell", () => {
     const state = fixtureState()
     const rows = projectReactSessionRows(state, new Date("2026-07-14T12:01:00.000Z"))
     expect(rows.map(row => row.id)).toEqual(["local-1", "history-1"])
-    expect(rows[0]).toMatchObject({ title: "Local session", selected: true, meta: "1m" })
-    expect(rows[1]).toMatchObject({ title: "Earlier session", meta: "1h" })
+    expect(rows[0]).toMatchObject({ title: "Local session", selected: true, meta: "1m", working: false })
+    expect(rows[1]).toMatchObject({ title: "Earlier session", meta: "1h", working: false })
     expect(rows.every(row => /^(?:now|\d+[mhd])$/u.test(row.meta))).toBe(true)
     expect(rows.map(row => row.meta).join(" ")).not.toMatch(/completed|running|waiting|title|content/iu)
     expect(state.history.page).toBeNull()
@@ -350,6 +350,32 @@ describe("React workbench shell", () => {
     }, new Date("2026-07-14T12:01:00.000Z"))
     expect(hinted.map(row => row.meta)).toEqual(["⌘1", "⌘2"])
     expect(hinted.map(row => row.id)).toEqual(rows.map(row => row.id))
+  })
+
+  test("replaces a working chat timestamp with the shared loading icon", async () => {
+    const base = fixtureState()
+    const state = { ...base, pendingByThread: { "local-1": true } }
+    const rows = projectReactSessionRows(state, new Date("2026-07-14T12:01:00.000Z"))
+    expect(rows.find(row => row.id === "local-1")?.working).toBe(true)
+    expect(rows.find(row => row.id === "history-1")?.working).toBe(false)
+
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={state} report={() => Effect.void} />)
+    const workingRow = container.querySelector('[data-en-key="sidebar-thread-local-1"]')
+    expect(workingRow?.querySelector(".oa-react-session-meta")).toBeNull()
+    expect(workingRow?.querySelector('[data-en-role="loading"]')?.getAttribute("aria-label")).toBe("Local session is working")
+    expect(workingRow?.querySelector('[data-icon-name="LoaderCircle"]')).not.toBeNull()
+    expect(container.querySelector('[data-en-key="sidebar-thread-history-1"] .oa-react-session-meta')).not.toBeNull()
+  })
+
+  test("treats a background Full Auto turn as working sidebar activity", () => {
+    const state = fixtureState()
+    const rows = projectReactSessionRows({
+      ...state,
+      fullAutoLiveByThread: { "local-1": { state: "turn_running", turnRef: "turn-1" } },
+    }, new Date("2026-07-14T12:01:00.000Z"))
+    expect(rows.find(row => row.id === "local-1")?.working).toBe(true)
   })
 
   test("projects the sidebar meter shape, nesting token fields under usage (T11 #8868)", () => {

@@ -3,6 +3,7 @@ import {
   ChevronRight,
   MessageCircle,
   House,
+  LoaderCircle,
   PanelLeft,
   Search,
   Settings,
@@ -28,6 +29,7 @@ export type DesktopRailSession = Readonly<{
   id: string
   title: string
   meta: string
+  working?: boolean
   selected?: boolean
 }>
 
@@ -192,7 +194,14 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
                 type="button"
               >
                 <span className="oa-react-session-title">{session.title}</span>
-                <small className="oa-react-session-meta" data-en-role="meta">{session.meta}</small>
+                {session.working === true
+                  ? <small
+                    aria-label={`${session.title} is working`}
+                    className="oa-react-session-loading"
+                    data-en-role="loading"
+                    role="status"
+                  ><LoaderCircle aria-hidden="true" data-icon-name="LoaderCircle" /></small>
+                  : <small className="oa-react-session-meta" data-en-role="meta">{session.meta}</small>}
               </button>
               return <Fragment key={session.id}>{renderSession?.(session, row) ?? row}</Fragment>
             })}
