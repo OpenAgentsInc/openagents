@@ -32,9 +32,14 @@ import {
   CircleAlert,
   Download,
   FileCode2,
+  FileDiff,
+  Files,
   FolderGit2,
   GitBranch,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
+  Plus,
   RotateCcw,
   SearchCheck,
   Trash2,
@@ -76,6 +81,15 @@ import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
+import {
+  decodeDesktopSurfaceLayout,
+  defaultDesktopSurfaceLayout,
+  defaultDesktopSurfacePanelWidth,
+  desktopSurfaceLayoutStorageKey,
+  reduceDesktopSurfaceLayout,
+  type DesktopSurfaceKind,
+  type DesktopSurfaceLayoutAction,
+} from "./surface-layout.ts"
 
 export type ReactSessionRow = Readonly<{
   id: string
@@ -374,6 +388,133 @@ export const ConversationHeader = ({ state, report }: {
       <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}><FolderGit2 aria-hidden="true" />Change</Button>
     </div>}
   />
+}
+
+const surfaceLabel = (surface: DesktopSurfaceKind): string => surface === "files" ? "Files" : "Review"
+
+const SurfacePanelContent = ({ state, surface }: {
+  readonly state: DesktopShellState
+  readonly surface: DesktopSurfaceKind
+}): ReactElement => {
+  if (surface === "files") {
+    const entries = state.workspaceBrowser.pages[""]?.entries ?? []
+    return <section className="oa-react-surface-empty" aria-label="Files surface">
+      <Files aria-hidden="true" />
+      <h2>Files</h2>
+      {state.workspaceBrowser.phase === "loading" ? <p role="status">Loading workspace files…</p>
+        : state.workspaceBrowser.phase === "unavailable" ? <p role="alert">{state.workspaceBrowser.reason ?? "Files are unavailable for this workspace."}</p>
+        : <p>{entries.length === 0 ? "No root entries are available." : `${entries.length} root ${entries.length === 1 ? "entry" : "entries"} ready.`}</p>}
+    </section>
+  }
+  const changed = state.git.status === null ? 0 : new Set([
+    ...state.git.status.staged,
+    ...state.git.status.unstaged,
+    ...state.git.status.untracked,
+  ].map(file => file.path)).size
+  return <section className="oa-react-surface-empty" aria-label="Review surface">
+    <FileDiff aria-hidden="true" />
+    <h2>Review</h2>
+    {state.git.phase === "loading" ? <p role="status">Loading repository changes…</p>
+      : state.git.phase === "unavailable" ? <p role="alert">{state.git.reason ?? "Review is unavailable for this workspace."}</p>
+      : <p>{changed === 0 ? "No changed files." : `${changed} changed ${changed === 1 ? "file" : "files"} on ${state.git.status?.branch ?? "the current branch"}.`}</p>}
+  </section>
+}
+
+export const DesktopSurfaceManager = ({ state, report, conversation }: {
+  readonly state: DesktopShellState
+  readonly report: IntentReporter
+  readonly conversation: ReactElement
+}): ReactElement => {
+  const scope = state.codingCatalog.selectedSessionRef ?? "unbound"
+  const storageKey = `${desktopSurfaceLayoutStorageKey}:${scope}`
+  const readLayout = (): ReturnType<typeof defaultDesktopSurfaceLayout> => {
+    try {
+      const stored = window.localStorage.getItem(storageKey)
+      return stored === null ? defaultDesktopSurfaceLayout() : decodeDesktopSurfaceLayout(JSON.parse(stored))
+    } catch {
+      return defaultDesktopSurfaceLayout()
+    }
+  }
+  const [layout, setLayout] = useState(readLayout)
+  const [addOpen, setAddOpen] = useState(false)
+  const update = (action: DesktopSurfaceLayoutAction): void => setLayout(current => reduceDesktopSurfaceLayout(current, action))
+  useEffect(() => setLayout(readLayout()), [storageKey])
+  useEffect(() => {
+    try { window.localStorage.setItem(storageKey, JSON.stringify(layout)) } catch { /* renderer storage may be disabled */ }
+  }, [layout, storageKey])
+  useEffect(() => {
+    if (state.workspace === "files" || state.workspace === "review") update({ type: "open", surface: state.workspace })
+  }, [state.workspace])
+  const activate = (surface: DesktopSurfaceKind): void => {
+    update({ type: "open", surface })
+    dispatch(report, "DesktopWorkspaceSelected", surface)
+    setAddOpen(false)
+  }
+  const close = (surface: DesktopSurfaceKind, action: "close" | "close_others" | "close_right"): void => {
+    const next = reduceDesktopSurfaceLayout(layout, { type: action, surface })
+    setLayout(next)
+    dispatch(report, "DesktopWorkspaceSelected", next.active ?? "chat")
+  }
+  const closeAll = (): void => {
+    update({ type: "close_all" })
+    dispatch(report, "DesktopWorkspaceSelected", "chat")
+  }
+  const active = layout.active
+  return <div className="oa-react-surface-layout" data-maximized={layout.maximized ? "true" : "false"}>
+    <div className="oa-react-chat-column">{conversation}</div>
+    {active === null ? null : <>
+      <button
+        aria-label="Resize workbench panel"
+        aria-orientation="vertical"
+        aria-valuemax={960}
+        aria-valuemin={320}
+        aria-valuenow={layout.width}
+        className="oa-react-surface-resize"
+        onDoubleClick={() => update({ type: "resize", width: defaultDesktopSurfacePanelWidth })}
+        onKeyDown={event => {
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+          event.preventDefault()
+          update({ type: "resize", width: layout.width + (event.key === "ArrowLeft" ? 24 : -24) })
+        }}
+        onPointerMove={event => {
+          if (event.buttons !== 1) return
+          update({ type: "resize", width: window.innerWidth - event.clientX })
+        }}
+        role="separator"
+        type="button"
+      />
+      <aside className="oa-react-surface-panel" style={layout.maximized ? undefined : { width: layout.width }}>
+        <header className="oa-react-surface-tabs">
+          <div role="tablist" aria-label="Workbench surfaces">
+            {layout.surfaces.map(surface => <ContextMenu key={surface}>
+              <ContextMenuTrigger render={<div aria-selected={active === surface} role="tab">
+                <button onClick={() => activate(surface)} type="button">{surface === "files" ? <Files aria-hidden="true" /> : <FileDiff aria-hidden="true" />}<span>{surfaceLabel(surface)}</span></button>
+                <button
+                aria-label={`Close ${surfaceLabel(surface)}`}
+                onClick={event => { event.stopPropagation(); close(surface, "close") }}
+                type="button"
+              ><X aria-hidden="true" /></button></div>} />
+              <ContextMenuContent aria-label={`${surfaceLabel(surface)} tab actions`}>
+                <ContextMenuItem onClick={() => close(surface, "close")}>Close</ContextMenuItem>
+                <ContextMenuItem onClick={() => close(surface, "close_others")}>Close others</ContextMenuItem>
+                <ContextMenuItem disabled={layout.surfaces.at(-1) === surface} onClick={() => close(surface, "close_right")}>Close to the right</ContextMenuItem>
+                <ContextMenuItem onClick={closeAll}>Close all</ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>)}
+          </div>
+          <div className="oa-react-surface-tab-actions">
+            <button aria-expanded={addOpen} aria-label="Add surface" onClick={() => setAddOpen(open => !open)} type="button"><Plus aria-hidden="true" /></button>
+            <button aria-label={layout.maximized ? "Restore panel size" : "Maximize panel"} aria-pressed={layout.maximized} onClick={() => update({ type: "toggle_maximized" })} type="button">{layout.maximized ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}</button>
+            <button aria-label="Close panel" onClick={closeAll} type="button"><X aria-hidden="true" /></button>
+          </div>
+          {!addOpen ? null : <div className="oa-react-surface-add" role="menu">
+            {(["files", "review"] as const).map(surface => <button disabled={layout.surfaces.includes(surface)} key={surface} onClick={() => activate(surface)} role="menuitem" type="button">{surface === "files" ? <Files aria-hidden="true" /> : <FileDiff aria-hidden="true" />}{surfaceLabel(surface)}</button>)}
+          </div>}
+        </header>
+        <SurfacePanelContent state={state} surface={active} />
+      </aside>
+    </>}
+  </div>
 }
 
 const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Settings"): DesktopRailIcon => {
@@ -777,15 +918,15 @@ export const WorkbenchShell = ({ state, report }: {
     />
     <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} />
     {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
-    {workspaceSurface ?? <DesktopConversation
-      composer={state.history.page === null ? <div className="oa-react-composer-stack">
-        <DecisionSurface state={state} report={report} />
-        <ReactComposer state={state} report={report} />
-      </div> : null}
-      header={<ConversationHeader state={state} report={report} />}
-      notices={<StatusNotices state={state} report={report} />}
-      timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForHarness(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}
-    />}
+    {workspaceSurface ?? <DesktopSurfaceManager state={state} report={report} conversation={<DesktopConversation
+        composer={state.history.page === null ? <div className="oa-react-composer-stack">
+          <DecisionSurface state={state} report={report} />
+          <ReactComposer state={state} report={report} />
+        </div> : null}
+        header={<ConversationHeader state={state} report={report} />}
+        notices={<StatusNotices state={state} report={report} />}
+        timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForHarness(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}
+      />} />}
     {codexUpdateAvailable && dismissedCodexVersion !== codex.latestVersion
       ? <Alert className="oa-react-codex-update-notice" role="status">
           <CircleAlert aria-hidden="true" />

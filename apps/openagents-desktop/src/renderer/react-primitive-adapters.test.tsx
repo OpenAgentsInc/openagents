@@ -741,6 +741,47 @@ describe("React workbench shell", () => {
     ]))
   })
 
+  test("keeps the transcript mounted while capability surfaces activate, maximize, close, and persist", async () => {
+    const { container, window } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    const session = {
+      sessionRef: "session-layout", workContextRef: "context-1", grantRef: "grant-1",
+      projectRef: "project-1", repositoryRef: "repository-1", worktreeRef: "worktree-1",
+      projectLabel: "OpenAgents", repositoryLabel: "openagents", worktreeLabel: "main",
+      state: "active" as const, lastActiveAt: "2026-07-14T12:00:00.000Z", recoveryReason: null,
+    }
+    const state: DesktopShellState = {
+      ...base,
+      workspace: "files",
+      codingCatalog: { ...base.codingCatalog, selectedSessionRef: session.sessionRef, sessions: [session] },
+      workspaceBrowser: { ...base.workspaceBrowser, phase: "ready", grantRef: "grant-1" },
+    }
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={state} report={report} />)
+    expect(container.querySelector('[data-react-workspace="chat"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="Files surface"]')).not.toBeNull()
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Files")
+
+    const maximize = container.querySelector('[aria-label="Maximize panel"]') as HTMLButtonElement
+    await interact(() => maximize.click())
+    expect(container.querySelector(".oa-react-surface-layout")?.getAttribute("data-maximized")).toBe("true")
+    expect(window.localStorage.getItem("openagents.desktop.surface-layout.v1:session-layout")).toContain('"maximized":true')
+
+    const add = container.querySelector('[aria-label="Add surface"]') as HTMLButtonElement
+    await interact(() => add.click())
+    const review = [...container.querySelectorAll('[role="menuitem"]')].find(button => button.textContent === "Review") as HTMLButtonElement
+    await interact(() => review.click())
+    expect(received).toContainEqual({ name: "DesktopWorkspaceSelected", payload: "review" })
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(2)
+
+    const closePanel = container.querySelector('[aria-label="Close panel"]') as HTMLButtonElement
+    await interact(() => closePanel.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopWorkspaceSelected", payload: "chat" })
+    expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
+  })
+
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {
     const { container } = installDom()
     const report: IntentReporter = () => Effect.void

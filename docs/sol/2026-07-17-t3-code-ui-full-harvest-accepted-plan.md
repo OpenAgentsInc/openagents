@@ -113,58 +113,58 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-04
+## Active packet — T3UI-05
 
-Outcome: mount the admitted device-local project/worktree catalog as the
-primary coding-session shell without introducing renderer path or Git authority.
+Outcome: mount T3's panel/tab lifecycle around the transcript while exposing
+only already-admitted OpenAgents workspace capabilities.
 
 Owned paths:
 
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
-- `packages/ui/src/workbench/rail.tsx`
-- `packages/ui/src/workbench/header.tsx`
+- `apps/openagents-desktop/src/renderer/surface-layout.ts`
+- `apps/openagents-desktop/src/renderer/surface-layout.test.ts`
+- `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.ts`
+- `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.test.ts`
+- `apps/openagents-desktop/src/visual-baseline-contract.ts`
+- `apps/openagents-desktop/visual-baselines/`
 - `packages/ui/src/desktop-workbench.css`
 - this plan, the Sol roadmap, and generated Sol document manifest
 
 Required behavior:
 
-- sessions group under their exact project and retain repository/worktree refs;
-- active/idle/recovery/archived status, filtering, recent/name/manual ordering,
-  expansion, and multi-selection remain semantically distinct;
-- open, archive, recover, delete request/confirmation, choose, and paging use
-  existing exact-ref catalog intents;
-- batch actions emit the same exact-session intents rather than inventing a
-  renderer bulk authority; and
-- the conversation header shows admitted repository/worktree/branch context
-  with typed Files, Review, and Change-project actions.
+- the transcript remains mounted and primary while a right panel opens;
+- add, activate, close, close-others, close-right, close-all, maximize/restore,
+  pointer/keyboard resize, and width reset are deterministic;
+- bounded versioned presentation state persists per exact coding-session ref;
+- only Files and read-only Review tabs activate, through the existing typed
+  workspace intent; and
+- narrow layouts overlay the panel without destroying transcript state.
 
-Proof: pure grouping/sort projection plus mounted filter, selection, manual
-order, exact lifecycle/paging, header identity/action tests; Desktop typecheck,
-full serial suite, production build, Electron fixture smokes, visual lane, Sol
-guards, and the publishing gate.
+Proof: pure layout transition/decoder tests, mounted lifecycle/persistence and
+exact-intent tests, dedicated 17th visual state, Desktop typecheck, full serial
+suite, production build, Electron fixture smokes, Sol guards, and publishing.
 
-Close rule: this packet closes the current admitted project/worktree grouping,
-status, sorting, local manual order, multi-select, lifecycle, and header-control
-gap. A typed durable manual-order contract, tabs/surfaces, rich files/diff,
-terminal, preview, installed journey, signed release, and T3 parity remain later.
+Close rule: this packet closes the generic mounted panel/tab lifecycle and
+per-session presentation persistence gap. Rich Files/Diff content, terminal,
+preview, settings, installed journey, signed release, and T3 parity remain later.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-04-20260717`
-- base: `b6852266992055da79f7f00386e3a891ab449105`
+- actor/session: `codex-t3ui-05-20260717`
+- base: `6b8ca94e0b`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: mounted project/worktree grouping, lifecycle, selection, and header
+- scope: transcript-preserving capability surface manager and tab lifecycle
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: admitted project groups, worktree rows, status/filter/sort,
-  local manual order, selection/batch lifecycle, and header actions are mounted
-- focused proof: project/worktree coverage is included in the 26-test mounted
-  shell-adapter suite before final full acceptance
-- receipt: [`2026-07-17-t3ui-04-project-worktree-shell-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-04-project-worktree-shell-receipt.md)
-- residual: durable manual ordering and later packets remain; this is not T3 parity
+- implementation: bounded persisted layout, capability tabs, full close
+  lifecycle, maximize, resize, responsive overlay, and compact header are mounted
+- focused proof: the layout/adapter set passes 30 tests and a dedicated mounted
+  visual state is admitted before final full acceptance
+- receipt: [`2026-07-17-t3ui-05-surface-manager-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-05-surface-manager-receipt.md)
+- residual: rich surface contents and later packets remain; this is not T3 parity
 
 ## Explicit non-authority
 

@@ -191,5 +191,37 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
         { state: "turn_running", turnRef: "turn.visual.full-auto" },
       );
     }
+    case "surface-tabs": {
+      const state = selected(fixtureBase(), planThread());
+      return {
+        ...state,
+        workspace: "files",
+        codingCatalog: {
+          ...state.codingCatalog,
+          selectedSessionRef: "session.visual.surface",
+          sessions: [{
+            sessionRef: "session.visual.surface",
+            workContextRef: "context.visual.surface",
+            grantRef: "grant.visual.surface",
+            projectRef: "project.visual",
+            repositoryRef: "repository.visual",
+            worktreeRef: "worktree.visual",
+            projectLabel: "OpenAgents",
+            repositoryLabel: "openagents",
+            worktreeLabel: "feature/t3-ui",
+            state: "active",
+            lastActiveAt: FIXTURE_UPDATED_AT,
+            recoveryReason: null,
+          }],
+          totalSessions: 1,
+          activeCount: 1,
+        },
+        workspaceBrowser: {
+          ...state.workspaceBrowser,
+          phase: "ready",
+          grantRef: "grant.visual.surface",
+        },
+      };
+    }
   }
 };

@@ -24,6 +24,7 @@ export const VISUAL_BASELINE_SHELL_STATES = [
   "approval-card",
   "reasoning-disclosure",
   "full-auto-running",
+  "surface-tabs",
 ] as const;
 export type VisualBaselineShellStateName = (typeof VISUAL_BASELINE_SHELL_STATES)[number];
 

@@ -23,6 +23,7 @@ describe("visual-baseline fixture states", () => {
       "approval-card",
       "reasoning-disclosure",
       "full-auto-running",
+      "surface-tabs",
       "workbench-messages-reasoning",
       "workbench-commands",
       "workbench-files",
