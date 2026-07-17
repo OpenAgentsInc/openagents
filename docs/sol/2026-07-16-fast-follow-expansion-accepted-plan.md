@@ -1703,6 +1703,15 @@ evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T18:52:03Z`
 
+### CLAIM-STATUS
+
+- implementation: added an Effect composition resource that opens the private visibility store and owns exactly one fixed-channel handler lifetime
+- privacy/authority proof: the store path and Effect runtime remain inside main-process composition; only decoded intents and bounded results cross the handler, with no content, path, native error, publication, membership, administrator, transport, process, or provider authority exposed
+- focused proof: all 29 composition/handler/bridge/store/disclosure tests passed and the full Desktop package typecheck passed
+- authority proof: Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec environment-digest drift remains 189/190; root Fast Follow teardown coverage still awaits the separately owned committed seed update for the mobile-component teardown
+- residual: actual `main.ts` call-site composition, renderer command/pixels, audience authorization/publication adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

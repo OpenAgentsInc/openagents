@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "8d4ce03b772c39c49b1d600718bc3373713c3d9eb8586bc2b97b6012c89bde3f",
+  "sourceTreeSha256": "22b635c6bf2a7719ffeceff488d068a7613431b716a5151a13ab09f425dcb6ef",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1781,7 +1781,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "15a345712b80bae446a6215ca6c904d86a9244552a67a4ac82d0e14b6aace519",
+      "sha256": "20a3b1fdff02b2834707ba1909c2e8b98c825a186a82aee24fc9a520248359ff",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1811,10 +1811,11 @@
         "docs/fastfollow/receipts/2026-07-17-ff-d1-19-desktop-thread-visibility-policy-store-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-20-desktop-thread-visibility-preload-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-21-desktop-thread-visibility-main-handler-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-ff-d1-22-desktop-thread-visibility-main-composition-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 26,
+      "inboundSourceCount": 27,
       "issueLinks": []
     },
     {
