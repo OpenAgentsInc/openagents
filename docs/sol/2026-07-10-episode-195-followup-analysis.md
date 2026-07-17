@@ -59,6 +59,19 @@ roadmap and one architectural horizon worth preserving:
    not the same as executing a model on the device. The target and evidence
    contracts should preserve that distinction now.
 
+The 2026-07-16
+[Command Code teardown](../teardowns/2026-07-16-command-code-teardown.md)
+corroborates omission 3 with a shipped competitor rather than a transcript
+thesis. Command Code separates explicit `AGENTS.md` instructions from inferred,
+portable, confidence-scored Taste packages and can learn from corrections, Git
+history, and imported Claude Code/Cursor/Codex sessions. That validates learned
+coding preference as a product category, but not Command Code's evidence or
+privacy posture. The OpenAgents interpretation remains governed: explicit
+observation admission, provenance, applicability, confidence plus freshness,
+conflict handling, owner disposition, visible activation, deletion, and a hard
+rule that learned preference never widens authority. Repository and foreign-
+session import are explicit bounded jobs, not ambient history surveillance.
+
 Compute resale, plugin revenue sharing, and an embedded wallet remain aligned
 long-term directions, but they should not enter the active R0–R7 issue set.
 They require the reliable client, isolation, metering, settlement, and

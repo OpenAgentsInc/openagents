@@ -17,6 +17,7 @@ Evidence base:
 - [T3 Code teardown](./2026-07-13-t3-code-teardown.md)
 - [Crabbox teardown](./2026-07-13-crabbox-teardown.md)
 - [Grok Build teardown](./2026-07-15-grok-build-teardown.md)
+- [Command Code teardown](./2026-07-16-command-code-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -1991,6 +1992,84 @@ Its evidence changes this document's decisions in the following ways.
 
 Per the standing rule, none of these items is authority here: each lives or
 dies by its owning roadmap gate, issue, or contract when promoted.
+
+## Command Code addendum (2026-07-16)
+
+The [Command Code teardown](./2026-07-16-command-code-teardown.md) adds the
+reference set's first product whose differentiated system is a continuously
+learned coding-preference plane. The public repositories do not contain its
+engine source, so the audit used the official docs and changelog plus an
+isolated install of the closed `command-code@0.51.0` npm package and its
+source-mapped VS Code extension.
+
+The evidence changes this document's decisions in the following ways.
+
+1. **Learned preference is a separate product plane, not generic memory.**
+   Command Code distinguishes explicit `AGENTS.md` instructions, inferred
+   `taste.md` preferences, settings, and session history. OpenAgents should
+   preserve that separation in its context envelope and product language.
+2. **The restricted compiler boundary is worth adapting.** Ordinary coding
+   tools cannot edit Taste directories. A separate learning agent writes only
+   validated root/category `taste.md` files beneath a path-confined output
+   tree. OpenAgents should use a named governed compiler rather than let the
+   ordinary agent silently self-edit durable preferences.
+3. **Portable text is useful but insufficient authority.** Human-readable,
+   diffable Markdown packages are an excellent interchange and review format.
+   Canonical state still needs stable ids, source observations, compiler/model
+   version, applicability, confidence calibration, freshness, conflicts,
+   owner disposition, activation, and outcome.
+4. **Correction sources should be explicit jobs.** Git-history mining and
+   Claude Code/Cursor/Codex session import are valuable onboarding paths.
+   Each needs preview, bounded source/date/repository scope, custody policy,
+   cancellation, deletion, and an import receipt. No ambient scan of provider
+   histories is authorized.
+5. **Preference cannot amplify authority.** A learned rule may rank or shape
+   behavior only inside the current admitted tool, filesystem, execution,
+   egress, account, spend, publication, and approval envelope. It cannot
+   select a broader target, grant a tool, suppress an interaction, or convert
+   agent completion into review, acceptance, release, payout, or settlement.
+6. **“Local” must be decomposed.** Command Code stores Taste Markdown locally
+   but the bundle also sends prompt batches and compiled correction context to
+   its hosted generation endpoint. OpenAgents must disclose local artifact
+   custody, local derivation, remote inference processing, cloud sync, and
+   training use as separate facts.
+7. **A learning feed is not governance.** Show evidence, scope,
+   confidence/freshness, and approve/narrow/suspend/delete actions. Do not use
+   celebratory live observations as a substitute for review or consent.
+8. **History and preference discovery remain semantic-selection problems.**
+   Applicability and retrieval must use a central typed semantic selector,
+   embedding search, or structured planner. Do not add keyword rules for
+   user-facing preference routing.
+9. **The smaller host patterns corroborate existing decisions.** Read-only
+   headless defaults, stable exit classes, per-session model restore,
+   headless-history separation, fork provenance, three-mode rewind, bounded
+   IDE IPC, progressive skill disclosure, and monitored command deltas are all
+   worth retaining under OpenAgents' stronger runtime contracts.
+10. **The security and durability gaps strengthen existing rejections.** The
+    client rewrites complete session JSONL with regenerated record ids, has no
+    established local OS containment, exposes a prompt bypass, collects an
+    authenticated persistent machine fingerprint beyond its telemetry
+    disclosure, and self-updates without a visible signed component ledger.
+    Keep append-only admission/evidence, stable refs, explicit containment,
+    privacy-purpose contracts, signed updates, rollback, and receipts.
+
+The resulting proposed pathway is a **governed preference plane** after the
+core Desktop and portable-session loop is trustworthy:
+
+```text
+admitted observation
+  -> candidate preference + evidence
+  -> owner review / bounded activation policy
+  -> versioned preference generation
+  -> exact turn/work-unit application with “why”
+  -> outcome or correction
+  -> reinforce / narrow / suspend / supersede / delete
+```
+
+This addendum does not promote the pathway into current implementation status
+or sequencing. Any load-bearing requirement must move into the owning roadmap
+gate, typed contract, privacy policy, issue, tests, and receipts before the
+product can claim continuously learned preference.
 
 ## T3 Code Agent Client Protocol implementation addendum (2026-07-16)
 
