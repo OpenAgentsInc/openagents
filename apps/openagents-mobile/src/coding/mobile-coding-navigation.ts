@@ -89,8 +89,17 @@ export type MobileCodingDirectory = Readonly<{
   }>>
   sessions: ReadonlyArray<Readonly<{
     sessionRef: string
+    projectRef: string
     repositoryRef: string
+    worktreeRef: string
     threadRef: string
+    runRef: string | null
+    fleetRef: string | null
+    currentCheckpointRef: string | null
+    agentTopologyRef: string | null
+    canonicalEventCursor: number
+    provider: CodingSessionEntity["provider"]
+    runtime: CodingSessionEntity["runtime"]
     state: CodingSessionEntity["state"]
     lastActiveAt: string
   }>>
@@ -194,8 +203,17 @@ const directoryFromSnapshot = (
       .sort((left, right) => left.displayName.localeCompare(right.displayName)),
     sessions: sessions.map(session => ({
       sessionRef: session.sessionRef,
+      projectRef: session.projectRef,
       repositoryRef: session.repositoryRef,
+      worktreeRef: session.worktreeRef,
       threadRef: session.threadRef,
+      runRef: session.runRef,
+      fleetRef: session.fleetRef,
+      currentCheckpointRef: session.currentCheckpointRef,
+      agentTopologyRef: session.agentTopologyRef,
+      canonicalEventCursor: session.canonicalEventCursor,
+      provider: session.provider,
+      runtime: session.runtime,
       state: session.state,
       lastActiveAt: session.lastActiveAt,
     })),
