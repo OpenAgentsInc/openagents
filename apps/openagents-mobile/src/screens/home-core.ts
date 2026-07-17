@@ -31,6 +31,12 @@ import {
   type ConfirmedRuntimeAttentionSnapshot,
 } from "@openagentsinc/khala-sync-client"
 import type { FleetRunClientProjection } from "@openagentsinc/khala-sync"
+import {
+  FullAutoRunLifecycleStateLabel,
+  isFullAutoRunProjectionActive,
+  truncateFullAutoRunObjective,
+  type FullAutoRunProjectionResult,
+} from "../full-auto/full-auto-run-projection"
 
 import type {
   MobileCodingDirectory,
@@ -109,6 +115,7 @@ import {
   TranscriptPinnedChanged,
   WorkGroupToggled,
   WorkItemToggled,
+  type FullAutoRunHeaderView,
   type KhalaState,
   type KhalaTurnClient,
   type MobileAccessibilityProfile,
@@ -196,6 +203,12 @@ export interface HomeState {
   readonly codingPathDiscovery: MobileComposerPathDiscoveryState
   readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
   readonly fleetRuns?: FleetRunClientProjection
+  /** Live `FullAutoRun` mobile projection (openagents #8982); `null` means
+   * no fetch has resolved yet or the account has no active run. The state
+   * header renders only when this projection's `threadRef` matches
+   * `activeThreadRef` and the run is still active/fresh — see
+   * `fullAutoRunHeaderForState`. */
+  readonly fullAutoRun: FullAutoRunProjectionResult | null
   readonly codingExecutionTargetCatalogRequired: boolean
   readonly codingAttachmentPicking: boolean
   readonly codingAttachmentMutatingRef: string | null
@@ -345,6 +358,7 @@ export const initialHomeState: HomeState = {
   codingComposerTargetSearch: "",
   codingPathDiscovery: { state: "idle" },
   codingExecutionTargets: [],
+  fullAutoRun: null,
   codingExecutionTargetCatalogRequired: false,
   codingAttachmentPicking: false,
   codingAttachmentMutatingRef: null,
@@ -698,6 +712,24 @@ export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
   }
 }
 
+/** Minimal live state header data (openagents #8982): objective + lifecycle
+ * state, shown above the transcript only while the active thread IS the
+ * live Full Auto run's thread and that run is still active/fresh. Falls
+ * through to `null` (no header, unchanged default rendering) whenever there
+ * is no active run, the projection hasn't resolved yet, or the user has
+ * navigated to a different thread than the live run's. */
+export const fullAutoRunHeaderForState = (state: HomeState): FullAutoRunHeaderView | null => {
+  if (state.fullAutoRun?.state !== "active") return null
+  const projection = state.fullAutoRun.projection
+  if (state.activeThreadRef !== projection.threadRef) return null
+  if (!isFullAutoRunProjectionActive(projection)) return null
+  return {
+    lifecycleLabel: FullAutoRunLifecycleStateLabel[projection.lifecycleState],
+    objective: truncateFullAutoRunObjective(projection.objective),
+    workspaceLabel: projection.workspaceLabel,
+  }
+}
+
 export const chromeProps = (state: HomeState): ChromeProps => ({
   pillLabel: state.conversationAuthority === "sync" && state.surfaceMode === "khala"
     ? "OpenAgents"
@@ -737,6 +769,7 @@ export const renderContentView = (state: HomeState): View =>
             : state.conversationAuthority === "sync" && state.syncPhase !== "live"
               ? "unavailable"
               : "live",
+          fullAutoRunHeaderForState(state),
         )]
       : [
           Spacer({ key: "openagents-top-space", size: "16" }),
@@ -1664,6 +1697,10 @@ export interface HomeProgramOptions {
   }>
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
   readonly accessibility?: MobileAccessibilityProfile
+  /** Initial live `FullAutoRun` mobile projection, when already resolved at
+   * selection time (openagents #8982). Later updates flow through
+   * `program.fullAuto.setProjection`, not another `buildHomeProgram` call. */
+  readonly fullAutoRun?: FullAutoRunProjectionResult
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     portableSnapshot?: ConfirmedPortableSessionSnapshot | null
@@ -3501,6 +3538,12 @@ export interface HomeProgramHandle {
     readonly setWidth: (width: number) => void
     readonly dispatchKeyboardCommand: (command: MobileWorkspaceKeyboardCommand) => void
   }
+  readonly fullAuto: {
+    /** Pushes a freshly-polled `FullAutoRun` projection into state (openagents
+     * #8982), mirroring `sync.setPhase`'s "push external state in" shape so
+     * the state header updates live without an app restart. */
+    readonly setProjection: (result: FullAutoRunProjectionResult | null) => void
+  }
   readonly controller: {
     readonly selectDestination: (destination: MobileControllerDestination) => void
     readonly inspectSession: (sessionRef: string) => void
@@ -3550,6 +3593,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         ...(options.coding?.fleetRuns === undefined
           ? {}
           : { fleetRuns: options.coding.fleetRuns }),
+        fullAutoRun: options.fullAutoRun ?? baseInitialState.fullAutoRun,
         codingExecutionTargetCatalogRequired:
           options.coding?.executionTargets !== undefined,
         khala: activeComposer === null
@@ -3714,6 +3758,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             "WorkspaceKeyboardCommandReceived",
             StaticPayload(command),
           )),
+        },
+        fullAuto: {
+          setProjection: result => {
+            Effect.runFork(SubscriptionRef.update(state, current => ({
+              ...current,
+              fullAutoRun: result,
+            })))
+          },
         },
         controller: {
           selectDestination: destination => fireText(

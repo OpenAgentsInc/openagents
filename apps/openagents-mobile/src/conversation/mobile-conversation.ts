@@ -980,6 +980,40 @@ export const makeMobileConversationHost = (
   }
 }
 
+/**
+ * Pure thread-selection priority, exported standalone so the priority order
+ * is unit-testable without standing up a full conversation host (openagents
+ * #8982). Priority, highest first:
+ *
+ *   1. `preferredThreadRef` — an explicit restored coding session; the user
+ *      was already working there, so resuming it wins even over an active
+ *      Full Auto run.
+ *   2. `activeFullAutoThreadRef` — the live Full Auto run's thread, when the
+ *      caller has already confirmed (via `isFullAutoRunProjectionActive`)
+ *      that the run is genuinely active and fresh. Callers must omit this
+ *      field entirely for a stale/expired/no-run projection so the existing
+ *      arbitrary fallback is unaffected — this function does not itself
+ *      re-check freshness.
+ *   3. `threads[0]` — the existing arbitrary "most recent" fallback.
+ *
+ * Returns `undefined` only when `threads` is empty.
+ */
+export const selectActiveConversationThreadRef = (input: Readonly<{
+  threads: ReadonlyArray<Readonly<{ threadRef: string }>>
+  preferredThreadRef?: string
+  activeFullAutoThreadRef?: string
+}>): string | undefined => {
+  const preferred = input.preferredThreadRef === undefined
+    ? undefined
+    : input.threads.find(thread => thread.threadRef === input.preferredThreadRef)
+  if (preferred !== undefined) return preferred.threadRef
+  const fullAuto = input.activeFullAutoThreadRef === undefined
+    ? undefined
+    : input.threads.find(thread => thread.threadRef === input.activeFullAutoThreadRef)
+  if (fullAuto !== undefined) return fullAuto.threadRef
+  return input.threads[0]?.threadRef
+}
+
 export const selectMobileConversation = async (input: Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline?: () => KhalaSyncAgentTimeline | null
@@ -987,6 +1021,10 @@ export const selectMobileConversation = async (input: Readonly<{
   runtime?: () => KhalaSyncRuntimeCommands | null
   interactions?: () => KhalaSyncRuntimeInteractions | null
   preferredThreadRef?: string
+  /** The active Full Auto run's `threadRef`, only when the caller has
+   * already confirmed the run is active and fresh (openagents #8982). Omit
+   * when there is no active run so existing selection behavior is unchanged. */
+  activeFullAutoThreadRef?: string
   adapter?: Omit<MobileConversationAdapterOptions, "agentGraph" | "conversation" | "interactions" | "runtime" | "timeline">
 }>): Promise<MobileConversationSelection> => {
   const conversation = input.conversation()
@@ -1020,13 +1058,16 @@ export const selectMobileConversation = async (input: Readonly<{
       host.listThreads(),
       host.listArchivedThreads?.() ?? Promise.resolve([]),
     ])
-    const preferred = input.preferredThreadRef === undefined
-      ? undefined
-      : threads.find(thread => thread.threadRef === input.preferredThreadRef)
-    const activeSummary = preferred ?? threads[0]
-    const activeThread = activeSummary === undefined
+    const activeThreadRef = selectActiveConversationThreadRef({
+      threads,
+      ...(input.preferredThreadRef === undefined ? {} : { preferredThreadRef: input.preferredThreadRef }),
+      ...(input.activeFullAutoThreadRef === undefined
+        ? {}
+        : { activeFullAutoThreadRef: input.activeFullAutoThreadRef }),
+    })
+    const activeThread = activeThreadRef === undefined
       ? null
-      : await host.openThread(activeSummary.threadRef)
+      : await host.openThread(activeThreadRef)
     return threads.length === 0 || activeThread !== null
       ? { mode: "sync", host, threads, archivedThreads, activeThread }
       : { mode: "local" }

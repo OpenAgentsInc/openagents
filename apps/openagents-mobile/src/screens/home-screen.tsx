@@ -27,6 +27,7 @@ import type {
 } from "../coding/mobile-portable-session-controls"
 import type { MobileConversationSelection } from "../conversation/mobile-conversation"
 import type { MobileConversationThread } from "../conversation/mobile-conversation"
+import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-projection"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import { sendKhalaTurn } from "../khala/khala-client"
 import { mobileWorkspaceKeyboardCommand } from "./mobile-workspace-keyboard"
@@ -51,6 +52,7 @@ export const HomeScreen = ({
   coding,
   pendingAttentionTarget,
   onAttentionTargetConsumed,
+  fullAutoRun,
 }: {
   readonly syncPhase: MobileSyncPhase
   readonly sessionActions: Readonly<{
@@ -58,6 +60,9 @@ export const HomeScreen = ({
     signOut: () => Promise<void>
   }>
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
+  /** Live `FullAutoRun` mobile projection (openagents #8982); pushed into the
+   * program on every change so the state header updates without a restart. */
+  readonly fullAutoRun?: FullAutoRunProjectionResult | null
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     portableSnapshot: ConfirmedPortableSessionSnapshot | null
@@ -112,7 +117,12 @@ export const HomeScreen = ({
       accessibility,
       workspaceWidth: initialWorkspaceWidth,
       coding,
+      ...(fullAutoRun === null || fullAutoRun === undefined ? {} : { fullAutoRun }),
     }),
+    // fullAutoRun deliberately excluded: its initial value seeds the program
+    // once at mount; later changes flow through `program.fullAuto.setProjection`
+    // below (mirroring the syncPhase push pattern) so a live projection poll
+    // never tears down and rebuilds the whole Effect Native program.
     [sessionActions, conversation, coding, initialWorkspaceWidth],
   )
   useEffect(() => {
@@ -141,6 +151,9 @@ export const HomeScreen = ({
   useEffect(() => {
     program.sync.setPhase(syncPhase)
   }, [program, syncPhase])
+  useEffect(() => {
+    program.fullAuto.setProjection(fullAutoRun ?? null)
+  }, [program, fullAutoRun])
   useEffect(() => {
     if (pendingAttentionTarget === null || pendingAttentionTarget === undefined) return
     if (attentionDispatchRef.current === pendingAttentionTarget.attentionRef) return
