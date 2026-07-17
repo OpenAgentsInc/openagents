@@ -19,6 +19,24 @@
   product mutations, dispatch work, widen authority, or replace the Sol issue/
   claim ledgers.
 
+## Implementation update — PORT-06 controller foundation
+
+The first bounded PORT-06 implementation packet landed on 2026-07-17 through
+#8944–#8946. OpenAgents mobile now projects confirmed coding sessions into
+typed Recent, Repositories, and Attention destinations and renders an Effect
+Native metadata-first controller shell. A session can be inspected before its
+transcript is activated; the overview shows canonical repository/session/
+thread identity, lifecycle, exact provider/runtime availability, last
+activity, cursor, and checkpoint presence. Continue reuses the existing
+exact-ref activation intent.
+
+This closes the **controller-shell foundation**, not PORT-06 or full T3 mobile
+parity. The current coding catalog still does not project a multi-host
+environment inventory or host-movement command outcomes, and Files, Changes,
+Terminal, Preview, Artifacts/Receipts, push registration, voice, and physical
+iOS/Android parity receipts remain open. Cached rows remain counted-but-hidden
+whenever Sync authority is withheld.
+
 ## Executive decision
 
 OpenAgents should target **full mobile-controller parity with T3 Code**, but

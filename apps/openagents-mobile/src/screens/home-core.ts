@@ -101,6 +101,7 @@ export interface HomeState {
   readonly activeThreadRef: string | null
   readonly codingDirectory: MobileCodingDirectory | null
   readonly controllerDestination: MobileControllerDestination
+  readonly inspectedControllerSessionRef: string | null
   readonly codingComposer: MobileCodingComposerSession | null
   readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
   readonly fleetRuns?: FleetRunClientProjection
@@ -224,6 +225,7 @@ export const initialHomeState: HomeState = {
   activeThreadRef: null,
   codingDirectory: null,
   controllerDestination: "recent",
+  inspectedControllerSessionRef: null,
   codingComposer: null,
   codingExecutionTargets: [],
   codingExecutionTargetCatalogRequired: false,
@@ -262,6 +264,10 @@ export const CodingSessionSelected = defineIntent(
 export const ControllerDestinationSelected = defineIntent(
   "ControllerDestinationSelected",
   Schema.Literals(["recent", "repositories", "attention"]),
+)
+export const ControllerSessionInspected = defineIntent(
+  "ControllerSessionInspected",
+  Schema.Struct({ sessionRef: Schema.String }),
 )
 export const CodingComposerAttachmentsRequested = defineIntent(
   "CodingComposerAttachmentsRequested",
@@ -311,6 +317,7 @@ export const homeIntentDefinitions = [
   ConversationThreadSelected,
   CodingSessionSelected,
   ControllerDestinationSelected,
+  ControllerSessionInspected,
   CodingComposerAttachmentsRequested,
   CodingExecutionTargetSelected,
   RuntimeInteractionOptionToggled,
@@ -415,14 +422,72 @@ const controllerSessionButton = (
   key: `controller-session-${session.sessionRef}`,
   label: controllerSessionLabel(session),
   variant: session.attention === "needs_recovery" ? "secondary" : "ghost",
-  onPress: IntentRef("CodingSessionSelected", StaticPayload({
-    repositoryRef: session.repositoryRef,
+  onPress: IntentRef("ControllerSessionInspected", StaticPayload({
     sessionRef: session.sessionRef,
-    threadRef: session.threadRef,
   })),
-  a11y: { label: `${controllerSessionLabel(session)}, open session` },
+  a11y: { label: `${controllerSessionLabel(session)}, inspect session` },
   style: { width: "full", ...mobileInteractiveStyle(accessibility) },
 })
+
+const controllerFactLabel = (
+  fact: MobileControllerSession["provider"] | MobileControllerSession["runtime"],
+): string => fact.state === "known"
+  ? ("providerRef" in fact ? fact.providerRef : fact.runtimeRef)
+  : `Unavailable · ${fact.reason.replaceAll("_", " ")}`
+
+const controllerSessionDetail = (
+  session: MobileControllerSession,
+  accessibility: MobileAccessibilityProfile,
+): View => Stack({
+  key: `controller-session-detail-${session.sessionRef}`,
+  direction: "column",
+  gap: "2",
+  padding: "3",
+  style: { width: "full", backgroundColor: "surfaceRaised", borderRadius: "lg" },
+  a11y: { role: "region", label: `Session overview for ${session.repositoryName}` },
+}, [
+  Text({
+    key: "controller-session-detail-title",
+    content: `${session.repositoryName} · ${codingSessionStateLabel(session.state)}`,
+    variant: "heading",
+    color: "textPrimary",
+  }),
+  Text({
+    key: "controller-session-detail-refs",
+    content: `Session ${session.sessionRef}\nThread ${session.threadRef}`,
+    variant: "caption",
+    color: "textMuted",
+  }),
+  Text({
+    key: "controller-session-detail-target",
+    content: `Provider ${controllerFactLabel(session.provider)}\nRuntime ${controllerFactLabel(session.runtime)}`,
+    variant: "body",
+    color: session.targetReadiness === "ready" ? "textPrimary" : "warning",
+  }),
+  Text({
+    key: "controller-session-detail-activity",
+    content: `Last activity ${session.lastActiveAt}\nCursor ${session.canonicalEventCursor}${session.currentCheckpointRef === null ? " · No checkpoint projected" : ` · ${session.currentCheckpointRef}`}`,
+    variant: "caption",
+    color: "textMuted",
+  }),
+  Button({
+    key: "controller-session-detail-continue",
+    label: "Continue session",
+    variant: "primary",
+    onPress: IntentRef("CodingSessionSelected", StaticPayload({
+      repositoryRef: session.repositoryRef,
+      sessionRef: session.sessionRef,
+      threadRef: session.threadRef,
+    })),
+    disabled: session.targetReadiness === "recovery_required",
+    a11y: {
+      label: session.targetReadiness === "recovery_required"
+        ? "Continue unavailable until session recovery"
+        : `Continue ${session.repositoryName} session`,
+    },
+    style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+  }),
+])
 
 const controllerDestinationRows = (
   directory: MobileControllerDirectory,
@@ -456,6 +521,9 @@ export const renderMobileControllerShell = (state: HomeState): ReadonlyArray<Vie
   if (state.codingDirectory === null) return []
   const directory = projectMobileControllerDirectory(state.codingDirectory)
   if (directory.authority !== "confirmed") return codingOfflineCacheAccountingRows(state)
+  const inspected = state.inspectedControllerSessionRef === null
+    ? null
+    : directory.recent.find(session => session.sessionRef === state.inspectedControllerSessionRef) ?? null
   return [
     Text({
       key: "controller-summary",
@@ -475,6 +543,7 @@ export const renderMobileControllerShell = (state: HomeState): ReadonlyArray<Vie
       a11y: { label: "Mobile controller destination" },
       style: { width: "full" },
     }),
+    ...(inspected === null ? [] : [controllerSessionDetail(inspected, state.accessibility)]),
     ...controllerDestinationRows(directory, state.controllerDestination, state.accessibility),
   ]
 }
@@ -1330,6 +1399,14 @@ export const makeHomeHandlers = (
       ...current,
       controllerDestination: destination,
     })),
+    ControllerSessionInspected: ({ sessionRef }) => SubscriptionRef.update(state, current => {
+      if (current.codingDirectory === null) return current
+      const directory = projectMobileControllerDirectory(current.codingDirectory)
+      return directory.authority === "confirmed" &&
+          directory.recent.some(session => session.sessionRef === sessionRef)
+        ? { ...current, inspectedControllerSessionRef: sessionRef }
+        : { ...current, inspectedControllerSessionRef: null }
+    }),
     [AgentStackToggled]: () => SubscriptionRef.update(state, current => ({
       ...current,
       khala: {
@@ -1440,6 +1517,7 @@ export interface HomeProgramHandle {
   }
   readonly controller: {
     readonly selectDestination: (destination: MobileControllerDestination) => void
+    readonly inspectSession: (sessionRef: string) => void
   }
   readonly accessibility: {
     readonly setProfile: (profile: MobileAccessibilityProfile) => void
@@ -1547,6 +1625,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             IntentRef("ControllerDestinationSelected", ComponentValueBinding()),
             destination,
           ),
+          inspectSession: sessionRef => fireRef(IntentRef(
+            "ControllerSessionInspected",
+            StaticPayload({ sessionRef }),
+          )),
         },
         accessibility: {
           setProfile: profile => {
