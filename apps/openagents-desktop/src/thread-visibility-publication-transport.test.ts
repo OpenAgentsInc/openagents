@@ -44,6 +44,7 @@ const harness = (
   input: Readonly<{
     token?: string | null;
     response?: Response;
+    responses?: ReadonlyArray<Response | Error>;
     throwFetch?: boolean;
     baseUrl?: string;
   }> = {},
@@ -59,6 +60,9 @@ const harness = (
       },
       fetch: async (url: string | URL | Request, init?: RequestInit) => {
         calls.push({ url: String(url), init });
+        const scripted = input.responses?.[calls.length - 1];
+        if (scripted instanceof Error) throw scripted;
+        if (scripted !== undefined) return scripted;
         if (input.throwFetch) throw new Error("network detail");
         return (
           input.response ??
@@ -69,7 +73,7 @@ const harness = (
               audienceLabel: "Public",
               status: "active",
             },
-            { status: 201 },
+            { headers: { "Idempotency-Replayed": "false" }, status: 201 },
           )
         );
       },
@@ -99,6 +103,9 @@ describe("Desktop public-visibility publication transport", () => {
     expect(call.url).toBe(`https://openagents.test${DesktopThreadVisibilityPublicationPath}`);
     expect(call.init?.method).toBe("POST");
     expect(new Headers(call.init?.headers).get("authorization")).toBe("Bearer host-secret");
+    const key = new Headers(call.init?.headers).get("Idempotency-Key");
+    expect(key).toMatch(/^desktop-public-share\.[a-f0-9]{64}$/);
+    expect(key?.length).toBeLessThanOrEqual(128);
     expect(JSON.parse(String(call.init?.body))).toEqual({
       source: { kind: "agent-run", id: THREAD },
       audience: { _tag: "Public" },
@@ -175,6 +182,7 @@ describe("Desktop public-visibility publication transport", () => {
       [401, "authentication_required"],
       [403, "publication_forbidden"],
       [400, "publication_rejected"],
+      [409, "publication_rejected"],
       [422, "publication_rejected"],
     ] as const) {
       const testHarness = harness({ response: new Response("private detail", { status }) });
@@ -186,7 +194,89 @@ describe("Desktop public-visibility publication transport", () => {
     }
   });
 
-  test("reports ambiguous delivery without retrying or claiming failure", async () => {
+  test("retries one ambiguous delivery with the same key and accepts exact replay", async () => {
+    const testHarness = harness({
+      responses: [
+        new Response("", { status: 503 }),
+        Response.json(
+          {
+            id: "share.publication.1",
+            url: "https://openagents.test/share/share.publication.1",
+            audienceLabel: "Public",
+            status: "active",
+          },
+          { headers: { "Idempotency-Replayed": "true" }, status: 200 },
+        ),
+      ],
+    });
+
+    await expect(run(testHarness.dependencies, request())).resolves.toMatchObject({
+      status: "published",
+      shareRef: "share.publication.1",
+    });
+    expect(testHarness.credentialReads()).toBe(1);
+    expect(testHarness.calls).toHaveLength(2);
+    const first = testHarness.calls[0]!;
+    const second = testHarness.calls[1]!;
+    expect(new Headers(second.init?.headers).get("Idempotency-Key")).toBe(
+      new Headers(first.init?.headers).get("Idempotency-Key"),
+    );
+    expect(second.init?.body).toBe(first.init?.body);
+  });
+
+  test("retries a transport failure once and accepts a first creation", async () => {
+    const testHarness = harness({
+      responses: [
+        new Error("network detail"),
+        Response.json(
+          {
+            id: "share.publication.1",
+            url: "https://openagents.test/share/share.publication.1",
+            audienceLabel: "Public",
+            status: "active",
+          },
+          { headers: { "Idempotency-Replayed": "false" }, status: 201 },
+        ),
+      ],
+    });
+    await expect(run(testHarness.dependencies, request())).resolves.toMatchObject({
+      status: "published",
+    });
+    expect(testHarness.calls).toHaveLength(2);
+  });
+
+  test("reconciles unsafe first-response evidence through an exact replay", async () => {
+    const testHarness = harness({
+      responses: [
+        Response.json(
+          {
+            id: "share.publication.1",
+            url: "https://attacker.test/share/share.publication.1",
+            audienceLabel: "Public",
+            status: "active",
+          },
+          { headers: { "Idempotency-Replayed": "false" }, status: 201 },
+        ),
+        Response.json(
+          {
+            id: "share.publication.1",
+            url: "https://openagents.test/share/share.publication.1",
+            audienceLabel: "Public",
+            status: "active",
+          },
+          { headers: { "Idempotency-Replayed": "true" }, status: 200 },
+        ),
+      ],
+    });
+
+    await expect(run(testHarness.dependencies, request())).resolves.toMatchObject({
+      status: "published",
+      url: "https://openagents.test/share/share.publication.1",
+    });
+    expect(testHarness.calls).toHaveLength(2);
+  });
+
+  test("reports ambiguous delivery after exactly one same-key retry", async () => {
     const cases = [
       harness({ throwFetch: true }),
       harness({ response: new Response("", { status: 500 }) }),
@@ -209,7 +299,40 @@ describe("Desktop public-visibility publication transport", () => {
         status: "rejected",
         reason: "publication_outcome_unknown",
       });
-      expect(testHarness.calls).toHaveLength(1);
+      expect(testHarness.calls).toHaveLength(2);
+      expect(
+        new Headers(testHarness.calls[1]?.init?.headers).get("Idempotency-Key"),
+      ).toBe(new Headers(testHarness.calls[0]?.init?.headers).get("Idempotency-Key"));
+    }
+  });
+
+  test("requires the FF-D1-27 first-create/replay status header contract", async () => {
+    for (const response of [
+      Response.json(
+        {
+          id: "share.publication.1",
+          url: "https://openagents.test/share/share.publication.1",
+          audienceLabel: "Public",
+          status: "active",
+        },
+        { status: 201 },
+      ),
+      Response.json(
+        {
+          id: "share.publication.1",
+          url: "https://openagents.test/share/share.publication.1",
+          audienceLabel: "Public",
+          status: "active",
+        },
+        { headers: { "Idempotency-Replayed": "false" }, status: 200 },
+      ),
+    ]) {
+      const testHarness = harness({ response });
+      await expect(run(testHarness.dependencies, request())).resolves.toEqual({
+        status: "rejected",
+        reason: "publication_outcome_unknown",
+      });
+      expect(testHarness.calls).toHaveLength(2);
     }
   });
 

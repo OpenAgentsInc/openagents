@@ -2215,6 +2215,16 @@ remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T21:15:00Z`
 
+### CLAIM-STATUS
+
+- implementation: added one typed Effect retry for public visibility publication using one bounded exact receipt-derived key, byte-identical request replay, and FF-D1-27's exact first-create/replay evidence contract
+- privacy/authority proof: full request validation still precedes one credential read; only source/audience refs cross the boundary; retry is capped at two total attempts; definitive refusal never retries; same-origin bounded decoding remains mandatory
+- focused proof: 35/35 public-publication, disclosure, authorization, and server idempotency-contract tests passed; Desktop package typecheck passed
+- authority proof: Fast Follow package 13/13, root Fast Follow 7/7, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec remains 189/190 from only the known environment digest drift after its Git-fixture inventory reran 2/2 without the task-local work-tree override; shared `core.bare=true` was not mutated
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-28-desktop-public-share-idempotent-retry-receipt.md`
+- residual: workspace-members retry, named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
