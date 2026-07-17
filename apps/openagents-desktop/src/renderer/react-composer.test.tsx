@@ -316,17 +316,19 @@ describe("React Codex composer", () => {
   });
 
   test.each([
-    ["Steer now", "DesktopSteerCurrentRequested"],
-    ["Queue next", "DesktopQueueNextRequested"],
-  ] as const)("clicking %s immediately submits the draft", async (buttonLabel, intentName) => {
+    ["Steer now", "steer", "DesktopSteerCurrentRequested"],
+    ["Queue next", "queue", "DesktopQueueNextRequested"],
+  ] as const)("selecting %s keeps an enabled explicit submit path", async (buttonLabel, pendingSubmitMode, intentName) => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
     const root = createTestRoot(container);
+    const composerAdmission = { state: "active_steerable", activeTurnId: "turn-provider-7", reason: null, queuedCount: 0 } as const;
+    const initialMode = pendingSubmitMode === "steer" ? "queue" : "steer";
     await render(
       root,
       <ReactComposer
-        state={fixtureState({ input: "Continue", pending: true, pendingSubmitMode: "steer", composerAdmission: { state: "active_steerable", activeTurnId: "turn-provider-7", reason: null, queuedCount: 0 } })}
+        state={fixtureState({ input: "Continue", pending: true, pendingSubmitMode: initialMode, composerAdmission })}
         report={report}
       />,
     );
@@ -337,18 +339,22 @@ describe("React Codex composer", () => {
       );
       (last ? buttons.at(-1) : buttons[0])?.click();
     };
-    await interact(() => {
-      click("Stop");
-      click(buttonLabel);
-    });
+    await interact(() => click(buttonLabel));
+    expect(received).toContainEqual({ name: "DesktopPendingSubmitModeSelected", payload: pendingSubmitMode });
+    await render(
+      root,
+      <ReactComposer
+        state={fixtureState({ input: "Continue", pending: true, pendingSubmitMode, composerAdmission })}
+        report={report}
+      />,
+    );
+    await interact(() => click(pendingSubmitMode === "steer" ? "Steer" : "Queue", true));
     expect(received).toEqual(
       expect.arrayContaining([
-        { name: "DesktopTurnInterrupted", payload: null },
         { name: intentName, payload: "Continue" },
       ]),
     );
-    expect(received).not.toContainEqual(expect.objectContaining({ name: "DesktopPendingSubmitModeSelected" }));
-    expect(container.querySelector('button[aria-label="Steer"]')).toBeNull();
+    expect(container.querySelector(`button[aria-label="${pendingSubmitMode === "steer" ? "Steer" : "Queue"}"]`)).not.toBeNull();
     expect(container.textContent).not.toContain("While this turn runs");
     expect(container.textContent).not.toContain("Steer now sends into active turn");
   });
