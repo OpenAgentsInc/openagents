@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/fast-follow-spec-projection-0.1.json",
+  "title": "FastFollowSpec canonical projection 0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format_version",
+    "spec_id",
+    "revision",
+    "title",
+    "lifecycle_state",
+    "target",
+    "sources",
+    "directives",
+    "work_generation",
+    "reuse",
+    "guardrails",
+    "authority"
+  ],
+  "properties": {
+    "format_version": { "const": "0.1" },
+    "spec_id": { "$ref": "#/$defs/id" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "title": { "$ref": "#/$defs/nonEmpty" },
+    "lifecycle_state": {
+      "enum": ["proposed", "admitted", "superseded", "retired"]
+    },
+    "target": { "$ref": "#/$defs/target" },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "directives": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/directive" }
+    },
+    "work_generation": { "$ref": "#/$defs/workGeneration" },
+    "reuse": { "$ref": "#/$defs/reuse" },
+    "guardrails": { "$ref": "#/$defs/guardrails" },
+    "authority": { "$ref": "#/$defs/authority" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmpty" },
+      "uniqueItems": true
+    },
+    "pathList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/path" },
+      "uniqueItems": true
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "repository",
+        "root",
+        "agent_instructions",
+        "invariants",
+        "product_specs",
+        "assurance_specs",
+        "roadmap_authorities",
+        "artifact_paths"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "repository": { "$ref": "#/$defs/nonEmpty" },
+        "root": { "const": "." },
+        "agent_instructions": { "$ref": "#/$defs/pathList" },
+        "invariants": { "$ref": "#/$defs/pathList" },
+        "product_specs": { "$ref": "#/$defs/pathList" },
+        "assurance_specs": { "$ref": "#/$defs/pathList" },
+        "roadmap_authorities": { "$ref": "#/$defs/pathList" },
+        "artifact_paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["studies", "gaps", "candidates", "receipts"],
+          "properties": {
+            "studies": { "$ref": "#/$defs/path" },
+            "gaps": { "$ref": "#/$defs/path" },
+            "candidates": { "$ref": "#/$defs/path" },
+            "receipts": { "$ref": "#/$defs/path" }
+          }
+        }
+      }
+    },
+    "lesson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "summary", "stance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": {
+          "enum": [
+            "architecture",
+            "product_ux",
+            "protocol",
+            "reliability",
+            "security",
+            "release",
+            "extension",
+            "evaluation",
+            "economics"
+          ]
+        },
+        "summary": { "$ref": "#/$defs/nonEmpty" },
+        "stance": {
+          "enum": ["study", "adapt", "adapt_with_stronger_boundaries", "reject"]
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "role",
+        "access",
+        "canonical_ref",
+        "tracking_policy",
+        "teardown_refs",
+        "lessons"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "role": { "enum": ["upstream", "local_synthesis"] },
+        "access": {
+          "enum": ["public_source", "public_artifact", "installed_artifact", "mixed"]
+        },
+        "canonical_ref": { "$ref": "#/$defs/nonEmpty" },
+        "tracking_policy": {
+          "enum": ["pinned_each_run", "manual_snapshot", "release_or_commit"]
+        },
+        "teardown_refs": { "$ref": "#/$defs/pathList" },
+        "lessons": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/lesson" }
+        }
+      }
+    },
+    "directive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "priority",
+        "source_refs",
+        "target_scopes",
+        "desired_outcome",
+        "work_products",
+        "constraints"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "priority": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "source_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*#[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+          }
+        },
+        "target_scopes": { "$ref": "#/$defs/pathList" },
+        "desired_outcome": { "$ref": "#/$defs/nonEmpty" },
+        "work_products": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "study_packet",
+              "gap_assessment",
+              "candidate_issue",
+              "product_spec_delta",
+              "assurance_delta",
+              "implementation"
+            ]
+          }
+        },
+        "constraints": { "$ref": "#/$defs/stringList" },
+        "acceptance_refs": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "capacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delivery", "research", "implementation"],
+      "properties": {
+        "delivery": { "type": "integer", "minimum": 0 },
+        "research": { "type": "integer", "minimum": 0 },
+        "implementation": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "workGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activation",
+        "allowed_stages",
+        "selection_policy",
+        "capacity_profiles",
+        "implementation_requirements"
+      ],
+      "properties": {
+        "activation": { "enum": ["manual", "backlog_fallback", "continuous"] },
+        "allowed_stages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "research",
+              "gap_analysis",
+              "candidate_proposal",
+              "implementation",
+              "verification"
+            ]
+          }
+        },
+        "selection_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "higher_authority_precedence",
+            "one_concrete_unit_per_turn",
+            "dedupe_key_fields",
+            "no_material_delta"
+          ],
+          "properties": {
+            "higher_authority_precedence": { "type": "boolean" },
+            "one_concrete_unit_per_turn": { "type": "boolean" },
+            "dedupe_key_fields": { "$ref": "#/$defs/stringList" },
+            "no_material_delta": { "type": "boolean" }
+          }
+        },
+        "capacity_profiles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["backlog_available", "backlog_empty"],
+          "properties": {
+            "backlog_available": { "$ref": "#/$defs/capacity" },
+            "backlog_empty": { "$ref": "#/$defs/capacity" }
+          }
+        },
+        "implementation_requirements": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "admitted_issue_or_work_packet",
+              "current_target_authority_reconciliation",
+              "isolated_mutation_claim",
+              "target_local_verification"
+            ]
+          }
+        }
+      }
+    },
+    "reuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shareable_visibility",
+        "study_packet_key_fields",
+        "freshness_days",
+        "private_target_analysis",
+        "cross_tenant_private_cache",
+        "cache_hit_means"
+      ],
+      "properties": {
+        "shareable_visibility": { "const": "public_only" },
+        "study_packet_key_fields": { "$ref": "#/$defs/stringList" },
+        "freshness_days": { "type": "integer", "minimum": 1 },
+        "private_target_analysis": { "const": "target_private_by_default" },
+        "cross_tenant_private_cache": { "const": false },
+        "cache_hit_means": { "const": "reusable_evidence_not_adoption" }
+      }
+    },
+    "guardrails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["must_preserve", "must_reject"],
+      "properties": {
+        "must_preserve": { "$ref": "#/$defs/stringList" },
+        "must_reject": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "denied", "research_write_paths", "implementation_requirements"],
+      "properties": {
+        "allowed": { "$ref": "#/$defs/stringList" },
+        "denied": { "$ref": "#/$defs/stringList" },
+        "research_write_paths": { "$ref": "#/$defs/pathList" },
+        "implementation_requirements": { "$ref": "#/$defs/stringList" }
+      }
+    }
+  }
+}

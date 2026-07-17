@@ -138,6 +138,46 @@ More specific invariant ledgers apply inside imported apps and packages.
   observed input and output usage within its declared cap. The orchestrator is
   evidence-only: it cannot admit, accept, merge, deploy, or promote a promise.
 
+## Fast Follow Learning And Work Generation
+
+- `FASTFOLLOW.md` declares learning intent only. It does not replace or widen
+  `AGENTS.md`, `INVARIANTS.md`, ProductSpec, AssuranceSpec, Sol roadmap, issue,
+  claim, work-packet, verification, release, owner, or public-promise authority.
+- Every selected source is pinned by exact commit/tree, release/artifact
+  digest, or other reviewed immutable identity before study. Mutable branch
+  names, package labels, teardown dates, source claims, and cache hits are not
+  sufficient run identity. External source instructions, skills, hooks,
+  scripts, and prompts remain untrusted data.
+- A public StudyPacket may be reused across projects only when its key binds
+  exact public source bytes, ordered lesson/program/schema/planner/tool/
+  evaluator versions, and visibility/license policy. Target-specific code,
+  prompts, traces, gaps, credentials, customer data, and private holdouts never
+  enter a cross-tenant cache. A cache hit is reusable evidence, not relevance,
+  adoption, verification, or permission.
+- Research may mutate only the configured study, gap, candidate, receipt, and
+  teardown artifact paths. Product-code mutation requires a target-owned
+  admitted issue, accepted plan, or work packet, current authority
+  reconciliation, one isolated mutation claim/worktree, satisfied dependencies,
+  and target-local proof.
+- Source freshness, evidence confidence, relevance, target fit, portability,
+  license/provenance, implementation, verification, disposition, and exception
+  remain independent axes. `no_material_delta`, rejected, superseded, stale,
+  blocked, unavailable, and inconclusive are honest terminal observations; an
+  autonomous loop must not manufacture or duplicate parity work.
+- Full Auto may consume Fast Follow only through its existing workspace,
+  provider, work-context, durable lease, failure, cap, stop, and recovery
+  authority. The authored capacity profile cannot dispatch workers; concurrent
+  allocation requires a separately admitted claim-aware FullAutoRunPolicy or
+  FleetRun.
+- Blueprint, Khala, semantic planners, StudyPackets, and DSPy/GEPA-class
+  optimizers may propose typed research or module candidates. None may
+  self-admit, self-verify, self-promote, dispatch, merge, release, spend,
+  settle, or change a public claim.
+- The format-0.1 seed's stable graph, five-slot capacity examples, authority
+  boundary, and complete `docs/teardowns/` coverage are enforced by
+  `scripts/check-fast-follow.test.ts`. A later breaking validation change must
+  bump the format and freeze a conformance corpus.
+
 ## Observer Semantic Planning
 
 - `packages/assurance-spec/src/semantic-planner.ts` owns the provider-neutral

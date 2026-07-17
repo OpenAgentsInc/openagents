@@ -86,6 +86,7 @@
     "test:node-vp-inventory": "node --test scripts/node-vp-cutover-inventory.test.mjs",
     "test:sqlite-runtime": "pnpm --dir packages/sqlite-runtime run test",
     "test:sol-docs": "vp test --run scripts/check-sol-docs.test.ts",
+    "test:fast-follow": "vp test --run scripts/check-fast-follow.test.ts",
     "qa:nightly": "node --import tsx scripts/qa-nightly-matrix.ts",
     "changelog": "node --import tsx scripts/changelog.ts",
     "release": "node --import tsx scripts/release.ts",
