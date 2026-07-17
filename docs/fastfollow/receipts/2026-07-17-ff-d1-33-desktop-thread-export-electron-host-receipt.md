@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "5f921616751fbc2bf8663027f9eb38315a113cb0"
 claim_revision: "e94624a60a162254fda551eb4172c1f1dae3b696"
-implementation_revision: "PENDING"
+implementation_revision: "930cbb19980bac4e8ce5c606ebeaba98b0d54bb4"
 proof_rung: "desktop_canonical_export_electron_host_adapter"
 observed_at: "2026-07-17T22:42:51Z"
 ---
@@ -81,5 +81,6 @@ connect renderer commands, render pixels, or prove an installed runtime
 journey. Those residuals, owner acceptance, and Day 1 completion remain
 unclaimed.
 
-The exact tested implementation tree lands on `origin/main` at the revision
-recorded above before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`930cbb19980bac4e8ce5c606ebeaba98b0d54bb4` before this documentation-only
+claim release.
