@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "8342ad394292473564fb2f15429a65c2fc675562"
 claim_revision: "f22f0ae89d2156ccf3509ed1d885fba368143c17"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "6a9bc3be27cfbed1ef3b5c3aac96ba102feddd80"
 proof_rung: "desktop_thread_visibility_workspace_publication_transport"
 observed_at: "2026-07-17T20:14:36Z"
 ---
@@ -25,6 +25,10 @@ admitted this packet after FF-D1-25 released. Current `origin/main`, prior Day
 ProductSpec and AssuranceSpec obligations, repository invariants, open issues,
 known baselines, Git configuration, and active worktrees were reconciled before
 mutation.
+
+The tested implementation tree was landed on current `origin/main` at
+`6a9bc3be27cfbed1ef3b5c3aac96ba102feddd80`. This documentation-only release
+annotation records that remote fact; it does not extend scope.
 
 Canonical export boot composition still lacks a production canonical accepted-
 event source, and no target-authoritative named-group membership source exists.
