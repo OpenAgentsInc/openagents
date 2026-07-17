@@ -1562,6 +1562,70 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T18:19:20Z`
 - residual: main-process handler registration/composition, renderer command/pixels, actual audience authorization/publication adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-21 — Desktop thread-visibility main-process handler seam
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-20. Active
+work still owns Desktop `main.ts` and broad renderer surfaces. The packet
+therefore adds a new-file-only main-process registration seam that binds the
+fixed visibility channel to host-owned receipt metadata and the already-landed
+visibility policy application, without composing the application entry point,
+rendering pixels, or publishing thread content.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-main-handler.ts`
+- `apps/openagents-desktop/src/thread-visibility-main-handler.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-21-desktop-thread-visibility-main-handler-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: the fixed `openagents:thread-visibility:apply` channel,
+FF-D1-20 request/result decoding, FF-D1-19 apply input/result semantics,
+trusted bundled-renderer sender admission, host-owned receipt references and
+observation time, exact target binding, and bounded native-error redaction.
+Existing shared schemas, policy persistence, `main.ts`, preload, renderer,
+Sync, provider, membership, authorization, publication, and transport contracts
+remain unchanged.
+
+Required behavior:
+
+- register exactly the fixed visibility channel, remove it exactly once, and
+  reject all calls after close;
+- reject untrusted senders, trust-check failures, malformed requests, extra
+  envelopes, raw content, export intents, and caller-supplied receipt metadata
+  before invoking policy application;
+- pass only the decoded visibility intent plus host-supplied receipt reference
+  and observation time to policy application, so renderer input cannot choose
+  evidence metadata;
+- return stored or unchanged results only when FF-D1-20 decoding proves exact
+  intent, idempotency, thread, and target binding, while preserving the bounded
+  policy rejection reasons; and
+- collapse thrown, malformed, mismatched, or native-detail-bearing outcomes to
+  `command_unavailable` without leaking paths, errors, content, or authority.
+
+Proof: focused visibility handler, bridge, store, and disclosure tests; Desktop
+TypeScript check; Fast Follow, behavior-contract, ProductSpec, Sol,
+AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only the main-process visibility handler seam.
+Actual `main.ts` composition, renderer command/pixels, audience authorization
+and publication adapters, installed/runtime-rendered evidence, and Day 1
+completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-21-20260717`
+- base: `b6852266992055da79f7f00386e3a891ab449105`
+- worktree/branch: `openagents-ff-d1-21` / detached `origin/main`
+- scope: trusted fixed-channel Desktop thread-visibility main-process handler seam with host-owned receipt metadata
+- paths: the FF-D1-21 owned implementation paths above
+- hot files: new Desktop visibility handler/test; accepted-plan ledger and Sol manifest
+- hot contracts: fixed visibility channel, FF-D1-20 exact request/result boundary, FF-D1-19 apply input/results, trusted sender admission, host-owned receipt metadata, and native-detail redaction
+- dependencies: FF-D1-20 released; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T18:33:54Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
