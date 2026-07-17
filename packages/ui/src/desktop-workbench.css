@@ -840,6 +840,52 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: var(--en-color-surfaceRaised);
 }
 
+/* T3 Code user-message composition. This is a deliberate rounded exception
+   inside the otherwise square desktop workbench, with OpenAgents blue kept as
+   the bubble surface. Explicit geometry is required because the workbench
+   intentionally resets the global spacing and radius utility scales. */
+.oa-react-timeline-item.oa-react-user-message-row[data-tone="user"] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--en-spacing-1);
+  width: min(720px, 100%);
+  max-width: none;
+  margin: 0 auto var(--en-spacing-5);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.oa-react-user-message-bubble {
+  position: relative;
+  max-width: 80%;
+  padding: 12px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 16px;
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-react-user-message-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: 80%;
+  padding-inline-end: 4px;
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity var(--en-motion-fast) var(--en-ease-basic);
+}
+
+.oa-react-user-message-row:hover .oa-react-user-message-actions,
+.oa-react-user-message-row:focus-within .oa-react-user-message-actions {
+  opacity: 1;
+}
+
 .oa-react-work-entry, .oa-react-work-group, .oa-react-plan, .oa-react-notice { width: min(720px, 100%); margin: 0 auto var(--en-spacing-2); }
 .oa-react-work-entry > summary { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; gap: var(--en-spacing-2); min-height: 28px; padding: 0 var(--en-spacing-2); border-radius: var(--en-radius-md); color: var(--en-color-textMuted); cursor: pointer; font-size: 12px; list-style: none; }
 .oa-react-work-entry > summary::-webkit-details-marker { display: none; }

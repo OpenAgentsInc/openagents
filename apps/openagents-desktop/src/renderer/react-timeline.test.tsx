@@ -9,6 +9,7 @@ import {
   ConversationTimeline,
   ReactTimeline,
   SafeReactMarkdown,
+  formatReactTimelineTimestamp,
   projectLocalTimelineRecords,
   projectReactTimelineRecords,
   type ReactTimelineRecord,
@@ -144,6 +145,14 @@ describe("conversation empty state", () => {
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
 
 describe("React typed timeline projection", () => {
+  test("formats valid ISO timestamps for display and hides Unix epoch sentinels", () => {
+    const valid = formatReactTimelineTimestamp("2026-07-17T11:32:00.000Z")
+    expect(valid.short).toMatch(/\d{1,2}:\d{2}/u)
+    expect(valid.short).not.toContain("2026-")
+    expect(valid.tooltip).toContain("2026")
+    expect(formatReactTimelineTimestamp("1970-01-01T00:00:00.000Z")).toEqual({ short: "", tooltip: "" })
+  })
+
   test("merges local tool lifecycle updates into one stable command row", () => {
     const notes = [
       {
@@ -270,7 +279,7 @@ describe("React typed timeline projection", () => {
       kind: "user_message" as const,
       label: "You",
       body: "Keep the OpenAgents blue.",
-      timestamp: "6:15 AM",
+      timestamp: "1970-01-01T00:00:00.000Z",
     }
     root.render(<ReactTimeline sessionKey="thread-user-bubble" records={[user]}
       loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
@@ -279,13 +288,10 @@ describe("React typed timeline projection", () => {
     const row = container.querySelector<HTMLElement>('[data-timeline-key="prompt"]')
     const bubble = row?.querySelector<HTMLElement>('[data-slot="user-message-bubble"]')
     const actions = row?.querySelector<HTMLElement>('[data-slot="user-message-actions"]')
-    expect(row?.classList.contains("items-end")).toBe(true)
-    expect(bubble?.classList.contains("max-w-[80%]")).toBe(true)
-    expect(bubble?.classList.contains("rounded-2xl")).toBe(true)
-    expect(bubble?.style.background).toBe("var(--en-color-surfaceRaised)")
-    expect(actions?.classList.contains("opacity-0")).toBe(true)
-    expect(actions?.classList.contains("group-hover:opacity-100")).toBe(true)
-    expect(actions?.textContent).toContain("6:15 AM")
+    expect(row?.classList.contains("oa-react-user-message-row")).toBe(true)
+    expect(bubble?.classList.contains("oa-react-user-message-bubble")).toBe(true)
+    expect(actions?.classList.contains("oa-react-user-message-actions")).toBe(true)
+    expect(actions?.textContent).not.toContain("1970")
 
     const copy = row?.querySelector<HTMLButtonElement>('[aria-label="Copy message"]')
     expect(copy).not.toBeNull()

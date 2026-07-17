@@ -43,6 +43,32 @@ const terminalStatuses = new Set([
   "turn_complete", "turn_completed", "turn_failed", "turn_interrupted",
 ])
 
+const shortTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+})
+const longTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+})
+const wallClockTimestamp = /^\d{1,2}:\d{2}(?:\s?[ap]m)?$/iu
+
+export const formatReactTimelineTimestamp = (value: string): Readonly<{
+  short: string
+  tooltip: string
+}> => {
+  const timestamp = value.trim()
+  if (timestamp === "" || timestamp === "--:--") return { short: "", tooltip: "" }
+  if (wallClockTimestamp.test(timestamp)) return { short: timestamp, tooltip: timestamp }
+  const date = new Date(timestamp)
+  if (!Number.isFinite(date.getTime()) || date.getTime() === 0) return { short: "", tooltip: "" }
+  return {
+    short: shortTimestampFormatter.format(date),
+    tooltip: `${shortTimestampFormatter.format(date)}, ${longTimestampFormatter.format(date)}`,
+  }
+}
+
 const field = (item: CodexHistoryItem, name: string): string | null =>
   item.fields.find(entry => entry.label.toLocaleLowerCase() === name)?.value ?? null
 
@@ -469,28 +495,29 @@ const MessageCopyButton = memo(({ text }: Readonly<{ text: string }>): ReactElem
 const UserTimelineRow = ({ record, report }: Readonly<{
   record: ReactTimelineRecord
   report: IntentReporter
-}>): ReactElement => <article
+}>): ReactElement => {
+  const timestamp = formatReactTimelineTimestamp(record.timestamp)
+  return <article
   aria-label={`${record.label}. Item ${record.sequence + 1}`}
-  className="oa-react-timeline-item group flex flex-col items-end gap-1"
+  className="oa-react-timeline-item oa-react-user-message-row"
   data-kind={record.kind}
   data-timeline-key={record.key}
   data-tone="user"
   role="listitem"
-  style={{ width: "min(720px, 100%)", maxWidth: "none", marginLeft: "0", padding: "0", border: 0, background: "transparent" }}
 >
-  <div data-slot="user-message-bubble" className="relative max-w-[80%] rounded-2xl border border-border p-3" style={{ background: "var(--en-color-surfaceRaised)" }}>
+  <div data-slot="user-message-bubble" className="oa-react-user-message-bubble">
     <SafeReactMarkdown value={record.body} />
   </div>
-  <div data-slot="user-message-actions" className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+  <div data-slot="user-message-actions" className="oa-react-user-message-actions">
     <div className="flex shrink-0 items-center gap-2">
-      <TooltipProvider>
+      {timestamp.short === "" ? null : <TooltipProvider>
         <Tooltip>
           <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-            {record.timestamp}
+            {timestamp.short}
           </TooltipTrigger>
-          <TooltipContent>{record.timestamp}</TooltipContent>
+          <TooltipContent>{timestamp.tooltip}</TooltipContent>
         </Tooltip>
-      </TooltipProvider>
+      </TooltipProvider>}
       <div className="flex items-center gap-0.5">
         {record.kind === "local_message" || record.kind === "question" ? null
           : <Button type="button" variant="ghost" size="xs"
@@ -501,6 +528,7 @@ const UserTimelineRow = ({ record, report }: Readonly<{
     </div>
   </div>
 </article>
+}
 
 export const TimelineItem = ({ record, report }: {
   readonly record: ReactTimelineRecord

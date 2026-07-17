@@ -12,6 +12,14 @@ import { projectRow } from "./codex-history.ts"
  * `.item` sidecar for `tool_call`/`tool_result` kinds.
  */
 describe("projectRow — approval kind typed sidecar (T9 #8866)", () => {
+  test("missing source timestamps remain unknown instead of fabricating Unix epoch", () => {
+    const item = projectRow({
+      type: "event_msg",
+      payload: { type: "message", role: "user", content: "Hello" },
+    }, "thread-1", 0)
+    expect(item.timestamp).toBe("--:--")
+  })
+
   test("an accepted tool approval row carries decision=approved and the reason as detail", () => {
     const row = {
       type: "event_msg",

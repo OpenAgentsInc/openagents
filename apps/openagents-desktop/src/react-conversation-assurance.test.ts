@@ -27,7 +27,10 @@ describe("revision 3 conversation-first assurance gates", () => {
   test("keeps authored messages primary and raw work collapsed", () => {
     expect(timeline).toContain('if (isUserRecord(record)) return <UserTimelineRow')
     expect(timeline).toContain('tone="assistant"')
-    expect(timeline).toContain('group-hover:opacity-100')
+    expect(styles).toContain('.oa-react-user-message-bubble')
+    expect(styles).toContain('padding: 12px')
+    expect(styles).toContain('border-radius: 16px')
+    expect(styles).toContain('.oa-react-user-message-row:hover .oa-react-user-message-actions')
     expect(timeline).toContain('<DesktopWorkEntry')
     expect(timeline).toContain('"Worked"')
     expect(timeline).toContain('aria-label={`${props.agentName ?? "Codex"} is working`}')

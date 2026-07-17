@@ -451,7 +451,7 @@ const agentMessageEnvelope = (value: string): Readonly<{ type: string | null; ta
 /** Exported for direct unit coverage of the rollout row -> CodexHistoryItem
  * classification (T9 #8866); every reader above calls this internally. */
 export const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHistoryItem => {
-  const envelope = object(row); const payload = envelope && object(envelope.payload); const envelopeType = envelope && string(envelope.type) || "invalid"; const timestamp = envelope && iso(envelope.timestamp) || new Date(0).toISOString()
+  const envelope = object(row); const payload = envelope && object(envelope.payload); const envelopeType = envelope && string(envelope.type) || "invalid"; const timestamp = envelope && iso(envelope.timestamp) || "--:--"
   if (envelope === null || payload === null) return { itemRef: `${threadRef}:${sequence}`, threadRef, sequence, timestamp, kind: "gap", label: "Unreadable source record", summary: "This record could not be decoded.", status: "unsupported", fields: [], redacted: false, sourceType: envelopeType }
   const nestedPayload = object(payload.payload); let item = nestedPayload ?? payload; let itemType = string(item.type) ?? envelopeType
   if (envelopeType === "event_msg" && itemType === "item_completed") { const completed=object(item.item); if(completed){item=completed;itemType=string(item.type)??itemType} }
