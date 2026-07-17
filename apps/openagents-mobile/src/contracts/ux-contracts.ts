@@ -5,8 +5,51 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.4",
+    version: "2026-07-17.5",
     contracts: [
+      {
+        contractId: "openagents_mobile.composer.authoritative_target_toolbar.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile coding composer",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "The coding composer presents repository/worktree, current target/model, and Code mode as one compact local toolbar; its searchable native picker groups authenticated targets by provider and explains selected, ready, unavailable, revoked, offline, empty-search, and missing-catalog states.",
+        authorityBoundary:
+          "Target/model remain one authoritative catalog selection persisted through the existing composer draft mutation; the UI cannot construct a target, split a model from its account/lane, or select a non-ready row. Code is the only visible mode until T3M-B2 supplies typed command admission; this packet does not pretend shell mode works.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-composer-toolbar.ts",
+          "apps/openagents-mobile/src/coding/mobile-execution-targets.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-b1",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/ThreadComposer.tsx",
+        ],
+        oracles: [
+          {
+            id: "mobile_composer_target_toolbar",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-composer-toolbar.test.ts",
+            description:
+              "Proves provider grouping/search, compact current target/model/mode, complete readiness copy, Dynamic Type targets, empty state, exact ready selection, persistence, dismissal, and foreign/non-ready refusal.",
+          },
+          {
+            id: "mobile_composer_target_authoritative_home",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves the selected persisted target remains the exact runtime command target used on submission and catalog loss preserves the draft while withholding send authority.",
+          },
+        ],
+        verification:
+          "Composer-toolbar, authoritative Home, accessibility, registry, mobile typecheck, and repository checks; physical keyboard/sheet focus restoration remains T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.transcript.media_and_history.v1",
         state: "enforced",

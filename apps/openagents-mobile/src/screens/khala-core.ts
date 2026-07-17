@@ -24,6 +24,10 @@ import {
   type LiveAgentGraphTone,
 } from "@openagentsinc/khala-sync-client"
 import { mobileAssistantContentViews } from "./mobile-transcript-content"
+import {
+  renderMobileComposerToolbar,
+  type MobileComposerToolbarState,
+} from "./mobile-composer-toolbar"
 import { renderMobileInteractionCard } from "./mobile-interaction-card"
 import {
   mobileAttachmentRef,
@@ -498,84 +502,17 @@ const codingComposerContextViews = (
   attachmentPicking = false,
   accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
   executionTargets: ReadonlyArray<MobileExecutionTargetOption> = [],
+  toolbarState: MobileComposerToolbarState = { pickerOpen: false, search: "" },
 ): ReadonlyArray<View> => {
   if (session === null) return []
-  const target = session.draft.target
-  return [Stack(
-    {
-      key: "khala-coding-composer-context",
-      direction: "column",
-      gap: "1",
-      style: { width: "full" },
-    },
-    [
-      Text({
-        key: "khala-coding-composer-location",
-        content: `${session.repositoryLabel} · ${session.worktreeLabel}`,
-        variant: "caption",
-        color: "textPrimary",
-      }),
-      Text({
-        key: "khala-coding-composer-target",
-        content: [
-          session.targetLabel,
-          target.providerRef ?? "Provider not selected",
-          target.modelRef ?? "Model not selected",
-          target.accountRef ?? "Account not selected",
-        ].join(" · "),
-        variant: "caption",
-        color: target.readiness === "ready" ? "textMuted" : "warning",
-      }),
-      ...(executionTargets.length === 0
-        ? [Text({
-            key: "khala-coding-target-catalog-unavailable",
-            content: "Execution targets unavailable. Your draft is preserved.",
-            variant: "caption",
-            color: "warning",
-          })]
-        : [Stack(
-            {
-              key: "khala-coding-target-options",
-              direction: "row",
-              gap: "1",
-              style: { width: "full" },
-              a11y: { role: "group", label: "Execution target" },
-            },
-            executionTargets.map(option => {
-              const selected = target.executionTargetRef === option.targetId
-              return Button({
-                key: `khala-coding-target-${option.targetId}`,
-                label: option.label,
-                variant: selected ? "secondary" : "ghost",
-                disabled: option.readiness !== "ready",
-                onPress: IntentRef(
-                  "CodingExecutionTargetSelected",
-                  StaticPayload({ targetId: option.targetId }),
-                ),
-                a11y: {
-                  label: `${option.accessibilityLabel}${selected ? ", selected" : ""}`,
-                },
-                style: { flex: 1, ...mobileInteractiveStyle(accessibility) },
-              })
-            }),
-          )]),
-      ...(attachmentPicking
-        ? [Text({
-            key: "khala-coding-composer-attachment-picking",
-            content: "Choosing files or images…",
-            variant: "caption",
-            color: "textMuted",
-          })]
-        : attachmentStatus === null
-          ? []
-          : [Text({
-              key: "khala-coding-composer-attachment-status",
-              content: attachmentStatus.message,
-              variant: "caption",
-              color: attachmentStatus.kind === "failed" ? "danger" : "textMuted",
-            })]),
-    ],
-  )]
+  return renderMobileComposerToolbar(
+    session,
+    executionTargets,
+    toolbarState,
+    accessibility,
+    attachmentPicking,
+    attachmentStatus,
+  )
 }
 
 const boundedText = (value: string): string =>
@@ -652,6 +589,7 @@ export const renderKhalaSurface = (
   }> | null = null,
   accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
   executionTargets: ReadonlyArray<MobileExecutionTargetOption> = [],
+  composerToolbarState: MobileComposerToolbarState = { pickerOpen: false, search: "" },
   historyAvailability: "live" | "refreshing" | "unavailable" = "live",
 ): View => {
   const visibleEntries = visibleMobileTranscriptEntries(
@@ -787,6 +725,7 @@ export const renderKhalaSurface = (
         codingAttachmentPicking,
         accessibility,
         executionTargets,
+        composerToolbarState,
       ),
       Composer({
         key: "khala-composer",

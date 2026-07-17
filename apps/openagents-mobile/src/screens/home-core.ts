@@ -150,6 +150,8 @@ export interface HomeState {
   }> | null
   readonly attentionNotice: string | null
   readonly codingComposer: MobileCodingComposerSession | null
+  readonly codingComposerTargetPickerOpen: boolean
+  readonly codingComposerTargetSearch: string
   readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
   readonly fleetRuns?: FleetRunClientProjection
   readonly codingExecutionTargetCatalogRequired: boolean
@@ -288,6 +290,8 @@ export const initialHomeState: HomeState = {
   portableNotice: null,
   attentionNotice: null,
   codingComposer: null,
+  codingComposerTargetPickerOpen: false,
+  codingComposerTargetSearch: "",
   codingExecutionTargets: [],
   codingExecutionTargetCatalogRequired: false,
   codingAttachmentPicking: false,
@@ -390,6 +394,18 @@ export const CodingExecutionTargetSelected = defineIntent(
   "CodingExecutionTargetSelected",
   Schema.Struct({ targetId: Schema.String }),
 )
+export const CodingComposerTargetPickerOpened = defineIntent(
+  "CodingComposerTargetPickerOpened",
+  EmptyPayload,
+)
+export const CodingComposerTargetPickerDismissed = defineIntent(
+  "CodingComposerTargetPickerDismissed",
+  EmptyPayload,
+)
+export const CodingComposerTargetSearchChanged = defineIntent(
+  "CodingComposerTargetSearchChanged",
+  Schema.String,
+)
 export const RuntimeInteractionOptionToggled = defineIntent(
   "RuntimeInteractionOptionToggled",
   Schema.Struct({
@@ -480,6 +496,9 @@ export const homeIntentDefinitions = [
   PortableControlRequested,
   CodingComposerAttachmentsRequested,
   CodingExecutionTargetSelected,
+  CodingComposerTargetPickerOpened,
+  CodingComposerTargetPickerDismissed,
+  CodingComposerTargetSearchChanged,
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
   RuntimeTurnControlRequested,
@@ -562,6 +581,10 @@ export const renderContentView = (state: HomeState): View =>
           state.codingAttachmentStatus,
           state.accessibility,
           state.codingExecutionTargets,
+          {
+            pickerOpen: state.codingComposerTargetPickerOpen,
+            search: state.codingComposerTargetSearch,
+          },
           state.syncPhase === "catching_up"
             ? "refreshing"
             : state.conversationAuthority === "sync" && state.syncPhase !== "live"
@@ -1709,6 +1732,8 @@ const makeSyncedConversationHandlers = (
         archivedConversationThreads: remainsArchived ? [result.thread, ...archivedWithout] : archivedWithout,
         activeThreadRef: activeRemoved ? null : current.activeThreadRef,
         codingComposer: activeRemoved ? null : current.codingComposer,
+        codingComposerTargetPickerOpen: activeRemoved ? false : current.codingComposerTargetPickerOpen,
+        codingComposerTargetSearch: activeRemoved ? "" : current.codingComposerTargetSearch,
         threadLifecycle: {
           editingThreadRef: null,
           renameDraft: "",
@@ -1748,6 +1773,8 @@ const makeSyncedConversationHandlers = (
       drawerOpen: false,
       surfaceMode: "khala" as const,
       codingComposer: null,
+      codingComposerTargetPickerOpen: false,
+      codingComposerTargetSearch: "",
       codingAttachmentPicking: false,
       codingAttachmentStatus: null,
       khala: {
@@ -1785,6 +1812,8 @@ const makeSyncedConversationHandlers = (
       ...current,
       drawerOpen: false,
       codingComposer: null,
+      codingComposerTargetPickerOpen: false,
+      codingComposerTargetSearch: "",
       codingAttachmentPicking: false,
       codingAttachmentStatus: null,
       khala: { ...current.khala, pending: true },
@@ -2176,6 +2205,8 @@ export const makeHomeHandlers = (
         drawerOpen: false,
         surfaceMode: "khala" as const,
         codingComposer: null,
+        codingComposerTargetPickerOpen: false,
+        codingComposerTargetSearch: "",
         codingAttachmentPicking: false,
         codingAttachmentStatus: null,
         khala: initialKhalaState,
@@ -2247,8 +2278,29 @@ export const makeHomeHandlers = (
           yield* SubscriptionRef.update(state, current =>
             current.codingComposer?.draft.draftRef !== composer.draft.draftRef
               ? current
-              : { ...current, codingComposer: updated })
+              : {
+                  ...current,
+                  codingComposer: updated,
+                  codingComposerTargetPickerOpen: false,
+                  codingComposerTargetSearch: "",
+                })
         }),
+    CodingComposerTargetPickerOpened: () =>
+      SubscriptionRef.update(state, current =>
+        current.codingComposer === null || current.codingExecutionTargets.length === 0
+          ? current
+          : { ...current, codingComposerTargetPickerOpen: true }),
+    CodingComposerTargetPickerDismissed: () =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        codingComposerTargetPickerOpen: false,
+        codingComposerTargetSearch: "",
+      })),
+    CodingComposerTargetSearchChanged: (search: string) =>
+      SubscriptionRef.update(state, current =>
+        !current.codingComposerTargetPickerOpen
+          ? current
+          : { ...current, codingComposerTargetSearch: search.slice(0, 160) }),
     SettingsPressed: () => SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
@@ -2308,6 +2360,8 @@ export const makeHomeHandlers = (
             controllerDestination: "attention" as const,
             drawerOpen: false,
             codingComposer: null,
+            codingComposerTargetPickerOpen: false,
+            codingComposerTargetSearch: "",
             codingAttachmentPicking: false,
             codingAttachmentStatus: null,
             attentionNotice: null,
@@ -2567,6 +2621,8 @@ export const makeHomeHandlers = (
           yield* SubscriptionRef.update(state, current => ({
             ...current,
             drawerOpen: false,
+            codingComposerTargetPickerOpen: false,
+            codingComposerTargetSearch: "",
             codingAttachmentPicking: false,
             codingAttachmentStatus: null,
             khala: { ...current.khala, pending: true },
@@ -2587,6 +2643,8 @@ export const makeHomeHandlers = (
             : {
                 ...withConfirmedThread(current, selected.thread),
                 codingComposer: selected.composer,
+                codingComposerTargetPickerOpen: false,
+                codingComposerTargetSearch: "",
                 codingAttachmentPicking: false,
                 codingAttachmentStatus: null,
                 khala: {
@@ -2667,6 +2725,9 @@ export interface HomeProgramHandle {
     readonly selectSession: (target: MobileCodingTarget) => void
     readonly pickAttachments: () => void
     readonly selectTarget: (targetId: string) => void
+    readonly openTargetPicker: () => void
+    readonly dismissTargetPicker: () => void
+    readonly searchTargets: (search: string) => void
   }
   readonly session: {
     readonly signIn: () => void
@@ -2819,6 +2880,8 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     activeThreadRef: null,
                     threadLifecycle: initialHomeState.threadLifecycle,
                     codingComposer: null,
+                    codingComposerTargetPickerOpen: false,
+                    codingComposerTargetSearch: "",
                     portableSnapshot: null,
                     attentionSnapshot: null,
                     selectedPortableDestinationRef: null,
@@ -2871,6 +2934,12 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             "CodingExecutionTargetSelected",
             StaticPayload({ targetId }),
           )),
+          openTargetPicker: fire("CodingComposerTargetPickerOpened"),
+          dismissTargetPicker: fire("CodingComposerTargetPickerDismissed"),
+          searchTargets: search => fireText(
+            IntentRef("CodingComposerTargetSearchChanged", ComponentValueBinding()),
+            search,
+          ),
         },
         session: {
           signIn: fire("OpenAgentsSignInPressed"),

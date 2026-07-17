@@ -409,3 +409,77 @@ remain `T3M-F2`.
 - residual: Epic A is complete; `T3M-B1` composer-local target/model/mode
   toolbar and grouped picker is the next ordered packet; full mobile parity
   remains open through `T3M-F2`
+
+## Active packet — T3M-B1
+
+Outcome: turn the coding composer into one coherent input instrument by moving
+confirmed repository, target, model, provider, readiness, and mode presentation
+into a compact toolbar and grouped native picker.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/screens/mobile-composer-toolbar.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/tests/mobile-composer-toolbar.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/tests/mobile-accessibility.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: authenticated execution-target catalog, persisted composer
+selection, Effect Native sheet/text-field intents, accessibility, mobile
+behavior registry, and Sol manifest. This packet does not split model from its
+authoritative execution target or enable shell/command semantics reserved for
+`T3M-B2`.
+
+Required behavior:
+
+- repository/worktree identity and the current target/model become one compact
+  composer-local toolbar instead of a diagnostic block above the input;
+- the target control opens a dismissable, searchable native sheet grouped by
+  provider, with selected state, model label, account label, readiness, and
+  exact unavailable/revoked/offline explanations;
+- selection continues through the existing typed target intent and persisted
+  draft mutation; stale, foreign, non-ready, or missing targets fail closed;
+- current mode is visibly `Code`; no alternate/shell mode is presented as
+  actionable until `T3M-B2` owns command admission and transport;
+- catalog-unavailable and empty-search states preserve the draft and explain
+  why target choice is unavailable;
+- actions meet Dynamic Type touch targets and sheet dismissal restores the
+  composer path without changing transcript authority.
+
+Proof: focused toolbar/picker projection and intent journeys, existing
+authoritative target persistence, accessibility, behavior contracts, mobile
+typecheck, and `pnpm run check`.
+
+Close rule: this closes composer target/model/mode presentation only. Slash
+commands, `@` context, attachment editing, and active-run queue/stop remain
+`T3M-B2`.
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-b1-20260717`
+- base: `55b81e1e7f504f002285f3dbce961f999d542f04`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-B1` composer toolbar and grouped authoritative target picker
+- paths: the `T3M-B1` owned paths above
+- hot files: Home state/intent registry, Khala composer presentation, behavior
+  registry, Sol manifest
+- hot contracts: exact target catalog/persistence and non-actionable Code mode
+- verification: focused mobile suites, typecheck, behavior/Sol checks, and
+  `pnpm run check`
+- claimed_at: `2026-07-17T21:37:57Z`
+
+### CLAIM-STATUS
+
+- status: implementation complete and release gates green
+- verification: 62 focused composer-toolbar, authoritative Home,
+  accessibility, local-first registry, and behavior-contract tests; mobile
+  typecheck; `pnpm run check`; `git diff --check`
+- state-safety note: picker visibility and search reset on chat creation,
+  conversation selection, coding-session selection, attention navigation,
+  active-thread removal, and sync-authority loss
+- close boundary: no slash-command, `@` context, attachment editing, or
+  active-run queue/stop claim; those remain `T3M-B2`
+- verified_at: `2026-07-17T21:42:38Z`

@@ -264,7 +264,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
 
     const rendered = JSON.stringify(renderContentView(program.initialState))
     expect(rendered).toContain("khala-coding-target-codex:account.pylon.codex.ready1")
-    expect(rendered).toContain("Codex ready, Codex, ready, selected")
+    expect(rendered).toContain("Codex ready, Codex, ready. Model gpt 5.6 sol. Ready. Selected")
     program.khala.submitTurn("Use exact account")
     await Effect.runPromise(settle)
     expect(sentTarget).toEqual(exactCodexTarget.runtimeTarget)
@@ -345,7 +345,9 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     const initial = JSON.stringify(renderContentView(program.initialState))
     expect(initial).toContain("Restored private draft")
     expect(initial).toContain("openagents · main")
-    expect(initial).toContain("Claude · provider.claude · Model not selected · Account not selected")
+    expect(initial).toContain("Target unavailable")
+    expect(initial).toContain("Execution targets are unavailable. Your draft is preserved.")
+    expect(initial).not.toContain("provider.claude")
     expect(initial).toContain("screen.png")
     expect(initial).toContain('"onAttachmentRequest":{"name":"CodingComposerAttachmentsRequested"')
 
