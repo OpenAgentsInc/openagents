@@ -1463,6 +1463,15 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T17:42:11Z`
 
+### CLAIM-STATUS
+
+- implementation: added a private restart-stable Effect visibility-policy store with exact optimistic versioning and ref-only applied receipts
+- privacy/authority proof: decoded intent and receipt evidence only; no thread content, membership, administrator, publication, network, provider, path, or renderer authority is granted
+- focused proof: all 14 visibility/disclosure tests passed and the full Desktop package typecheck passed
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collision: the known AssuranceSpec environment-digest snapshot drift remains 189/190 and outside this packet
+- residual: `main.ts` composition, preload/renderer command and pixels, actual audience authorization/publication adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
