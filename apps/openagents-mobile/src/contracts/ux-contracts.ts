@@ -5,8 +5,41 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.6",
+    version: "2026-07-17.7",
     contracts: [
+      {
+        contractId: "openagents_mobile.composer.typed_slash_commands.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile coding composer",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "An explicit trailing slash token opens bounded composer-local command autocomplete with typed labels, descriptions, availability reasons, filtering, empty state, and native keyboard/touch selection.",
+        authorityBoundary:
+          "The parser activates only after an explicit slash token and selection accepts only a closed schema-decoded command id. Each id reuses an existing Home authority path for new chat, target picker, attachment picker, or exact active-turn cancel; arbitrary text never becomes tool or runtime routing.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-composer-discovery.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-b22a",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/ThreadComposer.tsx",
+        ],
+        oracles: [{
+          id: "mobile_composer_typed_slash_discovery",
+          kind: "bun-test",
+          mode: "e2e",
+          ref: "apps/openagents-mobile/tests/mobile-composer-discovery.test.ts",
+          description:
+            "Proves explicit-trigger parsing, bounded filtering, honest disabled/empty states, draft-preserving query replacement, exact available dispatch, and unavailable refusal.",
+        }],
+        verification:
+          "Discovery, authoritative Home, composer toolbar/attachments, accessibility, RN Composer/Combobox, behavior-contract, mobile typecheck, and repository checks; physical keyboard evidence remains T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.composer.attachment_editing.v1",
         state: "enforced",

@@ -582,3 +582,69 @@ queue/stop remains `T3M-B2.3`.
 - residual: `T3M-B2.1` is complete; `T3M-B2.2` typed slash-command and
   repository-backed `@` context discovery is next; full mobile parity remains
   open through `T3M-F2`
+
+## Active packet — T3M-B2.2a
+
+Outcome: add the closed typed slash-command discovery and dispatch half of
+composer discovery before binding repository-backed `@` results in B2.2b.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/screens/mobile-composer-discovery.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/tests/mobile-composer-discovery.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: explicit composer trigger parsing, closed command registry,
+exact intent dispatch, active-turn authority, accessibility, behavior registry,
+and Sol manifest.
+
+Required behavior:
+
+- a leading slash token opens composer-local autocomplete with bounded built-in
+  commands, typed labels/descriptions, filtered results, and an honest empty
+  state;
+- selection accepts only a closed command id and dispatches its exact existing
+  Home intent/authority path; arbitrary command text never becomes tool or
+  runtime routing;
+- target and attachment commands preserve the remaining draft, while new-chat
+  and stop use their existing authority checks and clear command text only
+  after admission;
+- unavailable commands remain visible with a reason and cannot dispatch;
+- touch, screen-reader, and keyboard selection use the Effect Native Combobox
+  contract rather than a bespoke overlay.
+
+Proof: command projection/filtering, selection/refusal journeys, existing Home
+authority regressions, accessibility, RN Composer/Combobox tests, behavior
+contracts, mobile typecheck, and repository checks.
+
+Close rule: this closes slash-command discovery only. Repository-backed `@`
+context remains `T3M-B2.2b`; active-run queue/stop presentation remains
+`T3M-B2.3` (the slash Stop command reuses current exact cancel authority).
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-b2-2a-20260717`
+- base: `74e308ba17041f97a81dedf78eeaea34132dcd21`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-B2.2a` typed composer slash-command discovery and dispatch
+- paths: the `T3M-B2.2a` owned paths above
+- verification: focused discovery/Home/renderer/accessibility suites,
+  typecheck, behavior/Sol checks, and `pnpm run check`
+- claimed_at: `2026-07-17T21:53:30Z`
+
+### CLAIM-STATUS
+
+- status: implementation complete and release gates green
+- verification: 84 focused slash discovery, authoritative Home, composer
+  toolbar/attachments, accessibility, local-first registry, RN Composer/
+  Combobox, and behavior-contract tests; mobile typecheck; `pnpm run check`;
+  `git diff --check`
+- routing note: deterministic parsing starts only at the explicit trailing
+  slash token; selection is a closed schema literal and dispatches existing
+  Home authority paths, never free-form tool selection
+- close boundary: repository-backed `@` context remains `T3M-B2.2b`;
+  active-run queue/stop presentation remains `T3M-B2.3`
+- verified_at: `2026-07-17T21:56:45Z`

@@ -95,6 +95,12 @@ import {
   nextMobileTranscriptVisibleCount,
 } from "./mobile-transcript-history"
 import { projectMobileWorkGroup } from "./mobile-work-log"
+import {
+  mobileComposerSlashTrigger,
+  mobileSlashCommandIds,
+  mobileSlashCommands,
+  type MobileSlashCommandContext,
+} from "./mobile-composer-discovery"
 
 export {
   defaultMobileAccessibilityProfile,
@@ -416,6 +422,14 @@ export const CodingComposerTargetSearchChanged = defineIntent(
   "CodingComposerTargetSearchChanged",
   Schema.String,
 )
+export const CodingComposerSlashQueryChanged = defineIntent(
+  "CodingComposerSlashQueryChanged",
+  Schema.String,
+)
+export const CodingComposerSlashCommandSelected = defineIntent(
+  "CodingComposerSlashCommandSelected",
+  Schema.Literals(mobileSlashCommandIds),
+)
 export const RuntimeInteractionOptionToggled = defineIntent(
   "RuntimeInteractionOptionToggled",
   Schema.Struct({
@@ -511,6 +525,8 @@ export const homeIntentDefinitions = [
   CodingComposerTargetPickerOpened,
   CodingComposerTargetPickerDismissed,
   CodingComposerTargetSearchChanged,
+  CodingComposerSlashQueryChanged,
+  CodingComposerSlashCommandSelected,
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
   RuntimeTurnControlRequested,
@@ -2273,6 +2289,66 @@ export const makeHomeHandlers = (
           }
     })
   })
+  const requestComposerAttachments = options.coding === undefined
+    ? () => Effect.void
+    : () => Effect.gen(function* () {
+        const before = yield* SubscriptionRef.get(state)
+        const composer = before.codingComposer
+        if (composer === null || before.khala.pending || before.codingAttachmentPicking) return
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          codingAttachmentPicking: true,
+          codingAttachmentStatus: null,
+        }))
+        const result = yield* Effect.promise(async () => {
+          try {
+            return await options.coding!.pickComposerAttachments(composer)
+          } catch {
+            return {
+              status: "failed" as const,
+              error: "The file or image picker is unavailable right now.",
+            }
+          }
+        })
+        yield* SubscriptionRef.update(state, current => {
+          if (current.codingComposer?.draft.draftRef !== composer.draft.draftRef) return current
+          switch (result.status) {
+            case "cancelled":
+              return { ...current, codingAttachmentPicking: false }
+            case "failed":
+              return {
+                ...current,
+                codingAttachmentPicking: false,
+                codingAttachmentStatus: { kind: "failed" as const, message: result.error },
+              }
+            case "updated":
+              return {
+                ...current,
+                codingComposer: result.session,
+                codingAttachmentPicking: false,
+                codingAttachmentStatus: {
+                  kind: "ready" as const,
+                  message: `${result.addedCount} ${result.addedCount === 1 ? "attachment" : "attachments"} stored on this device.`,
+                },
+              }
+          }
+        })
+      })
+  const draftChanged = synced?.KhalaDraftChanged ?? khalaHandlers(state, options.khalaTurn).KhalaDraftChanged
+  const slashContext = (current: HomeState): MobileSlashCommandContext => ({
+    composerAvailable: current.codingComposer !== null,
+    targetCatalogAvailable: current.codingExecutionTargets.length > 0,
+    attachmentPickerAvailable: options.coding !== undefined && !current.codingAttachmentPicking,
+    activeTurnRef: current.khala.runtimeTurn?.runRef ?? null,
+    activeTurnCancelable: current.khala.runtimeControlActionsAvailable && (
+      current.khala.runtimeTurn?.status === "queued" ||
+      current.khala.runtimeTurn?.status === "running" ||
+      current.khala.runtimeTurn?.status === "waiting_for_input"
+    ),
+    pendingAction: current.khala.pending || current.codingAttachmentPicking ||
+      current.codingAttachmentMutatingRef !== null ||
+      current.khala.runtimeControlSubmittingAction !== null,
+  })
   return {
     DrawerToggled: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: !current.drawerOpen })),
     NewChatPressed: synced?.NewChatPressed ??
@@ -2288,56 +2364,7 @@ export const makeHomeHandlers = (
         codingAttachmentStatus: null,
         khala: initialKhalaState,
       }))),
-    CodingComposerAttachmentsRequested: options.coding === undefined
-      ? () => Effect.void
-      : () => Effect.gen(function* () {
-          const before = yield* SubscriptionRef.get(state)
-          const composer = before.codingComposer
-          if (composer === null || before.khala.pending || before.codingAttachmentPicking) return
-          yield* SubscriptionRef.update(state, current => ({
-            ...current,
-            codingAttachmentPicking: true,
-            codingAttachmentStatus: null,
-          }))
-          const result = yield* Effect.promise(async () => {
-            try {
-              return await options.coding!.pickComposerAttachments(composer)
-            } catch {
-              return {
-                status: "failed" as const,
-                error: "The file or image picker is unavailable right now.",
-              }
-            }
-          })
-          yield* SubscriptionRef.update(state, current => {
-            if (current.codingComposer?.draft.draftRef !== composer.draft.draftRef) {
-              return current
-            }
-            switch (result.status) {
-              case "cancelled":
-                return { ...current, codingAttachmentPicking: false }
-              case "failed":
-                return {
-                  ...current,
-                  codingAttachmentPicking: false,
-                  codingAttachmentStatus: {
-                    kind: "failed" as const,
-                    message: result.error,
-                  },
-                }
-              case "updated":
-                return {
-                  ...current,
-                  codingComposer: result.session,
-                  codingAttachmentPicking: false,
-                  codingAttachmentStatus: {
-                    kind: "ready" as const,
-                    message: `${result.addedCount} ${result.addedCount === 1 ? "attachment" : "attachments"} stored on this device.`,
-                  },
-                }
-            }
-          })
-        }),
+    CodingComposerAttachmentsRequested: requestComposerAttachments,
     CodingComposerAttachmentRemoved: payload =>
       mutateComposerAttachment(payload.attachmentId, "remove"),
     CodingComposerAttachmentRetryRequested: payload =>
@@ -2382,6 +2409,49 @@ export const makeHomeHandlers = (
         !current.codingComposerTargetPickerOpen
           ? current
           : { ...current, codingComposerTargetSearch: search.slice(0, 160) }),
+    CodingComposerSlashQueryChanged: (query: string) => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const trigger = mobileComposerSlashTrigger(before.khala.draft)
+      if (trigger === null) return
+      const bounded = query.replace(/[^A-Za-z0-9_-]/gu, "").slice(0, 64)
+      yield* draftChanged(`${before.khala.draft.slice(0, trigger.replaceFrom)}/${bounded}`)
+    }),
+    CodingComposerSlashCommandSelected: commandId => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const trigger = mobileComposerSlashTrigger(before.khala.draft)
+      const selected = mobileSlashCommands(slashContext(before)).find(value => value.id === commandId)
+      if (trigger === null || selected?.available !== true) return
+      const remainingDraft = before.khala.draft.slice(0, trigger.replaceFrom).trimEnd()
+      switch (commandId) {
+        case "mobile.command.choose_target":
+          yield* draftChanged(remainingDraft)
+          yield* SubscriptionRef.update(state, current =>
+            current.codingComposer === null || current.codingExecutionTargets.length === 0
+              ? current
+              : { ...current, codingComposerTargetPickerOpen: true })
+          return
+        case "mobile.command.attach":
+          yield* draftChanged(remainingDraft)
+          yield* requestComposerAttachments()
+          return
+        case "mobile.command.stop_turn": {
+          const runRef = before.khala.runtimeTurn?.runRef
+          if (runRef === undefined || synced === undefined) return
+          yield* draftChanged(remainingDraft)
+          yield* synced.RuntimeTurnControlRequested({ action: "cancel", runRef })
+          return
+        }
+        case "mobile.command.new_chat":
+          if (synced !== undefined) {
+            yield* synced.NewChatPressed()
+          } else {
+            yield* SubscriptionRef.set(state, {
+              ...initialHomeState,
+              accessibility: before.accessibility,
+            })
+          }
+      }
+    }),
     SettingsPressed: () => SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
@@ -2814,6 +2884,8 @@ export interface HomeProgramHandle {
     readonly openTargetPicker: () => void
     readonly dismissTargetPicker: () => void
     readonly searchTargets: (search: string) => void
+    readonly searchSlashCommands: (query: string) => void
+    readonly selectSlashCommand: (commandId: (typeof mobileSlashCommandIds)[number]) => void
   }
   readonly session: {
     readonly signIn: () => void
@@ -3035,6 +3107,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             IntentRef("CodingComposerTargetSearchChanged", ComponentValueBinding()),
             search,
           ),
+          searchSlashCommands: query => fireText(
+            IntentRef("CodingComposerSlashQueryChanged", ComponentValueBinding()),
+            query,
+          ),
+          selectSlashCommand: commandId => fireRef(IntentRef(
+            "CodingComposerSlashCommandSelected",
+            StaticPayload(commandId),
+          )),
         },
         session: {
           signIn: fire("OpenAgentsSignInPressed"),

@@ -29,6 +29,7 @@ import {
   type MobileComposerToolbarState,
 } from "./mobile-composer-toolbar"
 import { renderMobileComposerAttachments } from "./mobile-composer-attachments"
+import { renderMobileSlashCommandAutocomplete } from "./mobile-composer-discovery"
 import { renderMobileInteractionCard } from "./mobile-interaction-card"
 import {
   mobileAttachmentRef,
@@ -638,6 +639,16 @@ export const renderKhalaSurface = (
         attachment,
         attachmentRef: mobileAttachmentRef(entry.key, index),
       }))).find(candidate => candidate.attachmentRef === state.viewingAttachmentRef) ?? null
+  const composerAutocomplete = renderMobileSlashCommandAutocomplete(state.draft, {
+    composerAvailable: codingComposer !== null,
+    targetCatalogAvailable: executionTargets.length > 0,
+    attachmentPickerAvailable: codingComposer !== null && !codingAttachmentPicking,
+    activeTurnRef: state.runtimeTurn?.runRef ?? null,
+    activeTurnCancelable: state.runtimeTurn?.status === "queued" ||
+      state.runtimeTurn?.status === "running" || state.runtimeTurn?.status === "waiting_for_input",
+    pendingAction: codingAttachmentPicking || codingAttachmentMutatingRef !== null ||
+      state.runtimeControlSubmittingAction !== null,
+  })
   return Stack(
     {
       key: "khala-surface",
@@ -741,6 +752,7 @@ export const renderKhalaSurface = (
         doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],
         mode: "normal",
         placeholder: authority === "sync" ? "Continue conversation" : "Message Khala",
+        ...(composerAutocomplete === undefined ? {} : { autocomplete: composerAutocomplete }),
         ...(codingComposer === null ? {} : {
           attachments: codingComposer.draft.doc.attachments.map(attachment => ({
             id: attachment.id,
