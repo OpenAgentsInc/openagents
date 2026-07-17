@@ -15,42 +15,42 @@
     {
       "name": "composer-idle",
       "file": "composer-idle.png",
-      "sha256": "40fda8490da6a94661206c2bc6735e85ab8f1fa797b5a8e4446b36a6083a1eae",
+      "sha256": "cef5be7391d5e46e7d102c8c4ab05a73e639877507d468bbdd35ae4a036c6bed",
       "width": 1280,
       "height": 800
     },
     {
       "name": "thread-plan-card",
       "file": "thread-plan-card.png",
-      "sha256": "295caa56901e387493657e7897711c9975a06522fb35a2ff013805942fbece8a",
+      "sha256": "b4a7bd5dc32b07cb7e890992d500bed9ff8d1fe89df5bd5f70ddd8b0b06ff34d",
       "width": 1280,
       "height": 800
     },
     {
       "name": "approval-card",
       "file": "approval-card.png",
-      "sha256": "bee3799da2d6dc8620fb825a760b59d0224cd269cff594f9e5447df3259e1706",
+      "sha256": "761652169c172a06355f3f6e71a9b5319c73c019af862498525b39209734e3e1",
       "width": 1280,
       "height": 800
     },
     {
       "name": "reasoning-disclosure",
       "file": "reasoning-disclosure.png",
-      "sha256": "2b061e0465e8047d0f4a3a7b4bb0b21462bc01427634f16abd4e9c044ef00b63",
+      "sha256": "2e9a40da7eba16e9d608a80ec5bdd69f1ff9a932b61eae35bfa45cac387ebc08",
       "width": 1280,
       "height": 800
     },
     {
       "name": "full-auto-running",
       "file": "full-auto-running.png",
-      "sha256": "666582316923470bb42a6d0ab77189f5618817f54c0ec41e9e24318e370997cb",
+      "sha256": "97880e59e45c0d7fde48413d19073a421a389e9bb50d8aa86b8264311cb8f74b",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-messages-reasoning",
       "file": "workbench-messages-reasoning.png",
-      "sha256": "9d168af710c6c20f221a2b2247224d394071baeff65ba453eca8fd930b9d730e",
+      "sha256": "138687471add2badd2db813b0f1f16ff3f9b72711ef2fbcbd5381980ad4cb918",
       "width": 1280,
       "height": 800
     },
@@ -113,14 +113,14 @@
     {
       "name": "workbench-shell",
       "file": "workbench-shell.png",
-      "sha256": "32c67902a01074c39c76f46285f4cf5aedf474d08f5d389beafb7328468ec08d",
+      "sha256": "ae7bb8eab788e518c0c0dd25e226d20975d8cfeb30b3e37dc02452327e122915",
       "width": 1280,
       "height": 800
     },
     {
       "name": "workbench-frame",
       "file": "workbench-frame.png",
-      "sha256": "c5ee7037476094a074cd6d0cfa2a633012ccf111dc84b6d768a7386dbce19333",
+      "sha256": "8c8abc94449d655da1d6ff5ccfbef81c8fe891eef887e2e65348a69f57f7e88d",
       "width": 1280,
       "height": 800
     }

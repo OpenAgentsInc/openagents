@@ -190,10 +190,15 @@ describe("React Codex composer", () => {
     );
     const editor = container.querySelector('[data-lexical-composer="true"]') as HTMLElement;
     expect(container.querySelector('[data-en-key="shell-input"] [contenteditable="true"]')).toBe(editor);
-    expect(container.querySelector('[data-icon-name="Command"]')).toBeNull();
+    expect(container.querySelector('[data-icon-name="Command"]')).not.toBeNull();
     expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(3);
-    expect(container.querySelector('[aria-label="Open commands"]')).toBeNull();
+    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(4);
+    expect(container.querySelector('[aria-label="Add context or command"]')).not.toBeNull();
+    const more = container.querySelector('[aria-label="More composer controls"]') as HTMLButtonElement;
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    await interact(() => more.click());
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector(".oa-react-composer-secondary-controls")?.getAttribute("data-open")).toBe("true");
     expect(container.querySelector('[data-composer-button-kind="toggle"]')).not.toBeNull();
     expect(container.querySelector('[data-composer-button-kind="submit"]')).not.toBeNull();
     await render(
@@ -214,6 +219,102 @@ describe("React Codex composer", () => {
     expect(received.filter((value) => value.name === "DesktopNoteSubmitted")).toEqual([
       { name: "DesktopNoteSubmitted", payload: "Ship it now" },
     ]);
+  });
+
+  test("renders bounded file and review context as removable chips and admits a context-only turn", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactComposer state={fixtureState({
+      composerReviewContext: {
+        repositoryRef: "repo-1", statusRef: "status-1", path: "src/review.ts", source: "staged",
+        content: "@@ bounded", hunkCount: 2, causalItemRef: "item-1",
+      },
+      composerFileContext: {
+        path: "src/active.ts", revisionRef: "rev-1", languageMode: "typescript", content: "export {}", dirty: true,
+      },
+    })} report={report} />);
+    expect(container.querySelectorAll('[role="listitem"][data-context-kind]')).toHaveLength(2);
+    expect(container.textContent).toContain("src/review.tsstaged · 2 hunks");
+    expect(container.textContent).toContain("@src/active.tstypescript · unsaved draft");
+    const send = container.querySelector('[aria-label="Send"]') as HTMLButtonElement;
+    expect(send.disabled).toBe(false);
+    await interact(() => {
+      (container.querySelector('[aria-label="Remove review context for src/review.ts"]') as HTMLButtonElement).click();
+      (container.querySelector('[aria-label="Remove mentioned file src/active.ts"]') as HTMLButtonElement).click();
+      send.click();
+    });
+    expect(received).toEqual(expect.arrayContaining([
+      { name: "DesktopReviewContextRemoved", payload: null },
+      { name: "DesktopFileContextRemoved", payload: null },
+      { name: "DesktopNoteSubmitted", payload: null },
+    ]));
+  });
+
+  test("discovers loaded files, folders, skills, and typed commands without a second authority", async () => {
+    const { container } = installDom();
+    const { ReactComposer, projectComposerDiscoveryItems } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    const base = fixtureState();
+    const state = fixtureState({
+      workspaceBrowser: {
+        ...base.workspaceBrowser,
+        phase: "ready",
+        grantRef: "grant-1",
+        pages: { "": {
+          state: "available", grantRef: "grant-1", directoryRef: "",
+          entries: [
+            { name: "src", pathRef: "src", kind: "directory", expandable: true, sizeBytes: null, revisionRef: "rev-dir" },
+            { name: "app.ts", pathRef: "src/app.ts", kind: "file", expandable: false, sizeBytes: 12, revisionRef: "rev-file" },
+          ],
+          nextOffset: null, cache: { key: "root", epoch: 1, freshness: "current" },
+        } },
+      },
+      workspaceEditor: {
+        ...base.workspaceEditor,
+        activePathRef: "src/app.ts",
+        tabs: [{
+          pathRef: "src/app.ts", phase: "ready", document: {
+            grantRef: "grant-1", pathRef: "src/app.ts", revisionRef: "rev-file", languageMode: "typescript", content: "export {}",
+            encoding: "utf-8", lineEnding: "none", sizeBytes: 9,
+          }, externalDocument: null, draft: "export {}", selection: { start: 0, end: 0 }, selectionVersion: 0,
+          undo: [], redo: [], saveState: "idle", reason: null, findQuery: "", findMatches: [], findIndex: 0,
+        }],
+      },
+      settings: { ...base.settings, plugins: { state: "loaded", dropped: 0, message: null, plugins: [{
+        ref: "plugin.local.0123456789abcdef01234567", name: "quality", provider: "claude_agent", provenance: "user_local",
+        scope: "app", readiness: "ready", enabled: true, restartRequired: false, perSessionUse: "next_turn",
+        capabilities: ["skills"], skills: ["review"],
+      }] } },
+      providerLaneCapabilities: [{
+        laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted", reason: null,
+        models: ["gpt-5.6-sol"], reasoningEfforts: ["medium"], permissionModes: ["owner_full"], approvals: "host_mediated",
+        questions: true, skills: true, images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true,
+        extensions: ["skills"], evidence: "conformant",
+      }],
+    } as Partial<DesktopShellState>);
+    const projected = projectComposerDiscoveryItems(state, "");
+    expect(projected.map(item => item.kind)).toEqual(expect.arrayContaining(["attach-active-file", "skill", "path", "command"]));
+    await render(root, <ReactComposer state={state} report={report} />);
+    await interact(() => (container.querySelector('[aria-label="Add context or command"]') as HTMLButtonElement).click());
+    expect(container.querySelector('[aria-label="Composer commands and context"]')).not.toBeNull();
+    expect(container.textContent).toContain("Current context");
+    expect(container.textContent).toContain("Skills");
+    expect(container.textContent).toContain("Files and folders");
+    expect(container.textContent).toContain("Commands");
+    const attach = [...container.querySelectorAll('[data-slot="command-item"]')].find(item => item.textContent?.includes("Attach app.ts"));
+    await interact(() => (attach as HTMLElement | undefined)?.click());
+    expect(received).toContainEqual({ name: "DesktopEditorFileAttached", payload: null });
+    await interact(() => (container.querySelector('[aria-label="Add context or command"]') as HTMLButtonElement).click());
+    const skill = [...container.querySelectorAll('[data-slot="command-item"]')].find(item => item.textContent?.includes("reviewquality"));
+    await interact(() => (skill as HTMLElement | undefined)?.click());
+    expect(received).toContainEqual({ name: "DesktopInputChanged", payload: "/skill quality/review " });
+    await interact(() => (container.querySelector('[aria-label="Add context or command"]') as HTMLButtonElement).click());
+    const file = [...container.querySelectorAll('[data-slot="command-item"]')].find(item => item.textContent?.includes("app.tssrc/app.ts · open in editor"));
+    await interact(() => (file as HTMLElement | undefined)?.click());
+    expect(received).toContainEqual({ name: "WorkspaceBrowserEntrySelected", payload: "src/app.ts" });
   });
 
   test("focuses the composer after a new-session transition even when the trigger owns focus", async () => {
@@ -718,10 +819,9 @@ describe("React command and decision surfaces", () => {
       });
     };
 
-    // `DecisionSurface` renders a shadcn `<Dialog>`, which portals its
-    // content onto `window.document.body` rather than into the local
-    // `container` (the existing "keeps approval explicit…" test above
-    // already relies on this) — every query below reads `window.document`.
+    // `DecisionSurface` is mounted in the composer stack in product. These
+    // focused component tests query `window.document` so the assertions stay
+    // agnostic to the local root container while proving the inline card.
 
     test("tool_approval: Deny dispatches DesktopApprovalDenied through the card's default binary pair", async () => {
       const { window, container } = installDom();
@@ -750,8 +850,7 @@ describe("React command and decision surfaces", () => {
       await render(root, <DecisionSurface state={state} report={report} />);
       const card = window.document.querySelector('[data-kind="approval"]');
       expect(card?.getAttribute("data-decision")).toBe("approved");
-      // Scoped to the card itself: the Dialog chrome around it always
-      // renders its own "Close" (X) button regardless of card state.
+      // Scoped to the card itself: a settled inline decision is status-only.
       expect(card?.querySelector("button")).toBeNull();
       expect(card?.querySelector(".oa-react-approval-decision")?.textContent).toContain("Approved");
     });
@@ -764,8 +863,7 @@ describe("React command and decision surfaces", () => {
       const state = toolApprovalState({ questionAnswerHostAvailable: false });
       await render(root, <DecisionSurface state={state} report={report} />);
       const card = window.document.querySelector('[data-kind="approval"]');
-      // Scoped to the card itself: the Dialog chrome around it always
-      // renders its own "Close" (X) button regardless of card state.
+      // Scoped to the card itself: read-only pending state is status-only.
       expect(card?.querySelector("button")).toBeNull();
       expect(card?.querySelector(".oa-react-approval-decision")?.textContent).toBe("Pending");
     });

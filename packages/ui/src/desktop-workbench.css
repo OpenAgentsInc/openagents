@@ -1761,6 +1761,102 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   min-width: 0;
 }
 
+.oa-react-composer-contexts {
+  display: flex;
+  gap: var(--en-spacing-2);
+  padding: 0 var(--en-spacing-1) var(--en-spacing-1);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.oa-react-composer-context {
+  display: grid;
+  grid-template-columns: 28px minmax(112px, 1fr) 28px;
+  flex: 0 1 320px;
+  align-items: center;
+  min-width: 220px;
+  gap: var(--en-spacing-1);
+  padding: var(--en-spacing-1);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceBase);
+}
+
+.oa-react-composer-context > svg {
+  width: 15px;
+  height: 15px;
+  justify-self: center;
+  color: var(--en-color-accent);
+}
+
+.oa-react-composer-context > span {
+  display: grid;
+  min-width: 0;
+}
+
+.oa-react-composer-context strong,
+.oa-react-composer-context small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-composer-context strong {
+  color: var(--en-color-textPrimary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.oa-react-composer-context small {
+  color: var(--en-color-textMuted);
+  font-size: 10px;
+}
+
+.oa-react-composer-discovery {
+  position: absolute;
+  z-index: 20;
+  right: 12px;
+  bottom: calc(100% + var(--en-spacing-2));
+  left: 12px;
+  overflow: hidden;
+  border: 1px solid var(--en-color-borderStrong);
+  border-radius: var(--en-radius-lg);
+  background: color-mix(in srgb, var(--en-color-surfaceRaised) 96%, transparent);
+  box-shadow: var(--en-elevation-overlay-shadow);
+  backdrop-filter: blur(12px);
+}
+
+.oa-react-composer-discovery [data-slot="command-list"] {
+  max-height: min(320px, 42vh);
+}
+
+.oa-react-composer-discovery [data-slot="command-item"] {
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-composer-discovery-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.oa-react-composer-discovery-description {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-composer-discovery [data-slot="command-footer"] button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--en-color-textSecondary);
+  cursor: pointer;
+}
+
 /* The composer owns the visible focus treatment through :focus-within.
    Keep native host inputs visually quiet so web and Desktop never draw a
    second ring inside the shared frame. */
@@ -1972,6 +2068,15 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   gap: var(--en-spacing-1);
 }
 
+.oa-react-composer-secondary-controls,
+.oa-react-composer-secondary-controls-content {
+  display: contents;
+}
+
+.oa-react-composer-secondary-trigger {
+  display: none;
+}
+
 .oa-react-composer-bar {
   min-height: var(--en-control-sm-height);
   flex-wrap: wrap;
@@ -2071,6 +2176,68 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   flex: 1 1 auto;
 }
 
+@media (max-width: 720px) {
+  .oa-react-composer {
+    width: calc(100% - var(--en-spacing-4)) !important;
+    margin-bottom: max(var(--en-spacing-3), env(safe-area-inset-bottom)) !important;
+    padding-inline: var(--en-spacing-2);
+  }
+
+  .oa-react-composer-secondary-controls {
+    position: relative;
+    display: block;
+  }
+
+  .oa-react-composer-secondary-trigger {
+    display: inline-flex;
+    width: var(--en-control-sm-height);
+    height: var(--en-control-sm-height);
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--en-radius-md);
+    background: transparent;
+    color: var(--en-color-textMuted);
+    cursor: pointer;
+  }
+
+  .oa-react-composer-secondary-trigger > svg {
+    width: var(--en-control-md-icon);
+    height: var(--en-control-md-icon);
+  }
+
+  .oa-react-composer-secondary-trigger:focus-visible {
+    outline: 2px solid var(--en-color-focus);
+    outline-offset: 2px;
+  }
+
+  .oa-react-composer-secondary-controls-content {
+    position: absolute;
+    z-index: 12;
+    bottom: calc(100% + var(--en-spacing-2));
+    left: 0;
+    display: none;
+    min-width: 180px;
+    padding: var(--en-spacing-1);
+    border: 1px solid var(--en-color-borderStrong);
+    border-radius: var(--en-radius-md);
+    background: var(--en-color-surfaceRaised);
+    box-shadow: var(--en-elevation-overlay-shadow);
+  }
+
+  .oa-react-composer-secondary-controls[data-open="true"] .oa-react-composer-secondary-controls-content {
+    display: grid;
+    gap: var(--en-spacing-1);
+  }
+
+  .oa-react-composer-secondary-controls-content .oa-react-composer-button {
+    width: 100% !important;
+    max-width: none !important;
+    justify-content: flex-start;
+  }
+}
+
 .oa-react-composer-status {
   max-width: min(240px, 40vw);
   height: 22px;
@@ -2111,46 +2278,48 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   }
 }
 
-.oa-react-decision-overlay {
-  background: color-mix(in srgb, var(--en-color-background) 78%, transparent);
-  backdrop-filter: blur(2px);
+.oa-react-composer-stack {
+  display: grid;
+  width: 100%;
 }
 
 .oa-react-decision {
-  width: min(640px, calc(100vw - 32px)) !important;
-  max-width: 640px !important;
-  max-height: min(680px, calc(100vh - 32px)) !important;
-  gap: var(--en-spacing-4) !important;
+  display: grid;
+  width: min(760px, calc(100% - var(--en-spacing-6)));
+  max-height: min(480px, 46vh);
+  gap: var(--en-spacing-3);
+  margin: var(--en-spacing-2) auto 0;
   overflow-y: auto;
-  padding: var(--en-spacing-5) !important;
-  border: 1px solid var(--en-color-borderStrong) !important;
-  border-radius: var(--en-radius-lg) !important;
-  background: var(--en-color-surfaceRaised) !important;
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderStrong);
+  border-radius: var(--en-radius-lg);
+  background: var(--en-color-surfaceRaised);
   color: var(--en-color-textPrimary);
-  box-shadow: none;
+  box-shadow: var(--en-elevation-raised-shadow);
 }
 
-.oa-react-decision [data-slot="dialog-header"] {
+.oa-react-decision-header {
+  display: grid;
   gap: var(--en-spacing-1);
-  padding-right: var(--en-spacing-6);
 }
 
-.oa-react-decision [data-slot="dialog-title"] {
+.oa-react-decision-header h2 {
+  margin: 0;
   font-size: 15px;
   line-height: 1.35;
 }
 
-.oa-react-decision [data-slot="dialog-description"] {
+.oa-react-decision-header p {
   max-width: 58ch;
+  margin: 0;
   color: var(--en-color-textSecondary);
   font-size: 12px;
   line-height: 1.5;
 }
 
-.oa-react-decision > [data-slot="dialog-close"] {
-  top: var(--en-spacing-3);
-  right: var(--en-spacing-3);
-  left: auto;
+.oa-react-decision-footer {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* The shared approval component is a compact ledger row in the timeline.
@@ -2310,9 +2479,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 @media (max-width: 560px) {
   .oa-react-decision {
-    width: calc(100vw - 24px) !important;
-    max-height: calc(100vh - 24px) !important;
-    padding: var(--en-spacing-4) !important;
+    width: calc(100% - var(--en-spacing-4));
+    max-height: 42vh;
+    padding: var(--en-spacing-3);
   }
 
   .oa-react-decision > .oa-react-approval-card {

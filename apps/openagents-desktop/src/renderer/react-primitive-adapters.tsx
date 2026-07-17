@@ -578,7 +578,6 @@ export const WorkbenchShell = ({ state, report }: {
   }
   return <DesktopWorkbench railCollapsed={railCollapsed}>
     <ReactCommandPalette state={state} report={report} />
-    <DecisionSurface state={state} report={report} />
     <DesktopSidebarExpand
       ref={toggleRef}
       onClick={openRail}
@@ -589,7 +588,10 @@ export const WorkbenchShell = ({ state, report }: {
     <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} />
     {railOpen ? <DesktopRailScrim aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     {workspaceSurface ?? <DesktopConversation
-      composer={state.history.page === null ? <ReactComposer state={state} report={report} /> : null}
+      composer={state.history.page === null ? <div className="oa-react-composer-stack">
+        <DecisionSurface state={state} report={report} />
+        <ReactComposer state={state} report={report} />
+      </div> : null}
       header={<ConversationHeader state={state} />}
       notices={<StatusNotices state={state} report={report} />}
       timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForHarness(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}

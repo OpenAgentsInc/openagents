@@ -113,69 +113,63 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-02
+## Active packet — T3UI-03
 
-Outcome: make long conversations remain fast, navigable, and position-stable
-before expanding the composer or any side panel. Settled turns collapse their
-intermediate work without hiding the terminal answer; the active turn remains
-open and anchored until the reader takes manual control.
+Outcome: make the mounted composer a compact, context-aware coding control
+surface without weakening Effect-owned draft, provider, or workspace authority.
 
 Owned paths:
 
-- `apps/openagents-desktop/src/renderer/react-timeline.tsx`
-- `apps/openagents-desktop/src/renderer/react-timeline.test.tsx`
+- `apps/openagents-desktop/src/renderer/react-composer.tsx`
+- `apps/openagents-desktop/src/renderer/react-composer.test.tsx`
+- `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
+- `apps/openagents-desktop/src/renderer/design-conformance.test.ts`
 - `packages/ui/src/desktop-workbench.css`
 - this plan, the Sol roadmap, and generated Sol document manifest
 
 Required behavior:
 
-- settled user-turn segments show one accessible `Worked for …` or stopped
-  disclosure, keep the authored prompt and terminal assistant answer visible,
-  and restore every intermediate typed row under its stable key when expanded;
-- the newest working turn never folds, and a new authored turn enters anchored
-  mode with measured end space until completion or explicit reader navigation;
-- wheel, pointer selection, and minimap navigation enter free-scroll mode;
-  Jump to latest and turn completion restore ordinary following;
-- the turn minimap marks mounted turns intersecting the viewport and can reach
-  virtualized turns by measured/estimated offset without requiring their DOM;
-- pages above 80 presentation rows use variable-height measured windowing with
-  bounded overscan, stable top/bottom spacers, resize correction, and no more
-  than a small mounted subset of the admitted 500-row history page;
-- history prepend retention, typed older/newer paging, same-key streaming
-  replacement, session-key recovery, focus retention, and scroll-stable
-  disclosures remain proved; and
-- typed message, plan, reasoning, command, file, tool, agent, approval, notice,
-  refusal, redaction, working, and waiting rows remain semantically distinct.
+- typed review and editor-file context render as removable chips and context-
+  only submissions remain admitted through the existing turn boundary;
+- one bounded discovery menu projects canonical commands, loaded files/folders,
+  the active editor attachment, and admitted enabled plugin skills;
+- each discovery selection dispatches an existing typed intent or the modeled
+  explicit skill grammar, never a renderer filesystem or shell action;
+- provider/model controls remain direct while reasoning/access/Full Auto move
+  into one compact overflow surface at narrow widths;
+- approvals, questions, and plan follow-up render in the composer stack with
+  their exact typed decision vocabulary instead of a blocking modal; and
+- images, Queue/Steer, Stop, Full Auto, permission, provider, model, reasoning,
+  focus, history, and submission de-duplication remain proved.
 
-Proof: pure fold/duration/window tests; mounted fold, reader-mode, pagination,
-prepend, streaming, session-replacement, and 500-row tests; Desktop typecheck,
-full serial suite, production build, Electron fixture smokes, Sol guards, and a
-long-thread visual receipt.
+Proof: mounted context, discovery, skill/path/action dispatch, compact-control,
+decision, image, Queue/Steer, Full Auto, focus, and submission tests; Desktop
+typecheck, full serial suite, production build, Electron fixture smokes, Sol
+guards, and the publishing gate.
 
-Close rule: this packet closes turn folding/duration, measured 500-row
-virtualization, anchored/following/free reader modes, virtualized minimap
-navigation, and the existing history recovery contract. Rich user contexts,
-images/revert, composer parity, all-component harvest, installed journey,
-signed release, and T3 parity remain later packets.
+Close rule: this packet closes the current typed composer-context, discovery,
+responsive-control, inline-decision, image, and mode-state gap. Arbitrary rich
+Lexical nodes, terminal/preview contexts, revert, all-component harvest,
+installed journey, signed release, and T3 parity remain later packets.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-02-20260717`
-- base: `97a95f2af9d1d55db1187acbd9d225b5983dbcc8`
+- actor/session: `codex-t3ui-03-20260717`
+- base: `780887ff5fe74dafb857caaf482c8a36f580b9a9`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: transcript navigation, turn folding, reader modes, and measured scale
+- scope: mounted composer context, discovery, responsive controls, and decisions
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: turn folds/duration, measured presentation-row windowing,
-  anchored/following/free reader modes, virtual minimap fallback, and resize/
-  prepend correction are mounted
-- focused proof: 53 transcript tests are included in the rebased 205-file
-  Desktop sweep with 1,999 passed and 39 skipped before final acceptance
-- receipt: [`2026-07-17-t3ui-02-transcript-navigation-scale-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-02-transcript-navigation-scale-receipt.md)
-- residual: rich contexts/images/revert and installed signed-build evidence
-  remain later packet work; this is not T3 parity
+- implementation: typed context chips, bounded command/file/folder/skill
+  discovery, compact secondary controls, inline decisions and plan review, and
+  existing image/mode behaviors are mounted
+- focused proof: 26 composer tests and 51 composer/shell-adapter focused tests
+  pass before final full acceptance
+- receipt: [`2026-07-17-t3ui-03-composer-parity-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-03-composer-parity-receipt.md)
+- residual: rich persistent Lexical nodes, terminal/preview contexts, revert,
+  installed signed-build evidence, and later packets remain; this is not T3 parity
 
 ## Explicit non-authority
 

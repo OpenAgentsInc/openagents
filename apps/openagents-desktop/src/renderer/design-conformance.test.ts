@@ -179,23 +179,25 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(rule(".oa-react-empty-working-directory .oa-react-empty-directory-change")).toContain("width: 24px")
   })
 
-  test("live approvals use a readable dialog layout instead of nesting the timeline card", () => {
+  test("live decisions use a readable inline composer layout without timeline-card chrome", () => {
     const css = readFileSync(sharedWorkbenchCssPath, "utf8")
     const rule = (selector: string): string =>
       css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]+)\\}`))?.[1] ?? ""
-    const dialog = rule(".oa-react-decision")
+    const decision = rule(".oa-react-decision")
     const approval = rule(".oa-react-decision > .oa-react-approval-card")
     const command = rule(".oa-react-decision > .oa-react-approval-card > div > code")
 
-    expect(dialog).toContain("max-width: 640px !important")
-    expect(dialog).toContain("overflow-y: auto")
+    expect(decision).toContain("width: min(760px")
+    expect(decision).toContain("max-height: min(480px, 46vh)")
+    expect(decision).toContain("overflow-y: auto")
     expect(approval).toContain("border: 0 !important")
     expect(approval).toContain("background: transparent !important")
     expect(command).toContain("overflow-wrap: anywhere")
     expect(command).toContain("font-family: var(--oa-font-code)")
     expect(command).toContain("text-transform: none !important")
     expect(command).toContain("white-space: pre-wrap")
-    expect(css).toContain(".oa-react-decision-overlay")
+    expect(css).toContain(".oa-react-composer-stack")
+    expect(css).not.toContain(".oa-react-decision-overlay")
   })
 
   test("chat markdown restores semantic list markers after Tailwind preflight", () => {

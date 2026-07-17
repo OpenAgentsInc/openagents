@@ -14,14 +14,6 @@ import {
   CommandShortcut,
 } from "#components/ui/command";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "#components/ui/dialog";
-import {
   ComponentValueBinding,
   IntentRef,
   type IconName,
@@ -42,7 +34,11 @@ import {
 import {
   ArrowDown,
   ArrowUp,
+  Bot,
   CheckCircle2,
+  Command as CommandIcon,
+  Ellipsis,
+  File,
   FileDiff,
   Files,
   FolderOpen,
@@ -158,6 +154,78 @@ const commandIcon = (command: DesktopCommand): LucideIcon => {
 };
 
 const COMMAND_PALETTE_RECENT_SOURCE_LIMIT = 24;
+
+type ComposerDiscoveryItem =
+  | Readonly<{ id: string; kind: "command"; label: string; description: string; command: DesktopCommand }>
+  | Readonly<{ id: string; kind: "attach-active-file"; label: string; description: string }>
+  | Readonly<{ id: string; kind: "path"; label: string; description: string; pathRef: string; pathKind: "file" | "directory" }>
+  | Readonly<{ id: string; kind: "skill"; label: string; description: string; invocation: string }>;
+
+/**
+ * Bounded composer discovery over already-loaded, typed projections. This is
+ * deliberately not a filesystem crawler or keyword router: selecting an item
+ * dispatches the same existing intent as the corresponding workbench control.
+ */
+export const projectComposerDiscoveryItems = (
+  state: DesktopShellState,
+  query: string,
+): ReadonlyArray<ComposerDiscoveryItem> => {
+  const normalized = query.trim().toLocaleLowerCase();
+  const matches = (value: string): boolean => normalized === "" || value.toLocaleLowerCase().includes(normalized);
+  const activeTab = state.workspaceEditor.activePathRef === null
+    ? null
+    : state.workspaceEditor.tabs.find(tab => tab.pathRef === state.workspaceEditor.activePathRef) ?? null;
+  const commands: ReadonlyArray<ComposerDiscoveryItem> = desktopCommandRegistry
+    .filter(command => commandAvailable(command, state))
+    .filter(command => matches(`${command.label} ${command.id}`))
+    .slice(0, 8)
+    .map(command => ({
+      id: `command:${command.id}`,
+      kind: "command" as const,
+      label: command.label,
+      description: command.id,
+      command,
+    }));
+  const attachActive: ReadonlyArray<ComposerDiscoveryItem> = activeTab?.phase === "ready" && activeTab.document !== null && activeTab.draft.length <= 200_000 && matches(`attach active file ${activeTab.pathRef}`)
+    ? [{
+        id: `attach:${activeTab.pathRef}`,
+        kind: "attach-active-file" as const,
+        label: `Attach ${activeTab.pathRef.split("/").at(-1) ?? activeTab.pathRef}`,
+        description: `${activeTab.pathRef} · bounded editor context`,
+      }]
+    : [];
+  const seenPaths = new Set<string>();
+  const paths: ReadonlyArray<ComposerDiscoveryItem> = state.workspaceBrowser.grantRef === null
+    ? []
+    : Object.values(state.workspaceBrowser.pages)
+        .flatMap(page => page.entries)
+        .filter(entry => seenPaths.has(entry.pathRef) ? false : (seenPaths.add(entry.pathRef), true))
+        .filter(entry => matches(`${entry.name} ${entry.pathRef}`))
+        .slice(0, 12)
+        .map(entry => ({
+          id: `path:${entry.pathRef}`,
+          kind: "path" as const,
+          label: entry.name,
+          description: entry.kind === "directory" ? `${entry.pathRef} · browse folder` : `${entry.pathRef} · open in editor`,
+          pathRef: entry.pathRef,
+          pathKind: entry.kind,
+        }));
+  const skills: ReadonlyArray<ComposerDiscoveryItem> = (capabilityForHarness(state)?.skills ?? false)
+    ? state.settings.plugins.plugins
+        .filter(plugin => plugin.enabled && plugin.readiness === "ready")
+        .flatMap(plugin => plugin.skills.map(skill => ({ plugin, skill })))
+        .filter(({ plugin, skill }) => matches(`${plugin.name} ${skill}`))
+        .slice(0, 12)
+        .map(({ plugin, skill }) => ({
+          id: `skill:${plugin.ref}:${skill}`,
+          kind: "skill" as const,
+          label: skill,
+          description: `${plugin.name} · runs on the next turn`,
+          invocation: `/skill ${plugin.name}/${skill} `,
+        }))
+    : [];
+  return [...attachActive, ...skills, ...paths, ...commands];
+};
 
 export type CommandPaletteSession = Readonly<{
   id: string;
@@ -297,6 +365,83 @@ export const ReactCommandPalette = (props: {
   ? <OpenReactCommandPalette {...props} />
   : <></>;
 
+const ComposerDiscoveryMenu = ({
+  state,
+  report,
+  onClose,
+  onRefocus,
+}: {
+  readonly state: DesktopShellState;
+  readonly report: IntentReporter;
+  readonly onClose: () => void;
+  readonly onRefocus: () => void;
+}): ReactElement => {
+  const [query, setQuery] = useState("");
+  const items = useMemo(() => projectComposerDiscoveryItems(state, query), [query, state]);
+  const groups = [
+    { kind: "attach-active-file", label: "Current context" },
+    { kind: "skill", label: "Skills" },
+    { kind: "path", label: "Files and folders" },
+    { kind: "command", label: "Commands" },
+  ] as const;
+  const select = (item: ComposerDiscoveryItem): void => {
+    if (item.kind === "command") dispatch(report, item.command.intentName, item.command.payload);
+    if (item.kind === "attach-active-file") dispatch(report, "DesktopEditorFileAttached");
+    if (item.kind === "path") dispatch(report, "WorkspaceBrowserEntrySelected", item.pathRef);
+    if (item.kind === "skill") {
+      const current = state.input.startsWith("/skill ") ? state.input.replace(/^\/skill\s+\S+\s*/u, "") : state.input;
+      dispatch(report, "DesktopInputChanged", `${item.invocation}${current}`);
+    }
+    onClose();
+    queueMicrotask(onRefocus);
+  };
+  return (
+    <div className="oa-react-composer-discovery" role="dialog" aria-label="Composer commands and context"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        onClose();
+        queueMicrotask(onRefocus);
+      }}>
+      <Command shouldFilter={false} label="Composer commands and context">
+        <CommandInput
+          autoFocus
+          value={query}
+          onValueChange={setQuery}
+          placeholder="Search commands, files, folders, and skills…"
+        />
+        <CommandList>
+          <CommandEmpty>
+            {state.workspaceBrowser.grantRef === null
+              ? "No match. Choose a workspace to discover files and folders."
+              : "No matching command or context."}
+          </CommandEmpty>
+          {groups.map(group => {
+            const grouped = items.filter(item => item.kind === group.kind);
+            if (grouped.length === 0) return null;
+            return <CommandGroup key={group.kind} heading={group.label}>
+              {grouped.map(item => {
+                const Icon = item.kind === "skill" ? Bot : item.kind === "path"
+                  ? item.pathKind === "directory" ? FolderOpen : File
+                  : item.kind === "attach-active-file" ? File : commandIcon(item.command);
+                return <CommandItem key={item.id} value={item.id} onSelect={() => select(item)}>
+                  <Icon aria-hidden="true" />
+                  <span className="oa-react-composer-discovery-label">{item.label}</span>
+                  <span className="oa-react-composer-discovery-description">{item.description}</span>
+                </CommandItem>;
+              })}
+            </CommandGroup>;
+          })}
+        </CommandList>
+        <CommandFooter>
+          <span>Loaded workspace context only</span>
+          <button type="button" onClick={onClose}>Close</button>
+        </CommandFooter>
+      </Command>
+    </div>
+  );
+};
+
 export const ReactComposer = ({
   state,
   report,
@@ -306,6 +451,8 @@ export const ReactComposer = ({
 }): ReactElement => {
   const editorRef = useRef<LexicalComposerEditorHandle>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [secondaryControlsOpen, setSecondaryControlsOpen] = useState(false);
   const lastSubmitRef = useRef<Readonly<{ value: string; at: number }> | null>(null);
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
   const lane = state.harnessLanes[state.selectedHarness];
@@ -333,9 +480,10 @@ export const ReactComposer = ({
     : capabilities?.queueFollowup ?? true;
   const canTogglePendingMode = alternatePendingModeSupported && alternatePendingAction.enabled;
   const hasText = state.input.trim() !== "";
+  const hasBoundedContext = state.composerImages.length > 0 || state.composerReviewContext !== null || state.composerFileContext !== null;
   const canSubmit = state.pending || fullAutoRunning
     ? state.activeThreadId !== null && hasText && pendingAction.enabled
-    : lane.available && capabilityAdmitted && (hasText || state.composerImages.length > 0);
+    : lane.available && capabilityAdmitted && (hasText || hasBoundedContext);
   const atImageLimit = !canAttachMoreImages(state.composerImages);
   const imageSupported = capabilities?.images ?? true;
   const attachmentDisabled = state.pending || fullAutoRunning || atImageLimit || !imageSupported;
@@ -349,6 +497,10 @@ export const ReactComposer = ({
   useEffect(() => {
     if (attachmentDisabled) setDragActive(false);
   }, [attachmentDisabled]);
+  useEffect(() => {
+    setDiscoveryOpen(false);
+    setSecondaryControlsOpen(false);
+  }, [sessionKey]);
   const submitIntentFor = (pendingMode: "steer" | "queue") => state.pending || fullAutoRunning
     ? pendingMode === "steer"
       ? "DesktopSteerCurrentRequested"
@@ -362,7 +514,9 @@ export const ReactComposer = ({
   const submit = (editorValue = state.input, pendingMode = activeSubmitMode): void => {
     const nextHasText = editorValue.trim() !== "";
     const submitIntent = submitIntentFor(pendingMode);
-    const submissionKey = nextHasText ? editorValue : `images:${state.composerImages.length}`;
+    const submissionKey = nextHasText
+      ? editorValue
+      : `context:${state.composerImages.length}:${state.composerReviewContext?.path ?? ""}:${state.composerFileContext?.path ?? ""}`;
     const now = Date.now();
     if (lastSubmitRef.current?.value === submissionKey && now - lastSubmitRef.current.at < 350)
       return;
@@ -429,6 +583,38 @@ export const ReactComposer = ({
           </ol>
         </section>
       )}
+      {state.composerReviewContext === null && state.composerFileContext === null ? null : (
+        <div className="oa-react-composer-contexts" role="list" aria-label="Attached message context">
+          {state.composerReviewContext === null ? null : (
+            <div className="oa-react-composer-context" role="listitem" data-context-kind="review">
+              <FileDiff aria-hidden="true" />
+              <span>
+                <strong>{state.composerReviewContext.path}</strong>
+                <small>{state.composerReviewContext.source} · {state.composerReviewContext.hunkCount} {state.composerReviewContext.hunkCount === 1 ? "hunk" : "hunks"}</small>
+              </span>
+              <Button type="button" variant="ghost" size="icon-sm"
+                aria-label={`Remove review context for ${state.composerReviewContext.path}`}
+                onClick={() => dispatch(report, "DesktopReviewContextRemoved")}>
+                <X aria-hidden="true" />
+              </Button>
+            </div>
+          )}
+          {state.composerFileContext === null ? null : (
+            <div className="oa-react-composer-context" role="listitem" data-context-kind="file">
+              <File aria-hidden="true" />
+              <span>
+                <strong>@{state.composerFileContext.path}</strong>
+                <small>{state.composerFileContext.languageMode} · {state.composerFileContext.dirty ? "unsaved draft" : "workspace revision"}</small>
+              </span>
+              <Button type="button" variant="ghost" size="icon-sm"
+                aria-label={`Remove mentioned file ${state.composerFileContext.path}`}
+                onClick={() => dispatch(report, "DesktopFileContextRemoved")}>
+                <X aria-hidden="true" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
       {state.composerImages.length === 0 ? null : (
         <div className="oa-react-composer-images" role="list" aria-label="Attached images">
           {state.composerImages.map((attachment) => (
@@ -459,6 +645,12 @@ export const ReactComposer = ({
         </p>
       )}
       {dragActive ? <span className="oa-react-composer-drop-target" role="status">Drop images to attach</span> : null}
+      {discoveryOpen ? <ComposerDiscoveryMenu
+        state={state}
+        report={report}
+        onClose={() => setDiscoveryOpen(false)}
+        onRefocus={() => editorRef.current?.focusAtEnd()}
+      /> : null}
       <DesktopComposerInput>
         <LexicalComposerEditor
           editorRef={editorRef}
@@ -476,6 +668,16 @@ export const ReactComposer = ({
           onSubmit={submit}
         />
         <DesktopComposerBar>
+        <DesktopComposerButton
+          data-en-key="shell-composer-discovery"
+          kind="action"
+          aria-expanded={discoveryOpen}
+          onClick={() => setDiscoveryOpen(open => !open)}
+          aria-label="Add context or command"
+          title="Add context or command"
+        >
+          <CommandIcon data-icon-name="Command" aria-hidden="true" />
+        </DesktopComposerButton>
         {imageSupported ? <DesktopComposerButton
           data-en-key="shell-attach-image"
           kind="action"
@@ -506,6 +708,14 @@ export const ReactComposer = ({
         >
           {selectedModel}
         </DesktopComposerButton>
+        <div className="oa-react-composer-secondary-controls" data-open={secondaryControlsOpen ? "true" : "false"}>
+          <button type="button" className="oa-react-composer-secondary-trigger"
+            aria-expanded={secondaryControlsOpen}
+            aria-label="More composer controls" title="More composer controls"
+            onClick={() => setSecondaryControlsOpen(open => !open)}>
+            <Ellipsis aria-hidden="true" />
+          </button>
+          <div className="oa-react-composer-secondary-controls-content">
         {capabilities !== null && capabilities.reasoningEfforts.length > 0 ? <DesktopComposerButton
           data-en-key="shell-reasoning-select"
           kind="action"
@@ -543,6 +753,8 @@ export const ReactComposer = ({
           <Zap data-icon-name={composerIconNames.fullAuto} aria-hidden="true" />
           Full Auto
         </DesktopComposerButton> : null}
+          </div>
+        </div>
         {state.pending && ((capabilities?.steerTurn ?? true) || (capabilities?.queueFollowup ?? true)) ? (
           <Button
             className="oa-react-submit-mode-toggle"
@@ -671,10 +883,6 @@ export const DecisionSurface = ({
 }): ReactElement | null => {
   const note = activeQuestionNote(state);
   const card = note?.question;
-  const [dismissedRef, setDismissedRef] = useState<string | null>(null);
-  useEffect(() => {
-    if (card !== undefined && dismissedRef !== card.questionRef) setDismissedRef(null);
-  }, [card?.questionRef]);
   if (note === null || card === undefined) return null;
   const interaction: QuestionCardInteraction | undefined = state.questionCards[card.questionRef];
   const kind = questionKind(note);
@@ -687,20 +895,15 @@ export const DecisionSurface = ({
   const anyMulti = card.questions.some((question) => question.multiSelect);
   const ready = interaction !== undefined && questionAnswersReady(card, interaction);
   return (
-    <Dialog
-      open={dismissedRef !== card.questionRef}
-      onOpenChange={(open) => {
-        if (!open) setDismissedRef(card.questionRef);
-      }}
+    <section
+      className="oa-react-decision"
+      aria-labelledby={`decision-title-${card.questionRef}`}
+      aria-describedby={`decision-description-${card.questionRef}`}
+      data-decision-kind={kind}
     >
-      <DialogContent
-        className="oa-react-decision"
-        overlayClassName="oa-react-decision-overlay"
-        aria-describedby={`decision-description-${card.questionRef}`}
-      >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription id={`decision-description-${card.questionRef}`}>
+        <header className="oa-react-decision-header">
+          <h2 id={`decision-title-${card.questionRef}`}>{title}</h2>
+          <p id={`decision-description-${card.questionRef}`}>
             {unavailable
               ? "This request is read-only because the answer bridge is unavailable."
               : answered
@@ -709,9 +912,11 @@ export const DecisionSurface = ({
                   ? "Submitting this decision…"
                   : kind === "provider_question"
                     ? "Waiting for your answer. Choose an option or write another answer below."
-                    : "Review the request below. Closing this window leaves it pending."}
-          </DialogDescription>
-        </DialogHeader>
+                    : kind === "plan_review"
+                      ? "Plan ready. Accept it, request changes, or ask the agent to replan."
+                      : "Review the request below. It remains pending until you decide."}
+          </p>
+        </header>
         {isApprovalCardKind(kind) ? (() => {
           // Both approval kinds emit exactly one question in practice (the
           // command/patch/plan under review); the fixed action vocabulary
@@ -836,7 +1041,7 @@ export const DecisionSurface = ({
           </p>
         ) : null}
         {kind === "provider_question" && !answered ? (
-          <DialogFooter>
+          <div className="oa-react-decision-footer">
             <Button
               type="button"
               disabled={unavailable || submitting || !ready}
@@ -844,9 +1049,8 @@ export const DecisionSurface = ({
             >
               {anyMulti ? "Submit choices" : "Submit answer"}
             </Button>
-          </DialogFooter>
+          </div>
         ) : null}
-      </DialogContent>
-    </Dialog>
+    </section>
   );
 };
