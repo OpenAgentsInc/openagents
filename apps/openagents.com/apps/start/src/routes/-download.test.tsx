@@ -42,7 +42,6 @@ const V1_VERSION = '0.1.0-rc.13'
 const minimumOs: Record<DesktopDownloadTarget, string> = {
   'darwin-arm64': '13.5',
   'darwin-x64': '13.5',
-  'win32-arm64': '10.0.26100',
   'win32-x64': '10.0.19045',
   'linux-arm64': 'glibc 2.35',
   'linux-x64': 'glibc 2.35',
@@ -51,7 +50,6 @@ const minimumOs: Record<DesktopDownloadTarget, string> = {
 const formatsByTarget: Record<DesktopDownloadTarget, readonly DesktopDownloadFormat[]> = {
   'darwin-arm64': ['dmg', 'zip'],
   'darwin-x64': ['dmg', 'zip'],
-  'win32-arm64': ['nsis'],
   'win32-x64': ['nsis'],
   'linux-arm64': ['appimage', 'deb', 'rpm'],
   'linux-x64': ['appimage', 'deb', 'rpm'],
@@ -60,7 +58,6 @@ const formatsByTarget: Record<DesktopDownloadTarget, readonly DesktopDownloadFor
 const preferredFormat: Record<DesktopDownloadTarget, DesktopDownloadFormat> = {
   'darwin-arm64': 'dmg',
   'darwin-x64': 'dmg',
-  'win32-arm64': 'nsis',
   'win32-x64': 'nsis',
   'linux-arm64': 'appimage',
   'linux-x64': 'appimage',
@@ -238,8 +235,8 @@ describe('/download page — resolver-driven states', () => {
         expect(html).not.toContain(escapedHref(target, format))
       }
     }
-    expect(html.match(/Not yet available/g)).toHaveLength(5)
-    expect(html.match(/Coming soon/g)).toHaveLength(5)
+    expect(html.match(/Not yet available/g)).toHaveLength(4)
+    expect(html.match(/Coming soon/g)).toHaveLength(4)
     expect(html).toContain('The Intel build is not yet available.')
     expect(html).toContain('Windows builds are not yet available.')
     expect(html).toContain('Linux builds are not yet available.')
@@ -411,7 +408,7 @@ describe('/download helpers', () => {
     expect(formatByteSize(303_959_067)).toBe('304 MB')
     expect(formatByteSize(1_500_000_000)).toBe('1.5 GB')
     expect(formatByteSize(950_000)).toBe('1 MB')
-    expect(targetLabel('win32-arm64')).toBe('Windows · ARM64')
+    expect(targetLabel('win32-x64')).toBe('Windows · x64')
     expect(minimumOsLabel('win32-x64', '10.0.19045')).toBe('Windows 10.0.19045 or later')
     expect(minimumOsLabel('linux-x64', 'glibc 2.35')).toBe('Linux with glibc 2.35 or later')
   })
@@ -484,7 +481,6 @@ describe('/download helpers', () => {
     expect(desktopDownloadTargets).toEqual([
       'darwin-arm64',
       'darwin-x64',
-      'win32-arm64',
       'win32-x64',
       'linux-arm64',
       'linux-x64',

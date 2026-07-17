@@ -86,7 +86,6 @@ export const architectureLabel = (target: DesktopDownloadTarget): string => {
       return 'Apple Silicon'
     case 'darwin-x64':
       return 'Intel'
-    case 'win32-arm64':
     case 'linux-arm64':
       return 'ARM64'
     case 'win32-x64':
@@ -121,7 +120,7 @@ export const minimumOsLabel = (
 }
 
 // ---------------------------------------------------------------------------
-// Platform matrix structure — the six release-set targets, always rendered,
+// Platform matrix structure — the five release-set targets, always rendered,
 // with availability admitted exclusively by the resolver catalog.
 // ---------------------------------------------------------------------------
 
@@ -133,7 +132,7 @@ type PlatformSection = Readonly<{
 
 export const PLATFORM_SECTIONS: readonly PlatformSection[] = [
   { platform: 'darwin', mark: 'M', targets: ['darwin-arm64', 'darwin-x64'] },
-  { platform: 'win32', mark: 'W', targets: ['win32-x64', 'win32-arm64'] },
+  { platform: 'win32', mark: 'W', targets: ['win32-x64'] },
   { platform: 'linux', mark: 'L', targets: ['linux-x64', 'linux-arm64'] },
 ]
 

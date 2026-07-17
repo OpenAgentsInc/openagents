@@ -13,7 +13,7 @@ the current worker inventory can complete or promote a release.
 ## Authority and invariants
 
 The coordinator consumes one frozen release authority containing the source
-revision, version, channel, canonical six-target set, staging-ledger ref,
+revision, version, channel, canonical five-target set, staging-ledger ref,
 toolchain profile, signing policy, and reviewed release-notes digest. The
 authority is hashed once. Every dispatch, lease, worker receipt, candidate
 handoff, candidate-feed acceptance, and promotion is bound to that digest.
@@ -22,14 +22,13 @@ The normative target profile remains:
 
 - `darwin-arm64`: DMG and ZIP
 - `darwin-x64`: DMG and ZIP
-- `win32-arm64`: NSIS
 - `win32-x64`: NSIS
 - `linux-arm64`: AppImage, DEB, and RPM
 - `linux-x64`: AppImage, DEB, and RPM
 
-An owner deferral does not silently make this schema partial. An unavailable
-Windows ARM64 native acceptance host, unavailable Intel Mac evidence, missing
-signing operation, duplicate worker, or mismatched toolchain profile produces a
+Windows is x64-only in the current ProductSpec; `win32-arm64` is not a
+ReleaseSet target and cannot be promoted. Unavailable Intel Mac evidence,
+missing signing operation, duplicate worker, or mismatched toolchain profile produces a
 typed `worker_inventory_unavailable` refusal before worker bring-up.
 
 ## Execution boundary
@@ -71,7 +70,7 @@ is a compare-and-swap against the prior revision. A one-minute-old lock is
 treated as a crash remnant because the guarded operation contains no network
 work and is synchronous; a fresh lock always refuses a competing writer.
 
-The six dispatches execute concurrently. State transitions are serialized
+The five dispatches execute concurrently. State transitions are serialized
 through the durable CAS store. A failed attempt is cancelled and may retry only
 under a new monotonic lease. Restarted coordinators revalidate persisted worker
 signatures and lease bindings before reusing completed cells, so completed
@@ -83,7 +82,7 @@ Promotion does not require workers to remain online.
 
 ## Candidate and promotion boundary
 
-Candidate publication is impossible before exact six-target/twelve-artifact
+Candidate publication is impossible before exact five-target/eleven-artifact
 convergence and native/signing prerequisite gates. Immediately before handoff,
 the coordinator re-HEADs every immutable object and compares its length and
 SHA-256 with the signed worker receipt.
@@ -103,7 +102,6 @@ themselves. The local Apple Silicon Mac is a Darwin arm64 candidate worker.
 
 The following prevent an honest production matrix today:
 
-- no owned native Windows ARM64 acceptance host;
 - no accepted native Intel-mac receipt path (the intended Intel host is not
   currently accessible; Rosetta is not a silent substitute);
 - no completed Windows Authenticode operation exposed to its worker;

@@ -634,10 +634,15 @@ export const createDesktopDownloadResolver = (input?: Readonly<{
   ): DesktopDownloadResolution => {
     const header = releaseHeader(snapshot)
     const options = catalog(snapshot)
+    const detectedTarget =
+      detection.platform !== null && detection.architecture !== null
+        ? `${detection.platform}-${detection.architecture}`
+        : null
     const target: ReleaseTargetKey | null =
       overrides.target ??
-      (detection.platform !== null && detection.architecture !== null
-        ? (`${detection.platform}-${detection.architecture}` as ReleaseTargetKey)
+      (detectedTarget !== null &&
+      (releaseTargetKeys as readonly string[]).includes(detectedTarget)
+        ? (detectedTarget as ReleaseTargetKey)
         : null)
     const effectiveDetection: DesktopDownloadDetection =
       overrides.target !== undefined
@@ -652,7 +657,7 @@ export const createDesktopDownloadResolver = (input?: Readonly<{
       return {
         ...header,
         availability: 'choose_manually',
-        reason: 'unknown_client',
+        reason: detectedTarget === null ? 'unknown_client' : 'target_unavailable',
         detection: effectiveDetection,
         options,
       }

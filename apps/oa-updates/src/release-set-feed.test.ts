@@ -88,7 +88,7 @@ describe("ReleaseSet v2 candidate admission", () => {
     }))
     expect(feed.metrics()).toMatchObject({
       "candidate_admitted.rc": 1,
-      "target_count.rc": 6,
+      "target_count.rc": 5,
     })
   })
 

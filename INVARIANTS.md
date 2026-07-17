@@ -560,7 +560,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - (DIST-01, #8914) Once DIST-13 lands, the only documented production Desktop
   release entrypoint is root `pnpm run release` mapped exactly to
   `node --import tsx scripts/release.ts`. It owns freeze, target-capable owned
-  worker bring-up, six-target build/test/sign, candidate smoke, changelog
+  worker bring-up, five-target build/test/sign, candidate smoke, changelog
   generation, atomic promotion, `/download`/homepage/`/changelog` verification,
   and the one final public-safe receipt. Dry-run, durable resume, partial-matrix
   refusal, idempotence, and pre-promotion failure tests are the intended

@@ -5,6 +5,24 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Windows releases are x64-only (#8913)
+
+- issues: #8913, #8917, #8920, #8924, #8926
+- commits: integration commit (this entry)
+- contracts-specs: apps/openagents-desktop/src/release-set-contract.ts, docs/deploy/openagents-desktop-cross-platform-release.md ProductSpec 1.1.0
+- invariants: the promotable Desktop matrix is five targets and eleven artifacts; Windows ARM64 is removed from ReleaseSet, promotion, and download availability
+- evidence: scripts/desktop-release-coordinator.test.ts, apps/openagents-desktop/tests/release-set-contract.test.ts, apps/openagents.com/apps/start/src/desktop-download-resolver.server.test.ts
+- lane: codex-root-dist-x64-policy-20260717
+
+OpenAgents Desktop for Windows will ship on x64 only. Windows-on-Arm devices
+will no longer see an ARM64 installer choice, avoiding a support promise that
+cannot yet be built and tested on owned native hardware.
+
+The signed ReleaseSet, release coordinator, owner command, update feed tests,
+and `/download` catalog now converge exactly five targets and eleven artifacts.
+The dormant Windows ARM64 staging descriptor remains non-promotable scaffolding
+for a future reviewed policy revision.
+
 ## Full Auto mode for the Desktop composer (#8852)
 
 - issues: #8852, #8853, #8873 (hardening epic: #8874–#8886)

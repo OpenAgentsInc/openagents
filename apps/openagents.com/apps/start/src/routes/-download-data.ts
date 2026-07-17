@@ -35,7 +35,6 @@ export const DESKTOP_DOWNLOAD_RESOLUTION_SCHEMA =
 export const desktopDownloadTargets = [
   'darwin-arm64',
   'darwin-x64',
-  'win32-arm64',
   'win32-x64',
   'linux-arm64',
   'linux-x64',

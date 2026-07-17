@@ -29,7 +29,6 @@ export const WORKER_RECEIPT_SCHEMA = "openagents.desktop.worker_receipt.v1" as c
 export const formatsByTarget: Readonly<Record<ReleaseTargetKey, readonly string[]>> = {
   "darwin-arm64": ["dmg", "zip"],
   "darwin-x64": ["dmg", "zip"],
-  "win32-arm64": ["nsis"],
   "win32-x64": ["nsis"],
   "linux-arm64": ["appimage", "deb", "rpm"],
   "linux-x64": ["appimage", "deb", "rpm"],
@@ -519,8 +518,8 @@ const inventoryForPlan = (
         row.target,
       );
     }
-    // A cross builder never substitutes for the required native acceptance host.
-    if (row.buildMode === "cross" && row.nativeAcceptanceHostRef.startsWith("unavailable:")) {
+    // A build worker never substitutes for the required native acceptance host.
+    if (row.nativeAcceptanceHostRef.startsWith("unavailable:")) {
       throw new ReleaseCoordinatorError(
         "worker_inventory_unavailable",
         `native acceptance host unavailable for ${row.target}`,
@@ -803,7 +802,7 @@ export const createOwnedReleaseCoordinator = (
       );
       return {
         receiptLines: [
-          redactedLine(`coordinator: exact 6-target inventory bound to plan sha256:${digest}`),
+          redactedLine(`coordinator: exact 5-target inventory bound to plan sha256:${digest}`),
         ],
       };
     },
@@ -850,7 +849,7 @@ export const createOwnedReleaseCoordinator = (
       return {
         receiptLines: [
           redactedLine(
-            `coordinator: ${releaseTargetKeys.length}/6 workers healthy; idle-stop is mandatory on exit`,
+            `coordinator: ${releaseTargetKeys.length}/5 workers healthy; idle-stop is mandatory on exit`,
           ),
         ],
       };
@@ -997,7 +996,7 @@ export const createOwnedReleaseCoordinator = (
       await save({ ...durableState, phase: "converged", matrixDigest });
       return {
         receiptLines: [
-          redactedLine(`coordinator: 6 targets / 12 artifacts converged sha256:${matrixDigest}`),
+          redactedLine(`coordinator: 5 targets / 11 artifacts converged sha256:${matrixDigest}`),
         ],
       };
     },

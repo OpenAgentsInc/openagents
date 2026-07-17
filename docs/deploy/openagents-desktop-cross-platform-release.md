@@ -1,7 +1,7 @@
 # OpenAgents Desktop cross-platform release ProductSpec
 
-- ProductSpec version: 1.0.0
-- Date: 2026-07-16
+- ProductSpec version: 1.1.0
+- Date: 2026-07-17
 - Status: normative target contract; support remains evidence-gated
 - Owner: OpenAgents Desktop release authority
 - Parent program: [#8913](https://github.com/OpenAgentsInc/openagents/issues/8913)
@@ -26,8 +26,8 @@ There are three distinct states:
 
 As of this version, the current repository has a hardened macOS arm64
 DMG/ZIP and signed-manifest v1 lane. It does not yet have a complete
-ReleaseSet v2 or the six-target evidence required here. Therefore **none of
-the six target keys is admitted as cross-platform supported by this spec**.
+ReleaseSet v2 or the five-target evidence required here. Therefore **none of
+the five target keys is admitted as cross-platform supported by this spec**.
 The existing macOS arm64 lane remains the only release-capable compatibility
 lane while the child program lands; this statement is current evidence, not a
 new stable-support claim.
@@ -77,10 +77,15 @@ The ReleaseSet target key is a closed enum:
 
 - `darwin-arm64`
 - `darwin-x64`
-- `win32-arm64`
 - `win32-x64`
 - `linux-arm64`
 - `linux-x64`
+
+Windows is x64-only. `win32-arm64` is outside the current ReleaseSet,
+promotion, `/download`, and support contract. The dormant target-staging
+descriptor and runtime package aliases are non-promotable compatibility
+scaffolding only; adding Windows ARM64 later requires a reviewed ProductSpec
+and ReleaseSet policy revision plus native Windows-on-Arm acceptance evidence.
 
 Minimum supported environments are:
 
@@ -89,7 +94,6 @@ Minimum supported environments are:
 | `darwin-arm64` | macOS 13.5 Ventura on Apple Silicon                                              | Apple Silicon host at the minimum version and current macOS          |
 | `darwin-x64`   | macOS 13.5 Ventura on an Intel Mac                                               | Intel host at the minimum version and current supported macOS        |
 | `win32-x64`    | Windows 10 22H2 x64                                                              | Clean Windows 10 22H2 and current Windows 11 x64                     |
-| `win32-arm64`  | Windows 11 24H2 arm64                                                            | Native Windows on Arm hardware; cross-build success is insufficient  |
 | `linux-x64`    | glibc 2.35, Linux kernel 5.15, X11 or Wayland; Ubuntu 22.04 LTS is the reference | Native x64 reference host plus one current RPM-family host for RPM   |
 | `linux-arm64`  | glibc 2.35, Linux kernel 5.15, X11 or Wayland; Ubuntu 22.04 LTS is the reference | Native arm64 reference host plus one current RPM-family host for RPM |
 
@@ -196,7 +200,7 @@ channel pointer or authorize an older remote manifest.
 
 ReleaseSet v2 is the single selection authority defined by [#8915](https://github.com/OpenAgentsInc/openagents/issues/8915).
 It MUST be a bounded, canonical, schema-validated document signed by the
-pinned Ed25519 release key. It contains exactly the six target keys and the
+pinned Ed25519 release key. It contains exactly the five target keys and the
 required formats when a complete cross-platform set is promoted. It also
 contains the bounded, reviewed human release-notes text and digest-bound refs
 for the full human and agent changelog artifacts defined in §15.1. Changelog
@@ -275,7 +279,6 @@ hosts exist today:
 | `desktop-darwin-arm64` | Apple Silicon macOS worker                             | Apple Silicon minimum/current OS           | not admitted by this spec |
 | `desktop-darwin-x64`   | Intel macOS worker                                     | Intel minimum/current OS                   | not admitted              |
 | `desktop-win32-x64`    | x64 Windows worker                                     | Windows 10 22H2 and current Windows 11 x64 | not admitted              |
-| `desktop-win32-arm64`  | native arm64 or reviewed MSVC arm64 cross-build worker | native Windows 11 24H2 arm64               | not admitted              |
 | `desktop-linux-x64`    | native x64 glibc worker                                | reference DEB- and RPM-family x64 hosts    | not admitted              |
 | `desktop-linux-arm64`  | native arm64 glibc worker                              | reference DEB- and RPM-family arm64 hosts  | not admitted              |
 
@@ -286,7 +289,7 @@ class, test-host coverage, attestation key, last-known-green receipt, and
 quarantine state. No raw address or credential enters public receipts.
 
 GitHub Actions and GitHub-hosted CI are prohibited. Owned orchestration fixes
-one source revision/version/channel, runs common gates once, fans out six
+one source revision/version/channel, runs common gates once, fans out five
 target builds, validates native receipts, converges all cells, requests an
 isolated signature, serves a candidate, and performs one atomic promotion.
 Signing workers never accept arbitrary source or unsigned receipt sets.
@@ -308,7 +311,7 @@ durable idempotent transaction). Any required human gate is named before the
 command starts effects and never becomes a silent prompt or stall.
 
 The command freezes inputs, checks credential presence without printing
-secrets, brings up/verifies the GCE/Tailnet inventory, runs all six builds and
+secrets, brings up/verifies the GCE/Tailnet inventory, runs all five builds and
 native gates, generates both changelogs, signs and smokes the candidate,
 atomically promotes, verifies `/download`, homepage CTAs, `/changelog`, and
 mobile preservation, then writes exactly one final public-safe receipt named
@@ -502,7 +505,7 @@ The following invariants never weaken during this program:
 | Strict monotonic update; no remote downgrade | model/property tests and publisher/current-feed tests                 | candidate convergence + promotion refusal/success     |
 | Fail-closed production signing               | credential-absence and unsigned-marker tests                          | platform signing receipts                             |
 | macOS app and outer-DMG trust                | Gatekeeper/notary/staple contract tests and native scripts            | downloaded mounted-artifact receipt per architecture  |
-| Complete matrix before promotion             | coordinator model and missing/duplicate/mismatch tests                | six-target convergence receipt                        |
+| Complete matrix before promotion             | coordinator model and missing/duplicate/mismatch tests                | five-target convergence receipt                       |
 | Native target proof before support           | target/format acceptance registry tests                               | native clean-install/update/rollback boundary receipt |
 | Mobile feed preservation                     | `oa-updates` route/asset regression and candidate probe               | pre/post-promotion mobile manifest receipt            |
 | No GitHub Actions/hosted CI authority        | repository authority guard                                            | owned coordinator/runner attestations                 |

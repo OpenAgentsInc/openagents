@@ -113,7 +113,7 @@ const makeFixture = (
     workerRef: `worker:${target}`,
     target,
     hostClass: `owned-${target}`,
-    buildMode: target === "win32-arm64" ? "cross" : "native",
+    buildMode: "native",
     nativeAcceptanceHostRef:
       behavior.unavailableTarget === target ? "unavailable:native-host" : `acceptance:${target}`,
     toolchainProfileRef: TOOLCHAIN,
@@ -342,7 +342,7 @@ const converge = async (fixture: Fixture, releasePlan = plan()) => {
 };
 
 describe("owned Desktop release coordinator", () => {
-  test("converges exactly six targets/twelve artifacts and atomically promotes only accepted candidate", async () => {
+  test("converges exactly five targets/eleven artifacts and atomically promotes only accepted candidate", async () => {
     const fixture = makeFixture();
     const { port, releasePlan } = await converge(fixture);
     await port.publishCandidate(releasePlan);
@@ -358,14 +358,14 @@ describe("owned Desktop release coordinator", () => {
     expect(Object.keys(state!.targets)).toEqual([...releaseTargetKeys]);
     expect(
       Object.values(state!.targets).flatMap((target) => target?.receipt?.payload.artifacts ?? []),
-    ).toHaveLength(12);
-    expect(fixture.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(12);
+    ).toHaveLength(11);
+    expect(fixture.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(10);
   });
 
-  test("fails closed when the owner-deferred native Windows ARM64 host is unavailable", () => {
-    const fixture = makeFixture({ unavailableTarget: "win32-arm64" });
+  test("fails closed when a required native Windows x64 host is unavailable", () => {
+    const fixture = makeFixture({ unavailableTarget: "win32-x64" });
     expect(() => coordinator(fixture)).toThrowError(
-      expect.objectContaining({ code: "worker_inventory_unavailable", target: "win32-arm64" }),
+      expect.objectContaining({ code: "worker_inventory_unavailable", target: "win32-x64" }),
     );
   });
 
@@ -393,7 +393,7 @@ describe("owned Desktop release coordinator", () => {
       code: "worker_receipt_invalid",
       target: "darwin-x64",
     });
-    expect(fixture.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(6);
+    expect(fixture.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(5);
   });
 
   test.each([

@@ -100,8 +100,16 @@ const validReleaseSet: ReleaseSet = {
 const clone = (value: unknown): any => structuredClone(value);
 
 describe("ReleaseSet v2 bounded schema and canonicalization", () => {
-  test("shares the exact target and format enums with the DIST-03 staging contract", () => {
-    expect(releaseTargetKeys).toBe(desktopTargetKeys);
+  test("uses the five-target release profile while staging retains future target descriptors", () => {
+    expect(releaseTargetKeys).toEqual([
+      "darwin-arm64",
+      "darwin-x64",
+      "win32-x64",
+      "linux-arm64",
+      "linux-x64",
+    ]);
+    expect(desktopTargetKeys).toContain("win32-arm64");
+    expect(releaseTargetKeys).not.toContain("win32-arm64");
     expect([...new Set(Object.values(requiredFormatsByTarget).flat())]).toEqual(
       desktopArtifactFormats,
     );
@@ -134,7 +142,7 @@ describe("ReleaseSet v2 bounded schema and canonicalization", () => {
     expect(decodeReleaseSet(missingTarget)).toMatchObject({ ok: false });
 
     const duplicateTarget = clone(validReleaseSet);
-    duplicateTarget.targets[5] = duplicateTarget.targets[4]!;
+    duplicateTarget.targets[4] = duplicateTarget.targets[3]!;
     expect(decodeReleaseSet(duplicateTarget)).toMatchObject({
       ok: false,
       detail: "target_set_incomplete_or_not_canonical",
@@ -430,7 +438,7 @@ describe("ReleaseSet deterministic selection and bounded v1 migration", () => {
     ) as unknown;
     expect(decodeReleaseSet(golden)).toMatchObject({ ok: true });
     expect(createHash("sha256").update(canonicalizeReleaseSet(golden)).digest("hex")).toBe(
-      "cca8a70d58187743b626ef3413b8f5ba166bc53a1b321997969a4dfc17eb1727",
+      "80711cc499eb76df8a60d53a87028679db21b1354edf85cf6e058faa4ebce42d",
     );
   });
 });

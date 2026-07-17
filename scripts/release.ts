@@ -36,14 +36,13 @@
 // The #8917 coordinator is expected to provide a `kind: "real"` implementation
 // of exactly these methods (align or object on the issue):
 //
-//   - checkWorkerInventory(plan): verify the six-target owned worker registry
+//   - checkWorkerInventory(plan): verify the five-target owned worker registry
 //     is healthy and admits the plan's targets (GCE in `openagentsgemini` for
 //     linux-x64/linux-arm64/win32-x64, owned Tailnet Macs for darwin-arm64/
-//     darwin-x64, the reviewed DIST-04 cross-build + native acceptance host
-//     for win32-arm64). Preflight-time; no builds started.
+//     darwin-x64). Windows is x64-only. Preflight-time; no builds started.
 //   - bringUpWorkers(plan): start/verify the owned workers for the plan.
 //   - fanOutTargets(plan): build, stage (DIST-03 stage-target descriptors),
-//     sign, and verify all six targets/all formats; converge evidence.
+//     sign, and verify all five targets/all formats; converge evidence.
 //   - runReleaseGates(plan): per-target release gates plus the automatable
 //     platform install/update proofs; named native-host steps surface as
 //     explicit receipt lines.
@@ -108,7 +107,6 @@ export const RELEASE_VERSION_PATTERN =
 export const releaseTargetKeys = [
   "darwin-arm64",
   "darwin-x64",
-  "win32-arm64",
   "win32-x64",
   "linux-arm64",
   "linux-x64",
@@ -182,14 +180,14 @@ export const RELEASE_STEP_GRAPH: readonly ReleaseStepDefinition[] = [
   },
   {
     id: "worker_bring_up",
-    title: "Bring up/verify the owned six-target workers (GCE + Tailnet)",
+    title: "Bring up/verify the owned five-target workers (GCE + Tailnet)",
     kind: "port",
     ports: ["coordinator"],
     dependsOn: ["preflight"],
   },
   {
     id: "fan_out",
-    title: "Fan out: build/stage/sign/verify all six targets; converge evidence",
+    title: "Fan out: build/stage/sign/verify all five targets; converge evidence",
     kind: "port",
     ports: ["coordinator"],
     dependsOn: ["worker_bring_up"],
@@ -419,7 +417,7 @@ export const createFixtureCoordinatorPort = (
     checkWorkerInventory: (plan) =>
       fixtureCall(calls, failState, options, "checkWorkerInventory", [
         `fixture: worker inventory healthy for ${plan.targets.length} targets`,
-        "fixture: darwin-arm64/darwin-x64 = owned Tailnet Macs; linux-x64/linux-arm64/win32-x64 = GCE openagentsgemini; win32-arm64 = DIST-04 cross-build + native host",
+        "fixture: darwin-arm64/darwin-x64 = owned Tailnet Macs; linux-x64/linux-arm64/win32-x64 = GCE openagentsgemini; Windows is x64-only",
       ]),
     bringUpWorkers: (plan) =>
       fixtureCall(calls, failState, options, "bringUpWorkers", [

@@ -41,16 +41,15 @@ describe("Desktop cross-platform release documentation contract", () => {
   });
 
   test("freezes the complete identity, target, package, trust, and support boundary", () => {
-    expect(spec).toContain("ProductSpec version: 1.0.0");
-    expect(spec).toContain("Date: 2026-07-16");
+    expect(spec).toContain("ProductSpec version: 1.1.0");
+    expect(spec).toContain("Date: 2026-07-17");
     expect(normalized(spec)).toContain(
-      "none of the six target keys is admitted as cross-platform supported",
+      "none of the five target keys is admitted as cross-platform supported",
     );
 
     for (const target of [
       "darwin-arm64",
       "darwin-x64",
-      "win32-arm64",
       "win32-x64",
       "linux-arm64",
       "linux-x64",
@@ -82,7 +81,7 @@ describe("Desktop cross-platform release documentation contract", () => {
     for (const policy of [
       "macOS 13.5 Ventura",
       "Windows 10 22H2 x64",
-      "Windows 11 24H2 arm64",
+      "Windows is x64-only",
       "glibc 2.35, Linux kernel 5.15",
       "OpenAgents-<version>-<channel>-darwin-<arch>.dmg",
       "OpenAgents-<version>-<channel>-win32-<arch>-setup.exe",

@@ -24,7 +24,6 @@ import {
 } from "./release-publish.ts";
 import {
   desktopArtifactFormats,
-  desktopTargetKeys,
   type DesktopArtifactFormat,
   type DesktopTargetKey,
 } from "./release-staging-contract.ts";
@@ -32,8 +31,20 @@ import {
 export const RELEASE_SET_SCHEMA_ID = "openagents.desktop.release_set.v2" as const;
 export const RELEASE_SET_SCHEMA_VERSION = 2 as const;
 
-export const releaseTargetKeys = desktopTargetKeys;
-export type ReleaseTargetKey = DesktopTargetKey;
+/**
+ * Promotable ReleaseSet v2 profile. The staging contract intentionally keeps
+ * a dormant win32-arm64 descriptor so a future ProductSpec revision can add
+ * it without recreating target-build primitives, but Windows releases are
+ * x64-only until that explicit policy change.
+ */
+export const releaseTargetKeys = [
+  "darwin-arm64",
+  "darwin-x64",
+  "win32-x64",
+  "linux-arm64",
+  "linux-x64",
+] as const satisfies readonly DesktopTargetKey[];
+export type ReleaseTargetKey = (typeof releaseTargetKeys)[number];
 export const ReleaseTargetKeySchema = Schema.Literals(releaseTargetKeys);
 
 export const macReleaseFormats = ["dmg", "zip"] as const;
@@ -50,7 +61,6 @@ export const requiredFormatsByTarget: Readonly<Record<ReleaseTargetKey, readonly
   {
     "darwin-arm64": macReleaseFormats,
     "darwin-x64": macReleaseFormats,
-    "win32-arm64": windowsReleaseFormats,
     "win32-x64": windowsReleaseFormats,
     "linux-arm64": linuxReleaseFormats,
     "linux-x64": linuxReleaseFormats,
@@ -59,7 +69,6 @@ export const requiredFormatsByTarget: Readonly<Record<ReleaseTargetKey, readonly
 export const preferredFormatByTarget: Readonly<Record<ReleaseTargetKey, ReleaseFormat>> = {
   "darwin-arm64": "dmg",
   "darwin-x64": "dmg",
-  "win32-arm64": "nsis",
   "win32-x64": "nsis",
   "linux-arm64": "appimage",
   "linux-x64": "appimage",
@@ -68,7 +77,6 @@ export const preferredFormatByTarget: Readonly<Record<ReleaseTargetKey, ReleaseF
 export const minimumOsByTarget: Readonly<Record<ReleaseTargetKey, string>> = {
   "darwin-arm64": "13.5",
   "darwin-x64": "13.5",
-  "win32-arm64": "10.0.26100",
   "win32-x64": "10.0.19045",
   "linux-arm64": "glibc 2.35",
   "linux-x64": "glibc 2.35",

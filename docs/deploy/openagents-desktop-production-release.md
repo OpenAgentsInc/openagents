@@ -9,8 +9,8 @@ target whose implementation and native receipts are absent.
 ## Current transition status
 
 The repository currently implements the existing signed macOS arm64
-DMG/ZIP, update-manifest v1, and `oa-updates` lane. The six-target ReleaseSet
-v2 coordinator and non-arm64 makers are child work in
+DMG/ZIP, update-manifest v1, and `oa-updates` lane. The five-target ReleaseSet
+v2 coordinator and remaining makers are child work in
 [#8913](https://github.com/OpenAgentsInc/openagents/issues/8913). Until those
 children land:
 
@@ -72,7 +72,7 @@ Record in the coordinator request:
 - exact semantic version and `stable` or `rc` channel;
 - exact 40-character source revision and lockfile digest;
 - ProductSpec version and ReleaseSet schema version;
-- all six required target keys and formats;
+- all five required target keys and eleven formats;
 - expected package/product/publisher/signing-policy identities;
 - owned worker and native acceptance-host inventory revisions;
 - previous promoted version in the same channel;
@@ -94,14 +94,13 @@ The receipt binds the source revision and command manifest. A later code or
 lockfile change invalidates every downstream receipt; do not reuse green
 results across revisions.
 
-## 3. Dispatch the owned six-target matrix
+## 3. Dispatch the owned five-target matrix
 
 Dispatch exactly:
 
 ```text
 darwin-arm64  -> DMG, ZIP
 darwin-x64    -> DMG, ZIP
-win32-arm64   -> NSIS EXE
 win32-x64     -> NSIS EXE
 linux-arm64   -> AppImage, DEB, RPM
 linux-x64     -> AppImage, DEB, RPM
@@ -206,7 +205,7 @@ does not rebuild or copy artifacts.
 
 After promotion, repeat through production origins:
 
-- all six target resolutions and downloaded hash/length checks;
+- all five target resolutions and downloaded hash/length checks;
 - native update check for stable/RC identity isolation;
 - `/download` default and alternatives;
 - homepage download CTAs and `/changelog` version/channel/release-notes truth;

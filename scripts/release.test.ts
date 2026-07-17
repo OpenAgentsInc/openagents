@@ -435,7 +435,7 @@ describe("resume after failure", () => {
       expect(result.state.steps[id].status).toBe("succeeded");
     }
     // Receipt lines from the pre-failure steps survived the resume.
-    expect(result.state.steps.fan_out.receiptLines.length).toBe(6);
+    expect(result.state.steps.fan_out.receiptLines.length).toBe(5);
   });
 
   test("resume refuses a state file with the wrong schema", () => {

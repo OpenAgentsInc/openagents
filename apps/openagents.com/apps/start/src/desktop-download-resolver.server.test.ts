@@ -230,13 +230,12 @@ describe('client detection (bounded field parsing)', () => {
   })
 })
 
-// --- resolution: six targets, alternatives, overrides ------------------------
+// --- resolution: five targets, alternatives, overrides -----------------------
 
 describe('resolution from the verified release set', () => {
   const targetMatrix: ReadonlyArray<[Record<string, string>, string, string]> = [
     [{ 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' }, 'darwin-arm64', 'dmg'],
     [{ 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"x86"', 'sec-ch-ua-bitness': '"64"' }, 'darwin-x64', 'dmg'],
-    [{ 'sec-ch-ua-platform': '"Windows"', 'sec-ch-ua-arch': '"arm"' }, 'win32-arm64', 'nsis'],
     [{ 'sec-ch-ua-platform': '"Windows"', 'sec-ch-ua-arch': '"x86"', 'sec-ch-ua-bitness': '"64"' }, 'win32-x64', 'nsis'],
     [{ 'sec-ch-ua-platform': '"Linux"', 'sec-ch-ua-arch': '"arm"' }, 'linux-arm64', 'appimage'],
     [{ 'sec-ch-ua-platform': '"Linux"', 'sec-ch-ua-arch': '"x86"', 'sec-ch-ua-bitness': '"64"' }, 'linux-x64', 'appimage'],
@@ -265,11 +264,10 @@ describe('resolution from the verified release set', () => {
       headers: { 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' },
     })
     const alternatives = body.alternatives as Array<Record<string, unknown>>
-    expect(alternatives).toHaveLength(6)
+    expect(alternatives).toHaveLength(5)
     expect(alternatives[0]).toMatchObject({ target: 'darwin-arm64', format: 'zip' })
     expect(alternatives.slice(1).map(row => row.target)).toEqual([
       'darwin-x64',
-      'win32-arm64',
       'win32-x64',
       'linux-arm64',
       'linux-x64',
@@ -283,7 +281,7 @@ describe('resolution from the verified release set', () => {
     expect(body.reason).toBe('unknown_client')
     expect(body.selected).toBeUndefined()
     const options = body.options as Array<Record<string, unknown>>
-    expect(options).toHaveLength(12)
+    expect(options).toHaveLength(11)
     for (const option of options) {
       expect(String(option.url)).toMatch(/^https:\/\//)
       expect(option.version).toBe(RC_VERSION)
@@ -297,6 +295,20 @@ describe('resolution from the verified release set', () => {
     expect(body.availability).toBe('choose_manually')
     expect((body.detection as Record<string, unknown>).platform).toBe('darwin')
     expect((body.detection as Record<string, unknown>).architecture).toBeNull()
+  })
+
+  test('Windows ARM64 is detected but never admitted as a release target', async () => {
+    const { body } = await resolveJson(makeResolver(), {
+      headers: { 'sec-ch-ua-platform': '"Windows"', 'sec-ch-ua-arch': '"arm"' },
+    })
+    expect(body.availability).toBe('choose_manually')
+    expect(body.reason).toBe('target_unavailable')
+    expect(body.selected).toBeUndefined()
+    expect(
+      (body.options as Array<Record<string, unknown>>).some(
+        row => row.target === 'win32-arm64',
+      ),
+    ).toBe(false)
   })
 
   test('explicit target/format override wins over detection', async () => {
