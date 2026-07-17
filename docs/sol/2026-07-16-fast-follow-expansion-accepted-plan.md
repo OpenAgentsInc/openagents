@@ -2654,6 +2654,72 @@ remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-33-desktop-thread-export-electron-host-receipt.md`
 - released_at: `2026-07-17T22:47:51Z`
 
+## FF-D1-34 — Canonical accepted-event search projection
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-33. The shared
+kernel already carries canonical owner-only event bundles and explicit
+accepted/superseded/reverted authority, while the existing Desktop history
+search ranks provider-history cache rows without canonical event authority.
+Active work owns Desktop `main.ts`, renderer, installed-runtime, mobile, T3,
+Full Auto, and teardown surfaces; named-group and authoritative
+supersession/reversion producers remain unavailable. This packet therefore
+adds only a pure shared search projection over already-authoritative canonical
+bundles, leaving persistence, acquisition, transport, and pixels unchanged.
+
+Owned implementation paths:
+
+- `packages/agent-runtime-schema/src/thread-event-search.ts`
+- `packages/agent-runtime-schema/src/thread-event-search.test.ts`
+- `packages/agent-runtime-schema/src/index.ts`
+- `packages/agent-runtime-schema/README.md`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-34-canonical-accepted-event-search-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-09 owner-only canonical event bundles, FF-D1-07 exact
+event-authority state, bounded rebuildable local indexing, deterministic text
+filtering after the search route is selected, and exact original event
+navigation. No transcript, acceptance, persistence, transport, visibility,
+provider, host, or renderer authority is added.
+
+Required behavior:
+
+- decode only owner-only canonical event bundles and project each exact
+  thread/event/sequence with its existing accepted, superseded, or reverted
+  state intact;
+- search bounded string leaves deterministically and return the original exact
+  event ref plus a bounded snippet, never a synthesized replacement event;
+- preserve superseded and reverted originals in results with their exact
+  replacement/revert/restored refs so navigation cannot erase history;
+- reject malformed, duplicate-thread, duplicate-event, oversized, or
+  conflicting projection input instead of tie-breaking or inventing authority;
+- report bounded indexing truncation explicitly and grant no persistence,
+  transport, disclosure, mutation, or rendering authority.
+
+Proof: focused search, canonical-artifact, and event-authority tests; shared
+package typecheck; Fast Follow, behavior-contract, ProductSpec, Sol,
+AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only the shared canonical accepted-event search
+projection. Real historical acquisition/index persistence, Desktop consumption
+and pixels, authoritative supersession/reversion producers, named-group
+authority/publication, actual `main.ts` acquisition, installed/runtime-rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-34-20260717`
+- base: `7f1dd9912fa23eed6c2c5b1015a864c041508716`
+- worktree/branch: `openagents-ff-d1-34` / detached `origin/main`
+- scope: bounded rebuildable search projection over exact canonical accepted events and their existing authority state
+- paths: the FF-D1-34 owned implementation paths above
+- hot files: two new shared schema files, the package index/README, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: owner-only canonical bundles, exact original event identity, preserved authority state, explicit truncation, and no new authority
+- dependencies: FF-D1-07 and FF-D1-09 released; FF-D1-33 released; no relevant open bug issue or competing claim; active host/UI, mobile, T3, Full Auto, teardown, and installed-runtime work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T22:59:10Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
