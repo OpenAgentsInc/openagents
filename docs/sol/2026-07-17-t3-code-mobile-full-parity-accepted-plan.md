@@ -1118,3 +1118,18 @@ unmodified keys do nothing. Focus announcements/targets never select authority.
   hardware-key parsing/dispatch, layout-aware dismissal/focus target, tests,
   behavior contract, and Sol receipt
 - exclusions: physical keyboard/VoiceOver/TalkBack receipts (`T3M-F2`)
+
+### CLAIM-RELEASE
+
+- landed: `6eb235ebb85810903a17bd35dac11779ec695297` on `main`
+- verification: pre-rebase 226 mobile/RN-renderer tests, mobile and RN
+  typechecks, repository lint/format, and 19 Sol tests; post-rebase 26 native-
+  input/workspace/behavior tests, mobile typecheck, and 19 Sol tests
+- authority note: PanResponder dispatch is axis-, threshold-, side-, and
+  declaration-gated; hardware keys map through one closed typed command set and
+  layout/focus state only
+- close boundary: `T3M-C2.2b` native gesture and keyboard host semantics are
+  complete in code; physical keyboard and screen-reader receipts remain
+  `T3M-F2`. Epic C is complete and ordered work advances to `T3M-D1`; full
+  mobile parity remains open through `T3M-F2`
+- verified_at: `2026-07-17T22:48:42Z`
