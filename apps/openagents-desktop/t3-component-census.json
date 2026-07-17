@@ -1,0 +1,2358 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/pingdotgg/t3code",
+    "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+    "componentRoot": "apps/web/src/components",
+    "componentTree": "f45f45cb389357ca112e2552c80ec3b57926731b",
+    "rule": "Every non-test .tsx file below componentRoot at the pinned commit is one census row."
+  },
+  "dispositions": {
+    "adapted": "The user job is mounted through OpenAgents composition and typed authority.",
+    "covered": "The job is covered by a shared OpenAgents family; a one-for-one component is unnecessary.",
+    "rejected": "The component's authority or product semantics are intentionally excluded, with a recorded reason."
+  },
+  "mountedFixtureCatalog": [
+    "composer-idle",
+    "thread-plan-card",
+    "approval-card",
+    "reasoning-disclosure",
+    "full-auto-running",
+    "surface-tabs",
+    "files-rich-diff",
+    "terminal-workbench",
+    "browser-preview",
+    "settings-routed",
+    "remote-connect",
+    "responsive-standard",
+    "responsive-minimum",
+    "workbench-messages-reasoning",
+    "workbench-commands",
+    "workbench-files",
+    "workbench-tools-mcp-dynamic",
+    "workbench-tools-web-image",
+    "workbench-plans-approvals",
+    "workbench-agents",
+    "workbench-context",
+    "workbench-notices-long-tail",
+    "workbench-shell",
+    "workbench-frame"
+  ],
+  "components": [
+    {
+      "sourcePath": "apps/web/src/components/AnimatedHeight.tsx",
+      "blob": "d0e21b3907eebffbb328e72927d35a2e9fdc9dfe",
+      "disposition": "covered",
+      "family": "presentation-support",
+      "rationale": "Covered by the OpenAgents icon, token, and motion grammar rather than copied one-for-one.",
+      "evidence": [
+        "packages/ui/src/desktop-workbench.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/AppSidebarLayout.tsx",
+      "blob": "455cc9199f6441eb9aa2a523352af7bcc5ded7cf",
+      "disposition": "adapted",
+      "family": "shell-navigation",
+      "rationale": "Adapted into project/thread navigation, status, selection, and responsive shell composition.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/rail.tsx"
+      ],
+      "fixtures": [
+        "workbench-shell",
+        "responsive-standard",
+        "responsive-minimum"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/BranchToolbar.tsx",
+      "blob": "958cb3743c70dd40c6c331d1124df520095fed11",
+      "disposition": "adapted",
+      "family": "workbench-surfaces",
+      "rationale": "Adapted into the persisted typed surface manager and capability-backed workbench panels.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx"
+      ],
+      "fixtures": [
+        "surface-tabs",
+        "terminal-workbench",
+        "files-rich-diff"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+      "blob": "e2ee24c3608deb7684bb0af416f8b08858482a07",
+      "disposition": "adapted",
+      "family": "workbench-surfaces",
+      "rationale": "Adapted into the persisted typed surface manager and capability-backed workbench panels.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx"
+      ],
+      "fixtures": [
+        "surface-tabs",
+        "terminal-workbench",
+        "files-rich-diff"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
+      "blob": "6d06882662f7888640aa3d0b2d047087463349f8",
+      "disposition": "adapted",
+      "family": "workbench-surfaces",
+      "rationale": "Adapted into the persisted typed surface manager and capability-backed workbench panels.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx"
+      ],
+      "fixtures": [
+        "surface-tabs",
+        "terminal-workbench",
+        "files-rich-diff"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/BranchToolbarEnvironmentSelector.tsx",
+      "blob": "35fc8b6a1904793be680571d5121a936280ae625",
+      "disposition": "adapted",
+      "family": "workbench-surfaces",
+      "rationale": "Adapted into the persisted typed surface manager and capability-backed workbench panels.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx"
+      ],
+      "fixtures": [
+        "surface-tabs",
+        "terminal-workbench",
+        "files-rich-diff"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ChatMarkdown.tsx",
+      "blob": "c85340c715b6bfe470c0fa84b4f022ab2ccf868e",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ChatView.tsx",
+      "blob": "f5ea5bb1eba8a3c490ae2c368e41aa166bcbe12f",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/CommandPalette.tsx",
+      "blob": "8dccf98445760b0274265e6fdaf8502d3d3d5074",
+      "disposition": "adapted",
+      "family": "command-palette",
+      "rationale": "Adapted into availability-filtered typed commands and recent project/thread/surface navigation.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx"
+      ],
+      "fixtures": [
+        "workbench-shell",
+        "surface-tabs"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/CommandPaletteResults.tsx",
+      "blob": "4ad08db08243b679d41151ee91f0a2ce66f8cda7",
+      "disposition": "adapted",
+      "family": "command-palette",
+      "rationale": "Adapted into availability-filtered typed commands and recent project/thread/surface navigation.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx"
+      ],
+      "fixtures": [
+        "workbench-shell",
+        "surface-tabs"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ComposerPromptEditor.tsx",
+      "blob": "18579cda6d372072ad2db79112d51a326eb3f801",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ConnectionStatusDot.tsx",
+      "blob": "0c22f1702e5eb6bfc17bd151611ea3a69d7e5f4c",
+      "disposition": "adapted",
+      "family": "connections",
+      "rationale": "Adapted to OpenAgents environment refs, pairing receipts, client management, and explicit credential boundaries.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "settings-routed"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/DiffPanel.tsx",
+      "blob": "cbcd36ce05e520c3f7bd298f49fefa67f50f7e0c",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/DiffPanelShell.tsx",
+      "blob": "e727a80055d3e1d829427e9433738cf91f127a39",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/DiffWorkerPoolProvider.tsx",
+      "blob": "3ec748c6bcb241ef373639e8beb8e2bacf688589",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/GitActionsControl.tsx",
+      "blob": "f71e855a18f9cbfff126ba446d0a54ae7381ff4a",
+      "disposition": "adapted",
+      "family": "workbench-surfaces",
+      "rationale": "Adapted into the persisted typed surface manager and capability-backed workbench panels.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx"
+      ],
+      "fixtures": [
+        "surface-tabs",
+        "terminal-workbench",
+        "files-rich-diff"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/Icons.tsx",
+      "blob": "8ea38c519588e39e3581b2d0d0c86d5656efb8b2",
+      "disposition": "covered",
+      "family": "presentation-support",
+      "rationale": "Covered by the OpenAgents icon, token, and motion grammar rather than copied one-for-one.",
+      "evidence": [
+        "packages/ui/src/desktop-workbench.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/JetBrainsIcons.tsx",
+      "blob": "85efa50bedccae7f27fb65f66ad7aa129e04824e",
+      "disposition": "covered",
+      "family": "presentation-support",
+      "rationale": "Covered by the OpenAgents icon, token, and motion grammar rather than copied one-for-one.",
+      "evidence": [
+        "packages/ui/src/desktop-workbench.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/NoActiveThreadState.tsx",
+      "blob": "68a5855c1a28759a25d4a3053f91699a785e44da",
+      "disposition": "adapted",
+      "family": "shell-navigation",
+      "rationale": "Adapted into project/thread navigation, status, selection, and responsive shell composition.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/rail.tsx"
+      ],
+      "fixtures": [
+        "workbench-shell",
+        "responsive-standard",
+        "responsive-minimum"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/PlanSidebar.tsx",
+      "blob": "abc0db79b6cb13a3f286d5841f7b364a7dd1441e",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ProjectFavicon.tsx",
+      "blob": "f7603a36e9a670ff007b94aebc69e143144489c2",
+      "disposition": "adapted",
+      "family": "shell-navigation",
+      "rationale": "Adapted into project/thread navigation, status, selection, and responsive shell composition.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/rail.tsx"
+      ],
+      "fixtures": [
+        "workbench-shell",
+        "responsive-standard",
+        "responsive-minimum"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ProjectScriptsControl.tsx",
+      "blob": "4438a671f5d55390b4848f624392851984e5dc71",
+      "disposition": "rejected",
+      "family": "shell-navigation",
+      "rationale": "Arbitrary project-script execution is not an admitted Desktop authority.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/rail.tsx"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ProviderUpdateEnvironmentRows.tsx",
+      "blob": "28242b88fd3ac09de843cc2fdf88eecb953428b2",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ProviderUpdateLaunchNotification.tsx",
+      "blob": "2292a2c45103228cb60f51516e574e4b59103732",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ProviderUpdatePrimaryNotification.tsx",
+      "blob": "a7f7a2c1e69b3cecd9c2c1d99fb10aea17f11ee3",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/PullRequestThreadDialog.tsx",
+      "blob": "4004b4930c27077009636fe18df2e893568df51c",
+      "disposition": "rejected",
+      "family": "shell-feedback",
+      "rationale": "Forge pull-request mutation and review-thread authority remain outside the admitted local workbench.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/notice.tsx"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/RightPanelSheet.tsx",
+      "blob": "ebc4aa0a698f0b1103f9f22d90b6d15cf5296cbb",
+      "disposition": "adapted",
+      "family": "workbench-surfaces",
+      "rationale": "Adapted into the persisted typed surface manager and capability-backed workbench panels.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx"
+      ],
+      "fixtures": [
+        "surface-tabs",
+        "terminal-workbench",
+        "files-rich-diff"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/RightPanelTabs.tsx",
+      "blob": "f5bc9880d74fb843ff6ff1ef8ab7dee7a51b90dd",
+      "disposition": "adapted",
+      "family": "workbench-surfaces",
+      "rationale": "Adapted into the persisted typed surface manager and capability-backed workbench panels.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx"
+      ],
+      "fixtures": [
+        "surface-tabs",
+        "terminal-workbench",
+        "files-rich-diff"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/Sidebar.tsx",
+      "blob": "6a76494daa346c61835f726a43c94d3b8482c9d5",
+      "disposition": "adapted",
+      "family": "shell-navigation",
+      "rationale": "Adapted into project/thread navigation, status, selection, and responsive shell composition.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/rail.tsx"
+      ],
+      "fixtures": [
+        "workbench-shell",
+        "responsive-standard",
+        "responsive-minimum"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/SlowRpcRequestToastCoordinator.tsx",
+      "blob": "07711ca84b7bc94ccbe7000ad06e522b29388bb3",
+      "disposition": "covered",
+      "family": "shell-feedback",
+      "rationale": "Covered by the mounted OpenAgents shell feedback and notice family.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/notice.tsx"
+      ],
+      "fixtures": [
+        "workbench-notices-long-tail",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/SplashScreen.tsx",
+      "blob": "a0b593a9507859f7f15d4048cc58bf79fa069a69",
+      "disposition": "covered",
+      "family": "shell-feedback",
+      "rationale": "Covered by the mounted OpenAgents shell feedback and notice family.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/notice.tsx"
+      ],
+      "fixtures": [
+        "workbench-notices-long-tail",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ThreadStatusIndicators.tsx",
+      "blob": "55f9fbfdc0449663b472016727d5b20cdc36001f",
+      "disposition": "adapted",
+      "family": "shell-navigation",
+      "rationale": "Adapted into project/thread navigation, status, selection, and responsive shell composition.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/rail.tsx"
+      ],
+      "fixtures": [
+        "workbench-shell",
+        "responsive-standard",
+        "responsive-minimum"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ThreadTerminalDrawer.tsx",
+      "blob": "1641bb6b109b44f2c7b0f2576fcf0750a96da88f",
+      "disposition": "adapted",
+      "family": "workbench-surfaces",
+      "rationale": "Adapted into the persisted typed surface manager and capability-backed workbench panels.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx"
+      ],
+      "fixtures": [
+        "surface-tabs",
+        "terminal-workbench",
+        "files-rich-diff"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/auth/PairingRouteSurface.tsx",
+      "blob": "59288506569c412db5e9a0a960fe43010c732c2c",
+      "disposition": "adapted",
+      "family": "connections",
+      "rationale": "Adapted to OpenAgents environment refs, pairing receipts, client management, and explicit credential boundaries.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "settings-routed"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+      "blob": "3ea0e6315fdbbc8069f0d44061f56a69b1c0fda6",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ChatComposer.tsx",
+      "blob": "5f9aec837ca100f6fbb65409ffe7624601804376",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ChatHeader.tsx",
+      "blob": "ef3ec863d0b8a2ad0323ca4a8878e5639593b36a",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
+      "blob": "f1fbd193a63cf2fb2912fad41bb5d05fd4d3d1bd",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+      "blob": "1f82c452b058a710ee952555af07d074ad625991",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerCommandMenu.tsx",
+      "blob": "8354412ce11ecdc8c9595cc968a20226af8f75a7",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
+      "blob": "64c3acc7bf7e1e17ec3a268058907448fc47403d",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
+      "blob": "569fd108a4a828c119795725228ef48eb42c1418",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPendingElementContexts.tsx",
+      "blob": "7373403a7c393f1008b5b753baf3d7d78582b92a",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPendingReviewComments.tsx",
+      "blob": "0a47b02357ac45361531c42bd6659ddd8e9eaca0",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPendingTerminalContexts.tsx",
+      "blob": "37c05eab2d0d6bacbd8abaaac9eee1604263c845",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+      "blob": "d826eca0063acaba4691cc5378af6d2d38f6382d",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPlanFollowUpBanner.tsx",
+      "blob": "ea193edfef08cf7e30b38df5c75b8466bb2ae2f1",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPreviewAnnotationCards.tsx",
+      "blob": "602ad114464a0174b16550aa58c99560577df178",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+      "blob": "8999e43084268c97352fb9986fcc3d7c914cf5b8",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ContextWindowMeter.tsx",
+      "blob": "8c0ec932d453dfe3534e15d4e93d928e9ec16997",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/DiffStatLabel.tsx",
+      "blob": "8fd7e90e381f721cf1617b574dc7e5e56838fd91",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+      "blob": "fd14c68b0c4d7ca1c64a64dfd50a9ef76c9a43ed",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ExpandedImagePreview.tsx",
+      "blob": "db5803d49082e58f8454c678e341f0cd19a8493b",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/FileTagChip.tsx",
+      "blob": "d3cd656b37c5e891b2a94446294d921d78ba3a09",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/MessageCopyButton.tsx",
+      "blob": "e6a6a491bb3311997039ef59c4f9db1d50743dab",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "blob": "61d7855844d1d949f8c3784727d0c71cff2bc5a3",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ModelListRow.tsx",
+      "blob": "3f8915e5d8bd5509fc273f47b9f03aada6d34dd5",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ModelPickerContent.tsx",
+      "blob": "e0d6b9afc5e0841d203e1a704270029832acd2dc",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ModelPickerSidebar.tsx",
+      "blob": "e5555cb01153efdba7f2ee59a7d2a881fecfa87a",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/OpenInPicker.tsx",
+      "blob": "9def7a4646c40c6de9755097254d7a1a6d18fd6e",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/PanelLayoutControls.tsx",
+      "blob": "deb7b3ee9af1eaccda2b2c285ed68e2ecbd729dc",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/PierreEntryIcon.tsx",
+      "blob": "17dfa8362af6c9c4b2274f8bb6bd189695aa763c",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ProposedPlanCard.tsx",
+      "blob": "9746857a8cacdccc02c0b9b37a33c7d7a936c447",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ProviderInstanceIcon.tsx",
+      "blob": "a58e29fe115b068cb3657b2b9ff8c10bc286e5c9",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ProviderModelPicker.tsx",
+      "blob": "e3463631733703529c8ff24639049ada7e7246ab",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ProviderStatusBanner.tsx",
+      "blob": "c725b3e275a2ba190ca910b59f18311223e03cfe",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/SkillInlineText.tsx",
+      "blob": "444f35b425c5fe617f64cd217d6b18213da5e907",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/TerminalContextInlineChip.tsx",
+      "blob": "29eb3bf4db39fca3b4e98bd9f9866a8793e08e29",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/ThreadErrorBanner.tsx",
+      "blob": "51bfb62667dade26a81cce7e3da269b777fc62e2",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/TraitsPicker.tsx",
+      "blob": "5a32a780289631cfda0015eb7c9312db8b9d7494",
+      "disposition": "adapted",
+      "family": "composer",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-composer.tsx",
+        "packages/ui/src/workbench/composer.tsx"
+      ],
+      "fixtures": [
+        "composer-idle",
+        "workbench-context",
+        "workbench-plans-approvals"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/chat/composerProviderState.tsx",
+      "blob": "1349e2509b7b5c14fe3e2423adb87b52b6c96342",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/clerk/MobileClientsUserProfilePage.tsx",
+      "blob": "26af10ba5b833edf8d2cf42d5770311a04088113",
+      "disposition": "adapted",
+      "family": "connections",
+      "rationale": "Adapted to OpenAgents environment refs, pairing receipts, client management, and explicit credential boundaries.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "settings-routed"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/clerk/T3ConnectSidebarSignIn.tsx",
+      "blob": "45477ee1b7e767b92ba820228b293f2993531c3b",
+      "disposition": "rejected",
+      "family": "connections",
+      "rationale": "T3/Clerk account authority is intentionally not copied.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/clerk/useT3ConnectAuthPrompt.tsx",
+      "blob": "05fa8250b30be3391cbc98a4a21f3b9de5579e53",
+      "disposition": "rejected",
+      "family": "connections",
+      "rationale": "T3/Clerk account authority is intentionally not copied.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/cloud/CloudEnvironmentConnectList.tsx",
+      "blob": "460a253812a0e650f0c89eee59235ad17e17caa3",
+      "disposition": "adapted",
+      "family": "connections",
+      "rationale": "Adapted to OpenAgents environment refs, pairing receipts, client management, and explicit credential boundaries.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "settings-routed"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/cloud/ConnectOnboardingDialog.tsx",
+      "blob": "6248fb00bcfe97aeefcbc07ebccc7ce153132c84",
+      "disposition": "adapted",
+      "family": "connections",
+      "rationale": "Adapted to OpenAgents environment refs, pairing receipts, client management, and explicit credential boundaries.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "settings-routed"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/cloud/RelayClientInstallDialog.tsx",
+      "blob": "78282f659151fc924a8b9cc12a3b4c4ec65dc56a",
+      "disposition": "rejected",
+      "family": "connections",
+      "rationale": "T3 relay installation authority and credentials are intentionally not copied.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/color-selector.tsx",
+      "blob": "20e7ef3fd8c4ae89406a73dc16a893365e48ce9a",
+      "disposition": "covered",
+      "family": "presentation-support",
+      "rationale": "Covered by the OpenAgents icon, token, and motion grammar rather than copied one-for-one.",
+      "evidence": [
+        "packages/ui/src/desktop-workbench.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/desktop/SshPasswordPromptDialog.tsx",
+      "blob": "a6ff9d8c4ec6b519bcbdd302ad69f5e076f24449",
+      "disposition": "rejected",
+      "family": "connections",
+      "rationale": "Password collection stays unavailable until an admitted native credential broker exists.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-connect-surface.tsx",
+        "apps/openagents-desktop/src/renderer/remote-connect.ts"
+      ],
+      "fixtures": [
+        "remote-connect",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/diffs/AnnotatableCodeView.tsx",
+      "blob": "6cea64fb5702cce97f8a1d09cfbc61c34f94f181",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/files/FileBrowserPanel.tsx",
+      "blob": "694341ee19a22b937a9cb46c0ffe34c5c7279453",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/files/FilePreviewPanel.tsx",
+      "blob": "8c430d5d2ab8ba2f82cc4067539fa8232825c0fd",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/files/LocalCommentAnnotation.tsx",
+      "blob": "a2765b02d37520430a10c3116be4d48bb7cb2413",
+      "disposition": "adapted",
+      "family": "files-review",
+      "rationale": "Adapted into bounded file, editor, review, diff, conflict, and annotation surfaces.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx"
+      ],
+      "fixtures": [
+        "files-rich-diff",
+        "workbench-files"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/AgentBrowserCursor.tsx",
+      "blob": "bc89daee45955c1577f1f2e8d35a74fa514de004",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/BrowserMockup.tsx",
+      "blob": "3b1882bbda9044c2c5d0638c8e3233e4f9734993",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewAutomationHosts.tsx",
+      "blob": "06954b73f37ba28d7c30383e06df3b0a82eefd03",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewChromeRow.tsx",
+      "blob": "f2c3fdfea764653355515314624c063af55bbe93",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewEmptyState.tsx",
+      "blob": "12126c66408baf710cd399d0414ec6f26591ac30",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewLocalServerCard.tsx",
+      "blob": "c7b08ad2893d225f4c4fb3422bac137028ad6c5a",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewMoreMenu.tsx",
+      "blob": "13ddcf57e9e1212ad59b848a6ee0017ec88c40be",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewPanel.tsx",
+      "blob": "92db1c2cd9b834758c89dd5bd260cfd733c2957a",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewPanelShell.tsx",
+      "blob": "6de828c1e63e2ce58b88aaec0cd92f7e54a8089a",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewUnreachable.tsx",
+      "blob": "c6ada2cb4914748769da1c8baa91630e614d9451",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/PreviewView.tsx",
+      "blob": "bb1c4d409ebdcdd318f39d82b4917ce0684f13de",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/RightPanelResizeHandle.tsx",
+      "blob": "5091c8b5915ad476d21db39dfd87c033fcdb5993",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/preview/ZoomIndicator.tsx",
+      "blob": "0ac536668acf6b3931f505fb6950708ca0ee8e4c",
+      "disposition": "adapted",
+      "family": "browser-preview",
+      "rationale": "Adapted into the typed browser surface, discovery, navigation, failure, cursor, and annotation paths.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts"
+      ],
+      "fixtures": [
+        "browser-preview",
+        "workbench-shell"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+      "blob": "77c1813f11081424a0e28e4122d079fd2f4b2033",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+      "blob": "4da3962963569460cb4f230947e89c1ab94d3162",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+      "blob": "92d8d3f6827278c1b46ff530f1115777d7d60135",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+      "blob": "b7dbbd3575bca573b3649cf64c4f715e95980276",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+      "blob": "d352257257a08c2bc3e2ac8bbcd6122bc2307c14",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+      "blob": "ac2f7be81e839058cda7e2c49619923fa08911fc",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+      "blob": "f1100ab93d290aea1e97e2d0dbf8b727b0e7eed2",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/ProviderSettingsForm.tsx",
+      "blob": "83dc7d0688aa7fdcf5b34ac22a29d070cede2591",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/RedactedSensitiveText.tsx",
+      "blob": "95b31b403698edef839f9c9f9cf00b7bb4932c8b",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/SettingsPanels.tsx",
+      "blob": "40017d56314395e374df8832d389b812fd8b0ede",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/SettingsSidebarNav.tsx",
+      "blob": "6774b6f333f90aae6802bc0f31605d448b5b2e2d",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/SourceControlSettings.tsx",
+      "blob": "b6d23de4f796d11f1bd7781595404de61d22fff4",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/settings/settingsLayout.tsx",
+      "blob": "add6954fd0b11e56a7366495e7d40b583916ceea",
+      "disposition": "adapted",
+      "family": "settings",
+      "rationale": "Adapted into routed, capability-backed OpenAgents settings with redaction and unavailable states.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-settings-surface.tsx",
+        "apps/openagents-desktop/src/renderer/react-sensitive-text.tsx"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "remote-connect"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx",
+      "blob": "b28b967eefa5c22d8c97bca5a6c0205181945b85",
+      "disposition": "adapted",
+      "family": "transcript",
+      "rationale": "Adapted into the mounted transcript/composer grammar with typed runtime intents and bounded projections.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+        "packages/ui/src/workbench/message.tsx"
+      ],
+      "fixtures": [
+        "workbench-messages-reasoning",
+        "workbench-commands",
+        "workbench-notices-long-tail"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/sidebar/SidebarUpdatePill.tsx",
+      "blob": "fc15862fa46de31fbc1f37d218b00b66914f9802",
+      "disposition": "adapted",
+      "family": "shell-navigation",
+      "rationale": "Adapted into project/thread navigation, status, selection, and responsive shell composition.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/workbench/rail.tsx"
+      ],
+      "fixtures": [
+        "workbench-shell",
+        "responsive-standard",
+        "responsive-minimum"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/alert-dialog.tsx",
+      "blob": "c92f1b8082da998b98d16bed3fea676107a6e769",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/alert.tsx",
+      "blob": "20be44dd3e5991ad93a234c9bb370eac812e2d7c",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/autocomplete.tsx",
+      "blob": "2d099762f2807a5c3944bcba939c1a9218310fee",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/badge.tsx",
+      "blob": "e06d9b9a0d812fc51471a5695da2fc7fa57f2134",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/button.tsx",
+      "blob": "f6d09f7799abf72ad758409a5654b1ef56cef1e3",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/card.tsx",
+      "blob": "f1428d13d9099adbc518bc71ecdc0b158f0022d0",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/checkbox.tsx",
+      "blob": "d842c7277411b6a40b2d3f2a25d2f1b45d3836dd",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/collapsible.tsx",
+      "blob": "e5f3db03c3f5e8bedcc3ac7ba1904656b6cded6d",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/combobox.tsx",
+      "blob": "672b3882347c7561103988cd287e25e81f4f4e30",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/command.tsx",
+      "blob": "ad05bc2a6331f649682baba3bae047544a9f28b6",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/dialog.tsx",
+      "blob": "3e1b3d69cd15a1e56faa33bef329549d09ceb72a",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/draft-input.tsx",
+      "blob": "a81d5d9baf6662233612e10ab272aa3cafb3825b",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/empty.tsx",
+      "blob": "5390dd665620f19902e1aa782f4cf1341fea14c3",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/field.tsx",
+      "blob": "1bf65b6c8049dbb4bb3736860971441aa81f09c6",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/fieldset.tsx",
+      "blob": "23763b982426d054d23bfb29a5d7db394b4d9de4",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/form.tsx",
+      "blob": "641fc2ee6270c7681e3054bcaafd640666bb83bf",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/group.tsx",
+      "blob": "6eedfdda922899022b175e0d5d31a00dc6e67beb",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/input-group.tsx",
+      "blob": "2d631627337db9ffcd5814d1209801d8c60323bc",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/input.tsx",
+      "blob": "7ab7eb6cea0a9cf580d6aef93dd766832af398de",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/kbd.tsx",
+      "blob": "04a23f2b6cb36d5265095e39a0b4e762b3a70df7",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/label.tsx",
+      "blob": "d61934025a1a7249577fef89f24d3213af09cb08",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/menu.tsx",
+      "blob": "07e27d23f46be58eee254e2306932b283971f075",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/number-field.tsx",
+      "blob": "4b348f2ffed47ba58d4ac39828c79308b92e626a",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/popover.tsx",
+      "blob": "de0e2e55df1a5d43f8f2570a88a9ff3b193beed5",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/qr-code.tsx",
+      "blob": "222fb8cc21bbb01ac45c29b52d8a0fd417468def",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/radio-group.tsx",
+      "blob": "025ba7a84feb104e8b60672de40b013a98ece629",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/scroll-area.tsx",
+      "blob": "d6f178a1f54a0595135b75347908a9c8898d4c2f",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/select.tsx",
+      "blob": "7761b03597240ff6323339bee4d2ed123e8ca48e",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/separator.tsx",
+      "blob": "b74ce987beba843a8478344092b4cb3a2e06b056",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/sheet.tsx",
+      "blob": "9d0436b661da31b0b4944441f9c6971d23af5008",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/sidebar.tsx",
+      "blob": "50fb652a4955bded7fa0c36feb51f49fedaf80fd",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/skeleton.tsx",
+      "blob": "b1e481784196f61860ec58eed1986d03221058df",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/spinner.tsx",
+      "blob": "362b78f954636a2848855eae588cf2ed195b7313",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/switch.tsx",
+      "blob": "4b65b5466bb0073949b884de112ae776e960e733",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/table.tsx",
+      "blob": "d3600f86993fc625b3190b0694a944e28f113682",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/textarea.tsx",
+      "blob": "586ae8e4430aa38110895e60169cd2bc0006d795",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/toast.tsx",
+      "blob": "d48cda453b8973a732d65aa325aae7ba4997d5b2",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/toggle-group.tsx",
+      "blob": "68cf007d762575ba08bf47af57700e51dc663e8c",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/toggle.tsx",
+      "blob": "936d4eecabbf6deca4b6dc8b44e8bf7876784681",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    },
+    {
+      "sourcePath": "apps/web/src/components/ui/tooltip.tsx",
+      "blob": "442c394ec220c204ab82aff6b76b3a2e4701e8a8",
+      "disposition": "covered",
+      "family": "primitives",
+      "rationale": "Covered by OpenAgents native/shared primitives and typed host adapters; no T3 state authority is imported.",
+      "evidence": [
+        "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        "packages/ui/src/desktop-workbench.css"
+      ],
+      "fixtures": [
+        "settings-routed",
+        "workbench-frame"
+      ]
+    }
+  ]
+}

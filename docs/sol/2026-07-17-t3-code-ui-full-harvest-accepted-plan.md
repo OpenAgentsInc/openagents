@@ -113,65 +113,52 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-11
+## Active packet — T3UI-12
 
-Outcome: close the workbench's admitted responsive, accessibility, and bounded
-performance contract before the final pinned-source census.
+Outcome: account for the exact pinned T3 component denominator and prove the
+mounted catalog plus the strongest locally authorized packaged Desktop journey.
 
 Owned paths:
 
-- `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
-- `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
-- `apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx`
-- `apps/openagents-desktop/src/main.ts`
-- `apps/openagents-desktop/tests/electron-boundary.test.ts`
-- `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.ts`
-- `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.test.ts`
-- `apps/openagents-desktop/src/visual-baseline-contract.ts`
-- `apps/openagents-desktop/visual-baselines/`
-- `packages/ui/src/desktop-workbench.css`
-- this plan, the Sol roadmap, and generated Sol document manifest
+- `apps/openagents-desktop/t3-component-census.json`
+- `apps/openagents-desktop/src/t3-component-census.test.ts`
+- `apps/openagents-desktop/visual-baselines/manifest.json`
+- this plan, the packet receipt, and generated Sol document manifest
 
 Required behavior:
 
-- the workbench remains usable at 1440-wide, 900-wide standard, and the admitted
-  480-pixel minimum without a hidden horizontal floor;
-- workbench, file, and terminal tabs expose named tablists with roving keyboard
-  focus and Arrow/Home/End alternatives;
-- metadata actions stay discoverable for coarse pointers, forced-colors focus
-  remains visible, and explicit plus OS reduced-motion preferences disable
-  non-essential motion; and
-- transcript virtualization, workspace-row caps, and rich-diff truncation retain
-  their bounded large-input budgets while unavailable and recovery states remain
-  typed and visible.
+- every non-test `.tsx` component below the pinned T3 component root has its
+  exact source path and Git blob id recorded once;
+- every row has one explicit adapted, covered, or rejected disposition,
+  existing OpenAgents evidence, and valid mounted fixture references;
+- the checked mounted fixture catalog is identical to the deterministic visual
+  baseline lane; and
+- local packaging proves staged-source isolation and packaged-content closure,
+  while signing, notarization, and release promotion remain separate authorities.
 
-Proof: viewport-contract tests, mounted keyboard interaction tests, CSS boundary
-oracles, 900-by-760 and 480-by-720 responsive visual fixtures, Desktop
-typecheck, full serial suite, production build, Electron fixture smokes, Sol
-guards, and publishing.
+Proof: exact 151-row source census oracle, existing-path and fixture checks,
+zero-drift mounted visual catalog, unsigned-development packaged-app journey,
+Desktop typecheck, full serial suite, production build, Electron fixture smokes,
+Sol guards, and publishing.
 
-Close rule: this packet closes the admitted local Codex remote-control surface.
-Cross-machine live owner evidence, native SSH credential brokering,
-responsive/accessibility closure, installed journey, signed release, and T3
-parity remain later.
+Close rule: this packet closes only when the census has no undisposed component
+and the local packaged candidate runs. It cannot claim signed-release or
+cross-platform distribution evidence without those separate ceremonies.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-10-20260717`
-- base: `5d2e1215b0`
+- actor/session: `codex-t3ui-12-20260717`
+- base: `e58ae1ba2f`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: remote environment, pairing, and mobile-client control
+- scope: exact pinned census, mounted catalog, and local packaged journey
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: typed environment connection, remote enable/disable, pairing,
-  status, public-safe client listing, and exact revocation are mounted
-- focused proof: 213 files and 2,055 tests pass; production, Electron, React,
-  and the 22-state zero-drift visual gate are green
-- receipt: [`2026-07-17-t3ui-10-remote-mobile-connect-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-10-remote-mobile-connect-receipt.md)
-- residual: live cross-machine evidence, native SSH broker, responsive/a11y
-  closure, installed evidence, signed release, and T3 parity remain
+- implementation: in progress
+- focused proof: pending census and packaged journey gates
+- residual: signed/notarized promotion and cross-platform distribution remain
+  separate release-authority work
 
 ## Explicit non-authority
 

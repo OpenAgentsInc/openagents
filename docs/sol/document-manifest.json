@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "4bff9f576f686c002e9114b0d08650939836a4780b2ea8076e671e4df799a68a",
+  "sourceTreeSha256": "1c68cd45c4342234891c36bc30fa8e3d32342438640e4495f888149d194fc3a8",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1969,7 +1969,7 @@
       "owner": "Sol T3 Code UI full harvest",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "b387eb03e47cc0c209ab9d32a332527e1a89a78dffbdca784db337344c5bc416",
+      "sha256": "d69d9798aa164710bccec06182e3fedec01782e0750943cbfc0ed7334be103b2",
       "status": "active",
       "snapshot": "2026-07-17",
       "reviewedAt": "2026-07-12",
