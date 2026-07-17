@@ -1800,6 +1800,72 @@ evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T19:10:08Z`
 - residual: real authority lookup and publication/transport, actual `main.ts` call-site composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-24 — Desktop confirmed Sync visibility-authority lookup
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-23. Active
+work still owns Desktop `main.ts` and broad renderer surfaces. The packet
+therefore adds a new-file-only Effect adapter that derives one FF-D1-23
+workspace authority fact from a live, server-confirmed Khala Sync
+`team_membership` entity. It does not edit the active host/UI files, infer
+named-group membership, transport content, or publish a thread.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-sync-authority.ts`
+- `apps/openagents-desktop/src/thread-visibility-sync-authority.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-24-desktop-thread-visibility-sync-authority-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-23's exact applied-receipt authorization request and
+decision, Khala Sync `scope.team.<teamId>` identity, confirmed
+`team_membership` entity schema, live/revoked scope state, and fail-closed
+authority lookup. Existing shared schemas, Sync protocol, policy persistence,
+`main.ts`, preload, renderer, publication, group, provider, and transport
+contracts remain unchanged.
+
+Required behavior:
+
+- preserve FF-D1-23's exact owner and internet-readable decisions without an
+  authority-store lookup, and reject every malformed request before lookup;
+- for a workspace-bearing target, accept only an exact
+  `scope.team.<teamId>` workspace and require the corresponding Sync scope to
+  be live with server-confirmed state before and after the membership read;
+- decode only the exact confirmed `team_membership` entity for the actor and
+  team, map active owner/admin roles to administrator and active
+  member/viewer roles to member, and treat confirmed absence or inactive
+  membership as a denial;
+- fail closed as authority unavailable on stale, denied, refetching,
+  unconfirmed, malformed, or failed Sync reads, without exposing entity
+  bodies, timestamps, storage errors, credentials, or native details; and
+- leave named-group targets denied until a separately authoritative group
+  membership source exists; authorization remains ref-only and does not
+  transport, publish, share, export, or prove observation of thread content.
+
+Proof: focused Sync-authority, audience-authorization, disclosure, and Khala
+Sync contract tests; Desktop TypeScript check; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and
+repository-required checks.
+
+Close rule: this packet closes only live confirmed team-membership lookup for
+workspace-member/administrator authorization. Named-group authority,
+publication/transport, the actual `main.ts` call site, renderer command/pixels,
+installed/runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-24-20260717`
+- base: `483b4521c861389769e177f83a4ed594db1af160`
+- worktree/branch: `openagents-ff-d1-24` / detached `origin/main`
+- scope: fail-closed Desktop visibility authorization from live server-confirmed Khala Sync team membership
+- paths: the FF-D1-24 owned implementation paths above
+- hot files: new Desktop Sync-authority adapter/test; accepted-plan ledger and Sol manifest
+- hot contracts: FF-D1-23 exact request/decision, team-scope identity, confirmed membership entity, live Sync state, and no inferred group/publication authority
+- dependencies: FF-D1-23 released; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T19:25:35Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
