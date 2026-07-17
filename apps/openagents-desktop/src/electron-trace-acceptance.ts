@@ -41,7 +41,7 @@ export const traceAcceptanceJourney = `(async () => {
   const sidebarRows = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')]
     .filter(row => rootRefs.has(row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))
   const sidebarList = document.querySelector('[aria-label="Recent sessions"]') ??
-    [...document.querySelectorAll('[aria-label]')].find(node => /^\\d+ of \\d+ sessions$/.test(node.getAttribute('aria-label') ?? ''))
+    [...document.querySelectorAll('[aria-label]')].find(node => /^(?:\\d+ of \\d+ sessions|\\d+ recent sessions; search all \\d+ sessions)$/.test(node.getAttribute('aria-label') ?? ''))
   if (!sidebarList) return {ok:false,reason:"sidebar_list_missing",labels:[...document.querySelectorAll('[aria-label]')].map(node=>node.getAttribute('aria-label')).filter(Boolean).slice(0,30)}
   if (sidebarRows.length === 0) return {ok:false,reason:"catalog_roots_missing_from_sidebar",rootCount:rootRefs.size,rowKeys:[...document.querySelectorAll('[data-en-key^="sidebar-thread-"]')].map(row=>row.getAttribute('data-en-key')).slice(0,30)}
   if (sidebarRows.some(row => !rootRefs.has(row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))) return {ok:false,reason:"child_leaked_to_sidebar"}

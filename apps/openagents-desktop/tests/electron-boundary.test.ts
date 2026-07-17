@@ -141,6 +141,10 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
       'git -C "$source_repo" show "$target_sha:apps/openagents-desktop/scripts/oa-dev-supervisor.mjs"',
     );
     expect(launcher).toContain("a supervised restart is already active");
+    expect(launcher).toContain("recorded and executable process-group ownership disagree");
+    expect(launcher).toContain("multiple launcher-owned OpenAgents Dev processes exist");
+    expect(main).toContain("settingsIds.includes('settings-codex')");
+    expect(main).toContain("const settingsBack");
     expect(restartSupervisor).toContain("coordinatorProcessGroupId === config.oldProcessGroupId");
     expect(restartSupervisor).toContain("process.kill(-config.oldProcessGroupId, signal)");
     expect(restartSupervisor).toContain("deps.syncLaunchWorktree()");

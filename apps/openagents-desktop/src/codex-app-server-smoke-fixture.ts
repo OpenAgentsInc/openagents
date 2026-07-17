@@ -171,7 +171,7 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
           activeApprovalId = APPROVAL_ID + turnSequence - 1;
           activeCommandItemId = `item-command-smoke-${turnSequence}`;
           activeAgentItemId = `item-agent-smoke-${turnSequence}`;
-          const params = message.params as { input?: unknown } | undefined;
+          const params = message.params as { input?: unknown; approvalPolicy?: unknown } | undefined;
           const entries = Array.isArray(params?.input) ? params.input : [];
           const localImageCount = entries.filter(entry =>
             entry !== null && typeof entry === "object" && (entry as { type?: unknown }).type === "localImage"
@@ -205,6 +205,14 @@ export const makeCodexAppServerSmokeHarness = (): Readonly<{
               status: "inProgress",
             },
           });
+          // Full Auto requests approvalPolicy=never. The real provider must
+          // not manufacture an approval interruption on that lane, so the
+          // protocol fixture completes directly as well. Interactive turns
+          // retain the correlated provider-originated approval below.
+          if (params?.approvalPolicy === "never") {
+            completeApprovedTurn();
+            continue;
+          }
           write({
             id: activeApprovalId,
             method: "item/commandExecution/requestApproval",

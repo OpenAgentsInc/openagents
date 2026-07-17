@@ -11,6 +11,19 @@ restart_requested=false
 restart_root="$HOME/Library/Logs/OpenAgents/oa-dev-restarts"
 generation_path="$restart_root/current-generation.json"
 
+record_generation() {
+  local generation_pid="$1"
+  local generation_pgid="$2"
+  local generation_start="$3"
+  local generation_commit="$4"
+  local generation_token="$5"
+  node -e '
+    const fs=require("node:fs"), path=require("node:path"); const p=process.argv[1], next=`${p}.next-${process.pid}`;
+    const d={schemaVersion:"openagents.desktop.dev_generation.v1",generationToken:process.argv[2],devPid:Number(process.argv[3]),processGroupId:Number(process.argv[4]),processStartIdentity:process.argv[5],launchCommit:process.argv[6],launchRepo:process.argv[7],recordedAt:new Date().toISOString()};
+    fs.writeFileSync(next,`${JSON.stringify(d,null,2)}\n`,{mode:0o600}); const f=fs.openSync(next,"r");fs.fsyncSync(f);fs.closeSync(f);fs.renameSync(next,p);const dir=fs.openSync(path.dirname(p),"r");fs.fsyncSync(dir);fs.closeSync(dir);
+  ' "$generation_path" "$generation_token" "$generation_pid" "$generation_pgid" "$generation_start" "$generation_commit" "$launch_repo"
+}
+
 if [[ "${1:-}" == "--restart" ]]; then
   restart_requested=true
   shift
@@ -57,28 +70,91 @@ managed_status="$(node -e '
     const pgid = ps(["-o","pgid=","-p",String(g.devPid)]);
     const start = ps(["-o","lstart=","-p",String(g.devPid)]);
     if (pgid.status === 0 && start.status === 0 && Number(pgid.stdout.trim()) === g.processGroupId && start.stdout.trim() === g.processStartIdentity)
-      process.stdout.write(String(g.devPid));
+        process.stdout.write(`leader:${g.devPid}`);
     else {
       const groups = ps(["-axo","pgid="]);
       if (groups.status === 0 && groups.stdout.split(/\s+/).some((value) => Number(value) === g.processGroupId))
-        process.stdout.write("orphan");
+        process.stdout.write(`orphan:${g.processGroupId}`);
     }
   } catch {}
 ' "$generation_path")"
-if [[ "$managed_status" == "orphan" ]]; then
-  echo "oa-dev: a managed dev process group survived without its identity-bound leader; refusing to mutate the launch worktree" >&2
-  exit 1
+managed_pid=""
+recorded_orphan_pgid=""
+if [[ "$managed_status" == leader:* ]]; then
+  managed_pid="${managed_status#leader:}"
+elif [[ "$managed_status" == orphan:* ]]; then
+  recorded_orphan_pgid="${managed_status#orphan:}"
 fi
-managed_pid="$managed_status"
 managed_pgid=""
 if [[ -n "$managed_pid" ]]; then
   managed_pgid="$(/bin/ps -o pgid= -p "$managed_pid" | tr -d '[:space:]')"
 fi
 existing_pid=""
+owned_unmanaged_pid=""
 for candidate in ${(f)"$(pgrep -x 'OpenAgents Dev' 2>/dev/null)"}; do
   candidate_pgid="$(/bin/ps -o pgid= -p "$candidate" | tr -d '[:space:]')"
   if [[ -n "$managed_pgid" && "$candidate_pgid" == "$managed_pgid" ]]; then existing_pid="$candidate"; break; fi
+  candidate_executable="$(/usr/sbin/lsof -a -p "$candidate" -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
+  if [[ "$candidate_executable" == "$launch_repo/"*"/Electron.app/Contents/MacOS/Electron" ]]; then
+    if [[ -n "$owned_unmanaged_pid" ]]; then
+      echo "oa-dev: multiple launcher-owned OpenAgents Dev processes exist; refusing ambiguous recovery" >&2
+      exit 1
+    fi
+    owned_unmanaged_pid="$candidate"
+  fi
 done
+
+# A terminal or renderer crash can remove the recorded pnpm leader while the
+# Electron main process and Vite server remain healthy. The native executable
+# path is a stronger ownership witness than the mutable process title: adopt
+# only an Electron binary physically rooted in the dedicated launch worktree.
+# Foreign OpenAgents Dev builds still fail closed below.
+if [[ -z "$managed_pid" && -n "$owned_unmanaged_pid" ]]; then
+  recovered_pgid="$(/bin/ps -o pgid= -p "$owned_unmanaged_pid" | tr -d '[:space:]')"
+  recovered_start="$(/bin/ps -o lstart= -p "$owned_unmanaged_pid" | sed -e 's/^ *//' -e 's/ *$//')"
+  if [[ -z "$recovered_pgid" || "$recovered_pgid" != <-> || -z "$recovered_start" ]]; then
+    echo "oa-dev: launcher-owned OpenAgents Dev process disappeared during recovery; retry" >&2
+    exit 75
+  fi
+  if [[ -n "$recorded_orphan_pgid" && "$recovered_pgid" != "$recorded_orphan_pgid" ]]; then
+    echo "oa-dev: recorded and executable process-group ownership disagree; refusing ambiguous recovery" >&2
+    exit 1
+  fi
+  if /usr/bin/nc -z 127.0.0.1 5734 >/dev/null 2>&1; then
+    recovered_head="$(git -C "$launch_repo" rev-parse HEAD 2>/dev/null)" || exit 1
+    mkdir -p "$restart_root" && chmod 700 "$restart_root"
+    recovered_token="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+    record_generation "$owned_unmanaged_pid" "$recovered_pgid" "$recovered_start" "$recovered_head" "$recovered_token" || exit 1
+    managed_pid="$owned_unmanaged_pid"
+    managed_pgid="$recovered_pgid"
+    existing_pid="$owned_unmanaged_pid"
+    echo "oa-dev: recovered launcher ownership for OpenAgents Dev process $owned_unmanaged_pid"
+  else
+    echo "oa-dev: renderer port 5734 is not ready; stopping the stale launcher-owned process group"
+    /bin/kill -TERM -- "-$recovered_pgid" 2>/dev/null || true
+    for _ in {1..100}; do
+      /bin/ps -axo pgid= | tr -d ' ' | grep -qx "$recovered_pgid" || break
+      sleep 0.1
+    done
+    if /bin/ps -axo pgid= | tr -d ' ' | grep -qx "$recovered_pgid"; then
+      /bin/kill -KILL -- "-$recovered_pgid" 2>/dev/null || true
+    fi
+    for _ in {1..50}; do
+      /bin/ps -axo pgid= | tr -d ' ' | grep -qx "$recovered_pgid" || break
+      sleep 0.1
+    done
+    if /bin/ps -axo pgid= | tr -d ' ' | grep -qx "$recovered_pgid"; then
+      echo "oa-dev: stale launcher-owned process group did not stop; launch worktree preserved" >&2
+      exit 1
+    fi
+    rm -f "$generation_path"
+    recorded_orphan_pgid=""
+  fi
+fi
+if [[ -z "$managed_pid" && -n "$recorded_orphan_pgid" ]]; then
+  echo "oa-dev: a recorded dev process group survived without a verifiable launcher-owned app; refusing to mutate the launch worktree" >&2
+  exit 1
+fi
 if [[ -z "$managed_pid" && -n "$(pgrep -x 'OpenAgents Dev' 2>/dev/null)" ]]; then
   echo "oa-dev: an unmanaged OpenAgents Dev process exists; refusing to mutate the launch worktree" >&2
   exit 1
@@ -308,10 +384,6 @@ mkdir -p "$restart_root" && chmod 700 "$restart_root"
 launch_pgid="$(/bin/ps -o pgid= -p $$ | tr -d '[:space:]')"
 launch_start="$(/bin/ps -o lstart= -p $$ | sed -e 's/^ *//' -e 's/ *$//')"
 generation_token="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
-node -e '
-  const fs=require("node:fs"), path=require("node:path"); const p=process.argv[1], next=`${p}.next-${process.pid}`;
-  const d={schemaVersion:"openagents.desktop.dev_generation.v1",generationToken:process.argv[2],devPid:Number(process.argv[3]),processGroupId:Number(process.argv[4]),processStartIdentity:process.argv[5],launchCommit:process.argv[6],launchRepo:process.argv[7],recordedAt:new Date().toISOString()};
-  fs.writeFileSync(next,`${JSON.stringify(d,null,2)}\n`,{mode:0o600}); const f=fs.openSync(next,"r");fs.fsyncSync(f);fs.closeSync(f);fs.renameSync(next,p);const dir=fs.openSync(path.dirname(p),"r");fs.fsyncSync(dir);fs.closeSync(dir);
-' "$generation_path" "$generation_token" "$$" "$launch_pgid" "$launch_start" "$launch_head" "$launch_repo" || exit 1
+record_generation "$$" "$launch_pgid" "$launch_start" "$launch_head" "$generation_token" || exit 1
 
 exec pnpm --dir apps/openagents-desktop dev "$@"

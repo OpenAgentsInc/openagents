@@ -57,4 +57,8 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
     expect(traceAcceptanceJourney).toContain("visibleRoots[0].threadRef")
     expect(traceAcceptanceJourney).not.toContain("roots[0].threadRef")
   })
+
+  test("accepts the current searchable Recent sessions label", () => {
+    expect(traceAcceptanceJourney).toContain("recent sessions; search all")
+  })
 })

@@ -4231,8 +4231,9 @@ const smokeReactSidebarDestinations = `(async () => {
   click('shell-settings-toggle')
   const settings = await waitFor('[data-react-workspace="settings"]')
   const settingsVisible = settings !== null && (settings.textContent ?? '').includes('Codex CLI')
-  const settingsSelected = document.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.getAttribute('aria-current') === 'page'
-  click('workspace-new-chat')
+  const settingsBack = document.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.textContent?.trim() === 'Back'
+  const settingsIds = ids()
+  click('shell-settings-toggle')
   const chat = await waitFor('[data-react-workspace="chat"]')
   const searchTrigger = document.querySelector('[aria-label="Search sessions"]')
   searchTrigger?.click()
@@ -4242,8 +4243,9 @@ const smokeReactSidebarDestinations = `(async () => {
   const chatVisible = chat !== null
   const searchClosed = document.querySelector('input[type="search"]') === null
   return {
-    ok: settingsVisible && settingsSelected && chatVisible && searchClosed && document.querySelector('[data-react-workspace="home"]') === null,
-    ids: ids(), icons, settingsSelected, settingsVisible, chatVisible, searchClosed,
+    ok: settingsVisible && settingsBack && settingsIds.includes('settings-general') && settingsIds.includes('settings-codex') &&
+      settingsIds.includes('settings-account') && chatVisible && searchClosed && document.querySelector('[data-react-workspace="home"]') === null,
+    ids: ids(), settingsIds, icons, settingsBack, settingsVisible, chatVisible, searchClosed,
   }
 })()`
 

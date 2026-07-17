@@ -1066,7 +1066,14 @@ pending owner interaction. Main, preload, worker, native, build/config, shared
 package, and dependency changes are not hot-applied: the preview reports a
 restart or dependency-sync requirement. The packaged renderer path is
 unchanged. `scripts/oa-dev-launch` also reports whether an already-running
-stable app is behind the freshly fetched `origin/main`.
+stable app is behind the freshly fetched `origin/main`. If a terminal or
+renderer crash removes the recorded launcher leader while its healthy Electron
+main process and loopback renderer server survive, the launcher recovers only
+when the native executable is physically rooted in its dedicated launch
+worktree. It persists that recovered process-group identity before focusing or
+restarting the app. A foreign same-named process still fails closed, and a
+verified launcher-owned process whose renderer port is dead is stopped before
+the launch worktree can be synchronized.
 
 Contract and oracle: `src/dev-preview-contract.ts`, `vite.config.ts`,
 `src/renderer/dev-preview.ts`, and `tests/dev-server.test.ts`.

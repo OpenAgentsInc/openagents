@@ -23,6 +23,41 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 };
 
 describe("Codex app-server installed-smoke peer", () => {
+  test("completes an approvalPolicy never turn without an impossible approval request", async () => {
+    const harness = makeCodexAppServerSmokeHarness();
+    const requests: string[] = [];
+    const notifications: string[] = [];
+    const client = openCodexAppServerClient({
+      binary: "/packaged/codex",
+      cwd: "/fixture/workspace",
+      env: {},
+      spawnImpl: harness.spawn,
+      onServerRequest: (request) => {
+        requests.push(request.method);
+        return Promise.resolve({ decision: "decline" });
+      },
+    });
+    const unsubscribe = client.onNotification((message) => {
+      if (typeof message.method === "string") notifications.push(message.method);
+    });
+
+    try {
+      await client.initialize();
+      await client.request("thread/start", {});
+      await client.request("turn/start", {
+        approvalPolicy: "never",
+        input: [{ type: "text", text: "Continue autonomously." }],
+      });
+      await waitFor(() => harness.receipt().completionEmitted);
+      expect(requests).toEqual([]);
+      expect(harness.receipt().requestId).toBeNull();
+      expect(notifications).toContain("turn/completed");
+    } finally {
+      unsubscribe();
+      client.close();
+    }
+  });
+
   test("blocks completion until the exact provider-originated approval is accepted", async () => {
     const harness = makeCodexAppServerSmokeHarness();
     const answer: { current?: (value: unknown) => void } = {};
