@@ -548,7 +548,7 @@ provider-event, and Desktop contracts remain unchanged.
 Required behavior:
 
 - thread visibility changes and thread exports are distinct typed intents with
-  stable retry identity and an exact expected visibility version;
+  stable retry identity and an explicit expected visibility-version state;
 - audiences are explicit owner-only, workspace-member, named-group, or
   internet-readable states; there is no `unlisted` state or implication;
 - administrator access is an independent explicit axis rather than being
@@ -582,6 +582,14 @@ Day 1 completion remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T13:59:34Z`
 - rebased_before_implementation: `2026-07-17T14:01:00Z`
+
+### CLAIM-STATUS
+
+- implementation: added distinct ref-only thread visibility/export intents, explicit audience/admin policy, typed receipt outcomes, and retry classification in the shared agent-runtime schema
+- fail-closed proof: `unlisted`, malformed/raw evidence, cross-workspace audience/admin policy, wrong-kind applied receipts, invalid digests, and conflicting retry identity cannot produce accepted evidence
+- focused proof: 8/8 thread-disclosure tests and the agent-runtime-schema typecheck passed
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, ProductSpec 104/104, Sol checks 19/19, and the repository check/fast guard passed
+- residual: Desktop command consumption and pixels, persistence/transport, real exported artifacts, remaining adapters, rendered runtime evidence, and Day 1 completion remain unclaimed
 
 ## Explicit non-authority
 

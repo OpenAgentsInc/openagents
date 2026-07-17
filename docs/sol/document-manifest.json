@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "e16fa688fe1b46a1f3a113fe6237492f74553f858d4938e6e690b03561aa3345",
+  "sourceTreeSha256": "2f3d5f3ad9bdc9ca907be2610f17f3ed4a6d0498fb81666674cfbec7980ae5b5",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1781,7 +1781,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "74dc7e9abd76205071a21a9bfde163446d9261377288285bce833f22a49e82c7",
+      "sha256": "e652c1afdda9b7a7815b870ae29dc531d8a650a4844dcd9a173f0fb0c709814a",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1797,10 +1797,11 @@
         "docs/fastfollow/receipts/2026-07-17-ff-d1-05-desktop-control-outcome-replay-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-06-desktop-stop-outcome-replay-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-07-thread-event-authority-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-ff-d1-08-thread-disclosure-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 12,
+      "inboundSourceCount": 13,
       "issueLinks": []
     },
     {
