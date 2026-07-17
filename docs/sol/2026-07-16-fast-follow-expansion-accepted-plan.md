@@ -1480,6 +1480,71 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T17:56:47Z`
 - residual: `main.ts` composition, preload/renderer command and pixels, actual audience authorization/publication adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-20 — Desktop thread-visibility apply preload boundary
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-19. Active
+work still owns Desktop `main.ts` and broad renderer surfaces, while the
+sandboxed preload and new visibility bridge paths are unclaimed. The packet
+therefore exposes one fixed schema-decoded renderer-to-main method for applying
+an explicit visibility intent, without registering the main handler, rendering
+pixels, or publishing thread content.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-bridge-contract.ts`
+- `apps/openagents-desktop/src/thread-visibility-bridge-contract.test.ts`
+- `apps/openagents-desktop/src/preload.cts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-20-desktop-thread-visibility-preload-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_intent.v1`,
+`openagents.thread_disclosure_receipt.v1`, FF-D1-19's bounded apply results,
+the fixed Desktop visibility channel, and the sandboxed preload allowlist.
+Existing shared schemas, visibility persistence, `main.ts`, renderer, export,
+Sync, provider, membership, authorization, publication, and transport contracts
+remain unchanged.
+
+Required behavior:
+
+- the bridge accepts only an exact ref-only `thread.visibility.set` intent and
+  rejects malformed, raw-content-bearing, export, or envelope-smuggled input
+  before IPC;
+- the preload exposes one fixed `threadVisibility.apply` method and channel,
+  never raw `ipcRenderer`, a caller-selected channel, receipt metadata,
+  filesystem, process, provider, membership, administrator, or publication
+  authority;
+- exact stored or unchanged results return only an identity-bound decoded
+  visibility-applied receipt whose target exactly matches the request;
+- bounded FF-D1-19 rejection reasons remain distinct, while malformed or native
+  failures collapse to `command_unavailable` without leaking native details;
+  and
+- broader audience policy values remain explicit evidence only and do not
+  imply that content was authorized, transported, published, or observed.
+
+Proof: focused visibility bridge/preload and store/disclosure tests; production
+preload build and Desktop TypeScript check; Fast Follow, behavior-contract,
+ProductSpec, Sol, AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only the sandboxed visibility apply request and
+result boundary. Main-process handler registration and composition,
+renderer command/pixels, actual audience authorization/publication adapters,
+installed/runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-20-20260717`
+- base: `3d2797a54fadfba9e783e997bee79d0a51d197b9`
+- worktree/branch: `openagents-ff-d1-20` / detached `origin/main`
+- scope: fixed schema-decoded sandboxed Desktop thread-visibility apply boundary
+- paths: the FF-D1-20 owned implementation paths above
+- hot files: sandboxed `preload.cts`, new visibility bridge/test, accepted-plan ledger, and Sol manifest
+- hot contracts: existing disclosure intent/receipt literals, FF-D1-19 result reasons, exact target binding, fixed IPC channel, and no raw host/publication authority
+- dependencies: FF-D1-19 released; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T18:12:38Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
