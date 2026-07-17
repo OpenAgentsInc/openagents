@@ -16,6 +16,7 @@ import { Effect } from "effect"
 import {
   makeMobileConversationHost,
   runtimeOutcomeIsConfirmed,
+  selectActiveConversationThreadRef,
   selectMobileConversation,
 } from "../src/conversation/mobile-conversation"
 
@@ -285,6 +286,101 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
         threadRef: "thread.synced.2",
         messages: [{ body: "Exact restored thread" }],
       },
+    })
+  })
+
+  describe("contract openagents_mobile.full_auto_run_thread_priority.v1 (openagents #8982)", () => {
+    const threads = [{ threadRef: "thread.a" }, { threadRef: "thread.b" }, { threadRef: "thread.c" }]
+
+    test("active-run case: an active Full Auto thread wins over the arbitrary threads[0] fallback", () => {
+      expect(selectActiveConversationThreadRef({
+        threads,
+        activeFullAutoThreadRef: "thread.b",
+      })).toBe("thread.b")
+    })
+
+    test("no-active-run fallback case: falls back to threads[0] when no Full Auto thread is given", () => {
+      expect(selectActiveConversationThreadRef({ threads })).toBe("thread.a")
+    })
+
+    test("no-active-run fallback case: falls back to threads[0] when the caller omits an inactive/stale run's ref", () => {
+      // The caller (selectAuthenticatedMobileExperience) is responsible for
+      // only passing activeFullAutoThreadRef when the run is confirmed
+      // active + fresh via isFullAutoRunProjectionActive; a stale/expired
+      // run must simply not appear here, exercising the same fallback path.
+      expect(selectActiveConversationThreadRef({ threads })).toBe(threads[0]?.threadRef)
+    })
+
+    test("stale/expired-run case: an activeFullAutoThreadRef naming a thread outside the known set is ignored", () => {
+      expect(selectActiveConversationThreadRef({
+        threads,
+        activeFullAutoThreadRef: "thread.nonexistent",
+      })).toBe("thread.a")
+    })
+
+    test("an explicit restored coding session (preferredThreadRef) still wins over an active Full Auto thread", () => {
+      expect(selectActiveConversationThreadRef({
+        threads,
+        preferredThreadRef: "thread.c",
+        activeFullAutoThreadRef: "thread.b",
+      })).toBe("thread.c")
+    })
+
+    test("empty thread list resolves to undefined regardless of priority inputs", () => {
+      expect(selectActiveConversationThreadRef({
+        threads: [],
+        activeFullAutoThreadRef: "thread.b",
+      })).toBeUndefined()
+    })
+
+    test("selectMobileConversation opens the active Full Auto thread instead of the newest thread", async () => {
+      const fixture = makeConversation()
+      fixture.threads.set("thread.full-auto.1", {
+        threadRef: "thread.full-auto.1",
+        title: "Full Auto run",
+        status: "active",
+        messageCount: 1,
+        lastMessageAt: "2026-07-01T00:00:00.000Z",
+        updatedAt: "2026-07-01T00:00:00.000Z",
+        version: 1,
+      })
+      fixture.messages.set("thread.full-auto.1", [{
+        messageRef: "message.full-auto.1",
+        threadRef: "thread.full-auto.1",
+        body: "Full Auto turn",
+        createdAt: "2026-07-01T00:00:00.000Z",
+        updatedAt: "2026-07-01T00:00:00.000Z",
+        version: 1,
+      }])
+      // thread.synced.1 (from makeConversation) sorts newer/first by
+      // createdAt/updatedAt than the older Full Auto thread seeded above,
+      // so without the new priority the arbitrary fallback would pick it.
+
+      const selection = await selectMobileConversation({
+        conversation: () => fixture.conversation,
+        activeFullAutoThreadRef: "thread.full-auto.1",
+      })
+
+      expect(selection).toMatchObject({
+        mode: "sync",
+        activeThread: {
+          threadRef: "thread.full-auto.1",
+          messages: [{ body: "Full Auto turn" }],
+        },
+      })
+    })
+
+    test("selectMobileConversation falls back to the existing arbitrary selection when no active run is given", async () => {
+      const fixture = makeConversation()
+
+      const selection = await selectMobileConversation({
+        conversation: () => fixture.conversation,
+      })
+
+      expect(selection).toMatchObject({
+        mode: "sync",
+        activeThread: { threadRef: "thread.synced.1" },
+      })
     })
   })
 

@@ -136,6 +136,16 @@ export type KhalaRuntimeTurn = Readonly<{
   status: "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled"
 }>
 
+/** Minimal live Full Auto run state header data (openagents #8982):
+ * objective + lifecycle state, computed by `fullAutoRunHeaderForState` in
+ * `home-core.ts` and rendered here, directly above the existing `Transcript`.
+ * `null` renders nothing — the existing default surface is unchanged. */
+export interface FullAutoRunHeaderView {
+  readonly lifecycleLabel: string
+  readonly objective: string
+  readonly workspaceLabel: string
+}
+
 export interface KhalaState {
   readonly draft: string
   readonly entries: ReadonlyArray<KhalaEntry>
@@ -509,6 +519,84 @@ export const agentStackViews = (
   )]
 }
 
+const fullAutoRunLifecycleBadgeTone = (label: string): "neutral" | "info" | "success" | "warn" | "danger" => {
+  switch (label) {
+    case "Running": return "info"
+    case "Draft":
+    case "Paused":
+    case "Stopped": return "neutral"
+    case "Pausing":
+    case "Retrying": return "info"
+    case "Stalled":
+    case "Cap reached": return "warn"
+    case "Completed": return "success"
+    case "Failed": return "danger"
+    default: return "neutral"
+  }
+}
+
+/**
+ * The live Full Auto run state header (openagents #8982): a plain/minimal
+ * `Badge` + `Text` row above the transcript, reusing existing Effect Native
+ * primitives per the owner's explicit "even if not all components are
+ * ported over yet" instruction — no new primitive was invented for this.
+ */
+const fullAutoRunHeaderViews = (
+  header: FullAutoRunHeaderView | null,
+): ReadonlyArray<View> => {
+  if (header === null) return []
+  return [Stack(
+    {
+      key: "khala-full-auto-run-header",
+      direction: "column",
+      gap: "1",
+      style: {
+        width: "full",
+        padding: "2",
+        borderColor: "border",
+        borderWidth: 1,
+        borderRadius: "lg",
+      },
+      a11y: {
+        role: "region",
+        label: `Full Auto run, ${header.lifecycleLabel}. ${header.objective}`,
+      },
+    },
+    [
+      Stack(
+        {
+          key: "khala-full-auto-run-header-row",
+          direction: "row",
+          gap: "2",
+          align: "center",
+          style: { width: "full" },
+        },
+        [
+          Badge({
+            key: "khala-full-auto-run-lifecycle",
+            label: header.lifecycleLabel,
+            tone: fullAutoRunLifecycleBadgeTone(header.lifecycleLabel),
+          }),
+          ...(header.workspaceLabel === ""
+            ? []
+            : [Text({
+                key: "khala-full-auto-run-workspace",
+                content: header.workspaceLabel,
+                variant: "caption",
+                color: "textMuted",
+              })]),
+        ],
+      ),
+      Text({
+        key: "khala-full-auto-run-objective",
+        content: header.objective,
+        variant: "body",
+        color: "textPrimary",
+      }),
+    ],
+  )]
+}
+
 const codingComposerContextViews = (
   session: MobileCodingComposerSession | null,
   attachmentStatus: Readonly<{
@@ -609,6 +697,7 @@ export const renderKhalaSurface = (
   composerToolbarState: MobileComposerToolbarState = { pickerOpen: false, search: "" },
   composerPathDiscovery: MobileComposerPathDiscoveryState = { state: "idle" },
   historyAvailability: "live" | "refreshing" | "unavailable" = "live",
+  fullAutoRun: FullAutoRunHeaderView | null = null,
 ): View => {
   const visibleEntries = visibleMobileTranscriptEntries(
     state.entries,
@@ -684,6 +773,7 @@ export const renderKhalaSurface = (
       style: { width: "full", height: "full" },
     },
     [
+      ...fullAutoRunHeaderViews(fullAutoRun),
       ...(authority === "sync" && historyAvailability === "unavailable"
         ? [Text({
             key: "khala-history-unavailable",

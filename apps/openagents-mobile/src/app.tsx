@@ -63,6 +63,10 @@ import {
   openNativeAttentionTargetDelivery,
   type NativeAttentionTargetDelivery,
 } from "./attention/native-attention-target-delivery"
+import {
+  isFullAutoRunProjectionActive,
+  type FullAutoRunProjectionResult,
+} from "./full-auto/full-auto-run-projection"
 
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
@@ -131,6 +135,7 @@ const selectAuthenticatedMobileExperience = async (
 ): Promise<Readonly<{
   conversation: MobileConversationSelection
   coding?: MobileCodingHomeBinding
+  fullAutoRun: FullAutoRunProjectionResult
 }>> => {
   const coding = syncHost.coding()
   const draftStore = syncHost.drafts()
@@ -143,6 +148,20 @@ const selectAuthenticatedMobileExperience = async (
   const preferredThreadRef = restored?.state === "ready"
     ? restored.session.threadRef
     : undefined
+  // Fetched before thread selection so an active, fresh Full Auto run's
+  // thread can take priority over the arbitrary `threads[0]` fallback
+  // (openagents #8982) — see `selectActiveConversationThreadRef`. An
+  // explicit restored coding session (`preferredThreadRef`) still wins.
+  const fullAutoRunResult = await syncHost.fullAutoRun()
+  // `threadRef` is nullable: a Full Auto run may exist before Desktop binds
+  // it to a khala-sync thread. `undefined` here means "nothing to
+  // prioritize", not "no active run" — the live state header can still
+  // appear later once the run's thread does match the selected one.
+  const activeFullAutoThreadRef = fullAutoRunResult.state === "active" &&
+      fullAutoRunResult.projection.threadRef !== null &&
+      isFullAutoRunProjectionActive(fullAutoRunResult.projection)
+    ? fullAutoRunResult.projection.threadRef
+    : undefined
   const conversation = await selectMobileConversation({
     conversation: () => syncHost.conversation(),
     timeline: () => syncHost.timeline(),
@@ -150,10 +169,11 @@ const selectAuthenticatedMobileExperience = async (
     runtime: () => syncHost.runtime(),
     interactions: () => syncHost.interactions(),
     ...(preferredThreadRef === undefined ? {} : { preferredThreadRef }),
+    ...(activeFullAutoThreadRef === undefined ? {} : { activeFullAutoThreadRef }),
     adapter: { randomId: randomUUID },
   })
   const directory = await coding.directory()
-  if (conversation.mode !== "sync") return { conversation }
+  if (conversation.mode !== "sync") return { conversation, fullAutoRun: fullAutoRunResult }
   const executionTargetCatalog = await syncHost.executionTargets()
   const fleetRunResult = await syncHost.fleetRuns()
   const portable = syncHost.portable()
@@ -213,6 +233,7 @@ const selectAuthenticatedMobileExperience = async (
   }
   return {
     conversation,
+    fullAutoRun: fullAutoRunResult,
     coding: {
       directory,
       portableSnapshot,
@@ -345,6 +366,7 @@ export const App = () => {
   const [codingBinding, setCodingBinding] = useState<MobileCodingHomeBinding | undefined>()
   const [pendingAttentionTarget, setPendingAttentionTarget] = useState<MobileAttentionTarget | null>(null)
   const [conversationRevision, setConversationRevision] = useState(0)
+  const [fullAutoRun, setFullAutoRun] = useState<FullAutoRunProjectionResult | null>(null)
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
   const codingBindingRef = useRef<MobileCodingHomeBinding | undefined>(undefined)
   const targetDeliveryRef = useRef<NativeCodingTargetDelivery | null>(null)
@@ -430,6 +452,7 @@ export const App = () => {
         }
         const experience = await selectAuthenticatedMobileExperience(syncHostRef.current!, applyActiveThread)
         setConversationSelection(experience.conversation)
+        setFullAutoRun(experience.fullAutoRun)
         publishCodingBinding(experience.coding)
         setConversationRevision(current => current + 1)
         setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
@@ -448,6 +471,7 @@ export const App = () => {
       publishCodingBinding(undefined)
       pendingAttentionTargetRef.current = null
       setPendingAttentionTarget(null)
+      setFullAutoRun(null)
       const result = await signOutNativeSession()
       if (result.state === "signed_out") {
         setConversationSelection({ mode: "local" })
@@ -465,6 +489,8 @@ export const App = () => {
     let stopped = false
     let syncHost: MobileNativeSyncHost | undefined
     let syncStatusTimer: ReturnType<typeof setInterval> | undefined
+    let fullAutoRunPollTimer: ReturnType<typeof setInterval> | undefined
+    let fullAutoRunPollInFlight = false
     let linkSubscription: ReturnType<typeof Linking.addEventListener> | undefined
     let notificationSubscription: Readonly<{ remove: () => void }> | undefined
     let targetDelivery: NativeCodingTargetDelivery | undefined
@@ -487,6 +513,7 @@ export const App = () => {
         onUpgrade: experience => {
           conversationSelectionRef.current = experience.conversation
           setConversationSelection(experience.conversation)
+          setFullAutoRun(experience.fullAutoRun)
           publishCodingBinding(experience.coding)
           setConversationRevision(current => current + 1)
           setSyncPhase("live")
@@ -580,6 +607,7 @@ export const App = () => {
               const experience = await selectAuthenticatedMobileExperience(syncHost!, applyActiveThread)
               if (stopped) return
               setConversationSelection(experience.conversation)
+              setFullAutoRun(experience.fullAutoRun)
               publishCodingBinding(experience.coding)
               setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
             }
@@ -624,6 +652,23 @@ export const App = () => {
       // surface (authority "sync", "Continue conversation") exactly once.
       experienceReconciler?.observePhase(phase === "closed" ? undefined : phase)
     }, 250)
+    // Live Full Auto run projection poll (openagents #8982): a lightweight
+    // interval, independent of the 250ms sync-status timer, so the state
+    // header's lifecycle state updates without an app restart. Only polls
+    // while a live synced conversation exists; a no-op elsewhere, so it adds
+    // no behavior when there is no active run or no signed-in session.
+    fullAutoRunPollTimer = setInterval(() => {
+      if (stopped || fullAutoRunPollInFlight) return
+      if (syncHost?.conversation() == null) return
+      fullAutoRunPollInFlight = true
+      void syncHost.fullAutoRun()
+        .then(result => {
+          if (!stopped) setFullAutoRun(result)
+        })
+        .finally(() => {
+          fullAutoRunPollInFlight = false
+        })
+    }, 5_000)
     const handle = startOtaPolling({
       isEnabled: Updates.isEnabled,
       checkForUpdateAsync: () => Updates.checkForUpdateAsync(),
@@ -635,6 +680,7 @@ export const App = () => {
     return () => {
       stopped = true
       if (syncStatusTimer !== undefined) clearInterval(syncStatusTimer)
+      if (fullAutoRunPollTimer !== undefined) clearInterval(fullAutoRunPollTimer)
       experienceReconciler?.close()
       handle.stop()
       linkSubscription?.remove()
@@ -664,6 +710,7 @@ export const App = () => {
           coding={codingBinding}
           pendingAttentionTarget={pendingAttentionTarget}
           onAttentionTargetConsumed={consumeAttentionTarget}
+          fullAutoRun={fullAutoRun}
         />
       )}
     </SafeAreaProvider>

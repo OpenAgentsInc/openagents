@@ -11,6 +11,8 @@ import {
   fetchMobileExecutionTargetCatalog,
   type MobileExecutionTargetCatalog,
 } from "../coding/mobile-execution-targets"
+import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-projection"
+import { fetchFullAutoRunMobileProjection } from "../full-auto/full-auto-run-projection-source"
 import { openMobileSyncHostCore, type MobileSyncHost } from "./mobile-sync-host-core"
 
 export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
@@ -18,6 +20,11 @@ export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
   /** Public-safe target projection. Credential custody never leaves this host. */
   executionTargets: () => Promise<MobileExecutionTargetCatalog | null>
   fleetRuns: () => ReturnType<typeof fetchFleetRunClientProjection>
+  /** Live `FullAutoRun` mobile projection (openagents #8982, consuming #8981
+   * once it lands). Best-effort: falls back to `{ state: "unavailable" }`
+   * until the real Desktop-published endpoint exists — see
+   * `full-auto-run-projection-source.ts`. */
+  fullAutoRun: () => Promise<FullAutoRunProjectionResult>
 }>
 
 export const OPENAGENTS_MOBILE_SYNC_DATABASE = "openagents-mobile-sync.sqlite"
@@ -52,6 +59,16 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
         return { state: "unauthorized" }
       }
       return fetchFleetRunClientProjection({
+        baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+        accessToken: credential.accessToken,
+      })
+    },
+    fullAutoRun: async () => {
+      const credential = await loadNativeSessionCredential()
+      if (credential === null || host.conversation() === null) {
+        return { state: "unauthorized" }
+      }
+      return fetchFullAutoRunMobileProjection({
         baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
         accessToken: credential.accessToken,
       })
