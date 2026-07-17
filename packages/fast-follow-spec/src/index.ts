@@ -140,7 +140,10 @@ const pathEntries = (blocks: Record<string, unknown>): Array<[string, unknown]> 
     "assurance_specs",
     "roadmap_authorities",
   ]) {
-    for (const [i, value] of (Array.isArray(target?.[key]) ? (target[key] as unknown[]) : []).entries())
+    for (const [i, value] of (Array.isArray(target?.[key])
+      ? (target[key] as unknown[])
+      : []
+    ).entries())
       add(`target.${key}[${i}]`, value);
   }
   for (const [key, value] of Object.entries(
@@ -148,14 +151,23 @@ const pathEntries = (blocks: Record<string, unknown>): Array<[string, unknown]> 
   ))
     add(`target.artifact_paths.${key}`, value);
   for (const [i, source] of (Array.isArray(sources) ? sources : []).entries())
-    for (const [j, value] of (Array.isArray(source.teardown_refs) ? (source.teardown_refs as unknown[]) : []).entries())
+    for (const [j, value] of (Array.isArray(source.teardown_refs)
+      ? (source.teardown_refs as unknown[])
+      : []
+    ).entries())
       add(`sources[${i}].teardown_refs[${j}]`, value);
   for (const [i, directive] of (Array.isArray(directives) ? directives : []).entries())
-    for (const [j, value] of (Array.isArray(directive.target_scopes) ? (directive.target_scopes as unknown[]) : []).entries())
+    for (const [j, value] of (Array.isArray(directive.target_scopes)
+      ? (directive.target_scopes as unknown[])
+      : []
+    ).entries())
       add(`directives[${i}].target_scopes[${j}]`, value);
   const initial = work?.initial_program as Record<string, unknown> | undefined;
   if (initial) add("work_generation.initial_program.strategy_ref", initial.strategy_ref);
-  for (const [i, value] of (Array.isArray(authority?.research_write_paths) ? (authority.research_write_paths as unknown[]) : []).entries())
+  for (const [i, value] of (Array.isArray(authority?.research_write_paths)
+    ? (authority.research_write_paths as unknown[])
+    : []
+  ).entries())
     add(`authority.research_write_paths[${i}]`, value);
   return entries;
 };
