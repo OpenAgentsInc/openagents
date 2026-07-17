@@ -2555,6 +2555,13 @@ completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T22:15:37Z`
 
+### CLAIM-STATUS
+
+- status: implementation complete; focused and required repository proof recorded in the packet receipt
+- implementation_revision: `PENDING`
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-32-desktop-thread-export-host-runtime-receipt.md`
+- observed_at: `2026-07-17T22:21:45Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
