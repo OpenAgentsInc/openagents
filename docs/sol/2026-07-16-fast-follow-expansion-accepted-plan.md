@@ -95,6 +95,7 @@ Owned implementation paths:
 - `apps/openagents-desktop/src/renderer/runtime-conversation.ts`
 - `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
 - `docs/fastfollow/receipts/2026-07-16-ff-d1-02-desktop-stop-control-receipt.md`
+- `docs/sol/document-manifest.json`
 - this accepted-plan ledger
 
 Hot contracts: `openagents.runtime_control_intent.v2`,
@@ -130,7 +131,7 @@ adapters, rendered evidence, and Day 1 completion remain later packets.
 - worktree/branch: `openagents-ff-d1-02` / detached `origin/main`
 - scope: foreground Desktop Stop canonical lowering and typed adapter outcome
 - paths: the FF-D1-02 owned implementation paths above
-- hot files: this accepted-plan ledger and the Desktop ChatHost interrupt seam
+- hot files: this accepted-plan ledger, Sol document manifest, and the Desktop ChatHost interrupt seam
 - hot contracts: runtime-control schema literals and Desktop ChatHost interrupt return type
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T05:00:27Z`
