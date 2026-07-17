@@ -5,7 +5,7 @@ artifact_type: "prd"
 spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T23:10:00.000Z"
+updated_at: "2026-07-17T23:12:48.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents.com/"
@@ -23,7 +23,7 @@ tool_metadata:
   openagents_source_synthesis: "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md"
   openagents_source_transcripts: "docs/transcripts/200.md through docs/transcripts/255.md (Khala launch and counters, live money loop, referral, sell-in-public, Observer, trace views, proof-first projections, promise state machine, treasury/tipping, agent front door, market doctrine)"
   openagents_revision_3_note: "Rev 3 folds in back-catalog direction from episodes 200-237: the product-promise state machine exactly as defined in episode 234 (GREEN/YELLOW/RED/RED-Elected/PLANNED/WITHDRAWN, versioned promise slugs, human page plus programmatic agent registry, Forum as report path); the permanent I-AM-AN-AGENT homepage block and /AGENTS.md invariant (230); the public treasury page with donate flow and the Artanis pattern — an autonomous steward with bounded, receipted treasury spend authority (235); the BOLT12 agent tip flow (agent creates wallet and reusable offer from AGENTS.md instructions alone) and money-moderated Forum ranking (231, 235); episode-237 clearing-layer doctrine in positioning (accepted outcome as the atomic unit, confidence tiers as priced products, accepted outcomes per kilowatt-hour, 'the real product is the receipt that proves the wiring worked'); the open-lane stance and protocol refusals (Bitcoin/Lightning/Nostr only, never a token, no shitcoin acceptance); API-parity and agent-crawlable earnings/registry APIs (212, 224); and don't-break-userspace plus one-click data export as web-surface laws (204, 227)."
-  openagents_admission_status: "authored from the full teardown-catalog synthesis; surface-vision PRD pending owner admission and MASTER_ROADMAP reconciliation; MASTER_ROADMAP retains sequencing authority"
+  openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to live issues and exact accepted plans/work packets, with public promise, copy, settlement, and proof gates intact"
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the Khala public API surface with self-serve keys and per-request routing disclosure (242, 243, 244); the live tokens-served counter law — realtime, strictly monotonic, converging exactly to the ledger sum, with internal dogfood demand distinguishable from external demand (243); the /stats page with per-day token history and model-family mix (244); agents.md as the standing agent front door and the Forum as the agent community surface (238, 244); the seller path — run a Pylon — and the live money loop rendered legibly (238, 247); refer-once-earn-forever referral attribution on homepage, landing pages, and sites, with the affiliate program and sell-in-public revenue graphs (239, 247); Observer at openagents.com/observer with shareable CONFIRMED/REFUTED QA run views, videos, and exact accounting (252); /trace/{uuid} as the reusable public evidence grammar and the proof-first project board direction (252-notes, 253-notes); trace visibility tiers with pay-for-privacy and free-tier data-policy candor (242, 243, 245); benchmark publications as receipts-not-vibes with cost-per-accepted-outcome and latency percentiles (243); pricing as a thin margin over BYO tokens plus premium bulk services (255); the Verse visualization direction (240, 241, 243)."
   openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md"
 ---
@@ -257,6 +257,9 @@ dividends — rather than pooling value at the top.
 
 ## Related Artifacts
 
+- Roadmap reconciliation and AC-by-AC gap crosswalk:
+  `docs/sol/MASTER_ROADMAP.md` revision 119 and
+  `docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`
 - Source synthesis: `docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md`
 - Competitor trust-failure evidence: `docs/teardowns/2026-07-11-cursor-product-teardown.md`,
   `docs/teardowns/2026-07-16-amp-code-teardown.md`,

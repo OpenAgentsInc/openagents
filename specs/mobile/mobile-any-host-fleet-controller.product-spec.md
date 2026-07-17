@@ -5,7 +5,7 @@ artifact_type: "prd"
 spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T23:10:00.000Z"
+updated_at: "2026-07-17T23:25:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-mobile/"
@@ -23,7 +23,7 @@ tool_metadata:
   openagents_source_synthesis: "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md"
   openagents_source_transcripts: "docs/transcripts/200.md through docs/transcripts/255.md plus the episode-256 draft transcript (mobile remote-control doctrine, fleet supervision, overnight runs, UI-first operations, Full Auto AFK supervision)"
   openagents_revision_3_note: "Rev 3 adds Full Auto run supervision as a first-class mobile object per the episode-256 draft transcript: active runs listed with live run state, remote Play/Pause/Stop as typed durable commands, rotation/failure visibility, and run reports in the attention inbox — the AFK scenario (owner away for a day or two while runs continue) is the anchor journey this surface exists for. Also folds in the back-catalog founding texts: episode 225 ('I want to be able to talk to my Forge, talk to my Probes when I'm at the store... carrying around my laptop like a jackass') and episode 228's untethered North Star ('say what the software you want is... go live your life and then come back'), plus episode 200's portfolio-manager frame (people supervise fleets, set policies, allocate budgets, review outcomes)."
-  openagents_admission_status: "authored from the full teardown-catalog synthesis; surface-vision PRD pending owner admission and MASTER_ROADMAP reconciliation; MASTER_ROADMAP retains sequencing authority"
+  openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to the T3 mobile accepted packet ledger or another exact admitted issue/plan, with owner gates and proof rungs intact; closed #8980 is bounded first-screen/simulator evidence, not continuing dispatch authority"
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the phone-as-remote-control doctrine with exactly-one-outcome command resolution over intermittent connectivity (255); supervision-before-authoring sequencing (253-notes); the overnight-fleet morning-review journey as the anchor use case (246, 250, 255); fleet capacity shown as quantities with evidence-gated readiness inherited from the Desktop Fleet laws (250); per-message effective-identity metadata on mobile (250, 251-notes); UI-first operations — enrollment, visibility, and policy as screens and buttons, never CLI runbooks (255); no desktop token on the phone and no cloud-canonical transcripts (255); counters, earnings, and referral accruals as receipted projections whose public claims follow promise-registry states (243, 244, 245)."
   openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
@@ -234,6 +234,13 @@ position no one else can copy without rebuilding their custody model.
 
 ## Related Artifacts
 
+- Roadmap reconciliation and AC-by-AC gap crosswalk:
+  `docs/sol/MASTER_ROADMAP.md` revision 119 and
+  `docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`
+- Active bounded implementation authority:
+  `docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md`. Closed
+  #8980 and children #8981/#8982 are bounded first-screen/simulator evidence,
+  not full-spec closure or continuing dispatch authority.
 - Source synthesis: `docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md`
 - Controller-parity evidence: `docs/teardowns/2026-07-17-t3-code-mobile-app-teardown.md`,
   `docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md`

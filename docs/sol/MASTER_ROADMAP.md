@@ -1,11 +1,14 @@
-# MASTER ROADMAP — ProductSpec-native Codex Workroom MVP first
+# MASTER ROADMAP — Full Auto flagship and trust-complete surfaces
 
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-17
-- Revision: 118
+- Revision: 119
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: owner-approved T3 Code UI full harvest alongside the admitted Amp Fast Follow program; #8777 remains independently claimable
+- Current queue: Full Auto epic #8967 is the active P0 product program; the
+  remaining #8974/#8976/#8978/#8979 chain composes with distribution
+  epic #8913 and the admitted Amp, T3 Desktop, and T3 mobile packet ledgers;
+  live defects remain independently claimable
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -45,6 +48,78 @@ This file owns product direction, durable gates, issue projection, and dependenc
 order. Current code, tests, live issues, deployments, and receipts own factual
 proof; dated plans and analyses are evidence only.
 
+## Active P0 — Full Auto flagship and surface-vision reconciliation
+
+The owner-directed 2026-07-17
+[`surface-vision gap analysis`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
+is reconciled here as a cross-surface outcome map, not copied in as a second
+queue. The three revision-3 surface ProductSpecs are now roadmap-reconciled
+vision and intent inputs:
+
+- [`Desktop trust-complete workbench`](../../specs/desktop/desktop-trust-complete-workbench.product-spec.md);
+- [`Mobile any-host fleet controller`](../../specs/mobile/mobile-any-host-fleet-controller.product-spec.md); and
+- [`openagents.com trust surface`](../../specs/web/openagents-com-trust-surface.product-spec.md).
+
+This reconciliation does not turn every proposal packet in the analysis into
+dispatch authority. Product code still requires a live issue or exact accepted
+plan/work packet, current contract reconciliation, a collision-safe claim, and
+target-local proof. The analysis's `FA-*`, `REL-*`, `TR-*`, `WB-*`, `MOB-*`,
+`WEB-*`, and `XC-*` identifiers are stable roadmap crosswalks; the live issues
+and accepted ledgers below own executable work.
+
+The flagship is the named, durable `FullAutoRun`: a user supplies an objective,
+done condition, workspace, provider profile, and cap, walks away, and later
+gets an inspectable report with typed termination and evidence. Full Auto is a
+run, not a per-message option. The dedicated rail launcher/read-only run view,
+six-test real-sidebar batch, assurance, and packaged release gate remain the
+active closure chain; the private dogfood analyzer is already part of the
+landed run-evidence core.
+
+### Reconciled implementation truth at this revision
+
+| Surface | Narrowest current truth | Remaining authority |
+| --- | --- | --- |
+| Full Auto run core | #8968–#8973 and #8975 are closed: ProductSpec rev 10, durable mission/lifecycle, overnight thread-pressure replay, liveness/stall classification, bounded private report/public-safe receipt, offline/private analyzer, comparison metrics, and objective-safe handoff are on `main`. #8977 also closes first-class ACP picker admission. | #8974 dedicated UX, #8976 real-sidebar batch, #8978 AssuranceSpec, #8979 packaged release/promise admission; parent #8967 stays open. |
+| Mobile Full Auto | #8980–#8982 are closed: Desktop publishes the bounded live projection, mobile selects the live run first, and the fixture plus iOS Simulator receipt records the observable parent journey. | Remote Pause/Resume/Stop and report review remain later admitted work; simulator proof is not physical-device or general host-movement proof. |
+| Distribution/web download | ReleaseSet v2, update-host selection/rollback, candidate feed, verified web resolver, and `/download` integration are landed; #8922–#8924 are closed. | #8913/#8917/#8919–#8921/#8925/#8926 retain platform runners, signing, packages, full acceptance, and the one-command ceremony. No unsigned or unpromoted artifact becomes a release claim. |
+| Desktop/T3 workbench | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey. | Signed/cross-platform distribution remains REL authority; the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract. |
+| Mobile/T3 workbench | The admitted T3 mobile ledger has completed transcript, composer, navigation, native action, Files D1.1/D1.2, and the D2 exact-scope Changes/diff/review writeback surface. | The ledger advances from E1 through Git, Terminal, Connections, accessibility, physical-device, and signed-distribution proof; live endpoint provisioning, environment pairing/health, and installed writeback evidence remain F1/F2. |
+| Fast Follow | The Amp Day-1 thread-fabric ledger has durable control outcomes, canonical event authority/export, visibility/publication transports, confirmed-timeline evidence, and Electron host composition receipts. | The exact current FF-D1 packet in the accepted ledger owns the next mutation; Fast Follow remains learning/work-source authority only and cannot outrank #8967 or create autonomous multi-provider policy. |
+
+### Canonical waves
+
+1. **Wave 0 — make local Full Auto credible.** Execute #8974 from the landed
+   run/report/liveness/handoff/analyzer contracts; then run #8976's six
+   named visible tests. The closed #8980 receipt supplies the bounded simulator
+   observation. #8978 admits proof only after the implemented targets exist,
+   and #8979 consumes that
+   evidence plus #8913/#8925 release identity. A real 24–48 hour owner-AFK run
+   with a reviewable report is the short-term exit, not a green unit suite.
+2. **Wave 1 — release and operator depth.** Finish the owned platform matrix,
+   signed artifacts, promotion, and one-command release; continue the admitted
+   T3 mobile ledger and the exact Amp packet stream without colliding with Full
+   Auto hot contracts. Transcript scale, identity/status chrome, attention,
+   outbox, and public routing/counter truth are next only through their owning
+   issue or accepted packet.
+3. **Wave 2 — trust-complete execution and web proof.** Authority-manifest /
+   execution-receipt pairs, named OS-enforced profiles, hermetic admitted-input
+   mode, delivery/confidence tiers, release/component trust ledger, receipt
+   verification, routing disclosure, and generalized trace/thread visibility
+   become bounded packets after Wave 0's schemas and receipts are stable.
+4. **Wave 3 — separately gated expansion.** General portable host movement,
+   autonomous multi-account/model/provider routing, concurrent Full Auto
+   portfolios, pairing/host enrollment breadth, referral settlement, and
+   other deferred contracts require their own ProductSpec/invariant/owner
+   admission. Surface-spec vision alone is insufficient.
+
+The gap analysis proposed automatic provider/account/model rotation in Wave 0.
+Current Full Auto ProductSpec rev 10 and the root invariant explicitly exclude
+loop-decided provider selection; only manual, receipted handoff is admitted.
+Automatic rotation therefore remains a deliberate future intent revision, not
+a bug fix or an implied Fast Follow capability. Likewise, general PORT-03 host
+movement stays closed even though the bounded mobile directory/control and
+Full Auto projection slices have been reauthorized and landed.
+
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
 The owner approved **FULL HARVEST** on 2026-07-17: the full target-native Amp port is authorized through the
@@ -53,7 +128,22 @@ Every material capability identified by the Amp gap analysis is approved;
 none is optional or policy-blocked. Day 1 thread fabric is first; later packets
 continue adapters, supersession, visibility/export, routing, review, placement,
 remote control, generated clients, and signed plugins until the port is
-complete. Work packets sequence implementation and proof, not scope. The owner also approved the complete pinned T3 Code UI inventory through this [`accepted plan`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md); T3UI-01/02 make transcript messages, typed rows, duration folds, measured 500-row virtualization, anchored/free/following scroll modes, recovery, and minimap navigation solid; T3UI-03 mounts typed composer context, discovery, decisions, images, Queue/Steer, and Full Auto; T3UI-04 mounts project/worktree orchestration; T3UI-05 mounts the transcript-preserving capability tab manager; T3UI-06 fills Files and Review; T3UI-07 mounts generation-owned persistent terminal tabs and typed PTY controls; and T3UI-08 mounts the capability-backed local/file Preview workbench, browser chrome, device framing, truthful automation/recording disposition, and typed annotations before settings, remote/mobile, and installed proof. The latest receipt is [`2026-07-17-t3ui-08-browser-preview-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-08-browser-preview-receipt.md).
+complete. Work packets sequence implementation and proof, not scope. Full
+Harvest is composed under the Full Auto priority above: shared thread,
+routing, review, placement, and remote-control work should satisfy one bounded
+contract once rather than fork into an Amp-branded product path.
+
+The complete pinned T3 Desktop UI inventory is separately admitted through
+its [`accepted plan`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md).
+T3UI-01 through T3UI-12 are now code-landed/fixture-proven through the exact
+component census, mounted visual catalog, responsive/accessibility budgets,
+and unsigned-development package; this is not signed-release evidence. The
+latest aggregate receipt is
+[`2026-07-17-t3ui-12-census-packaged-evidence-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-12-census-packaged-evidence-receipt.md).
+The complete T3 mobile workbench is admitted through the
+[`mobile parity ledger`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md);
+its exact current packet, not a cached packet name here, owns the next mobile
+mutation through T3M-F2.
 
 ## Completed priority — ProductSpec-native Codex Workroom MVP
 
@@ -132,173 +222,59 @@ there is no remaining AssuranceSpec program queue.
 
 ## Owner decisions
 
-1. **The ProductSpec-native Codex Workroom MVP was the whole active P0 product
-   program and is now the accepted completion baseline.** It ships one
-   independently useful signed local-first Desktop product
-   around the user's ordinary logged-in Codex session. The former R0–R7 Desktop/mobile,
-   Sync, Fleet, cloud, portability, and voice program is closed not-planned;
-   landed contracts remain evidence and safe reusable substrate only.
-2. **Sarah is removed, not the front door.** Named-persona, relationship-first,
-   avatar, opener, Sarah/persona voice, video, and presentation backlog is
-   closed not-planned. `/sarah/*` is tombstoned, the Sarah app/surface is
-   deleted, and retired behavior contracts remain evidence. The server-side
-   `/api/sarah/fleet-runs` intake remains a temporary typed authority adapter
-   until an explicit rename/deletion gate closes; it does not authorize Sarah
-   UI or product sequencing. Persona-neutral voice is governed by decision 21.
-3. **Desktop is the accepted MVP client.** Mobile remains a supported
-   retained client without an active expansion lane. Web remains a supported
-   public/API/operations surface; landing, Forum, portal, persona, and broad
-   route-conversion expansion does not preempt the MVP.
-4. **Retained application UI uses Effect Native.** Web, mobile, Desktop, and
-   canvas share typed components and intents. Electron, React Native/Expo, DOM,
-   native, and canvas are hosts/renderers, not parallel application models.
-5. **Khala Sync is cross-device authority, not chat transport.** It distributes
-   owner-scoped projections and durable mutation outcomes. Local stores are
-   caches/offline queues except inside the explicit device-local identity tier.
-6. **Sol owns this roadmap.** Fable is adversarial strategic evidence; its
-   roadmap and pre-reset queue are historical.
-7. **Desktop and mobile are greenfield.** The destinations are
-   `apps/openagents-desktop` (Effect Native/Electron) and
-   `apps/openagents-mobile` (Effect Native/React Native/Expo), both named
-   `OpenAgents`; mobile uses `com.openagents.app`. Deprecated clients are
-   extraction/migration sources, not conversion targets. The owner-designated
-   mobile icon is owned at
-   `apps/openagents-mobile/assets/images/icon.png` with SHA-256
-   `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`.
-8. **Terra is an execution lane under Sol.** Terra may claim ready,
-   low-collision vertical slices. Sol owns priority, dependency order,
-   hot-contract integration, and roadmap reconciliation. Current assignment
-   comes from live issues and claims, not a cached lane in prose. The durable
-   lane contract is
-   [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
-9. **The OpenCode audit is evidence, not a parity backlog.** The exact
-   ProductSpec selects the useful project/session, streamed work, context,
-   repository review, lifecycle, diagnostics, and distribution subset. Full
-   editor, interactive PTY, destructive Git, commit/push/PR/merge,
-   multi-provider depth, multi-window depth, and WSL are not active MVP work.
-10. **Cross-device and mixed-fleet reliability are not MVP claims.** Existing
-    receipts retain their narrow proof rungs, but no mobile, Sync, Fleet,
-    provider, or portability follow-on is implied by MVP completion.
-11. **Khala Code mobile capability migration is not a general lane.** Its
-    behavior, contracts, and test vectors remain source evidence; only an exact
-    owner-accepted issue, plan, or work packet may adapt a bounded capability.
-12. **Remote workrooms are not planned for the MVP.** Closed #8547 and #8636
-    remain accepted substrate. Phone and remote execution regain roadmap status
-    only through a bounded owner-accepted issue, plan, or work packet.
-13. **Desktop is tokenless over one host-owned Runtime Gateway.** The signed
-    renderer receives bounded projections and emits closed typed intents.
-    Identity, credentials, raw runtime events, workspace/process handles, and
-    local durable state stay in the host. Mobile joining this path is not an
-    active outcome.
-14. **There is no live product-expansion issue.** MVP-01 #8756 closed completed.
-    Broad program/client issues
-    #8566, #8574, and #8597 and their CUT/AUDIO/PORT residuals are closed
-    `not planned`. Closed substrate, proofs, and `wontfix` records are not
-    dormant epics. New defects receive criterion-bounded child issues; new
-    product outcomes require explicit owner authorization.
-15. **Loss-accounted parent/subagent history is a D1 exit.** Supported source
-    items render exactly once or enter an explicit redaction/gap equation.
-    Parent/child/grandchild topology, independent transcripts, tools, errors,
-    usage, and final outcomes remain inspectable without an age ceiling.
-    Provider-native history stays owner-local and out of Khala Sync until
-    explicitly adopted through a typed projection. Its detailed contract is
-    [`desktop-codex-subagent-history.md`](./issues/desktop-codex-subagent-history.md).
-16. **Predictable visible behavior is a release contract.** Stable recent
-    sessions, bounded fast paint, complete paging, loading/failure/privacy,
-    accessibility, restart, and real host/device journeys require executable
-    UX contracts. Descendants never leak into the top-level root catalog.
-    Screenshots and videos demonstrate; they do not prove.
-17. **Effect service topology is explicit.** Process, WorkContext,
-    conversation/run, request/command, and foreign-host/view scopes declare
-    direction, freshness, replacement, and disposal. Promise/native/provider
-    bridges remain perimeter code; interruption remains cancellation.
-18. **Coding-session identity remains host-independent.** Durable session, WorkContext,
-    command, event, agent, and receipt identities never derive from machine,
-    process, path, Pylon home, or cloud vendor. V1 promises fenced
-    stop/checkpoint/detach/attach/resume, not live process-memory migration.
-19. **If remote targets are reauthorized, owner and managed cloud are peer
-    target classes.** Owner-managed nodes,
-    Agent Computers, and audited provider adapters use one lifecycle,
-    isolation, snapshot, preview, cleanup, fallback, and receipt contract.
-    Clients never call vendor control planes or silently change custody,
-    provider, account, data posture, or isolation.
-20. **Dormant cross-host work retains the general capability-broker boundary.**
-    Provider, SCM, MCP/tool, and API credentials stay in approved custody and reach one
-    owner/session/attachment/target/tool/TTL scope through short-lived leases
-    or gateways. Moves revoke source grants and mint fresh target grants;
-    checkpoints, Sync, logs, prompts, and receipts never carry secrets.
-21. **Mobile any-host and conversational voice are closed non-goals.** If a new
-    owner decision reauthorizes them, the owner-scoped directory exposes
-    targets, attachment, capabilities, freshness, isolation, topology, and durable controls.
-    Explicit persona-neutral ASR/TTS/barge-in uses the same typed command,
-    approval, outcome, and receipt path as text with explicit visible
-    microphone state. TTS, ASR hypotheses, model prose, and playback never
-    prove a command or outcome. No ambient recording, raw-audio retention by
-    default, voice-only authority, Sarah, avatar, or video.
-22. **Agent topology is a live operating surface.** A child-start edge appears
-    at its causal parent with exact identity, lifecycle, and bounded redacted
-    activity; the complete graph stays navigable and every child opens its own
-    transcript. Pointer and conflict-safe hotkeys use the same intents. Replay,
-    reconnect, and movement never flatten, re-root, duplicate, or leave an old
-    child accepting work.
-23. **Persistent voice is closed not-planned.** #8733 and AUDIO-1 through
-    AUDIO-7 preserve landed implementation evidence; AUDIO-8 #8741 closed
-    without owner acceptance and creates no MVP promise. If a new owner decision
-    ever reauthorizes retained-audio dogfood, clicking Voice accepts conspicuous
-    retained-audio custody while the session is active;
-    capture, egress, retention, and playback remain separately visible, mute
-    stops new egress/retention, restart never auto-starts capture, raw media
-    never enters Sync, and voice/model output never becomes authority. The
-    detailed plan is
-    [`docs/voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md`](../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md).
-    The accepted implementation split keeps application/cloud authority in
-    Effect/TypeScript and permits one signed process-opaque Rust Desktop media
-    helper under the
-    [`Effect vs Rust decision`](../voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md).
-24. **Interrupted-turn recovery and autonomous next-turn work are separate
-    promises.** An accepted provider turn survives a Desktop process restart
-    only through main-owned durable turn state, provider identity/cursor/text
-    checkpoints, and startup reconciliation that either resumes exactly once
-    or records an explicit `interrupted_by_restart` outcome. A completed turn
-    may advance a session goal only through server-owned durable goal state,
-    an idempotent outbox/lease, and startup/reconnect scanning. Renderer timers,
-    in-memory schedulers, persisted goal metadata, and model-written audit text
-    prove neither promise. This boundary applies the
-    [`OpenChamber teardown`](../teardowns/2026-07-12-openchamber-product-teardown.md)
-    finding without importing its restart gap.
-25. **ProductSpec is the workroom's native language of intent and systematic
-    execution.** The workroom creates, validates, revises, and digest-binds
-    Product Specs; derives user-accepted criterion-addressed plans; allocates
-    durable work packets to agents; and keeps evidence-present, technically
-    verified, owner-accepted, waived, failed, and superseded distinct. A
-    product-owned, read-only, hash-pinned `productspec-work` Codex skill supplies
-    reusable elicitation, decomposition, allocation, and evidence-reporting
-    procedure. The skill may propose but cannot approve intent, admit work,
-    change a pinned revision, or verify itself. Existing typed work, intent,
-    agent, dependency, and evidence contracts remain the execution substrate;
-    no second scheduler or authority universe is created.
-26. **The retained TypeScript estate converts fully to Node + pnpm + Vite
-    Plus in T3 Code's integrated operating pattern.** Node readiness precedes
-    one atomic workspace/toolchain replacement; temporary Bun adapters have
-    deletion gates. Payments, wallets, tips, payout, markets, and settlement
-    are outside the accepted MVP and are decommissioned and deleted instead of
-    ported, after outstanding value is reconciled and historical receipts stay
-    read-only and truthful. The non-dispatch contract is the
-    [`full-conversion plan`](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md);
-    epic #8777 and its bounded leaves require explicit claims.
-27. **FULL HARVEST: the full Amp port is approved.** Every material capability
-    in the Amp gap analysis is active scope; `blocked_by_policy` is superseded. Work packets sequence delivery, not approval.
+1. **The ProductSpec-native Codex Workroom MVP is the accepted baseline.** Its signed local-first Desktop journey stays proven; closed R0–R7 successors do not silently reopen.
+2. **Sarah is removed, not the front door.** `/sarah/*` stays tombstoned; the temporary typed server adapter grants no Sarah UI or persona authority.
+3. **Desktop is the deep workbench, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** Unpacketized expansion cannot preempt Full Auto.
+4. **Retained UI uses Effect Native.** Electron, React Native/Expo, DOM, native, and canvas are hosts/renderers over shared typed components and intents.
+5. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes; local stores remain bounded caches/offline queues.
+6. **Sol owns dispatch sequence.** Fable's 2026-07-17 analysis is reconciled evidence and an outcome crosswalk, never a parallel queue.
+7. **Desktop and mobile remain greenfield OpenAgents destinations.** Deprecated clients are extraction sources; the accepted mobile identity and icon stay unchanged.
+8. **Terra is a claimed execution lane under Sol.** Live claims select work; the [lane contract](./2026-07-10-terra-execution-lane.md) governs collisions and handoff.
+9. **Reference audits are evidence.** Only the exact owner-admitted T3/Amp packets authorize adaptation; source parity never bypasses target contracts or receipts.
+10. **Cross-device, mixed-fleet, and portability claims stay proof-rung bounded.** The completed MVP implies none of them.
+11. **Mobile expansion is exact-plan bounded.** The T3 ledger is active authority and #8980 is closed bounded evidence; Khala/T3 source behavior alone is not.
+12. **Remote workrooms remain dormant substrate outside exact admissions.** Closed proofs do not create a general remote-execution program.
+13. **Desktop is tokenless over one host-owned Runtime Gateway.** The renderer receives projections/emits closed intents; credentials, raw runtime, processes, and durable state stay host-owned.
+14. **Active expansion is explicit.** Full Auto #8967, release #8913, and the Amp/T3 ledgers own their bounded scopes; closed #8980 and prior tombstones are evidence, not queues.
+15. **Parent/subagent history is loss-accounted.** Every supported item renders once or becomes an explicit redaction/gap; provider-native history stays owner-local until typed adoption.
+16. **Predictable visible behavior is a release contract.** Paint, paging, failure/privacy, accessibility, restart, and host/device journeys need executable UX proof; media only demonstrates.
+17. **Effect service topology is explicit.** Scope direction, freshness, replacement, disposal, cancellation, and perimeter bridges stay typed.
+18. **Coding-session identity is host-independent.** Durable identities never derive from machine, process, path, provider home, or cloud vendor; checkpoint movement is not process-memory migration.
+19. **Any reauthorized remote targets are peer target classes.** They share lifecycle/isolation/receipt laws; clients never call vendor control planes or silently change custody.
+20. **Cross-host capability remains least-privilege.** Credentials stay in approved custody under scoped leases; checkpoints, Sync, prompts, logs, and receipts remain secret-free.
+21. **Bounded mobile controller work is active; conversational voice remains closed.** Any later persona-neutral voice uses the same typed authority/receipt path as text and never becomes ambient or voice-only authority.
+22. **Agent topology is durable operating state.** Causal parentage, lifecycle, transcript identity, replay, and navigation remain exact rather than inferred from prose.
+23. **Persistent voice remains closed not-planned.** Historical audio receipts grant no current promise; any future retained-audio dogfood requires a new conspicuous custody decision.
+24. **Interrupted-turn recovery and autonomous next-turn work are separate promises.** Each needs its own durable journal/queue, reconciliation, idempotency, and evidence.
+25. **ProductSpec is the native intent language.** It digest-binds accepted criteria, work, and distinct evidence/verification/acceptance states without granting a skill self-approval.
+26. **The retained TypeScript estate uses Node + pnpm + Vite Plus.** The [conversion plan](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md) retains deletion and outstanding-value gates; related work still needs a claim.
+27. **FULL HARVEST: the full Amp port is approved and composes with Full Auto.**
+    Every material capability in the Amp gap analysis is active scope;
+    `blocked_by_policy` is superseded. Work packets sequence delivery, not
+    approval, but they do not outrank #8967, duplicate a surface-vision packet,
+    or grant autonomous provider/fleet policy.
+28. **Full Auto is the flagship short-term product program.** ProductSpec rev
+    10 and #8967 own the local one-active-run contract. Dedicated run UX,
+    analysis, visible dogfood, assurance, and packaged release close before
+    broader autonomous routing or portfolio claims.
+29. **The three surface-vision ProductSpecs are roadmap-reconciled outcomes,
+    not blanket dispatch.** Their acceptance criteria define the target shape;
+    the canonical waves, live issues, accepted packet ledgers, owner gates, and
+    proof rungs in this file decide what may execute and what may be claimed.
 
 ## Product and authority model
 
-**Active product:** OpenAgents is a local-first, ProductSpec-native Desktop
-workroom for Codex.
+**Active product:** OpenAgents is a local-first, ProductSpec-native coding
+workbench with Desktop as the deep host, mobile as the bounded remote
+controller/workbench, and openagents.com as the public trust/API surface.
+Named durable Full Auto runs are the flagship short-term journey.
 
-**Dormant design horizon:** remote-first Desktop/mobile, Sync, Fleet, managed
-targets, portable sessions, and voice are not general planned follow-ons. Their
-landed identity, authority, safety, and evidence contracts remain reusable
-substrate; an exact bounded capability regains product status only through an
-owner-accepted issue, plan, or work packet.
+**Dormant design horizon:** general managed-target breadth, portable host
+movement/failback, concurrent Full Auto portfolios, autonomous provider
+selection, and voice are not implied follow-ons. Their landed identity,
+authority, safety, and evidence contracts remain reusable substrate; an exact
+bounded capability gains product status only through an owner-accepted issue,
+plan, or work packet.
 
 ```text
 ProductSpec revision/digest -> user-accepted plan -> criterion work packets
@@ -317,13 +293,15 @@ ProductSpec revision/digest -> user-accepted plan -> criterion work packets
 | Evidence | Criterion-linked verification, exact or explicitly unmeasured usage, review, and receipts |
 | Continuity | Host-owned durable admission, cursors, gap repair, restart recovery, and diagnostics |
 
-Desktop is the active local Codex workroom. Mobile is retained software without
-an active remote-coding or Fleet expansion lane. Web hosts required public,
-API, auth, promise, receipt, health, legal, and operations surfaces; it is not
-another active product-expansion queue. Retained product routes are `/`,
-`/forum`, and `/promises`; infrastructure exceptions include privacy/terms,
-auth callbacks, APIs, assets, health, manifests, and receipt/promise-integrity
-routes. `/sarah/*` remains a tombstone.
+Desktop is the deep local workroom and Full Auto host. Mobile has the exact T3
+parity and Full Auto first-screen lanes named above; it remains a client of
+typed host/Sync authority, never a phone-local execution clone. Web hosts the
+required public, API, auth, promise, receipt, health, legal, operations, and
+trust surfaces; new routes still need bounded admission. Retained product
+routes are `/`, `/forum`, and `/promises`; admitted infrastructure/trust
+exceptions include privacy/terms, auth callbacks, APIs, assets, health,
+manifests, download, observer/trace, and receipt/promise-integrity routes.
+`/sarah/*` remains a tombstone.
 
 ## Non-goals and non-revival boundary
 
@@ -338,11 +316,12 @@ Closed not-planned unless an owner decision explicitly reopens them:
 - named-assistant standing responsibilities, Blueprint-as-company-brain
   maturation, role/template expansion, in-conversation payment, and broad
   assurance/connector/network programs without new bounded owner decisions;
-- literal OpenCode cloning, new local fleet/sync authority, live process-memory
-  migration, silent provider/target fallback, or clients calling vendor APIs;
-- Claude/provider-neutral cutover, mobile coding expansion, Fleet, managed or
-  owner-managed workrooms, portable host movement/failback, provider adapters,
-  any-host mobile control, voice/audio, and R7 dogfood;
+- literal OpenCode/T3/Amp cloning, new client-local fleet/sync authority, live
+  process-memory migration, silent provider/target fallback, or clients
+  calling vendor control planes;
+- general managed or owner-managed workroom expansion, portable host
+  movement/failback, autonomous provider selection, concurrent Full Auto
+  fleets, voice/audio, and R7 dogfood outside their exact admitted packets;
 - a parallel app-local React Native/SwiftUI/shadcn/Zod/oRPC/TanStack
   application architecture outside Effect Native host/renderer boundaries.
 
@@ -479,10 +458,13 @@ closes those live managed-executor and cross-client gates.
 
 ## Mobile capability contract
 
-The complete extraction ledger is
+The historical extraction ledger is
 [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
-Every legacy capability is ported, replaced by a stronger contract, or rejected
-with a reason.
+The active implementation sequence is the
+[`T3 mobile full-parity accepted plan`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md),
+composed with closed #8980's Full Auto first-screen proof. Every source
+capability is adapted to the stronger contract, covered by an existing target
+surface, or rejected with a reason; presence in a source app is never enough.
 
 | Group | Required result |
 | --- | --- |
@@ -528,90 +510,52 @@ Snapshot: the schema-versioned
 [`live roadmap issue artifact`](./live-roadmap-issues.json), refreshed from
 GitHub before dispatch and age-checked by the offline documentation guard.
 
-- The foundational local coding graph through CUT-25 is landed/closed except
-  CUT-09's distinct lifecycle acceptance. CUT-16 is closed with physical-iOS
-  VoiceOver; CUT-25 is closed with cross-client Fleet control.
-- CUT-26 is closed. RC1's V8 snapshot-fuse failure and RC2's hardened
-  renderer-admission failure became release regressions. The exact public RC5
-  DMG is Developer ID signed, Apple-notarized, stapled, production-feed live,
-  and installed-artifact accepted. Its final ceremony covered a resumed
-  interrupted download, production-feed rollback with client downgrade
-  refusal, uninstall/reinstall, diagnostics export, durable real-history
-  launch, and named isolated-account readiness without weakening the fuse
-  posture. See the [RC5 closure receipt](./2026-07-12-cut-26-rc5-installed-artifact-closure.md).
-- CUT-27 #8707 is closed `not planned`, not completed or waived, because its
-  Claude entitlement and per-task physical-device gates exceed the Codex-only
-  MVP. Its packaged
-  Pylon and Codex executable lookup now resolves through the installed
-  `app.asar.unpacked` resources (`e10c24302b`, `3f6a955801`), and the packaged
-  account projection no longer pulls the broad Pylon custody surface into
-  Electron (`1867312827`). Those landings remain evidence for #8756, but no
-  named-Claude, cross-device, remote-workroom, portability, broker, any-host, or
-  voice acceptance is claimed.
-- #8676, #8677, and CUT-09 #8689 are closed. Their physical receipts now cover
-  same-ref named-Codex Desktop-to-iPhone continuation, offline FIFO and
-  exactly-once reconnect, explicit gap/refetch, revocation denial, and no
-  replay after relink. These completed conversation/fault gates do not prove
-  process-restart continuation of an in-flight local provider turn.
-- Closed #8547 proves the first accepted brokered Agent Computer/workroom;
-  closed #8636 proves the bounded hybrid routing path. One
-  `auto` plan can place each unit independently against typed quota, cost, data
-  posture, repository, and task/isolation constraints through one claim
-  registry (`dc88054e7c`), and managed units can cross the authenticated Pylon
-  route to the broker-owned Agent Computer dispatch seam (`8244bd64e9`). The
-  [FC-4 receipt](./2026-07-13-fc4-hybrid-client-acceptance-receipt.md) records
-  the literal concurrent owner-local plus managed Agent Computer run, phone-
-  selected managed-account custody, Android and Desktop same-ref projection,
-  honest exact/`not_measured` usage, and zero-residue reclaim. Portability,
-  general broker, owner-managed
-  enrollment, provider-adapter breadth, and any-host directory remain in the
-  PORT packet rather than silently expanding #8636.
-- Closed #8640 remains the accepted simultaneous named Codex+Claude substrate
-  receipt; it is not current work or a product-front-door decision.
-- #8733 and AUDIO-1 #8734 through AUDIO-7 #8740 preserve closed audio
-  implementation evidence. AUDIO-8 #8741 is closed `not planned` without its
-  owner microphone acceptance; its landed endpointing, turn-fencing, renderer,
-  and crash fixes create no MVP voice claim.
-- Closed [#8744](https://github.com/OpenAgentsInc/openagents/issues/8744) now
-  supplies the bounded Desktop process-restart contract exposed during voice
-  dogfood: private accepted-turn journal, cadence-bounded ordered assistant
-  checkpoints, startup reconciliation, exact-account/thread Codex continuation
-  at most once, explicit Fable `interrupted_by_restart`, durable renderer
-  recovery truth, and no duplicate prompt/assistant segment. The packaged
-  two-process proof and exact boundary are recorded in the
-  [#8744 closure receipt](./2026-07-13-desktop-local-turn-restart-recovery-receipt.md).
-  This does not turn the OpenChamber-style completed-turn goal loop into
-  interrupted-stream recovery or make audio capture restart automatically.
-- PORT-00 through PORT-02 #8745–#8747 retain their closed implementation and
-  proof rungs. PORT-03 through PORT-08 #8748–#8753 are closed `not planned`, not
-  completed. Landed movement composition remains dormant substrate; no real
-  move/failback, owner-managed target, provider adapter, any-host mobile, voice,
-  or R7 acceptance is claimed.
-- PORT-02 #8747 is closed on `main` at `28a91a50b2` plus the durable-evidence
-  hardening `e65fddb743`. The general target-scoped broker now enforces typed
-  least-privilege issue/redeem/renew/revoke/reissue/release/wipe outcomes across
-  owner-local and accepted-managed adapters, excludes credential material from
-  portable state and public evidence, and fails closed under replay, expiry,
-  mid-move revocation, denial, outage, and cleanup failure. PORT-03 #8748 is
-  closed `not planned`; broker tests and later landed composition do not
-  manufacture a real host-movement proof.
-- `apps/pylon/src/orchestration` and `apps/pylon/src/node` remain protected
-  load-bearing retained Fleet core. No portability or streamlining work is
-  dispatchable without a new issue; the historical design is in the
-  [`Pylon streamlining audit`](../fable/2026-07-11-pylon-streamlining-audit.md).
+- Full Auto rev 10 is no longer the legacy boolean-only system described by
+  the original audit. `FullAutoRun` mission/lifecycle authority (#8969), the
+  exact overnight eviction regression (#8970), main-owned liveness/stall
+  classification (#8971), bounded private report/public-safe receipt (#8972),
+  offline/private analyzer/comparison (#8973), and objective-safe provider
+  handoff (#8975) are code-landed and fixture-proven. The dedicated launcher/
+  run view, visible six-test batch, assurance, and signed packaged admission
+  remain open and no public AFK-reliability claim follows from the landed core.
+- The mobile projection/first-screen slice (#8981/#8982) is code-landed and
+  fixture-proven; #8980 is closed with fixture and iOS Simulator observation
+  of the parent journey. This proves neither remote run control, physical-
+  device acceptance, nor general host movement.
+- The current Desktop distribution chain has closed its signed selection,
+  host selection/rollback, feed, resolver, and `/download` integration rungs.
+  The native platform builds/signatures, complete matrix, final promotion, and
+  one-command release remain open under #8913.
+- The T3 Desktop ledger has reached its exact component census and local
+  package. The T3 mobile ledger has completed the bounded Files workbench,
+  authenticated paired-environment client, and exact-scope Changes/diff/review
+  writeback in application code, then advances to E1. Neither a local package
+  nor mobile fixture is signed-distribution or physical-device proof; live
+  endpoint provisioning, registration/pairing/health, and installed writeback
+  evidence remain F1/F2.
+- The Amp Fast Follow stream remains active under its accepted packet ledger.
+  Its current claim is the operational source of truth; this master records
+  the composition law and avoids racing a packet number that can change many
+  times per day.
+
+- Earlier CUT, Fleet, Sync, restart, audio, and PORT receipts retain only their
+  indexed proof rungs. Closed `not planned` successors remain tombstones; they
+  neither reopen through this surface reconciliation nor manufacture Full Auto,
+  mobile, provider, voice, or portable-host claims. Retained Pylon orchestration
+  remains protected load-bearing substrate and needs new authority to change.
 
 ### Canonical open product issue projection
 
 This offline projection excludes `area:docs` maintenance issues to avoid
-self-referential queue churn. Refresh live `roadmap:sol` issues and claims
-before operational selection; this table owns the complete product queue, not
-the currently unclaimed worker lease.
+self-referential queue churn. The pinned `roadmap:sol` artifact currently has
+no entries, so the canonical label-scoped product projection is empty. Refresh
+it before dispatch. Owner-created P0 issues without that label and exact
+accepted-plan ledgers remain operational authority as named above; they are
+not copied into this guarded projection.
 
-There are no open `roadmap:sol` product issues at this snapshot.
-
-The superseded broad program/client, CUT-27, AUDIO-8, and PORT-03 through PORT-08
-issues are closed `not planned` with comments; their bodies were not rewritten.
-No promise, behavior, or Eval registry is updated by this triage.
+The superseded broad program/client, CUT-27, AUDIO-8, and non-reauthorized PORT
+outcomes remain closed `not planned`; their bodies were not rewritten and
+their substrate does not manufacture a public promise.
 
 Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 #8642, #8643, #8646, #8650, #8566, #8574, #8597, #8707, #8741, and
@@ -621,43 +565,47 @@ Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 
 At this snapshot:
 
-1. The exact [`docs/mvp` package](../mvp/README.md) is the accepted MVP intent,
-   evidence, and closure boundary.
-2. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756) is
-   closed completed; its claim no longer dispatches work.
-3. MVP-0 through MVP-3 passed against exact signed/stapled RC9 and the owner
-   accepted the installed ProductSpec-native journey/read-only boundary.
-4. The owner-authorized AssuranceSpec successor proof run passed all 18
-   candidate/falsifier/sensitivity rows, the full Desktop gate, mutation
-   sensitivity, immutable workroom bridge, and deployed Observatory projection.
-5. The owned-runner starter kit passes both exact-tarball offline checkout and
-   public-registry no-auth checkout. The OpenAgents monorepo adopts it with a
-   current committed MVP session pin. ProductSpec `0.1.0` and AssuranceSpec
-   `0.1.1` are public on npm in dependency order; #8767 and #8770 are closed.
-6. RC9 remains unpublished. Conditional public-language, telemetry, release,
-   concurrency, registry, and product-successor gates remain unchanged.
-7. Full cutover is complete. VP-0 #8794 is closed with its
-   [freeze/ledger receipt](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md),
-   and VP-1 #8795 completed money/Sites retirement with its
-   [reconciliation/decommission receipt](./2026-07-14-node-pnpm-vite-plus-vp1-reconciliation-decommission-receipt.md).
-   VP-2 #8796 is also closed with its
-   [Node-runtime receipt](./2026-07-14-node-pnpm-vite-plus-vp2-node-runtime-receipt.md).
-   VP-3 #8797, VP-4 #8798 (including #8772–#8774), VP-5 #8799, VP-6
-   #8800, and epic #8777 are closed with their phase receipts.
+The pinned `roadmap:sol` projection has **no active product issues**. The
+following owner-created issues and accepted ledgers remain exact successor
+authority outside that label-scoped projection:
 
-This is an infrastructure-retirement queue, not a successor product queue.
-There is no active product issue in the current Sol projection; the active
-Fast Follow expansion is admitted by its accepted plan/work-packet ledger.
-The completed AssuranceSpec lane has no remaining owner action.
-Supported security, privacy, data-loss, accessibility, production-outage, or
-compatibility defects may use new bounded repair issues; product expansion
-uses the current owner-accepted Fast Follow plan or another explicit authority.
+1. Preserve the accepted ProductSpec-native MVP and completed AssuranceSpec /
+   Observatory proof baseline; neither needs to be re-proved to start a bounded
+   successor packet.
+2. Finish Full Auto Wave 0 in dependency order: #8974 proceeds on the landed
+   run/report/liveness/analyzer contracts; #8976 consumes the visible
+   behavior and private analysis; #8978 consumes implemented proof targets; #8979 consumes the
+   dogfood/assurance evidence plus exact release identity.
+3. Retain closed #8980's simulator receipt as bounded first-screen evidence.
+   Remote run control, report review, and physical-device acceptance require
+   their next exact packet; do not infer them from that projection.
+4. Continue #8913's owned release matrix. Native signing/package proof,
+   candidate completeness, promotion, `/download` convergence, and the
+   one-command receipt are one release transaction; platform claims stay
+   independent.
+5. Continue the exact claimed Amp and T3 mobile packets when they do not
+   collide with #8967/#8913 hot contracts. The T3 Desktop harvest is locally
+   complete through its census and now waits on the shared signed-release
+   authority for distribution claims.
+6. After the Wave-0 schemas and receipts stabilize, admit the first trust-layer
+   and web-proof packets from the surface crosswalk: authority manifest /
+   execution receipt, named containment profile, release trust ledger, routing
+   disclosure, and counter attestation. Do not start all vision tracks at once.
+7. Keep #8984 and any supported security, privacy, data-loss,
+   accessibility, outage, or compatibility defect independently claimable;
+   a failing completion gate or first-run path blocks its affected proof rung.
+
+Completed Node/pnpm/Vite Plus cutover, MVP, and public ProductSpec/
+AssuranceSpec distribution remain accepted infrastructure. They are not the
+current queue. New product work uses #8967/#8913, the admitted packet ledgers,
+or another explicit owner authority; source analyses and surface specs alone
+cannot dispatch it.
 
 ## Implementation laws
 
-These laws govern the accepted MVP baseline and prevent already-landed inactive substrate
-from regressing. Mobile, Fleet, remote-target, movement, and voice laws do not
-authorize new work on those closed outcomes.
+These laws govern the accepted MVP baseline and the exact active Full Auto,
+release, Fast Follow, T3 Desktop, and T3 mobile programs. A durable law does
+not authorize work beyond the live issue or accepted packet that cites it.
 
 1. **Integrate before inventing.** Existing FleetRun, plan DAG, intents, Sync,
    assignments, and receipts must be shown insufficient before new schemas.
@@ -679,8 +627,10 @@ authorize new work on those closed outcomes.
    intents, policy, approvals, idempotency, and durable outcomes. Prose/pixels
    are never authority. Material action/tool selection never uses ad hoc
    string/keyword routing; it goes through the central typed/semantic registry.
-9. **No surface regrowth.** New active MVP capability lands in Desktop; mobile
-   and web receive required supported-client, API, public, and operations fixes only.
+9. **No unadmitted surface regrowth.** Desktop, mobile, and web may grow only
+   through the exact active issues/packet ledgers above. Every enabled action
+   binds one typed authority path; source parity, a mock, or a surface-spec
+   criterion does not create implementation authority.
 10. **Motion has integration bias.** A blocked owner/cloud gate shifts to a
     disjoint ready gate, not speculative framework or closed presentation work.
 11. **Claims are explicit.** Live issue comments are the cross-session ledger;
@@ -693,16 +643,19 @@ authorize new work on those closed outcomes.
     [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md).
 14. **Terra pulls ready leaves.** It may ship claimed low-collision slices; Sol
     retains shared-contract integration and roadmap reconciliation.
-15. **Dormant mobile code is not a local-authority clone.** Any retained coding,
-    terminal, preview, writeback, Fleet, receipt, or handoff path keeps bounded
-    workroom capabilities and phone-native navigation.
+15. **Mobile is not a local-authority clone.** Every active coding, terminal,
+    preview, writeback, Fleet, receipt, or handoff packet keeps bounded host/
+    Sync capabilities, exact refs, durable outcomes, and phone-native
+    navigation; the phone never manufactures execution truth.
 16. **Timeout is not outcome.** Accepted, rejected, failed, and
     `unknown_pending_reconcile` are durable distinct states; retries follow
     idempotency and evidence.
 17. **Renderer is not runtime client.** No credential, raw stream/process,
     generic IPC, loopback authority, or second state universe enters it.
-18. **Historical mobile-continuity receipts stay narrow.** They prove only their
-    accepted cross-device slices and do not create an active mobile product lane.
+18. **Mobile receipts stay narrow.** Historical continuity and current T3/
+    Full Auto receipts prove only their exact accepted slices. One landed
+    projection, Files view, or control does not close the mobile ProductSpec or
+    create host-movement/release proof.
 19. **History completeness is measured.** Every supported item is rendered,
     explicitly redacted, or an explicit counted gap; paging is not retention.
 20. **UX promises are executable gates.** Stable behavior contracts plus real
@@ -751,6 +704,17 @@ authorize new work on those closed outcomes.
     capture begins only after a visible click-through receipt and ends on mute,
     stop, or revocation; every accepted sequence is durably stored or named as
     an explicit gap. Broader defaults require a later owner/policy decision.
+33. **Full Auto is run authority, not a toggle or prose loop.** One main-owned
+    `FullAutoRun` retains objective, done condition, workspace, provider
+    profile, lifecycle, liveness, transition attribution, and report identity.
+    Provider prose cannot prove completion; Pause, Stop, retry, stall, cap,
+    handoff, and terminal dispositions remain distinct. The legacy composer
+    toggle is a migration bridge until #8974 removes it from the active-run UX.
+34. **Surface vision is staged.** The three surface ProductSpecs define target
+    outcomes, while this roadmap, current invariants, live issues, accepted
+    packet ledgers, promise gates, and proof rungs control sequence and claims.
+    Reconciliation never converts `partial`, `planned`, or `unverified` into
+    `implemented`.
 
 ## Completion and reconciliation
 
@@ -778,6 +742,11 @@ The Revision 86 pre-compaction body remains in Git at `4239689e24`. Dedicated
 evidence remains discoverable here:
 
 - [`first Codex Workroom MVP package`](../mvp/README.md)
+- [`2026-07-17 surface-vision gap analysis and track crosswalk`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
+- [`corrected Full Auto implementation audit`](../fable/2026-07-17-full-auto-implementation-audit.md)
+- [`Full Auto ProductSpec rev 10`](../../specs/desktop/full-auto.product-spec.md)
+- [`T3 Desktop full-harvest packet ledger`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md)
+- [`T3 mobile full-parity packet ledger`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md)
 - [`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md)
 - [`greenfield clients and Sarah-removal decision`](./decisions/2026-07-10-greenfield-clients-and-sarah-removal.md)
 - [`July 9 Backroom archive manifest`](./2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md)

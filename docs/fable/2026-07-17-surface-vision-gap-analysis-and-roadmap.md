@@ -22,6 +22,19 @@ A claim of "Implemented" below means code and tests exist on `main` for the
 substance of the item; it is not a release claim, a promise-registry state,
 or an assurance verdict. "Partial" and "Unverified" are load-bearing words.
 
+**2026-07-17 reconciliation note.** Sol MASTER_ROADMAP revision 119 adopts
+this document's seven-track crosswalk and surface-spec outcomes while
+preserving issue/accepted-packet dispatch and owner gates. The status tables
+below remain the audited snapshot at authorship; do not silently read them as
+live state. Later the same day, #8968–#8973/#8975 landed the Full Auto rev-10
+run/liveness/report/private-analyzer/handoff core, #8977 repaired first-class ACP picker
+admission, #8981/#8982 landed the mobile live-run projection/first-screen
+slice, #8980 closed with its fixture and iOS Simulator journey receipt,
+#8922–#8924 landed the release-feed/web-download rungs, and the T3
+Desktop/mobile plus Amp packet ledgers advanced. The canonical current queue
+and residuals are now in `docs/sol/MASTER_ROADMAP.md`; this dated analysis
+continues to own the detailed AC-by-AC evidence and proposal rationale only.
+
 ---
 
 ## 1. Current-state snapshot

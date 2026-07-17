@@ -380,9 +380,14 @@ study/gap/candidate artifacts and never product code. Implementation consumes
 only separately admitted candidates in isolated worktrees. Counterexamples
 flow back into StudyPackets; duplicate implementations are refused.
 
-Current Desktop Full Auto is per-session and serializes its local continuation
-queue. The documented multi-session bootstrap is useful now, but it is not
-evidence that the native portfolio scheduler has shipped.
+Current Desktop Full Auto is main-owned and serial: one active
+`FullAutoRun` per Desktop profile, with a durable mission/lifecycle, liveness,
+bounded report, and manual provider-handoff envelope. Its legacy composer
+toggle remains a migration bridge until the dedicated launcher/run view lands.
+The documented multi-session bootstrap is still useful, but it is not evidence
+that native portfolio scheduling or autonomous provider/account rotation has
+shipped; both require separately admitted policy and compatible ProductSpec
+authority.
 
 ## 9. Security, license, and privacy
 

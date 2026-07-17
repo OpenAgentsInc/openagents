@@ -73,8 +73,12 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   `docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md`: thread fabric,
   disclosed routing/specialists, review/thread reader, placement/remote
   control, then generated clients/signed plugins. Follow that order before the
-  broader teardown catalog. The Fable essay remains strategic evidence, not
-  dispatch or product-expansion authority.
+  broader teardown catalog. The 2026-07-17 surface-vision gap analysis maps
+  those lessons onto Full Auto, workbench, mobile, release, and web-trust
+  outcomes; `docs/sol/MASTER_ROADMAP.md` revision 119 owns the reconciled
+  priority and prevents duplicate Amp-versus-surface packets. Both Fable
+  documents remain strategic evidence, not dispatch or product-expansion
+  authority.
 - FastFollowSpec is a candidate-work source, never implementation or product
   authority. Current `AGENTS.md`, `INVARIANTS.md`, ProductSpec, AssuranceSpec,
   Sol roadmap, live issue/claim state, tests, receipts, and owner gates keep
@@ -99,12 +103,14 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   inconclusive, and policy-blocked dispositions. Never manufacture parity work
   or reopen an unchanged rejected candidate merely to keep an autonomous loop
   moving.
-- During current per-session Full Auto, an explicit owner instruction may
-  admit or select the Fast Follow research or implementation lane. Otherwise,
-  use Fast Follow as a bounded candidate source under higher-authority
-  actionable work and finish one concrete unit per continuation. The authored
-  3/1/1 capacity profile does not itself create a concurrent fleet; native
-  allocation requires a separately admitted FullAutoRunPolicy or FleetRun.
+- During the current one-active-`FullAutoRun`-per-profile product, an explicit
+  owner instruction may admit or select the Fast Follow research or
+  implementation lane. Otherwise, use Fast Follow as a bounded candidate
+  source under higher-authority actionable work and finish one concrete unit
+  per continuation. The authored 3/1/1 capacity profile does not itself create
+  a concurrent fleet or autonomous provider rotation; either requires a
+  separately admitted FullAutoRunPolicy/FleetRun and a compatible Full Auto
+  intent revision.
 
 ## Unattended macOS Credential Checks
 

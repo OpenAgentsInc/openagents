@@ -122,6 +122,10 @@ describe("OpenAgents FastFollowSpec 0.1 seed", () => {
   test("binds the owner-admitted expansion plan without weakening packet gates", () => {
     expect(readFrontmatterInteger("fast_follow_revision")).toBe(3);
     expect(source).toContain("docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md");
+    expect(source).toContain(
+      "docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md",
+    );
+    expect(source).toContain("docs/sol/MASTER_ROADMAP.md");
     expect(workGeneration.implementation_requirements).toContain(
       "target_owned_admitted_issue_accepted_plan_or_work_packet",
     );

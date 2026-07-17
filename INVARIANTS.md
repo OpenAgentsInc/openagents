@@ -285,16 +285,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   objective/done condition was satisfied; automatic done-condition
   verification is out of scope, and Completed stays a self-reported,
   owner-reviewable disposition backed by the run's bounded private report.
-  The `FullAutoRunReport` itself (FA-RUN-04, #8972), run-level liveness/SLO
-  classification (FA-RUN-03, #8971), and the cross-provider handoff envelope
-  (FA-HO-01, #8975) remain separately scoped and were not implemented by
-  #8969. Once that report exists, it may summarize turns, commits,
+  The `FullAutoRunReport` (FA-RUN-04, #8972), run-level liveness/SLO
+  classification (FA-RUN-03, #8971), and cross-provider handoff envelope
+  (FA-HO-01, #8975) are implemented as separately scoped authorities; none was
+  implicitly granted by #8969. The report may summarize turns, commits,
   failures, and provider transitions, but raw prompts, tool output, and
   provider transcripts remain private and must not enter public receipts,
   telemetry, or the promise registry without a separate approved authority
-  path; any public-safe control/receipt projection of it must expose only
-  bounded, non-transcript fields, and any raw-evidence pointer it carries
-  must resolve only to owner-private storage. A cross-provider handoff (manual
+  path. Its public-safe control/receipt projection exposes only bounded,
+  non-transcript fields, and every raw-evidence pointer resolves only to
+  owner-private storage. A cross-provider handoff (manual
   switch or an explicit Pause -> switch -> Resume) must project only a
   host-owned bounded history, re-check target admission/auth/capability with
   rollback on refusal, append a visible from/to/actor/time/reason/truncation

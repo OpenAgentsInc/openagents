@@ -208,7 +208,10 @@ Hot paths, one integration owner:
 - `apps/openagents-desktop/src/spec-lane-workflow.ts` or its generalized
   work-context successor
 - `apps/openagents-desktop/src/full-auto-reconcile.ts`
-- `apps/openagents-desktop/src/full-auto-registry.ts`
+- `apps/openagents-desktop/src/full-auto-run-registry.ts` (mission/lifecycle
+  authority) plus the legacy `full-auto-registry.ts` only at its migration
+  boundary
+- `apps/openagents-desktop/src/full-auto-run-report.ts`
 - `apps/openagents-desktop/src/main.ts`
 - Full Auto ProductSpec/AssuranceSpec and tests
 
@@ -239,12 +242,17 @@ Out: five-worker concurrency.
 Depends on: FF-05 and FF-06.
 
 Outcome: safely run multiple delivery, research, and implementation workers
-against an explicit capacity policy.
+against an explicit capacity policy after the one-active-`FullAutoRun` local
+product is green. This is the future surface-vision FA-E2 portfolio/routing
+seam; it is not admitted by Full Auto ProductSpec rev 10 or by Fast Follow
+alone.
 
 Scope:
 
 - separately admitted run-policy schema; do not put runtime leases in authored
   FastFollowSpec;
+- an explicit Full Auto intent/invariant revision that admits concurrency and
+  autonomous provider/account rotation before either behavior ships;
 - capacity profiles and dynamic reallocation when a work source is exhausted;
 - research writes limited to configured artifact paths;
 - implementation requires admitted candidates and isolated claims/worktrees;
@@ -360,17 +368,22 @@ real OpenAgents authority.
 
 First manual run:
 
-- three ordinary issue/backlog Full Auto sessions;
-- one research session scoped to the first non-terminal directive in the
-  ordered Amp initial program and its research artifact paths;
-- one implementation session scoped to one already admitted candidate from
-  that program;
+- one named, bounded FullAutoRun at a time under the current per-profile
+  concurrency contract, using #8976's visible sidebar tests where applicable;
+- ordinary non-Full-Auto delivery/research sessions may run alongside it only
+  with their own claims/worktrees and without representing a native 3/1/1
+  portfolio;
+- the research unit stays scoped to the first non-terminal directive and its
+  artifact paths, and implementation consumes only a separately admitted
+  candidate;
 - isolated claims/worktrees for every mutating session; and
 - retained stop, failure, token, candidate, test, and closeout evidence.
 
 Evaluation:
 
 - compare no packet versus packet at fixed task and token budget;
+- consume the bounded `FullAutoRunReport` and #8973 private analyzer when
+  available, keeping raw transcripts owner-private;
 - measure wrong-source reads, duplicated candidate/PR rate, policy rework,
   verification close rate, no-delta honesty, and cache reuse;
 - retain counterexamples and revise the packet/spec only through their revision

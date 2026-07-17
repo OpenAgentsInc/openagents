@@ -5,7 +5,7 @@ artifact_type: "prd"
 spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-17T04:40:49Z"
+updated_at: "2026-07-17T23:20:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -22,6 +22,8 @@ tool_metadata:
   openagents_seed: "FASTFOLLOW.md"
   openagents_issue_program: "docs/fastfollow/SUGGESTED_ISSUES.md"
   openagents_assurance_level: "cross-source-learning-authority"
+  openagents_surface_reconciliation: "docs/sol/MASTER_ROADMAP.md revision 119 maps docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md into staged Full Auto, distribution, T3, and Fast Follow outcomes without granting FastFollowSpec dispatch or promotion authority"
+  openagents_full_auto_baseline: "Full Auto now has a durable one-active-run-per-profile core with liveness, bounded reports, private analysis, and provider handoff; the legacy composer toggle remains only the entry bridge pending the dedicated launcher/run view, and no native five-slot portfolio or autonomous provider rotation is claimed"
 ---
 
 ## Problem
@@ -80,7 +82,7 @@ out:
   - cross-tenant reuse of private target code, prompts, traces, gaps, credentials, customer data, or private holdouts
   - pooling user model subscriptions, credentials, or compute merely because public research artifacts are shared
   - a second Full Auto dispatch path or provider-owned FastFollowSpec parser
-  - claiming that current per-session Desktop Full Auto is already a concurrent five-worker scheduler
+  - claiming that the current one-active-run-per-profile Full Auto core is already a concurrent five-worker scheduler
   - requiring GEPA, DSPy, a deprecated Blueprint runtime, a public marketplace, or payment/settlement for the first implementation
 cut:
   - automated public marketplace publication or contributor revenue sharing for StudyPackets
@@ -103,7 +105,7 @@ and freshness state. Research and implementation are visibly different lanes.
 A cache hit says “reused study evidence,” never “recommended” or “adopted.”
 
 In Desktop, Fast Follow appears as a work source inside the existing Full Auto
-experience rather than as a hidden second agent. A five-slot portfolio can
+experience rather than as a hidden second agent. A future five-slot portfolio can
 allocate three ordinary delivery workers, one research worker, and one admitted
 implementation worker; the owner can stop, steer, and inspect each. If the
 ordinary backlog empties, the run policy may reallocate capacity without
@@ -122,10 +124,12 @@ is required here because GitHub issues are reserved for reproducible bugs; it
 does not weaken packet claims, verification, release gates, or public-promise
 authority.
 
-The format-0.1 bootstrap works before the native UI: repository `AGENTS.md` and
-the bundled workspace skill direct existing per-session Full Auto to the seed
-spec. The UI must label that as manual multi-session allocation, not native
-fleet scheduling.
+The format-0.1 bootstrap works before the native portfolio UI: repository
+`AGENTS.md` and the bundled workspace skill direct the current durable,
+one-active-run-per-profile Full Auto path to the seed spec. Until the dedicated
+launcher/run view lands, the legacy composer toggle remains only an entry
+bridge. The UI and docs must label this as a single run, not native fleet
+scheduling.
 
 ## Solution
 
@@ -187,8 +191,8 @@ a claim-aware supervisor, not in the authored learning document.
 - **FF-AC-08:** A separately admitted run policy can enforce the owner example
   of `3 delivery / 1 research / 1 implementation` while actionable backlog
   exists and `0 / 2 / 3` after it empties, without duplicate claims or mutation
-  collisions. Current per-session Desktop behavior remains honestly labeled
-  until this supervisor is implemented and proven.
+  collisions. Current one-active-run-per-profile Desktop behavior remains
+  honestly labeled until this supervisor is implemented and proven.
 - **FF-AC-09:** A shared StudyPacket cache key binds exact public source bytes,
   lesson/program/schema/planner/tool/evaluator versions, and visibility/license
   policy. Private target analysis is isolated, and a cache hit projects only
@@ -212,11 +216,11 @@ a claim-aware supervisor, not in the authored learning document.
   ordered initial directives matching its thread-fabric, routing/specialist,
   review/reader, placement/remote, and developer/plugin milestones, with no
   dangling lesson or directive ref.
-- **FF-AC-14:** On current main, an owner can turn on the existing Full Auto
-  toggle and explicitly run the seed's ordered Amp initial program, admitted
-  implementation, or backlog-fallback method through repository instructions
-  and the Fast Follow skill; docs state the 20-continuation cap and do not claim
-  native portfolio scheduling.
+- **FF-AC-14:** On current main, an owner can use the legacy Full Auto entry
+  bridge to start one durable run over the seed's ordered Amp initial program,
+  admitted implementation, or backlog-fallback method through repository
+  instructions and the Fast Follow skill; docs state the 20-turn cap and do
+  not claim native portfolio scheduling.
 - **FF-AC-15:** Format validation, reference validation, teardown coverage,
   authority boundaries, and the two five-slot capacity profiles have committed
   automated checks. Any future breaking validation change bumps the format and
@@ -267,9 +271,11 @@ a claim-aware supervisor, not in the authored learning document.
   optional reporting polish.
 - Shared inference can leak target-private context. Only public upstream study
   is cross-project by default; target adaptation stays isolated.
-- Current Full Auto is serialized per Desktop instance and has no retry timer
-  after a failed turn unless another trigger fires. Native portfolio work must
-  not be designed as prompt text over that limitation.
+- Current Full Auto admits at most one active run per Desktop profile and has
+  main-owned liveness, retry/backoff, bounded reporting, private analysis, and
+  explicit handoff seams. Native portfolio work must extend that typed run
+  authority; it cannot be designed as prompt text or inferred from five-slot
+  examples.
 - A five-worker run can duplicate PRs and collide on hot contracts. Claims,
   isolated worktrees, dependency ordering, and one integration owner are
   mandatory.

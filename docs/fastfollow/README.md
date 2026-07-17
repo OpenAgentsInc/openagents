@@ -37,11 +37,15 @@ is no implicit merge in format 0.1.
    FastFollowSpec, whose ordered initial program follows
    [`Amp in a Few Days`](../fable/2026-07-16-amp-in-a-few-days-on-openagents.md)
    before returning to the complete `docs/teardowns/` catalog.
-4. [`../../specs/openagents/fast-follow.product-spec.md`](../../specs/openagents/fast-follow.product-spec.md)
+4. [`Surface-vision gap analysis`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
+   — target-side crosswalk from the teardown/episode evidence into Full Auto,
+   workbench, release, mobile, web, and trust-layer outcomes. It is proposal
+   evidence; the Sol master owns the reconciled queue.
+5. [`../../specs/openagents/fast-follow.product-spec.md`](../../specs/openagents/fast-follow.product-spec.md)
    — product intent and acceptance criteria for the native system.
-5. [`SUGGESTED_ISSUES.md`](SUGGESTED_ISSUES.md) — dependency-ordered,
+6. [`SUGGESTED_ISSUES.md`](SUGGESTED_ISSUES.md) — dependency-ordered,
    issue-ready implementation program.
-6. [`fast-follow.schema.json`](fast-follow.schema.json) — JSON Schema for the
+7. [`fast-follow.schema.json`](fast-follow.schema.json) — JSON Schema for the
    canonical projection compiled from an authored document.
 
 The workspace skill at
@@ -61,13 +65,24 @@ shared study service already exists.
 
 The current OpenAgents Desktop Full Auto implementation already:
 
-- exposes a per-session **Full Auto** composer toggle;
-- persists the loop across renderer/app restart;
-- binds it to one workspace and provider profile;
+- owns one durable `FullAutoRun` mission and lifecycle in Electron main;
+- persists objective, done condition, workspace, provider profile, transition
+  attribution, liveness, and bounded report identity across restart;
+- admits one active run per Desktop profile and keeps Pause, Stop, retry,
+  stall, cap, and terminal dispositions distinct;
 - uses repository `AGENTS.md`, README, docs, issues, and bounded
   ProductSpec/AssuranceSpec context as candidate sources;
-- takes one concrete useful action per continuation; and
-- stops after 20 successful automatic continuations.
+- takes one concrete useful action per continuation through the serialized
+  lease/reconciliation path;
+- preserves manual objective-safe provider handoff in a bounded envelope; and
+- publishes a bounded live run projection that mobile can prioritize.
+
+The visible Desktop bridge is still the legacy composer toggle until FA-UX-01
+#8974 lands the dedicated rail launcher and read-only run view. The private
+analyzer/comparison pipeline is now landed (#8973); the six-test owner-visible
+batch, new AssuranceSpec, and packaged release gate remain open. Current
+`main` therefore proves the run core and private analysis, not the finished AFK
+product or autonomous provider/account rotation.
 
 The owner admitted the ordered initial program on 2026-07-16 in
 [`2026-07-16-fast-follow-expansion-accepted-plan.md`](../sol/2026-07-16-fast-follow-expansion-accepted-plan.md).
@@ -76,11 +91,12 @@ not open a feature issue because this repository reserves GitHub issues for
 reproducible bugs; claim/worktree, verification, release, and public-promise
 gates still apply.
 
-Because the OpenAgents `AGENTS.md` now points Full Auto at `FASTFOLLOW.md`, an
-owner can use Fast Follow tonight without a new binary:
+Because the OpenAgents `AGENTS.md` points Full Auto at `FASTFOLLOW.md`, an
+owner can use Fast Follow now without waiting for the native portfolio policy:
 
 1. Open a session rooted at the OpenAgents repository.
-2. Turn on **Full Auto**.
+2. Start the current Full Auto bridge for that repository (the composer toggle
+   until #8974 replaces it with the dedicated launcher).
 3. Send one of these initial instructions:
 
    ```text
@@ -101,14 +117,15 @@ owner can use Fast Follow tonight without a new binary:
    actionable backlog work.
    ```
 
-For the five-worker shape in the owner brief, use three issue/backlog sessions,
-one ordered Amp-program research session, and one implementation session scoped
-to a separately admitted candidate from that program. Each session gets its own
-Full Auto toggle and isolated claim/worktree when it mutates. This is a manual
-allocation bootstrap. Current Desktop Full Auto serializes its own
-continuations and is not yet a five-worker fleet scheduler; the native
-portfolio policy and concurrent supervisor are specified but remain
-implementation work.
+The five-worker shape in the owner brief remains a future native allocation:
+three delivery workers, one ordered-program research worker, and one
+implementation worker scoped to an admitted candidate. Do not simulate that by
+starting five Full Auto runs in one Desktop profile: the current rev-10
+contract permits one active run per profile. Independently authorized ordinary
+sessions may still be coordinated manually with isolated claims/worktrees, but
+that is not a FullAutoRunPolicy or a five-worker proof. The native portfolio
+policy and concurrent supervisor remain separately admitted implementation
+work.
 
 ## The four artifact layers
 

@@ -5,7 +5,7 @@ artifact_type: "prd"
 spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T23:10:00.000Z"
+updated_at: "2026-07-17T23:12:48.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-desktop/"
@@ -22,7 +22,7 @@ custom_sections:
 tool_metadata:
   openagents_source_synthesis: "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md"
   openagents_source_transcripts: "docs/transcripts/200.md through docs/transcripts/255.md plus the episode-256 draft transcript (Full Auto Implementation Audit and Roadmap)"
-  openagents_admission_status: "authored from the full teardown-catalog synthesis; surface-vision PRD pending owner admission and MASTER_ROADMAP reconciliation; MASTER_ROADMAP retains sequencing authority"
+  openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to live issues and exact accepted plans/work packets, with owner gates and proof rungs intact"
   openagents_revision_3_note: "Rev 3 elevates Full Auto to the roadmap-defining flagship per the episode-256 draft transcript (owner: an AFK-reliable multi-account multi-provider autonomous mode is 'important enough of an unserved need to build the whole short-term roadmap of the company around'). Full Auto becomes a dedicated run mode launched beside New Session (lightning action, one-time objective/workspace/provider-policy setup, full-screen read-only run view, explicit Play/Pause/Stop, no composer while running — 'steering is not Full Auto'); adds automatic model/account/provider failover on limits (the overnight Fable-limit halt is the named incumbent failure), same-thread cross-provider handoff with end-to-end acceptance proof (the live Claude-error -> Codex-continues-same-chat moment), active-run thread retention (the five-thread cache eviction root cause), and the run -> bounded report -> transcript analysis -> replayable fixture iteration loop. Also folds in back-catalog direction from episodes 200-237: the episode-206 Guidance Module lineage (between-turn decision engine with shared state/budget/environment, confidence-gated actions, hard guardrails over soft guidance, budget-bound autonomy); episode-237 clearing-layer doctrine (scoped-in-advance done, rubric grading, dereferenceable receipts, draft/verified/reviewed/bonded confidence tiers); episode-225 account-visibility peeves (at-a-glance identity, rate-limit burn-down, API-key fallback); episode-204 don't-break-userspace; episode-227 one-click full data export; the one-app cockpit/earning thesis deferred to its own contract."
   openagents_sibling_specs: "specs/mobile/mobile-any-host-fleet-controller.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
@@ -355,6 +355,9 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
 
 ## Related Artifacts
 
+- Roadmap reconciliation and AC-by-AC gap crosswalk:
+  `docs/sol/MASTER_ROADMAP.md` revision 119 and
+  `docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`
 - Source synthesis: `docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md`
 - Full teardown catalog and evidence conventions: `docs/teardowns/README.md`
 - Full Auto implementation authority: `specs/desktop/full-auto.product-spec.md`

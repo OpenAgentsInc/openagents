@@ -5,12 +5,15 @@
 - Dispatch: no; follow the authority order below
 - Owner: Sol roadmap
 
-Sol owns the implementation-grounded OpenAgents roadmap. Its accepted Desktop
-Codex Workroom baseline now has an owner-admitted, ordered Fast Follow
-expansion program. Broader mobile, remote, Fleet, portability, provider, and
-voice plans remain retained evidence or closed boundaries unless an exact
-packet admits them. This index points to the authorities; it does not cache the
-roadmap revision or issue count.
+Sol owns the implementation-grounded OpenAgents roadmap. The accepted Desktop
+Codex Workroom baseline now has an active Full Auto flagship program, a
+cross-platform release program, and owner-admitted Amp, T3 Desktop, and T3
+mobile packet ledgers. The three 2026-07-17 surface ProductSpecs are
+roadmap-reconciled outcomes, while exact issues/packets still own dispatch.
+General portable movement, autonomous provider/fleet policy, voice, settlement,
+and other owner-gated expansions remain closed unless separately admitted.
+This index points to the authorities; it does not cache the roadmap revision or
+issue count.
 
 ## Dispatch-safe reading order
 
@@ -46,6 +49,12 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 - [`2026-07-17-t3-code-ui-full-harvest-accepted-plan.md`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md)
   — owner admission and bounded packet ledger for the complete T3 Code UI
   harvest into the mounted OpenAgents Desktop React workbench.
+- [`2026-07-17-t3-code-mobile-full-parity-accepted-plan.md`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md)
+  — owner admission and bounded packet ledger for the complete T3 mobile
+  workbench adaptation through physical-device/distribution closure.
+- [`../../specs/desktop/full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md)
+  — Full Auto rev-10 mission, lifecycle, liveness, evidence, UX, and handoff
+  intent for epic #8967; live child issues own implementation sequence.
 - [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — accepted risks, falsifiers,
   tripwires, and review points.
 - [`receipts/README.md`](./receipts/README.md) — indexed proof snapshots, rungs,
@@ -82,6 +91,12 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
+  — detailed AC-by-AC Desktop/mobile/web audit and seven-track proposal;
+  MASTER_ROADMAP owns its reconciled sequence and current truth.
+- [`../fable/2026-07-17-full-auto-implementation-audit.md`](../fable/2026-07-17-full-auto-implementation-audit.md)
+  — corrected overnight incident/run-model audit that anchors #8967; later
+  landings do not rewrite its point-in-time findings.
 - [`2026-07-16-desktop-local-usage-opt-in-verification.md`](./2026-07-16-desktop-local-usage-opt-in-verification.md)
   — default-off privacy, admission, outbox, opt-out, and owner-gated live-proof
   contract for Desktop local-turn usage ingestion under issue #8911.

@@ -740,53 +740,60 @@ Contract: `openagents_desktop.chat.empty_state_centers_current_directory.v1`.
 
 Contract: `openagents_desktop.chat.composer_image_input.v1`.
 
-### Full Auto is one composer toggle, no separate permission system, bounded
+### Full Auto has a durable run core; the composer toggle is a migration bridge
 
-- A single `Full Auto` toggle sits in the React composer's action bar
-  (`shell-full-auto-toggle`), off by default. No dedicated review screen,
-  criterion board, or admission-gate UI exists for it (#8852).
-- While on, a Codex-lane turn runs with a Full Auto instruction prefixed onto
-  its prompt (look at this repo's README/docs/issues, pick one concrete next
-  thing, do it) and `approvalPolicy: "never"` so it does not stop mid-turn for
-  approval — sandbox stays the existing `danger-full-access` default. Full
-  Auto inherits this repo's normal full-trust Codex execution posture rather
-  than adding a second, more cautious permission model next to it.
-- The continuation decision is main-owned and durable (#8853): a per-thread
-  registry (`src/full-auto-registry.ts`, persisted under Electron
-  `userData/full-auto/registry.json`) records enabled/disabled state and a
-  consecutive-continuation counter, and a shared reconciliation decision
-  (`src/full-auto-reconcile.ts`) runs at exactly two trigger points — right
-  after each completed Full-Auto-flagged turn, and once at app startup after
-  existing interrupted-turn recovery settles. The renderer sends
-  `fullAuto: true` exactly once per user submit and never loops; main decides
-  every continuation.
-- Toggling Full Auto persists to main immediately via
-  `CodexLocalFullAutoSetChannel`, independent of whether a turn is in flight,
-  so a toggle-off is a durable stop even if the app quits before the next
-  turn would have started. Toggling it on is itself an immediate trigger into
-  the same serialized reconciliation path: on a new empty session the first
-  autonomous turn starts without a separate message or Send action.
-- Because the registry and reconciliation live in main and on disk, the loop
-  **does** survive a renderer reload and a full app restart at the durable
-  module level: a thread left enabled with nothing in flight resumes its next
-  continuation at the next launch with no re-toggle or re-send
-  (`full-auto-restart.e2e.test.ts`).
-- A bounded safety cap (20 consecutive continuations) turns Full Auto off
-  durably (registry, not renderer state) and leaves an explanatory system
-  note if a loop runs that long unattended — holding across restarts — the
-  only "autonomy policy" this version has, deliberately, per the owner
-  direction that shipped it.
-- Honest current limits (per the audit
-  `docs/sol/2026-07-16-openagents-desktop-full-auto-deep-dive.md`): a
-  main-originated background continuation is not yet shown as in-flight in
-  the UI — the renderer only sees the completed-thread refresh (#8877); the
-  composer toggle is not yet hydrated from the durable registry at mount, so
-  after a restart or thread switch the visible toggle can disagree with
-  durable execution (#8874); and continuation dispatch is not yet
-  exactly-once — reconciliation has no lock, idempotency key, or lease
-  (#8876).
+- Electron main owns a versioned `FullAutoRun` in
+  `src/full-auto-run-registry.ts`: stable `runRef`, bound thread, title,
+  objective, done condition, exact workspace, provider profile, cap, counts,
+  lifecycle revision, transition history, and timestamps survive restart.
+  One Desktop profile admits at most one active run. Draft, Running, Pausing,
+  Paused, Retrying, Stalled, Completed, Failed, Stopped, and Cap reached are
+  distinct; Stop is terminal and Resume is valid only from Paused (#8969).
+- The old per-thread `enabled` registry and the visible composer toggle remain
+  only as an additive migration/entry bridge. Enabled legacy rows migrate
+  idempotently with an explicit `legacy_migration` objective; they do not
+  invent a user-authored mission or bypass the one-active-run rule. FA-UX-01
+  #8974 must replace this bridge with the dedicated left-rail launcher and
+  read-only run view before the new interaction model is an enforced UX
+  guarantee.
+- Continuation remains main-owned, serialized, lease-fenced, workspace-bound,
+  provider-admitted, restart-reconciled, and capped. The renderer never owns a
+  continuation loop. The older in-flight projection, toggle hydration,
+  exactly-once lease, failure/backoff, profile continuity, cap, and registry
+  corruption gaps listed in the July 16 deep dive are fixed; their closed
+  hardening issues are foundations, not AFK-product acceptance.
+- Run-level liveness is distinct from a healthy long provider turn. Main
+  persists progress, retry deadline, stall classification, and recovery
+  transitions (#8971). The exact overnight five-thread eviction has a real
+  thread-store regression (#8970), and an active-run thread is not treated as
+  disposable cache state.
+- Every terminal run can produce the bounded owner-private
+  `FullAutoRunReport` plus a separately redacted public-safe receipt (#8972).
+  Raw prompts, tool output, paths, credentials, and provider transcripts do
+  not enter that public projection. A provider saying “done” does not itself
+  prove the objective or acceptance condition.
+- Manual same-thread provider handoff uses the main-owned objective-priority
+  envelope and a visible from/to/actor/reason/truncation receipt, rechecking
+  target admission and preserving provider-private state as explicitly
+  non-transferable (#8975). This does not authorize loop-decided provider,
+  model, or account rotation.
+- Desktop publishes only the bounded live Full Auto projection consumed by
+  mobile (#8981); mobile first-screen rendering is not remote run-control
+  authority. The offline/private analyzer and comparison pipeline are landed
+  (#8973). The six-test owner-visible dogfood batch, AssuranceSpec, signed
+  packaged restart observation, and public promise gate remain open
+  (#8976/#8978/#8979).
+- Full Auto still inherits the admitted provider lane's execution posture. It
+  does not add a second permission system, containment claim, release claim,
+  or public reliability claim. Owner-local Codex remains honestly
+  `danger-full-access` where that is the selected runtime posture.
 
-Contract: `openagents_desktop.chat.full_auto_composer_loop.v2`.
+Enforced legacy bridge contract:
+`openagents_desktop.chat.full_auto_composer_loop.v2`. Pending dedicated-mode
+contracts:
+`openagents_desktop.full_auto_dedicated_launcher.v1`,
+`openagents_desktop.full_auto_read_only_run_view.v1`, and
+`openagents_desktop.full_auto_play_pause_stop_lifecycle.v1`.
 
 ### The MVP visible surface is mechanically enforced against the rendered shell
 
@@ -1106,13 +1113,14 @@ Contract and oracle: `src/dev-preview-contract.ts`, `vite.config.ts`,
 
 ## Not guaranteed yet
 
-This document does not promise automatic update delivery (the live feed
-host wiring), server-authoritative FleetRun creation, full-history eager
-rendering, or remote/cloud Codex-history sync. Those remain outside the
-current enforced Desktop contract. Release packaging and signing/notarization
-are now covered by the fail-closed release-lane guarantees above; the
-clean-machine install/update/rollback acceptance ceremony itself stays
-owner-gated.
+This document does not promise a promoted cross-platform automatic update,
+server-authoritative FleetRun creation, full-history eager rendering,
+remote/cloud Codex-history sync, autonomous Full Auto provider/account
+rotation, concurrent Full Auto portfolios, or the still-pending dedicated
+Full Auto launcher/run view. Release selection, candidate feed, packaging,
+and signing/notarization machinery have fail-closed contracts, but native
+platform completion and the clean-machine install/update/rollback acceptance
+ceremony stay owner/release-gated.
 
 When behavior changes, update the typed contract, its oracle, and this document
 in the same change. Do not expand this page from aspiration alone.

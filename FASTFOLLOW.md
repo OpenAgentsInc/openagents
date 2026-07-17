@@ -8,7 +8,7 @@ lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-17T19:30:00Z"
+updated_at: "2026-07-17T23:15:00Z"
 ---
 
 # OpenAgents Fast Follow
@@ -34,6 +34,14 @@ fabric surfaces, Day 2 routing and specialists, Day 3 review and thread
 reader, Day 4 placement and remote control, then Day 5 generated clients and
 signed extensions. It does not instruct OpenAgents to clone Amp, claim parity,
 or weaken an invariant.
+
+The later
+`docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md` maps this
+learning program onto the Full Auto, release, trust, workbench, mobile, web,
+and cross-cutting surface outcomes. `docs/sol/MASTER_ROADMAP.md` revision 119
+owns that reconciliation and current sequence. The crosswalk does not reorder
+the `initial_program`, manufacture a candidate, admit autonomous provider/fleet
+policy, or turn Fable prose into target authority.
 
 ## Target
 
