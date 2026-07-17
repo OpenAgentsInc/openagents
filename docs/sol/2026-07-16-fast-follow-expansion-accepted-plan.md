@@ -522,6 +522,66 @@ adapters, rendered runtime evidence, and Day 1 completion remain later packets.
 - remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: Desktop consumption, share/export visibility, remaining adapters, rendered runtime evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-08 — Thread disclosure and export receipts
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-07. Active
+Desktop work currently owns history, shell, runtime-conversation, and rendered
+surfaces, so this slice establishes the shared provider-neutral disclosure and
+export command/receipt algebra without touching those active seams.
+
+Owned implementation paths:
+
+- `packages/agent-runtime-schema/src/thread-disclosure.ts`
+- `packages/agent-runtime-schema/src/thread-disclosure.test.ts`
+- `packages/agent-runtime-schema/src/index.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-08-thread-disclosure-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: new `openagents.thread_disclosure_intent.v1` and
+`openagents.thread_disclosure_receipt.v1` schemas, exact thread/intent/receipt
+identity, explicit audience and administrator-access states, and ref-only
+export evidence. Existing event visibility, runtime-control, portable-session,
+provider-event, and Desktop contracts remain unchanged.
+
+Required behavior:
+
+- thread visibility changes and thread exports are distinct typed intents with
+  stable retry identity and an exact expected visibility version;
+- audiences are explicit owner-only, workspace-member, named-group, or
+  internet-readable states; there is no `unlisted` state or implication;
+- administrator access is an independent explicit axis rather than being
+  inferred from audience visibility;
+- accepted-pending, rejected, failed, visibility-applied, and export-created
+  receipts remain distinct, and an applied receipt must match its intent kind;
+- export receipts bind exact artifact ref, SHA-256 digest, format, and artifact
+  audience without embedding transcript or exported content; and
+- malformed refs/timestamps/digests, self-inconsistent states, raw content,
+  exact retries, and conflicting identity reuse are handled deterministically
+  and fail closed.
+
+Proof: focused schema/decoder/retry tests and package typecheck; Fast Follow,
+behavior-contract, ProductSpec, Sol, and repository-required checks.
+
+Close rule: this packet closes only the shared disclosure/export intent and
+receipt algebra. Desktop command consumption and pixels, persistence/transport,
+real exported artifacts, remaining adapters, rendered runtime evidence, and
+Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-08-20260717`
+- base: `68389f868e97175fc60f322591946a1357c047f7`
+- worktree/branch: `openagents-ff-d1-08` / detached `origin/main`
+- scope: provider-neutral explicit thread visibility/export intents, receipts, and retry classification
+- paths: the FF-D1-08 owned implementation paths above
+- hot files: agent-runtime-schema index; accepted-plan ledger and Sol manifest
+- hot contracts: new disclosure intent/receipt schema literals, audience/admin axes, receipt-kind consistency, and ref-only artifact evidence
+- dependencies: FF-D1-07 released; current Sync/mobile attention landings reconciled; active Desktop history/shell/rendering work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T13:59:34Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

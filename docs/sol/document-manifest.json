@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "7874820c7324cdd53797e80d893e5ca9a97927b1c6b9650c1950b0d649200c27",
+  "sourceTreeSha256": "c8bce9028b33d875225026f3653620dd0945712e88337ec739cb2c3110a52d19",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1781,7 +1781,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "e899b4ab231f9a040b24c0e2bc27700ad432ac33ef9e606e36e59a5a1af8ccfc",
+      "sha256": "00cd210cceab7af68f0dacd99c0779779b0905d1eeb5c65db308b79afcc9fb6c",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -3304,6 +3304,28 @@
       ]
     },
     {
+      "path": "docs/sol/receipts/2026-07-17-mobile-attention-inbox.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "63815192cc23c6c3f196856a0636181aff91230d604751f7ae531f1778191d10",
+      "status": "deterministic source receipt; no physical push or installed-device",
+      "snapshot": "2026-07-17",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8950,
+        8951,
+        8952,
+        8953
+      ]
+    },
+    {
       "path": "docs/sol/receipts/2026-07-17-port-06-mobile-controller-foundation.md",
       "class": "receipt",
       "owner": "Sol proof",
@@ -3354,7 +3376,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "7a8aaaaf6472d35286cdd4ef3046c5db84cbd405eb80b51f12ad979addd05f23",
+      "sha256": "b96bad5bb7fb73a9b1f04376cb84b48e215ebcf944ff0c2402ba32da7c28e5f9",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3409,7 +3431,8 @@
         8851,
         8860,
         8861,
-        8862
+        8862,
+        8950
       ]
     },
     {
