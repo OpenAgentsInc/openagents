@@ -1327,3 +1327,38 @@ open.
   endpoint provisioning and installed mutation evidence remain explicit
   `T3M-F1/F2`; ordered work advances to `T3M-E2`
 - verified_at: `2026-07-17T23:24:58Z`
+
+## Active packet — T3M-E2
+
+Outcome: add a transcript-preserving terminal workbench using Effect Native's
+typed terminal host, exact paired-worktree session contracts, bounded replay,
+and foreground recovery without granting mobile shell/cwd/process authority.
+
+Required behavior: snapshot, create, replay, and command operations bind to the
+exact session/repository/worktree and host-minted terminal/version. The host
+alone chooses shell, cwd, and environment. Mobile may send only bounded stdin,
+bounded geometry, interrupt, restart, and close operations; each requires an
+exact receipt. Replay is contiguous, monotonically sequenced, version-fenced,
+event- and byte-bounded, and names gaps/truncation instead of inventing output.
+The native host emits only typed data/resize events, provides a bounded
+scrollback and keyboard accessory, and background-to-active lifecycle refreshes
+only when Terminal is the open workbench.
+
+Close rule: this closes the E2 mobile terminal contract, registered React Native
+host driver, session route/state machine, reconnect/replay, keyboard accessory,
+geometry, bounded history, background recovery hook, authenticated environment
+seam, and receipts in application code. Live PTY endpoint provisioning,
+packaged native-emulator evidence, and physical iOS/Android background proof
+remain `T3M-F1`/`T3M-F2`.
+
+### CLAIM
+
+- packet: `T3M-E2`
+- base: `06eef70690869769afcbfbdf446c6a408c13f607`
+- claimed_at: `2026-07-17T23:33:29Z`
+- scope: exact terminal snapshot/create/replay/command contracts, native Effect
+  Native terminal driver, session route and keyboard accessory, contiguous
+  replay/gap accounting, geometry negotiation, foreground recovery, receipts,
+  tests, behavior contract, and Sol receipt
+- exclusions: live paired PTY endpoint (`T3M-F1`), packaged native emulator and
+  physical-device background/distribution evidence (`T3M-F2`)

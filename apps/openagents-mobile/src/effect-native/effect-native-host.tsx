@@ -10,6 +10,7 @@ import {
   type EffectNativeSurfaceProps,
   type ReactNativeDependencies,
 } from "@effect-native/render-rn"
+import { mobileTerminalHostDriver } from "./mobile-terminal-host-driver"
 
 /**
  * OpenAgents mobile (#8597) mount point for Effect Native.
@@ -46,5 +47,5 @@ export const EffectNativeHost = (
 ): React.ReactElement =>
   React.createElement(
     OpenAgentsEffectNativeSurface as unknown as React.FunctionComponent<EffectNativeSurfaceProps>,
-    { ...props, clipboard },
+    { ...props, clipboard, hostDrivers: [mobileTerminalHostDriver] },
   )

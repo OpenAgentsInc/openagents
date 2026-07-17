@@ -8,6 +8,10 @@ import {
   MOBILE_REPOSITORY_REVIEW_ENDPOINT,
   MOBILE_REPOSITORY_SEARCH_ENDPOINT,
   MOBILE_REPOSITORY_STATUS_ENDPOINT,
+  MOBILE_REPOSITORY_TERMINAL_COMMAND_ENDPOINT,
+  MOBILE_REPOSITORY_TERMINAL_CREATE_ENDPOINT,
+  MOBILE_REPOSITORY_TERMINAL_REPLAY_ENDPOINT,
+  MOBILE_REPOSITORY_TERMINAL_SNAPSHOT_ENDPOINT,
   MOBILE_REPOSITORY_TREE_ENDPOINT,
   createAuthenticatedMobileRepositoryEnvironment,
 } from "../src/coding/mobile-repository-environment-client"
@@ -64,6 +68,11 @@ describe("T3M-D1.2 authenticated repository environment client", () => {
       idempotencyRef: "git.mobile.push.1",
       confirmationRef: "confirmation.mobile.push.1",
     })
+    await client.terminalSnapshot(scope)
+    await client.terminalCreate({ ...scope, cols: 80, rows: 24, idempotencyRef: "terminal.mobile.create.1" })
+    await client.terminalReplay({ ...scope, terminalRef: "terminal.mobile.1", sessionVersionRef: "terminal.version.1", afterSeq: 0, limit: 500 })
+    await client.terminalCommand({ ...scope, terminalRef: "terminal.mobile.1", sessionVersionRef: "terminal.version.1",
+      op: "input", data: "pwd\r", idempotencyRef: "terminal.mobile.input.1" })
 
     expect(requests.map(request => new URL(request.url).pathname)).toEqual([
       MOBILE_REPOSITORY_TREE_ENDPOINT,
@@ -74,6 +83,10 @@ describe("T3M-D1.2 authenticated repository environment client", () => {
       MOBILE_REPOSITORY_REVIEW_ENDPOINT,
       MOBILE_REPOSITORY_GIT_STATUS_ENDPOINT,
       MOBILE_REPOSITORY_GIT_MUTATE_ENDPOINT,
+      MOBILE_REPOSITORY_TERMINAL_SNAPSHOT_ENDPOINT,
+      MOBILE_REPOSITORY_TERMINAL_CREATE_ENDPOINT,
+      MOBILE_REPOSITORY_TERMINAL_REPLAY_ENDPOINT,
+      MOBILE_REPOSITORY_TERMINAL_COMMAND_ENDPOINT,
     ])
     for (const request of requests) {
       expect(request.method).toBe("POST")

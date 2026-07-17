@@ -86,6 +86,17 @@ import {
   type MobileRepositoryGitState,
 } from "../coding/mobile-repository-git"
 import {
+  applyMobileTerminalReplay,
+  decodeMobileTerminalCommandReceipt,
+  decodeMobileTerminalReplay,
+  decodeMobileTerminalSnapshot,
+  initialMobileRepositoryTerminalState,
+  MOBILE_TERMINAL_MAX_INPUT_BYTES,
+  type MobileRepositoryTerminalPort,
+  type MobileRepositoryTerminalState,
+  type MobileTerminalCommand,
+} from "../coding/mobile-repository-terminal"
+import {
   projectMobilePortableSessionControl,
   type MobilePortableControlAction,
   type MobilePortableSessionControl,
@@ -123,6 +134,7 @@ import type { MobileWorkspaceKeyboardCommand } from "./mobile-workspace-keyboard
 import { renderMobileFilesView } from "./mobile-files-view"
 import { renderMobileChangesView } from "./mobile-changes-view"
 import { renderMobileGitView } from "./mobile-git-view"
+import { renderMobileTerminalView } from "./mobile-terminal-view"
 
 import {
   AgentRowSelected,
@@ -197,10 +209,11 @@ export interface HomeState {
   readonly workspaceSidebarCollapsed: boolean
   readonly workspaceFocusTarget: MobileWorkspaceFocusTarget
   readonly surfaceMode: SurfaceMode
-  readonly workbenchRoute: "conversation" | "files" | "changes" | "git"
+  readonly workbenchRoute: "conversation" | "files" | "changes" | "git" | "terminal"
   readonly repositoryBrowser: MobileRepositoryBrowserState
   readonly repositoryReview: MobileRepositoryReviewState
   readonly repositoryGit: MobileRepositoryGitState
+  readonly repositoryTerminal: MobileRepositoryTerminalState
   readonly modeMenuOpen: boolean
   readonly syncPhase: MobileSyncPhase
   readonly conversationAuthority: "local" | "sync"
@@ -364,6 +377,7 @@ export const initialHomeState: HomeState = {
   repositoryBrowser: initialMobileRepositoryBrowserState,
   repositoryReview: initialMobileRepositoryReviewState,
   repositoryGit: initialMobileRepositoryGitState,
+  repositoryTerminal: initialMobileRepositoryTerminalState,
   modeMenuOpen: false,
   syncPhase: "unconfigured",
   conversationAuthority: "local",
@@ -597,6 +611,19 @@ export const RepositoryGitCommitRequested = defineIntent("RepositoryGitCommitReq
 export const RepositoryGitPushRequested = defineIntent("RepositoryGitPushRequested", EmptyPayload)
 export const RepositoryGitConfirmationCancelled = defineIntent("RepositoryGitConfirmationCancelled", EmptyPayload)
 export const RepositoryGitConfirmationAccepted = defineIntent("RepositoryGitConfirmationAccepted", EmptyPayload)
+export const TerminalRouteOpened = defineIntent("TerminalRouteOpened", EmptyPayload)
+export const RepositoryTerminalRefreshed = defineIntent("RepositoryTerminalRefreshed", EmptyPayload)
+export const RepositoryTerminalForegrounded = defineIntent("RepositoryTerminalForegrounded", EmptyPayload)
+export const RepositoryTerminalCreateRequested = defineIntent("RepositoryTerminalCreateRequested", EmptyPayload)
+export const RepositoryTerminalSelected = defineIntent("RepositoryTerminalSelected", Schema.Struct({ terminalRef: Schema.String }))
+export const RepositoryTerminalHostEvent = defineIntent("RepositoryTerminalHostEvent", Schema.Union([
+  Schema.Struct({ type: Schema.Literal("data"), data: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("resize"), cols: Schema.Number, rows: Schema.Number }),
+]))
+export const RepositoryTerminalAccessoryKeyPressed = defineIntent("RepositoryTerminalAccessoryKeyPressed", Schema.Struct({ data: Schema.String }))
+export const RepositoryTerminalInterruptRequested = defineIntent("RepositoryTerminalInterruptRequested", EmptyPayload)
+export const RepositoryTerminalRestartRequested = defineIntent("RepositoryTerminalRestartRequested", EmptyPayload)
+export const RepositoryTerminalCloseRequested = defineIntent("RepositoryTerminalCloseRequested", EmptyPayload)
 export const FilesRouteOpened = defineIntent("FilesRouteOpened", EmptyPayload)
 export const FilesRouteClosed = defineIntent("FilesRouteClosed", EmptyPayload)
 export const RepositoryDirectoryToggled = defineIntent(
@@ -745,6 +772,16 @@ export const homeIntentDefinitions = [
   RepositoryGitPushRequested,
   RepositoryGitConfirmationCancelled,
   RepositoryGitConfirmationAccepted,
+  TerminalRouteOpened,
+  RepositoryTerminalRefreshed,
+  RepositoryTerminalForegrounded,
+  RepositoryTerminalCreateRequested,
+  RepositoryTerminalSelected,
+  RepositoryTerminalHostEvent,
+  RepositoryTerminalAccessoryKeyPressed,
+  RepositoryTerminalInterruptRequested,
+  RepositoryTerminalRestartRequested,
+  RepositoryTerminalCloseRequested,
   FilesRouteOpened,
   FilesRouteClosed,
   RepositoryDirectoryToggled,
@@ -792,6 +829,10 @@ export interface MobileHeaderProps {
  * authority of their own.
  */
 export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
+  if (state.workbenchRoute === "terminal") {
+    const active = state.repositoryTerminal.sessions.find(session => session.terminalRef === state.repositoryTerminal.activeRef)
+    return { title: "Terminal", subtitle: active?.label ?? "Exact worktree" }
+  }
   if (state.workbenchRoute === "git") {
     const status = state.repositoryGit.status
     return { title: "Git", subtitle: status?.branch ?? (status?.detached ? "Detached HEAD" : "Exact worktree") }
@@ -862,7 +903,9 @@ export const renderContentView = (state: HomeState): View =>
       direction: "column",
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
-    state.workbenchRoute === "git"
+    state.workbenchRoute === "terminal"
+      ? [renderMobileTerminalView(state.repositoryTerminal, state.accessibility)]
+      : state.workbenchRoute === "git"
       ? [renderMobileGitView(state.repositoryGit, state.accessibility)]
       : state.workbenchRoute === "changes"
       ? [renderMobileChangesView(state.repositoryReview, state.accessibility)]
@@ -1373,6 +1416,17 @@ export const renderHomeView = (state: HomeState): View =>
                       : "Open Git workbench",
                     onPress: IntentRef(
                       state.workbenchRoute === "git" ? "WorkbenchConversationOpened" : "GitRouteOpened",
+                      StaticPayload({}),
+                    ),
+                    style: mobileInteractiveStyle(state.accessibility),
+                  }), IconButton({
+                    key: "home-terminal",
+                    icon: state.workbenchRoute === "terminal" ? "Chats" : "Terminal",
+                    accessibilityLabel: state.workbenchRoute === "terminal"
+                      ? "Return to conversation"
+                      : "Open terminal workbench",
+                    onPress: IntentRef(
+                      state.workbenchRoute === "terminal" ? "WorkbenchConversationOpened" : "TerminalRouteOpened",
                       StaticPayload({}),
                     ),
                     style: mobileInteractiveStyle(state.accessibility),
@@ -1894,6 +1948,7 @@ export interface HomeProgramOptions {
     repositoryFiles?: MobileRepositoryFilesPort
     repositoryReview?: MobileRepositoryReviewPort
     repositoryGit?: MobileRepositoryGitPort
+    repositoryTerminal?: MobileRepositoryTerminalPort
     removeComposerAttachment?: (
       session: MobileCodingComposerSession,
       attachmentId: string,
@@ -2398,6 +2453,7 @@ const makeSyncedConversationHandlers = (
       repositoryBrowser: initialMobileRepositoryBrowserState,
       repositoryReview: initialMobileRepositoryReviewState,
       repositoryGit: initialMobileRepositoryGitState,
+      repositoryTerminal: initialMobileRepositoryTerminalState,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -2444,6 +2500,7 @@ const makeSyncedConversationHandlers = (
       repositoryBrowser: initialMobileRepositoryBrowserState,
       repositoryReview: initialMobileRepositoryReviewState,
       repositoryGit: initialMobileRepositoryGitState,
+      repositoryTerminal: initialMobileRepositoryTerminalState,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -3028,6 +3085,87 @@ export const makeHomeHandlers = (
         failureCode: null, message: null } }
     })
   })
+  const loadRepositoryTerminals = () => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const scope = repositoryScope(before.codingComposer)
+    const epoch = before.repositoryTerminal.requestEpoch + 1
+    if (scope === null || options.coding?.repositoryTerminal === undefined) {
+      yield* SubscriptionRef.update(state, current => ({ ...current, workbenchRoute: "terminal" as const,
+        repositoryTerminal: { ...initialMobileRepositoryTerminalState, scope, state: "unavailable" as const,
+          requestEpoch: epoch, message: scope === null ? "Select an exact coding worktree before opening a terminal." : "Connect the paired worktree environment to use terminals." } }))
+      return
+    }
+    yield* SubscriptionRef.update(state, current => ({ ...current, drawerOpen: false, workbenchRoute: "terminal" as const,
+      repositoryTerminal: { ...current.repositoryTerminal, scope, state: "loading" as const, requestEpoch: epoch, message: null } }))
+    let raw: unknown
+    try { raw = yield* Effect.promise(() => options.coding!.repositoryTerminal!.terminalSnapshot(scope)) } catch { raw = null }
+    const snapshot = decodeMobileTerminalSnapshot(raw, scope)
+    yield* SubscriptionRef.update(state, current => {
+      if (current.workbenchRoute !== "terminal" || current.repositoryTerminal.requestEpoch !== epoch) return current
+      if (snapshot === null) return { ...current, repositoryTerminal: { ...current.repositoryTerminal, state: "failed" as const, message: "The environment returned invalid or unavailable terminal state." } }
+      const activeRef = current.repositoryTerminal.activeRef !== null && snapshot.sessions.some(session => session.terminalRef === current.repositoryTerminal.activeRef)
+        ? current.repositoryTerminal.activeRef : snapshot.sessions.find(session => session.status === "running")?.terminalRef ?? snapshot.sessions[0]?.terminalRef ?? null
+      return { ...current, repositoryTerminal: { ...current.repositoryTerminal, state: "ready" as const, snapshotRef: snapshot.snapshotRef,
+        sessions: snapshot.sessions, activeRef, submitting: false, message: snapshot.sessions.some(session => session.gap) ? "Some earlier terminal output is unavailable." : null } }
+    })
+  })
+  const replayRepositoryTerminal = (terminalRef: string) => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const scope = before.repositoryTerminal.scope
+    const session = before.repositoryTerminal.sessions.find(item => item.terminalRef === terminalRef)
+    if (before.workbenchRoute !== "terminal" || scope === null || session === undefined || options.coding?.repositoryTerminal === undefined) return
+    const epoch = before.repositoryTerminal.requestEpoch + 1
+    const request = { ...scope, terminalRef, sessionVersionRef: session.sessionVersionRef, afterSeq: session.lastSeq, limit: 500 }
+    yield* SubscriptionRef.update(state, current => ({ ...current, repositoryTerminal: { ...current.repositoryTerminal, requestEpoch: epoch } }))
+    let raw: unknown
+    try { raw = yield* Effect.promise(() => options.coding!.repositoryTerminal!.terminalReplay(request)) } catch { raw = null }
+    const page = decodeMobileTerminalReplay(raw, request)
+    yield* SubscriptionRef.update(state, current => {
+      const active = current.repositoryTerminal.sessions.find(item => item.terminalRef === terminalRef)
+      if (current.workbenchRoute !== "terminal" || current.repositoryTerminal.requestEpoch !== epoch || active?.sessionVersionRef !== session.sessionVersionRef) return current
+      if (page === null) return { ...current, repositoryTerminal: { ...current.repositoryTerminal, message: "Terminal replay was stale or invalid." } }
+      return { ...current, repositoryTerminal: { ...current.repositoryTerminal,
+        sessions: current.repositoryTerminal.sessions.map(item => item.terminalRef === terminalRef ? applyMobileTerminalReplay(item, page) : item),
+        message: page.gap || page.truncated ? "Some earlier terminal output is unavailable." : null } }
+    })
+  })
+  const commandRepositoryTerminal = (
+    op: MobileTerminalCommand,
+    details: Readonly<{ data?: string; cols?: number; rows?: number }> = {},
+  ) => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const terminal = before.repositoryTerminal
+    const scope = terminal.scope
+    const session = terminal.sessions.find(item => item.terminalRef === terminal.activeRef)
+    if (before.workbenchRoute !== "terminal" || scope === null || session === undefined || terminal.submitting ||
+      options.coding?.repositoryTerminal === undefined || (op === "input" && (details.data === undefined ||
+        new TextEncoder().encode(details.data).byteLength > MOBILE_TERMINAL_MAX_INPUT_BYTES))) return
+    const epoch = terminal.requestEpoch + 1
+    const nonce = `${Date.now().toString(36)}.${session.lastSeq}`
+    const request = { ...scope, terminalRef: session.terminalRef, sessionVersionRef: session.sessionVersionRef, op,
+      idempotencyRef: `terminal.mobile.${op}.${nonce}`, ...details }
+    yield* SubscriptionRef.update(state, current => ({ ...current, repositoryTerminal: { ...current.repositoryTerminal,
+      requestEpoch: epoch, submitting: true, message: null } }))
+    let raw: unknown
+    try { raw = yield* Effect.promise(() => options.coding!.repositoryTerminal!.terminalCommand(request)) } catch { raw = null }
+    const receipt = decodeMobileTerminalCommandReceipt(raw, request)
+    yield* SubscriptionRef.update(state, current => {
+      const active = current.repositoryTerminal.sessions.find(item => item.terminalRef === session.terminalRef)
+      if (current.workbenchRoute !== "terminal" || current.repositoryTerminal.requestEpoch !== epoch || active?.sessionVersionRef !== session.sessionVersionRef) return current
+      if (receipt === null) return { ...current, repositoryTerminal: { ...current.repositoryTerminal, submitting: false, message: "The terminal command was not acknowledged." } }
+      if (op === "close") {
+        const sessions = current.repositoryTerminal.sessions.filter(item => item.terminalRef !== session.terminalRef)
+        return { ...current, repositoryTerminal: { ...current.repositoryTerminal, sessions, activeRef: sessions[0]?.terminalRef ?? null,
+          submitting: false, lastReceipt: receipt } }
+      }
+      return { ...current, repositoryTerminal: { ...current.repositoryTerminal, submitting: false, lastReceipt: receipt,
+        sessions: current.repositoryTerminal.sessions.map(item => item.terminalRef !== session.terminalRef ? item : { ...item,
+          sessionVersionRef: receipt.sessionVersionRef, status: receipt.status === "exited" ? "exited" as const : "running" as const,
+          ...(op === "resize" && details.cols !== undefined && details.rows !== undefined ? { cols: details.cols, rows: details.rows } : {}),
+          ...(op === "restart" ? { tail: "", lastSeq: 0, gap: false, recovered: false } : {}) }) } }
+    })
+    if (receipt !== null && op !== "close" && op !== "resize") yield* replayRepositoryTerminal(session.terminalRef)
+  })
   const mutateComposerAttachment = (
     attachmentId: string,
     action: "remove" | "retry",
@@ -3212,6 +3350,10 @@ export const makeHomeHandlers = (
             ...current.repositoryGit,
             requestEpoch: current.repositoryGit.requestEpoch + 1,
           },
+          repositoryTerminal: {
+            ...current.repositoryTerminal,
+            requestEpoch: current.repositoryTerminal.requestEpoch + 1,
+          },
         }
         if (current.threadLifecycle.pendingAction !== null) return current
         return {
@@ -3325,6 +3467,7 @@ export const makeHomeHandlers = (
         repositoryBrowser: initialMobileRepositoryBrowserState,
         repositoryReview: initialMobileRepositoryReviewState,
         repositoryGit: initialMobileRepositoryGitState,
+        repositoryTerminal: initialMobileRepositoryTerminalState,
         codingComposer: null,
         codingComposerTargetPickerOpen: false,
         codingComposerTargetSearch: "",
@@ -3551,6 +3694,7 @@ export const makeHomeHandlers = (
       workbenchRoute: "conversation" as const,
       repositoryReview: { ...current.repositoryReview, requestEpoch: current.repositoryReview.requestEpoch + 1 },
       repositoryGit: { ...current.repositoryGit, requestEpoch: current.repositoryGit.requestEpoch + 1 },
+      repositoryTerminal: { ...current.repositoryTerminal, requestEpoch: current.repositoryTerminal.requestEpoch + 1 },
       workspaceFocusTarget: "transcript" as const,
     })),
     RepositoryChangedFileSelected: payload => Effect.gen(function* () {
@@ -3675,6 +3819,47 @@ export const makeHomeHandlers = (
       if (request === null) return
       yield* runRepositoryGitMutation(request)
     }),
+    TerminalRouteOpened: loadRepositoryTerminals,
+    RepositoryTerminalRefreshed: loadRepositoryTerminals,
+    RepositoryTerminalForegrounded: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      if (before.workbenchRoute === "terminal") yield* loadRepositoryTerminals()
+    }),
+    RepositoryTerminalCreateRequested: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const scope = before.repositoryTerminal.scope
+      if (before.workbenchRoute !== "terminal" || scope === null || before.repositoryTerminal.submitting ||
+        before.repositoryTerminal.sessions.length >= 12 || options.coding?.repositoryTerminal === undefined) return
+      const epoch = before.repositoryTerminal.requestEpoch + 1
+      const request = { ...scope, cols: 80, rows: 24, idempotencyRef: `terminal.mobile.create.${Date.now().toString(36)}.${before.repositoryTerminal.sessions.length}` }
+      yield* SubscriptionRef.update(state, current => ({ ...current, repositoryTerminal: { ...current.repositoryTerminal, requestEpoch: epoch, submitting: true, message: null } }))
+      let raw: unknown
+      try { raw = yield* Effect.promise(() => options.coding!.repositoryTerminal!.terminalCreate(request)) } catch { raw = null }
+      const snapshot = decodeMobileTerminalSnapshot(raw, scope)
+      yield* SubscriptionRef.update(state, current => {
+        if (current.workbenchRoute !== "terminal" || current.repositoryTerminal.requestEpoch !== epoch) return current
+        if (snapshot === null) return { ...current, repositoryTerminal: { ...current.repositoryTerminal, submitting: false, message: "The terminal session was not created." } }
+        const previous = new Set(current.repositoryTerminal.sessions.map(session => session.terminalRef))
+        const created = snapshot.sessions.find(session => !previous.has(session.terminalRef)) ?? snapshot.sessions.at(-1)
+        return { ...current, repositoryTerminal: { ...current.repositoryTerminal, state: "ready" as const, snapshotRef: snapshot.snapshotRef,
+          sessions: snapshot.sessions, activeRef: created?.terminalRef ?? current.repositoryTerminal.activeRef, submitting: false, message: null } }
+      })
+    }),
+    RepositoryTerminalSelected: payload => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      if (before.workbenchRoute !== "terminal" || !before.repositoryTerminal.sessions.some(session => session.terminalRef === payload.terminalRef)) return
+      yield* SubscriptionRef.update(state, current => ({ ...current, repositoryTerminal: { ...current.repositoryTerminal, activeRef: payload.terminalRef } }))
+      yield* replayRepositoryTerminal(payload.terminalRef)
+    }),
+    RepositoryTerminalHostEvent: event => event.type === "data"
+      ? commandRepositoryTerminal("input", { data: event.data })
+      : event.cols < 1 || event.cols > 1_000 || event.rows < 1 || event.rows > 1_000
+        ? Effect.void
+        : commandRepositoryTerminal("resize", { cols: Math.floor(event.cols), rows: Math.floor(event.rows) }),
+    RepositoryTerminalAccessoryKeyPressed: payload => commandRepositoryTerminal("input", { data: payload.data }),
+    RepositoryTerminalInterruptRequested: () => commandRepositoryTerminal("interrupt"),
+    RepositoryTerminalRestartRequested: () => commandRepositoryTerminal("restart"),
+    RepositoryTerminalCloseRequested: () => commandRepositoryTerminal("close"),
     RuntimeTurnStopConfirmationRequested: payload =>
       SubscriptionRef.update(state, current => {
         const turn = current.khala.runtimeTurn
@@ -4042,6 +4227,7 @@ export const makeHomeHandlers = (
             repositoryBrowser: initialMobileRepositoryBrowserState,
             repositoryReview: initialMobileRepositoryReviewState,
             repositoryGit: initialMobileRepositoryGitState,
+            repositoryTerminal: initialMobileRepositoryTerminalState,
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
             codingPathDiscovery: { state: "idle" as const },
@@ -4174,6 +4360,16 @@ export interface HomeProgramHandle {
     readonly requestGitPush: () => void
     readonly acceptGitConfirmation: () => void
     readonly cancelGitConfirmation: () => void
+    readonly openTerminal: () => void
+    readonly refreshTerminal: () => void
+    readonly recoverTerminal: () => void
+    readonly createTerminal: () => void
+    readonly selectTerminal: (terminalRef: string) => void
+    readonly sendTerminalData: (data: string) => void
+    readonly resizeTerminal: (cols: number, rows: number) => void
+    readonly interruptTerminal: () => void
+    readonly restartTerminal: () => void
+    readonly closeTerminal: () => void
     readonly openFiles: () => void
     readonly closeFiles: () => void
     readonly refreshFiles: () => void
@@ -4358,6 +4554,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     repositoryBrowser: initialMobileRepositoryBrowserState,
                     repositoryReview: initialMobileRepositoryReviewState,
                     repositoryGit: initialMobileRepositoryGitState,
+                    repositoryTerminal: initialMobileRepositoryTerminalState,
                     threadLifecycle: initialHomeState.threadLifecycle,
                     codingComposer: null,
                     codingComposerTargetPickerOpen: false,
@@ -4460,6 +4657,25 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           requestGitPush: fire("RepositoryGitPushRequested"),
           acceptGitConfirmation: fire("RepositoryGitConfirmationAccepted"),
           cancelGitConfirmation: fire("RepositoryGitConfirmationCancelled"),
+          openTerminal: fire("TerminalRouteOpened"),
+          refreshTerminal: fire("RepositoryTerminalRefreshed"),
+          recoverTerminal: fire("RepositoryTerminalForegrounded"),
+          createTerminal: fire("RepositoryTerminalCreateRequested"),
+          selectTerminal: terminalRef => fireRef(IntentRef(
+            "RepositoryTerminalSelected",
+            StaticPayload({ terminalRef }),
+          )),
+          sendTerminalData: data => fireRef(IntentRef(
+            "RepositoryTerminalHostEvent",
+            StaticPayload({ type: "data", data }),
+          )),
+          resizeTerminal: (cols, rows) => fireRef(IntentRef(
+            "RepositoryTerminalHostEvent",
+            StaticPayload({ type: "resize", cols, rows }),
+          )),
+          interruptTerminal: fire("RepositoryTerminalInterruptRequested"),
+          restartTerminal: fire("RepositoryTerminalRestartRequested"),
+          closeTerminal: fire("RepositoryTerminalCloseRequested"),
           openFiles: fire("FilesRouteOpened"),
           closeFiles: fire("FilesRouteClosed"),
           refreshFiles: fire("RepositoryFilesRefreshed"),

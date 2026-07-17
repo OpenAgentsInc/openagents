@@ -2,6 +2,7 @@ import type { MobileComposerPathSearchPort } from "./mobile-composer-path-contex
 import type { MobileRepositoryFilesPort } from "./mobile-repository-files"
 import type { MobileRepositoryGitPort } from "./mobile-repository-git"
 import type { MobileRepositoryReviewPort } from "./mobile-repository-review"
+import type { MobileRepositoryTerminalPort } from "./mobile-repository-terminal"
 
 export const MOBILE_REPOSITORY_TREE_ENDPOINT = "/api/mobile/coding/repository/tree"
 export const MOBILE_REPOSITORY_READ_ENDPOINT = "/api/mobile/coding/repository/read"
@@ -11,11 +12,15 @@ export const MOBILE_REPOSITORY_DIFF_ENDPOINT = "/api/mobile/coding/repository/di
 export const MOBILE_REPOSITORY_REVIEW_ENDPOINT = "/api/mobile/coding/repository/reviews"
 export const MOBILE_REPOSITORY_GIT_STATUS_ENDPOINT = "/api/mobile/coding/repository/git/status"
 export const MOBILE_REPOSITORY_GIT_MUTATE_ENDPOINT = "/api/mobile/coding/repository/git/mutate"
+export const MOBILE_REPOSITORY_TERMINAL_SNAPSHOT_ENDPOINT = "/api/mobile/coding/repository/terminal/snapshot"
+export const MOBILE_REPOSITORY_TERMINAL_CREATE_ENDPOINT = "/api/mobile/coding/repository/terminal/create"
+export const MOBILE_REPOSITORY_TERMINAL_REPLAY_ENDPOINT = "/api/mobile/coding/repository/terminal/replay"
+export const MOBILE_REPOSITORY_TERMINAL_COMMAND_ENDPOINT = "/api/mobile/coding/repository/terminal/command"
 
 const MAX_METADATA_RESPONSE_BYTES = 256 * 1024
 const MAX_CONTENT_RESPONSE_BYTES = 14 * 1024 * 1024
 
-export type MobileRepositoryEnvironmentPort = MobileRepositoryFilesPort & MobileRepositoryReviewPort & MobileRepositoryGitPort & Readonly<{
+export type MobileRepositoryEnvironmentPort = MobileRepositoryFilesPort & MobileRepositoryReviewPort & MobileRepositoryGitPort & MobileRepositoryTerminalPort & Readonly<{
   search: MobileComposerPathSearchPort["search"]
 }>
 
@@ -82,5 +87,9 @@ export const createAuthenticatedMobileRepositoryEnvironment = (input: Readonly<{
     submitReview: request => post(MOBILE_REPOSITORY_REVIEW_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
     gitStatus: request => post(MOBILE_REPOSITORY_GIT_STATUS_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
     gitMutate: request => post(MOBILE_REPOSITORY_GIT_MUTATE_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
+    terminalSnapshot: request => post(MOBILE_REPOSITORY_TERMINAL_SNAPSHOT_ENDPOINT, request, MAX_CONTENT_RESPONSE_BYTES),
+    terminalCreate: request => post(MOBILE_REPOSITORY_TERMINAL_CREATE_ENDPOINT, request, MAX_CONTENT_RESPONSE_BYTES),
+    terminalReplay: request => post(MOBILE_REPOSITORY_TERMINAL_REPLAY_ENDPOINT, request, MAX_CONTENT_RESPONSE_BYTES),
+    terminalCommand: request => post(MOBILE_REPOSITORY_TERMINAL_COMMAND_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
   }
 }

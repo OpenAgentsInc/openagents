@@ -5,8 +5,49 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.18",
+    version: "2026-07-17.19",
     contracts: [
+      {
+        contractId: "openagents_mobile.exact_worktree_terminal.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile exact-worktree terminal",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "accepted-owner-plan", statedBy: "owner", statedOn: "2026-07-17" },
+        statement:
+          "A coding session can open native terminal sessions bound to its exact worktree, create and select shells, send input and keyboard-accessory keys, negotiate geometry, reconnect after backgrounding, replay bounded output, and restart or close a session without inventing output or command success.",
+        authorityBoundary:
+          "The mobile view can name only an exact host-minted terminal and version within the selected session/repository/worktree. The paired environment alone chooses shell, cwd, and process environment. Input frames and geometry are bounded; every input, resize, interrupt, restart, and close requires an exact command receipt. Replay is monotonically sequenced, version-fenced, byte- and event-bounded, and marks gaps or truncation instead of filling missing output. The registered React Native terminal host emits only typed data/resize events. Live paired PTY endpoints, native emulator packaging, and physical background/device proof remain T3M-F1/F2.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/coding/mobile-repository-terminal.ts",
+          "apps/openagents-mobile/src/effect-native/mobile-terminal-host-driver.ts",
+          "apps/openagents-mobile/src/screens/mobile-terminal-view.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "apps/openagents-mobile/src/screens/home-screen.tsx",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-e2",
+        ],
+        oracles: [
+          {
+            id: "mobile_exact_worktree_terminal_journey",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-repository-terminal.test.ts",
+            description:
+              "Proves native host data/resize events, exact snapshot and receipt decoding, contiguous replay and explicit gaps, recovered/create/select/input/resize behavior, and transcript preservation.",
+          },
+          {
+            id: "mobile_terminal_authenticated_transport",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-repository-environment-client.test.ts",
+            description:
+              "Proves terminal snapshot/create/replay/command operations use exact HTTPS endpoints with bearer custody, bounded JSON, redirect refusal, and no ambient credentials.",
+          },
+        ],
+        verification:
+          "Mobile terminal/environment, authoritative Home/mobile, behavior-contract, mobile typecheck, and repository checks; live PTY endpoint, packaged native emulator, and physical iOS/Android background evidence remain T3M-F1/F2.",
+      },
       {
         contractId: "openagents_mobile.exact_worktree_git.v1",
         state: "enforced",

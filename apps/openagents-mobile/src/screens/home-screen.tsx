@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   AccessibilityInfo,
+  AppState,
   KeyboardAvoidingView,
   Platform,
   View as RNView,
@@ -20,6 +21,7 @@ import type { MobileComposerPathSearchPort } from "../coding/mobile-composer-pat
 import type { MobileRepositoryFilesPort } from "../coding/mobile-repository-files"
 import type { MobileRepositoryGitPort } from "../coding/mobile-repository-git"
 import type { MobileRepositoryReviewPort } from "../coding/mobile-repository-review"
+import type { MobileRepositoryTerminalPort } from "../coding/mobile-repository-terminal"
 import type {
   ConfirmedPortableSessionSnapshot,
   ConfirmedRuntimeAttentionSnapshot,
@@ -86,6 +88,7 @@ export const HomeScreen = ({
     repositoryFiles?: MobileRepositoryFilesPort
     repositoryReview?: MobileRepositoryReviewPort
     repositoryGit?: MobileRepositoryGitPort
+    repositoryTerminal?: MobileRepositoryTerminalPort
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,
@@ -162,6 +165,12 @@ export const HomeScreen = ({
   useEffect(() => {
     program.fullAuto.setProjection(fullAutoRun ?? null)
   }, [program, fullAutoRun])
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", next => {
+      if (next === "active") program.coding.recoverTerminal()
+    })
+    return () => subscription.remove()
+  }, [program])
   useEffect(() => {
     if (pendingAttentionTarget === null || pendingAttentionTarget === undefined) return
     if (attentionDispatchRef.current === pendingAttentionTarget.attentionRef) return
