@@ -90,6 +90,20 @@
       "height": 800
     },
     {
+      "name": "responsive-standard",
+      "file": "responsive-standard.png",
+      "sha256": "2f4aa5e59c759a8a2d2e829680ab193d8f01c071dd9ada65b859c22401879dc7",
+      "width": 900,
+      "height": 760
+    },
+    {
+      "name": "responsive-minimum",
+      "file": "responsive-minimum.png",
+      "sha256": "0c9d1c5c67cc63049c4377d08d49078224595943bbdae90e3be11a1562eb5e50",
+      "width": 480,
+      "height": 720
+    },
+    {
       "name": "workbench-messages-reasoning",
       "file": "workbench-messages-reasoning.png",
       "sha256": "138687471add2badd2db813b0f1f16ff3f9b72711ef2fbcbd5381980ad4cb918",

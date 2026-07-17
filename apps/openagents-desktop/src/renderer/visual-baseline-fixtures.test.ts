@@ -14,6 +14,7 @@ import {
   visualBaselineShellState,
 } from "./visual-baseline-fixtures.ts";
 import { activeFullAutoEnabled, activeFullAutoTurnRunning } from "./shell.ts";
+import { visualBaselineViewportForState } from "../visual-baseline-contract.ts";
 
 describe("visual-baseline fixture states", () => {
   test("the capture set is the issue's fixed shell-state list", () => {
@@ -29,6 +30,8 @@ describe("visual-baseline fixture states", () => {
       "browser-preview",
       "settings-routed",
       "remote-connect",
+      "responsive-standard",
+      "responsive-minimum",
       "workbench-messages-reasoning",
       "workbench-commands",
       "workbench-files",
@@ -49,6 +52,21 @@ describe("visual-baseline fixture states", () => {
     for (const name of VISUAL_BASELINE_SHELL_STATES) {
       expect(visualBaselineShellState(name)).toEqual(visualBaselineShellState(name));
     }
+  });
+
+  test("responsive fixtures capture the admitted standard and minimum viewports", () => {
+    expect(visualBaselineViewportForState("responsive-standard")).toEqual({
+      width: 900,
+      height: 760,
+    });
+    expect(visualBaselineViewportForState("responsive-minimum")).toEqual({
+      width: 480,
+      height: 720,
+    });
+    expect(visualBaselineViewportForState("composer-idle")).toEqual({
+      width: 1280,
+      height: 800,
+    });
   });
 
   test("no fixture note carries a live-clock timestamp shape", () => {

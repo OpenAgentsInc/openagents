@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "47ecc6c03300cd99380f870345d326c29c154441445e59efa915c700b8cbb3ce",
+  "sourceTreeSha256": "511b5e3541f77ba5e59c7875d4c5fa412eac4cc551b9def904fd122c5687b0dc",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1968,7 +1968,7 @@
       "owner": "Sol T3 Code UI full harvest",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "fb67c05787105fd94104a8d68995f74503008f79be7517d85b10b14c25ef89b3",
+      "sha256": "b387eb03e47cc0c209ab9d32a332527e1a89a78dffbdca784db337344c5bc416",
       "status": "active",
       "snapshot": "2026-07-17",
       "reviewedAt": "2026-07-12",
@@ -1984,10 +1984,11 @@
         "docs/fastfollow/receipts/2026-07-17-t3ui-08-browser-preview-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-t3ui-09-settings-primitives-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-t3ui-10-remote-mobile-connect-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-t3ui-11-responsive-a11y-performance-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 12,
+      "inboundSourceCount": 13,
       "issueLinks": []
     },
     {

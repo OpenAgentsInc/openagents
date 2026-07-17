@@ -836,6 +836,10 @@ describe("React workbench shell", () => {
     await interact(() => review.click())
     expect(received).toContainEqual({ name: "DesktopWorkspaceSelected", payload: "review" })
     expect(container.querySelectorAll('[role="tab"]')).toHaveLength(2)
+    const tablist = container.querySelector('[aria-label="Workbench surfaces"]') as HTMLElement
+    await interact(() => tablist.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }) as unknown as Event))
+    expect(received.at(-1)).toEqual({ name: "DesktopWorkspaceSelected", payload: "files" })
+    expect((container.querySelector('[role="tab"][aria-selected="true"] > button') as HTMLButtonElement).tabIndex).toBe(0)
 
     const closePanel = container.querySelector('[aria-label="Close panel"]') as HTMLButtonElement
     await interact(() => closePanel.click())
@@ -925,6 +929,15 @@ describe("React workbench shell", () => {
     await interact(() => (container.querySelector('[aria-label="Annotate preview"]') as HTMLButtonElement).click())
     expect(container.querySelector('[aria-label="Preview annotation"]')).not.toBeNull()
     expect([...container.querySelectorAll(".oa-react-browser-annotation button")].some(button => button.textContent === "Add to composer")).toBe(true)
+  })
+
+  test("exposes roving workbench tabs to keyboard users", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const base = fixtureState()
+    await render(root, <WorkbenchShell state={{ ...base, workspace: "files", codingCatalog: { ...base.codingCatalog, selectedSessionRef: "responsive-session" } }} report={() => Effect.void} />)
+    const tab = container.querySelector<HTMLButtonElement>('[aria-label="Workbench surfaces"] [role="tab"] > button:first-child')
+    expect(tab?.tabIndex).toBe(0)
   })
 
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {

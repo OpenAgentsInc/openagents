@@ -113,22 +113,16 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-10
+## Active packet — T3UI-11
 
-Outcome: mount capability-scoped remote environment, pairing, portable-session,
-and mobile-client management over the existing Codex experimental runtime.
+Outcome: close the workbench's admitted responsive, accessibility, and bounded
+performance contract before the final pinned-source census.
 
 Owned paths:
 
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
-- `apps/openagents-desktop/src/renderer/react-settings-surface.tsx`
-- `apps/openagents-desktop/src/renderer/react-connect-surface.tsx`
-- `apps/openagents-desktop/src/renderer/remote-connect.ts`
-- `apps/openagents-desktop/src/renderer/shell.ts`
-- `apps/openagents-desktop/src/renderer/boot.ts`
-- `apps/openagents-desktop/src/codex-experimental-contract.ts`
-- `apps/openagents-desktop/src/codex-experimental-runtime.ts`
+- `apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx`
 - `apps/openagents-desktop/src/main.ts`
 - `apps/openagents-desktop/tests/electron-boundary.test.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.ts`
@@ -140,18 +134,19 @@ Owned paths:
 
 Required behavior:
 
-- Connections routes in place and projects manifest, revision, environment,
-  remote-control, pairing, and client state through public refs only;
-- enable, disable, refresh, environment add, expiring pairing, status, client
-  list, and exact client revocation use schema-decoded preload/main requests;
-- raw environment ids remain main-private after connection, and pairing codes,
-  installation identity, service URLs, and credentials never return in the
-  renderer projection; and
-- SSH password/private-key prompts remain visibly unavailable until an admitted
-  native credential broker exists.
+- the workbench remains usable at 1440-wide, 900-wide standard, and the admitted
+  480-pixel minimum without a hidden horizontal floor;
+- workbench, file, and terminal tabs expose named tablists with roving keyboard
+  focus and Arrow/Home/End alternatives;
+- metadata actions stay discoverable for coarse pointers, forced-colors focus
+  remains visible, and explicit plus OS reduced-motion preferences disable
+  non-essential motion; and
+- transcript virtualization, workspace-row caps, and rich-diff truncation retain
+  their bounded large-input budgets while unavailable and recovery states remain
+  typed and visible.
 
-Proof: runtime correlation/revocation tests, projection redaction tests, mounted
-route/action tests, the remote-connect visual fixture, Desktop
+Proof: viewport-contract tests, mounted keyboard interaction tests, CSS boundary
+oracles, 900-by-760 and 480-by-720 responsive visual fixtures, Desktop
 typecheck, full serial suite, production build, Electron fixture smokes, Sol
 guards, and publishing.
 

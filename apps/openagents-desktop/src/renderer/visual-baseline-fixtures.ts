@@ -348,5 +348,9 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
         },
       };
     }
+    case "responsive-standard":
+      return visualBaselineShellState("surface-tabs");
+    case "responsive-minimum":
+      return visualBaselineShellState("composer-idle");
   }
 };

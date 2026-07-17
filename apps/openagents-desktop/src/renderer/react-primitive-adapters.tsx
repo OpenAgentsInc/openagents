@@ -491,10 +491,18 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
       />
       <aside className="oa-react-surface-panel" style={layout.maximized ? undefined : { width: layout.width }}>
         <header className="oa-react-surface-tabs">
-          <div role="tablist" aria-label="Workbench surfaces">
+          <div role="tablist" aria-label="Workbench surfaces" onKeyDown={event => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || layout.surfaces.length === 0) return
+            event.preventDefault()
+            const current = Math.max(0, layout.surfaces.indexOf(active))
+            const next = event.key === "Home" ? 0 : event.key === "End" ? layout.surfaces.length - 1
+              : (current + (event.key === "ArrowRight" ? 1 : -1) + layout.surfaces.length) % layout.surfaces.length
+            activate(layout.surfaces[next]!)
+            event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"] > button:first-child')[next]?.focus()
+          }}>
             {layout.surfaces.map(surface => <ContextMenu key={surface}>
               <ContextMenuTrigger render={<div aria-selected={active === surface} role="tab">
-                <button onClick={() => activate(surface)} type="button"><SurfaceIcon surface={surface} /><span>{surfaceLabel(surface)}</span></button>
+                <button onClick={() => activate(surface)} tabIndex={active === surface ? 0 : -1} type="button"><SurfaceIcon surface={surface} /><span>{surfaceLabel(surface)}</span></button>
                 <button
                 aria-label={`Close ${surfaceLabel(surface)}`}
                 onClick={event => { event.stopPropagation(); close(surface, "close") }}

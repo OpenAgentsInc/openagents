@@ -25,7 +25,7 @@
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   width: 100%;
-  min-width: 760px;
+  min-width: 0;
   min-height: 520px;
   overflow: hidden;
   background: var(--en-color-background);
@@ -1767,6 +1767,11 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   opacity: 1;
 }
 
+@media (hover: none), (pointer: coarse) {
+  .oa-react-user-message-actions,
+  .oa-react-assistant-message-actions { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .oa-react-user-message-actions,
   .oa-react-assistant-message-actions {
@@ -3301,6 +3306,29 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   .oa-react-conversation-header {
     padding-left: 96px;
   }
+}
+
+@media (max-width: 560px) {
+  .oa-react-workbench { min-height: 420px; }
+  .oa-react-conversation-header { height: 46px; min-height: 46px; padding-right: var(--en-spacing-2); padding-left: 72px; }
+  .oa-react-conversation-heading > h1 { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oa-react-surface-panel { inset: 0; width: 100% !important; min-width: 0; }
+  .oa-react-surface-add { right: 32px; max-width: calc(100vw - 40px); }
+  .oa-react-surface-tabs [role="tab"] { min-width: 88px; }
+  .oa-react-terminal-toolbar, .oa-react-browser-toolbar { flex-wrap: wrap; height: auto; min-height: 38px; }
+  .oa-react-terminal-toolbar > div:last-child { max-width: 100%; overflow-x: auto; }
+  .oa-react-browser-address { order: 3; flex-basis: 100%; }
+  .oa-react-workspace-surface { padding: 48px var(--en-spacing-3) var(--en-spacing-5); }
+  .oa-react-settings-card { padding: 12px; }
+  .oa-react-settings-card > header, .oa-react-connect-summary, .oa-react-connect-pairing { align-items: stretch; flex-direction: column; }
+  .oa-react-settings-table [role="row"] { grid-template-columns: 1fr; gap: 3px; }
+  .oa-react-connect-notice { margin: 0; }
+}
+
+@media (forced-colors: active) {
+  .oa-react-workbench button:focus-visible,
+  .oa-react-workbench [role="separator"]:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+  .oa-react-connect-state { forced-color-adjust: none; background: CanvasText; box-shadow: none; }
 }
 
 /* -----------------------------------------------------------------------

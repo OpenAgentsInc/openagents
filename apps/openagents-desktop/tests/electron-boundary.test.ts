@@ -31,6 +31,16 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("sandbox: true");
     expect(main).toContain("webviewTag: false");
     expect(main).toContain("webSecurity: true");
+    expect(main).toContain("minWidth: 480");
+  });
+
+  test("the shared workbench supports the minimum window, touch disclosure, and forced colors", () => {
+    const css = read("../../packages/ui/src/desktop-workbench.css");
+    expect(css).toContain("min-width: 0;");
+    expect(css).toContain("@media (max-width: 560px)");
+    expect(css).toContain("@media (hover: none), (pointer: coarse)");
+    expect(css).toContain("@media (forced-colors: active)");
+    expect(css).not.toContain("min-width: 760px");
   });
 
   test("local thread rename rejects untrusted renderer frames before mutation", () => {

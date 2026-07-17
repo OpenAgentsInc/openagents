@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactElement } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactElement } from "react"
 import { ArrowLeft, ArrowRight, Camera, ChevronDown, ChevronRight, CircleStop, ExternalLink, File, FileDiff, Folder, FolderOpen, Globe2, Monitor, MousePointer2, Plus, RefreshCw, RotateCcw, Search, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
 import type { IntentError, IntentReporter, JsonPayload } from "@effect-native/core"
 import { ComponentValueBinding, IntentRef } from "@effect-native/core"
@@ -17,6 +17,21 @@ const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = n
 }
 
 const pathName = (pathRef: string): string => pathRef.split("/").at(-1) ?? pathRef
+
+const tablistKey = (
+  event: KeyboardEvent<HTMLElement>,
+  refs: ReadonlyArray<string>,
+  activeRef: string | null,
+  select: (ref: string) => void,
+): void => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || refs.length === 0) return
+  event.preventDefault()
+  const current = Math.max(0, refs.indexOf(activeRef ?? ""))
+  const next = event.key === "Home" ? 0 : event.key === "End" ? refs.length - 1
+    : (current + (event.key === "ArrowRight" ? 1 : -1) + refs.length) % refs.length
+  select(refs[next]!)
+  event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"] > button:first-child')[next]?.focus()
+}
 
 const WorkspaceTree = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const browser = state.workspaceBrowser
@@ -66,9 +81,9 @@ const WorkspaceEditor = ({ state, report }: { readonly state: DesktopShellState;
   const editor = state.workspaceEditor
   const tab = editor.tabs.find(candidate => candidate.pathRef === editor.activePathRef) ?? null
   return <section className="oa-react-file-editor" aria-label="File editor">
-    <div className="oa-react-file-tabs" role="tablist" aria-label="Open files">
+    <div className="oa-react-file-tabs" role="tablist" aria-label="Open files" onKeyDown={event => tablistKey(event, editor.tabs.map(item => item.pathRef), editor.activePathRef, pathRef => dispatch(report, "WorkspaceEditorTabSelected", pathRef))}>
       {editor.tabs.map(item => <div aria-selected={item.pathRef === editor.activePathRef} key={item.pathRef} role="tab">
-        <button onClick={() => dispatch(report, "WorkspaceEditorTabSelected", item.pathRef)} type="button"><File aria-hidden="true" />{pathName(item.pathRef)}{workspaceEditorTabDirty(item) ? <span aria-label="Unsaved changes">•</span> : null}</button>
+        <button onClick={() => dispatch(report, "WorkspaceEditorTabSelected", item.pathRef)} tabIndex={item.pathRef === editor.activePathRef ? 0 : -1} type="button"><File aria-hidden="true" />{pathName(item.pathRef)}{workspaceEditorTabDirty(item) ? <span aria-label="Unsaved changes">•</span> : null}</button>
         <button aria-label={`Close ${item.pathRef}`} onClick={() => dispatch(report, "WorkspaceEditorTabCloseRequested", item.pathRef)} type="button"><X aria-hidden="true" /></button>
       </div>)}
     </div>
@@ -173,9 +188,9 @@ export const ReactTerminalSurface = ({ state, report }: { readonly state: Deskto
   }, [active?.sessionRef, report])
   return <section className="oa-react-terminal-workbench" aria-label="Terminal surface">
     <header className="oa-react-terminal-tabs">
-      <div role="tablist" aria-label="Terminal sessions">
+      <div role="tablist" aria-label="Terminal sessions" onKeyDown={event => tablistKey(event, terminal.sessions.map(session => session.sessionRef), terminal.activeRef, sessionRef => dispatch(report, "TerminalSelected", sessionRef))}>
         {terminal.sessions.map((session, index) => <div aria-selected={session.sessionRef === terminal.activeRef} key={session.sessionRef} role="tab">
-          <button onClick={() => dispatch(report, "TerminalSelected", session.sessionRef)} type="button"><TerminalSquare aria-hidden="true" /><span>{session.shellLabel || `Terminal ${index + 1}`}</span><small data-status={session.status}>{session.status}</small></button>
+          <button onClick={() => dispatch(report, "TerminalSelected", session.sessionRef)} tabIndex={session.sessionRef === terminal.activeRef ? 0 : -1} type="button"><TerminalSquare aria-hidden="true" /><span>{session.shellLabel || `Terminal ${index + 1}`}</span><small data-status={session.status}>{session.status}</small></button>
           <button aria-label={`Close ${session.shellLabel || `terminal ${index + 1}`}`} onClick={() => dispatch(report, "TerminalCloseRequested", session.sessionRef)} type="button"><X aria-hidden="true" /></button>
         </div>)}
       </div>

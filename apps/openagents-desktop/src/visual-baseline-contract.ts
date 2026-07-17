@@ -10,6 +10,11 @@
 /** Fixed capture geometry: the probe window and every baseline share it. */
 export const VISUAL_BASELINE_WINDOW = { width: 1280, height: 800 } as const;
 
+export const visualBaselineViewportForState = (state: string): Readonly<{ width: number; height: number }> =>
+  state === "responsive-standard" ? { width: 900, height: 760 }
+    : state === "responsive-minimum" ? { width: 480, height: 720 }
+      : VISUAL_BASELINE_WINDOW;
+
 /** Forced Chromium device scale for the probe (Retina-independent pixels). */
 export const VISUAL_BASELINE_DEVICE_SCALE_FACTOR = 1;
 
@@ -30,6 +35,8 @@ export const VISUAL_BASELINE_SHELL_STATES = [
   "browser-preview",
   "settings-routed",
   "remote-connect",
+  "responsive-standard",
+  "responsive-minimum",
 ] as const;
 export type VisualBaselineShellStateName = (typeof VISUAL_BASELINE_SHELL_STATES)[number];
 

@@ -118,6 +118,7 @@ import {
   VISUAL_BASELINE_DEVICE_SCALE_FACTOR,
   VISUAL_BASELINE_STATES,
   VISUAL_BASELINE_WINDOW,
+  visualBaselineViewportForState,
   type VisualBaselineCaptureReceipt,
 } from "./visual-baseline-contract.ts"
 import { desktopRuntimeWorkspaceRoot } from "./desktop-runtime-workspace.ts"
@@ -4131,7 +4132,7 @@ const createWindow = (): BrowserWindow => {
     y: launchWorkArea.y,
     width: launchWorkArea.width,
     height: launchWorkArea.height,
-    minWidth: 720,
+    minWidth: 480,
     minHeight: 480,
     fullscreen: false,
     // khalaTheme color.background — must match @effect-native/tokens so the
@@ -7058,6 +7059,8 @@ void app.whenReady().then(async () => {
       installDesktopRendererProtocol(window.webContents.session)
       const captured: Array<VisualBaselineCaptureReceipt> = []
       for (const stateName of VISUAL_BASELINE_STATES) {
+        const viewport = visualBaselineViewportForState(stateName)
+        window.setContentSize(viewport.width, viewport.height)
         await window.loadURL(`${desktopRendererEntryUrl}?visualBaseline=${stateName}`)
         const deadline = Date.now() + 30_000
         let ready = false
@@ -7080,17 +7083,17 @@ void app.whenReady().then(async () => {
         // fixed 1x geometry so baselines are Retina-independent: resize is a
         // pure function of the captured bitmap (same input -> same bytes) and
         // a no-op when the capture is already 1x.
-        const image = rawSize.width === VISUAL_BASELINE_WINDOW.width && rawSize.height === VISUAL_BASELINE_WINDOW.height
+        const image = rawSize.width === viewport.width && rawSize.height === viewport.height
           ? rawImage
           : rawImage.resize({
-              width: VISUAL_BASELINE_WINDOW.width,
-              height: VISUAL_BASELINE_WINDOW.height,
+              width: viewport.width,
+              height: viewport.height,
               quality: "best",
             })
         const png = image.toPNG()
         const size = image.getSize()
-        if (size.width !== VISUAL_BASELINE_WINDOW.width || size.height !== VISUAL_BASELINE_WINDOW.height) {
-          throw new Error(`capture for ${stateName} is ${size.width}x${size.height}, expected ${VISUAL_BASELINE_WINDOW.width}x${VISUAL_BASELINE_WINDOW.height}`)
+        if (size.width !== viewport.width || size.height !== viewport.height) {
+          throw new Error(`capture for ${stateName} is ${size.width}x${size.height}, expected ${viewport.width}x${viewport.height}`)
         }
         const file = `${stateName}.png`
         writeFileSync(path.join(shotsDir, file), png)
