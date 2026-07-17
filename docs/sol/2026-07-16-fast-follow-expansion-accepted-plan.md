@@ -737,6 +737,15 @@ later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T14:40:11Z`
 
+### CLAIM-STATUS
+
+- implementation: added a new-file-only Desktop main-process store that validates, atomically persists, and verified-reloads exact FF-D1-09 owner-only canonical export bytes
+- privacy proof: digest-addressed private mode-0700/mode-0600 storage, no-overwrite corruption refusal, idempotent retry, and a typed ref-only export-created receipt
+- focused proof: all 5 store/reopen/corruption/privacy tests passed; the new store passes isolated strict TypeScript compilation
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, ProductSpec 104/104, Sol checks 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: the current Desktop package typecheck fails only in pre-existing lifecycle-schema consumers under active work; targeted AssuranceSpec is 189/190 with an unrelated environment-digest snapshot drift; neither boundary was changed or weakened
+- residual: IPC/command wiring, save-dialog or remote transport, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
