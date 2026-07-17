@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "9309e0c4078a68440589be9607e85cc3f7329cf5"
 claim_revision: "9cccc0627c30682eb8c93880b6888a592e960b2b"
-implementation_revision: "pending"
+implementation_revision: "9fafd744f96a7488c36d9511c569289564049aa0"
 proof_rung: "desktop_thread_visibility_live_confirmed_sync_authority_lookup"
 observed_at: "2026-07-17T19:31:28Z"
 ---
@@ -25,6 +25,10 @@ admitted this packet after FF-D1-23 released. Current `origin/main`, prior Day
 ProductSpec and AssuranceSpec obligations, repository invariants, open issues,
 known baselines, Git configuration, and active worktrees were reconciled before
 mutation.
+
+The tested implementation tree was landed on current `origin/main` at
+`9fafd744f96a7488c36d9511c569289564049aa0`. This documentation-only release
+annotation records that remote fact; it does not extend scope.
 
 The claim was first selected at FF-D1-23's release and then rebased and
 published on `9309e0c4078a68440589be9607e85cc3f7329cf5` after disjoint Desktop terminal
