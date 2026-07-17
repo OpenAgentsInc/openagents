@@ -572,15 +572,16 @@ Day 1 completion remain later packets.
 ### CLAIM
 
 - actor/session: `codex-full-auto-ff-d1-08-20260717`
-- base: `68389f868e97175fc60f322591946a1357c047f7`
+- base: `36fff3452dc5e533e9dce40b6838dbfe526e9e11`
 - worktree/branch: `openagents-ff-d1-08` / detached `origin/main`
 - scope: provider-neutral explicit thread visibility/export intents, receipts, and retry classification
 - paths: the FF-D1-08 owned implementation paths above
 - hot files: agent-runtime-schema index; accepted-plan ledger and Sol manifest
 - hot contracts: new disclosure intent/receipt schema literals, audience/admin axes, receipt-kind consistency, and ref-only artifact evidence
-- dependencies: FF-D1-07 released; current Sync/mobile attention landings reconciled; active Desktop history/shell/rendering work explicitly excluded
+- dependencies: FF-D1-07 released; current Sync/mobile attention projection, target resolution, and inbox landings reconciled; active Desktop history/shell/rendering work explicitly excluded
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T13:59:34Z`
+- rebased_before_implementation: `2026-07-17T14:01:00Z`
 
 ## Explicit non-authority
 
