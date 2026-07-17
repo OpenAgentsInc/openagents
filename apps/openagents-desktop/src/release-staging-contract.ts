@@ -179,7 +179,10 @@ const BoundedVersionStringSchema = Schema.String.check(
 const BoundedToolIdentitySchema = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(160),
-  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9 ._:()+,-]*$/),
+  // Debian-family package revisions legitimately appear in compiler identity
+  // lines (for example, `13.3.0-6ubuntu2~24.04.1`). Keep the grammar bounded
+  // while admitting that standard version separator.
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9 ._:()+,~-]*$/),
 );
 
 // ---------------------------------------------------------------------------

@@ -843,6 +843,29 @@ describe("DIST-03 native component ledger (§9)", () => {
     ]);
   });
 
+  test("accepts Debian-family compiler revisions in bounded toolchain metadata", () => {
+    const descriptor = descriptorFor("linux-x64");
+    const ledger = buildNativeComponentLedger(
+      descriptor,
+      nativeClosureEntries(
+        descriptor,
+        closureFiles("linux-x64"),
+        versionsFor("linux-x64"),
+        "0.1.0",
+      ),
+      {
+        ...fixtureMetadata,
+        osImage: "linux-x64-6.17.0-1020-gcp",
+        toolchain: {
+          ...fixtureToolchain,
+          compiler: "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        },
+      },
+    );
+
+    expect(ledger.toolchain.compiler).toBe("cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0");
+  });
+
   test("is public-safe, single-target, and deterministic across repeat staging", () => {
     const descriptor = descriptorFor("darwin-arm64");
     const entries = nativeClosureEntries(
