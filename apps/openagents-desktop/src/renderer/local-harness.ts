@@ -24,7 +24,7 @@ import {
   fableLocalModelNoteText,
   fableLocalTraceNoteMeta,
   fableLocalTraceNoteText,
-  isTranscriptOrderingBoundary,
+  makeTranscriptOrderingBoundaryTracker,
   type FableLocalAvailability,
   type FableLocalEvent,
   type FableLocalEventEnvelope,
@@ -180,6 +180,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     /** T11 #8868: live context/usage meter for this turn's ContextMeter mount
      * (header/rail — NOT a timeline note; see `header.tsx`). */
     let latestMeter: DesktopMeterSnapshot | null = null
+    const opensTranscriptPosition = makeTranscriptOrderingBoundaryTracker()
 
     const commitAssistantText = (): void => {
       if (activeAssistantIndex === null || pendingAssistantChunks.length === 0) return
@@ -267,6 +268,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     const unsubscribe = bridge.onEvent(envelope => {
       if (envelope.turnRef !== turnRef) return
       const event = envelope.event
+      const opensNewTimelinePosition = opensTranscriptPosition(event)
       if (event.kind === "turn_started") {
         // Main attaches the persisted thread (user message included) so the
         // stream projects onto real state, not a synthesized transcript.
@@ -328,11 +330,11 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
           : codexLocalModelNoteText(event.model))
         return
       }
-      // Only display-bearing events are ordering boundaries. Header/accounting
-      // updates such as meter_updated do not occupy a timeline position, so
-      // splitting here would turn invisible meter ticks into random prose gaps.
-      // A later text delta starts a new segment only after a visible event.
-      if (isTranscriptOrderingBoundary(event)) closeAssistantSegment()
+      // Only a NEW visible position is an ordering boundary. Keyed card
+      // updates (tool progress/result, plan refreshes, resolved questions and
+      // child status) stay at their original position and must not split prose
+      // into phantom paragraph gaps.
+      if (opensNewTimelinePosition) closeAssistantSegment()
       if (event.kind === "tool_use" || event.kind === "tool_progress" || event.kind === "tool_result") {
         const key = event.itemRef === undefined
           ? `${turnRef}-trace-${orderedNotes.length}`

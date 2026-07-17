@@ -561,4 +561,40 @@ describe("makeLocalHarnessChatHost", () => {
     harness.resolveStart({ ok: true, thread: finalThread })
     await pending
   })
+
+  test("keyed card updates do not split one assistant paragraph into phantom rows", async () => {
+    const harness = makeHarness()
+    const updates: DesktopThread[] = []
+    const pending = harness.host.sendMessage({
+      id: "thread-1",
+      message: "keep the prose together",
+      harness: "fable",
+      onUpdate: thread => updates.push(thread),
+    })
+    await settle()
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "Before the command." } })
+    harness.emit({ turnRef: "turn.fable.fixed", event: {
+      kind: "tool_use", toolName: "Bash", itemRef: "cmd-1", summary: "pnpm test",
+    } })
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "I will not touch " } })
+    harness.emit({ turnRef: "turn.fable.fixed", event: {
+      kind: "tool_progress", toolName: "Bash", itemRef: "cmd-1", summary: "still running",
+      item: { kind: "command", source: "codex", command: "pnpm test", cwd: "/repo", status: "in_progress", outputTail: "still running" },
+    } })
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "or hide " } })
+    harness.emit({ turnRef: "turn.fable.fixed", event: {
+      kind: "tool_result", toolName: "Bash", itemRef: "cmd-1", ok: true, summary: "passed",
+    } })
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "that work." } })
+    await settle()
+
+    expect(updates.at(-1)!.notes.filter(note => note.role === "assistant").map(note => note.text)).toEqual([
+      "Before the command.",
+      "I will not touch or hide that work.",
+    ])
+
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
+  })
 })

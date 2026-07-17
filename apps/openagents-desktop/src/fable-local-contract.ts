@@ -502,38 +502,97 @@ export const FableLocalEventSchema = Schema.Union([
 export type FableLocalEvent = typeof FableLocalEventSchema.Type
 
 /**
- * Whether an event occupies or updates a visible position in the conversation
- * timeline. Only these semantic boundaries may split a streamed assistant
- * response. Header/accounting/lifecycle events must not create invisible
- * assistant rows (and therefore phantom paragraph gaps) around their updates.
+ * Tracks whether a provider event creates a NEW visible timeline position.
+ *
+ * Several display-bearing event kinds are keyed updates: command progress and
+ * completion update the invocation card, plan updates replace the turn's plan,
+ * question resolution updates the pending question, and child lifecycle
+ * updates replace the child card. Those events are visible, but they are not
+ * new ordering boundaries. Splitting assistant text around them creates empty
+ * visual seams because the card remains at its original position.
+ *
+ * Keep this state machine shared by the renderer and durable text persistence
+ * so the live transcript cannot heal and then regress when the finalized
+ * thread replaces it.
  */
-export const isTranscriptOrderingBoundary = (event: FableLocalEvent): boolean => {
-  switch (event.kind) {
-    case "model_effective":
-    case "tool_use":
-    case "tool_progress":
-    case "tool_result":
-    case "reasoning":
-    case "lane_notice":
-    case "question_pending":
-    case "question_resolved":
-    case "plan_updated":
-    case "child_started":
-    case "child_activity":
-    case "child_completed":
-    case "child_failed":
-    case "child_steered":
-    case "followup_queued":
-      return true
-    case "turn_started":
-    case "composer_admission":
-    case "text_delta":
-    case "followup_promoted":
-    case "mcp_server_unavailable":
-    case "meter_updated":
-    case "turn_completed":
-    case "turn_failed":
-      return false
+export const makeTranscriptOrderingBoundaryTracker = (): ((event: FableLocalEvent) => boolean) => {
+  const openToolsByRef = new Set<string>()
+  const openToolsByName = new Map<string, number>()
+  const runtimeKeys = new Set<string>()
+
+  const openUnkeyedTool = (toolName: string): void => {
+    openToolsByName.set(toolName, (openToolsByName.get(toolName) ?? 0) + 1)
+  }
+  const closeUnkeyedTool = (toolName: string): boolean => {
+    const count = openToolsByName.get(toolName) ?? 0
+    if (count === 0) return false
+    if (count === 1) openToolsByName.delete(toolName)
+    else openToolsByName.set(toolName, count - 1)
+    return true
+  }
+  const upsert = (key: string): boolean => {
+    if (runtimeKeys.has(key)) return false
+    runtimeKeys.add(key)
+    return true
+  }
+
+  return event => {
+    switch (event.kind) {
+      case "model_effective":
+      case "reasoning":
+      case "lane_notice":
+        return true
+      case "tool_use": {
+        if (event.itemRef === undefined) {
+          openUnkeyedTool(event.toolName)
+          return true
+        }
+        const inserted = !openToolsByRef.has(event.itemRef)
+        openToolsByRef.add(event.itemRef)
+        return inserted
+      }
+      case "tool_progress": {
+        if (event.itemRef === undefined) {
+          if ((openToolsByName.get(event.toolName) ?? 0) > 0) return false
+          openUnkeyedTool(event.toolName)
+          return true
+        }
+        if (openToolsByRef.has(event.itemRef)) return false
+        openToolsByRef.add(event.itemRef)
+        return true
+      }
+      case "tool_result": {
+        if (event.itemRef === undefined) return !closeUnkeyedTool(event.toolName)
+        const updated = openToolsByRef.delete(event.itemRef)
+        return !updated
+      }
+      case "question_pending":
+        return upsert(`question:${event.questionRef}`)
+      case "question_resolved":
+        return false
+      case "plan_updated":
+        return upsert("plan")
+      case "child_started":
+      case "child_activity":
+      case "child_completed":
+      case "child_failed":
+        return upsert(`child:${event.childRef}`)
+      case "child_steered":
+        return false
+      case "followup_queued":
+        return upsert(`queue:${event.queueRef}`)
+      case "followup_promoted":
+        runtimeKeys.delete(`queue:${event.queueRef}`)
+        return false
+      case "turn_started":
+      case "composer_admission":
+      case "text_delta":
+      case "mcp_server_unavailable":
+      case "meter_updated":
+      case "turn_completed":
+      case "turn_failed":
+        return false
+    }
   }
 }
 

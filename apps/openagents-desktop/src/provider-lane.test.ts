@@ -359,6 +359,63 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
     }
   })
 
+  test("durable assistant segments ignore keyed card updates that add no timeline row", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-provider-card-update-boundaries-"))
+    try {
+      const harness = makeFixtureHarness(root)
+      const thread = harness.store.newThread()
+      const lane: ProviderLane<null> = {
+        ...harness.lane,
+        runTurn: async ({ emit }) => {
+          const events: ReadonlyArray<FableLocalEvent> = [
+            { kind: "model_effective", model: "fixture-model-1" },
+            { kind: "text_delta", text: "Before the command." },
+            { kind: "tool_use", toolName: "Bash", itemRef: "cmd-1", summary: "pnpm test" },
+            { kind: "text_delta", text: "I will not touch " },
+            {
+              kind: "tool_progress", toolName: "Bash", itemRef: "cmd-1", summary: "still running",
+              item: { kind: "command", source: "codex", command: "pnpm test", cwd: "/repo", status: "in_progress", outputTail: "still running" },
+            },
+            { kind: "text_delta", text: "or hide " },
+            { kind: "tool_result", toolName: "Bash", itemRef: "cmd-1", ok: true, summary: "passed" },
+            { kind: "text_delta", text: "that work." },
+          ]
+          for (const event of events) emit(event)
+          return {
+            ok: true,
+            text: "Before the command.I will not touch or hide that work.",
+            totalTokens: 12,
+            accountRef: "fixture-account-1",
+            providerSessionRef: "fixture-session-card-updates",
+          }
+        },
+      }
+
+      const result = await makeProviderLaneDispatcher(harness.deps).dispatchTurn(
+        lane,
+        startRequest(thread.id, "turn-card-updates"),
+        fakeSender(harness.forwarded),
+      )
+      expect(result.ok).toBe(true)
+
+      const record = harness.journal.get({
+        threadRef: thread.id,
+        turnRef: "turn-card-updates",
+        lane: FIXTURE_LANE_REF,
+      })
+      expect(record?.assistantSegments.map(segment => segment.text)).toEqual([
+        "Before the command.",
+        "I will not touch or hide that work.",
+      ])
+      expect(harness.store.open(thread.id)?.notes.filter(note => note.role === "assistant").map(note => note.text)).toEqual([
+        "Before the command.",
+        "I will not touch or hide that work.",
+      ])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("an unexpected provider throw emits a typed failure and cannot strand the accepted turn", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-throw-"))
     try {
