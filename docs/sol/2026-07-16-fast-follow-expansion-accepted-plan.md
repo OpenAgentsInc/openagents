@@ -2388,6 +2388,16 @@ remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T21:46:50Z`
 
+### CLAIM-STATUS
+
+- implementation: added one new-file-only Effect adapter from the exact settled target-owned confirmed timeline to FF-D1-11's existing evidence snapshot, with bounded current events and deterministic accepted relations
+- privacy/authority proof: exact thread/run/event binding and strict decoding precede projection; optimistic, non-live, malformed, duplicate, cross-run, or throwing sources fail closed; no provider history, credentials, paths, native payloads, inferred supersession, or inferred reversion enters the export seam
+- focused proof: 26/26 confirmed-timeline adapter, export command/compiler, event-authority, and Sync timeline tests passed; Desktop package typecheck passed
+- authority proof: Fast Follow package 13/13, root Fast Follow 7/7, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec remains 189/190 from only the known environment digest drift; shared Git configuration was not mutated
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-30-desktop-confirmed-timeline-export-evidence-receipt.md`
+- residual: authoritative supersession/reversion export evidence, named-group authority/publication, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

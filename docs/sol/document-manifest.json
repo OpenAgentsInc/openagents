@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "75ab9eb247cc1ce43ac0556d100f7f3b4e8b1a7d3d45648c380d5b818bfb2315",
+  "sourceTreeSha256": "8c3099262e3bf5d2d199bd80be44b3796c0984cffadf633a4818d0580d63d86c",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1781,7 +1781,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "7fa70ca059be936e7c9402ce793755b0c7f855ec04e300f645220995520eb70e",
+      "sha256": "44148f198c3f88e95bbf4120add31cca5f9e0bb73f6e016e80ad70507e4e1ca6",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1819,10 +1819,11 @@
         "docs/fastfollow/receipts/2026-07-17-ff-d1-27-idempotent-share-create-reconciliation-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-28-desktop-public-share-idempotent-retry-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-29-desktop-workspace-share-idempotent-retry-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-ff-d1-30-desktop-confirmed-timeline-export-evidence-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 34,
+      "inboundSourceCount": 35,
       "issueLinks": []
     },
     {
