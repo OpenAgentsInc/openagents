@@ -1169,3 +1169,18 @@ closes; D2 and later epics remain open.
   behavior contract, and Sol receipt
 - exclusions: real paired provider (`T3M-D1.2`), changes/review (`T3M-D2`),
   Git/terminal/connections/release (`T3M-E1`–`T3M-F2`)
+
+### CLAIM-RELEASE
+
+- landed: `812ecf10a3ea3af37081ce2570e9981e902e0ed4` on `main`
+- verification: pre-rebase 211 mobile tests, 36 behavior-contract tests,
+  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 60
+  repository-files/behavior/Sol tests and mobile typecheck
+- authority note: Files navigation binds every request and response to the
+  exact session/repository/worktree/path/revision and request epoch; invalid,
+  stale, foreign, unsafe, and oversized content fails closed, while opening and
+  closing the route preserves transcript state and its scroll target
+- close boundary: `T3M-D1.1` contract, state machine, and source/Markdown/image
+  workbench are complete; the real authenticated paired-environment provider
+  remains `T3M-D1.2`, so Epic D1 and full parity remain open
+- verified_at: `2026-07-17T22:59:22Z`
