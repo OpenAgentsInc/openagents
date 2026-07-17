@@ -8,6 +8,7 @@ import {
   KHALA_SYNC_PROTOCOL_VERSION,
   LIVE_AGENT_GRAPH_ENTITY_TYPE,
   decodeLiveAgentGraphPostImageJson,
+  decodeRuntimeAttentionEntity,
   KhalaRuntimeControlIntentSchemaLiteral,
   KhalaRuntimeEventSchemaLiteral,
   MutationEnvelope,
@@ -16,6 +17,7 @@ import {
   personalScope,
   PushRequest,
   RUNTIME_CONTROL_INTENT_ENTITY_TYPE,
+  RUNTIME_ATTENTION_ENTITY_TYPE,
   RUNTIME_EVENT_ENTITY_TYPE,
   RUNTIME_INTERACTION_ENTITY_TYPE,
   RUNTIME_TURN_ENTITY_TYPE,
@@ -1128,13 +1130,28 @@ describe.skipIf(!hasLocalPostgres())(
       expect(threadLog.entries.filter(entry =>
         String(entry.entityType) === RUNTIME_INTERACTION_ENTITY_TYPE
       )).toHaveLength(2)
-      const personalRows: Array<{ count: string | number }> = await sql`
-        SELECT count(*) AS count
-        FROM khala_sync_changelog
-        WHERE entity_type = ${RUNTIME_INTERACTION_ENTITY_TYPE}
-          AND scope <> ${threadScope(threadId)}
-      `
-      expect(Number(personalRows[0]!.count)).toBe(0)
+      const personalLog = await logPage(sql as unknown as SyncSql, {
+        afterVersion: null,
+        limit: 100,
+        scope: personalScope(client.userId),
+      })
+      const attention = personalLog.entries.filter(entry =>
+        String(entry.entityType) === RUNTIME_ATTENTION_ENTITY_TYPE)
+      expect(attention).toHaveLength(2)
+      const attentionPostImages = attention.map(entry => {
+        if (entry.postImageJson === undefined) throw new Error("attention upsert missing post-image")
+        return entry.postImageJson
+      })
+      expect(attentionPostImages.map(postImage =>
+        decodeRuntimeAttentionEntity(JSON.parse(postImage)).status
+      )).toEqual(["pending", "resolved"])
+      const serializedAttention = attentionPostImages.join("\n")
+      expect(serializedAttention).not.toContain("Which verification")
+      expect(serializedAttention).not.toContain("option.smoke")
+      expect(serializedAttention).not.toContain('"payload"')
+      const copiedInteractions = personalLog.entries.filter(entry =>
+        String(entry.entityType) === RUNTIME_INTERACTION_ENTITY_TYPE)
+      expect(copiedInteractions).toHaveLength(0)
     })
 
     test("runtime interaction admission fences lane, sequence, choices, expiry, and foreign owners", async () => {

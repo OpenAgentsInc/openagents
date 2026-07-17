@@ -24,9 +24,11 @@ import {
   MutatorName,
   personalScope,
   RUNTIME_CONTROL_INTENT_ENTITY_TYPE,
+  RUNTIME_ATTENTION_ENTITY_TYPE,
   RUNTIME_EVENT_ENTITY_TYPE,
   RUNTIME_INTERACTION_ENTITY_TYPE,
   RUNTIME_TURN_ENTITY_TYPE,
+  runtimeAttentionFromInteraction,
   threadScope,
   type KhalaRuntimeControlIntent,
   type KhalaRuntimeControlIntentKind,
@@ -121,6 +123,7 @@ const RuntimeEventEntityType = EntityType.make(RUNTIME_EVENT_ENTITY_TYPE)
 const RuntimeInteractionEntityType = EntityType.make(
   RUNTIME_INTERACTION_ENTITY_TYPE,
 )
+const RuntimeAttentionEntityType = EntityType.make(RUNTIME_ATTENTION_ENTITY_TYPE)
 const AgentRunEntityType = EntityType.make(AGENT_RUN_ENTITY_TYPE)
 const AgentRunEventEntityType = EntityType.make(AGENT_RUN_EVENT_ENTITY_TYPE)
 
@@ -913,6 +916,15 @@ const appendRuntimeInteractionEntityChange = async (
     op: "upsert",
     postImage: { ...entity },
     scope: threadScope(entity.threadId),
+  })
+  const attention = runtimeAttentionFromInteraction(entity)
+  await ctx.writer.appendChange({
+    entityId: EntityId.make(attention.attentionRef),
+    entityType: RuntimeAttentionEntityType,
+    mutationRef: ctx.mutationRef,
+    op: "upsert",
+    postImage: { ...attention },
+    scope: personalScope(entity.ownerUserId),
   })
 }
 

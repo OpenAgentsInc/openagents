@@ -59,6 +59,9 @@ export * from "./runtime.js"
 // (CUT-16). Full post-images live only in their exact thread scope.
 export * from "./runtime-interaction.js"
 
+// Body-free personal-scope pointer to a thread-private runtime interaction.
+export * from "./runtime-attention.js"
+
 // Gym / Harbor live run-progress entity contract (KS-6.5, #8415): post-image
 // shape for scope.public.gym-run-progress changelog entries (one entity per
 // runRef). Self-contained module (no cycle).
