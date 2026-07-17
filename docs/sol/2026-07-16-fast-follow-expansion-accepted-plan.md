@@ -2824,6 +2824,69 @@ runtime-rendered evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T23:26:56Z`
 - residual: receipt catalog persistence, broader historical-session ingestion, Desktop host/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-36 — Desktop canonical-export receipt catalog
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-35. The persisted
+artifact acquisition adapter can verify and search a bounded receipt set, but
+Desktop has no durable private source for those ref-only receipts across
+restart. Active work still owns Desktop `main.ts`, renderer, installed-runtime,
+mobile, T3, Full Auto, and teardown surfaces. This packet therefore adds only
+a new-file owner-private receipt catalog and proves its output through FF-D1-35,
+leaving host composition and pixels unchanged.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-event-search-receipt-catalog.ts`
+- `apps/openagents-desktop/src/thread-event-search-receipt-catalog.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-36-desktop-canonical-export-receipt-catalog-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-08 ref-only export receipts, FF-D1-10 owner-private
+artifact persistence, and FF-D1-35 verified artifact acquisition. No artifact
+bytes, transcript data, directory discovery, host, preload, renderer, Sync,
+provider, or release authority is added.
+
+Required behavior:
+
+- admit only exact canonical owner-only `export_created` receipts whose
+  artifact ref binds the receipt's SHA-256 digest;
+- persist at most 1,000 decoded ref-only receipts in one owner-private,
+  bounded, schema-versioned, atomically replaced catalog;
+- make exact replay unchanged while conflicting receipt, intent, idempotency,
+  or artifact identity fails closed without changing the prior catalog;
+- reopen only a fully valid catalog, rejecting corruption, oversized state,
+  forbidden raw fields, or partial/unknown schema rather than salvaging or
+  inferring authority; and
+- return only decoded ref-only receipts and bounded status metadata, never a
+  path, artifact bytes, transcript content, or renderer-facing authority.
+
+Proof: focused catalog, acquisition, artifact-store, compiler, disclosure, and
+authority tests; Desktop and shared-package typechecks; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only owner-private persistence of the exact
+canonical export receipts consumed by FF-D1-35. Broader historical-session
+ingestion, Desktop host/UI consumption and pixels, authoritative
+supersession/reversion producers, named-group authority/publication, actual
+`main.ts` acquisition, installed/runtime-rendered evidence, and Day 1
+completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-36-20260717`
+- base: `50486fabbdc2e9d6d5fb30a5c824ecebe1674ddc`
+- worktree/branch: `openagents-ff-d1-36` / detached `origin/main`
+- scope: persist the exact ref-only canonical export receipts consumed by FF-D1-35 across Desktop restart
+- paths: the FF-D1-36 owned implementation paths above
+- hot files: two new Desktop catalog/test files, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: owner-private atomic persistence, exact receipt/ref/digest identity, bounded fail-closed reopen, and no artifact-byte or renderer projection
+- dependencies: FF-D1-08, FF-D1-10, and FF-D1-35 released; no relevant open bug issue or competing claim; active host/UI, mobile, T3, Full Auto, teardown, and installed-runtime work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T23:37:07Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
