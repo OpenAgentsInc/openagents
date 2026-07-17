@@ -5,8 +5,41 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.12",
+    version: "2026-07-17.13",
     contracts: [
+      {
+        contractId: "openagents_mobile.workspace_row_actions.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile workspace navigation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "Workspace rows expose valid archive/restore/delete actions through the typed swipe-item grammar and an accessible press fallback; compact context and lifecycle controls render in one native-lowered bottom sheet.",
+        authorityBoundary:
+          "Only reversible archive or restore may be the full-swipe default. Delete always opens the existing explicit confirmation and remains server-authoritative. Action IDs are validated against the exact current active/archived thread sets; foreign, stale, invalid, and in-flight actions are refused, and sheet dismissal cannot interrupt writeback.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "apps/openagents.com/packages/effect-native-core/src/index.ts",
+          "apps/openagents.com/packages/effect-native-render-rn/src/index.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-c22a",
+        ],
+        oracles: [{
+          id: "mobile_workspace_sheet_and_row_actions",
+          kind: "bun-test",
+          mode: "e2e",
+          ref: "apps/openagents-mobile/tests/mobile-workspace-actions.test.ts",
+          description:
+            "Proves sheet presentation/dismissal, reversible full-swipe policy, accessible action fallback, stale-action refusal, explicit delete confirmation, and confirmed lifecycle writeback.",
+        }],
+        verification:
+          "Workspace action, authoritative Home, accessibility, Sheet/Swipeable RN renderer, behavior-contract, mobile typecheck, and repository checks; genuine gesture driver, keyboard shortcuts, host focus, and physical evidence remain T3M-C2.2b/T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.adaptive_workspace.v1",
         state: "enforced",

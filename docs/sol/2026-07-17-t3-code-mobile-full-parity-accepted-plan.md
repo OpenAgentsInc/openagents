@@ -1055,3 +1055,30 @@ release finish remain `T3M-D1` through `T3M-F2`.
   are complete; native sheet/swipe/keyboard focus behavior remains `T3M-C2.2`
   and full mobile parity remains open through `T3M-F2`
 - verified_at: `2026-07-17T22:39:47Z`
+
+## Active packet — T3M-C2.2a
+
+Outcome: move compact lifecycle/context controls into a native-lowered sheet
+and express row archive/restore/delete affordances through the typed swipe-item
+contract with an accessible press fallback.
+
+Required behavior: compact More opens one dismissable bottom sheet bound to the
+exact thread; regular layout retains its in-pane actions; active and archived
+rows expose only valid lifecycle actions; full-swipe defaults only to reversible
+archive/restore, never delete; delete remains a second explicit confirmation;
+stale/foreign action IDs and dismissal during confirmed writeback are refused.
+
+Close rule: this closes sheet and row-action composition only. A genuine native
+gesture driver plus hardware keyboard commands and host focus application remain
+`T3M-C2.2b`; physical gesture/focus evidence remains `T3M-F2`.
+
+### CLAIM
+
+- packet: `T3M-C2.2a`
+- base: `c2a6e286497ab8a6899fb0f25bfc43848260afc4`
+- claimed_at: `2026-07-17T22:40:50Z`
+- scope: typed compact lifecycle sheet, action dismissal, swipe-item action
+  grammar, reversible full-swipe policy, explicit destructive confirmation,
+  renderer/accessibility tests, behavior contract, and Sol receipt
+- exclusions: genuine gesture driver, hardware shortcuts, and host-applied
+  focus (`T3M-C2.2b`); physical evidence (`T3M-F2`)

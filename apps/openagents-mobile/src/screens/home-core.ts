@@ -11,10 +11,12 @@ import {
   makeViewProgramFromState,
   resolveIntentRef,
   SegmentedControl,
+  Sheet,
   SplitPane,
   Spacer,
   Stack,
   StaticPayload,
+  SwipeableListItem,
   Text,
   TextField,
   Toolbar,
@@ -393,6 +395,14 @@ export const WorkspaceRowActionsToggled = defineIntent(
   "WorkspaceRowActionsToggled",
   Schema.Struct({ threadRef: Schema.String }),
 )
+export const WorkspaceLifecycleSheetDismissed = defineIntent(
+  "WorkspaceLifecycleSheetDismissed",
+  EmptyPayload,
+)
+export const WorkspaceRowActionSelected = defineIntent(
+  "WorkspaceRowActionSelected",
+  Schema.String,
+)
 export const ConversationThreadRenameStarted = defineIntent(
   "ConversationThreadRenameStarted",
   Schema.Struct({ threadRef: Schema.String }),
@@ -598,6 +608,8 @@ export const homeIntentDefinitions = [
   WorkspaceProjectFilterSelected,
   WorkspaceFiltersCleared,
   WorkspaceRowActionsToggled,
+  WorkspaceLifecycleSheetDismissed,
+  WorkspaceRowActionSelected,
   ConversationThreadRenameStarted,
   ConversationThreadRenameChanged,
   ConversationThreadRenameSubmitted,
@@ -1426,7 +1438,7 @@ const workspaceRow = (row: MobileWorkspaceRow, state: HomeState): View => {
     row.worktreeLabel === null ? null : `Worktree ${row.worktreeLabel}`,
     row.recencyLabel,
   ].filter((value): value is string => value !== null).join(" · ")
-  return Stack({
+  const body = Stack({
     key: `workspace-row-${row.rowId}`,
     direction: "column",
     gap: "1",
@@ -1480,6 +1492,29 @@ const workspaceRow = (row: MobileWorkspaceRow, state: HomeState): View => {
           : "textMuted",
     }),
   ])
+  if (!hasLifecycle) return body
+  const archived = row.state === "archived"
+  const reversibleAction = archived ? "restore" : "archive"
+  const actionId = (action: "archive" | "restore" | "delete") => `${action}:${row.threadRef}`
+  return SwipeableListItem({
+    key: `workspace-swipe-${row.rowId}`,
+    child: body,
+    trailingActions: [{
+      id: actionId(reversibleAction),
+      label: archived ? "Restore" : "Archive",
+      icon: archived ? "Undo" : "Archive",
+      tone: "neutral",
+    }, {
+      id: actionId("delete"),
+      label: "Delete",
+      icon: "Trash",
+      tone: "danger",
+      destructive: true,
+    }],
+    fullSwipeActionId: actionId(reversibleAction),
+    onAction: IntentRef("WorkspaceRowActionSelected", ComponentValueBinding()),
+    style: { width: "full" },
+  })
 }
 
 const workspaceNavigationRows = (state: HomeState): ReadonlyArray<View> => {
@@ -1595,7 +1630,18 @@ export const renderDrawerView = (state: HomeState): View =>
             variant: "caption",
             color: "textMuted",
           })]),
-      ...threadLifecycleRows(state),
+      ...(state.workspaceLayoutMode === "compact"
+        ? [Sheet({
+            key: "workspace-lifecycle-sheet",
+            open: state.threadLifecycle.actionThreadRef !== null ||
+              state.threadLifecycle.deleteConfirmThreadRef !== null,
+            dismissable: state.threadLifecycle.pendingAction === null,
+            edge: "bottom",
+            detents: ["md", "lg"],
+            presentationDetents: ["half", "full"],
+            onDismiss: IntentRef("WorkspaceLifecycleSheetDismissed", StaticPayload({})),
+          }, threadLifecycleRows(state))]
+        : threadLifecycleRows(state)),
       ...codingOfflineCacheAccountingRows(state),
       Spacer({ key: "drawer-flex-space", size: "8" }),
       drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }, state.accessibility),
@@ -2796,6 +2842,41 @@ export const makeHomeHandlers = (
           },
         }
       }),
+    WorkspaceLifecycleSheetDismissed: () => SubscriptionRef.update(state, current =>
+      current.threadLifecycle.pendingAction !== null
+        ? current
+        : {
+            ...current,
+            threadLifecycle: {
+              ...current.threadLifecycle,
+              actionThreadRef: null,
+              editingThreadRef: null,
+              renameDraft: "",
+              deleteConfirmThreadRef: null,
+              notice: null,
+            },
+            workspaceFocusTarget: "navigation" as const,
+          }),
+    WorkspaceRowActionSelected: synced === undefined
+      ? () => Effect.void
+      : (actionId: string) => Effect.gen(function* () {
+          const separator = actionId.indexOf(":")
+          if (separator <= 0) return
+          const action = actionId.slice(0, separator)
+          const threadRef = actionId.slice(separator + 1)
+          if (threadRef === "" || (action !== "archive" && action !== "restore" && action !== "delete")) return
+          const current = yield* SubscriptionRef.get(state)
+          if (current.threadLifecycle.pendingAction !== null) return
+          const active = current.conversationThreads.some(thread => thread.threadRef === threadRef)
+          const archived = current.archivedConversationThreads.some(thread => thread.threadRef === threadRef)
+          if (action === "archive" && active) {
+            yield* synced.ConversationThreadLifecycleRequested({ action, threadRef })
+          } else if (action === "restore" && archived) {
+            yield* synced.ConversationThreadLifecycleRequested({ action, threadRef })
+          } else if (action === "delete" && (active || archived)) {
+            yield* synced.ConversationThreadDeleteRequested({ threadRef })
+          }
+        }),
     NewChatPressed: synced?.NewChatPressed ??
       (() => SubscriptionRef.update(state, (current) => ({
         ...current,
