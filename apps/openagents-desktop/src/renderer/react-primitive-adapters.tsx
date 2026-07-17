@@ -5,6 +5,8 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type FormEvent,
+  type ButtonHTMLAttributes,
   type RefObject,
   type ReactElement,
 } from "react"
@@ -46,6 +48,8 @@ import {
 import { type Theme } from "@effect-native/tokens"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { Button } from "#components/ui/button"
+import { Input } from "#components/ui/input"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "#components/ui/context-menu"
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -204,11 +208,71 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
   const meter = projectSidebarMeter(state)
   const shown = state.history.visibleRootCount
   const searchOpen = state.presentation.sessionSearchOpen
+  const [renameTarget, setRenameTarget] = useState<ReactSessionRow | null>(null)
+  const [renameTitle, setRenameTitle] = useState("")
+  const [renameSubmitted, setRenameSubmitted] = useState(false)
+  const [renameValidationError, setRenameValidationError] = useState<string | null>(null)
+  const [contextMenuThreadRef, setContextMenuThreadRef] = useState<string | null>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const renameHostState = renameTarget !== null && state.threadRename?.threadRef === renameTarget.id
+    ? state.threadRename
+    : null
+  const renameSaving = renameHostState?.status === "saving"
+  const renameError = renameValidationError ?? (renameHostState?.status === "failed" ? renameHostState.error : null)
+  const closeRename = (): void => {
+    const returnThreadRef = renameTarget?.id ?? null
+    setRenameTarget(null)
+    setRenameTitle("")
+    setRenameSubmitted(false)
+    setRenameValidationError(null)
+    if (returnThreadRef !== null) queueMicrotask(() =>
+      dispatch(report, "DesktopChatRenameDismissed", returnThreadRef))
+    if (returnThreadRef !== null) queueMicrotask(() => {
+      document.querySelector<HTMLButtonElement>(`[data-en-key="sidebar-thread-${returnThreadRef}"]`)?.focus()
+    })
+  }
+  const openRename = (row: ReactSessionRow): void => {
+    setContextMenuThreadRef(null)
+    queueMicrotask(() => {
+      setRenameTarget(row)
+      setRenameTitle(row.title)
+      setRenameSubmitted(false)
+      setRenameValidationError(null)
+      dispatch(report, "DesktopChatRenameDismissed", row.id)
+    })
+  }
+  useEffect(() => {
+    if (renameTarget === null) return
+    renameInputRef.current?.focus()
+    renameInputRef.current?.select()
+  }, [renameTarget])
+  useEffect(() => {
+    if (!renameSubmitted || renameTarget === null || state.threadRename !== null) return
+    const renamed = state.threads.find(thread => thread.id === renameTarget.id)
+    if (renamed?.title !== renameTitle.trim()) return
+    setRenameTarget(null)
+    setRenameTitle("")
+    setRenameSubmitted(false)
+    setRenameValidationError(null)
+  }, [renameSubmitted, renameTarget, renameTitle, state.threadRename, state.threads])
+  const submitRename = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    if (renameTarget === null || renameSaving) return
+    const title = renameTitle.trim()
+    if (title === "") {
+      setRenameValidationError("Enter a title before saving.")
+      renameInputRef.current?.focus()
+      return
+    }
+    setRenameValidationError(null)
+    setRenameSubmitted(true)
+    dispatch(report, "DesktopChatRenameRequested", { threadRef: renameTarget.id, title })
+  }
   const closeSearch = (): void => {
     if (state.history.searchQuery !== "") dispatch(report, "HistorySearchChanged", "")
     dispatch(report, "DesktopSessionSearchDisclosureChanged", false)
   }
-  return <DesktopSessionRail
+  return <><DesktopSessionRail
     backLabel={state.navigation.backTitle === null ? "Back" : `Back to ${state.navigation.backTitle}`}
     canGoBack={state.navigation.canGoBack}
     canGoForward={state.navigation.canGoForward}
@@ -250,6 +314,19 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       dispatch(report, row.intent, row.id)
       onDismiss()
     }}
+    renderSession={(session, rowElement) => {
+      const row = rows.find(candidate => candidate.id === session.id)
+      if (row?.source !== "local") return rowElement
+      return <ContextMenu
+        onOpenChange={open => setContextMenuThreadRef(open ? row.id : null)}
+        open={contextMenuThreadRef === row.id}
+      >
+        <ContextMenuTrigger render={rowElement as ReactElement<ButtonHTMLAttributes<HTMLButtonElement>>} />
+        <ContextMenuContent aria-label={`Actions for ${row.title}`}>
+          <ContextMenuItem onClick={() => openRename(row)}>Rename</ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    }}
     open={open}
     ref={railRef}
     searchOpen={searchOpen}
@@ -267,6 +344,51 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     }}
     stageLabel={DESKTOP_STAGE_LABEL}
   />
+  {renameTarget === null ? null :
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" data-slot="dialog-backdrop">
+    <div
+      aria-describedby="desktop-chat-rename-description"
+      aria-labelledby="desktop-chat-rename-heading"
+      aria-modal="true"
+      className="grid w-full max-w-md gap-5 rounded-lg border bg-background p-6 shadow-lg"
+      onKeyDown={event => {
+        if (event.key !== "Escape") return
+        event.preventDefault()
+        closeRename()
+      }}
+      role="dialog"
+    >
+      <form className="grid gap-5" onSubmit={submitRename}>
+        <div className="grid gap-2">
+          <h2 className="text-lg font-semibold" id="desktop-chat-rename-heading">Rename chat</h2>
+          <p className="text-sm text-muted-foreground" id="desktop-chat-rename-description">Choose a short title that will appear in the sidebar and conversation header.</p>
+        </div>
+        <div className="grid gap-2">
+          <label className="text-sm font-medium" htmlFor="desktop-chat-rename-title">Chat title</label>
+          <Input
+            aria-describedby={renameError === null ? undefined : "desktop-chat-rename-error"}
+            aria-invalid={renameError === null ? undefined : true}
+            autoFocus
+            disabled={renameSaving}
+            id="desktop-chat-rename-title"
+            maxLength={120}
+            onInput={event => {
+              setRenameTitle(event.currentTarget.value)
+              setRenameValidationError(null)
+            }}
+            ref={renameInputRef}
+            value={renameTitle}
+          />
+          {renameError === null ? null : <p className="text-sm text-destructive" id="desktop-chat-rename-error" role="alert">{renameError}</p>}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button onClick={closeRename} type="button" variant="outline">Cancel</Button>
+          <Button disabled={renameSaving} type="submit">{renameSaving ? "Saving…" : "Save"}</Button>
+        </div>
+      </form>
+    </div>
+    </div>}
+  </>
 }
 
 const staticKhalaReporter: IntentReporter = () => Effect.void

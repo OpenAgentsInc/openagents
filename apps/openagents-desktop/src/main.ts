@@ -89,13 +89,16 @@ import {
   DesktopOpenThreadChannel,
   DesktopResumeLocalThreadChannel,
   DesktopResumeLocalThreadRequestSchema,
+  DesktopRenameLocalThreadChannel,
   DesktopThreadsChannel,
+  decodeDesktopRenameLocalThreadRequest,
   decode,
   DesktopThreadRequestSchema,
   DesktopTurnRequestSchema,
   type DesktopForkHistoryThreadRequest,
   type DesktopMessage,
   type DesktopResumeLocalThreadRequest,
+  type DesktopRenameLocalThreadRequest,
   type DesktopThread,
 } from "./chat-contract.ts"
 import { historyForkFetchPlan, historyForkSeed } from "./history-thread-actions.ts"
@@ -2008,6 +2011,20 @@ ipcMain.handle(DesktopNewThreadChannel, (_event, value: unknown) => {
 // thread id lets the next local turn hit fable/codex-local's existing
 // per-thread SDK resume seam; imported provider history is never mutated.
 ipcMain.handle(DesktopLocalThreadsChannel, () => threads().list())
+ipcMain.handle(DesktopRenameLocalThreadChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { ok: false, error: "Rename is unavailable from this frame." }
+  const request = decodeDesktopRenameLocalThreadRequest(value) as DesktopRenameLocalThreadRequest | null
+  if (request === null) return { ok: false, error: "Enter a title before saving." }
+  try {
+    const thread = threads().rename(request.threadRef, request.title)
+    return thread === null
+      ? { ok: false, error: "That conversation could not be renamed." }
+      : { ok: true, thread }
+  } catch (error) {
+    console.error("[openagents-desktop] local thread rename failed", error instanceof Error ? error.name : "unknown")
+    return { ok: false, error: "The conversation title could not be saved." }
+  }
+})
 ipcMain.handle(DesktopResumeLocalThreadChannel, async (_event, value: unknown) => {
   const request = decode(DesktopResumeLocalThreadRequestSchema, value) as DesktopResumeLocalThreadRequest | null
   if (request === null) return null

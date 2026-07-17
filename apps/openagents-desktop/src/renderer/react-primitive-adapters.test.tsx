@@ -18,6 +18,12 @@ const installDom = () => {
     unobserve(): void {}
     disconnect(): void {}
   }
+  const DOMRectStub = window.DOMRect as typeof DOMRect
+  Object.defineProperty(DOMRectStub, "fromRect", {
+    configurable: true,
+    value: (rect: Partial<DOMRect> = {}): DOMRect =>
+      new window.DOMRect(rect.x ?? 0, rect.y ?? 0, rect.width ?? 0, rect.height ?? 0) as unknown as DOMRect,
+  })
   const values = {
     window,
     document: window.document,
@@ -26,6 +32,7 @@ const installDom = () => {
     Text: window.Text,
     Document: window.Document,
     Range: window.Range,
+    DOMRect: DOMRectStub,
     Element: window.Element,
     HTMLElement: window.HTMLElement,
     HTMLDivElement: window.HTMLDivElement,
@@ -448,6 +455,67 @@ describe("React workbench shell", () => {
       { name: "HistorySearchChanged", payload: "earlier" },
       { name: "DesktopChatSelected", payload: "local-1" },
     ]))
+  })
+
+  test("opens an accessible chat context menu and validates the focused rename prompt", async () => {
+    const { window, container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={fixtureState()} report={report} />)
+    const localRow = container.querySelector<HTMLButtonElement>('[data-en-key="sidebar-thread-local-1"]')
+    if (localRow === null) throw new Error("local session row did not render")
+    const localTrigger = localRow
+    expect(localTrigger.getAttribute("data-slot")).toBe("context-menu-trigger")
+
+    await interact(() => localTrigger.dispatchEvent(new window.KeyboardEvent("keydown", {
+      bubbles: true,
+      key: "F10",
+      shiftKey: true,
+    }) as unknown as Event))
+    await interact(() => undefined)
+    let renameItem = window.document.querySelector('[data-slot="context-menu-item"]') as unknown as HTMLElement | null
+    expect(renameItem?.textContent).toBe("Rename")
+    const menu = window.document.querySelector('[data-slot="context-menu-content"]') as unknown as HTMLElement | null
+    await interact(() => menu?.dispatchEvent(new window.KeyboardEvent("keydown", {
+      bubbles: true,
+      key: "Escape",
+    }) as unknown as Event))
+    expect(window.document.querySelector('[data-slot="context-menu-item"]')).toBeNull()
+    await interact(() => localTrigger.dispatchEvent(new window.MouseEvent("contextmenu", {
+      bubbles: true,
+      button: 2,
+      clientX: 40,
+      clientY: 40,
+    }) as unknown as Event))
+    renameItem = window.document.querySelector('[data-slot="context-menu-item"]') as unknown as HTMLElement | null
+    expect(renameItem?.textContent).toBe("Rename")
+    await interact(() => renameItem?.click())
+    await interact(() => undefined)
+    expect(received.some(intent => intent.name === "DesktopChatRenameDismissed")).toBe(true)
+
+    const input = window.document.querySelector("#desktop-chat-rename-title") as unknown as HTMLInputElement | null
+    expect(window.document.activeElement).toBe(input)
+    expect(input?.value).toBe("Local session")
+    expect(input?.selectionStart).toBe(0)
+    expect(input?.selectionEnd).toBe("Local session".length)
+
+    const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set
+    valueSetter?.call(input, "   ")
+    await interact(() => input?.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event))
+    await interact(() => undefined)
+    await interact(() => input?.form?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }) as unknown as Event))
+    expect(received.some(intent => intent.name === "DesktopChatRenameRequested")).toBe(false)
+    expect(window.document.querySelector("#desktop-chat-rename-error")?.textContent).toBe("Enter a title before saving.")
+
+    valueSetter?.call(input, "  Renamed locally  ")
+    await interact(() => input?.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event))
+    await interact(() => undefined)
+    await interact(() => input?.form?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }) as unknown as Event))
+    expect(received.at(-1)).toEqual({
+      name: "DesktopChatRenameRequested",
+      payload: { threadRef: "local-1", title: "Renamed locally" },
+    })
   })
 
   test("keeps conversation paging while workspace management stays out of the sidebar", async () => {

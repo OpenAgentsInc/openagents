@@ -159,6 +159,7 @@ type DesktopBridge = Readonly<{
   historyThreads?: Readonly<{
     listLocal?: () => Promise<unknown>
     resumeLocal?: (value: unknown) => Promise<unknown>
+    renameLocal?: (value: unknown) => Promise<unknown>
     fork?: (value: unknown) => Promise<unknown>
   }>
   sendMessage?: (value: unknown) => Promise<unknown>
@@ -723,6 +724,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       hydrateThread: async (id: string) => {
         const raw = await bridge?.historyThreads?.resumeLocal?.({ threadRef: id })
         return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+      },
+      renameThread: async (input: Readonly<{ threadRef: string; title: string }>) => {
+        const raw = await bridge?.historyThreads?.renameLocal?.(input)
+        if (typeof raw !== "object" || raw === null || typeof (raw as { ok?: unknown }).ok !== "boolean") {
+          return { ok: false as const, error: "Desktop chat returned an invalid rename response." }
+        }
+        return raw as { ok: boolean; thread?: DesktopThread; error?: string }
       },
       sendMessage: async (input: Readonly<{ id: string; message: string }>) => {
         const raw = await bridge?.sendMessage?.(input)

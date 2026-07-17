@@ -33,6 +33,12 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("webSecurity: true");
   });
 
+  test("local thread rename rejects untrusted renderer frames before mutation", () => {
+    expect(main).toMatch(
+      /ipcMain\.handle\(DesktopRenameLocalThreadChannel, \(event, value: unknown\) => \{\s+if \(!isTrustedRuntimeGatewaySender\(event\)\) return/,
+    );
+  });
+
   test("uses the built mobile icon for the window and macOS Dock", () => {
     expect(main).toContain('"assets", "openagents-icon.png"');
     expect(main).toContain("icon: desktopIconPath");

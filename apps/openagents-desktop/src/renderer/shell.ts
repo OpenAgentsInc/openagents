@@ -324,6 +324,12 @@ export type DesktopShellState = Readonly<{
   pending: boolean
   /** Turn activity belongs to a thread, never to whichever chat is currently visible. */
   pendingByThread: Readonly<Record<string, boolean>>
+  /** Host-backed local title mutation status for the rename prompt. */
+  threadRename: Readonly<{
+    threadRef: string
+    status: "saving" | "failed"
+    error: string | null
+  }> | null
   /** Last typed turn/runtime failure; null after a new admitted turn or success. */
   runtimeFailure: DesktopRuntimeFailureKind | null
   /** Runtime outcomes are scoped to their originating thread. */
@@ -506,6 +512,7 @@ export const initialDesktopShellState = (
   composerDraftsByThread: {},
   pending: false,
   pendingByThread: {},
+  threadRename: null,
   runtimeFailure: null,
   runtimeFailureByThread: {},
   composerImages: [],
@@ -710,6 +717,17 @@ export const DesktopPendingSubmitModeSelected = defineIntent(
 export const DesktopQueuedIntentEditRequested = defineIntent("DesktopQueuedIntentEditRequested", Schema.String)
 export const DesktopQueuedIntentCancelRequested = defineIntent("DesktopQueuedIntentCancelRequested", Schema.String)
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
+export const DesktopChatRenameRequested = defineIntent(
+  "DesktopChatRenameRequested",
+  Schema.Struct({
+    threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+    title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  }),
+)
+export const DesktopChatRenameDismissed = defineIntent(
+  "DesktopChatRenameDismissed",
+  Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+)
 /**
  * Message metadata inspector selection (#8712). Payload is the transcript
  * message key; the empty string or re-selecting the open key deselects
@@ -830,6 +848,8 @@ export const desktopShellIntents = [
   DesktopQueuedIntentEditRequested,
   DesktopQueuedIntentCancelRequested,
   DesktopChatSelected,
+  DesktopChatRenameRequested,
+  DesktopChatRenameDismissed,
   DesktopMessageSelected,
   DesktopToolCardToggled,
   DesktopToolDiffReviewRequested,
@@ -1359,6 +1379,11 @@ export type ChatHost = Readonly<{
   laneForThread?: (threadRef: string) => Promise<string | null>
   openThread: (id: string) => Promise<DesktopThread | null>
   hydrateThread?: (id: string) => Promise<DesktopThread | null>
+  renameThread?: (input: Readonly<{ threadRef: string; title: string }>) => Promise<Readonly<{
+    ok: boolean
+    thread?: DesktopThread
+    error?: string
+  }>>
   sendMessage: (input: Readonly<{
     id: string
     message: string
@@ -1782,6 +1807,7 @@ export const makeDesktopShellHandlers = (
   // Latest-selection-wins fence for async host reads. An older click may
   // finish later, but it must never replace the newer visible conversation.
   let selectionRevision = 0
+  let renameRevision = 0
   const initialNavigation = currentDesktopNavigationDestination(Effect.runSync(SubscriptionRef.get(state)))
   const navigationState = Effect.runSync(
     SubscriptionRef.make<DesktopNavigationHistory>(initialDesktopNavigationHistory(initialNavigation)),
@@ -2999,6 +3025,73 @@ export const makeDesktopShellHandlers = (
       title: current.threads.find(thread => thread.id === id)?.title || "Local session",
     })
   }),
+  DesktopChatRenameRequested: ({ threadRef, title }) => Effect.gen(function* () {
+    const nextTitle = title.trim()
+    const current = yield* SubscriptionRef.get(state)
+    if (current.threadRename?.status === "saving") return
+    if (nextTitle === "" || !current.threads.some(thread => thread.id === threadRef)) {
+      yield* SubscriptionRef.update(state, value => ({
+        ...value,
+        threadRename: { threadRef, status: "failed" as const, error: "Enter a title before saving." },
+      }))
+      return
+    }
+    const revision = ++renameRevision
+    yield* SubscriptionRef.update(state, value => ({
+      ...value,
+      threadRename: { threadRef, status: "saving" as const, error: null },
+    }))
+    const result = chat.renameThread === undefined
+      ? { ok: false, error: "Renaming is unavailable." }
+      : yield* Effect.promise(() => new Promise<Readonly<{
+          ok: boolean
+          thread?: DesktopThread
+          error?: string
+        }>>(resolve => {
+          const timeout = setTimeout(
+            () => resolve({ ok: false, error: "Saving the conversation title timed out." }),
+            15_000,
+          )
+          chat.renameThread!({ threadRef, title: nextTitle }).then(
+            value => {
+              clearTimeout(timeout)
+              resolve(value)
+            },
+            () => {
+              clearTimeout(timeout)
+              resolve({ ok: false, error: "The conversation title could not be saved." })
+            },
+          )
+        }))
+    if (revision !== renameRevision) return
+    if (!result.ok || result.thread === undefined) {
+      yield* SubscriptionRef.update(state, value => ({
+        ...value,
+        threadRename: {
+          threadRef,
+          status: "failed" as const,
+          error: result.error ?? "That conversation could not be renamed.",
+        },
+      }))
+      return
+    }
+    yield* SubscriptionRef.update(state, value => ({
+      ...withThreads(value, [result.thread!, ...value.threads.filter(thread => thread.id !== threadRef)]),
+      history: {
+        ...value.history,
+        localThreads: (value.history.localThreads ?? []).map(thread =>
+          thread.id === threadRef ? result.thread! : thread),
+      },
+      threadRename: null,
+    }))
+  }),
+  DesktopChatRenameDismissed: (threadRef) => {
+    renameRevision += 1
+    return SubscriptionRef.update(state, value => ({
+      ...value,
+      threadRename: value.threadRename?.threadRef === threadRef ? null : value.threadRename,
+    }))
+  },
   HistoryConversationSelected: (id) => Effect.gen(function* () {
     const revision = ++selectionRevision
     yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:id}}))

@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-16.4",
+    version: "2026-07-16.5",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -4305,6 +4305,58 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop focused ProviderLane/capability/composer suites, behavior-contract registry validation, and Desktop typecheck.",
+      },
+      {
+        contractId: "openagents_desktop.chat.local_title_rename.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "local chat sidebar rename",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-16" },
+        statement:
+          "In OpenAgents Desktop, right-clicking a chat in the conversation sidebar should open a native-feeling shadcn context menu with a Rename action. Rename should support keyboard interaction, validate the title, persist through the existing thread store/host boundary, and update the visible chat row without requiring a restart.",
+        authorityBoundary:
+          "Only app-local Desktop threads are renameable. The accessible shadcn-styled context menu and focused dialog collect a bounded title, trim and reject empty input before dispatch, and send only the exact local thread ref plus title through a schema-decoded preload channel. Electron main re-validates the request and the private atomic thread store persists it; provider-owned history remains read-only. Renderer state updates the sidebar and active header only after host success. Cancel/Escape and every validation or host failure retain the previous durable and visible title, with an inline failure message for a rejected save.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/components/ui/context-menu.tsx",
+          "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+          "packages/ui/src/workbench/rail.tsx",
+          "apps/openagents-desktop/src/chat-contract.ts",
+          "apps/openagents-desktop/src/preload.cts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/thread-store.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8929",
+        ],
+        oracles: [
+          {
+            id: "local_chat_rename.accessible_renderer_interaction",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+            description:
+              "Opens the real local sidebar row menu by keyboard and right-click, activates Rename, proves the current title is focused and selected, refuses blank input inline, and dispatches only the trimmed exact thread/title payload.",
+          },
+          {
+            id: "local_chat_rename.host_success_and_failure_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Runs the real typed intent handler, updates the visible thread title only after a successful host result, and retains the prior title plus explicit failure state when persistence rejects the rename.",
+          },
+          {
+            id: "local_chat_rename.atomic_persistence",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/thread-store.test.ts",
+            description:
+              "Reopens the private JSON store after rename to prove durability, trimming, and unchanged persisted truth after an empty-title failure.",
+          },
+        ],
+        verification:
+          "Desktop renderer, shell, and thread-store oracle suites; repository behavior-contract validation; Desktop typecheck and build.",
       },
       {
         contractId: "openagents_desktop.chat.provider_lane_registry_and_switch_honesty.v1",

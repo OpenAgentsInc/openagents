@@ -1,8 +1,9 @@
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
+import { Schema } from "@effect-native/core/effect"
 
-import type { DesktopMessage, DesktopThread } from "./chat-contract.ts"
+import { decode, DesktopThreadSchema, type DesktopMessage, type DesktopThread } from "./chat-contract.ts"
 
 const maxThreads = 5
 const maxNotes = 80
@@ -11,8 +12,9 @@ const titleFor = (text: string): string => text.replace(/\s+/g, " ").trim().slic
 export const makeThreadStore = (file: string) => {
   const read = (): DesktopThread[] => {
     try {
-      const value = JSON.parse(readFileSync(file, "utf8")) as { threads?: DesktopThread[] }
-      return Array.isArray(value.threads) ? value.threads.slice(0, maxThreads) : []
+      const value = JSON.parse(readFileSync(file, "utf8")) as { threads?: unknown }
+      const decoded = decode(Schema.Array(DesktopThreadSchema), value.threads) as ReadonlyArray<DesktopThread> | null
+      return decoded?.slice(0, maxThreads) ?? []
     } catch { return [] }
   }
   const write = (threads: DesktopThread[]): DesktopThread[] => {
@@ -57,6 +59,15 @@ export const makeThreadStore = (file: string) => {
       return thread
     },
     open: (id: string): DesktopThread | null => read().find((thread) => thread.id === id) ?? null,
+    rename: (id: string, title: string): DesktopThread | null => {
+      const nextTitle = title.trim()
+      if (nextTitle === "" || nextTitle.length > 120) return null
+      const found = read().find((thread) => thread.id === id)
+      if (!found) return null
+      const next: DesktopThread = { ...found, title: nextTitle }
+      write([next, ...read().filter((thread) => thread.id !== id)])
+      return next
+    },
     append: (id: string, message: DesktopMessage): DesktopThread | null => {
       const found = read().find((thread) => thread.id === id)
       if (!found) return null

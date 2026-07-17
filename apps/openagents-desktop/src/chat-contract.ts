@@ -19,6 +19,7 @@ export const DesktopLocalTurnRecoveryUpdateChannel = "openagents-desktop/local-t
 export const DesktopLocalThreadsChannel = "openagents-desktop/history-local-threads" as const
 export const DesktopResumeLocalThreadChannel = "openagents-desktop/history-resume-local-thread" as const
 export const DesktopForkHistoryThreadChannel = "openagents-desktop/history-fork-thread" as const
+export const DesktopRenameLocalThreadChannel = "openagents-desktop/history-rename-local-thread" as const
 
 /**
  * Per-message host metadata (#8712, EP250: "if I click on the message, I see
@@ -244,6 +245,27 @@ export const DesktopResumeLocalThreadRequestSchema = Schema.Struct({
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
 })
 export type DesktopResumeLocalThreadRequest = typeof DesktopResumeLocalThreadRequestSchema.Type
+
+export const DesktopRenameLocalThreadRequestSchema = Schema.Struct({
+  threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+})
+export type DesktopRenameLocalThreadRequest = typeof DesktopRenameLocalThreadRequestSchema.Type
+
+export const decodeDesktopRenameLocalThreadRequest = (
+  value: unknown,
+): DesktopRenameLocalThreadRequest | null => {
+  const decoded = decode(DesktopRenameLocalThreadRequestSchema, value) as DesktopRenameLocalThreadRequest | null
+  if (decoded === null) return null
+  const title = decoded.title.trim()
+  return title === "" ? null : { ...decoded, title }
+}
+
+export const DesktopRenameLocalThreadResultSchema = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true), thread: DesktopThreadSchema }),
+  Schema.Struct({ ok: Schema.Literal(false), error: Schema.String.check(Schema.isMaxLength(160)) }),
+])
+export type DesktopRenameLocalThreadResult = typeof DesktopRenameLocalThreadResultSchema.Type
 
 /** H2: refs-only fork request. Main re-reads provider history and constructs
  * the bounded seed; renderer transcript text is never mutation authority. */

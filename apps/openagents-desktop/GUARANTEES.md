@@ -10,6 +10,18 @@ oracle runs in the normal test sweep.
 
 ## Current UX guarantees
 
+### Durable local chat rename
+
+Right-clicking an app-local chat row opens an accessible context menu with a
+Rename action. The rename dialog focuses and selects the current title, trims
+and rejects empty input, saves through the schema-decoded Electron host and
+private atomic thread store, and updates the sidebar and active conversation
+header only after persistence succeeds. Cancel, Escape, validation failure, or
+host failure leaves the previous title unchanged; provider-owned history stays
+read-only.
+
+Contract: `openagents_desktop.chat.local_title_rename.v1`.
+
 ### Closed Desktop Runtime Gateway protocol
 
 The signed renderer reaches host runtime state through one versioned,

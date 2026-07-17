@@ -159,6 +159,94 @@ const navItemById = (view: View, id: string): AnyNode | undefined => {
 }
 
 const testThread = { id: "test-thread", title: "New chat", updatedAt: "2026-07-10T18:04:00.000Z", notes: [] } as const
+
+test("local chat rename updates visible state only after host persistence and retains failures", async () => {
+  const state = await Effect.runPromise(SubscriptionRef.make(withThreads(
+    initialDesktopShellState("test"),
+    [testThread],
+  )))
+  const chat = {
+    listThreads: async () => [testThread],
+    newThread: async () => testThread,
+    openThread: async () => testThread,
+    renameThread: async ({ title }: Readonly<{ threadRef: string; title: string }>) => title === "Rejected title"
+      ? { ok: false, error: "The title store is unavailable." }
+      : { ok: true, thread: { ...testThread, title } },
+    sendMessage: async () => ({ ok: true, thread: testThread }),
+  }
+  const registry = await Effect.runPromise(makeIntentRegistry(
+    desktopShellIntents,
+    makeDesktopShellHandlers(state, undefined, undefined, chat),
+  ))
+
+  await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef(
+    "DesktopChatRenameRequested",
+    StaticPayload({ threadRef: testThread.id, title: "  Release checklist  " }),
+  ))))
+  expect((await Effect.runPromise(SubscriptionRef.get(state))).threads[0]?.title).toBe("Release checklist")
+  expect((await Effect.runPromise(SubscriptionRef.get(state))).threadRename).toBeNull()
+
+  await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef(
+    "DesktopChatRenameRequested",
+    StaticPayload({ threadRef: testThread.id, title: "Rejected title" }),
+  ))))
+  const failed = await Effect.runPromise(SubscriptionRef.get(state))
+  expect(failed.threads[0]?.title).toBe("Release checklist")
+  expect(failed.threadRename).toEqual({
+    threadRef: testThread.id,
+    status: "failed",
+    error: "The title store is unavailable.",
+  })
+})
+
+test("local chat rename contains rejected hosts and ignores a dismissed stale success", async () => {
+  const state = await Effect.runPromise(SubscriptionRef.make(withThreads(
+    initialDesktopShellState("test"),
+    [testThread],
+  )))
+  const deferred: { resolve?: (value: { ok: true; thread: DesktopThread }) => void } = {}
+  let reject = true
+  const chat = {
+    listThreads: async () => [testThread],
+    newThread: async () => testThread,
+    openThread: async () => testThread,
+    renameThread: ({ title }: Readonly<{ threadRef: string; title: string }>) => reject
+      ? Promise.reject(new Error("disk unavailable"))
+      : new Promise<{ ok: true; thread: DesktopThread }>(resolve => {
+          deferred.resolve = resolve
+          void title
+        }),
+    sendMessage: async () => ({ ok: true, thread: testThread }),
+  }
+  const registry = await Effect.runPromise(makeIntentRegistry(
+    desktopShellIntents,
+    makeDesktopShellHandlers(state, undefined, undefined, chat),
+  ))
+  const request = (title: string) => resolveIntentRef(IntentRef(
+    "DesktopChatRenameRequested",
+    StaticPayload({ threadRef: testThread.id, title }),
+  ))
+
+  await Effect.runPromise(registry.dispatch(request("Rejected promise")))
+  expect((await Effect.runPromise(SubscriptionRef.get(state))).threadRename).toMatchObject({
+    status: "failed",
+    error: "The conversation title could not be saved.",
+  })
+
+  reject = false
+  const pending = Effect.runPromise(registry.dispatch(request("Stale success")))
+  await Promise.resolve()
+  await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef(
+    "DesktopChatRenameDismissed",
+    StaticPayload(testThread.id),
+  ))))
+  if (deferred.resolve === undefined) throw new Error("rename host was not invoked")
+  deferred.resolve({ ok: true, thread: { ...testThread, title: "Stale success" } })
+  await pending
+  const dismissed = await Effect.runPromise(SubscriptionRef.get(state))
+  expect(dismissed.threadRename).toBeNull()
+  expect(dismissed.threads[0]?.title).toBe("New chat")
+})
 /** Both lanes evidence-available: the pre-#8712 composer behavior baseline. */
 const availableHarnessLanes = {
   fable: { available: true, reason: null },

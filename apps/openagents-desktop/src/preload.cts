@@ -52,8 +52,11 @@ import {
   DesktopOpenThreadChannel,
   DesktopResumeLocalThreadChannel,
   DesktopResumeLocalThreadRequestSchema,
+  DesktopRenameLocalThreadChannel,
+  DesktopRenameLocalThreadResultSchema,
   DesktopThreadsChannel,
   decode,
+  decodeDesktopRenameLocalThreadRequest,
   DesktopThreadRequestSchema,
   DesktopThreadSchema,
   DesktopTurnRequestSchema,
@@ -396,6 +399,19 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     resumeLocal: (value: unknown) => {
       const request = decode(DesktopResumeLocalThreadRequestSchema, value)
       return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopResumeLocalThreadChannel, request)
+    },
+    renameLocal: async (value: unknown) => {
+      const request = decodeDesktopRenameLocalThreadRequest(value)
+      if (request === null) return { ok: false, error: "Enter a title before saving." }
+      try {
+        const raw = await ipcRenderer.invoke(DesktopRenameLocalThreadChannel, request)
+        return decode(DesktopRenameLocalThreadResultSchema, raw) ?? {
+          ok: false,
+          error: "The rename response was invalid.",
+        }
+      } catch {
+        return { ok: false, error: "The conversation title could not be saved." }
+      }
     },
     fork: (value: unknown) => {
       const request = decode(DesktopForkHistoryThreadRequestSchema, value)

@@ -55,6 +55,23 @@ describe("H2 local thread fork persistence", () => {
     }
   })
 
+  test("renames a local thread durably and refuses blank titles without mutation", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-rename-"))
+    const file = path.join(root, "threads.json")
+    try {
+      const store = makeThreadStore(file)
+      const thread = store.newThread("Original title")
+      const renamed = store.rename(thread.id, "  Release checklist  ")
+      expect(renamed?.title).toBe("Release checklist")
+      expect(makeThreadStore(file).open(thread.id)?.title).toBe("Release checklist")
+
+      expect(store.rename(thread.id, "   ")).toBeNull()
+      expect(makeThreadStore(file).open(thread.id)?.title).toBe("Release checklist")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("deterministic turn keys survive reopen without duplicate prompt or assistant rows", () => {
     const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-restart-"))
     const file = path.join(root, "private", "threads.json")

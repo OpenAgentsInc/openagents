@@ -10,7 +10,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react"
-import { forwardRef, type KeyboardEvent, type ReactElement, type ReactNode } from "react"
+import { Fragment, forwardRef, type KeyboardEvent, type ReactElement, type ReactNode } from "react"
 
 export type DesktopRailIcon = "chat" | "home" | "new-session" | "settings"
 
@@ -68,6 +68,7 @@ export type DesktopSessionRailProps = Readonly<{
   onSearchQueryChange: (query: string) => void
   onDestinationSelect: (destination: DesktopRailDestination) => void
   onSessionSelect: (session: DesktopRailSession) => void
+  renderSession?: (session: DesktopRailSession, row: ReactElement) => ReactElement
   onLoadMore?: () => void
 }>
 
@@ -103,6 +104,7 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
   onSearchQueryChange,
   onDestinationSelect,
   onSessionSelect,
+  renderSession,
   onLoadMore,
 }, ref): ReactElement => {
   const renderDestination = (destination: DesktopRailDestination): ReactElement => {
@@ -178,20 +180,22 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
           ? <p role="status">Scanning sessions…</p>
           : sessions.length === 0
             ? <p>{searchPending ? "Searching…" : "No sessions found"}</p>
-            : sessions.map(session => <button
+            : sessions.map(session => {
+              const row = <button
                 aria-current={session.selected ? "page" : undefined}
                 className="oa-react-session-row justify-start text-left"
                 data-en-key={`sidebar-thread-${session.id}`}
                 data-en-tag="Button"
                 data-selected={session.selected ? "true" : "false"}
                 data-session-row
-                key={session.id}
                 onClick={() => onSessionSelect(session)}
                 type="button"
               >
                 <span className="oa-react-session-title">{session.title}</span>
                 <small className="oa-react-session-meta" data-en-role="meta">{session.meta}</small>
-              </button>)}
+              </button>
+              return <Fragment key={session.id}>{renderSession?.(session, row) ?? row}</Fragment>
+            })}
         {canLoadMore ? <button className="oa-react-load-more" onClick={onLoadMore} type="button">Load more sessions</button> : null}
       </nav>
     </div>
