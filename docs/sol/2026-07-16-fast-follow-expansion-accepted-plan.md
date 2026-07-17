@@ -222,6 +222,68 @@ replay reconciliation, Sync/mobile/Pylon adapters, rendered evidence, and Day
 - verification: focused packet/capability tests 244 passed and 11 skipped; Desktop typecheck; Fast Follow 7/7; behavior contracts 36/36; ProductSpec 104/104; Sol checks 19/19; `pnpm run check`; enforced Desktop gate 1,917 passed and 39 skipped plus build, fixture visual smoke, React smoke, and built Electron smoke
 - residual: durable outcome persistence/replay, Sync/mobile/Pylon adapters, thread search/share/export/supersession surfaces, real rendered runtime evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-04 — Restart-stable Desktop control-outcome ledger
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next ordered Day 1 residual after FF-D1-03. It persists
+provider-neutral Desktop Queue/Steer/Stop acknowledgement in the main process
+so accepted, rejected, failed, unsupported, and pending outcomes survive a
+renderer reload or Desktop restart.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/runtime-control-outcome-contract.ts`
+- `apps/openagents-desktop/src/runtime-control-outcome-store.ts`
+- `apps/openagents-desktop/src/runtime-control-outcome-store.test.ts`
+- `apps/openagents-desktop/src/main.ts`
+- `apps/openagents-desktop/src/preload.cts`
+- `apps/openagents-desktop/src/renderer/boot.ts`
+- `apps/openagents-desktop/src/renderer/shell.ts`
+- `apps/openagents-desktop/src/renderer/shell.test.ts`
+- `apps/openagents-desktop/src/renderer/runtime-conversation.ts`
+- `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-04-desktop-control-outcome-ledger-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.runtime_control_outcome.v1`, Desktop preload IPC,
+the `ChatHost` control-outcome recorder, and the private Desktop user-data
+boundary. This packet does not version the shared runtime-control schemas.
+
+Required behavior:
+
+- every non-null foreground Queue/Steer/Stop acknowledgement is schema-checked
+  and recorded through a trusted renderer-to-main IPC boundary before the
+  shell consumes its delivery state;
+- the private main-process ledger uses bounded atomic persistence under
+  Desktop user data and reconstructs identical outcomes after close/reopen;
+- exact retries are idempotent, pending axes may advance monotonically, and
+  conflicting terminal evidence fails closed instead of overwriting history;
+- invalid, corrupt, or cross-identity records are rejected without inventing
+  evidence; and
+- persistence never stores raw message bodies, provider credentials, or
+  terminal runtime events that have not independently been observed.
+
+Proof: focused store, shell, preload-boundary, and runtime-conversation tests;
+Desktop typecheck; Fast Follow, behavior-contract, ProductSpec, and Sol
+document checks; and repository-required `pnpm run check`.
+
+Close rule: this packet closes only local cross-restart outcome persistence.
+Lost-ACK replay/reconciliation, Sync/mobile/Pylon adapters, rendered evidence,
+and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-04-20260717`
+- base: `c25bb5410d228df56d275c4b0f41023123c8cad2`
+- worktree/branch: `openagents-ff-d1-04` / detached `origin/main`
+- scope: restart-stable provider-neutral Desktop control-outcome ledger
+- paths: the FF-D1-04 owned implementation paths above
+- hot files: this accepted-plan ledger, Sol manifest, Desktop main/preload/boot/shell boundaries, and converging ChatHost seam
+- hot contracts: runtime-control outcome schema literal, trusted IPC channel, and private outcome-ledger format
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T11:53:37Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
