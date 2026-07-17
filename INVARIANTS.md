@@ -159,6 +159,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   admitted issue, accepted plan, or work packet, current authority
   reconciliation, one isolated mutation claim/worktree, satisfied dependencies,
   and target-local proof.
+- A current explicit owner direction is valid separate target authority for a
+  named Fast Follow directive or ordered initial program. It must be persisted
+  as a target-owned accepted plan/work packet. When GitHub policy permits only
+  reproducible bugs, no feature issue is required; every product mutation still
+  requires one bounded packet, collision-safe claim/worktree, and local proof.
+- Program admission does not grant deploy, release, credential, paid-provider
+  spend, settlement, cross-tenant publication, public-promise, or invariant-
+  bypass authority, and it never makes a research agent self-admitting.
 - Source freshness, evidence confidence, relevance, target fit, portability,
   license/provenance, implementation, verification, disposition, and exception
   remain independent axes. `no_material_delta`, rejected, superseded, stale,
@@ -172,8 +180,8 @@ More specific invariant ledgers apply inside imported apps and packages.
 - When a spec defines `initial_program`, selection follows its exact directive
   order and default evidence stage until each directive is terminal or
   blocked. A referenced strategy essay remains evidence and sequencing input;
-  it cannot reopen a roadmap lane or satisfy the separately required
-  implementation admission.
+  it cannot reopen a roadmap lane or satisfy implementation admission by
+  itself. A separately recorded owner-accepted plan can do so.
 - Blueprint, Khala, semantic planners, StudyPackets, and DSPy/GEPA-class
   optimizers may propose typed research or module candidates. None may
   self-admit, self-verify, self-promote, dispatch, merge, release, spend,

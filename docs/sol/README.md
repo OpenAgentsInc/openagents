@@ -5,11 +5,12 @@
 - Dispatch: no; follow the authority order below
 - Owner: Sol roadmap
 
-Sol owns the implementation-grounded OpenAgents roadmap. Its active product is
-the ProductSpec-native local Desktop Codex Workroom; broader mobile, remote,
-Fleet, portability, provider, and voice plans are retained evidence or closed
-non-revival boundaries. This index points to the authorities; it does not cache
-their revision, issue count, or current queue.
+Sol owns the implementation-grounded OpenAgents roadmap. Its accepted Desktop
+Codex Workroom baseline now has an owner-admitted, ordered Fast Follow
+expansion program. Broader mobile, remote, Fleet, portability, provider, and
+voice plans remain retained evidence or closed boundaries unless an exact
+packet admits them. This index points to the authorities; it does not cache the
+roadmap revision or issue count.
 
 ## Dispatch-safe reading order
 
@@ -39,6 +40,9 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   checked-in issue sources; live GitHub state remains operational authority.
 - [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) — same-session and cross-session
   claims, hot-contract coordination, staleness audit, and release receipts.
+- [`2026-07-16-fast-follow-expansion-accepted-plan.md`](./2026-07-16-fast-follow-expansion-accepted-plan.md)
+  — owner admission, ordered five-day program, packet ledger, and explicit
+  non-authority boundary.
 - [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — accepted risks, falsifiers,
   tripwires, and review points.
 - [`receipts/README.md`](./receipts/README.md) — indexed proof snapshots, rungs,

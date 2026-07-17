@@ -360,7 +360,7 @@ export type DesktopShellState = Readonly<{
   /** Main-originated admission truth retained by exact local thread identity. */
   composerAdmissionByThread: Readonly<Record<string, ComposerAdmission>>
   /** Stable across a refused/lost ACK; reset only when the user changes the draft or admission succeeds. */
-  composerIntentIdentity: Readonly<{ intentRef: string; clientUserMessageId: string }> | null
+  composerIntentIdentity: Readonly<{ intentRef: string; clientUserMessageId: string; createdAt: string }> | null
   composerQueue: ReadonlyArray<CodexQueuedIntent>
   composerQueueEditingRef: string | null
   /** Requested Codex reasoning effort for subsequent turns. */
@@ -1953,6 +1953,7 @@ export const makeDesktopShellHandlers = (
     const identity = current.composerIntentIdentity ?? {
       intentRef: `intent.desktop.${globalThis.crypto.randomUUID()}`,
       clientUserMessageId: `user.desktop.${globalThis.crypto.randomUUID()}`,
+      createdAt: new Date().toISOString(),
     }
     const intent = makeComposerSubmitIntent({
       admission: current.composerAdmission,
@@ -1963,7 +1964,7 @@ export const makeDesktopShellHandlers = (
     })
     if (intent === null) return
     yield* SubscriptionRef.update(state, next => ({ ...next, composerIntentIdentity: identity }))
-    if (mode === "steer") {
+    if (intent.control.kind === "turn.steer") {
       if (chat.steerCurrent === undefined) {
         yield* SubscriptionRef.update(state, next => withInput(next, message))
         return

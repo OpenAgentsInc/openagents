@@ -1480,7 +1480,7 @@ describe("composer image input (capability I1)", () => {
   test("a refused mid-turn queue restores the cleared draft; an accepted queue keeps it cleared (CUT-16)", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const queueAttempts: Array<{ threadRef: string; message: string; intentRef?: string; clientUserMessageId?: string }> = []
+        const queueAttempts: Array<{ threadRef: string; message: string; intentRef?: string; clientUserMessageId?: string; control?: { readonly kind: string; readonly intentRef: string; readonly messageRef?: string } }> = []
         let queueResult: { ok: boolean; queued: boolean } = { ok: false, queued: false }
         const chatHost = {
           listThreads: async () => [testThread],
@@ -1499,7 +1499,17 @@ describe("composer image input (capability I1)", () => {
         )
         // Refused enqueue (CUT-16): the cleared draft is restored, never dropped.
         yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(null))))
-        expect(queueAttempts).toEqual([expect.objectContaining({ threadRef: testThread.id, message: "keep me", intentRef: expect.stringMatching(/^intent\.desktop\./), clientUserMessageId: expect.stringMatching(/^user\.desktop\./) })])
+        expect(queueAttempts).toEqual([expect.objectContaining({
+          threadRef: testThread.id,
+          message: "keep me",
+          intentRef: expect.stringMatching(/^intent\.desktop\./),
+          clientUserMessageId: expect.stringMatching(/^user\.desktop\./),
+          control: expect.objectContaining({
+            kind: "turn.queue",
+            intentRef: expect.stringMatching(/^intent\.desktop\./),
+            messageRef: expect.stringMatching(/^user\.desktop\./),
+          }),
+        })])
         expect((yield* SubscriptionRef.get(state)).input).toBe("keep me")
 
         // Accepted enqueue: the composer stays cleared for the next thought.
@@ -1827,7 +1837,7 @@ describe("pure transitions", () => {
       ...baseState,
       composerQueue: [queued],
       composerQueueEditingRef: queued.queueRef,
-      composerIntentIdentity: { intentRef: queued.intentRef, clientUserMessageId: queued.clientUserMessageId },
+      composerIntentIdentity: { intentRef: queued.intentRef, clientUserMessageId: queued.clientUserMessageId, createdAt: queued.createdAt },
     }, other)
 
     expect(switched.activeThreadId).toBe(other.id)

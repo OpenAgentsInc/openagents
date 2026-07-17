@@ -53,6 +53,7 @@
     "@lexical/react": "^0.41.0",
     "@openagentsinc/agent-client-protocol": "workspace:*",
     "@openagentsinc/agent-client-runtime-bridge": "workspace:*",
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/assurance-spec": "workspace:*",
     "@openagentsinc/audio-contract": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",

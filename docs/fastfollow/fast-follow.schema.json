@@ -307,6 +307,7 @@
           "items": {
             "enum": [
               "admitted_issue_or_work_packet",
+              "target_owned_admitted_issue_accepted_plan_or_work_packet",
               "current_target_authority_reconciliation",
               "isolated_mutation_claim",
               "target_local_verification"

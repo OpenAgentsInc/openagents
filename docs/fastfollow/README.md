@@ -15,6 +15,8 @@ backlog, repository instructions, or Full Auto:
 - FastFollowSpec owns learning intent: **what should be studied and why**.
 - A roadmap, issue, accepted plan, or work packet owns sequencing and
   implementation admission.
+- A current explicit owner direction can be persisted as that accepted plan;
+  this is separate target authority, not self-admission by Fast Follow.
 - Full Auto owns unattended continuation of an already authorized local
   session. It may consume Fast Follow work; Fast Follow does not widen Full
   Auto authority.
@@ -60,6 +62,13 @@ The current OpenAgents Desktop Full Auto implementation already:
   ProductSpec/AssuranceSpec context as candidate sources;
 - takes one concrete useful action per continuation; and
 - stops after 20 successful automatic continuations.
+
+The owner admitted the ordered initial program on 2026-07-16 in
+[`2026-07-16-fast-follow-expansion-accepted-plan.md`](../sol/2026-07-16-fast-follow-expansion-accepted-plan.md).
+Implementation sessions consume its next bounded work packet directly. They do
+not open a feature issue because this repository reserves GitHub issues for
+reproducible bugs; claim/worktree, verification, release, and public-promise
+gates still apply.
 
 Because the OpenAgents `AGENTS.md` now points Full Auto at `FASTFOLLOW.md`, an
 owner can use Fast Follow tonight without a new binary:

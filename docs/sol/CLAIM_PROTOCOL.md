@@ -2,19 +2,23 @@
 
 - Date: 2026-07-09
 - Class: contract
-- Dispatch: ownership and collision control only; live issues select work
+- Dispatch: ownership and collision control only; live issues or exact
+  owner-accepted plans/work packets select work
 - Owner: Sol roadmap
 - Status: active coordination contract
 - Authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
-- Dispatch sources: live `roadmap:sol` issues and their comments; this contract
-  governs ownership but does not select the queue
+- Dispatch sources: live `roadmap:sol` issues and their comments, or an exact
+  owner-accepted plan/work packet when issue policy prohibits a feature issue;
+  this contract governs ownership but does not select the queue
 
 ## Purpose
 
 Parallel agents should increase completed integration, not duplicate the same
 issue or collide through a shared schema. The live GitHub issue set is the
-cross-session claim ledger. The root coordinator is the ledger within one Codex
-collaboration session.
+normal cross-session claim ledger. When no valid feature issue can exist under
+repository policy, the exact accepted plan or work packet and its recorded
+claim state are the ledger. The root coordinator is the ledger within one
+Codex collaboration session.
 
 ## Same-session claims
 
@@ -33,7 +37,8 @@ keys, route tables, and other cross-lane contracts.
 ## Cross-session claim comment
 
 Before mutating work in an independent Codex tab/session, post this to the live
-issue:
+issue. If feature issues are prohibited, record the same fields in the owning
+accepted plan/work packet before the implementation commit:
 
 ```text
 CLAIM

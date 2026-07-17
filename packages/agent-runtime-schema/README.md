@@ -9,6 +9,15 @@ dependency. Adapter-specific loops project into this contract at the boundary;
 worker and UI surfaces consume event logs and projections derived from this
 contract.
 
+Day 1 of the Fast Follow thread-fabric program adds
+`openagents.runtime_control_intent.v2` and
+`openagents.runtime_control_outcome.v1`. The provider-neutral intent keeps
+`turn.queue`, `turn.steer`, and `turn.interrupt` distinct, binds stable command,
+message, thread, turn, generation, ordering, expiry, and origin identity, and
+contains refs rather than raw prompt content. The outcome keeps admission,
+delivery, and terminal observation separate so a queued or accepted command is
+never misreported as applied or completed.
+
 For Khala Code's AI SDK-shaped runtime work, the package also defines:
 
 - `openagents.khala_runtime_event.v1` for canonical text, reasoning, step,

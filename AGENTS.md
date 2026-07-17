@@ -35,10 +35,12 @@ and documentation reconciliation that can proceed alongside the primary lane.
   `origin/main`; a spawned agent or passing child test is not itself the final
   integration receipt.
 - Across independent Codex tabs/sessions, the live Sol GitHub issue is the
-  claim ledger. Post the `CLAIM` contract from `docs/sol/CLAIM_PROTOCOL.md`
-  before mutation, including hot files **and hot contracts**; a claim becomes
-  stale only after 90 minutes without evidence plus an explicit process/
-  worktree audit. Same-session claims remain owned by the root coordinator.
+  normal claim ledger. When repository policy prohibits a feature issue, an
+  exact owner-accepted plan/work packet is the ledger instead. Follow
+  `docs/sol/CLAIM_PROTOCOL.md` before mutation, including hot files **and hot
+  contracts**; a claim becomes stale only after 90 minutes without evidence
+  plus an explicit process/worktree audit. Same-session claims remain owned by
+  the root coordinator.
 
 ## Autonomous Loop: Constant Motion (owner mandate)
 
@@ -83,6 +85,12 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   Follow implementation lane requires a current admitted issue, accepted plan,
   or work packet plus authority reconciliation, an isolated claim/worktree, and
   target-local verification.
+- Explicit owner direction may supply the separate target authority and admit
+  a named directive or ordered `initial_program`. Persist it as a target-owned
+  accepted plan/work-packet ledger; do not demand a feature issue when the
+  repository's issue policy forbids one. Program admission still decomposes
+  into bounded claimed packets and does not grant deploy, spend, release,
+  settlement, public-claim, or invariant-bypass authority.
 - Reuse an exact public StudyPacket before repeating upstream inference. Public
   upstream research may be shared by content digest; target-specific code,
   prompts, traces, gaps, credentials, customer data, and private holdouts stay
@@ -92,7 +100,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   or reopen an unchanged rejected candidate merely to keep an autonomous loop
   moving.
 - During current per-session Full Auto, an explicit owner instruction may
-  select the Fast Follow research or admitted implementation lane. Otherwise,
+  admit or select the Fast Follow research or implementation lane. Otherwise,
   use Fast Follow as a bounded candidate source under higher-authority
   actionable work and finish one concrete unit per continuation. The authored
   3/1/1 capacity profile does not itself create a concurrent fleet; native

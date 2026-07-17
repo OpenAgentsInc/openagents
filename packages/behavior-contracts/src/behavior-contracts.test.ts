@@ -742,6 +742,7 @@ describe("background agent contract registry", () => {
     expect(validation.issues).toEqual([])
     expect(validation.ok).toBe(true)
     expect(backgroundAgentsContractRegistry.contracts.map(contract => contract.contractId)).toEqual([
+      "background_agents.fast_follow.owner_admitted_expansion.v1",
       "background_agents.claude.owner_local_execution_authority.v1",
       "background_agents.fleet.supervisor_scope_and_publication_order.v1",
       "background_agents.dispatch.budget_caps_enforced.v1",
@@ -766,6 +767,7 @@ describe("background agent contract registry", () => {
       .filter(contract => contract.state === "enforced")
       .map(contract => contract.contractId)
     expect(enforcedContractIds).toEqual([
+      "background_agents.fast_follow.owner_admitted_expansion.v1",
       "background_agents.claude.owner_local_execution_authority.v1",
       "background_agents.fleet.supervisor_scope_and_publication_order.v1",
       "background_agents.dispatch.budget_caps_enforced.v1",
@@ -782,6 +784,16 @@ describe("background agent contract registry", () => {
       "background_agents.inbox.event_ledger_owner_scoped_private.v1",
       "background_agents.inbox.event_ledger_handled_gateway_redacted.v1",
       "background_agents.inbox.slack_event_ledger_ingest.v1",
+    ])
+    const fastFollowExpansion = backgroundAgentsContractRegistry.contracts.find(
+      contract => contract.contractId === "background_agents.fast_follow.owner_admitted_expansion.v1",
+    )
+    expect(fastFollowExpansion).toMatchObject({
+      state: "enforced",
+      statement: "The policy is now go, that's unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.",
+    })
+    expect(fastFollowExpansion?.oracles.map(oracle => oracle.ref)).toEqual([
+      "scripts/check-fast-follow.test.ts",
     ])
     for (const contract of backgroundAgentsContractRegistry.contracts.filter(
       contract => enforcedContractIds.includes(contract.contractId),

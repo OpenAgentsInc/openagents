@@ -7,6 +7,7 @@ import { describe, expect, test } from "vite-plus/test";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const specPath = path.join(repoRoot, "FASTFOLLOW.md");
 const source = readFileSync(specPath, "utf8");
+// background_agents.fast_follow.owner_admitted_expansion.v1
 
 const readFrontmatterString = (key: string): string => {
   const frontmatter = /^---\n([\s\S]*?)\n---/.exec(source)?.[1];
@@ -118,6 +119,17 @@ const capacityTotal = (capacity: Capacity): number =>
   capacity.delivery + capacity.research + capacity.implementation;
 
 describe("OpenAgents FastFollowSpec 0.1 seed", () => {
+  test("binds the owner-admitted expansion plan without weakening packet gates", () => {
+    expect(readFrontmatterInteger("fast_follow_revision")).toBe(3);
+    expect(source).toContain("docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md");
+    expect(workGeneration.implementation_requirements).toContain(
+      "target_owned_admitted_issue_accepted_plan_or_work_packet",
+    );
+    expect(authority.denied).toContain(
+      "Grant repository, filesystem, network, credential, provider, spend, deployment, release, or SCM authority.",
+    );
+  });
+
   test("matches the canonical projection schema envelope", () => {
     const schema = JSON.parse(
       readFileSync(path.join(repoRoot, "docs/fastfollow/fast-follow.schema.json"), "utf8"),
@@ -140,7 +152,7 @@ describe("OpenAgents FastFollowSpec 0.1 seed", () => {
 
     expect(schema.$id).toBe("https://openagents.com/schemas/fast-follow-spec-projection-0.1.json");
     expect(projection.format_version).toBe("0.1");
-    expect(projection.revision).toBe(2);
+    expect(projection.revision).toBe(3);
     expect(projection.lifecycle_state).toBe("admitted");
     expect(Object.keys(projection).toSorted()).toEqual([...(schema.required ?? [])].toSorted());
   });
@@ -229,7 +241,7 @@ describe("OpenAgents FastFollowSpec 0.1 seed", () => {
     expect(capacityTotal(workGeneration.capacity_profiles.backlog_available)).toBe(5);
     expect(capacityTotal(workGeneration.capacity_profiles.backlog_empty)).toBe(5);
     expect(workGeneration.implementation_requirements).toEqual([
-      "admitted_issue_or_work_packet",
+      "target_owned_admitted_issue_accepted_plan_or_work_packet",
       "current_target_authority_reconciliation",
       "isolated_mutation_claim",
       "target_local_verification",

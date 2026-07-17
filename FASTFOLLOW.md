@@ -1,14 +1,14 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 2
+fast_follow_revision: 3
 title: "OpenAgents Amp Thread-Fabric Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-16T00:00:00Z"
+updated_at: "2026-07-17T04:40:49Z"
 ---
 
 # OpenAgents Fast Follow
@@ -25,8 +25,11 @@ receipt, portability, containment, and verification contracts.
 The essay is strategic evidence, not dispatch authority. This admitted
 learning intent authorizes research, gap analysis, and candidate production;
 product-code implementation still requires an ordinary admitted issue,
-accepted plan, or work packet. The broader teardown library remains the later
-research well, but the initial program is deliberately narrow: Day 1 thread
+accepted plan, or work packet. The owner's 2026-07-16 direction is persisted in
+`docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md`; it supplies that
+separate authority for the ordered initial program. The broader teardown
+library remains the later research well, but the initial program is
+deliberately narrow: Day 1 thread
 fabric surfaces, Day 2 routing and specialists, Day 3 review and thread
 reader, Day 4 placement and remote control, then Day 5 generated clients and
 signed extensions. It does not instruct OpenAgents to clone Amp, claim parity,
@@ -60,7 +63,8 @@ or weaken an invariant.
   ],
   "roadmap_authorities": [
     "docs/sol/MASTER_ROADMAP.md",
-    "docs/sol/README.md"
+    "docs/sol/README.md",
+    "docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md"
   ],
   "artifact_paths": {
     "studies": "docs/fastfollow/studies",
@@ -1234,7 +1238,7 @@ or weaken an invariant.
     }
   },
   "implementation_requirements": [
-    "admitted_issue_or_work_packet",
+    "target_owned_admitted_issue_accepted_plan_or_work_packet",
     "current_target_authority_reconciliation",
     "isolated_mutation_claim",
     "target_local_verification"
@@ -1298,7 +1302,8 @@ or weaken an invariant.
     "Reuse or produce public-safe StudyPackets.",
     "Write bounded studies, gaps, candidates, and receipts under configured artifact paths.",
     "Propose ProductSpec, AssuranceSpec, issue, and implementation deltas for review.",
-    "Implement one bounded candidate only after ordinary target admission and claim checks pass."
+    "Implement one bounded candidate only after ordinary target admission and claim checks pass.",
+    "Treat an explicit owner-accepted plan as separate target authority when repository issue policy prohibits a feature issue."
   ],
   "denied": [
     "Grant repository, filesystem, network, credential, provider, spend, deployment, release, or SCM authority.",
@@ -1316,7 +1321,7 @@ or weaken an invariant.
     "docs/teardowns"
   ],
   "implementation_requirements": [
-    "A current admitted issue, accepted plan, or work packet names the candidate and target scope.",
+    "A current target-owned admitted issue, accepted plan, or work packet names the candidate and target scope; an explicit owner-accepted plan may admit the ordered initial program without a feature issue.",
     "The current AGENTS.md, INVARIANTS.md, ProductSpec, AssuranceSpec, roadmap, and issue state have been reconciled.",
     "The mutating agent owns an isolated claim or worktree and does not collide with another agent.",
     "Target-local tests, assurance, review, receipts, and owner gates remain the definition of done."

@@ -22,6 +22,42 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
   contracts: [
     {
       authorityBoundary:
+        "This admits the ordered Fast Follow expansion through target-owned bounded packets. It grants no deployment, release, credential, spend, settlement, public-promise, cross-tenant sharing, or invariant-bypass authority.",
+      blockerRefs: [],
+      contractId: "background_agents.fast_follow.owner_admitted_expansion.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "AGENTS.md",
+        "INVARIANTS.md",
+        "FASTFOLLOW.md",
+        "docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md",
+        "scripts/check-fast-follow.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "The Fast Follow seed binds the owner-accepted expansion plan, retains bounded work-packet and denied-authority gates, and cannot regress to the superseded policy block.",
+          id: "background_agents.fast_follow.owner_admission",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "scripts/check-fast-follow.test.ts",
+        },
+      ],
+      productArea: "Fast Follow work generation",
+      source: {
+        channel: "conversation",
+        statedBy: "owner",
+        statedOn: "2026-07-16",
+      },
+      state: "enforced",
+      statement:
+        "The policy is now go, that's unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.",
+      surface: "repository-agent",
+      verification:
+        "The Fast Follow seed, authority docs, accepted plan, and bounded packet requirements are enforced by scripts/check-fast-follow.test.ts in the normal test sweep.",
+    },
+    {
+      authorityBoundary:
         "This contract grants Claude bypass only inside a trusted owner-local Pylon composition. It grants no public, bridge, org-cloud, provider, spend, settlement, or remote-host authority.",
       blockerRefs: [],
       contractId: "background_agents.claude.owner_local_execution_authority.v1",
@@ -893,5 +929,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-14.1",
+  version: "2026-07-16.1",
 }

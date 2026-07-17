@@ -2,15 +2,14 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-14
-- Revision: 115
+- Updated: 2026-07-16
+- Revision: 116
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: active bounded Node/pnpm/Vite Plus cutover under #8777; the
-  AssuranceSpec distribution program remains complete and no product-expansion
-  lane is authorized
+- Current queue: owner-admitted Fast Follow initial program, starting with
+  bounded Day 1 packets; #8777 remains independently claimable
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
-- Dispatch: cutover work only through the live issues below and
-  [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md); no product-expansion lane
+- Dispatch: live bug issues or exact owner-accepted plans/work packets through
+  [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
 - Documentation cleanup: SOL-DOC-01 through SOL-DOC-11 are closed; the
@@ -43,10 +42,20 @@
   measure at `9ae6f9e837`. No additional one-time cleanup issue remains. See the
   [`cleanup ledger`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 
-This file owns current product direction, durable gates and laws, the current
-issue projection, and dependency order. It does not repeat implementation
-diaries. Current code, tests, live issues, deployments, and receipts own factual
+This file owns product direction, durable gates, issue projection, and dependency
+order. Current code, tests, live issues, deployments, and receipts own factual
 proof; dated plans and analyses are evidence only.
+
+## Active expansion — ordered Fast Follow initial program
+
+The owner admitted the ordered Day 1–5 program on 2026-07-16 through the
+target-owned [`accepted plan`](./2026-07-16-fast-follow-expansion-accepted-plan.md).
+Day 1 thread fabric is first; FF-D1-01 owns the provider-neutral Queue / Steer /
+Stop algebra and Desktop Queue/Steer lowering. Later bounded packets own
+adapters, visibility/export, routing, review, placement, and generated clients
+and plugins. GitHub issues remain bug-only. No packet may claim a day complete
+without runtime and rendered-surface evidence. Admission grants no deploy,
+release, spend, credential, settlement, promise, or invariant bypass.
 
 ## Completed priority — ProductSpec-native Codex Workroom MVP
 
@@ -59,7 +68,8 @@ evidence and product-shape analysis live in the adjacent
 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756) closed completed
 after the exact RC9 evidence and installed-journey owner acceptance recorded in
 the [`closure receipt`](../mvp/2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md).
-There is no active Sol product-expansion lane.
+That MVP lane remains completed; the separately admitted Fast Follow program
+above is now the active Sol product-expansion lane.
 
 Codex remains the agent engine. OpenAgents owns the durable workroom around it:
 guided ProductSpec authoring and validation, accepted criterion-addressed
@@ -171,12 +181,12 @@ there is no remaining AssuranceSpec program queue.
 10. **Cross-device and mixed-fleet reliability are not MVP claims.** Existing
     receipts retain their narrow proof rungs, but no mobile, Sync, Fleet,
     provider, or portability follow-on is implied by MVP completion.
-11. **Khala Code mobile capability migration is not planned.** Its behavior,
-    contracts, and test vectors remain source evidence; a future owner decision
-    must create a new bounded issue before any migration resumes.
+11. **Khala Code mobile capability migration is not a general lane.** Its
+    behavior, contracts, and test vectors remain source evidence; only an exact
+    owner-accepted issue, plan, or work packet may adapt a bounded capability.
 12. **Remote workrooms are not planned for the MVP.** Closed #8547 and #8636
     remain accepted substrate. Phone and remote execution regain roadmap status
-    only through a new bounded owner decision and issue.
+    only through a bounded owner-accepted issue, plan, or work packet.
 13. **Desktop is tokenless over one host-owned Runtime Gateway.** The signed
     renderer receives bounded projections and emits closed typed intents.
     Identity, credentials, raw runtime events, workspace/process handles, and
@@ -285,9 +295,10 @@ there is no remaining AssuranceSpec program queue.
 workroom for Codex.
 
 **Dormant design horizon:** remote-first Desktop/mobile, Sync, Fleet, managed
-targets, portable sessions, and voice are not planned follow-ons. Their landed
-identity, authority, safety, and evidence contracts remain reusable substrate;
-they regain product status only through a new bounded owner decision and issue.
+targets, portable sessions, and voice are not general planned follow-ons. Their
+landed identity, authority, safety, and evidence contracts remain reusable
+substrate; an exact bounded capability regains product status only through an
+owner-accepted issue, plan, or work packet.
 
 ```text
 ProductSpec revision/digest -> user-accepted plan -> criterion work packets
@@ -635,11 +646,12 @@ At this snapshot:
    #8800, and epic #8777 are closed with their phase receipts.
 
 This is an infrastructure-retirement queue, not a successor product queue.
-There is no active product issue in the current Sol projection.
+There is no active product issue in the current Sol projection; the active
+Fast Follow expansion is admitted by its accepted plan/work-packet ledger.
 The completed AssuranceSpec lane has no remaining owner action.
 Supported security, privacy, data-loss, accessibility, production-outage, or
 compatibility defects may use new bounded repair issues; product expansion
-waits for owner direction.
+uses the current owner-accepted Fast Follow plan or another explicit authority.
 
 ## Implementation laws
 

@@ -16,7 +16,9 @@ usual standards sense.
 1. **Learning is not intent.** A source project, teardown, StudyPacket, or gap
    does not change the target ProductSpec, roadmap, invariants, or architecture.
 2. **Research is not admission.** A valid candidate is evidence-only until a
-   target-owned issue, accepted plan, or work packet admits implementation.
+   target-owned issue, accepted plan, or work packet admits implementation. A
+   current explicit owner instruction may become that accepted plan; it is
+   separate target authority, not authority inferred from the research.
 3. **Evidence is not a verdict.** A study, test, receipt, or cache hit does not
    self-verify, self-accept, merge, release, or change a public promise.
 4. **The target stays sovereign.** The nearest target `AGENTS.md`,
@@ -214,6 +216,11 @@ then exposes remaining directives through ordinary priority selection; `stop`
 ends that work source. The strategy artifact is evidence and sequencing input,
 not implementation admission. Format 0.1 fixes
 `implementation_admission` to `separate_target_authority_required`.
+An exact owner-accepted plan satisfies this requirement when persisted by the
+target. It may admit one directive or the ordered initial program. The target
+still decomposes implementation into bounded claimed work packets, and an
+accepted plan does not acquire deployment, release, spend, settlement, or
+public-claim authority by implication.
 
 ## 5. Deterministic program
 

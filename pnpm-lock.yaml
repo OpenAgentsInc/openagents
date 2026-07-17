@@ -334,6 +334,9 @@ importers:
       '@openagentsinc/agent-client-runtime-bridge':
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime-schema
       '@openagentsinc/assurance-spec':
         specifier: workspace:*
         version: link:../../packages/assurance-spec

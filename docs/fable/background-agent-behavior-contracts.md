@@ -1,4 +1,14 @@
-Registry version: `2026-07-14.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
+
+### `background_agents.fast_follow.owner_admitted_expansion.v1` — ENFORCED
+
+- **Surface:** repository-agent (Fast Follow work generation)
+- **Stated by:** owner via conversation on 2026-07-16
+- **Statement:** The policy is now go, that's unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.fast_follow.owner_admission` (bun-test, unit): The Fast Follow seed binds the owner-accepted expansion plan, retains bounded work-packet and denied-authority gates, and cannot regress to the superseded policy block. — `scripts/check-fast-follow.test.ts`
+- **Verification:** The Fast Follow seed, authority docs, accepted plan, and bounded packet requirements are enforced by scripts/check-fast-follow.test.ts in the normal test sweep.
+- **Authority boundary:** This admits the ordered Fast Follow expansion through target-owned bounded packets. It grants no deployment, release, credential, spend, settlement, public-promise, cross-tenant sharing, or invariant-bypass authority.
 
 ### `background_agents.claude.owner_local_execution_authority.v1` — ENFORCED
 

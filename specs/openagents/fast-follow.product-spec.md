@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Fast Follow Learning and Work Generation"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-16T00:00:00Z"
+updated_at: "2026-07-17T04:40:49Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -115,6 +115,13 @@ by selecting the Fable essay's Day 1 through Day 5 Amp composition directives
 before the broader teardown catalog, without reading that essay as
 implementation admission.
 
+A current explicit owner direction can supply separate target admission for a
+named directive or the ordered initial program. OpenAgents persists that
+direction as a target-owned accepted plan/work-packet ledger. This direct path
+is required here because GitHub issues are reserved for reproducible bugs; it
+does not weaken packet claims, verification, release gates, or public-promise
+authority.
+
 The format-0.1 bootstrap works before the native UI: repository `AGENTS.md` and
 the bundled workspace skill direct existing per-session Full Auto to the seed
 spec. The UI must label that as manual multi-session allocation, not native
@@ -168,7 +175,11 @@ a claim-aware supervisor, not in the authored learning document.
 - **FF-AC-06:** Candidate implementation starts only from a current target-owned
   admitted issue, accepted plan, or work packet after authority reconciliation,
   isolated mutation claim/worktree, dependency checks, and target-local proof
-  requirements. Research agents cannot self-admit their candidates.
+  requirements. A current explicit owner direction may be persisted as the
+  accepted plan and may admit an ordered initial program without a feature
+  issue when repository policy prohibits one. Research agents cannot
+  self-admit their candidates, and program admission still requires one
+  bounded claimed packet per mutation.
 - **FF-AC-07:** Full Auto consumes Fast Follow through the existing host-owned
   provider-lane projection and the existing serialized reconciliation/lease
   path. The bound turn records exact work, spec, manifest, directive, candidate,

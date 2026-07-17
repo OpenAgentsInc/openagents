@@ -43,16 +43,19 @@ The initiating request or an admitted run policy selects one lane:
 - `candidate_proposal` — produce one deduped issue/work-packet proposal with
   target constraints and proof refs; do not open or admit it unless separately
   authorized;
-- `implementation` — consume one already admitted issue or work packet after
-  claim/worktree/dependency checks; implement the smallest target-native
-  adaptation and run target-local proof; or
+- `implementation` — consume one already admitted issue, accepted plan, or
+  work packet after claim/worktree/dependency checks; implement the smallest
+  target-native adaptation and run target-local proof; or
 - `verification` — execute the target's reviewed proof design and report axes
   without claiming acceptance.
 
 If the request says only “Fast Follow,” default to `research` or
 `gap_analysis`. Never infer implementation admission from the existence of a
-gap. In Full Auto, finish one concrete unit and stop; the host decides whether
-to continue.
+gap. A current explicit owner direction may separately admit a named directive
+or ordered initial program; persist that direction as a target-owned accepted
+plan/work packet before product mutation. Do not require a feature issue where
+the repository permits issues only for reproducible bugs. In Full Auto, finish
+one concrete unit and stop; the host decides whether to continue.
 
 ## Pin before studying
 
@@ -144,6 +147,12 @@ artifact and stop or re-plan under ordinary authority.
 ## Full Auto method
 
 Full Auto is the continuation mechanism, not Fast Follow authority.
+
+When the owner has explicitly admitted an initial program, treat that accepted
+plan as the separate target authority. Do not report the same unchanged program
+as policy-blocked; create the next bounded packet, claim it, and proceed in
+order. The plan grants no release, deployment, spend, settlement, public-claim,
+or invariant-bypass authority.
 
 - Honor higher-authority actionable work and the selected capacity/run policy.
 - Honor `initial_program` order and its default evidence stage when present;

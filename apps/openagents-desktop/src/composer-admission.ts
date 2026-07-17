@@ -1,3 +1,8 @@
+import {
+  decodeRuntimeControlIntent,
+  type RuntimeControlIntent,
+} from "@openagentsinc/agent-runtime-schema"
+
 /** Shared composer truth consumed by Desktop now and lowered by web/mobile later. */
 export type ComposerAdmissionState =
   | "idle"
@@ -67,6 +72,7 @@ type ComposerIntentBase = Readonly<{
   message: string
   intentRef: string
   clientUserMessageId: string
+  control: RuntimeControlIntent
 }>
 export type ComposerSubmitIntent =
   | (ComposerIntentBase & Readonly<{ kind: "steer_current"; expectedTurnId: string }>)
@@ -79,23 +85,50 @@ export const makeComposerSubmitIntent = (input: Readonly<{
   message: string
   intentRef: string
   clientUserMessageId: string
+  createdAt: string
+  targetGeneration?: RuntimeControlIntent["targetGeneration"]
 }>): ComposerSubmitIntent | null => {
   const action = composerActionPresentation(input.admission, input.mode)
   if (!action.enabled || input.message.trim() === "") return null
-  return input.mode === "steer"
-    ? {
-        kind: "steer_current",
-        threadRef: input.threadRef,
-        message: input.message.trim(),
-        intentRef: input.intentRef,
-        clientUserMessageId: input.clientUserMessageId,
-        expectedTurnId: input.admission.activeTurnId!,
-      }
-    : {
-        kind: "queue_next",
-        threadRef: input.threadRef,
-        message: input.message.trim(),
-        intentRef: input.intentRef,
-        clientUserMessageId: input.clientUserMessageId,
-      }
+  const expiresAt = new Date(new Date(input.createdAt).getTime() + 5 * 60_000).toISOString()
+  const common = {
+    schema: "openagents.runtime_control_intent.v2" as const,
+    intentRef: input.intentRef,
+    idempotencyKey: input.intentRef,
+    threadRef: input.threadRef,
+    targetGeneration: input.targetGeneration ?? {
+      state: "unknown" as const,
+      reason: "not_observed" as const,
+    },
+    orderingKey: `order:${input.threadRef}`,
+    messageRef: input.clientUserMessageId,
+    createdAt: input.createdAt,
+    expiresAt,
+    origin: { surface: "desktop" as const, lane: "owner_local" as const },
+  }
+  if (input.mode === "steer") {
+    const expectedTurnId = input.admission.activeTurnId
+    if (expectedTurnId === null) return null
+    return {
+      kind: "steer_current",
+      threadRef: input.threadRef,
+      message: input.message.trim(),
+      intentRef: input.intentRef,
+      clientUserMessageId: input.clientUserMessageId,
+      expectedTurnId,
+      control: decodeRuntimeControlIntent({
+        ...common,
+        kind: "turn.steer",
+        turnRef: expectedTurnId,
+      }),
+    }
+  }
+  return {
+    kind: "queue_next",
+    threadRef: input.threadRef,
+    message: input.message.trim(),
+    intentRef: input.intentRef,
+    clientUserMessageId: input.clientUserMessageId,
+    control: decodeRuntimeControlIntent({ ...common, kind: "turn.queue" }),
+  }
 }
