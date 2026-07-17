@@ -18,6 +18,7 @@ Evidence base:
 - [Crabbox teardown](./2026-07-13-crabbox-teardown.md)
 - [Grok Build teardown](./2026-07-15-grok-build-teardown.md)
 - [Command Code teardown](./2026-07-16-command-code-teardown.md)
+- [Factory Desktop and Droid CLI teardown](./2026-07-16-factory-desktop-cli-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -2157,3 +2158,85 @@ derive the two provider claims independently. Both checked peers remain
 experimental: real Darwin-arm64 prompt/restart evidence proves consumption,
 while missing required live and cross-platform rows prevent general support
 language.
+
+## Factory Desktop and Droid CLI addendum (2026-07-16)
+
+The
+[Factory teardown](./2026-07-16-factory-desktop-cli-teardown.md)
+adds the reference set's clearest closed commercial implementation of one
+local coding-agent engine serving a terminal TUI, headless streaming JSON-RPC,
+Desktop, SDKs, automations, integrations, Missions, and remote computers. The
+application and CLI sources are not public, but the signed installed bundles
+and commit-pinned TypeScript SDK expose the daemon lifecycle and protocol in
+enough detail to change several decisions.
+
+1. **One multi-client engine is now market-proven beyond the open reference
+   set.** Factory Desktop embeds Droid and controls its authenticated daemon;
+   `droid exec` exposes bidirectional JSON-RPC; the daemon multiplexes sessions
+   for Desktop and integrations. OpenAgents should keep one Runtime Gateway
+   command processor and durable Thread/Turn/Item/Work Unit/Interaction/
+   Receipt graph for terminal, Desktop, mobile, automation, and SDK clients.
+2. **The local-supervisor contract needs more than loopback and a token.**
+   Factory has startup, port/Unix-IPC selection, authentication, liveness,
+   reconnect, diagnostics, parent monitoring, and explicit remote access. Add
+   client-scoped authority, protected runtime generations, bounded queues,
+   overload outcomes, exact retry, durable admission, and shutdown/update
+   receipts. Non-loopback SDK connections must require a protected transport;
+   an arbitrary plaintext `ws://` carrying an API key is not acceptable.
+3. **Desktop should stay a projection, but renderer origin is part of the
+   authority boundary.** Factory's context-isolated preload is capability-
+   shaped and the engine remains outside the renderer. The shipped app also
+   lacks an explicit top-level navigation denial and IPC sender/origin checks
+   across a broad bridge, while its CSP remains permissive. OpenAgents keeps
+   the thin host and must gate navigation, sender identity, schemas, message
+   size, cancellation, and generation at every privileged IPC entry.
+4. **Terminal/headless/daemon are host modes, not separate products.** Exact
+   session identity, resume/fork, permissions and user-question callbacks,
+   structured output, streaming updates, tool discovery, and cancellation
+   belong in one generated client contract. Factory's TUI and headless breadth
+   strengthens the Grok and Codex conclusions without replacing OpenAgents'
+   canonical domain model.
+5. **Hierarchical non-weakening policy is worth adapting.** Org, project,
+   folder, user, and machine-managed pre-login layers compose model, tool,
+   autonomy, hook, MCP, telemetry, and sandbox policy. OpenAgents should retain
+   explicit precedence, locked higher-level keys, unioned mandatory denies,
+   and child authority as an intersection. An unsafe prompt bypass can never
+   override hard policy.
+6. **Permissions and containment remain separate products.** Factory's
+   Seatbelt/bubblewrap sandbox and fail-closed whole-process mode are useful,
+   but sandboxing is opt-in and the default per-command mode leaves the main
+   authority-carrying runtime outside the OS boundary. OpenAgents keeps named,
+   default fail-closed containment profiles and records requested versus
+   effective enforcement.
+7. **Worktrees, rewind, and Missions belong to the engine.** Factory exposes
+   them across CLI and Desktop with worker/validator state and remote-computer
+   placement. Adapt the UX and protocol shape while keeping admission,
+   authority intersection, external-conflict detection, review, acceptance,
+   commit, push, publication, and cleanup as distinct receipted outcomes.
+8. **Executable catalogs need immutable provenance before startup.** Factory
+   plugins can carry hooks, agents, skills, and MCP processes. The isolated
+   failed-auth run cloned the default moving marketplace before authentication
+   completed. OpenAgents should require content identity, publisher,
+   provenance, declared authority, compatibility, review, explicit activation,
+   and rollback; discovery must not silently mutate executable state.
+9. **Data-flow language must describe separate planes.** Factory's official
+   pages conflict on default cloud session sync, transcript/tool storage,
+   direct provider traffic, Factory metric export, optional analytics, and
+   airgap behavior. OpenAgents must separately disclose local custody, local
+   execution, remote inference, cloud sync, telemetry destination, retention,
+   deletion, region, and training use.
+10. **Release identity includes entitlements and component compatibility.**
+    Factory's notarized ASAR-integrity-bound Desktop is positive evidence. Its
+    production CLIs still allow debugger attachment, DYLD environment access,
+    unsigned executable memory, and disabled library validation; Desktop and
+    standalone Droid also moved on independent versions during the audit.
+    OpenAgents should gate a deny-by-default entitlement manifest and a signed
+    host/engine/protocol compatibility ledger with staged activation,
+    last-known-good state, and rollback receipts.
+
+Factory therefore strengthens the existing direction rather than adding a new
+control plane: one durable engine behind multiple typed clients, with stronger
+origin checks, containment, extension provenance, data-flow truth, and release
+proof than the audited product exposes. As elsewhere in this document, these
+lessons become requirements only when promoted into their owning contracts,
+roadmap gates, issues, tests, and receipts.
