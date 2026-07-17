@@ -640,6 +640,49 @@ describe("React command and decision surfaces", () => {
     expect(received).toContainEqual({ name: "DesktopApprovalApproved", payload: "decision-1" });
   });
 
+  test("provider questions expose options, Other text, and an explicit submit path", async () => {
+    const { window, container } = installDom();
+    const { DecisionSurface } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const question = {
+      turnRef: "turn-question",
+      questionRef: "question-other",
+      status: "pending" as const,
+      kind: "provider_question" as const,
+      questions: [{
+        question: "Which implementation should we use?",
+        header: "Implementation",
+        multiSelect: false,
+        options: [
+          { label: "Typed", description: "Keep the typed boundary." },
+          { label: "Direct", description: "Use the direct adapter." },
+        ],
+      }],
+    };
+    const state = fixtureState({
+      pending: true,
+      questionAnswerHostAvailable: true,
+      notes: [{ key: "note-question", role: "system", text: "", timestamp: "now", question }],
+      questionCards: {
+        "question-other": {
+          selections: [[]], texts: ["Use the typed adapter with caching"],
+          answered: false, submitting: false, answers: null,
+        },
+      },
+    });
+    const root = createTestRoot(container);
+    await render(root, <DecisionSurface state={state} report={report} />);
+    const dialog = window.document.querySelector(".oa-react-decision");
+    expect(dialog?.textContent).toContain("Waiting for your answer");
+    expect(dialog?.textContent).toContain("TypedKeep the typed boundary.");
+    const other = dialog?.querySelector('textarea[aria-label="Other answer for Which implementation should we use?"]') as HTMLTextAreaElement | null | undefined;
+    expect(other?.value).toBe("Use the typed adapter with caching");
+    const submit = [...(dialog?.querySelectorAll("button") ?? [])].find(button => button.textContent === "Submit answer");
+    expect(submit?.disabled).toBe(false);
+    await interact(() => submit?.click());
+    expect(received).toContainEqual({ name: "DesktopQuestionSubmitted", payload: "question-other" });
+  });
+
   // T9 #8866: the live interactive tool_approval/plan_review flow now
   // renders through the same shared `DesktopApprovalCard` the read-only
   // history dispatch branch uses (packages/ui/src/workbench/dispatch.tsx

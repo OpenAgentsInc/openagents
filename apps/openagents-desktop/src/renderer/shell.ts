@@ -1147,11 +1147,15 @@ export const withQuestionSelection = (
     : [label]
   const selections = card.questions.map((_, index) =>
     index === questionIndex ? selection : interaction.selections[index] ?? [])
+  const texts = card.questions.map((_, index) =>
+    index === questionIndex && !question.multiSelect
+      ? ""
+      : interaction.texts?.[index] ?? "")
   return {
     ...state,
     questionCards: {
       ...state.questionCards,
-      [questionRef]: { ...interaction, selections },
+      [questionRef]: { ...interaction, selections, texts },
     },
   }
 }
@@ -1164,13 +1168,17 @@ export const withQuestionText = (
 ): DesktopShellState => {
   const card = questionNoteFor(state, questionRef)?.question
   const question = card?.questions[questionIndex]
-  if (card === undefined || card.status !== "pending" || question === undefined || question.options.length !== 0) return state
+  if (card === undefined || card.status !== "pending" || question === undefined) return state
   const interaction = state.questionCards[questionRef] ?? {
     selections: card.questions.map(() => []), texts: card.questions.map(() => ""), answered: false, answers: null,
   }
   if (interaction.answered || interaction.submitting === true) return state
   const texts = card.questions.map((_, index) => index === questionIndex ? value.slice(0, 4_000) : interaction.texts?.[index] ?? "")
-  return { ...state, questionCards: { ...state.questionCards, [questionRef]: { ...interaction, texts } } }
+  const selections = card.questions.map((_, index) =>
+    index === questionIndex && !question.multiSelect && value.trim() !== ""
+      ? []
+      : interaction.selections[index] ?? [])
+  return { ...state, questionCards: { ...state.questionCards, [questionRef]: { ...interaction, selections, texts } } }
 }
 
 /** True once every question in the card has at least one selected option. */
@@ -1180,7 +1188,7 @@ export const questionAnswersReady = (
 ): boolean =>
   card.questions.every((question, index) =>
     (interaction.selections[index]?.length ?? 0) >= 1 ||
-    (question.options.length === 0 && (interaction.texts?.[index]?.trim().length ?? 0) > 0))
+    (interaction.texts?.[index]?.trim().length ?? 0) > 0)
 
 /**
  * Answers in the FROZEN bridge shape: one `{ question, labels }` entry per
@@ -1192,13 +1200,16 @@ export const questionAnswersFor = (
   card: DesktopQuestionCard,
   interaction: QuestionCardInteraction,
 ): ReadonlyArray<QuestionAnswer> =>
-  card.questions.map((question, index) => ({
-    question: question.question,
-    labels: interaction.selections[index] ?? [],
-    ...(question.options.length === 0 && (interaction.texts?.[index]?.trim().length ?? 0) > 0
-      ? { text: interaction.texts![index]!.trim() }
-      : {}),
-  }))
+  card.questions.map((question, index) => {
+    const other = interaction.texts?.[index]?.trim() ?? ""
+    return {
+      question: question.question,
+      labels: [
+        ...(interaction.selections[index] ?? []),
+        ...(other === "" ? [] : [other]),
+      ],
+    }
+  })
 
 export const withQuestionAnswered = (
   state: DesktopShellState,

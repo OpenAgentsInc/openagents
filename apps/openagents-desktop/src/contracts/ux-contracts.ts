@@ -2585,6 +2585,54 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "pnpm --dir apps/openagents-desktop run verify runs the fable-local runtime suite covering the full question flow (answered, timeout, denied, typed rejections, multiSelect).",
       },
       {
+        contractId: "openagents_desktop.chat.interactive_agent_questions.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat interactive agent questions",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-16" },
+        statement:
+          "When an agent asks me a question in chat, I see the options and can answer them",
+        authorityBoundary:
+          "A pending typed provider question opens the existing host-mediated decision surface with its bounded question text, single- or multi-select options, option descriptions, and an Other text answer. While it is pending the transcript says Waiting for your answer rather than Working. Selection and text remain renderer-local until explicit submission; the frozen schema-decoded answerQuestion bridge remains the only answer authority and carries one labels array per exact question. Runtime question_resolved remains the only resolution authority, and timeout, rejection, unavailable bridge, interruption, and stale refs stay visibly non-resolved. No raw tool input, arbitrary IPC, filesystem, provider credential, or session authority enters the renderer.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/react-composer.tsx",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "github:OpenAgentsInc/openagents#8941",
+        ],
+        oracles: [
+          {
+            id: "interactive_agent_questions.react_answer_surface",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+            description:
+              "Proves a provider question renders labeled options with descriptions, an Other text field, and an enabled explicit submit action that dispatches the exact question ref.",
+          },
+          {
+            id: "interactive_agent_questions.typed_roundtrip",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves single-select, multi-select, and Other answers compile into the frozen one-entry-per-question labels-array shape and round-trip through the typed answer host without invented resolution.",
+          },
+          {
+            id: "interactive_agent_questions.waiting_status",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+            description:
+              "Proves a pending question replaces the generic Working indicator with Waiting for your answer and does not leave the timeline aria-busy.",
+          },
+        ],
+        verification:
+          "The normal Desktop test sweep runs the renderer answer-surface, typed round-trip, waiting-status, runtime parking/timeout, and built-Electron smoke oracles.",
+      },
+      {
         contractId: "openagents_desktop.coding_catalog.restart_safe_navigation.v1",
         state: "enforced",
         surface: "openagents-desktop",

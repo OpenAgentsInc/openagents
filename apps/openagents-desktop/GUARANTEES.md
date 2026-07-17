@@ -27,6 +27,18 @@ thread-scoped interrupt action.
 Contract:
 `openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1`.
 
+### Interactive agent questions
+
+When an agent asks a question in chat, Desktop opens an interactive decision
+surface with the bounded question, selectable options and descriptions, and an
+Other text answer. Single-select and multi-select questions both submit through
+the schema-decoded host bridge, and only the runtime can confirm resolution.
+While the question is pending, the transcript says Waiting for your answer
+instead of Working. A missing bridge, timeout, rejection, interruption, or
+stale reference remains visibly unresolved rather than fabricating an answer.
+
+Contract: `openagents_desktop.chat.interactive_agent_questions.v1`.
+
 ### Durable automatic conversation titles
 
 A genuinely empty conversation may say New chat. Its first authored message

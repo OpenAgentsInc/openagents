@@ -1303,6 +1303,26 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+.oa-react-waiting {
+  display: flex;
+  align-items: center;
+  width: min(720px, 100%);
+  min-height: 28px;
+  gap: var(--en-spacing-2);
+  margin: 0 auto var(--en-spacing-3);
+  padding: 0 var(--en-spacing-2);
+  color: var(--en-color-accent);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+.oa-react-waiting::before {
+  width: 6px;
+  height: 10px;
+  flex: none;
+  background: var(--en-color-accent);
+  content: "";
+}
 .oa-react-working span { margin-right: 6px; }
 .oa-react-working span::before { content: "["; }
 .oa-react-working span::after { content: "]"; }
@@ -2092,6 +2112,29 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-decision-options small {
   color: var(--en-color-textMuted);
   font-weight: 400;
+}
+
+.oa-react-decision-other {
+  display: grid;
+  gap: var(--en-spacing-1);
+  margin-top: var(--en-spacing-1);
+  color: var(--en-color-textSecondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.oa-react-decision-other textarea {
+  min-height: 64px;
+  resize: vertical;
+  border-color: var(--en-color-borderStrong);
+  background: var(--en-color-surfaceSunken);
+  color: var(--en-color-textPrimary);
+  font-family: var(--oa-font-sans);
+  line-height: 1.45;
+}
+
+.oa-react-decision-other textarea::placeholder {
+  color: var(--en-color-textSecondary);
 }
 
 .oa-react-decision-failure {

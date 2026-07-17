@@ -3119,34 +3119,6 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
         turnEvent.accountRef !== null) {
         usageLedger.markReconnectRequired({ provider: "codex", accountRef: turnEvent.accountRef })
       }
-      // Smoke-only question-card fixture (EP250 question cards): persist ONE
-      // pending interactive question after the fixture Read completes so the
-      // built-Electron journey proves the interactive card, the real typed
-      // answerQuestion IPC round-trip, and the honest typed-rejection revert
-      // (this ref is store-persisted, not runtime-pending, so the runtime
-      // answers false). Real question events come from the frozen contract.
-      if (smokeMode && turnEvent.kind === "tool_result" && turnEvent.toolName === "Read") {
-        ctx.store.append(ctx.request.threadRef, {
-          key: randomUUID(),
-          role: "system",
-          text: "Which fixture path should this smoke turn take?",
-          timestamp: ctx.timestamp(),
-          question: {
-            turnRef: ctx.request.turnRef,
-            questionRef: "question.fixture.1",
-            status: "pending",
-            questions: [{
-              question: "Which fixture path should this smoke turn take?",
-              header: "Fixture",
-              multiSelect: false,
-              options: [
-                { label: "Streamed", description: "Keep the streamed markdown proof path" },
-                { label: "Static" },
-              ],
-            }],
-          },
-        })
-      }
     }
   },
   finalMeta: ctx => {
@@ -5794,6 +5766,107 @@ const smokeQuestionCard = `(async () => {
   }
 })()`
 
+const smokeAskUserQuestionOpen = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const newChat = document.querySelector('[data-en-key="workspace-new-chat"], button[aria-label="New session"]')
+  const hasConversationContent = document.querySelector('.oa-react-timeline-item') !== null
+  if (hasConversationContent && newChat instanceof HTMLButtonElement) {
+    newChat.click()
+    await wait(300)
+  }
+  const harness = document.querySelector('[data-en-key="shell-harness-select"]')
+  const providerButton = document.querySelector('[data-en-key="shell-provider-select"], button[aria-label^="Provider:"]')
+  if (harness instanceof HTMLSelectElement) {
+    harness.value = "fable"
+    harness.dispatchEvent(new Event("change", { bubbles: true }))
+  } else if (providerButton instanceof HTMLButtonElement) {
+    const providerLabel = () => providerButton.getAttribute("aria-label") ?? providerButton.textContent ?? ""
+    if (providerLabel().includes("Provider: Codex")) providerButton.click()
+    const providerDeadline = Date.now() + 5000
+    while (Date.now() < providerDeadline && providerLabel().includes("Provider: Codex")) await wait(50)
+    if (providerLabel().includes("Provider: Codex")) {
+      return { ok: false, reason: "Fable provider was not selectable", disabled: providerButton.disabled, providerLabel: providerLabel() }
+    }
+  } else return { ok: false, reason: "provider control unavailable" }
+  await wait(50)
+  const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  if (!(input instanceof HTMLElement)) return { ok: false, reason: "composer unavailable" }
+  input.focus()
+  const valueSetter = Object.getOwnPropertyDescriptor(input, "value")?.set ??
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")?.set
+  valueSetter?.call(input, "Prove AskUserQuestion round trip")
+  input.dispatchEvent(new Event("input", { bubbles: true }))
+  let send
+  const sendDeadline = Date.now() + 5000
+  while (Date.now() < sendDeadline) {
+    send = document.querySelector('[data-en-key="shell-composer"] button[aria-label="Send"]')
+    if (send instanceof HTMLButtonElement && !send.disabled) break
+    await wait(50)
+  }
+  if (!(send instanceof HTMLButtonElement) || send.disabled) return { ok: false, reason: "Send stayed disabled" }
+  send.click()
+  const deadline = Date.now() + 20000
+  while (Date.now() < deadline && document.querySelector('.oa-react-decision') === null) await wait(50)
+  // Prove the card survives the immediate post-event render/focus cycle, not
+  // merely one transient DOM frame that disappears before a user can act.
+  await wait(250)
+  const decision = document.querySelector('.oa-react-decision')
+  const other = decision?.querySelector('textarea[aria-label="Other answer for Which implementation should the agent use?"]')
+  const text = decision?.textContent ?? ""
+  const waiting = document.querySelector('[aria-label="Waiting for your answer"]')
+  return {
+    ok: decision !== null && other !== null && text.includes("Which implementation should the agent use?") &&
+      text.includes("Typed") && text.includes("Keep the schema-decoded bridge.") &&
+      text.includes("Direct") && text.includes("Other") && waiting !== null &&
+      document.querySelector('.oa-react-working') === null,
+    decision: decision !== null,
+    other: other !== null && other !== undefined,
+    waiting: waiting !== null,
+    genericWorking: document.querySelector('.oa-react-working') !== null,
+    provider: providerButton?.getAttribute("aria-label") ?? providerButton?.textContent ?? null,
+    composerValue: input.value ?? null,
+    transcript: (document.querySelector('[data-en-key="shell-transcript"]')?.textContent ?? "").slice(-1200),
+  }
+})()`
+
+const smokeAskUserQuestionAnswer = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const other = document.querySelector('.oa-react-decision textarea[aria-label="Other answer for Which implementation should the agent use?"]')
+  if (!(other instanceof HTMLTextAreaElement)) return { ok: false, reason: "Other answer field unavailable" }
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set
+  setter?.call(other, "Use the typed path")
+  other.dispatchEvent(new Event("input", { bubbles: true }))
+  const buttonDeadline = Date.now() + 5000
+  let submit
+  while (Date.now() < buttonDeadline) {
+    submit = [...document.querySelectorAll('.oa-react-decision button')]
+      .find(button => button.textContent?.trim() === "Submit answer")
+    if (submit instanceof HTMLButtonElement && !submit.disabled) break
+    await wait(50)
+  }
+  if (!(submit instanceof HTMLButtonElement) || submit.disabled) return { ok: false, reason: "Submit answer stayed disabled" }
+  submit.click()
+  const transcriptText = () => document.querySelector('.oa-react-timeline-region, [data-en-key="shell-transcript"]')?.textContent ?? ""
+  const deadline = Date.now() + 20000
+  while (Date.now() < deadline && (document.querySelector('.oa-react-decision') !== null ||
+    !transcriptText().includes("Answer received: Use the typed path.") ||
+    document.querySelector('.oa-react-working') !== null)) {
+    await wait(50)
+  }
+  const transcript = transcriptText()
+  const agentReceivedAnswer = transcript.includes("Answer received: Use the typed path.")
+  const turnSettled = document.querySelector('.oa-react-working') === null
+  return {
+    ok: document.querySelector('.oa-react-decision') === null && agentReceivedAnswer && turnSettled,
+    dialogClosed: document.querySelector('.oa-react-decision') === null,
+    answeredCard: transcript.includes("Answered") && transcript.includes("Use the typed path"),
+    agentReceivedAnswer,
+    turnSettled,
+    transcript: transcript.slice(-1200),
+    body: document.body.innerText.slice(-2000),
+  }
+})()`
+
 // Codex local streamed turn (EP250 codex-first-class): from the same fresh
 // chat, selecting the Codex chip and sending must stream a REAL fixture
 // `codex exec --json` event sequence through the actual parser, IPC bridge,
@@ -6341,6 +6414,15 @@ const runSmoke = (window: BrowserWindow): void => {
             return
           }
           await step("react-workbench-exclusive", smokeReactWorkbench)
+          if (process.env.OPENAGENTS_DESKTOP_SMOKE_QUESTION_ONLY === "1") {
+            await step("ask-user-question-opens", smokeAskUserQuestionOpen)
+            await captureShot(window, "14-ask-user-question-pending")
+            await step("ask-user-question-round-trip", smokeAskUserQuestionAnswer)
+            await captureShot(window, "15-ask-user-question-answered")
+            clearTimeout(timeout)
+            finish(0)
+            return
+          }
           await step("react-sidebar-destinations", smokeReactSidebarDestinations)
           await captureShot(window, "react-sidebar-expanded")
           await step("react-image-attachment", smokeReactImageAttachment)
@@ -6370,6 +6452,10 @@ const runSmoke = (window: BrowserWindow): void => {
             "[openagents-desktop smoke] react-authoritative-decision OK",
             JSON.stringify(authoritativeDecision),
           )
+          await step("ask-user-question-opens", smokeAskUserQuestionOpen)
+          await captureShot(window, "14-ask-user-question-pending")
+          await step("ask-user-question-round-trip", smokeAskUserQuestionAnswer)
+          await captureShot(window, "15-ask-user-question-answered")
           await step("react-full-auto-immediate", smokeReactFullAutoImmediate)
           await step("react-navigation-history", smokeReactNavigationHistory)
           await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
@@ -6387,6 +6473,15 @@ const runSmoke = (window: BrowserWindow): void => {
           return
         }
         await step("shell-mounted", smokeWaitForShell)
+        if (process.env.OPENAGENTS_DESKTOP_SMOKE_QUESTION_ONLY === "1") {
+          await step("ask-user-question-opens", smokeAskUserQuestionOpen)
+          await captureShot(window, "14-ask-user-question-pending")
+          await step("ask-user-question-round-trip", smokeAskUserQuestionAnswer)
+          await captureShot(window, "15-ask-user-question-answered")
+          clearTimeout(timeout)
+          finish(0)
+          return
+        }
         // #8787: BEFORE any pointer event, the composer holds keyboard focus
         // (at shell-interactable AND after hydration), and a real Chromium
         // keystroke from the main process lands in it as typed text.
@@ -6459,6 +6554,10 @@ const runSmoke = (window: BrowserWindow): void => {
         await captureShot(window, "13-session-search-filtered")
         await step("session-search-no-match-and-clear-restores", smokeSessionSearchNoMatchAndClear)
         await step("mvp-visible-surface-allowlist", smokeMvpSurfaceAllowlist)
+        await step("ask-user-question-opens", smokeAskUserQuestionOpen)
+        await captureShot(window, "14-ask-user-question-pending")
+        await step("ask-user-question-round-trip", smokeAskUserQuestionAnswer)
+        await captureShot(window, "15-ask-user-question-answered")
         // Release the codex availability gate: the popover assertions above
         // ran against the deterministic disabled/"verifying" chip; from here
         // the fixture PROBE-VERIFIED evidence lights the chip for the

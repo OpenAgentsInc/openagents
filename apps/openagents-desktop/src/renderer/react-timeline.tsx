@@ -703,6 +703,7 @@ type TimelineProps = Readonly<{
   totalItems: number
   loadingEdge: "top" | "bottom" | null
   working?: boolean
+  waitingForAnswer?: boolean
   agentName?: string
   report: IntentReporter
 }>
@@ -812,6 +813,9 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
             ? <p className="oa-react-timeline-position">Showing items {props.offset + 1}–{props.offset + props.loadedItemCount} of {props.totalItems}</p>
             : null}
         <TimelineRecords records={props.records} report={props.report} />
+        {props.waitingForAnswer ? <MessageScrollerItem messageId="waiting-for-answer-indicator"><div className="oa-react-waiting" role="status" aria-label="Waiting for your answer">
+          <span>Waiting for your answer</span>
+        </div></MessageScrollerItem> : null}
         {props.working ? <MessageScrollerItem messageId="working-indicator"><div className="oa-react-working" role="status" aria-label={`${props.agentName ?? "Codex"} is working`}>
           <span>Working</span><i /><i /><i />
         </div></MessageScrollerItem> : null}
@@ -827,11 +831,12 @@ export const ReactTimeline = (props: TimelineProps): ReactElement =>
     <TimelineScroller {...props} />
   </MessageScrollerProvider>
 
-export const ConversationTimeline = ({ page, notes, loadingEdge, working, workingDirectory, agentName, report }: {
+export const ConversationTimeline = ({ page, notes, loadingEdge, working, waitingForAnswer, workingDirectory, agentName, report }: {
   readonly page: CodexHistoryPage | null
   readonly notes: ReadonlyArray<DesktopNoteEntry>
   readonly loadingEdge: "top" | "bottom" | null
   readonly working?: boolean
+  readonly waitingForAnswer?: boolean
   readonly workingDirectory: string | null
   readonly agentName: string
   readonly report: IntentReporter
@@ -853,5 +858,5 @@ export const ConversationTimeline = ({ page, notes, loadingEdge, working, workin
   const records = page === null ? projectLocalTimelineRecords(notes) : projectReactTimelineRecords(page.items)
   return <ReactTimeline sessionKey={page?.selectedThreadRef ?? "local"} records={records}
     loadedItemCount={page?.items.length ?? records.length} offset={page?.offset ?? 0}
-    totalItems={page?.totalItems ?? records.length} loadingEdge={loadingEdge} working={working} agentName={agentName} report={report} />
+    totalItems={page?.totalItems ?? records.length} loadingEdge={loadingEdge} working={working} waitingForAnswer={waitingForAnswer} agentName={agentName} report={report} />
 }

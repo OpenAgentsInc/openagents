@@ -1,5 +1,6 @@
 import { Button } from "#components/ui/button";
 import { Badge } from "#components/ui/badge";
+import { Textarea } from "#components/ui/textarea";
 import {
   Command,
   CommandDialog,
@@ -82,7 +83,7 @@ import {
 } from "./composer-images.ts";
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
-import { activeFullAutoEnabled, activeFullAutoTurnRunning, capabilityForHarness, formatRelativeTimestamp, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import { activeFullAutoEnabled, activeFullAutoTurnRunning, capabilityForHarness, formatRelativeTimestamp, questionAnswersReady, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 import {
   LexicalComposerEditor,
   type LexicalComposerEditorHandle,
@@ -611,12 +612,12 @@ export const ReactComposer = ({
   );
 };
 
-const decisionTitle = (kind: ReturnType<typeof questionKind>): string =>
+const decisionTitle = (kind: ReturnType<typeof questionKind>, providerName = "Agent"): string =>
   kind === "tool_approval"
     ? "Tool approval"
     : kind === "plan_review"
       ? "Review plan"
-      : "Codex needs your input";
+      : `${providerName} needs your input`;
 
 const decisionIntent = (kind: ReturnType<typeof questionKind>, label: string): string | null => {
   if (kind === "tool_approval")
@@ -677,13 +678,14 @@ export const DecisionSurface = ({
   if (note === null || card === undefined) return null;
   const interaction: QuestionCardInteraction | undefined = state.questionCards[card.questionRef];
   const kind = questionKind(note);
+  const providerName = capabilityForHarness(state)?.displayName ??
+    (state.selectedHarness === "codex" ? "Codex" : "Claude");
+  const title = decisionTitle(kind, providerName);
   const answered = interaction?.answered === true;
   const submitting = interaction?.submitting === true;
   const unavailable = !state.questionAnswerHostAvailable;
   const anyMulti = card.questions.some((question) => question.multiSelect);
-  const ready = card.questions.every(
-    (question, index) => (interaction?.selections[index]?.length ?? 0) > 0,
-  );
+  const ready = interaction !== undefined && questionAnswersReady(card, interaction);
   return (
     <Dialog
       open={dismissedRef !== card.questionRef}
@@ -697,7 +699,7 @@ export const DecisionSurface = ({
         aria-describedby={`decision-description-${card.questionRef}`}
       >
         <DialogHeader>
-          <DialogTitle>{decisionTitle(kind)}</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription id={`decision-description-${card.questionRef}`}>
             {unavailable
               ? "This request is read-only because the answer bridge is unavailable."
@@ -705,7 +707,9 @@ export const DecisionSurface = ({
                 ? "Submitted. Waiting for the runtime to confirm the outcome."
                 : submitting
                   ? "Submitting this decision…"
-                  : "Review the request below. Closing this window leaves it pending."}
+                  : kind === "provider_question"
+                    ? "Waiting for your answer. Choose an option or write another answer below."
+                    : "Review the request below. Closing this window leaves it pending."}
           </DialogDescription>
         </DialogHeader>
         {isApprovalCardKind(kind) ? (() => {
@@ -761,11 +765,11 @@ export const DecisionSurface = ({
               actions={actions}
               decision={decision}
               decisionLabel={decisionLabel}
-              description={question?.header ?? decisionTitle(kind)}
+              description={question?.header ?? title}
               itemKey={`decision-${card.questionRef}`}
               onDecision={onDecision}
               resource={question?.question ?? ""}
-              title={decisionTitle(kind)}
+              title={title}
             />
           );
         })() : (
@@ -808,6 +812,20 @@ export const DecisionSurface = ({
                     );
                   })}
                 </div>
+                <label className="oa-react-decision-other">
+                  <span>Other</span>
+                  <Textarea
+                    rows={2}
+                    value={interaction?.texts?.[questionIndex] ?? ""}
+                    placeholder="Type another answer"
+                    aria-label={`Other answer for ${question.question}`}
+                    onChange={(event) => dispatch(report, "DesktopQuestionTextChanged", {
+                      form: card.questionRef,
+                      field: String(questionIndex),
+                      value: event.currentTarget.value,
+                    })}
+                  />
+                </label>
               </fieldset>
             ))}
           </div>
@@ -817,14 +835,14 @@ export const DecisionSurface = ({
             The runtime did not accept that decision. Review it and try again.
           </p>
         ) : null}
-        {anyMulti && kind === "provider_question" && !answered ? (
+        {kind === "provider_question" && !answered ? (
           <DialogFooter>
             <Button
               type="button"
               disabled={unavailable || submitting || !ready}
               onClick={() => dispatch(report, "DesktopQuestionSubmitted", card.questionRef)}
             >
-              Submit choices
+              {anyMulti ? "Submit choices" : "Submit answer"}
             </Button>
           </DialogFooter>
         ) : null}

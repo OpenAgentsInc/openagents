@@ -44,6 +44,10 @@ import {
   withHarnessLanes,
   withNote,
   withPending,
+  withQuestionSelection,
+  withQuestionText,
+  questionAnswersFor,
+  questionAnswersReady,
   withTurnResult,
   withThreadCatalog,
   withThreads,
@@ -3794,6 +3798,31 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
         }])
       }),
     )
+  })
+
+  test("Other text is a first-class answer for single- and multi-select questions", () => {
+    const singleTyped = withQuestionText(questionState, "question.1", 0, "A custom path")
+    const singleInteraction = singleTyped.questionCards["question.1"]!
+    expect(singleInteraction.selections).toEqual([[]])
+    expect(questionAnswersReady(singleSelectNote.question, singleInteraction)).toBe(true)
+    expect(questionAnswersFor(singleSelectNote.question, singleInteraction)).toEqual([
+      { question: "Which path should we take?", labels: ["A custom path"] },
+    ])
+
+    const multiState: DesktopShellState = { ...questionState, notes: [multiSelectNote] }
+    const withOption = withQuestionSelection(multiState, "question.2", 0, "A")
+    const multiTyped = withQuestionText(withOption, "question.2", 0, "A fourth lane")
+    const multiInteraction = multiTyped.questionCards["question.2"]!
+    expect(questionAnswersReady(multiSelectNote.question, multiInteraction)).toBe(true)
+    expect(questionAnswersFor(multiSelectNote.question, multiInteraction)).toEqual([
+      { question: "Which lanes should run?", labels: ["A", "A fourth lane"] },
+    ])
+
+    const singleOptionAfterText = withQuestionSelection(singleTyped, "question.1", 0, "Static")
+    expect(singleOptionAfterText.questionCards["question.1"]?.texts).toEqual([""])
+    expect(questionAnswersFor(singleSelectNote.question, singleOptionAfterText.questionCards["question.1"]!)).toEqual([
+      { question: "Which path should we take?", labels: ["Static"] },
+    ])
   })
 
   test("a typed bridge rejection (false) reverts the local Answered mark — honest pending, selection retained", async () => {

@@ -1412,6 +1412,37 @@ describe("Codex delegation through the Fable lane", () => {
 })
 
 describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
+  test("drives the AskUserQuestion smoke round trip when history wraps the exact fixture message", async () => {
+    const runtime = makeFableLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-fixture-question-")),
+      queryImpl: async () => makeFixtureFableLocalQuery(),
+      discoverImpl: async () => [{ ref: "claude-pylon-fixture", home: "/nonexistent" }],
+    })
+    const events: FableLocalEvent[] = []
+    const result = await runtime.runTurn({
+      turnRef: "turn-fixture-question",
+      threadRef: "thread-fixture-question",
+      history: [{ role: "user", text: "Earlier context" }],
+      message: "Prove AskUserQuestion round trip",
+      emit: event => {
+        events.push(event)
+        if (event.kind !== "question_pending") return
+        expect(runtime.answerQuestion({
+          turnRef: "turn-fixture-question",
+          questionRef: event.questionRef,
+          answers: [{
+            question: "Which implementation should the agent use?",
+            labels: ["Use the typed path"],
+          }],
+        })).toBe(true)
+      },
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.text).toContain("Answer received: Use the typed path.")
+    expect(events.some(event => event.kind === "question_pending")).toBe(true)
+    expect(events.some(event => event.kind === "question_resolved" && event.outcome === "answered")).toBe(true)
+  })
+
   test("drives the real mapping to a streamed, tool-traced, completed turn", async () => {
     const scratch = mkdtempSync(join(tmpdir(), "fable-local-fixture-"))
     const runtime = makeFableLocalRuntime({

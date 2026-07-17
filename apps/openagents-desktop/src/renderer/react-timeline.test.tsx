@@ -392,6 +392,19 @@ describe("React timeline scroll contract", () => {
     root.unmount()
   })
 
+  test("replaces generic working copy with an explicit waiting-for-answer status", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline sessionKey="thread-question" records={[record("prompt", 0)]}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null}
+      waitingForAnswer report={report} />)
+    await settle()
+    expect(container.querySelector('[aria-label="Waiting for your answer"]')?.textContent).toBe("Waiting for your answer")
+    expect(container.querySelector(".oa-react-working")).toBeNull()
+    expect(container.querySelector('[data-slot="message-scroller-content"]')?.getAttribute("aria-busy")).toBe("false")
+    root.unmount()
+  })
+
   test("preserves the first visible variable-height row synchronously on prepend", async () => {
     const { container } = installDom()
     const root = createRoot(container)

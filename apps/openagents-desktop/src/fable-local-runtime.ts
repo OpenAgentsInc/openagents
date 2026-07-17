@@ -1708,6 +1708,10 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
     // image content blocks and echo the count in its result, so the smoke can
     // assert the image actually reached the query payload.
     let imageCount = 0
+    const questionSmokeMessage = "Prove AskUserQuestion round trip"
+    const questionRoundTrip = input.prompt === questionSmokeMessage ||
+      typeof input.prompt === "string" && input.prompt.endsWith(`User: ${questionSmokeMessage}`)
+    let questionAnswer = ""
     const prompt: unknown = input.prompt
     if (
       typeof prompt !== "string" && prompt !== null && prompt !== undefined &&
@@ -1747,6 +1751,35 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
       message: {
         content: [{ type: "tool_result", tool_use_id: "fixture-tool-1", content: "bounded fixture read" }],
       },
+    }
+    if (questionRoundTrip) {
+      const canUseTool = input.options.canUseTool
+      if (typeof canUseTool !== "function") throw new Error("AskUserQuestion smoke fixture requires canUseTool")
+      const decision = await (canUseTool as (
+        toolName: string,
+        toolInput: Record<string, unknown>,
+        context: { signal: AbortSignal },
+      ) => Promise<Record<string, unknown>>)("AskUserQuestion", {
+        questions: [{
+          question: "Which implementation should the agent use?",
+          header: "Implementation",
+          options: [
+            { label: "Typed", description: "Keep the schema-decoded bridge." },
+            { label: "Direct", description: "Use a direct adapter." },
+          ],
+          multiSelect: false,
+        }],
+      }, { signal: new AbortController().signal })
+      const updatedInput = decision.updatedInput
+      const answers = updatedInput !== null && typeof updatedInput === "object"
+        ? (updatedInput as { answers?: unknown }).answers
+        : null
+      questionAnswer = answers !== null && typeof answers === "object"
+        ? String((answers as Record<string, unknown>)["Which implementation should the agent use?"] ?? "")
+        : ""
+      if (decision.behavior !== "allow" || questionAnswer === "") {
+        throw new Error("AskUserQuestion smoke fixture did not receive an answer")
+      }
     }
     // Plan/todo progress rung (EP250 wave-2 J2/J4): a TodoWrite tool call emits
     // `plan_updated` ADDITIONALLY to its tool_use, so the renderer draws the
@@ -1814,9 +1847,11 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
         type: "content_block_delta",
         delta: {
           type: "text_delta",
-          text: imageCount > 0
-            ? `proof.${FABLE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)}`
-            : "proof.",
+          text: questionRoundTrip
+            ? `proof. Answer received: ${questionAnswer}.`
+            : imageCount > 0
+              ? `proof.${FABLE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)}`
+              : "proof.",
         },
       },
     }
@@ -1824,7 +1859,9 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
       type: "result",
       subtype: "success",
       is_error: false,
-      result: imageCount > 0
+      result: questionRoundTrip
+        ? `${FABLE_LOCAL_FIXTURE_TEXT} Answer received: ${questionAnswer}.`
+        : imageCount > 0
         ? FABLE_LOCAL_FIXTURE_TEXT + FABLE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)
         : FABLE_LOCAL_FIXTURE_TEXT,
       usage: { input_tokens: 42, output_tokens: 7 },

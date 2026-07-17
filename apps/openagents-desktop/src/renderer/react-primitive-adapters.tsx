@@ -563,6 +563,8 @@ export const WorkbenchShell = ({ state, report }: {
         </main>
       : null
   const maintenance = state.settings.harnessMaintenance
+  const waitingForAnswer = state.activeThreadId !== null && state.pending &&
+    state.notes.some(note => note.question?.status === "pending")
   const codexReleaseNotes = maintenance.codexReleaseNotes ?? null
   const codex = maintenance.view.state === "loaded"
     ? maintenance.view.harnesses.find(item => item.harness === "codex") ?? null
@@ -590,7 +592,7 @@ export const WorkbenchShell = ({ state, report }: {
       composer={state.history.page === null ? <ReactComposer state={state} report={report} /> : null}
       header={<ConversationHeader state={state} />}
       notices={<StatusNotices state={state} report={report} />}
-      timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending} workingDirectory={state.workingDirectory} agentName={capabilityForHarness(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}
+      timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForHarness(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}
     />}
     {codexUpdateAvailable && dismissedCodexVersion !== codex.latestVersion
       ? <Alert className="oa-react-codex-update-notice" role="status">

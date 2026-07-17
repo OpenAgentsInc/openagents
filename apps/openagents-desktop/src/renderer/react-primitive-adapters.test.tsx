@@ -409,6 +409,26 @@ describe("React workbench shell", () => {
     expect(container.querySelector('[data-en-key="sidebar-thread-history-1"] .oa-react-session-meta')).not.toBeNull()
   })
 
+  test("an active pending question shows waiting-for-answer instead of the generic timeline worker", async () => {
+    const base = fixtureState()
+    const state: DesktopShellState = {
+      ...base,
+      pending: true,
+      notes: [{
+        key: "pending-question", role: "system", text: "", timestamp: "now",
+        question: {
+          turnRef: "turn-question", questionRef: "question-waiting", status: "pending",
+          questions: [{ question: "Choose a path", header: "Path", multiSelect: false, options: [{ label: "A" }, { label: "B" }] }],
+        },
+      }],
+    }
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={state} report={() => Effect.void} />)
+    expect(container.querySelector('[aria-label="Waiting for your answer"]')).not.toBeNull()
+    expect(container.querySelector('.oa-react-working')).toBeNull()
+  })
+
   test("treats a background Full Auto turn as working sidebar activity", () => {
     const state = fixtureState()
     const rows = projectReactSessionRows({
