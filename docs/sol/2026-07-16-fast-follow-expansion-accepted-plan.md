@@ -1883,6 +1883,78 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T19:33:12Z`
 - residual: named-group authority, publication/transport, actual `main.ts` call-site composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-25 — Desktop public-visibility share publication transport
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-24. No
+target-authoritative named-group membership source exists, while active work
+still owns Desktop `main.ts` and broad renderer surfaces. The packet therefore
+adds a new-file-only Effect transport that binds an exact owner authorization
+and applied `internet_readable` visibility receipt to the existing
+authenticated `/api/share` projection service. It does not edit the active
+host/UI files, invent group authority, upload local transcript bytes, or add a
+new server route.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-publication-transport.ts`
+- `apps/openagents-desktop/src/thread-visibility-publication-transport.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-25-desktop-thread-visibility-publication-transport-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-23's exact owner authorization decision,
+`openagents.thread_disclosure_receipt.v1`, applied `internet_readable`
+visibility identity, existing `/api/share` request/response behavior,
+credential custody, single-attempt publication uncertainty, same-origin
+canonical share URLs, and ref-only Desktop results. Existing shared schemas,
+server routes, policy persistence, `main.ts`, preload, renderer, named-group,
+provider, and Sync contracts remain unchanged.
+
+Required behavior:
+
+- accept only one exact applied `internet_readable` visibility receipt, an
+  FF-D1-23 `authorized` decision whose basis is the exact owner and whose
+  receipt/thread/version binding matches, and a supported server source whose
+  id equals that thread ref;
+- obtain the existing host-custodied access token only after request
+  validation, then send exactly one authenticated `POST /api/share` carrying
+  only the source ref and public audience marker—never local transcript,
+  export, file, credential, path, provider, or native payload bytes;
+- decode only the bounded active share response, require its canonical URL to
+  share the configured service origin, and return a ref-only publication
+  result bound to the visibility receipt/thread/version;
+- fail closed without dispatch for malformed, non-owner, mismatched,
+  unsupported-audience, uncredentialed, or expanded requests; and
+- never automatically retry a network, timeout, throttle, or server failure:
+  because the existing create route has no reviewed idempotency contract,
+  ambiguous delivery returns `publication_outcome_unknown` rather than
+  success, failure, or a duplicate publication attempt.
+
+Proof: focused publication-transport, audience-authorization, disclosure, and
+share-contract tests; Desktop TypeScript check; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and
+repository-required checks.
+
+Close rule: this packet closes only owner-authorized public-visibility
+transport into the existing server-side redacted share builder. Named-group
+authority, workspace/named-group publication, idempotent publication
+reconciliation, the actual `main.ts` call site, renderer command/pixels,
+installed/runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-25-20260717`
+- base: `e2a38a225e8df469c0d5a8ff24d9a171a06b6424`
+- worktree/branch: `openagents-ff-d1-25` / detached `origin/main`
+- scope: owner-authorized ref-only Desktop publication of applied internet-readable visibility through existing `/api/share`
+- paths: the FF-D1-25 owned implementation paths above
+- hot files: new Desktop publication transport/test; accepted-plan ledger and Sol manifest
+- hot contracts: exact applied-public receipt/owner decision binding, existing share route, credential custody, one-attempt uncertainty, same-origin response, and no local content upload
+- dependencies: FF-D1-24 released; named-group authority lacks an authoritative source; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T19:49:51Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
