@@ -13,6 +13,10 @@ import {
 } from "../coding/mobile-execution-targets"
 import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-projection"
 import { fetchFullAutoRunMobileProjection } from "../full-auto/full-auto-run-projection-source"
+import {
+  createAuthenticatedMobileRepositoryEnvironment,
+  type MobileRepositoryEnvironmentPort,
+} from "../coding/mobile-repository-environment-client"
 import { openMobileSyncHostCore, type MobileSyncHost } from "./mobile-sync-host-core"
 
 export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
@@ -25,6 +29,7 @@ export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
    * until the real Desktop-published endpoint exists — see
    * `full-auto-run-projection-source.ts`. */
   fullAutoRun: () => Promise<FullAutoRunProjectionResult>
+  repositoryEnvironment: () => Promise<MobileRepositoryEnvironmentPort | null>
 }>
 
 export const OPENAGENTS_MOBILE_SYNC_DATABASE = "openagents-mobile-sync.sqlite"
@@ -80,6 +85,18 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
         return await fetchMobileExecutionTargetCatalog({
           baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
           token: credential.accessToken,
+        })
+      } catch {
+        return null
+      }
+    },
+    repositoryEnvironment: async () => {
+      try {
+        const credential = await loadNativeSessionCredential()
+        if (credential === null || host.conversation() === null) return null
+        return createAuthenticatedMobileRepositoryEnvironment({
+          baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+          accessToken: credential.accessToken,
         })
       } catch {
         return null

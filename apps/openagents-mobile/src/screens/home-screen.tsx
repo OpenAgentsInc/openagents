@@ -16,6 +16,8 @@ import type {
   MobileCodingComposerSession,
 } from "../coding/mobile-coding-composer"
 import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
+import type { MobileComposerPathSearchPort } from "../coding/mobile-composer-path-context"
+import type { MobileRepositoryFilesPort } from "../coding/mobile-repository-files"
 import type {
   ConfirmedPortableSessionSnapshot,
   ConfirmedRuntimeAttentionSnapshot,
@@ -78,6 +80,8 @@ export const HomeScreen = ({
     activeComposer: () => MobileCodingComposerSession | null
     executionTargets?: ReadonlyArray<MobileExecutionTargetOption>
     fleetRuns?: import("@openagentsinc/khala-sync").FleetRunClientProjection
+    searchComposerPaths?: MobileComposerPathSearchPort["search"]
+    repositoryFiles?: MobileRepositoryFilesPort
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,

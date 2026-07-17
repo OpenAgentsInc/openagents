@@ -1184,3 +1184,32 @@ closes; D2 and later epics remain open.
   workbench are complete; the real authenticated paired-environment provider
   remains `T3M-D1.2`, so Epic D1 and full parity remain open
 - verified_at: `2026-07-17T22:59:22Z`
+
+## Active packet — T3M-D1.2
+
+Outcome: replace the test-only repository port boundary with a native-host-
+owned authenticated environment client for tree, read, and path-search
+operations, without moving bearer custody into the Effect Native view tree.
+
+Required behavior: only a server-verified native session may construct the
+client; requests use exact HTTPS POST endpoints, bearer headers, omitted ambient
+credentials, disabled redirects, and exact session/repository/worktree payloads.
+Responses must be successful JSON within operation-specific byte bounds before
+the D1.1 decoders see them. Invalid base URLs, malformed tokens, redirects,
+non-JSON, failures, and oversized responses fail closed.
+
+Close rule: this closes the D1 application/provider seam in code. Environment
+registration, pairing/health UI, endpoint availability on a paired installation,
+and installed physical-device proof remain `T3M-F1`/`T3M-F2`; D1 does not claim
+those release proofs early.
+
+### CLAIM
+
+- packet: `T3M-D1.2`
+- base: `13df87b53361d0f4dfaf8640b246a1fb92852142`
+- claimed_at: `2026-07-17T23:03:55Z`
+- scope: authenticated mobile repository environment client, verified-session
+  host construction, Files and `@` search provider wiring, tests, behavior
+  contract, and Sol receipt
+- exclusions: environment pairing/health and endpoint provisioning (`T3M-F1`),
+  installed iOS/Android/live paired proof (`T3M-F2`), changes/review (`T3M-D2`)

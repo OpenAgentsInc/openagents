@@ -5,7 +5,7 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.15",
+    version: "2026-07-17.16",
     contracts: [
       {
         contractId: "openagents_mobile.repository_files_workbench.v1",
@@ -18,23 +18,35 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
         statement:
           "A coding session can open an adaptive Files route, browse its exact repository/worktree tree, preview bounded source, Markdown, and images, copy paths or content, and return to the same conversation state.",
         authorityBoundary:
-          "Every tree/read request and response is bound to the exact session, repository, worktree, safe relative path, revision, and request epoch. Traversal, foreign scope, stale revisions, duplicate or non-direct entries, unsafe image URLs, NUL text, and oversized content fail closed. Route transitions preserve transcript entries, pin/unread state, and scroll target. The production authenticated paired-environment provider remains T3M-D1.2 and absence is named as unavailable rather than simulated.",
+          "Every tree/read request and response is bound to the exact session, repository, worktree, safe relative path, revision, and request epoch. Traversal, foreign scope, stale revisions, duplicate or non-direct entries, unsafe image URLs, NUL text, and oversized content fail closed. Route transitions preserve transcript entries, pin/unread state, and scroll target. The native host constructs the environment client only from a verified mobile session credential, sends bearer custody in headers over exact HTTPS endpoints with ambient credentials and redirects disabled, bounds JSON before decoding, and names unavailable transport rather than simulating content. Environment pairing/health and installed live proof remain T3M-F1/F2.",
         evidenceRefs: [
           "apps/openagents-mobile/src/coding/mobile-repository-files.ts",
+          "apps/openagents-mobile/src/coding/mobile-repository-environment-client.ts",
           "apps/openagents-mobile/src/screens/mobile-files-view.ts",
           "apps/openagents-mobile/src/screens/home-core.ts",
+          "apps/openagents-mobile/src/sync/mobile-sync-host.ts",
           "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-d11",
         ],
-        oracles: [{
-          id: "mobile_repository_files_contract_and_route",
-          kind: "bun-test",
-          mode: "e2e",
-          ref: "apps/openagents-mobile/tests/mobile-repository-files.test.ts",
-          description:
-            "Proves exact-scope bounded decoding, fail-closed invalid responses, typed tree/preview rendering, and conversation-state preservation across Files navigation.",
-        }],
+        oracles: [
+          {
+            id: "mobile_repository_files_contract_and_route",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-repository-files.test.ts",
+            description:
+              "Proves exact-scope bounded decoding, fail-closed invalid responses, typed tree/preview rendering, and conversation-state preservation across Files navigation.",
+          },
+          {
+            id: "mobile_repository_environment_transport",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-repository-environment-client.test.ts",
+            description:
+              "Proves exact HTTPS endpoints, bearer-header custody, omitted ambient credentials, redirect refusal, bounded JSON, and fail-closed malformed/error responses.",
+          },
+        ],
         verification:
-          "Repository-files tests, authoritative Home/mobile suite, behavior-contract coverage, mobile typecheck, and repository checks; authenticated paired-environment transport remains T3M-D1.2.",
+          "Repository-files and authenticated-environment tests, authoritative Home/mobile suite, behavior-contract coverage, mobile typecheck, and repository checks; pairing/health UI and installed live environment evidence remain T3M-F1/F2.",
       },
       {
         contractId: "openagents_mobile.workspace_native_input.v1",

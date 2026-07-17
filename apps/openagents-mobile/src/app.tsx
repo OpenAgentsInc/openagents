@@ -31,6 +31,8 @@ import {
 } from "./coding/expo-mobile-coding-attachment-picker"
 import { prepareMobileCodingAttachmentDelivery } from "./coding/mobile-coding-attachment-delivery"
 import type { MobileExecutionTargetOption } from "./coding/mobile-execution-targets"
+import type { MobileComposerPathSearchPort } from "./coding/mobile-composer-path-context"
+import type { MobileRepositoryFilesPort } from "./coding/mobile-repository-files"
 import {
   buildMobilePortableSessionCommand,
   projectMobilePortableSessionControl,
@@ -85,6 +87,8 @@ type MobileCodingHomeBinding = Readonly<{
   activeComposer: () => MobileCodingComposerSession | null
   executionTargets: ReadonlyArray<MobileExecutionTargetOption>
   fleetRuns?: FleetRunClientProjection
+  searchComposerPaths?: MobileComposerPathSearchPort["search"]
+  repositoryFiles?: MobileRepositoryFilesPort
   clearSelection: () => Promise<void>
   selectSession: (
     target: MobileCodingTarget,
@@ -176,6 +180,7 @@ const selectAuthenticatedMobileExperience = async (
   if (conversation.mode !== "sync") return { conversation, fullAutoRun: fullAutoRunResult }
   const executionTargetCatalog = await syncHost.executionTargets()
   const fleetRunResult = await syncHost.fleetRuns()
+  const repositoryEnvironment = await syncHost.repositoryEnvironment()
   const portable = syncHost.portable()
   const portableSnapshot = portable === null
     ? null
@@ -266,6 +271,12 @@ const selectAuthenticatedMobileExperience = async (
       },
       activeComposer: () => activeComposer,
       executionTargets,
+      ...(repositoryEnvironment === null
+        ? {}
+        : {
+            repositoryFiles: repositoryEnvironment,
+            searchComposerPaths: repositoryEnvironment.search,
+          }),
       ...(fleetRunResult.state === "available"
         ? { fleetRuns: fleetRunResult.projection }
         : {}),
