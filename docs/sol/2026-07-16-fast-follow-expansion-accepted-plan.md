@@ -1066,6 +1066,12 @@ evidence, and Day 1 completion remain later packets.
 - baseline collisions: the Desktop package typecheck retains only the pre-existing lifecycle-schema failures recorded by FF-D1-10 through FF-D1-13; the known AssuranceSpec environment-digest snapshot drift remains 189/190 and outside this packet
 - residual: actual `main.ts` composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- landed: `73b8c9101f9a53f607ec042186b01d5918f00093` on `main`
+- remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
+- residual: actual `main.ts` composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
