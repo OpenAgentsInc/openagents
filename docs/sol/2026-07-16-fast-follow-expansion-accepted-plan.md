@@ -2557,10 +2557,18 @@ completion remain later packets.
 
 ### CLAIM-STATUS
 
-- status: implementation complete; focused and required repository proof recorded in the packet receipt
-- implementation_revision: `PENDING`
+- status: released after exact implementation tree landed on `origin/main`
+- implementation_revision: `184871d03577707013718f823ec2d0bdd0b873de`
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-32-desktop-thread-export-host-runtime-receipt.md`
 - observed_at: `2026-07-17T22:21:45Z`
+
+### CLAIM-RELEASE
+
+- claim_revision: `7e5140fe05bf3abfe500c895bf702fe1563b8ac3`
+- implementation_revision: `184871d03577707013718f823ec2d0bdd0b873de`
+- status: released; FF-D1-32 implementation is landed and the bounded claim is closed
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-32-desktop-thread-export-host-runtime-receipt.md`
+- released_at: `2026-07-17T22:23:20Z`
 
 ## Explicit non-authority
 

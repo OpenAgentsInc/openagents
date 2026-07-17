@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "7a71022edb76cb18201c10b061bb02c96e7ff03f"
 claim_revision: "7e5140fe05bf3abfe500c895bf702fe1563b8ac3"
-implementation_revision: "PENDING"
+implementation_revision: "184871d03577707013718f823ec2d0bdd0b873de"
 proof_rung: "desktop_canonical_export_host_runtime_composition"
 observed_at: "2026-07-17T22:21:45Z"
 ---
@@ -81,5 +81,6 @@ in `main.ts`, connect renderer commands, render pixels, or prove an installed
 runtime journey. Those residuals, owner acceptance, and Day 1 completion remain
 unclaimed.
 
-The exact tested implementation tree lands on `origin/main` at the revision
-recorded above before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`184871d03577707013718f823ec2d0bdd0b873de` before this documentation-only
+claim release.
