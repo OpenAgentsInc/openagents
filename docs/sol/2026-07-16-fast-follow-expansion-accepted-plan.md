@@ -668,6 +668,12 @@ Day 1 completion remain later packets.
 - publication correction: the claim commit's truncated Sol manifest transfer was caught by the deterministic gate and repaired on remote `main` at `6cfee8e382decc85529ef81a1b7423fc69ede955` before implementation publication
 - residual: artifact persistence/transport, Desktop command consumption and pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- landed: `b310c2dd1e6c43822bbb1a1886f66c8a7a23a37d` on `main`
+- remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
+- residual: artifact persistence/transport, Desktop command consumption and pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

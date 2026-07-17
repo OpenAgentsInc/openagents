@@ -3,14 +3,14 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_09.canonical_thread_export_artifact.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "bounded_packet_implemented"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
 base_revision: "6cfee8e382decc85529ef81a1b7423fc69ede955"
 claim_revision: "767f88c98751f26d7854792010277895236216b5"
 proof_rung: "deterministic_owner_only_canonical_event_bundle"
-observed_at: "2026-07-17T14:28:25Z"
+observed_at: "2026-07-17T14:30:45Z"
 ---
 
 # FF-D1-09 canonical thread export artifact receipt
@@ -70,6 +70,10 @@ installed runtime, or Day 1 completion claim is made.
 | Sol document checks                    | PASS — 19/19 plus manifest check |
 | `pnpm run check`                       | PASS                             |
 | `pnpm run check:fast`                  | PASS                             |
+
+The implementation and this receipt landed on `main` as
+`b310c2dd1e6c43822bbb1a1886f66c8a7a23a37d`. The fetched remote tree exactly
+matched the fully checked local tree.
 
 ## Honest boundary and next packet
 
