@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "eb15ce99c54af497874a998192b1afbb2fa8268b"
 claim_revision: "46b95cc49ab7a2202f8b2470394936a495df2238"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "4ef8dc7858aad3e07c81d4c2707257ecb28c5076"
 proof_rung: "idempotent_share_create_reconciliation"
 observed_at: "2026-07-17T20:58:37Z"
 ---
@@ -25,6 +25,10 @@ admitted this packet after FF-D1-26 released. Current `origin/main`, prior Day
 ProductSpec and AssuranceSpec obligations, repository invariants, open issues,
 known baselines, Git configuration, dependencies, and active worktrees were
 reconciled before mutation.
+
+The tested implementation tree was landed on current `origin/main` at
+`4ef8dc7858aad3e07c81d4c2707257ecb28c5076`. This documentation-only release
+annotation records that remote fact; it does not extend scope.
 
 No open bug issue claims this gap. Two July 4 worktrees containing unrelated
 share-route edits had no status or process evidence for more than 90 minutes

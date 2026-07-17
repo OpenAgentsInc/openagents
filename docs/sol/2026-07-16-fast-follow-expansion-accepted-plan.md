@@ -2141,6 +2141,14 @@ Day 1 completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-27-idempotent-share-create-reconciliation-receipt.md`
 - residual: client publication retry/reconciliation, named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim: `46b95cc49ab7a2202f8b2470394936a495df2238`
+- implementation: `4ef8dc7858aad3e07c81d4c2707257ecb28c5076`
+- disposition: `bounded_packet_landed`
+- released_at: `2026-07-17T21:01:36Z`
+- residual: client publication retry/reconciliation, named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
