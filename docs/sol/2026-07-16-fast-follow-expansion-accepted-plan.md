@@ -1866,6 +1866,15 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T19:25:35Z`
 
+### CLAIM-STATUS
+
+- implementation: added an Effect adapter that derives FF-D1-23 workspace-member or administrator authority only from a live server-confirmed Khala Sync team-membership projection
+- privacy/authority proof: owner/public paths remain lookup-free; workspace reads are exact-scope and ref-only; stale, revoked, refetching, unconfirmed, failed, malformed, cross-team, or ambiguous state fails closed without exposing entity bodies or native details; named-group membership is never inferred
+- focused proof: 68/68 Sync-authority, audience-authorization, disclosure, and Khala Sync contract tests passed; Desktop package typecheck passed
+- authority proof: Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec environment-digest drift remains 189/190; root Fast Follow teardown coverage remains 6/7 because the separately owned seed update is not committed on `main`
+- residual: named-group authority, publication/transport, actual `main.ts` call-site composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
