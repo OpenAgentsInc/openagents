@@ -2470,6 +2470,16 @@ evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T22:06:37Z`
 
+### CLAIM-STATUS
+
+- implementation: added one new-file-only Effect composition binding FF-D1-30's exact settled confirmed-timeline evidence reader to FF-D1-11's existing owner-only export command while keeping every host dependency explicit
+- privacy/authority proof: invalid or unsupported intents do not read Sync; valid execution reads only the exact intent thread; unavailable source authority stays unavailable; command results expose no content, source exception, path, credential, provider payload, or host authority
+- focused proof: 30/30 composition, confirmed-timeline adapter, export command/compiler, event-authority, and Sync timeline tests passed; Desktop package typecheck passed
+- authority proof: Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 107/107, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: root Fast Follow coverage is 6/7 because a separately landed teardown synthesis awaits its actively owned catalog update; AssuranceSpec remains 189/190 from only the known environment digest drift; neither baseline nor shared Git configuration was mutated
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-31-desktop-confirmed-timeline-export-command-receipt.md`
+- residual: authoritative supersession/reversion export evidence, named-group authority/publication, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
