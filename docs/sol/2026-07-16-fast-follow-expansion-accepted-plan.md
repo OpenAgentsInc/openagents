@@ -379,6 +379,66 @@ Day 1 completion remain later packets.
 - retry note: the hook's redundant second Desktop run intermittently exceeded the existing 50 ms large-rollout benchmark at 59 ms; that exact benchmark passed separately, and no gate or benchmark was changed
 - residual: Stop retry identity, Sync/mobile/Pylon adapters, rendered evidence, thread search/share/export/supersession, and Day 1 completion remain unclaimed
 
+## FF-D1-06 — Durable Stop acknowledgement replay
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next ordered Day 1 residual after FF-D1-05. It gives the
+active Desktop Stop target a stable retry identity and consults the
+restart-stable control-outcome ledger before adapter transport so a repeated
+Stop after a lost acknowledgement cannot signal the same turn twice.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/renderer/shell.ts`
+- `apps/openagents-desktop/src/renderer/shell.test.ts`
+- `apps/openagents-desktop/src/renderer/local-harness.ts`
+- `apps/openagents-desktop/src/renderer/local-harness.test.ts`
+- `apps/openagents-desktop/src/renderer/runtime-conversation.ts`
+- `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-06-desktop-stop-outcome-replay-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.runtime_control_intent.v2`,
+`openagents.runtime_control_outcome.v1`, the Desktop `ChatHost` Stop identity
+seam, and the private Desktop outcome ledger. Shared runtime-control schemas
+remain unchanged.
+
+Required behavior:
+
+- a local or durable-conversation Stop target derives one stable intent and
+  idempotency identity from the exact active thread/turn;
+- before interrupt transport, the shell looks up that exact identity in the
+  restart-stable outcome ledger;
+- a retained outcome, including pending acknowledgement, suppresses duplicate
+  transport and leaves terminal UI state to observed runtime evidence;
+- a confirmed missing identity dispatches normally and records the typed
+  acknowledgement; corrupt, invalid, conflicting, or unavailable
+  reconciliation fails closed without signalling transport; and
+- no Stop retry path invents terminal interruption, raw message content, or a
+  broader remote-control capability.
+
+Proof: focused shell, local-harness, durable-conversation, and outcome-ledger
+tests; Desktop typecheck; Fast Follow, behavior-contract, ProductSpec, Sol,
+and repository-required checks.
+
+Close rule: this packet closes only exact local Desktop Stop acknowledgement
+replay. Sync/mobile/Pylon adapters, rendered evidence, thread
+search/share/export/supersession, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-06-20260717`
+- base: `0ccc8bc5a1a2b1b719b4d2dfdaf799c9d5ad72bc`
+- worktree/branch: `openagents-ff-d1-06` / detached `origin/main`
+- scope: stable exact Stop retry identity and durable acknowledgement replay without redispatch
+- paths: the FF-D1-06 owned implementation paths above
+- hot files: accepted-plan ledger, Sol manifest, Desktop shell and local/durable Stop adapters
+- hot contracts: Stop identity tuple, lookup-before-interrupt ordering, and no-duplicate-signal behavior
+- dependencies: FF-D1-04 ledger and FF-D1-05 lookup path landed; no open Fast Follow issue or competing claim found
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T13:10:00Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
