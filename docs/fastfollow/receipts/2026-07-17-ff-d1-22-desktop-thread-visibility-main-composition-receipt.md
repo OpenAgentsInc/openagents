@@ -3,12 +3,13 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_22.desktop_thread_visibility_main_composition.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "bounded_packet_implemented"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
 base_revision: "6b8ca94e0b6322762a6243ed9dac0ef9e7d7d8da"
 claim_revision: "6340ce8ff9e7719bfb6e83699f430d24c393068f"
+implementation_revision: "4f3151a1666df8ecc2c2d7b8fe14b939f6af4620"
 proof_rung: "desktop_thread_visibility_main_composition_resource"
 observed_at: "2026-07-17T18:55:29Z"
 ---
@@ -24,6 +25,11 @@ receipts and releases, Fast Follow revision 3, the accepted plan, relevant
 ProductSpec and AssuranceSpec obligations, repository invariants, open issues,
 known baselines, Git configuration, and active worktrees were reconciled before
 mutation.
+
+The tested implementation tree was landed on current `origin/main` at
+`4f3151a1666df8ecc2c2d7b8fe14b939f6af4620` after rebasing over disjoint
+renderer work and regenerating the Sol manifest. This documentation-only
+release annotation records that remote fact; it does not extend scope.
 
 No open issue, worktree, or claim owns the two new visibility-composition
 paths. Active work continues to own Desktop `main.ts` and broad renderer
