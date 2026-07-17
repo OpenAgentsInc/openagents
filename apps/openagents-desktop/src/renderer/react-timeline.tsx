@@ -1,4 +1,5 @@
 import { Button } from "#components/ui/button"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -22,7 +23,7 @@ import {
 } from "@openagentsinc/ui/desktop-workbench"
 import type { ReactElement, ReactNode } from "react"
 import { Component, createElement, memo, useEffect, useMemo, useRef, useState } from "react"
-import { ChevronRight, Folder, FolderPen } from "lucide-react"
+import { CheckIcon, ChevronRight, CopyIcon, Folder, FolderPen } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
 import {
@@ -423,6 +424,84 @@ const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = n
   ) as Effect.Effect<void, IntentError>).catch(() => {})
 }
 
+const MESSAGE_COPY_FEEDBACK_MS = 1000
+
+const MessageCopyButton = memo(({ text }: Readonly<{ text: string }>): ReactElement => {
+  const [isCopied, setIsCopied] = useState(false)
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (resetTimer.current !== null) clearTimeout(resetTimer.current)
+  }, [])
+
+  const copyToClipboard = (): void => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setIsCopied(true)
+      if (resetTimer.current !== null) clearTimeout(resetTimer.current)
+      resetTimer.current = setTimeout(() => setIsCopied(false), MESSAGE_COPY_FEEDBACK_MS)
+    }).catch(() => {})
+  }
+
+  return <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger render={<Button
+        aria-label="Copy message"
+        disabled={isCopied}
+        onClick={copyToClipboard}
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        className="text-muted-foreground hover:text-foreground"
+      />}>
+        {isCopied ? <CheckIcon className="size-3 text-primary" /> : <CopyIcon className="size-3" />}
+      </TooltipTrigger>
+      <TooltipContent><p>Copy to clipboard</p></TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+})
+
+/**
+ * T3 Code's exact user-row composition (bubble followed by a hover/focus-only
+ * metadata row), ported from apps/web/src/components/chat/MessagesTimeline.tsx
+ * at fdca15471d92e95e4ec5501f45dbf3ce81f8d991. The one visual substitution is
+ * the owner-requested OpenAgents blue surface token.
+ */
+const UserTimelineRow = ({ record, report }: Readonly<{
+  record: ReactTimelineRecord
+  report: IntentReporter
+}>): ReactElement => <article
+  aria-label={`${record.label}. Item ${record.sequence + 1}`}
+  className="oa-react-timeline-item group flex flex-col items-end gap-1"
+  data-kind={record.kind}
+  data-timeline-key={record.key}
+  data-tone="user"
+  role="listitem"
+  style={{ width: "min(720px, 100%)", maxWidth: "none", marginLeft: "0", padding: "0", border: 0, background: "transparent" }}
+>
+  <div data-slot="user-message-bubble" className="relative max-w-[80%] rounded-2xl border border-border p-3" style={{ background: "var(--en-color-surfaceRaised)" }}>
+    <SafeReactMarkdown value={record.body} />
+  </div>
+  <div data-slot="user-message-actions" className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+    <div className="flex shrink-0 items-center gap-2">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+            {record.timestamp}
+          </TooltipTrigger>
+          <TooltipContent>{record.timestamp}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <div className="flex items-center gap-0.5">
+        {record.kind === "local_message" || record.kind === "question" ? null
+          : <Button type="button" variant="ghost" size="xs"
+              onClick={() => dispatch(report, "HistoryItemSelected", record.itemRef)}
+              aria-label={`Show details for ${record.label}, item ${record.sequence + 1}`}>Details</Button>}
+        <MessageCopyButton text={record.body} />
+      </div>
+    </div>
+  </div>
+</article>
+
 export const TimelineItem = ({ record, report }: {
   readonly record: ReactTimelineRecord
   readonly report: IntentReporter
@@ -539,7 +618,9 @@ export const TimelineItem = ({ record, report }: {
     label={danger ? record.label : "Update"}
   />
 
-  return <DesktopTimelineMessage itemKey={record.key} kind={record.kind} label={record.label} sequence={record.sequence} tone={isUserRecord(record) ? "user" : "assistant"}>
+  if (isUserRecord(record)) return <UserTimelineRow record={record} report={report} />
+
+  return <DesktopTimelineMessage itemKey={record.key} kind={record.kind} label={record.label} sequence={record.sequence} tone="assistant">
     <SafeReactMarkdown value={record.body} />
     {record.kind === "local_message" || record.kind === "question" ? null
       : <Button className="oa-react-item-details" type="button" variant="ghost" size="xs"

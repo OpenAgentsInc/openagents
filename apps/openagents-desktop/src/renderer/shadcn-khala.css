@@ -5,6 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 @source "../components/ui";
 @source "./react-primitive-adapters.tsx";
+@source "./react-timeline.tsx";
 
 @theme inline {
   --font-sans: var(--oa-font-sans);

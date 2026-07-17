@@ -257,6 +257,45 @@ describe("React typed timeline projection", () => {
     root.unmount()
   })
 
+  test("ports the T3 user bubble, right alignment, hover-only timestamp/actions, and copy control", async () => {
+    const { window, container } = installDom()
+    const copied: Array<string> = []
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value: string) => { copied.push(value) } },
+    })
+    const root = createRoot(container)
+    const user = {
+      ...record("prompt", 0),
+      kind: "user_message" as const,
+      label: "You",
+      body: "Keep the OpenAgents blue.",
+      timestamp: "6:15 AM",
+    }
+    root.render(<ReactTimeline sessionKey="thread-user-bubble" records={[user]}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+
+    const row = container.querySelector<HTMLElement>('[data-timeline-key="prompt"]')
+    const bubble = row?.querySelector<HTMLElement>('[data-slot="user-message-bubble"]')
+    const actions = row?.querySelector<HTMLElement>('[data-slot="user-message-actions"]')
+    expect(row?.classList.contains("items-end")).toBe(true)
+    expect(bubble?.classList.contains("max-w-[80%]")).toBe(true)
+    expect(bubble?.classList.contains("rounded-2xl")).toBe(true)
+    expect(bubble?.style.background).toBe("var(--en-color-surfaceRaised)")
+    expect(actions?.classList.contains("opacity-0")).toBe(true)
+    expect(actions?.classList.contains("group-hover:opacity-100")).toBe(true)
+    expect(actions?.textContent).toContain("6:15 AM")
+
+    const copy = row?.querySelector<HTMLButtonElement>('[aria-label="Copy message"]')
+    expect(copy).not.toBeNull()
+    copy?.click()
+    await settle()
+    expect(copied).toEqual(["Keep the OpenAgents blue."])
+    expect(copy?.querySelector("svg")?.classList.contains("text-primary")).toBe(true)
+    root.unmount()
+  })
+
   test("composes the shadcn scroller accessibility and stable turn-anchor contract", async () => {
     const { container } = installDom()
     const root = createRoot(container)
