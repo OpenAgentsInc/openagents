@@ -752,6 +752,75 @@ later packets.
 - remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: IPC/command wiring, save-dialog or remote transport, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-11 — Desktop canonical export command coordinator
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-10. Active
+Desktop main-process integration, history, shell, renderer, update, and release
+files remain excluded. The packet adds a new-file-only main-process command
+coordinator that consumes one exact owner-only export intent, obtains canonical
+event payloads and authority relations from a host-owned evidence source,
+compiles them through FF-D1-09, and persists them through FF-D1-10.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-command.ts`
+- `apps/openagents-desktop/src/thread-export-command.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-11-desktop-thread-export-command-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_intent.v1`,
+`openagents.thread_event_authority.v1`,
+`openagents.thread_export_artifact.v1`, the FF-D1-10 private store, and the
+host-owned canonical evidence-source seam. Existing Desktop IPC, main, preload,
+shell, renderer, Sync, provider, picker, and transport contracts remain
+unchanged.
+
+Required behavior:
+
+- the public command input is only one unknown intent; callers cannot inject
+  event payloads, authority relations, receipt refs, timestamps, or digests;
+- only a decoded `thread.export.create` intent with
+  `canonical_event_bundle` format and `owner_only` audience reaches the
+  evidence source;
+- the host-owned source is queried for the exact decoded thread and returns a
+  bounded evidence snapshot whose thread identity must match;
+- compilation consumes actual event data plus explicit
+  accepted/superseded/reverted relations and preserves all FF-D1-09 fail-closed
+  behavior;
+- host-owned receipt identity, clock, and SHA-256 functions feed FF-D1-10, so a
+  successful command returns only its typed ref-only stored/unchanged receipt;
+  and
+- unavailable/throwing evidence, invalid authority, mismatched identity,
+  invalid host metadata, or persistence refusal returns a bounded typed reason
+  without raw evidence, paths, errors, or partial success.
+
+Proof: focused command/store integration tests; isolated command TypeScript
+compile; Fast Follow, behavior-contract, ProductSpec, Sol, and
+repository-required checks. The known current-main Desktop lifecycle typecheck
+and AssuranceSpec environment-digest snapshot failures remain baseline
+collisions unless separately resolved on `main`.
+
+Close rule: this packet closes only host-owned main-process command
+coordination from exact export intent through canonical evidence compilation to
+private persistence. IPC/preload wiring, save-dialog or remote transport,
+Desktop pixels, broader disclosure adapters, remaining runtime/rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-11-20260717`
+- base: `1db8203518c3ec26a6c30770678f0391b4f7117f`
+- worktree/branch: `openagents-ff-d1-11` / detached `origin/main`
+- scope: host-owned Desktop export command coordination over exact canonical event-authority evidence and private artifact persistence
+- paths: the FF-D1-11 owned implementation paths above
+- hot files: new Desktop command/test files; accepted-plan ledger and Sol manifest
+- hot contracts: intent-only caller boundary, exact evidence thread identity, canonical authority compilation, host-owned receipt identity/clock/digest, and ref-only result
+- dependencies: FF-D1-10 released; no relevant open issue or competing claim; active Desktop integration/rendering/update/release work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T15:01:00Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
