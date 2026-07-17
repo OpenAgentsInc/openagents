@@ -284,6 +284,14 @@ and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T11:53:37Z`
 
+### CLAIM-STATUS
+
+- implementation: Desktop records schema-checked Queue/Steer/Stop outcomes through preload/main into a bounded private atomic ledger and reconstructs them after reopen
+- convergence: exact retry is idempotent; pending evidence advances monotonically; cross-identity and conflicting terminal evidence fail closed
+- focused proof: 164 tests passed with 11 skipped across the store, shell, and converging host; Desktop typecheck passed
+- authority proof: Fast Follow 7/7, behavior contracts 36/36, ProductSpec 104/104, and repository check passed
+- residual: lost-ACK replay/reconciliation, Sync/mobile/Pylon adapters, rendered evidence, and Day 1 completion remain unclaimed later packets
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

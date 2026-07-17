@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "9d1c08e96155181325c645b9d0cd99e5cc6b6ca808f3ad60fc6b867b94573a50",
+  "sourceTreeSha256": "0f872ea5cf9bfb585c7006abe6689c2f3d71ce942c0171f13db573c45a05fd3a",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -75,9 +75,10 @@
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
         "docs/sol/issues/app-desktop.md",
-        "docs/sol/issues/desktop-runtime-gateway.md"
+        "docs/sol/issues/desktop-runtime-gateway.md",
+        "docs/teardowns/2026-07-17-t3-code-openagents-desktop-ui-gap-analysis.md"
       ],
-      "inboundSourceCount": 7,
+      "inboundSourceCount": 8,
       "issueLinks": [
         8673,
         8674
@@ -1778,7 +1779,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "7f69b9a3ec66ee5215702e55da2a1009c43947a17969aeeae42a13fd0b60d1b7",
+      "sha256": "3fe832a8021d4152dc2efc4f7202b2dd40e5d524e5287484b95f3a25a1c0b0b6",
       "status": "active",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1788,10 +1789,11 @@
         "docs/fastfollow/receipts/2026-07-16-fast-follow-expansion-admission-and-ff-d1-01-receipt.md",
         "docs/fastfollow/receipts/2026-07-16-ff-d1-02-desktop-stop-control-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-03-desktop-queue-steer-control-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-ff-d1-04-desktop-control-outcome-ledger-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 6,
+      "inboundSourceCount": 7,
       "issueLinks": []
     },
     {
@@ -2054,11 +2056,12 @@
         "docs/sol/issues/native-conversation-continuation.md",
         "docs/sol/receipts/README.md",
         "docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md",
+        "docs/teardowns/2026-07-17-t3-code-openagents-desktop-ui-gap-analysis.md",
         "docs/teardowns/README.md",
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 46,
+      "inboundSourceCount": 47,
       "issueLinks": [
         8547,
         8566,
