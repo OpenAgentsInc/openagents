@@ -703,7 +703,8 @@ or weaken an invariant.
     "tracking_policy": "pinned_each_run",
     "teardown_refs": [
       "docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md",
-      "docs/teardowns/2026-07-10-openagents-subagents-design.md"
+      "docs/teardowns/2026-07-10-openagents-subagents-design.md",
+      "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md"
     ],
     "lessons": [
       {
