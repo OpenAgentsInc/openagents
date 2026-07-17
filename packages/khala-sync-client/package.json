@@ -23,6 +23,7 @@
   "dependencies": {
     "@openagentsinc/composer-state": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/portable-session-contract": "workspace:*",
     "@openagentsinc/sqlite-runtime": "workspace:*",
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
     "effect": "catalog:"

@@ -7,6 +7,15 @@ export const PORTABLE_CHECKPOINT_SCHEMA_VERSION =
 export const PORTABLE_COMMAND_SCHEMA_VERSION =
   "openagents.portable_session_command.v1" as const
 
+/** Canonical Khala Sync projection entity names for portable authority. */
+export const PORTABLE_SESSION_ENTITY_TYPE = "portable_session" as const
+export const PORTABLE_AGENT_GRAPH_ENTITY_TYPE = "portable_agent_graph" as const
+export const PORTABLE_ATTACHMENT_ENTITY_TYPE = "portable_attachment" as const
+export const PORTABLE_TARGET_DIRECTORY_ENTITY_TYPE = "portable_target_directory" as const
+export const PORTABLE_THREAD_CURRENT_ENTITY_TYPE = "portable_thread_current" as const
+export const PORTABLE_COMMAND_ENTITY_TYPE = "portable_command" as const
+export const PORTABLE_EXECUTION_BINDING_ENTITY_TYPE = "portable_execution_binding" as const
+
 export const PortableRef = S.String.check(
   S.isMinLength(3),
   S.isMaxLength(256),
@@ -374,6 +383,30 @@ export const PortableSessionCommandOutcomeSchema = S.Struct({
 })
 export type PortableSessionCommandOutcome =
   typeof PortableSessionCommandOutcomeSchema.Type
+
+/** Confirmed target membership projected for one portable session. */
+export const PortableTargetDirectoryProjectionSchema = S.Struct({
+  sessionRef: PortableRef,
+  targets: S.Array(PortableTargetDescriptorSchema),
+})
+export type PortableTargetDirectoryProjection =
+  typeof PortableTargetDirectoryProjectionSchema.Type
+
+/**
+ * A command is first projected as accepted and later replaced by its durable
+ * outcome. Clients must never synthesize the latter from a queued mutation.
+ */
+export const PortableCommandProjectionSchema = S.Union([
+  S.Struct({
+    command: PortableSessionCommandSchema,
+    status: S.Literal("accepted"),
+  }),
+  S.Struct({
+    command: PortableSessionCommandSchema,
+    outcome: PortableSessionCommandOutcomeSchema,
+  }),
+])
+export type PortableCommandProjection = typeof PortableCommandProjectionSchema.Type
 
 export * from "./journeys.js"
 export * from "./model.js"

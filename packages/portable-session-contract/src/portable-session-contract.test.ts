@@ -8,9 +8,11 @@ import {
   PORTABLE_SESSION_SCHEMA_VERSION,
   PORTABLE_SESSION_EXECUTION_BINDING_SCHEMA_VERSION,
   PortableCheckpointSchema,
+  PortableCommandProjectionSchema,
   PortableCodingSessionSchema,
   PortableSessionExecutionBindingSchema,
   PortableSessionCommandSchema,
+  PortableTargetDirectoryProjectionSchema,
   auditPortableSessionSnapshot,
   type PortableSessionSnapshot,
 } from "./index.js"
@@ -226,5 +228,34 @@ describe("portable session contract freeze", () => {
     ])
     expect(PORTABLE_SESSION_REAL_HOST_JOURNEY.forbiddenOutcomes).toContain("detail_blocked_first_paint")
     expect(PORTABLE_SESSION_REAL_HOST_JOURNEY.forbiddenOutcomes).toContain("click_tap_shortcut_divergence")
+  })
+
+  test("freezes confirmed target-directory and command projection envelopes", () => {
+    const value = fixture()
+    const command = S.decodeUnknownSync(PortableSessionCommandSchema)({
+      schema: PORTABLE_COMMAND_SCHEMA_VERSION,
+      commandRef: "command.move.projection",
+      idempotencyKey: "idempotency.move.projection",
+      ownerRef: "owner.1",
+      sessionRef: value.session.sessionRef,
+      kind: "move",
+      expectedAttachmentRef: "attachment.2",
+      expectedGeneration: 2,
+      destinationTargetRef: "target.local",
+      checkpointRef: "checkpoint.projection",
+      expiresAt: "2026-07-17T14:00:00.000Z",
+    })
+    expect(S.decodeUnknownSync(PortableTargetDirectoryProjectionSchema)({
+      sessionRef: value.session.sessionRef,
+      targets: value.targets,
+    }).targets).toHaveLength(2)
+    expect(S.decodeUnknownSync(PortableCommandProjectionSchema)({
+      command,
+      status: "accepted",
+    })).toEqual({ command, status: "accepted" })
+    expect(() => S.decodeUnknownSync(PortableCommandProjectionSchema)({
+      command,
+      status: "completed",
+    })).toThrow()
   })
 })

@@ -1671,6 +1671,9 @@ importers:
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../khala-sync
+      '@openagentsinc/portable-session-contract':
+        specifier: workspace:*
+        version: link:../portable-session-contract
       '@openagentsinc/sqlite-runtime':
         specifier: workspace:*
         version: link:../sqlite-runtime

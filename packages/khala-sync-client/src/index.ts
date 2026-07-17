@@ -205,6 +205,18 @@ export {
 } from "./coding-session.js"
 
 export {
+  createKhalaSyncPortableSessions,
+  createPortableRequestCommandMutator,
+  MAX_CONFIRMED_PORTABLE_ATTACHMENTS,
+  MAX_CONFIRMED_PORTABLE_COMMANDS,
+  MAX_CONFIRMED_PORTABLE_SESSIONS,
+  PORTABLE_REQUEST_COMMAND_MUTATOR_NAME,
+  type ConfirmedPortableSessionSnapshot,
+  type KhalaSyncPortableSessions,
+  type PortableProjectionIssue,
+} from "./portable-session.js"
+
+export {
   buildAppendUserMessageIntent,
   buildCloseTurnIntent,
   buildContinueTurnIntent,

@@ -10,7 +10,14 @@ import {
 } from "@openagentsinc/khala-sync"
 import {
   PORTABLE_COMMAND_SCHEMA_VERSION,
+  PORTABLE_AGENT_GRAPH_ENTITY_TYPE,
+  PORTABLE_ATTACHMENT_ENTITY_TYPE,
+  PORTABLE_COMMAND_ENTITY_TYPE,
+  PORTABLE_EXECUTION_BINDING_ENTITY_TYPE,
+  PORTABLE_SESSION_ENTITY_TYPE,
   PORTABLE_SESSION_SCHEMA_VERSION,
+  PORTABLE_TARGET_DIRECTORY_ENTITY_TYPE,
+  PORTABLE_THREAD_CURRENT_ENTITY_TYPE,
   PortableAttachmentSchema,
   PortableCheckpointSchema,
   PortableCodingSessionSchema,
@@ -36,14 +43,6 @@ export const PORTABLE_REGISTER_SESSION_MUTATOR_NAME =
   "portable.registerSession"
 export const PORTABLE_REQUEST_COMMAND_MUTATOR_NAME =
   "portable.requestCommand"
-
-export const PORTABLE_SESSION_ENTITY_TYPE = "portable_session"
-export const PORTABLE_AGENT_GRAPH_ENTITY_TYPE = "portable_agent_graph"
-export const PORTABLE_ATTACHMENT_ENTITY_TYPE = "portable_attachment"
-export const PORTABLE_TARGET_DIRECTORY_ENTITY_TYPE = "portable_target_directory"
-export const PORTABLE_THREAD_CURRENT_ENTITY_TYPE = "portable_thread_current"
-export const PORTABLE_COMMAND_ENTITY_TYPE = "portable_command"
-export const PORTABLE_EXECUTION_BINDING_ENTITY_TYPE = "portable_execution_binding"
 
 const forbiddenPrivateMaterial =
   /"(?:token|apiKey|authorization|sessionToken|refreshToken|mnemonic|secret|localPath|hostname|processId|providerSessionId|transportHandle|socket|pid|authHome)"\s*:|(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)/i
