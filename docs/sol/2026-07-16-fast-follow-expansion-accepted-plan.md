@@ -150,6 +150,64 @@ adapters, rendered evidence, and Day 1 completion remain later packets.
 - verification: focused packet/capability/boundary tests 239 passed and 11 skipped; Desktop typecheck; Fast Follow 7/7; behavior contracts 36/36; ProductSpec 104/104; Sol checks 19/19; `pnpm run check`; enforced Desktop gate 1,908 passed and 39 skipped plus build, fixture visual smoke, React smoke, and built Electron smoke
 - residual: durable outcome persistence/replay, Queue/Steer outcomes, Sync/mobile/Pylon adapters, thread search/share/export/supersession surfaces, real rendered runtime evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-03 — Foreground Queue/Steer control outcomes
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next ordered Day 1 residual after FF-D1-02. It lowers the
+already-minted `turn.queue` and `turn.steer` envelopes through the foreground
+Desktop ChatHost adapters and returns provider-neutral adapter acknowledgement.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/composer-admission.ts`
+- `apps/openagents-desktop/src/renderer/shell.ts`
+- `apps/openagents-desktop/src/renderer/shell.test.ts`
+- `apps/openagents-desktop/src/renderer/local-harness.ts`
+- `apps/openagents-desktop/src/renderer/local-harness.test.ts`
+- `apps/openagents-desktop/src/renderer/runtime-conversation.ts`
+- `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-03-desktop-queue-steer-control-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.runtime_control_intent.v2`,
+`openagents.runtime_control_outcome.v1`, and the Desktop `ChatHost` Queue/Steer
+seams. This packet does not version those shared schema literals.
+
+Required behavior:
+
+- the shell passes the exact already-minted ref-only Queue or Steer envelope to
+  the matching foreground adapter without translating between control kinds;
+- local Queue/Steer and durable-conversation Queue validate exact active target
+  identity and fail closed without dispatch on a missing or mismatched target;
+- adapter admission/delivery acknowledgement is returned as
+  `openagents.runtime_control_outcome.v1`; Queue identifies accepted queued
+  delivery, while Steer identifies applied, unsupported, or failed delivery;
+- lost acknowledgement remains pending for later reconciliation instead of
+  being reported as success; and
+- existing provider-specific Queue/Steer transport seams remain available.
+
+Proof: focused composer, shell, local-harness, and runtime-conversation tests;
+Desktop typecheck; Fast Follow, behavior-contract, ProductSpec, and Sol
+document checks; and repository-required `pnpm run check`.
+
+Close rule: this packet closes only foreground Desktop Queue/Steer lowering and
+typed adapter acknowledgement. Durable cross-restart outcome storage, lost-ACK
+replay reconciliation, Sync/mobile/Pylon adapters, rendered evidence, and Day
+1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-03-20260717`
+- base: `4efb1422f7844f377bb3ee6d4eeec0d24719b422`
+- worktree/branch: `openagents-ff-d1-03` / detached `origin/main`
+- scope: foreground Desktop Queue/Steer canonical lowering and typed adapter outcomes
+- paths: the FF-D1-03 owned implementation paths above
+- hot files: this accepted-plan ledger, Sol document manifest, and Desktop ChatHost Queue/Steer seams
+- hot contracts: runtime-control schema literals and Desktop ChatHost Queue/Steer return types
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T11:40:53Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

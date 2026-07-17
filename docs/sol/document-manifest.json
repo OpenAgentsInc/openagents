@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "6cb2f1499a70524342907f4ac869cbc0f9164ce28661b2c8d0250aa81c7877cb",
+  "sourceTreeSha256": "81f2faa0a7ab8a96528bb05166bed4cd6c2909b6478723f947d207bc61da02d1",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1778,7 +1778,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "d99615e78cf41cc5ee3ce4e3f5f6fc22c1cf0ac3420c08b6c32f2456ca213ade",
+      "sha256": "5ce43146f5b78c32ba9640f44ce1a8f2f18b714890305f3d697091b37396700f",
       "status": "active",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
